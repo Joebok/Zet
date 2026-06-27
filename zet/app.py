@@ -2,8 +2,11 @@ from pathlib import Path
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
+from zet.repositories.pipeline_repository import PipelineRepository
+from zet.services.asset_service import AssetService
 from zet.services.config_service import ConfigService
 from zet.services.path_service import PathService
+from zet.services.state_machine import StateMachine
 
 
 class AssetRef:
@@ -30,8 +33,8 @@ class AssetRef:
     def locked_image_path(self) -> Path:
         return self._app.path_service.locked_image_path(self.get())
 
-    def move_next(self) -> None:
-        raise NotImplementedError("Milestone 3+ only: move_next is not implemented yet")
+    def move_next(self) -> Asset:
+        return self._app.asset_service.move_next(self._character, self._phase, self._asset_id)
 
     def regenerate(self) -> None:
         raise NotImplementedError("Milestone 3+ only: regenerate is not implemented yet")
@@ -44,9 +47,18 @@ class AssetRef:
 
 
 class ZetApp:
-    def __init__(self, config, asset_repository: AssetRepository, path_service: PathService):
+    def __init__(
+        self,
+        config,
+        asset_repository: AssetRepository,
+        pipeline_repository: PipelineRepository,
+        asset_service: AssetService,
+        path_service: PathService,
+    ):
         self.config = config
         self.asset_repository = asset_repository
+        self.pipeline_repository = pipeline_repository
+        self.asset_service = asset_service
         self.path_service = path_service
 
     @classmethod
@@ -54,11 +66,13 @@ class ZetApp:
         config = ConfigService.load(config_path)
         path_service = PathService(config)
         asset_repository = AssetRepository(path_service)
-        return cls(config, asset_repository, path_service)
+        pipeline_repository = PipelineRepository(path_service)
+        state_machine = StateMachine()
+        asset_service = AssetService(asset_repository, pipeline_repository, state_machine)
+        return cls(config, asset_repository, pipeline_repository, asset_service, path_service)
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return self.asset_repository.list_assets(character, phase)
 
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
-

@@ -1,2 +1,1 @@
-from zet.models.asset import Asset
-
+"""Zet model package."""

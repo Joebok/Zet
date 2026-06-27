@@ -11,15 +11,15 @@
       "head_view": null,
       "costume": null,
       "expression": null,
-      "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "RENDER",
-      "actor": "AI_AGENT",
-      "ai_state": "ASKED",
+      "asset_state": "NEW",
+      "pipeline_stage": "MANIFEST",
+      "actor": "PYTHON",
+      "ai_state": null,
       "final_image_output": "Body-Reference_Front.png",
       "last_ai_update": null,
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-06-27T13:54:44"
+      "updated_at": null
     },
     {
       "asset_id": 2,
@@ -30,15 +30,15 @@
       "head_view": null,
       "costume": null,
       "expression": null,
-      "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "PROMPT_REVIEW",
-      "actor": "HUMAN_AGENT",
+      "asset_state": "NEW",
+      "pipeline_stage": "MANIFEST",
+      "actor": "PYTHON",
       "ai_state": null,
       "final_image_output": "Body-Reference_Front-Left-3-4.png",
       "last_ai_update": null,
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-06-27T13:55:07"
+      "updated_at": null
     },
     {
       "asset_id": 3,

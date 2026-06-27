@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+
+// python3 -m zet.scripts.show_pipeline --character Tsaeytte --phase Adult --asset-id 1
+{
+    "name": "Show Pipeline",
+    "type": "debugpy",
+    "request": "launch",
+    "cwd": "${workspaceFolder}",
+    "module": "zet.scripts.show_pipeline",
+    "console": "integratedTerminal",
+    "args": [
+        "--character", "Tsaeytte",
+        "--phase", "Adult",
+        "--asset-id", "1"
+    ]
+}    ]
+}

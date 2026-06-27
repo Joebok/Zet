@@ -1,5 +1,7 @@
 import json
+import shutil
 from dataclasses import fields
+from datetime import datetime
 from pathlib import Path
 
 from zet.models.asset import Asset
@@ -31,11 +33,14 @@ class AssetRepository:
         return payload
 
     def _asset_from_dict(self, record: dict) -> Asset:
-        required = {field.name for field in fields(Asset)}
-        missing = sorted(required - set(record))
+        required = [field.name for field in fields(Asset)]
+        missing = sorted(set(required) - set(record))
         if missing:
             raise AssetRepositoryError(f"Asset record is missing required fields: {', '.join(missing)}")
         return Asset(**{name: record[name] for name in required})
+
+    def _serialize_asset(self, asset: Asset) -> dict:
+        return {field.name: getattr(asset, field.name) for field in fields(Asset)}
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         payload = self._load_payload(character, phase)
@@ -54,3 +59,47 @@ class AssetRepository:
             if asset.asset_id == asset_id:
                 return asset
         raise AssetRepositoryError(f"Asset {asset_id} not found for {character}/{phase}")
+
+    def save_asset(self, asset: Asset) -> None:
+        path = self._assets_json_path(asset.character, asset.phase)
+        payload = self._load_payload(asset.character, asset.phase)
+        records = payload.get("assets")
+        if not isinstance(records, list):
+            raise AssetRepositoryError("Assets.json must contain an 'assets' list")
+
+        replacement = self._serialize_asset(asset)
+        found = False
+        updated_records = []
+        for record in records:
+            if not isinstance(record, dict):
+                raise AssetRepositoryError("Each asset record in Assets.json must be an object")
+            if record.get("asset_id") == asset.asset_id:
+                updated_records.append(replacement)
+                found = True
+            else:
+                updated_records.append(record)
+
+        if not found:
+            raise AssetRepositoryError(f"Asset {asset.asset_id} not found for {asset.character}/{asset.phase}")
+
+        payload["assets"] = updated_records
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backup_path = path.with_name(f"Assets.backup.{timestamp}.json")
+        temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
+
+        serialized = json.dumps(payload, indent=2)
+        if not serialized.endswith("\n"):
+            serialized += "\n"
+
+        shutil.copy2(path, backup_path)
+        try:
+            with temp_path.open("w", encoding="utf-8") as handle:
+                handle.write(serialized)
+            with temp_path.open("r", encoding="utf-8") as handle:
+                json.load(handle)
+            temp_path.replace(path)
+        except Exception:
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
