@@ -1,0 +1,5 @@
+[BaseFolders]
+BaseCharacterPath = "_Lib/Characters/"
+BaseAssetPath = "_Lib/Assets/"
+BasePipelinePath = "_Lib/Pipelines/"
+BaseAIQueuePath = "_Lib/AI_Queue/"
