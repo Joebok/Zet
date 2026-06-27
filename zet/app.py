@@ -38,17 +38,16 @@ class AssetRef:
         return self._app.asset_service.move_next(self._character, self._phase, self._asset_id)
 
     def run_housekeeping(self) -> Path:
-        asset = self.get()
-        return self._app.housekeeping_service.prepare_stage(asset)
+        return self._app.asset_service.run_housekeeping(self._character, self._phase, self._asset_id)
 
-    def regenerate(self) -> None:
-        raise NotImplementedError("Milestone 3+ only: regenerate is not implemented yet")
+    def regenerate(self) -> Asset:
+        return self._app.asset_service.regenerate(self._character, self._phase, self._asset_id)
 
-    def retry_ai(self) -> None:
-        raise NotImplementedError("Milestone 3+ only: retry_ai is not implemented yet")
+    def retry_ai(self) -> Asset:
+        return self._app.asset_service.retry_ai(self._character, self._phase, self._asset_id)
 
-    def promote_to_locked(self) -> None:
-        raise NotImplementedError("Milestone 3+ only: promote_to_locked is not implemented yet")
+    def promote_to_locked(self) -> Asset:
+        return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
 
 
 class ZetApp:
@@ -81,6 +80,7 @@ class ZetApp:
             pipeline_repository,
             state_machine,
             housekeeping_service,
+            path_service,
         )
         return cls(
             config,

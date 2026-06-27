@@ -2,3 +2,4 @@ _Lib/AI_Queue
 _Lib/Assets
 _Lib/Pipelines
 *.png
+*.backup.*
