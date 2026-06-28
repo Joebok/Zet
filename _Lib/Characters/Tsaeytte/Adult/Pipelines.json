@@ -17,11 +17,11 @@
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
       "worker_by_stage": {
-        "MANIFEST": "workers.body_reference_manifest",
-        "PROMPT": "workers.body_reference_prompt",
-        "PROMPT_REVIEW": "workers.body_reference_prompt_review",
-        "RENDER": "workers.body_reference_render",
-        "RENDER_REVIEW": "workers.body_reference_render_review"
+        "MANIFEST": "zet.workers.noop_worker",
+        "PROMPT": "zet.workers.noop_worker",
+        "PROMPT_REVIEW": "zet.workers.noop_worker",
+        "RENDER": "zet.workers.noop_worker",
+        "RENDER_REVIEW": "zet.workers.noop_worker"
       }
     },
     "Head-Fitment": {
@@ -40,11 +40,11 @@
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
       "worker_by_stage": {
-        "MANIFEST": "workers.head_fitment_manifest",
-        "PROMPT": "workers.head_fitment_prompt",
-        "PROMPT_REVIEW": "workers.head_fitment_prompt_review",
-        "RENDER": "workers.head_fitment_render",
-        "RENDER_REVIEW": "workers.head_fitment_render_review"
+        "MANIFEST": "zet.workers.noop_worker",
+        "PROMPT": "zet.workers.noop_worker",
+        "PROMPT_REVIEW": "zet.workers.noop_worker",
+        "RENDER": "zet.workers.noop_worker",
+        "RENDER_REVIEW": "zet.workers.noop_worker"
       }
     },
     "Character-Assembly": {
@@ -63,11 +63,11 @@
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
       "worker_by_stage": {
-        "MANIFEST": "workers.character_assembly_manifest",
-        "PROMPT": "workers.character_assembly_prompt",
-        "PROMPT_REVIEW": "workers.character_assembly_prompt_review",
-        "RENDER": "workers.character_assembly_render",
-        "RENDER_REVIEW": "workers.character_assembly_render_review"
+        "MANIFEST": "zet.workers.noop_worker",
+        "PROMPT": "zet.workers.noop_worker",
+        "PROMPT_REVIEW": "zet.workers.noop_worker",
+        "RENDER": "zet.workers.noop_worker",
+        "RENDER_REVIEW": "zet.workers.noop_worker"
       }
     }
   }

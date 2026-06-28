@@ -31,14 +31,14 @@
       "costume": null,
       "expression": null,
       "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "PROMPT_REVIEW",
-      "actor": "HUMAN_AGENT",
+      "pipeline_stage": "MANIFEST",
+      "actor": "PYTHON",
       "ai_state": null,
       "final_image_output": "Body-Reference_Front-Left-3-4.png",
       "last_ai_update": null,
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-06-27T13:55:07"
+      "updated_at": "2026-06-27T16:15:57"
     },
     {
       "asset_id": 3,
@@ -49,15 +49,15 @@
       "head_view": "Front",
       "costume": null,
       "expression": null,
-      "asset_state": "NEW",
-      "pipeline_stage": "MANIFEST",
-      "actor": "PYTHON",
+      "asset_state": "IN_PROGRESS",
+      "pipeline_stage": "RENDER_REVIEW",
+      "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Head-Fitment_Front_Front.png",
-      "last_ai_update": null,
+      "last_ai_update": "AI answer harvested: Ask_Asset_3_RENDER_20260627_193608 (20260627_193608_3_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": null
+      "updated_at": "2026-06-27T19:41:34"
     },
     {
       "asset_id": 4,

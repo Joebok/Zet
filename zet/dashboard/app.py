@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 import sys
 
@@ -14,6 +15,35 @@ from zet.services.config_service import ConfigService, ConfigServiceError
 
 def format_value(value):
     return "None" if value is None else value
+
+
+def format_timestamp_with_age(value):
+    if value is None:
+        return "None"
+    text = str(value).strip()
+    if not text:
+        return "None"
+    try:
+        stamp = datetime.fromisoformat(text)
+        now = datetime.now(stamp.tzinfo) if stamp.tzinfo else datetime.now()
+        delta = now - stamp
+        total_seconds = max(0, int(delta.total_seconds()))
+        if total_seconds < 60:
+            age_text = "just now"
+        elif total_seconds < 3600:
+            minutes = total_seconds // 60
+            age_text = f"{minutes} min ago"
+        elif total_seconds < 86400:
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            age_text = f"{hours}h {minutes}m ago" if minutes else f"{hours}h ago"
+        else:
+            days = total_seconds // 86400
+            hours = (total_seconds % 86400) // 3600
+            age_text = f"{days}d {hours}h ago" if hours else f"{days}d ago"
+        return f"{text} ({age_text})"
+    except Exception:
+        return text
 
 
 def discover_characters(base_character_path: str) -> list[str]:
@@ -43,7 +73,7 @@ def asset_to_row(asset) -> dict:
         "actor": asset.actor,
         "ai_state": format_value(asset.ai_state),
         "final_image_output": format_value(asset.final_image_output),
-        "updated_at": format_value(asset.updated_at),
+        "updated_at": format_timestamp_with_age(asset.updated_at),
     }
 
 
@@ -88,11 +118,17 @@ def action_disabled_reason(asset_ref) -> dict[str, str | None]:
     asset = asset_ref.get()
     reasons = {
         "move_next": None,
+        "stage_ai_ask": None,
+        "run_current_worker": None,
         "run_housekeeping": None,
         "retry_ai": None,
         "regenerate": None,
         "promote_to_locked": None,
     }
+    if asset.actor != "AI_AGENT":
+        reasons["stage_ai_ask"] = "AI ask staging is only available when Actor is AI_AGENT."
+    if asset.actor != "PYTHON":
+        reasons["run_current_worker"] = "Current worker can only run when Actor is PYTHON."
     if asset.actor != "AI_AGENT":
         reasons["retry_ai"] = "Retry AI is only available when Actor is AI_AGENT."
     if not asset_ref.candidate_image_path().exists():
@@ -114,14 +150,88 @@ def load_text_if_exists(path: Path) -> str | None:
     return path.read_text(encoding="utf-8")
 
 
+def monitor_row(result) -> dict:
+    return {
+        "worker_id": result.worker_id,
+        "host": result.host,
+        "status": result.status,
+        "ollama_ok": "yes" if result.ollama_ok else "no",
+        "responded_at": format_timestamp_with_age(result.responded_at),
+        "models": ", ".join(result.models) if result.models else "",
+        "message": format_value(result.message),
+    }
+
+
+def request_row(request_dir: Path) -> dict:
+    payload = {}
+    request_path = request_dir / "request.json"
+    if request_path.exists():
+        try:
+            import json
+
+            payload = json.loads(request_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+    return {
+        "test_id": request_dir.name,
+        "created_at": format_timestamp_with_age(payload.get("created_at")),
+        "instruction": format_value(payload.get("instruction")),
+        "path": str(request_dir),
+    }
+
+
 def main() -> None:
     st.set_page_config(page_title="Zet Dashboard", layout="wide")
-    st.title("Zet Dashboard")
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-top: 0.6rem;
+            padding-bottom: 0.8rem;
+        }
+        .zet-title {
+            font-family: "Brush Script MT", "Lucida Handwriting", cursive;
+            font-size: 3rem;
+            line-height: 1;
+            margin: 0 0 0.2rem 0;
+        }
+        .zet-selected-bar {
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            color: #374151;
+            padding: 0.45rem 0.7rem;
+            margin: 0.15rem 0 0.45rem 0;
+        }
+        div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stHorizontalBlock"]) {
+            gap: 0.45rem;
+        }
+        div[data-testid="stHorizontalBlock"] {
+            gap: 0.5rem;
+        }
+        div[data-testid="stSelectbox"] {
+            margin-bottom: 0;
+        }
+        div[data-testid="stButton"] {
+            margin-top: 0;
+        }
+        div[data-testid="stDataFrame"] {
+            margin-top: -0.25rem;
+        }
+        h3 {
+            margin-top: 0.35rem;
+            margin-bottom: 0.25rem;
+        }
+        p {
+            margin-bottom: 0.25rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="zet-title">ZET</div>', unsafe_allow_html=True)
     show_action_message()
-
-    with st.sidebar:
-        st.header("Controls")
-        config_path = st.text_input("Config path", value="config.toml")
+    config_path = "config.toml"
 
     try:
         config = ConfigService.load(config_path)
@@ -138,7 +248,9 @@ def main() -> None:
         st.info("No characters found under the configured BaseCharacterPath.")
         return
 
-    with st.sidebar:
+    control_col_1, control_col_2 = st.columns([1, 1])
+
+    with control_col_1:
         character = st.selectbox("Character", characters)
 
     phases = discover_phases(config.base_character_path, character)
@@ -146,7 +258,7 @@ def main() -> None:
         st.info(f"No phases found for character {character}.")
         return
 
-    with st.sidebar:
+    with control_col_2:
         phase = st.selectbox("Phase", phases)
 
     try:
@@ -159,151 +271,302 @@ def main() -> None:
         st.info(f"No assets found for {character}/{phase}.")
         return
 
-    st.subheader("Assets")
-    asset_rows = [asset_to_row(asset) for asset in assets]
-    selection_event = st.dataframe(
-        asset_rows,
-        use_container_width=True,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-    )
+    tab_assets, tab_ai = st.tabs(["Assets", "AI Controls"])
 
-    selected_asset_id = selected_asset_id_from_event(selection_event, asset_rows)
-    state_key = selection_state_key(character, phase)
-    if selected_asset_id is not None:
-        st.session_state[state_key] = selected_asset_id
-    else:
-        selected_asset_id = st.session_state.get(state_key)
-
-    valid_asset_ids = {asset.asset_id for asset in assets}
-    if selected_asset_id not in valid_asset_ids:
-        selected_asset_id = assets[0].asset_id
-        st.session_state[state_key] = selected_asset_id
-        st.info("Click a row in the asset table to switch the detail view. Showing the first asset by default.")
-
-    try:
-        asset_ref = app.asset(character, phase, selected_asset_id)
-        asset = asset_ref.get()
-    except Exception as exc:
-        st.error(str(exc))
-        return
-
-    st.subheader("Selected Asset Actions")
-    disabled_reasons = action_disabled_reason(asset_ref)
-    action_columns = st.columns(5)
-
-    with action_columns[0]:
-        move_next_clicked = st.button("Move Next", use_container_width=True)
-    with action_columns[1]:
-        run_housekeeping_clicked = st.button("Run Housekeeping", use_container_width=True)
-    with action_columns[2]:
-        retry_ai_clicked = st.button(
-            "Retry AI",
+    with tab_assets:
+        st.subheader("Assets")
+        asset_rows = [asset_to_row(asset) for asset in assets]
+        selection_event = st.dataframe(
+            asset_rows,
             use_container_width=True,
-            disabled=disabled_reasons["retry_ai"] is not None,
-        )
-    with action_columns[3]:
-        regenerate_clicked = st.button("Regenerate", use_container_width=True)
-    with action_columns[4]:
-        promote_clicked = st.button(
-            "Promote to LOCKED",
-            use_container_width=True,
-            disabled=disabled_reasons["promote_to_locked"] is not None,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
         )
 
-    if disabled_reasons["retry_ai"]:
-        st.caption(disabled_reasons["retry_ai"])
-    if disabled_reasons["promote_to_locked"]:
-        st.caption(disabled_reasons["promote_to_locked"])
-
-    try:
-        if move_next_clicked:
-            updated_asset = asset_ref.move_next()
-            st.session_state[state_key] = updated_asset.asset_id
-            store_action_message("success", f"Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
-            st.rerun()
-        if run_housekeeping_clicked:
-            pipeline_path = asset_ref.run_housekeeping()
+        selected_asset_id = selected_asset_id_from_event(selection_event, asset_rows)
+        state_key = selection_state_key(character, phase)
+        if selected_asset_id is not None:
             st.session_state[state_key] = selected_asset_id
-            store_action_message("success", f"Housekeeping complete for Asset {selected_asset_id} at {pipeline_path}.")
-            st.rerun()
-        if retry_ai_clicked:
-            updated_asset = asset_ref.retry_ai()
-            st.session_state[state_key] = updated_asset.asset_id
-            store_action_message("success", f"AI retry requested for Asset {updated_asset.asset_id}.")
-            st.rerun()
-        if regenerate_clicked:
-            updated_asset = asset_ref.regenerate()
-            st.session_state[state_key] = updated_asset.asset_id
-            store_action_message("success", f"Asset {updated_asset.asset_id} reset to {updated_asset.pipeline_stage}.")
-            st.rerun()
-        if promote_clicked:
-            updated_asset = asset_ref.promote_to_locked()
-            st.session_state[state_key] = updated_asset.asset_id
-            store_action_message("success", f"Asset {updated_asset.asset_id} promoted to LOCKED.")
-            st.rerun()
-    except Exception as exc:
-        store_action_message("error", str(exc))
-        st.rerun()
-
-    asset = asset_ref.get()
-    character_path = app.path_service.character_path(character, phase)
-    character_asset_path = app.path_service.character_asset_path(character, phase)
-    pipeline_path = asset_ref.pipeline_path()
-    candidate_image_path = asset_ref.candidate_image_path()
-    locked_image_path = asset_ref.locked_image_path()
-    stage_path = pipeline_path / "_stage.txt"
-    history_path = pipeline_path / "_history.log"
-
-    st.subheader("Images")
-    candidate_col, locked_col = st.columns(2)
-
-    with candidate_col:
-        if candidate_image_path.exists():
-            st.image(str(candidate_image_path), caption="Candidate", use_container_width=True)
         else:
-            st.info("No candidate image found.")
+            selected_asset_id = st.session_state.get(state_key)
 
-    with locked_col:
-        if locked_image_path.exists():
-            st.image(str(locked_image_path), caption="Locked", use_container_width=True)
-        else:
-            st.info("No locked image found.")
+        valid_asset_ids = {asset.asset_id for asset in assets}
+        if selected_asset_id not in valid_asset_ids:
+            selected_asset_id = assets[0].asset_id
+            st.session_state[state_key] = selected_asset_id
+            st.info("Click a row in the asset table to switch the detail view. Showing the first asset by default.")
 
-    details_col, files_col = st.columns([1, 1])
+        try:
+            asset_ref = app.asset(character, phase, selected_asset_id)
+            asset = asset_ref.get()
+        except Exception as exc:
+            st.error(str(exc))
+            return
 
-    with details_col:
-        st.subheader("Asset Details")
-        st.json({key: format_value(value) for key, value in asdict(asset).items()})
-
-        st.subheader("Derived Paths")
-        st.table(
-            [
-                path_row("CharacterPath", character_path),
-                path_row("CharacterAssetPath", character_asset_path),
-                path_row("PipelinePath", pipeline_path),
-                path_row("CandidateImagePath", candidate_image_path),
-                path_row("LockedImagePath", locked_image_path),
-            ]
+        summary_items = [
+            f"asset_id: {asset.asset_id}",
+            f"{asset.pipeline}",
+            f"{asset.body_view}",
+            f"{asset.pipeline_stage}",
+            f"{asset.actor}",
+            f"ai_state: {format_value(asset.ai_state)}",
+        ]
+        st.markdown(
+            f'<div class="zet-selected-bar">{" | ".join(summary_items)}</div>',
+            unsafe_allow_html=True,
         )
 
-    with files_col:
-        st.subheader("Housekeeping Files")
+        disabled_reasons = action_disabled_reason(asset_ref)
+        action_columns = st.columns(7)
 
-        stage_contents = load_text_if_exists(stage_path)
-        if stage_contents is None:
-            st.info("No stage marker found.")
-        else:
-            st.markdown("**Stage Marker**")
-            st.text(stage_contents)
+        with action_columns[0]:
+            stage_ai_ask_clicked = st.button(
+                "Stage AI Ask",
+                use_container_width=True,
+                disabled=disabled_reasons["stage_ai_ask"] is not None,
+            )
+        with action_columns[1]:
+            run_worker_clicked = st.button(
+                "Run Current Worker",
+                use_container_width=True,
+                disabled=disabled_reasons["run_current_worker"] is not None,
+            )
+        with action_columns[2]:
+            move_next_clicked = st.button("Move Next", use_container_width=True)
+        with action_columns[3]:
+            run_housekeeping_clicked = st.button("Run Housekeeping", use_container_width=True)
+        with action_columns[4]:
+            retry_ai_clicked = st.button(
+                "Retry AI",
+                use_container_width=True,
+                disabled=disabled_reasons["retry_ai"] is not None,
+            )
+        with action_columns[5]:
+            regenerate_clicked = st.button("Regenerate", use_container_width=True)
+        with action_columns[6]:
+            promote_clicked = st.button(
+                "Promote to LOCKED",
+                use_container_width=True,
+                disabled=disabled_reasons["promote_to_locked"] is not None,
+            )
 
-        history_contents = load_text_if_exists(history_path)
-        if history_contents is None:
-            st.info("No history log found.")
+        if disabled_reasons["stage_ai_ask"]:
+            st.caption(disabled_reasons["stage_ai_ask"])
+        if disabled_reasons["run_current_worker"]:
+            st.caption(disabled_reasons["run_current_worker"])
+        if disabled_reasons["retry_ai"]:
+            st.caption(disabled_reasons["retry_ai"])
+        if disabled_reasons["promote_to_locked"]:
+            st.caption(disabled_reasons["promote_to_locked"])
+
+        try:
+            if stage_ai_ask_clicked:
+                ask_path = asset_ref.stage_ai_ask()
+                st.session_state[state_key] = selected_asset_id
+                store_action_message("success", f"AI ask staged for Asset {selected_asset_id} at {ask_path}.")
+                st.rerun()
+            if run_worker_clicked:
+                updated_asset = asset_ref.run_current_worker()
+                worker_name = app.asset_service.worker_service.last_worker_module_name or "unknown"
+                st.session_state[state_key] = updated_asset.asset_id
+                store_action_message(
+                    "success",
+                    f"Worker {worker_name} executed for Asset {updated_asset.asset_id}.",
+                )
+                st.rerun()
+            if move_next_clicked:
+                updated_asset = asset_ref.move_next()
+                st.session_state[state_key] = updated_asset.asset_id
+                store_action_message("success", f"Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
+                st.rerun()
+            if run_housekeeping_clicked:
+                pipeline_path = asset_ref.run_housekeeping()
+                st.session_state[state_key] = selected_asset_id
+                store_action_message("success", f"Housekeeping complete for Asset {selected_asset_id} at {pipeline_path}.")
+                st.rerun()
+            if retry_ai_clicked:
+                updated_asset = asset_ref.retry_ai()
+                st.session_state[state_key] = updated_asset.asset_id
+                store_action_message("success", f"AI retry requested for Asset {updated_asset.asset_id}.")
+                st.rerun()
+            if regenerate_clicked:
+                updated_asset = asset_ref.regenerate()
+                st.session_state[state_key] = updated_asset.asset_id
+                store_action_message("success", f"Asset {updated_asset.asset_id} reset to {updated_asset.pipeline_stage}.")
+                st.rerun()
+            if promote_clicked:
+                updated_asset = asset_ref.promote_to_locked()
+                st.session_state[state_key] = updated_asset.asset_id
+                store_action_message("success", f"Asset {updated_asset.asset_id} promoted to LOCKED.")
+                st.rerun()
+        except Exception as exc:
+            store_action_message("error", str(exc))
+            st.rerun()
+
+        asset = asset_ref.get()
+        character_path = app.path_service.character_path(character, phase)
+        character_asset_path = app.path_service.character_asset_path(character, phase)
+        pipeline_path = asset_ref.pipeline_path()
+        candidate_image_path = asset_ref.candidate_image_path()
+        locked_image_path = asset_ref.locked_image_path()
+        stage_path = pipeline_path / "_stage.txt"
+        history_path = pipeline_path / "_history.log"
+
+        st.subheader("Images")
+        candidate_col, locked_col = st.columns(2)
+
+        with candidate_col:
+            if candidate_image_path.exists():
+                st.image(str(candidate_image_path), caption="Candidate", use_container_width=True)
+            else:
+                st.info("No candidate image found.")
+
+        with locked_col:
+            if locked_image_path.exists():
+                st.image(str(locked_image_path), caption="Locked", use_container_width=True)
+            else:
+                st.info("No locked image found.")
+
+        details_col, files_col = st.columns([1, 1])
+
+        with details_col:
+            st.subheader("Asset Details")
+            st.json({key: format_value(value) for key, value in asdict(asset).items()})
+
+            st.subheader("Derived Paths")
+            st.table(
+                [
+                    path_row("CharacterPath", character_path),
+                    path_row("CharacterAssetPath", character_asset_path),
+                    path_row("PipelinePath", pipeline_path),
+                    path_row("CandidateImagePath", candidate_image_path),
+                    path_row("LockedImagePath", locked_image_path),
+                ]
+            )
+
+        with files_col:
+            st.subheader("Housekeeping Files")
+
+            stage_contents = load_text_if_exists(stage_path)
+            if stage_contents is None:
+                st.info("No stage marker found.")
+            else:
+                st.markdown("**Stage Marker**")
+                st.text(stage_contents)
+
+            history_contents = load_text_if_exists(history_path)
+            if history_contents is None:
+                st.info("No history log found.")
+            else:
+                st.markdown("**History Log**")
+                st.text(history_contents)
+
+    with tab_ai:
+        ai_control_col_1, ai_control_col_2, ai_control_col_3, ai_control_col_4, ai_control_col_5 = st.columns([1, 1, 1, 1, 1.5])
+        with ai_control_col_1:
+            harvest_clicked = st.button("Harvest AI Answers", use_container_width=True)
+        with ai_control_col_2:
+            stop_clicked = st.button("Stop Proxy", use_container_width=True)
+        with ai_control_col_3:
+            resume_clicked = st.button("Resume Proxy", use_container_width=True)
+        with ai_control_col_4:
+            monitor_clicked = st.button("Send Monitor Test", use_container_width=True)
+        with ai_control_col_5:
+            monitor_instruction = st.text_input(label = "", label_visibility="collapsed", placeholder="Optional note for workers")
+
+        try:
+            if harvest_clicked:
+                results = app.harvest_ai_answers()
+                if results:
+                    store_action_message("success", f"Harvested {len(results)} AI answer folder(s).")
+                else:
+                    store_action_message("info", "No AI answer folders found.")
+                st.rerun()
+            if monitor_clicked:
+                request_path = app.issue_monitor_test(monitor_instruction)
+                store_action_message("success", f"Monitor test sent: {request_path.name}")
+                st.rerun()
+            if stop_clicked:
+                stop_state = app.activate_proxy_stop()
+                store_action_message(
+                    "success",
+                    f"Proxy stop activated. Cleared {stop_state['cleared_asks']} ask folder(s).",
+                )
+                st.rerun()
+            if resume_clicked:
+                app.resume_proxy_stop()
+                store_action_message("success", "Proxy stop cleared. New asks may be processed.")
+                st.rerun()
+        except Exception as exc:
+            store_action_message("error", str(exc))
+            st.rerun()
+
+        stop_state = app.proxy_stop_state()
+        if stop_state["active"]:
+            st.warning(
+                "Proxy is STOPPED. New or late-arriving asks from before "
+                f"{format_value(stop_state['reject_before_compact'])} will be rejected."
+            )
         else:
-            st.markdown("**History Log**")
-            st.text(history_contents)
+            st.info("Proxy is ACTIVE.")
+
+        queue_snapshot = app.queue_snapshot()
+        monitor_results = app.list_monitor_responses()
+        monitor_request_root = app.ai_proxy_service.ai_proxy_path_service.monitor_requests_root()
+        request_rows = []
+        if monitor_request_root.exists():
+            request_rows = [request_row(path) for path in sorted(monitor_request_root.iterdir(), reverse=True) if path.is_dir()]
+
+        queue_col_1, queue_col_2 = st.columns(2)
+        with queue_col_1:
+            st.subheader("Queue")
+            st.markdown(
+                f"Ask: {len(queue_snapshot['ask'])} | Claimed: {len(queue_snapshot['claimed'])} | "
+                f"Answer: {len(queue_snapshot['answer'])} | Failed: {len(queue_snapshot['failed'])}"
+            )
+            st.markdown("**Ask**")
+            if queue_snapshot["ask"]:
+                st.dataframe(queue_snapshot["ask"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No ask folders waiting.")
+            st.markdown("**Claimed**")
+            if queue_snapshot["claimed"]:
+                st.dataframe(queue_snapshot["claimed"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No claimed folders in progress.")
+
+        with queue_col_2:
+            st.subheader("Queue Results")
+            st.markdown("**Answer**")
+            if queue_snapshot["answer"]:
+                st.dataframe(queue_snapshot["answer"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No answer folders yet.")
+            st.markdown("**Failed**")
+            if queue_snapshot["failed"]:
+                st.dataframe(queue_snapshot["failed"], use_container_width=True, hide_index=True)
+            else:
+                st.info("No failed folders.")
+
+        test_col_1, test_col_2 = st.columns(2)
+        with test_col_1:
+            st.subheader("Monitor Tests")
+            if request_rows:
+                st.dataframe(request_rows, use_container_width=True, hide_index=True)
+            else:
+                st.info("No monitor tests have been sent yet.")
+
+        with test_col_2:
+            st.subheader("Monitor Responses")
+            if monitor_results:
+                st.dataframe(
+                    [monitor_row(result) for result in monitor_results],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No worker monitor responses yet.")
 
 
 if __name__ == "__main__":

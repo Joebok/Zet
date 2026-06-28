@@ -1,13 +1,18 @@
 from pathlib import Path
+from datetime import datetime
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.services.asset_service import AssetService
+from zet.services.ai_proxy_path_service import AIProxyPathService
+from zet.services.ai_proxy_service import AIProxyService
+from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.config_service import ConfigService
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
 from zet.services.state_machine import StateMachine
+from zet.services.worker_service import WorkerService
 
 
 class AssetRef:
@@ -49,6 +54,12 @@ class AssetRef:
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
 
+    def run_current_worker(self) -> Asset:
+        return self._app.asset_service.run_current_worker(self._character, self._phase, self._asset_id)
+
+    def stage_ai_ask(self) -> Path:
+        return self._app.asset_service.stage_ai_ask(self._character, self._phase, self._asset_id)
+
 
 class ZetApp:
     def __init__(
@@ -75,14 +86,35 @@ class ZetApp:
         pipeline_repository = PipelineRepository(path_service)
         state_machine = StateMachine()
         housekeeping_service = HousekeepingService(path_service)
+        worker_service = WorkerService(asset_repository, pipeline_repository, path_service)
+        ai_proxy_path_service = AIProxyPathService(config)
+        ai_proxy_service = AIProxyService(
+            asset_repository,
+            pipeline_repository,
+            path_service,
+            ai_proxy_path_service,
+            housekeeping_service,
+        )
+        ai_answer_harvester = AIAnswerHarvester(
+            asset_repository,
+            pipeline_repository,
+            ai_proxy_path_service,
+            path_service,
+            housekeeping_service,
+            state_machine,
+            timestamp_provider=lambda: datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        )
         asset_service = AssetService(
             asset_repository,
             pipeline_repository,
             state_machine,
             housekeeping_service,
             path_service,
+            worker_service,
+            ai_proxy_service,
+            ai_answer_harvester,
         )
-        return cls(
+        app = cls(
             config,
             asset_repository,
             pipeline_repository,
@@ -90,9 +122,32 @@ class ZetApp:
             housekeeping_service,
             path_service,
         )
+        app.ai_proxy_service = ai_proxy_service
+        return app
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return self.asset_repository.list_assets(character, phase)
 
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
+
+    def harvest_ai_answers(self):
+        return self.asset_service.harvest_ai_answers()
+
+    def issue_monitor_test(self, instruction: str = ""):
+        return self.ai_proxy_service.issue_monitor_test(instruction)
+
+    def activate_proxy_stop(self):
+        return self.ai_proxy_service.activate_stop()
+
+    def resume_proxy_stop(self):
+        return self.ai_proxy_service.resume_stop()
+
+    def proxy_stop_state(self):
+        return self.ai_proxy_service.stop_state()
+
+    def queue_snapshot(self):
+        return self.ai_proxy_service.queue_snapshot()
+
+    def list_monitor_responses(self):
+        return self.ai_proxy_service.list_monitor_responses()
