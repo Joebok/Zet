@@ -78,13 +78,41 @@ def write_json(path: Path, data: dict) -> None:
     payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     last_exc: BaseException | None = None
     for _attempt in range(3):
+        temp_path = path.with_name(f"{path.name}.tmp.{os.getpid()}")
         try:
             ensure_directory(path.parent)
-            path.write_text(payload, encoding="utf-8")
+            temp_path.write_text(payload, encoding="utf-8")
+            temp_path.replace(path)
             return
         except (FileNotFoundError, FileExistsError) as exc:
             last_exc = exc
             time.sleep(0.2)
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    if last_exc is not None:
+        raise last_exc
+
+
+def write_text_atomic(path: Path, contents: str) -> None:
+    last_exc: BaseException | None = None
+    for _attempt in range(3):
+        temp_path = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+        try:
+            ensure_directory(path.parent)
+            temp_path.write_text(contents, encoding="utf-8")
+            temp_path.replace(path)
+            return
+        except (FileNotFoundError, FileExistsError) as exc:
+            last_exc = exc
+            time.sleep(0.2)
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
     if last_exc is not None:
         raise last_exc
 
@@ -519,7 +547,7 @@ def process_claimed(
                 worker_id,
                 "Ask rejected because AI proxy stop became active during processing.",
             )
-        (folder / expected_output).write_text(response, encoding="utf-8")
+        write_text_atomic(folder / expected_output, response)
         answer_manifest["status"] = "SUCCESS"
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)

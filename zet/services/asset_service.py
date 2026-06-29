@@ -131,7 +131,9 @@ class AssetService:
         if locked_image_path.exists():
             backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_name = f"{locked_image_path.stem}.backup.{backup_suffix}{locked_image_path.suffix}"
-            shutil.copy2(locked_image_path, locked_image_path.with_name(backup_name))
+            backup_dir = self.path_service.character_backup_path(character, phase)
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(locked_image_path, backup_dir / backup_name)
 
         shutil.copy2(candidate_image_path, locked_image_path)
 

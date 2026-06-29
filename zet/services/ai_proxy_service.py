@@ -49,6 +49,20 @@ class AIProxyService:
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _write_text_atomic(self, path: Path, contents: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f"{path.name}.tmp")
+        try:
+            temp_path.write_text(contents, encoding="utf-8")
+            temp_path.replace(path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    def _write_json_atomic(self, path: Path, payload: dict) -> None:
+        contents = json.dumps(payload, indent=2) + "\n"
+        self._write_text_atomic(path, contents)
+
     def _clear_monitor_state(self) -> None:
         request_root = self.ai_proxy_path_service.monitor_requests_root()
         if request_root.exists():
@@ -153,14 +167,11 @@ class AIProxyService:
         ask_path.mkdir(parents=True, exist_ok=False)
 
         manifest_path = ask_path / "ask_manifest.json"
-        manifest_path.write_text(
-            json.dumps(self._manifest_payload(ask), indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._write_json_atomic(manifest_path, self._manifest_payload(ask))
         json.loads(manifest_path.read_text(encoding="utf-8"))
 
         prompt_path = ask_path / ask.prompt_file
-        prompt_path.write_text(self._prompt_contents(asset), encoding="utf-8")
+        self._write_text_atomic(prompt_path, self._prompt_contents(asset))
 
         updated_asset = replace(asset)
         updated_asset.ai_state = "ASKED"
@@ -184,7 +195,7 @@ class AIProxyService:
             "created_at": self._timestamp(),
         }
         manifest_path = request_path / "request.json"
-        manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        self._write_json_atomic(manifest_path, payload)
         json.loads(manifest_path.read_text(encoding="utf-8"))
         return request_path
 
@@ -222,10 +233,7 @@ class AIProxyService:
                 "error_type": "STOPPED",
                 "error_message": "Ask rejected because AI proxy stop was activated.",
             }
-            (ask_path / "answer_manifest.json").write_text(
-                json.dumps(answer_manifest, indent=2) + "\n",
-                encoding="utf-8",
-            )
+            self._write_json_atomic(ask_path / "answer_manifest.json", answer_manifest)
             dest = self.ai_proxy_path_service.answer_root() / ask_path.name
             if dest.exists():
                 shutil.rmtree(dest, ignore_errors=True)
@@ -241,10 +249,7 @@ class AIProxyService:
             "cleared_at": None,
             "cleared_asks": cleared_asks,
         }
-        self.ai_proxy_path_service.stop_manifest_path().write_text(
-            json.dumps(payload, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._write_json_atomic(self.ai_proxy_path_service.stop_manifest_path(), payload)
         return payload
 
     def resume_stop(self) -> dict:
@@ -259,10 +264,7 @@ class AIProxyService:
             "cleared_at": self._timestamp(),
             "cleared_asks": int(current.get("cleared_asks", 0) or 0),
         }
-        self.ai_proxy_path_service.stop_manifest_path().write_text(
-            json.dumps(payload, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._write_json_atomic(self.ai_proxy_path_service.stop_manifest_path(), payload)
         return payload
 
     def list_monitor_responses(self) -> list[MonitorTestResult]:

@@ -19,6 +19,9 @@ class AssetRepository:
     def _assets_json_path(self, character: str, phase: str) -> Path:
         return self.path_service.character_path(character, phase) / "Assets.json"
 
+    def _backup_dir(self, character: str, phase: str) -> Path:
+        return self.path_service.character_backup_path(character, phase)
+
     def _load_payload(self, character: str, phase: str) -> dict:
         path = self._assets_json_path(character, phase)
         if not path.exists():
@@ -85,7 +88,9 @@ class AssetRepository:
         payload["assets"] = updated_records
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        backup_path = path.with_name(f"Assets.backup.{timestamp}.json")
+        backup_dir = self._backup_dir(asset.character, asset.phase)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = backup_dir / f"Assets.backup.{timestamp}.json"
         temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
 
         serialized = json.dumps(payload, indent=2)

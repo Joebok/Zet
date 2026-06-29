@@ -31,14 +31,14 @@
       "costume": null,
       "expression": null,
       "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "MANIFEST",
+      "pipeline_stage": "PROMPT",
       "actor": "PYTHON",
       "ai_state": null,
       "final_image_output": "Body-Reference_Front-Left-3-4.png",
       "last_ai_update": null,
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-06-27T16:15:57"
+      "updated_at": "2026-06-28T16:14:23"
     },
     {
       "asset_id": 3,

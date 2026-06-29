@@ -14,6 +14,9 @@ class PathService:
     def character_asset_path(self, character: str, phase: str) -> Path:
         return Path(self.config.base_asset_path) / character / phase
 
+    def character_backup_path(self, character: str, phase: str) -> Path:
+        return self.character_path(character, phase) / "_backup"
+
     def pipeline_base_path(self, character: str, phase: str) -> Path:
         return Path(self.config.base_pipeline_path) / character / phase
 
@@ -36,4 +39,3 @@ class PathService:
         if not asset.final_image_output:
             raise ValueError(f"Asset {asset.asset_id} has no final_image_output")
         return self.character_asset_path(asset.character, asset.phase) / asset.final_image_output
-
