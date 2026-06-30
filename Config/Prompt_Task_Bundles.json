@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "bundles": {
+    "body-reference": {
+      "required_sections": [
+        "GENERAL_DESCRIPTION_FACTS",
+        "BODY_DESCRIPTION_FACTS",
+        "IDENTITY_PRESERVATION_CORE",
+        "IDENTITY_PRESERVATION_BODY",
+        "FITMENT_RENDERING_RULES",
+        "TECHNICAL_MODESTY_LAYER",
+        "NEGATIVE_GUIDANCE_GENERAL"
+      ],
+      "optional_sections": [
+        "BODY_DESCRIPTION_VIEW_{VIEW}",
+        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+      ],
+      "forbidden_sections": [
+        "*_PICARESQUE",
+        "HEAD_DESCRIPTION_*",
+        "HAIR_DESCRIPTION_*",
+        "COSTUME_DESCRIPTION_*",
+        "EQUIPMENT_DESCRIPTION_*",
+        "EXPRESSION_DESCRIPTION_*",
+        "SCENE_RENDERING_*"
+      ],
+      "static_prompt_template": "Config/Prompt_Templates/body_reference_v1.md",
+      "review_checklist": [
+        "Final_Image_Prompt.md contains only render-facing text.",
+        "Final_Image_Prompt.md contains no ZET markers, compiler notes, JSON, YAML, or implementation commentary.",
+        "Compiled_Sections.md lists the exact included template sections.",
+        "dependency_manifest.json lists no external, cached, discovered, or implicit image resources by default.",
+        "No forbidden section is included."
+      ],
+      "resource_policy": {
+        "allow_external_images": false,
+        "allow_cached_images": false,
+        "allow_discovered_images": false,
+        "allow_implicit_images": false,
+        "required_images": [],
+        "optional_images": []
+      },
+      "output_filenames": {
+        "final_image_prompt": "Final_Image_Prompt.md",
+        "compiled_sections": "Compiled_Sections.md",
+        "dependency_manifest": "dependency_manifest.json"
+      },
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT",
+      "next_action": "Render the image using Final_Image_Prompt.md only. Do not use external, cached, discovered, or implicit image resources."
+    }
+  }
+}

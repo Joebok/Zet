@@ -51,6 +51,7 @@ JOB_HEADERS = [
     "Head View",
     "Folder",
     "Asset ID",
+    "Error Code",
     "Error State",
     "Error Source",
     "Error Message",
@@ -114,6 +115,7 @@ def is_error_paused(row: "JobRow") -> bool:
 
 
 def clear_error_fields(row: "JobRow") -> None:
+    row.values["Error Code"] = ""
     row.values["Error State"] = ""
     row.values["Error Source"] = ""
     row.values["Error Message"] = ""
@@ -122,6 +124,7 @@ def clear_error_fields(row: "JobRow") -> None:
 
 def set_error_fields(row: "JobRow", source: str, exc: Exception | str) -> None:
     message = str(exc).replace("|", "/").replace("\n", " ").strip()
+    row.values["Error Code"] = type(exc).__name__ if isinstance(exc, Exception) else "ERROR"
     row.values["Error State"] = "ERROR"
     row.values["Error Source"] = source
     row.values["Error Message"] = message[:500]
@@ -225,6 +228,7 @@ def json_job_to_row(job: dict) -> dict[str, str]:
         value = job.get(json_key, "")
         row[row_key] = "" if value is None else str(value)
     error = job.get("error", {}) if isinstance(job.get("error", {}), dict) else {}
+    row["Error Code"] = str(error.get("code", "") or "")
     row["Error State"] = str(error.get("state", "") or "")
     row["Error Source"] = str(error.get("source", "") or "")
     row["Error Message"] = str(error.get("message", "") or "")
@@ -239,6 +243,7 @@ def row_to_json_job(row: dict[str, str]) -> dict:
     for row_key, json_key in ROW_TO_JSON_FIELD.items():
         job[json_key] = str(row.get(row_key, "") or "")
     job["error"] = {
+        "code": str(row.get("Error Code", "") or ""),
         "state": str(row.get("Error State", "") or "NONE"),
         "source": str(row.get("Error Source", "") or ""),
         "message": str(row.get("Error Message", "") or ""),
@@ -296,6 +301,7 @@ def write_job_list(path: Path, rows: list[JobRow]) -> None:
         if not row.values.get("Final Expected Image", "").strip():
             row.values["Final Expected Image"] = final_expected_image_for_row(row)
         row.values.setdefault("Asset ID", "")
+        row.values.setdefault("Error Code", "")
         row.values.setdefault("Error State", "NONE")
         row.values.setdefault("Error Source", "")
         row.values.setdefault("Error Message", "")
@@ -435,7 +441,7 @@ Job metadata:
 - Task: {job.values.get('Task', '')}
 - Next Action: {job.next_action}
 
-# PRIMARY REQUIREMENT — COPY PROTECTED JOB METADATA AND Modest Technical Fitment Shell SAFETY TEXT EXACTLY
+# PRIMARY REQUIREMENT - COPY PROTECTED JOB METADATA AND Modest Technical Fitment Shell SAFETY TEXT EXACTLY
 
 This requirement overrides all other instructions in this prompt.
 
@@ -454,7 +460,7 @@ The output is incorrect if it uses a different view or filename than this block.
 {protected_job_metadata if protected_job_metadata else '- MISSING: no protected metadata was found. If missing, copy Job metadata exactly and do not infer alternate views.'}
 <<<END PROTECTED_JOB_METADATA>>>
 
-# PRIMARY REQUIREMENT — COPY MODEST TECHNICAL FITMENT SHELL EXACTLY
+# PRIMARY REQUIREMENT - COPY MODEST TECHNICAL FITMENT SHELL EXACTLY
 
 If the Character_Specification.md or dependency_manifest.json contains a Modest Technical Fitment Shell section, copy the full section exactly.
 
@@ -470,7 +476,7 @@ Do not write unqualified "no clothing" where it could imply nudity.
 
 The output is incorrect if the Modest Technical Fitment Shell is omitted, summarized, or contradicted.
 
-# SECONDARY PRIMARY REQUIREMENT — DO NOT SUMMARIZE BODY CONSTRAINTS
+# SECONDARY PRIMARY REQUIREMENT - DO NOT SUMMARIZE BODY CONSTRAINTS
 
 This requirement overrides all lower-priority instructions in this prompt.
 
@@ -1295,6 +1301,279 @@ Do not create final image prompt.
 """
 
 
+class PromptCompileError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def set_compile_error(row: JobRow, source: str, exc: Exception) -> None:
+    code = exc.code if isinstance(exc, PromptCompileError) else type(exc).__name__
+    message = str(exc).replace("|", "/").replace("\n", " ").strip()
+    row.values["Status"] = "ERROR"
+    row.values["Error Code"] = code
+    row.values["Error State"] = "ERROR"
+    row.values["Error Source"] = source
+    row.values["Error Message"] = message[:500]
+    row.values["Error Time"] = datetime.now().isoformat(timespec="seconds")
+
+
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def load_required_json(path: Path, code: str) -> dict:
+    if not path.exists():
+        raise PromptCompileError(code, f"Missing config file: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise PromptCompileError(code, f"Invalid JSON in {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise PromptCompileError(code, f"Config file must contain a JSON object: {path}")
+    return data
+
+
+def body_reference_bundle(config_root: Path) -> dict:
+    data = load_required_json(config_root / "Prompt_Task_Bundles.json", "CONFIG_INVALID")
+    bundles = data.get("bundles", data)
+    bundle = bundles.get("body-reference") if isinstance(bundles, dict) else None
+    if not isinstance(bundle, dict):
+        raise PromptCompileError("BUNDLE_NOT_FOUND", "Prompt_Task_Bundles.json does not define body-reference.")
+    return bundle
+
+
+def list_config_strings(bundle: dict, key: str) -> list[str]:
+    value = bundle.get(key, [])
+    if not isinstance(value, list):
+        raise PromptCompileError("BUNDLE_INVALID", f"Bundle field must be a list: {key}")
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def normalize_view_token(raw_view: str, aliases: dict) -> str:
+    raw = str(raw_view or "").strip()
+    if not raw:
+        raise PromptCompileError("VIEW_MISSING", "Body-reference job is missing Body View.")
+    normalized_key = raw.lower().replace("_", "-").replace(" ", "-")
+    normalized_key = re.sub(r"-+", "-", normalized_key)
+    candidates = [raw, raw.lower(), normalized_key]
+    for candidate in candidates:
+        token = aliases.get(candidate)
+        if isinstance(token, str) and token.strip():
+            return token.strip()
+    fallback = re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").upper()
+    if fallback:
+        return fallback
+    raise PromptCompileError("VIEW_INVALID", f"Could not normalize Body View: {raw}")
+
+
+def load_view_metadata(config_root: Path, raw_view: str) -> tuple[str, str, str]:
+    alias_data = load_required_json(config_root / "Prompt_View_Aliases.json", "VIEW_ALIAS_CONFIG_INVALID")
+    aliases = alias_data.get("aliases", alias_data)
+    if not isinstance(aliases, dict):
+        raise PromptCompileError("VIEW_ALIAS_CONFIG_INVALID", "Prompt_View_Aliases.json must define an aliases object.")
+    token = normalize_view_token(raw_view, aliases)
+
+    view_data = load_required_json(config_root / "Prompt_View_Text.json", "VIEW_TEXT_CONFIG_INVALID")
+    views = view_data.get("views", view_data)
+    if not isinstance(views, dict):
+        raise PromptCompileError("VIEW_TEXT_CONFIG_INVALID", "Prompt_View_Text.json must define a views object.")
+    item = views.get(token)
+    if not isinstance(item, dict):
+        raise PromptCompileError("VIEW_TEXT_MISSING", f"Prompt_View_Text.json has no entry for view token: {token}")
+    label = str(item.get("label", "") or "").strip()
+    instruction = str(item.get("instruction", "") or "").strip()
+    if not label or not instruction:
+        raise PromptCompileError("VIEW_TEXT_INCOMPLETE", f"View text entry is incomplete for token: {token}")
+    return token, label, instruction
+
+
+def section_name_for_view(name: str, view_token: str) -> str:
+    return str(name).replace("{VIEW}", view_token)
+
+
+def extract_zet_sections(template_text: str) -> dict[str, str]:
+    pattern = re.compile(
+        r"<!--\s*ZET:BEGIN\s+([A-Z0-9_]+)\s*-->(.*?)<!--\s*ZET:END\s+\1\s*-->",
+        flags=re.DOTALL,
+    )
+    sections: dict[str, str] = {}
+    for match in pattern.finditer(template_text):
+        sections[match.group(1)] = match.group(2)
+    return sections
+
+
+def glob_pattern_to_regex(pattern: str) -> re.Pattern:
+    escaped = re.escape(pattern).replace(r"\*", ".*")
+    return re.compile(rf"^{escaped}$")
+
+
+def section_is_forbidden(section_name: str, patterns: list[str]) -> bool:
+    return any(glob_pattern_to_regex(pattern).match(section_name) for pattern in patterns)
+
+
+def find_character_image_template(job: JobRow) -> Path:
+    candidates = [
+        job.folder / "Character_Image_Template.md",
+        project_root() / "_Lib" / "Characters" / job.values.get("Character", "").strip() / job.values.get("Phase", "").strip() / "Character_Image_Template.md",
+        project_root() / "_Lib" / "Characters" / "_Shared" / "Character_Image_Template.md",
+        project_root() / "_Lib" / "Characters" / "_Shared" / "Character_Template.md",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    raise PromptCompileError("TEMPLATE_MISSING", f"Missing Character_Image_Template.md for {job.job}.")
+
+
+def render_static_prompt(template_text: str, metadata: dict[str, str], sections: dict[str, str]) -> str:
+    rendered = template_text
+    for key, value in metadata.items():
+        rendered = rendered.replace("{{" + key + "}}", value)
+
+    def replace_section(match: re.Match) -> str:
+        name = match.group(1).strip()
+        return sections.get(name, "")
+
+    rendered = re.sub(r"\{\{SECTION:([A-Z0-9_]+)\}\}", replace_section, rendered)
+    rendered = re.sub(r"\n{3,}", "\n\n", rendered)
+    return rendered.strip() + "\n"
+
+
+def write_compiled_sections(path: Path, included_order: list[str], sections: dict[str, str]) -> None:
+    parts = ["# Compiled Sections", ""]
+    for name in included_order:
+        parts.append(f"## {name}")
+        parts.append(sections[name])
+        if not sections[name].endswith("\n"):
+            parts.append("")
+    path.write_text("\n".join(parts).rstrip() + "\n", encoding="utf-8")
+
+
+def write_dependency_manifest(path: Path, job: JobRow, bundle: dict, view_token: str, included_order: list[str]) -> None:
+    output_filenames = bundle.get("output_filenames", {})
+    if not isinstance(output_filenames, dict):
+        output_filenames = {}
+    resource_policy = bundle.get("resource_policy", {})
+    if not isinstance(resource_policy, dict):
+        resource_policy = {}
+    manifest = {
+        "version": 1,
+        "task": job.task,
+        "job_id": job.job,
+        "character": job.values.get("Character", ""),
+        "phase": job.values.get("Phase", ""),
+        "body_view": job.values.get("Body View", ""),
+        "view_token": view_token,
+        "resource_policy": resource_policy,
+        "referenced_images": [],
+        "external_images": [],
+        "cached_images": [],
+        "implicit_images": [],
+        "compiled_sections": included_order,
+        "outputs": output_filenames,
+        "final_expected_image": job.final_expected_image,
+    }
+    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def compile_body_reference_job(job: JobRow) -> None:
+    root = project_root()
+    config_root = root / "Config"
+    bundle = body_reference_bundle(config_root)
+    view_token, view_label, view_instruction = load_view_metadata(config_root, job.values.get("Body View", ""))
+
+    template_path = find_character_image_template(job)
+    source_sections = extract_zet_sections(template_path.read_text(encoding="utf-8"))
+
+    required = [section_name_for_view(name, view_token) for name in list_config_strings(bundle, "required_sections")]
+    optional = [section_name_for_view(name, view_token) for name in list_config_strings(bundle, "optional_sections")]
+    forbidden = list_config_strings(bundle, "forbidden_sections")
+
+    included_order: list[str] = []
+    included_sections: dict[str, str] = {}
+
+    for name in required:
+        content = source_sections.get(name)
+        if content is None:
+            raise PromptCompileError("REQUIRED_SECTION_MISSING", f"Required section is missing: {name}")
+        if not content.strip():
+            raise PromptCompileError("REQUIRED_SECTION_EMPTY", f"Required section is empty: {name}")
+        if section_is_forbidden(name, forbidden):
+            raise PromptCompileError("FORBIDDEN_SECTION_INCLUDED", f"Required section matches forbidden pattern: {name}")
+        included_order.append(name)
+        included_sections[name] = content
+
+    for name in optional:
+        content = source_sections.get(name)
+        if content is None or not content.strip():
+            continue
+        if section_is_forbidden(name, forbidden):
+            raise PromptCompileError("FORBIDDEN_SECTION_INCLUDED", f"Optional section matches forbidden pattern: {name}")
+        included_order.append(name)
+        included_sections[name] = content
+
+    static_template = str(bundle.get("static_prompt_template", "") or "").strip()
+    if not static_template:
+        raise PromptCompileError("PROMPT_TEMPLATE_MISSING", "Bundle does not define static_prompt_template.")
+    prompt_template_path = root / static_template
+    if not prompt_template_path.exists():
+        raise PromptCompileError("PROMPT_TEMPLATE_MISSING", f"Missing static prompt template: {prompt_template_path}")
+
+    metadata = {
+        "CHARACTER_NAME": job.values.get("Character", "").strip(),
+        "CHARACTER_PHASE": job.values.get("Phase", "").strip(),
+        "VIEW_TOKEN": view_token,
+        "VIEW_LABEL": view_label,
+        "VIEW_INSTRUCTION": view_instruction,
+    }
+    final_prompt = render_static_prompt(prompt_template_path.read_text(encoding="utf-8"), metadata, included_sections)
+
+    output_filenames = bundle.get("output_filenames", {})
+    if not isinstance(output_filenames, dict):
+        output_filenames = {}
+    final_name = str(output_filenames.get("final_image_prompt", "Final_Image_Prompt.md"))
+    compiled_name = str(output_filenames.get("compiled_sections", "Compiled_Sections.md"))
+    manifest_name = str(output_filenames.get("dependency_manifest", "dependency_manifest.json"))
+
+    job.folder.mkdir(parents=True, exist_ok=True)
+    (job.folder / final_name).write_text(final_prompt, encoding="utf-8")
+    write_compiled_sections(job.folder / compiled_name, included_order, included_sections)
+    write_dependency_manifest(job.folder / manifest_name, job, bundle, view_token, included_order)
+
+    job.values["Status"] = str(bundle.get("next_status", "READY_FOR_RENDER") or "READY_FOR_RENDER")
+    job.values["Next Actor"] = str(bundle.get("next_actor", "AI_AGENT") or "AI_AGENT")
+    job.values["Expected Output"] = final_name
+    job.values["Next Action"] = str(
+        bundle.get("next_action", "Review or render the compiled body-reference prompt.") or "Review or render the compiled body-reference prompt."
+    )
+    clear_error_fields(job)
+
+
+def compile_ready_body_reference_jobs(rows: list[JobRow], only_job: str | None, dry_run: bool = False) -> int:
+    compiled = 0
+    for job in rows:
+        if only_job and job.job != only_job:
+            continue
+        if job.task != "body-reference":
+            continue
+        if job.status.upper() != "READY_FOR_COMPILE":
+            continue
+        if job.next_actor.upper() != "PYTHON":
+            continue
+        if dry_run:
+            print(f"DRY RUN: would compile body-reference prompt for {job.job}")
+            compiled += 1
+            continue
+        try:
+            compile_body_reference_job(job)
+            compiled += 1
+            print(f"Compiled body-reference prompt for {job.job}")
+        except Exception as exc:
+            print(f"ERROR compiling {job.job}: {exc}", file=sys.stderr)
+            set_compile_error(job, "body_reference_prompt_compiler", exc)
+    return compiled
+
+
 
 # ---- Ollama file proxy additions ----
 
@@ -2035,6 +2314,7 @@ def main(argv: list[str] | None = None) -> int:
     harvested = harvest_answers(rows, job_list_path, proxy_root, dry_run=args.dry_run)
     reconciled = reconcile_active_proxy_rows(rows, proxy_root, dry_run=args.dry_run)
     reset_count = reset_stale_waiting(rows, proxy_root, args.stale_minutes, dry_run=args.dry_run)
+    compiled_count = compile_ready_body_reference_jobs(rows, args.only_job, dry_run=args.dry_run)
 
     selected = select_stageable_jobs(rows, args.status, args.only_job)
 
@@ -2048,6 +2328,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Harvested answers: {harvested}")
     print(f"Reconciled active proxy rows: {reconciled}")
     print(f"Reset stale asks: {reset_count}")
+    print(f"Compiled body-reference jobs: {compiled_count}")
     print(f"Stageable jobs: {len(selected)}")
 
     for job in selected:

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "views": {
+    "FRONT": {
+      "label": "front view",
+      "instruction": "Render a direct front view with symmetrical body alignment, clear full-body proportions, and no rotation away from camera."
+    },
+    "FRONT_LEFT_3_4": {
+      "label": "front-left 3/4 view",
+      "instruction": "Render a front-left three-quarter body reference. The body faces mostly forward with the character's left side rotating slightly toward camera while preserving readable full-body proportions."
+    },
+    "FRONT_RIGHT_3_4": {
+      "label": "front-right 3/4 view",
+      "instruction": "Render a front-right three-quarter body reference. The body faces mostly forward with the character's right side rotating slightly toward camera while preserving readable full-body proportions."
+    },
+    "LEFT_PROFILE": {
+      "label": "left profile view",
+      "instruction": "Render a strict left profile body reference with the character's left side facing camera, clear torso depth, limb alignment, and a neutral readable silhouette."
+    },
+    "RIGHT_PROFILE": {
+      "label": "right profile view",
+      "instruction": "Render a strict right profile body reference with the character's right side facing camera, clear torso depth, limb alignment, and a neutral readable silhouette."
+    },
+    "BACK_LEFT_3_4": {
+      "label": "back-left 3/4 view",
+      "instruction": "Render a back-left three-quarter body reference. The back is dominant, with the character's left side slightly visible and the full-body silhouette kept clear."
+    },
+    "BACK_RIGHT_3_4": {
+      "label": "back-right 3/4 view",
+      "instruction": "Render a back-right three-quarter body reference. The back is dominant, with the character's right side slightly visible and the full-body silhouette kept clear."
+    },
+    "BACK": {
+      "label": "back view",
+      "instruction": "Render a direct back view with balanced shoulder and hip alignment, clear full-body proportions, and no turn toward camera."
+    }
+  }
+}
