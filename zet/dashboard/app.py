@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from datetime import datetime
+import json
 from pathlib import Path
 import sys
 
@@ -11,6 +12,12 @@ import streamlit as st
 
 from zet.app import ZetApp
 from zet.services.config_service import ConfigService, ConfigServiceError
+
+SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
+if str(SCRIPTS_PATH) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_PATH))
+
+from Template_Section_Editor import load_bundles, load_editor_sections, list_pipeline_names, save_template_sections
 
 
 def format_value(value):
@@ -180,6 +187,73 @@ def request_row(request_dir: Path) -> dict:
     }
 
 
+def load_view_options() -> dict:
+    path = PROJECT_ROOT / "Config" / "Prompt_View_Text.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data.get("views", data)
+
+
+def template_path_for_selection(base_character_path: str, character: str, phase: str) -> Path:
+    return Path(base_character_path) / character / phase / "Character_Image_Template.md"
+
+
+def show_template_editor(config, character: str, phase: str) -> None:
+    st.subheader("Template Section Editor")
+    pipelines = list_pipeline_names(PROJECT_ROOT)
+    if not pipelines:
+        st.info("No prompt task bundles are configured.")
+        return
+
+    editor_col_1, editor_col_2 = st.columns([1, 1])
+    with editor_col_1:
+        pipeline = st.selectbox("Pipeline", pipelines, index=pipelines.index("body-reference") if "body-reference" in pipelines else 0)
+
+    bundles = load_bundles(PROJECT_ROOT)
+    bundle = bundles.get(pipeline, {})
+    needs_view = any("{VIEW}" in name for name in list(bundle.get("required_sections", [])) + list(bundle.get("optional_sections", [])))
+    views = load_view_options()
+    view_token = next(iter(views.keys()), "")
+    if needs_view:
+        labels = {token: f"{token} - {value.get('label', token)}" for token, value in views.items()}
+        with editor_col_2:
+            view_token = st.selectbox("View", list(labels.keys()), format_func=lambda token: labels[token])
+
+    template_path = template_path_for_selection(config.base_character_path, character, phase)
+    st.caption(str(template_path))
+
+    try:
+        sections = load_editor_sections(template_path, pipeline, view_token, PROJECT_ROOT)
+    except Exception as exc:
+        st.error(str(exc))
+        return
+
+    with st.form(f"template-editor-{character}-{phase}-{pipeline}-{view_token}"):
+        updated_sections = {}
+        section_order = []
+        for section in sections:
+            section_order.append(section.name)
+            badge = "required" if section.required else "optional"
+            st.markdown(f"**{section.label}** `{section.name}` `{badge}`")
+            if section.description:
+                st.caption(section.description)
+            updated_sections[section.name] = st.text_area(
+                section.name,
+                value=section.text,
+                height=180,
+                label_visibility="collapsed",
+            )
+        save_clicked = st.form_submit_button("Save Sections", use_container_width=True)
+
+    if save_clicked:
+        try:
+            save_template_sections(template_path, updated_sections, section_order)
+            store_action_message("success", f"Saved {len(updated_sections)} section(s) to {template_path}.")
+            st.rerun()
+        except Exception as exc:
+            store_action_message("error", str(exc))
+            st.rerun()
+
+
 def main() -> None:
     st.set_page_config(page_title="Zet Dashboard", layout="wide")
     st.markdown(
@@ -269,9 +343,12 @@ def main() -> None:
 
     if not assets:
         st.info(f"No assets found for {character}/{phase}.")
+        tab_editor_only = st.tabs(["Template Editor"])[0]
+        with tab_editor_only:
+            show_template_editor(config, character, phase)
         return
 
-    tab_assets, tab_ai = st.tabs(["Assets", "AI Controls"])
+    tab_assets, tab_editor, tab_ai = st.tabs(["Assets", "Template Editor", "AI Controls"])
 
     with tab_assets:
         st.subheader("Assets")
@@ -461,6 +538,9 @@ def main() -> None:
             else:
                 st.markdown("**History Log**")
                 st.text(history_contents)
+
+    with tab_editor:
+        show_template_editor(config, character, phase)
 
     with tab_ai:
         ai_control_col_1, ai_control_col_2, ai_control_col_3, ai_control_col_4, ai_control_col_5 = st.columns([1, 1, 1, 1, 1.5])

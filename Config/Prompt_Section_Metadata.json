@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "sections": {
+    "GENERAL_DESCRIPTION_FACTS": {
+      "label": "General Description - Just the Facts",
+      "description": "Brief factual summary of the character without mood, story, or emotional interpretation."
+    },
+    "BODY_DESCRIPTION_FACTS": {
+      "label": "Body Description - Just the Facts",
+      "description": "Technical body description for build, proportions, posture, and silhouette."
+    },
+    "BODY_DESCRIPTION_VIEW_{VIEW}": {
+      "label": "Body Description - Requested View",
+      "description": "View-specific body notes. The editor resolves this to the selected view."
+    },
+    "IDENTITY_PRESERVATION_CORE": {
+      "label": "Identity Preservation - Core",
+      "description": "Core identity anchors that should remain stable across renders."
+    },
+    "IDENTITY_PRESERVATION_BODY": {
+      "label": "Identity Preservation - Body",
+      "description": "Rules for preserving the character's body proportions and physical type."
+    },
+    "FITMENT_RENDERING_RULES": {
+      "label": "Fitment Rendering Rules",
+      "description": "Rules for neutral technical reference rendering."
+    },
+    "TECHNICAL_MODESTY_LAYER": {
+      "label": "Technical Modesty / Safety Layer",
+      "description": "Instructions for the neutral technical fitment shell or equivalent non-sensual reference covering."
+    },
+    "NEGATIVE_GUIDANCE_GENERAL": {
+      "label": "General Negative Guidance",
+      "description": "General avoid rules for preventing drift."
+    },
+    "NEGATIVE_GUIDANCE_JOB_SPECIFIC": {
+      "label": "Job-Specific Negative Guidance",
+      "description": "Avoid rules specific to the selected pipeline or job."
+    }
+  }
+}

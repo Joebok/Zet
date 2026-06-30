@@ -44,6 +44,12 @@ JOB_HEADERS = [
     "Next Action",
     "Expected Output",
     "Final Expected Image",
+    "Final Prompt",
+    "Compiled Sections",
+    "Dependency Manifest",
+    "Prompt Review",
+    "Image Review",
+    "Output Directory",
     "Task",
     "Character",
     "Phase",
@@ -52,6 +58,7 @@ JOB_HEADERS = [
     "Folder",
     "Asset ID",
     "Error Code",
+    "Last Updated",
     "Error State",
     "Error Source",
     "Error Message",
@@ -129,6 +136,7 @@ def set_error_fields(row: "JobRow", source: str, exc: Exception | str) -> None:
     row.values["Error Source"] = source
     row.values["Error Message"] = message[:500]
     row.values["Error Time"] = datetime.now().isoformat(timespec="seconds")
+    row.values["Last Updated"] = row.values["Error Time"]
 
 
 def ollama_prompt_filename(expected_output: str) -> str:
@@ -211,6 +219,12 @@ ROW_TO_JSON_FIELD = {
     "Next Action": "next_action",
     "Expected Output": "expected_output",
     "Final Expected Image": "final_expected_image",
+    "Final Prompt": "final_prompt",
+    "Compiled Sections": "compiled_sections",
+    "Dependency Manifest": "dependency_manifest",
+    "Prompt Review": "prompt_review",
+    "Image Review": "image_review",
+    "Output Directory": "output_directory",
     "Task": "task",
     "Character": "character",
     "Phase": "phase",
@@ -218,6 +232,7 @@ ROW_TO_JSON_FIELD = {
     "Head View": "head_view",
     "Folder": "folder",
     "Asset ID": "asset_id",
+    "Last Updated": "last_updated",
 }
 JSON_TO_ROW_FIELD = {v: k for k, v in ROW_TO_JSON_FIELD.items()}
 
@@ -1477,75 +1492,23 @@ def write_dependency_manifest(path: Path, job: JobRow, bundle: dict, view_token:
 
 
 def compile_body_reference_job(job: JobRow) -> None:
-    root = project_root()
-    config_root = root / "Config"
-    bundle = body_reference_bundle(config_root)
-    view_token, view_label, view_instruction = load_view_metadata(config_root, job.values.get("Body View", ""))
+    scripts_path = project_root() / "Scripts"
+    if str(scripts_path) not in sys.path:
+        sys.path.insert(0, str(scripts_path))
+    from Run_Body_Reference_Jobs import compile_body_reference_job as compile_body_reference_job_from_scripts
 
-    template_path = find_character_image_template(job)
-    source_sections = extract_zet_sections(template_path.read_text(encoding="utf-8"))
-
-    required = [section_name_for_view(name, view_token) for name in list_config_strings(bundle, "required_sections")]
-    optional = [section_name_for_view(name, view_token) for name in list_config_strings(bundle, "optional_sections")]
-    forbidden = list_config_strings(bundle, "forbidden_sections")
-
-    included_order: list[str] = []
-    included_sections: dict[str, str] = {}
-
-    for name in required:
-        content = source_sections.get(name)
-        if content is None:
-            raise PromptCompileError("REQUIRED_SECTION_MISSING", f"Required section is missing: {name}")
-        if not content.strip():
-            raise PromptCompileError("REQUIRED_SECTION_EMPTY", f"Required section is empty: {name}")
-        if section_is_forbidden(name, forbidden):
-            raise PromptCompileError("FORBIDDEN_SECTION_INCLUDED", f"Required section matches forbidden pattern: {name}")
-        included_order.append(name)
-        included_sections[name] = content
-
-    for name in optional:
-        content = source_sections.get(name)
-        if content is None or not content.strip():
-            continue
-        if section_is_forbidden(name, forbidden):
-            raise PromptCompileError("FORBIDDEN_SECTION_INCLUDED", f"Optional section matches forbidden pattern: {name}")
-        included_order.append(name)
-        included_sections[name] = content
-
-    static_template = str(bundle.get("static_prompt_template", "") or "").strip()
-    if not static_template:
-        raise PromptCompileError("PROMPT_TEMPLATE_MISSING", "Bundle does not define static_prompt_template.")
-    prompt_template_path = root / static_template
-    if not prompt_template_path.exists():
-        raise PromptCompileError("PROMPT_TEMPLATE_MISSING", f"Missing static prompt template: {prompt_template_path}")
-
-    metadata = {
-        "CHARACTER_NAME": job.values.get("Character", "").strip(),
-        "CHARACTER_PHASE": job.values.get("Phase", "").strip(),
-        "VIEW_TOKEN": view_token,
-        "VIEW_LABEL": view_label,
-        "VIEW_INSTRUCTION": view_instruction,
-    }
-    final_prompt = render_static_prompt(prompt_template_path.read_text(encoding="utf-8"), metadata, included_sections)
-
-    output_filenames = bundle.get("output_filenames", {})
-    if not isinstance(output_filenames, dict):
-        output_filenames = {}
-    final_name = str(output_filenames.get("final_image_prompt", "Final_Image_Prompt.md"))
-    compiled_name = str(output_filenames.get("compiled_sections", "Compiled_Sections.md"))
-    manifest_name = str(output_filenames.get("dependency_manifest", "dependency_manifest.json"))
-
-    job.folder.mkdir(parents=True, exist_ok=True)
-    (job.folder / final_name).write_text(final_prompt, encoding="utf-8")
-    write_compiled_sections(job.folder / compiled_name, included_order, included_sections)
-    write_dependency_manifest(job.folder / manifest_name, job, bundle, view_token, included_order)
-
-    job.values["Status"] = str(bundle.get("next_status", "READY_FOR_RENDER") or "READY_FOR_RENDER")
-    job.values["Next Actor"] = str(bundle.get("next_actor", "AI_AGENT") or "AI_AGENT")
-    job.values["Expected Output"] = final_name
-    job.values["Next Action"] = str(
-        bundle.get("next_action", "Review or render the compiled body-reference prompt.") or "Review or render the compiled body-reference prompt."
-    )
+    result = compile_body_reference_job_from_scripts(job.values, project_root())
+    job.values["Status"] = result["status"]
+    job.values["Next Actor"] = result["next_actor"]
+    job.values["Expected Output"] = result["expected_output"]
+    job.values["Final Prompt"] = result["final_prompt"]
+    job.values["Compiled Sections"] = result["compiled_sections"]
+    job.values["Dependency Manifest"] = result["dependency_manifest"]
+    job.values["Prompt Review"] = result["prompt_review"]
+    job.values["Image Review"] = result["image_review"]
+    job.values["Output Directory"] = result["output_dir"]
+    job.values["Last Updated"] = now_iso()
+    job.values["Next Action"] = "Review Prompt_Review.md and Final_Image_Prompt.md, then advance to render when approved."
     clear_error_fields(job)
 
 

@@ -1,53 +1,38 @@
-# Final Image Prompt - Body Reference
+Create a full-body technical body-reference image for {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 
-Create a clean technical body-reference image for {{CHARACTER_PHASE}} {{CHARACTER_NAME}}.
+Requested view:
+{{VIEW_LABEL}}
 
-Task: body-reference.
+View token:
+{{VIEW_TOKEN}}
 
-Required view: {{VIEW_LABEL}}.
+View instruction:
+{{VIEW_INSTRUCTION}}
 
-View token: {{VIEW_TOKEN}}.
+This is a neutral technical reference image, not a narrative scene.
 
-View instruction: {{VIEW_INSTRUCTION}}
+The character should be shown standing in a neutral, readable pose on a plain studio background with even lighting. The full body must be visible from head to feet.
 
-Use a neutral technical fitment presentation. The output must be a body-reference render only, not a narrative scene, not a costume render, not a head-fitment image, and not an expression sheet.
-
-## Character Facts
+Use this image only as a body proportion, fitment, silhouette, and reference-alignment source for later pipeline stages.
 
 {{SECTION:GENERAL_DESCRIPTION_FACTS}}
 
-## Body Facts
-
 {{SECTION:BODY_DESCRIPTION_FACTS}}
 
-## View-Specific Body Requirements
-
-{{SECTION:BODY_DESCRIPTION_VIEW_{{VIEW_TOKEN}}}}
-
-## Identity Preservation
+{{SECTION:BODY_DESCRIPTION_VIEW_{VIEW}}}
 
 {{SECTION:IDENTITY_PRESERVATION_CORE}}
 
 {{SECTION:IDENTITY_PRESERVATION_BODY}}
 
-## Fitment Rendering
-
 {{SECTION:FITMENT_RENDERING_RULES}}
 
-## Technical Modesty Layer
-
 {{SECTION:TECHNICAL_MODESTY_LAYER}}
-
-## Negative Guidance
 
 {{SECTION:NEGATIVE_GUIDANCE_GENERAL}}
 
 {{SECTION:NEGATIVE_GUIDANCE_JOB_SPECIFIC}}
 
-## Output Requirements
+Do not add costume, weapons, props, scene storytelling, emotional acting, dramatic lighting, narrative environment, spell effects, decorative background elements, or unrelated character-design details.
 
-Render a single full-body technical reference image in the requested view.
-
-Use no external source images, cached images, discovered images, or implicit image resources unless a future job explicitly overrides the configured resource policy.
-
-Do not include costume, equipment, jewelry, narrative props, scene staging, dramatic lighting, emotional acting, or unrelated views.
+The final image should be sober, neutral, readable, and technically useful.
