@@ -134,6 +134,7 @@ class ZetApp:
             asset_service,
             path_service,
         )
+        ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
             asset_repository,

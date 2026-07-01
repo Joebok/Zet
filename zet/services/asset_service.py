@@ -101,6 +101,9 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
+        if next_actor == "AI_AGENT":
+            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+            return self.asset_repository.get_asset(character, phase, asset_id)
         return updated_asset
 
     def run_housekeeping(self, character: str, phase: str, asset_id: int) -> Path:

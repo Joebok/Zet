@@ -15,7 +15,7 @@ SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
-from Local_Render_Adapters.comfyui_adapter import LocalRenderResult, LocalRenderUnavailable, render_preview
+from Local_Render_Adapters import LocalRenderResult, LocalRenderUnavailable, render_image
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ class PromptReviewService:
         context = self.get_context(character, phase, asset_id)
         if context.prompt_path is None:
             raise FileNotFoundError(f"No prompt file was found for asset {asset_id}.")
-        return render_preview(
+        return render_image(
             project_root=self.project_root,
             final_prompt_path=context.prompt_path,
             job_output_dir=context.prompt_path.parent,

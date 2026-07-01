@@ -12,14 +12,14 @@
       "costume": null,
       "expression": null,
       "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "RENDER",
-      "actor": "AI_AGENT",
-      "ai_state": "ASKED",
+      "pipeline_stage": "PROMPT_REVIEW",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
       "final_image_output": "Body-Reference_Front.png",
-      "last_ai_update": "Retry requested from dashboard at 2026-06-27T14:53:23",
+      "last_ai_update": "AI answer harvested: Ask_Asset_1_RENDER_20260701_062417 (20260701_062417_1_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-01T05:50:39"
+      "updated_at": "2026-07-01T06:38:39"
     },
     {
       "asset_id": 2,

@@ -92,9 +92,76 @@ class AIAnswerHarvester:
             encoding="utf-8",
         )
 
+    def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):
+        asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
+        response_path = answer_path / answer.expected_output
+        if not response_path.exists():
+            raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
+
+        pipeline_path = self.path_service.pipeline_path(asset)
+        pipeline_path.mkdir(parents=True, exist_ok=True)
+        dest_response_path = pipeline_path / response_path.name
+        shutil.copy2(response_path, dest_response_path)
+        for metadata_name in ("LOCAL_RENDER_METADATA.json", "COMFYUI_RENDER_METADATA.json"):
+            metadata_path = answer_path / metadata_name
+            if metadata_path.exists():
+                shutil.copy2(metadata_path, pipeline_path / metadata_path.name)
+
+        updated_asset = replace(asset)
+        updated_asset.ai_state = None
+        updated_asset.last_ai_update = f"AI answer harvested: {answer.ask_id} ({answer.ollama_attempt_id})"
+        updated_asset.updated_at = self.timestamp_provider()
+        updated_asset.error_code = None
+        updated_asset.error_message = None
+        self.asset_repository.save_asset(updated_asset)
+
+        refreshed_asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, refreshed_asset.pipeline)
+        next_stage = self.state_machine.next_stage(pipeline, refreshed_asset.pipeline_stage)
+        next_actor = pipeline.actor_by_stage.get(next_stage)
+        if next_actor is None:
+            raise AIAnswerHarvesterError(
+                f"Pipeline {pipeline.name} has no actor configured for stage {next_stage}"
+            )
+        final_asset = replace(refreshed_asset)
+        final_asset.pipeline_stage = next_stage
+        final_asset.actor = next_actor
+        final_asset.asset_state = "IN_PROGRESS"
+        final_asset.ai_state = "ASKED" if next_actor == "AI_AGENT" else None
+        final_asset.updated_at = self.timestamp_provider()
+        self.asset_repository.save_asset(final_asset)
+        self.housekeeping_service.prepare_stage(final_asset)
+        return final_asset
+
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         if self._harvest_manifest_path(answer_path).exists():
             payload = self._read_json(self._harvest_manifest_path(answer_path))
+            if payload.get("status") == "APPLIED":
+                answer = self._load_answer(answer_path)
+                ask_manifest = self._load_ask_manifest(answer_path)
+                character = str(ask_manifest.get("character") or "")
+                phase = str(ask_manifest.get("phase") or "")
+                if character and phase and answer.status == "SUCCESS":
+                    asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
+                    expected_attempt = self._expected_attempt(asset)
+                    if (
+                        asset.pipeline_stage == str(ask_manifest.get("pipeline_stage") or "")
+                        and asset.actor == "AI_AGENT"
+                        and expected_attempt == answer.ollama_attempt_id
+                    ):
+                        final_asset = self._apply_successful_answer(answer_path, answer, character, phase)
+                        result = HarvestResult(
+                            answer_path=answer_path,
+                            ask_id=answer.ask_id,
+                            asset_id=answer.asset_id,
+                            status="REAPPLIED",
+                            message=(
+                                f"Re-applied harvested answer and advanced asset {answer.asset_id} "
+                                f"to {final_asset.pipeline_stage}."
+                            ),
+                        )
+                        self._write_harvest_manifest(answer_path, result)
+                        return result
             return HarvestResult(
                 answer_path=answer_path,
                 ask_id=str(payload.get("ask_id", answer_path.name)),
@@ -125,39 +192,7 @@ class AIAnswerHarvester:
             return result
 
         if answer.status == "SUCCESS":
-            response_path = answer_path / answer.expected_output
-            if not response_path.exists():
-                raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
-
-            pipeline_path = self.path_service.pipeline_path(asset)
-            pipeline_path.mkdir(parents=True, exist_ok=True)
-            dest_response_path = pipeline_path / response_path.name
-            shutil.copy2(response_path, dest_response_path)
-
-            updated_asset = replace(asset)
-            updated_asset.ai_state = None
-            updated_asset.last_ai_update = f"AI answer harvested: {answer.ask_id} ({answer.ollama_attempt_id})"
-            updated_asset.updated_at = self.timestamp_provider()
-            updated_asset.error_code = None
-            updated_asset.error_message = None
-            self.asset_repository.save_asset(updated_asset)
-
-            refreshed_asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
-            pipeline = self.pipeline_repository.get_pipeline(character, phase, refreshed_asset.pipeline)
-            next_stage = self.state_machine.next_stage(pipeline, refreshed_asset.pipeline_stage)
-            next_actor = pipeline.actor_by_stage.get(next_stage)
-            if next_actor is None:
-                raise AIAnswerHarvesterError(
-                    f"Pipeline {pipeline.name} has no actor configured for stage {next_stage}"
-                )
-            final_asset = replace(refreshed_asset)
-            final_asset.pipeline_stage = next_stage
-            final_asset.actor = next_actor
-            final_asset.asset_state = "IN_PROGRESS"
-            final_asset.ai_state = "ASKED" if next_actor == "AI_AGENT" else None
-            final_asset.updated_at = self.timestamp_provider()
-            self.asset_repository.save_asset(final_asset)
-            self.housekeeping_service.prepare_stage(final_asset)
+            final_asset = self._apply_successful_answer(answer_path, answer, character, phase)
 
             result = HarvestResult(
                 answer_path=answer_path,

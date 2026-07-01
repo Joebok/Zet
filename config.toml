@@ -2,5 +2,10 @@
 BaseCharacterPath = "_Lib/Characters/"
 BaseAssetPath = "_Lib/Assets/"
 BasePipelinePath = "_Lib/Pipelines/"
-# BaseAIQueuePath = "_Lib/AI_Queue/"
+BaseAIQueuePath = "_Lib/AI_Queue/"
+
+[BaseFoldersByPlatform.Windows]
+BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
+
+[BaseFoldersByPlatform.Darwin]
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"

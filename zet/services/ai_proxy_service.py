@@ -30,6 +30,7 @@ class AIProxyService:
         self.path_service = path_service
         self.ai_proxy_path_service = ai_proxy_path_service
         self.housekeeping_service = housekeeping_service
+        self.prompt_review_service = None
 
     def _timestamp(self) -> str:
         return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -89,6 +90,21 @@ class AIProxyService:
         stamp = self._timestamp_compact()
         ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}"
         attempt_id = f"{stamp}_{asset.asset_id}_{asset.pipeline_stage}"
+        if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
+            return AIProxyAsk(
+                ask_id=ask_id,
+                asset_id=asset.asset_id,
+                character=asset.character,
+                phase=asset.phase,
+                pipeline=asset.pipeline,
+                pipeline_stage=asset.pipeline_stage,
+                ollama_attempt_id=attempt_id,
+                worker_type="local_image_render",
+                ollama_model="",
+                prompt_file="Final_Image_Prompt.md",
+                expected_output=asset.final_image_output,
+                candidate_output_file=asset.final_image_output,
+            )
         return AIProxyAsk(
             ask_id=ask_id,
             asset_id=asset.asset_id,
@@ -135,9 +151,18 @@ class AIProxyService:
             "prompt_file": ask.prompt_file,
             "expected_output": ask.expected_output,
             "candidate_output_file": ask.candidate_output_file,
+            "render_preset": "body-reference-preview" if ask.worker_type == "local_image_render" else None,
         }
 
     def _prompt_contents(self, asset) -> str:
+        if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
+            if self.prompt_review_service is None:
+                raise AIProxyServiceError("Prompt review service is required to stage body-reference render asks.")
+            context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+            if not context.prompt_text:
+                raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
+            return context.prompt_text
+
         head_view = self._safe_head_view(asset.head_view)
         return (
             "# Zet Ollama Prompt\n\n"
@@ -325,6 +350,9 @@ class AIProxyService:
 
         for answer_path in sorted(path for path in self.ai_proxy_path_service.answer_root().iterdir() if path.is_dir()):
             payload = self._read_json_if_exists(answer_path / "answer_manifest.json")
+            harvest_payload = self._read_json_if_exists(answer_path / "harvest_manifest.json")
+            if harvest_payload:
+                continue
             snapshot["answer"].append(
                 {
                     "ask_id": payload.get("ask_id") or answer_path.name,

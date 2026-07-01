@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 import copy
 import json
@@ -13,6 +12,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import uuid
 
+from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
+
 
 DEFAULT_NEGATIVE_PROMPT = (
     "low quality, worst quality, blurry, cropped, text, watermark, signature, "
@@ -22,22 +23,6 @@ DEFAULT_NEGATIVE_PROMPT = (
 )
 
 NEGATIVE_SECTION_MARKER = "Negative constraints:"
-
-
-class LocalRenderError(Exception):
-    pass
-
-
-class LocalRenderUnavailable(LocalRenderError):
-    pass
-
-
-@dataclass
-class LocalRenderResult:
-    image_path: Path
-    metadata_path: Path
-    prompt_review_path: Path | None
-    prompt_id: str
 
 
 def load_presets(project_root: Path) -> dict[str, Any]:
