@@ -1,0 +1,652 @@
+{
+  "last_node_id": 11,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        315,
+        98
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2,
+            3
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            4
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "title": "Load SD 1.5 Checkpoint",
+      "widgets_values": [
+        "v1-5-pruned-emaonly.safetensors"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "CLIPTextEncode",
+      "pos": [
+        410,
+        20
+      ],
+      "size": [
+        430,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "title": "Positive Prompt",
+      "widgets_values": [
+        "full-body technical body-reference image, adult high elf woman, direct front view or specified mannequin view, neutral standing pose, entire body visible from top of head to soles of feet, feet fully visible, plain neutral studio background, even studio lighting, clean readable silhouette, matte neutral technical fitment shell: high-neck sleeveless technical top and mid-thigh compression shorts, minimal detail, sober reference sheet, semi-realistic painterly, anime-influenced eyes"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "CLIPTextEncode",
+      "pos": [
+        410,
+        230
+      ],
+      "size": [
+        430,
+        180
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "title": "Negative Prompt",
+      "widgets_values": [
+        "cropped, out of frame, missing feet, missing hands, waist-up, bust portrait, thigh-up, sitting, action pose, dramatic lighting, narrative scene, extra garments, lingerie, nudity, sensual pose, cluttered background, low quality, deformed anatomy, extra limbs, bad hands, text, watermark"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        315,
+        315
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "title": "Load Mannequin / Pose Reference",
+      "widgets_values": [
+        "mannequin_front_or_3q.png",
+        "image"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "DWPreprocessor",
+      "pos": [
+        410,
+        455
+      ],
+      "size": [
+        330,
+        150
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "POSE_KEYPOINT",
+          "type": "POSE_KEYPOINT",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DWPreprocessor"
+      },
+      "title": "DWPose Preprocessor: body only",
+      "widgets_values": [
+        "disable",
+        "enable",
+        "disable",
+        768,
+        "yolox_l.onnx",
+        "dw-ll_ucoco_384.onnx",
+        "disable"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "ControlNetLoader",
+      "pos": [
+        40,
+        560
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CONTROL_NET",
+          "type": "CONTROL_NET",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ControlNetLoader"
+      },
+      "title": "Load Matching SD1.5 ControlNet",
+      "widgets_values": [
+        "control_v11p_sd15_openpose.safetensors"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "ControlNetApplyAdvanced",
+      "pos": [
+        870,
+        120
+      ],
+      "size": [
+        330,
+        190
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 8
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 9
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "name": "control_net",
+          "type": "CONTROL_NET",
+          "link": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            11
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ControlNetApplyAdvanced"
+      },
+      "title": "Apply ControlNet Advanced",
+      "widgets_values": [
+        0.82,
+        0.0,
+        0.85
+      ]
+    },
+    {
+      "id": 8,
+      "type": "EmptyLatentImage",
+      "pos": [
+        870,
+        360
+      ],
+      "size": [
+        315,
+        106
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "title": "Empty Latent 512x768",
+      "widgets_values": [
+        512,
+        768,
+        1
+      ]
+    },
+    {
+      "id": 9,
+      "type": "KSampler",
+      "pos": [
+        1240,
+        145
+      ],
+      "size": [
+        315,
+        260
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 11
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "title": "KSampler",
+      "widgets_values": [
+        927183645721,
+        "randomize",
+        28,
+        7.0,
+        "dpmpp_2m",
+        "karras",
+        1.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "VAEDecode",
+      "pos": [
+        1605,
+        180
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 13
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "title": "VAE Decode"
+    },
+    {
+      "id": 11,
+      "type": "SaveImage",
+      "pos": [
+        1860,
+        160
+      ],
+      "size": [
+        315,
+        270
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "title": "Save Image",
+      "widgets_values": [
+        "body_reference_controlnet"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      9,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      1,
+      1,
+      3,
+      0,
+      "CLIP"
+    ],
+    [
+      4,
+      1,
+      2,
+      10,
+      1,
+      "VAE"
+    ],
+    [
+      5,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      5,
+      0,
+      7,
+      2,
+      "IMAGE"
+    ],
+    [
+      7,
+      6,
+      0,
+      7,
+      3,
+      "CONTROL_NET"
+    ],
+    [
+      8,
+      2,
+      0,
+      7,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      3,
+      0,
+      7,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      7,
+      0,
+      9,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      7,
+      1,
+      9,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      12,
+      8,
+      0,
+      9,
+      3,
+      "LATENT"
+    ],
+    [
+      13,
+      9,
+      0,
+      10,
+      0,
+      "LATENT"
+    ],
+    [
+      14,
+      10,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "title": "1. Mannequin pose/reference input",
+      "bounding": [
+        20,
+        175,
+        750,
+        360
+      ],
+      "color": "#3f789e",
+      "font_size": 24
+    },
+    {
+      "title": "2. SD1.5 generation with ControlNet pose/view constraint",
+      "bounding": [
+        850,
+        5,
+        1340,
+        515
+      ],
+      "color": "#3f9e59",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [
+        40,
+        40
+      ]
+    },
+    "workflow_notes": {
+      "purpose": "Body-reference generation: mannequin image controls pose/view, prompt controls character appearance.",
+      "change_these_first": [
+        "CheckpointLoaderSimple ckpt_name",
+        "ControlNetLoader control_net_name",
+        "LoadImage image",
+        "Positive Prompt"
+      ],
+      "sd15_controlnet": "control_v11p_sd15_openpose.safetensors"
+    }
+  },
+  "version": 0.4
+}
