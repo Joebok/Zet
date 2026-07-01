@@ -22,6 +22,7 @@ class Config:
     local_render_preset: str = "body-reference-preview"
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
+    render_backend: str = "local_image"
 
 
 class ConfigService:
@@ -61,6 +62,11 @@ class ConfigService:
         return ai_harvest if isinstance(ai_harvest, dict) else {}
 
     @staticmethod
+    def _render_config(payload: dict) -> dict:
+        render = payload.get("Render", {})
+        return render if isinstance(render, dict) else {}
+
+    @staticmethod
     def load(config_path: str | Path) -> Config:
         path = Path(config_path)
         if not path.exists():
@@ -75,6 +81,7 @@ class ConfigService:
             prompt_condense = ConfigService._prompt_condense_config(payload)
             local_render = ConfigService._local_render_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
+            render = ConfigService._render_config(payload)
             return Config(
                 base_character_path=ConfigService._normalize_path_value(base_folders["BaseCharacterPath"]),
                 base_asset_path=ConfigService._normalize_path_value(base_folders["BaseAssetPath"]),
@@ -89,6 +96,7 @@ class ConfigService:
                 local_render_preset=str(local_render.get("Preset", "body-reference-preview")),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
+                render_backend=str(render.get("Backend", "local_image")),
             )
         except Exception as exc:
             raise ConfigServiceError(f"Config file is missing required BaseFolders entries: {path}") from exc

@@ -41,6 +41,9 @@ class AIProxyService:
     def _safe_head_view(self, head_view: str | None) -> str:
         return head_view if head_view and head_view.strip() else "_"
 
+    def _render_backend(self) -> str:
+        return str(getattr(self.path_service.config, "render_backend", "local_image")).strip().lower()
+
     def _read_json_if_exists(self, path: Path) -> dict:
         if not path.exists() or not path.is_file():
             return {}
@@ -143,6 +146,25 @@ class AIProxyService:
                 context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
                 if context.condensed_prompt_path is not None:
                     prompt_file = "Condensed_Image_Prompt.md"
+            render_backend = self._render_backend()
+            if render_backend == "manual_chatgpt":
+                return AIProxyAsk(
+                    ask_id=ask_id,
+                    asset_id=asset.asset_id,
+                    character=asset.character,
+                    phase=asset.phase,
+                    pipeline=asset.pipeline,
+                    pipeline_stage=asset.pipeline_stage,
+                    ollama_attempt_id=attempt_id,
+                    worker_type="manual_chatgpt_render",
+                    ollama_model="",
+                    prompt_file=prompt_file,
+                    expected_output=asset.final_image_output,
+                    candidate_output_file=asset.final_image_output,
+                    task_type="render",
+                    render_preset="chatgpt-manual",
+                    manual=True,
+                )
             return AIProxyAsk(
                 ask_id=ask_id,
                 asset_id=asset.asset_id,
@@ -208,8 +230,10 @@ class AIProxyService:
             "candidate_output_file": ask.candidate_output_file,
             "task_type": ask.task_type,
             "auxiliary": ask.auxiliary,
+            "manual": ask.manual,
             "target_output_file": ask.target_output_file,
             "render_preset": ask.render_preset,
+            "reference_files": ask.reference_files,
         }
 
     def _prompt_contents(self, asset) -> str:

@@ -237,13 +237,20 @@ Implementation research items:
 
 - Write and commit this implementation plan.
 
-### Milestone 1 - Manual Render Queue Contract
+### Milestone 1 - Manual Render Queue Contract - Complete
 
 - Add config for render backend selection.
 - Add `manual_chatgpt_render` ask generation when an asset enters `RENDER`.
 - Prefer `Condensed_Image_Prompt.md` when present.
 - Preserve the current ComfyUI/local render path behind config.
 - Add tests or a smoke script for manifest generation.
+
+Completed in commit after Milestone 0:
+
+- `[Render].Backend` config added.
+- `manual_chatgpt_render` ask generation added for Body-Reference `RENDER`.
+- Existing local image render remains available when backend is not `manual_chatgpt`.
+- Smoke check verified manifest generation and condensed prompt selection.
 
 ### Milestone 2 - Render Console Skeleton
 

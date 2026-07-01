@@ -27,6 +27,9 @@ BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 300
+
+[Render]
+Backend = "manual_chatgpt"
 """.lstrip(),
                 encoding="utf-8",
             )
@@ -38,6 +41,7 @@ IntervalSeconds = 300
             self.assertEqual(config.base_character_path, "_Lib/Characters/")
             self.assertTrue(config.ai_harvest_auto_enabled)
             self.assertEqual(config.ai_harvest_interval_seconds, 300)
+            self.assertEqual(config.render_backend, "manual_chatgpt")
 
 
 if __name__ == "__main__":

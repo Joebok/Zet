@@ -22,3 +22,6 @@ Preset = "body-reference-preview"
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 300
+
+[Render]
+Backend = "manual_chatgpt"

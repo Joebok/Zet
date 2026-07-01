@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -19,8 +19,10 @@ class AIProxyAsk:
     candidate_output_file: Optional[str] = None
     task_type: Optional[str] = None
     auxiliary: bool = False
+    manual: bool = False
     target_output_file: Optional[str] = None
     render_preset: Optional[str] = None
+    reference_files: list[dict] = field(default_factory=list)
 
 
 @dataclass
