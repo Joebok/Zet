@@ -118,6 +118,7 @@ class ZetApp:
             housekeeping_service,
             state_machine,
             timestamp_provider=lambda: datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            ai_proxy_service=ai_proxy_service,
         )
         asset_service = AssetService(
             asset_repository,
@@ -167,6 +168,9 @@ class ZetApp:
 
     def harvest_ai_answers(self):
         return self.asset_service.harvest_ai_answers()
+
+    def run_available_workers(self, character: str, phase: str):
+        return self.asset_service.run_available_workers(character, phase)
 
     def issue_monitor_test(self, instruction: str = ""):
         return self.ai_proxy_service.issue_monitor_test(instruction)

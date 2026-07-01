@@ -64,6 +64,53 @@ class AIProxyService:
         contents = json.dumps(payload, indent=2) + "\n"
         self._write_text_atomic(path, contents)
 
+    def clear_asset_queue_items(self, asset) -> int:
+        self._ensure_queue_dirs()
+        removed = 0
+        asset_prefix = f"Ask_Asset_{asset.asset_id}_"
+
+        def remove_path(path: Path) -> None:
+            nonlocal removed
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+            elif path.exists():
+                path.unlink(missing_ok=True)
+                removed += 1
+
+        roots = [
+            self.ai_proxy_path_service.ask_root(),
+            self.ai_proxy_path_service.answer_root(),
+        ]
+
+        for root in roots:
+            if not root.exists():
+                continue
+            for item in root.iterdir():
+                if not item.is_dir():
+                    continue
+                manifest = self._read_json_if_exists(item / "ask_manifest.json")
+                if manifest.get("asset_id") == asset.asset_id or item.name.startswith(asset_prefix):
+                    remove_path(item)
+
+        for parent in (self.ai_proxy_path_service.claimed_root(), self.ai_proxy_path_service.failed_root()):
+            if not parent.exists():
+                continue
+            for worker_dir in parent.iterdir():
+                if not worker_dir.is_dir():
+                    continue
+                for item in worker_dir.iterdir():
+                    manifest = self._read_json_if_exists(item / "ask_manifest.json") if item.is_dir() else {}
+                    if manifest.get("asset_id") == asset.asset_id or item.name.startswith(asset_prefix):
+                        remove_path(item)
+
+        claims_root = self.ai_proxy_path_service.claims_root()
+        if claims_root.exists():
+            for claim_path in claims_root.glob(f"{asset_prefix}*.claim.json"):
+                remove_path(claim_path)
+
+        return removed
+
     def _clear_monitor_state(self) -> None:
         request_root = self.ai_proxy_path_service.monitor_requests_root()
         if request_root.exists():
@@ -91,6 +138,11 @@ class AIProxyService:
         ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}"
         attempt_id = f"{stamp}_{asset.asset_id}_{asset.pipeline_stage}"
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
+            prompt_file = "Final_Image_Prompt.md"
+            if self.prompt_review_service is not None:
+                context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+                if context.condensed_prompt_path is not None:
+                    prompt_file = "Condensed_Image_Prompt.md"
             return AIProxyAsk(
                 ask_id=ask_id,
                 asset_id=asset.asset_id,
@@ -101,9 +153,11 @@ class AIProxyService:
                 ollama_attempt_id=attempt_id,
                 worker_type="local_image_render",
                 ollama_model="",
-                prompt_file="Final_Image_Prompt.md",
+                prompt_file=prompt_file,
                 expected_output=asset.final_image_output,
                 candidate_output_file=asset.final_image_output,
+                task_type="render",
+                render_preset="body-reference-preview",
             )
         return AIProxyAsk(
             ask_id=ask_id,
@@ -118,6 +172,7 @@ class AIProxyService:
             prompt_file="OLLAMA_PROMPT.md",
             expected_output="OLLAMA_RESPONSE.md",
             candidate_output_file=asset.final_image_output,
+            task_type="generate",
         )
 
     def _ensure_queue_dirs(self) -> None:
@@ -151,7 +206,10 @@ class AIProxyService:
             "prompt_file": ask.prompt_file,
             "expected_output": ask.expected_output,
             "candidate_output_file": ask.candidate_output_file,
-            "render_preset": "body-reference-preview" if ask.worker_type == "local_image_render" else None,
+            "task_type": ask.task_type,
+            "auxiliary": ask.auxiliary,
+            "target_output_file": ask.target_output_file,
+            "render_preset": ask.render_preset,
         }
 
     def _prompt_contents(self, asset) -> str:
@@ -159,9 +217,9 @@ class AIProxyService:
             if self.prompt_review_service is None:
                 raise AIProxyServiceError("Prompt review service is required to stage body-reference render asks.")
             context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
-            if not context.prompt_text:
+            if not context.render_prompt_text:
                 raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
-            return context.prompt_text
+            return context.render_prompt_text
 
         head_view = self._safe_head_view(asset.head_view)
         return (
@@ -205,6 +263,173 @@ class AIProxyService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
+        return ask_path
+
+    def _prompt_condense_enabled(self) -> bool:
+        return bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
+
+    def _local_render_auto_queue_after_condense_enabled(self) -> bool:
+        return bool(getattr(self.path_service.config, "local_render_auto_queue_after_condense", False))
+
+    def _local_render_preset(self) -> str:
+        return str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview"))
+
+    def _prompt_condense_model(self) -> str:
+        return str(getattr(self.path_service.config, "prompt_condense_model", "llama3.2-vision:11b"))
+
+    def _prompt_condense_file(self) -> Path:
+        configured_path = Path(str(getattr(
+            self.path_service.config,
+            "prompt_condense_file",
+            "Config/Prompt_Condense_Tasks/body_reference_condense.md",
+        )))
+        if configured_path.is_absolute():
+            return configured_path
+        return Path(__file__).resolve().parents[2] / configured_path
+
+    def _prompt_condense_contents(self, asset, final_prompt: str) -> str:
+        prompt_template_path = self._prompt_condense_file()
+        if not prompt_template_path.exists():
+            raise AIProxyServiceError(f"Prompt condense template not found: {prompt_template_path}")
+        contents = prompt_template_path.read_text(encoding="utf-8")
+        replacements = {
+            "ASSET_ID": str(asset.asset_id),
+            "CHARACTER": str(asset.character),
+            "PHASE": str(asset.phase),
+            "PIPELINE": str(asset.pipeline),
+            "BODY_VIEW": str(asset.body_view),
+            "HEAD_VIEW": self._safe_head_view(asset.head_view),
+            "FINAL_IMAGE_OUTPUT": str(asset.final_image_output or ""),
+            "FINAL_IMAGE_PROMPT": final_prompt.strip(),
+        }
+        for key, value in replacements.items():
+            contents = contents.replace("{{" + key + "}}", value)
+        return contents.strip() + "\n"
+
+    def _has_pending_prompt_condense_ask(self, asset) -> bool:
+        return self._has_pending_auxiliary_task(asset, "prompt_condense")
+
+    def _has_pending_auxiliary_task(self, asset, task_type: str) -> bool:
+        roots = [self.ai_proxy_path_service.ask_root()]
+        claimed_root = self.ai_proxy_path_service.claimed_root()
+        if claimed_root.exists():
+            roots.extend(path for path in claimed_root.iterdir() if path.is_dir())
+        answer_root = self.ai_proxy_path_service.answer_root()
+        if answer_root.exists():
+            roots.append(answer_root)
+        for root in roots:
+            if not root.exists():
+                continue
+            for ask_path in root.iterdir():
+                if not ask_path.is_dir():
+                    continue
+                manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
+                if (ask_path / "harvest_manifest.json").exists():
+                    continue
+                if (
+                    manifest.get("asset_id") == asset.asset_id
+                    and manifest.get("task_type") == task_type
+                    and manifest.get("auxiliary") is True
+                ):
+                    return True
+        return False
+
+    def stage_prompt_condense_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
+        if not self._prompt_condense_enabled():
+            return None
+        if self.prompt_review_service is None:
+            raise AIProxyServiceError("Prompt review service is required to stage prompt condense asks.")
+
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline != "Body-Reference":
+            return None
+        if asset.pipeline_stage != "PROMPT_REVIEW":
+            return None
+        context = self.prompt_review_service.get_context(character, phase, asset_id)
+        if context.prompt_path is None or not context.prompt_text:
+            return None
+
+        condensed_path = context.prompt_path.parent / "Condensed_Image_Prompt.md"
+        if condensed_path.exists() and condensed_path.stat().st_mtime >= context.prompt_path.stat().st_mtime:
+            return None
+        self._ensure_queue_dirs()
+        if self._has_pending_prompt_condense_ask(asset):
+            return None
+
+        stamp = self._timestamp_compact()
+        ask = AIProxyAsk(
+            ask_id=f"Ask_Asset_{asset.asset_id}_PROMPT_CONDENSE_{stamp}",
+            asset_id=asset.asset_id,
+            character=asset.character,
+            phase=asset.phase,
+            pipeline=asset.pipeline,
+            pipeline_stage=asset.pipeline_stage,
+            ollama_attempt_id=f"{stamp}_{asset.asset_id}_PROMPT_CONDENSE",
+            worker_type="ollama_generate",
+            ollama_model=self._prompt_condense_model(),
+            prompt_file="OLLAMA_PROMPT.md",
+            expected_output="Condensed_Image_Prompt.md",
+            candidate_output_file=None,
+            task_type="prompt_condense",
+            auxiliary=True,
+            target_output_file="Condensed_Image_Prompt.md",
+        )
+        ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
+        ask_path.mkdir(parents=True, exist_ok=False)
+        manifest = self._manifest_payload(ask)
+        manifest["source_prompt_file"] = "Final_Image_Prompt.md"
+        manifest["target_output_dir"] = str(context.prompt_path.parent.resolve())
+        manifest["prompt_condense_template"] = str(self._prompt_condense_file())
+        self._write_json_atomic(ask_path / "ask_manifest.json", manifest)
+        self._write_text_atomic(ask_path / ask.prompt_file, self._prompt_condense_contents(asset, context.prompt_text))
+        return ask_path
+
+    def stage_prompt_review_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
+        if not self._local_render_auto_queue_after_condense_enabled():
+            return None
+        if self.prompt_review_service is None:
+            raise AIProxyServiceError("Prompt review service is required to stage prompt review render asks.")
+
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline != "Body-Reference":
+            return None
+        if asset.pipeline_stage != "PROMPT_REVIEW":
+            return None
+
+        context = self.prompt_review_service.get_context(character, phase, asset_id)
+        if context.condensed_prompt_path is None or not context.condensed_prompt_text:
+            return None
+        if self._has_pending_auxiliary_task(asset, "prompt_review_render"):
+            return None
+
+        self._ensure_queue_dirs()
+        stamp = self._timestamp_compact()
+        target_output_file = f"test_{stamp}.png"
+        ask = AIProxyAsk(
+            ask_id=f"Ask_Asset_{asset.asset_id}_PROMPT_REVIEW_RENDER_{stamp}",
+            asset_id=asset.asset_id,
+            character=asset.character,
+            phase=asset.phase,
+            pipeline=asset.pipeline,
+            pipeline_stage=asset.pipeline_stage,
+            ollama_attempt_id=f"{stamp}_{asset.asset_id}_PROMPT_REVIEW_RENDER",
+            worker_type="local_image_render",
+            ollama_model="",
+            prompt_file="Condensed_Image_Prompt.md",
+            expected_output=target_output_file,
+            candidate_output_file=None,
+            task_type="prompt_review_render",
+            auxiliary=True,
+            target_output_file=target_output_file,
+            render_preset=self._local_render_preset(),
+        )
+        ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
+        ask_path.mkdir(parents=True, exist_ok=False)
+        manifest = self._manifest_payload(ask)
+        manifest["source_prompt_file"] = "Condensed_Image_Prompt.md"
+        manifest["target_output_dir"] = str((context.condensed_prompt_path.parent / "Local_Test_Renders").resolve())
+        self._write_json_atomic(ask_path / "ask_manifest.json", manifest)
+        self._write_text_atomic(ask_path / ask.prompt_file, context.condensed_prompt_text)
         return ask_path
 
     def issue_monitor_test(self, instruction: str = "") -> Path:
@@ -330,6 +555,8 @@ class AIProxyService:
                     "ask_id": payload.get("ask_id") or ask_path.name,
                     "asset_id": payload.get("asset_id"),
                     "pipeline_stage": payload.get("pipeline_stage"),
+                    "worker_type": payload.get("worker_type"),
+                    "task_type": payload.get("task_type"),
                     "ollama_attempt_id": payload.get("ollama_attempt_id"),
                 }
             )
@@ -344,6 +571,8 @@ class AIProxyService:
                         "ask_id": payload.get("ask_id") or claim_path.name,
                         "asset_id": payload.get("asset_id"),
                         "pipeline_stage": payload.get("pipeline_stage"),
+                        "worker_type": payload.get("worker_type"),
+                        "task_type": payload.get("task_type"),
                         "ollama_attempt_id": payload.get("ollama_attempt_id"),
                     }
                 )

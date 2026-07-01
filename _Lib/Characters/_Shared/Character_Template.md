@@ -849,12 +849,11 @@ Rendering priorities:
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 
-For body-reference, use `[plain tank top and shorts / preferred neutral fitment clothing]`.
+For body-reference, use `[form-fitting tank top and compression shorts / preferred neutral fitment clothing]`.
 
 Fitment clothing rules:
 
-* Plain opaque matte neutral tank top and shorts.
-* Non-sensual, non-revealing coverage.
+* Plain opaque matte neutral compression shorts.
 * Simple garment edges.
 * Minimal detail.
 * Readable body silhouette.

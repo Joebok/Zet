@@ -36,7 +36,7 @@ Recommended usage:
 * Apparent age: young adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, narrow-to-moderate softly sloped shoulders, slim waist, balanced hips, long slim legs.
+* Core silhouette: compact elven frame, wide shoulders, slim waist, slim thighs, long slim legs.
 
 <!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
 
@@ -112,13 +112,13 @@ Recommended usage:
 
 * Build: petite, lithe, graceful, lightly athletic; slim limbs
 * Height impression: short-to-average
-* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders, and narrow hips
+* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders, slim thighs
 * Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
 * Shoulder shape: wide, softly sloped
 * Torso shape: slim waist, inverted triangle figure
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
 * Hand shape: small, elegant hands with long fingers.
-* Hip/leg proportions: slim hips, long tapered legs, knees and ankles cleanly articulated
+* Hip/leg proportions: slim thighs, long tapered legs, knees and ankles cleanly articulated
 
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
@@ -648,7 +648,7 @@ Ear preservation rules:
 Body preservation rules:
 
 * Preserve petite, lithe, graceful adult build with light athletic tone.
-* Preserve the short-to-average height impression, narrow-to-moderate shoulders, slim waist, compact torso, balanced hips, and long slim legs.
+* Preserve the short-to-average height impression, narrow-to-moderate shoulders, slim waist, compact torso, slim thighs, and long slim legs.
 * Preserve her buoyant, alert, expressive posture without turning the pose into action or performance.
 * Do not alter body type to match generic fantasy archetypes such as bulky warrior, exaggerated pin-up, childlike waif, or heavy stocky adventurer.
 
@@ -684,10 +684,10 @@ Rendering priorities:
 * Feet visible.
 * No dramatic lighting.
 * No narrative scene.
-* No emotional acting.
+* No acting.
 * Uncluttered image.
 * Preserve scale and proportions.
-* Preserve requested view angle.
+* Preserve view angle.
 
 <!-- ZET:END FITMENT_RENDERING_RULES -->
 
@@ -695,13 +695,12 @@ Rendering priorities:
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 
-For body-reference, use form-fitting plain tank top and compression shorts.
+Clothing rules:
 
-Fitment clothing rules:
-
-* Plain opaque matte neutral tank top and shorts.
-* Simple garment edges.
+* tube top.
+* compression shorts.
 * Minimal detail.
+* no additional garments
 * Readable body silhouette.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER -->

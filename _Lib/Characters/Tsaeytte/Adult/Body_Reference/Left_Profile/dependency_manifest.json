@@ -1,0 +1,17 @@
+{
+  "job_id": "Asset_6_Body-Reference_Left-Profile",
+  "task": "body-reference",
+  "character": "Tsaeytte",
+  "phase": "Adult",
+  "view_token": "LEFT_PROFILE",
+  "resources_allowed": false,
+  "resources": [],
+  "resource_policy": {
+    "allow_external_images": false,
+    "allow_cached_images": false,
+    "allow_job_declared_images": false
+  },
+  "notes": [
+    "Body-reference uses no external, cached, discovered, or prior-rendered image resources unless explicitly allowed by future task configuration."
+  ]
+}

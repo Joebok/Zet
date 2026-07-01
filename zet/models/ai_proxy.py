@@ -17,6 +17,10 @@ class AIProxyAsk:
     prompt_file: str
     expected_output: str
     candidate_output_file: Optional[str] = None
+    task_type: Optional[str] = None
+    auxiliary: bool = False
+    target_output_file: Optional[str] = None
+    render_preset: Optional[str] = None
 
 
 @dataclass

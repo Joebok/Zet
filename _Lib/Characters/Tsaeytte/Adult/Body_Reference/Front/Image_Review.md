@@ -1,11 +1,11 @@
 # Image Review
 
-Job ID: BodyRef_Tsaeytte_Adult_Front_Refined5
+Job ID: Asset_1_Body-Reference_Front
 Task: body-reference
 Character: Tsaeytte
 Phase: Adult
 View: FRONT
-Image File: Body-Front.png
+Image File: Body-Reference_Front.png
 
 Review Status: PENDING
 Reviewer: HUMAN

@@ -15,6 +15,13 @@ class Config:
     base_asset_path: str
     base_pipeline_path: str
     base_ai_queue_path: str
+    prompt_condense_enabled: bool = False
+    prompt_condense_model: str = "llama3.2-vision:11b"
+    prompt_condense_file: str = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
+    local_render_auto_queue_after_condense: bool = False
+    local_render_preset: str = "body-reference-preview"
+    ai_harvest_auto_enabled: bool = True
+    ai_harvest_interval_seconds: int = 300
 
 
 class ConfigService:
@@ -39,6 +46,21 @@ class ConfigService:
         return base_folders
 
     @staticmethod
+    def _prompt_condense_config(payload: dict) -> dict:
+        prompt_condense = payload.get("PromptCondense", {})
+        return prompt_condense if isinstance(prompt_condense, dict) else {}
+
+    @staticmethod
+    def _local_render_config(payload: dict) -> dict:
+        local_render = payload.get("LocalRender", {})
+        return local_render if isinstance(local_render, dict) else {}
+
+    @staticmethod
+    def _ai_harvest_config(payload: dict) -> dict:
+        ai_harvest = payload.get("AIHarvest", {})
+        return ai_harvest if isinstance(ai_harvest, dict) else {}
+
+    @staticmethod
     def load(config_path: str | Path) -> Config:
         path = Path(config_path)
         if not path.exists():
@@ -50,11 +72,23 @@ class ConfigService:
             raise ConfigServiceError(f"Config file is invalid TOML at {path}: {exc}") from exc
         try:
             base_folders = ConfigService._base_folders_for_platform(payload)
+            prompt_condense = ConfigService._prompt_condense_config(payload)
+            local_render = ConfigService._local_render_config(payload)
+            ai_harvest = ConfigService._ai_harvest_config(payload)
             return Config(
                 base_character_path=ConfigService._normalize_path_value(base_folders["BaseCharacterPath"]),
                 base_asset_path=ConfigService._normalize_path_value(base_folders["BaseAssetPath"]),
                 base_pipeline_path=ConfigService._normalize_path_value(base_folders["BasePipelinePath"]),
                 base_ai_queue_path=ConfigService._normalize_path_value(base_folders["BaseAIQueuePath"]),
+                prompt_condense_enabled=bool(prompt_condense.get("Enabled", False)),
+                prompt_condense_model=str(prompt_condense.get("Model", "llama3.2-vision:11b")),
+                prompt_condense_file=str(
+                    prompt_condense.get("PromptFile", "Config/Prompt_Condense_Tasks/body_reference_condense.md")
+                ),
+                local_render_auto_queue_after_condense=bool(local_render.get("AutoQueueAfterCondense", False)),
+                local_render_preset=str(local_render.get("Preset", "body-reference-preview")),
+                ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
+                ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
             )
         except Exception as exc:
             raise ConfigServiceError(f"Config file is missing required BaseFolders entries: {path}") from exc

@@ -1,6 +1,8 @@
 import shutil
+from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
+import json
 from pathlib import Path
 
 from zet.models.asset import Asset
@@ -18,6 +20,18 @@ VALID_ACTORS = {"PYTHON", "AI_AGENT", "HUMAN_AGENT"}
 
 class AssetServiceError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class WorkerPollResult:
+    asset_id: int
+    worker_name: str
+    before_stage: str
+    before_actor: str
+    after_stage: str
+    after_actor: str
+    status: str
+    message: str
 
 
 class AssetService:
@@ -51,6 +65,55 @@ class AssetService:
             raise AssetServiceError(f"Pipeline {pipeline_name} uses invalid actor {actor} for stage {stage}")
         return actor
 
+    def _view_folder_for_asset(self, asset: Asset) -> str:
+        path = Path(__file__).resolve().parents[2] / "Config" / "Prompt_View_Text.json"
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                views = data.get("views", data) if isinstance(data, dict) else {}
+                for view in views.values():
+                    if not isinstance(view, dict):
+                        continue
+                    if asset.body_view in {view.get("folder_name"), view.get("output_name_fragment")}:
+                        return str(view.get("folder_name"))
+            except Exception:
+                pass
+        return str(asset.body_view).replace("-", "_")
+
+    def _clear_body_reference_generated_artifacts(self, asset: Asset) -> None:
+        if asset.pipeline != "Body-Reference":
+            return
+
+        output_dir = (
+            self.path_service.character_path(asset.character, asset.phase)
+            / "Body_Reference"
+            / self._view_folder_for_asset(asset)
+        )
+        if not output_dir.exists():
+            return
+
+        generated_files = [
+            "Compiled_Sections.md",
+            "Final_Image_Prompt.md",
+            "Condensed_Image_Prompt.md",
+            "dependency_manifest.json",
+            "Prompt_Review.md",
+            "Image_Review.md",
+        ]
+        for name in generated_files:
+            (output_dir / name).unlink(missing_ok=True)
+
+        local_render_dir = output_dir / "Local_Test_Renders"
+        if local_render_dir.exists():
+            shutil.rmtree(local_render_dir, ignore_errors=True)
+
+    def _clear_regeneration_outputs(self, asset: Asset) -> None:
+        pipeline_path = self.path_service.pipeline_path(asset)
+        if pipeline_path.exists():
+            shutil.rmtree(pipeline_path, ignore_errors=True)
+        self._clear_body_reference_generated_artifacts(asset)
+        self.ai_proxy_service.clear_asset_queue_items(asset)
+
     def move_next(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.pipeline_stage == "ERROR":
@@ -76,6 +139,11 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
+        if next_actor == "AI_AGENT":
+            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+            return self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline_stage == "PROMPT" and next_stage == "PROMPT_REVIEW":
+            self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id)
         return updated_asset
 
     def approve_prompt_review(self, character: str, phase: str, asset_id: int) -> Asset:
@@ -101,9 +169,6 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
-        if next_actor == "AI_AGENT":
-            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
-            return self.asset_repository.get_asset(character, phase, asset_id)
         return updated_asset
 
     def run_housekeeping(self, character: str, phase: str, asset_id: int) -> Path:
@@ -132,6 +197,7 @@ class AssetService:
             "MANIFEST",
             pipeline.actor_by_stage.get("MANIFEST"),
         )
+        self._clear_regeneration_outputs(asset)
 
         updated_asset = replace(asset)
         updated_asset.asset_state = "IN_PROGRESS"
@@ -215,6 +281,60 @@ class AssetService:
 
     def stage_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
         return self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+
+    def _worker_name_for_asset(self, character: str, phase: str, asset: Asset) -> str | None:
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+        return pipeline.worker_by_stage.get(asset.pipeline_stage)
+
+    def run_available_workers(self, character: str, phase: str, max_jobs: int = 100) -> list[WorkerPollResult]:
+        results: list[WorkerPollResult] = []
+        processed_stage_keys: set[tuple[int, str]] = set()
+
+        while len(results) < max_jobs:
+            progressed = False
+            for asset in self.asset_repository.list_assets(character, phase):
+                if asset.actor != "PYTHON":
+                    continue
+                stage_key = (asset.asset_id, asset.pipeline_stage)
+                if stage_key in processed_stage_keys:
+                    continue
+                worker_name = self._worker_name_for_asset(character, phase, asset)
+                if not worker_name:
+                    continue
+
+                processed_stage_keys.add(stage_key)
+                before_stage = asset.pipeline_stage
+                before_actor = asset.actor
+                try:
+                    updated_asset = self.run_current_worker(character, phase, asset.asset_id)
+                    status = "SUCCESS" if updated_asset.pipeline_stage != "ERROR" else "ERROR"
+                    worker_result = self.worker_service.last_worker_result
+                    message = worker_result.message if worker_result is not None else "Worker executed."
+                except Exception as exc:
+                    updated_asset = self.asset_repository.get_asset(character, phase, asset.asset_id)
+                    status = "ERROR"
+                    message = str(exc)
+
+                results.append(
+                    WorkerPollResult(
+                        asset_id=asset.asset_id,
+                        worker_name=worker_name,
+                        before_stage=before_stage,
+                        before_actor=before_actor,
+                        after_stage=updated_asset.pipeline_stage,
+                        after_actor=updated_asset.actor,
+                        status=status,
+                        message=message,
+                    )
+                )
+                progressed = True
+                if len(results) >= max_jobs:
+                    break
+
+            if not progressed:
+                break
+
+        return results
 
     def harvest_ai_answers(self):
         return self.ai_answer_harvester.harvest_once()

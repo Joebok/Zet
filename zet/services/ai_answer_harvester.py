@@ -26,6 +26,7 @@ class AIAnswerHarvester:
         housekeeping_service: HousekeepingService,
         state_machine: StateMachine,
         timestamp_provider,
+        ai_proxy_service=None,
     ):
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
@@ -34,6 +35,7 @@ class AIAnswerHarvester:
         self.housekeeping_service = housekeeping_service
         self.state_machine = state_machine
         self.timestamp_provider = timestamp_provider
+        self.ai_proxy_service = ai_proxy_service
 
     def _harvest_manifest_path(self, answer_path: Path) -> Path:
         return answer_path / "harvest_manifest.json"
@@ -133,6 +135,74 @@ class AIAnswerHarvester:
         self.housekeeping_service.prepare_stage(final_asset)
         return final_asset
 
+    def _apply_auxiliary_answer(self, answer_path: Path, answer: AIProxyAnswer, ask_manifest: dict) -> HarvestResult:
+        task_type = str(ask_manifest.get("task_type") or "auxiliary")
+        if answer.status != "SUCCESS":
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status=f"{task_type.upper()}_{answer.status}",
+                message=f"Auxiliary task {task_type} completed with status {answer.status}: {answer.error_message or ''}".strip(),
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
+
+        response_path = answer_path / answer.expected_output
+        if not response_path.exists():
+            raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
+
+        target_output_dir_text = str(ask_manifest.get("target_output_dir") or "").strip()
+        if not target_output_dir_text:
+            raise AIAnswerHarvesterError(f"Auxiliary answer {answer_path} is missing target_output_dir.")
+        target_output_dir = Path(target_output_dir_text)
+        target_output_file = str(ask_manifest.get("target_output_file") or answer.expected_output)
+        target_output_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(response_path, target_output_dir / target_output_file)
+
+        result = HarvestResult(
+            answer_path=answer_path,
+            ask_id=answer.ask_id,
+            asset_id=answer.asset_id,
+            status=f"{task_type.upper()}_APPLIED",
+            message=f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}.",
+        )
+        self._write_harvest_manifest(answer_path, result)
+        if task_type == "prompt_condense" and self.ai_proxy_service is not None:
+            character = str(ask_manifest.get("character") or "")
+            phase = str(ask_manifest.get("phase") or "")
+            try:
+                render_ask_path = self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(
+                    character,
+                    phase,
+                    answer.asset_id,
+                )
+                if render_ask_path is not None:
+                    result = HarvestResult(
+                        answer_path=answer_path,
+                        ask_id=answer.ask_id,
+                        asset_id=answer.asset_id,
+                        status=f"{task_type.upper()}_APPLIED",
+                        message=(
+                            f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}. "
+                            f"Queued prompt review render ask at {render_ask_path}."
+                        ),
+                    )
+                    self._write_harvest_manifest(answer_path, result)
+            except Exception as exc:
+                result = HarvestResult(
+                    answer_path=answer_path,
+                    ask_id=answer.ask_id,
+                    asset_id=answer.asset_id,
+                    status=f"{task_type.upper()}_APPLIED_RENDER_QUEUE_FAILED",
+                    message=(
+                        f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}, "
+                        f"but auto-queue render failed: {exc}"
+                    ),
+                )
+                self._write_harvest_manifest(answer_path, result)
+        return result
+
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         if self._harvest_manifest_path(answer_path).exists():
             payload = self._read_json(self._harvest_manifest_path(answer_path))
@@ -177,6 +247,9 @@ class AIAnswerHarvester:
         phase = str(ask_manifest.get("phase") or "")
         if not character or not phase:
             raise AIAnswerHarvesterError(f"Answer folder {answer_path} is missing character or phase in ask_manifest.json")
+
+        if bool(ask_manifest.get("auxiliary", False)):
+            return self._apply_auxiliary_answer(answer_path, answer, ask_manifest)
 
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
         expected_attempt = self._expected_attempt(asset)

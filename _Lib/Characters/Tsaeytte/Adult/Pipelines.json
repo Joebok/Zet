@@ -18,7 +18,7 @@
       },
       "worker_by_stage": {
         "MANIFEST": "zet.workers.noop_worker",
-        "PROMPT": "zet.workers.noop_worker",
+        "PROMPT": "zet.workers.body_reference_prompt_worker",
         "PROMPT_REVIEW": "zet.workers.noop_worker",
         "RENDER": "zet.workers.noop_worker",
         "RENDER_REVIEW": "zet.workers.noop_worker"

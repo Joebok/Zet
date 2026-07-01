@@ -45,6 +45,11 @@ def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def log(message: str, *, error: bool = False) -> None:
+    stream = sys.stderr if error else sys.stdout
+    print(f"{now_iso()} {message}", file=stream, flush=True)
+
+
 def read_json(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -76,10 +81,18 @@ def ensure_dirs(proxy_root: Path, worker_id: str) -> dict[str, Path]:
         "answer": proxy_root / "Answer",
         "failed": proxy_root / "Failed" / worker_id,
         "control": proxy_root / "Control",
+        "monitor_requests": proxy_root / "Monitor" / "Requests",
+        "monitor_responses": proxy_root / "Monitor" / "Responses" / worker_id,
     }
     for path in dirs.values():
         ensure_directory(path)
     return dirs
+
+
+def normalize_proxy_root(path: Path) -> Path:
+    if path.name != "Ollama_Proxy" and (path.name == "AI_Queue" or (path / "Ollama_Proxy").exists()):
+        return path / "Ollama_Proxy"
+    return path
 
 
 def write_claim_file(path: Path, ask_name: str, worker_id: str) -> bool:
@@ -133,6 +146,7 @@ def claim_one_local_render(dirs: dict[str, Path], worker_id: str) -> Path | None
             shutil.copytree(str(ask), str(dest))
             shutil.copy2(str(claim_file), str(dest / "claim_manifest.json"))
             shutil.rmtree(ask, ignore_errors=True)
+            log(f"CLAIMED {ask.name} -> {dest}")
             return dest
         except Exception:
             shutil.rmtree(dest, ignore_errors=True)
@@ -168,8 +182,10 @@ def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, re
     if ask_dest.exists():
         failed_dest = dirs["failed"] / f"{ask_name}__released_duplicate_{int(time.time())}"
         shutil.move(str(folder), str(failed_dest))
+        log(f"RETRY_LATER_DUPLICATE {ask_name}: {reason}; parked at {failed_dest}", error=True)
         return
     shutil.move(str(folder), str(ask_dest))
+    log(f"RETRY_LATER_RELEASED {ask_name} -> {ask_dest}: {reason}", error=True)
 
 
 def answer_manifest_base(ask_manifest: dict, worker_id: str, expected_output: str) -> dict:
@@ -189,6 +205,34 @@ def answer_manifest_base(ask_manifest: dict, worker_id: str, expected_output: st
     }
 
 
+def process_monitor_tests(dirs: dict[str, Path], worker_id: str) -> int:
+    responses_written = 0
+    host = socket.gethostname()
+    for request_dir in sorted(path for path in dirs["monitor_requests"].iterdir() if path.is_dir()):
+        test_id = request_dir.name
+        response_path = dirs["monitor_responses"] / f"{test_id}.json"
+        if response_path.exists():
+            continue
+
+        instruction = str(read_json(request_dir / "request.json").get("instruction") or "").strip()
+        payload = {
+            "version": 1,
+            "test_id": test_id,
+            "worker_id": worker_id,
+            "host": host,
+            "status": "ONLINE",
+            "ollama_ok": False,
+            "models": [],
+            "message": instruction or "Monitoring and connected to local image worker.",
+            "responded_at": now_iso(),
+            "worker_type": "local_image_render",
+        }
+        write_json(response_path, payload)
+        print(f"MONITOR_RESPONSE {worker_id} -> {response_path}")
+        responses_written += 1
+    return responses_written
+
+
 def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_transient_to_ask: bool) -> str:
     ask_manifest = read_json(folder / "ask_manifest.json")
     prompt_file = str(ask_manifest.get("prompt_file") or "Final_Image_Prompt.md")
@@ -196,6 +240,14 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
     preset_name = str(ask_manifest.get("render_preset") or "body-reference-preview")
     answer_manifest = answer_manifest_base(ask_manifest, worker_id, expected_output)
     t0 = time.time()
+    log(
+        "START "
+        f"{folder.name} ask_id={ask_manifest.get('ask_id') or folder.name} "
+        f"asset_id={ask_manifest.get('asset_id') or ''} "
+        f"worker_type={ask_manifest.get('worker_type') or ''} "
+        f"task_type={ask_manifest.get('task_type') or ''} "
+        f"preset={preset_name} expected_output={expected_output or '<blank>'}"
+    )
 
     try:
         if ask_manifest.get("worker_type") not in SUPPORTED_WORKER_TYPES:
@@ -232,12 +284,12 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
         dest = move_to_answer(folder, dirs)
-        print(f"SUCCESS {folder.name} -> {dest}")
+        log(f"DONE SUCCESS {folder.name} -> {dest} elapsed={answer_manifest['elapsed_seconds']}s")
         return "SUCCESS"
     except LocalRenderUnavailable as exc:
         if return_transient_to_ask:
             release_claim_to_ask(folder, dirs, worker_id, str(exc))
-            print(f"RETRY_LATER {folder.name}: {exc}", file=sys.stderr)
+            log(f"DONE RETRY_LATER {folder.name}: {exc}", error=True)
             return "RETRY_LATER"
         answer_manifest["status"] = "RETRY_LATER"
         answer_manifest["error_type"] = "LOCAL_RENDER_UNAVAILABLE"
@@ -251,7 +303,11 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
     answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
     write_json(folder / "answer_manifest.json", answer_manifest)
     dest = move_to_answer(folder, dirs)
-    print(f"{answer_manifest['status']} {folder.name} -> {dest}: {answer_manifest['error_message']}", file=sys.stderr)
+    log(
+        f"DONE {answer_manifest['status']} {folder.name} -> {dest} "
+        f"elapsed={answer_manifest['elapsed_seconds']}s: {answer_manifest['error_message']}",
+        error=True,
+    )
     return str(answer_manifest["status"])
 
 
@@ -274,12 +330,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     proxy_root = Path(args.proxy_root).expanduser() if args.proxy_root else default_proxy_root(Path(args.config))
-    proxy_root = proxy_root.resolve()
+    proxy_root = normalize_proxy_root(proxy_root).resolve()
     dirs = ensure_dirs(proxy_root, args.worker_id)
     processed = 0
-    print(f"Local image worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")
+    log(f"Local image worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")
 
     while True:
+        process_monitor_tests(dirs, args.worker_id)
         claimed = claim_one_local_render(dirs, args.worker_id)
         if claimed is None:
             if args.once or (args.max_jobs is not None and processed >= args.max_jobs):

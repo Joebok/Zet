@@ -71,10 +71,33 @@ def discover_phases(base_character_path: str, character: str) -> list[str]:
     return sorted(path.name for path in root.iterdir() if path.is_dir())
 
 
-def asset_to_row(asset) -> dict:
-    stage_url = f"?page=Assets&selected_asset={asset.asset_id}&stage={asset.pipeline_stage}"
+def review_image_ready(app: ZetApp, asset) -> bool:
+    if asset.pipeline_stage == "PROMPT_REVIEW":
+        if asset.pipeline != "Body-Reference":
+            return False
+        try:
+            context = app.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+            return context.latest_local_test_render is not None
+        except Exception:
+            return False
+    if asset.pipeline_stage == "RENDER_REVIEW":
+        try:
+            return app.path_service.candidate_image_path(asset).exists()
+        except Exception:
+            return False
+    return False
+
+
+def asset_to_row(asset, app: ZetApp) -> dict:
+    stage_label = asset.pipeline_stage
+    if review_image_ready(app, asset):
+        stage_label = f"📷{asset.pipeline_stage}"
+    stage_url = f"?page=Assets&selected_asset={asset.asset_id}&stage={stage_label}"
     if is_prompt_review_asset(asset):
-        stage_url = f"?page=Prompt%20Review&selected_asset={asset.asset_id}&review_asset={asset.asset_id}&stage={asset.pipeline_stage}"
+        stage_url = (
+            f"?page=Prompt%20Review&selected_asset={asset.asset_id}"
+            f"&review_asset={asset.asset_id}&stage={stage_label}"
+        )
     return {
         "asset_id": asset.asset_id,
         "pipeline": asset.pipeline,
@@ -147,7 +170,6 @@ def show_action_message() -> None:
 def action_disabled_reason(asset_ref) -> dict[str, str | None]:
     asset = asset_ref.get()
     reasons = {
-        "move_next": None,
         "stage_ai_ask": None,
         "run_current_worker": None,
         "run_housekeeping": None,
@@ -164,6 +186,32 @@ def action_disabled_reason(asset_ref) -> dict[str, str | None]:
     if not asset_ref.candidate_image_path().exists():
         reasons["promote_to_locked"] = "Promote to LOCKED requires an existing candidate image."
     return reasons
+
+
+def asset_has_configured_worker(app: ZetApp, character: str, phase: str, asset) -> bool:
+    if asset.actor != "PYTHON":
+        return False
+    try:
+        pipeline = app.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+    except Exception:
+        return False
+    return bool(pipeline.worker_by_stage.get(asset.pipeline_stage))
+
+
+def worker_poll_message(results) -> tuple[str, str]:
+    if not results:
+        return "info", "No eligible PYTHON worker jobs found."
+    successes = sum(1 for result in results if result.status == "SUCCESS")
+    errors = len(results) - successes
+    detail = ", ".join(
+        f"Asset {result.asset_id}: {result.before_stage}->{result.after_stage}"
+        for result in results[:6]
+    )
+    if len(results) > 6:
+        detail += f", +{len(results) - 6} more"
+    if errors:
+        return "error", f"Worker poll ran {len(results)} job(s): {successes} succeeded, {errors} failed. {detail}"
+    return "success", f"Worker poll ran {len(results)} job(s). {detail}"
 
 
 def path_row(label: str, path: Path) -> dict:
@@ -294,8 +342,113 @@ def show_copyable_prompt(prompt_text: str, search_query: str = "") -> None:
     )
 
 
-def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | None) -> None:
+def show_condense_status(condense_status: dict) -> None:
+    state = condense_status.get("state", "UNKNOWN")
+    model = condense_status.get("model") or "not configured"
+    latest = condense_status.get("latest_queue_item") or {}
+    path = condense_status.get("condensed_prompt_path")
+
+    if state == "READY":
+        st.success("Condensed prompt ready.")
+    elif state == "STALE":
+        st.warning("Condensed prompt exists but is older than Final_Image_Prompt.md.")
+    elif state in {"ASKED", "ANSWER_READY", "SUCCESS"} or str(state).startswith("CLAIMED:"):
+        st.info(f"Condense job status: {state}.")
+    elif state == "NOT_CREATED":
+        st.info("Condense job has not produced a condensed prompt yet.")
+    elif state == "DISABLED":
+        st.caption("Prompt condense is disabled.")
+    else:
+        st.caption(f"Condense status: {state}")
+
+    if condense_status.get("enabled"):
+        st.caption(f"Condense model: {model}")
+    if latest:
+        st.caption(f"Latest condense ask: {latest.get('ask_id')} ({latest.get('state')})")
+    if path:
+        st.caption(f"Condensed prompt: {path}")
+
+
+def show_condensed_prompt_popover(context) -> None:
+    if not context.condensed_prompt_path or not context.condensed_prompt_text:
+        return
+
+    label = "View Condensed Prompt"
+    if hasattr(st, "popover"):
+        with st.popover(label, use_container_width=False):
+            st.caption(str(context.condensed_prompt_path))
+            st.text_area(
+                "Condensed prompt text",
+                value=context.condensed_prompt_text,
+                height=340,
+                label_visibility="collapsed",
+                key=f"condensed_prompt_text::{context.asset.character}::{context.asset.phase}::{context.asset.asset_id}",
+            )
+    else:
+        with st.expander(label):
+            st.caption(str(context.condensed_prompt_path))
+            st.text_area(
+                "Condensed prompt text",
+                value=context.condensed_prompt_text,
+                height=340,
+                label_visibility="collapsed",
+                key=f"condensed_prompt_text::{context.asset.character}::{context.asset.phase}::{context.asset.asset_id}",
+            )
+
+
+def prompt_review_asset_ids(assets) -> list[int]:
+    return [asset.asset_id for asset in assets if is_prompt_review_asset(asset)]
+
+
+def show_prompt_review_navigation(character: str, phase: str, asset_id: int, review_asset_ids: list[int]) -> None:
+    if not review_asset_ids:
+        st.caption("No other prompts are currently waiting for review.")
+        return
+
+    try:
+        index = review_asset_ids.index(asset_id)
+    except ValueError:
+        st.caption(f"{len(review_asset_ids)} prompt(s) are currently waiting for review.")
+        return
+
+    nav_col_1, nav_col_2, nav_col_3 = st.columns([1, 1, 3])
+    with nav_col_1:
+        previous_clicked = st.button(
+            "Previous",
+            use_container_width=True,
+            disabled=index == 0,
+            key=f"prompt_review_previous::{character}::{phase}::{asset_id}",
+        )
+    with nav_col_2:
+        next_clicked = st.button(
+            "Next",
+            use_container_width=True,
+            disabled=index >= len(review_asset_ids) - 1,
+            key=f"prompt_review_next::{character}::{phase}::{asset_id}",
+        )
+    with nav_col_3:
+        st.caption(f"Review {index + 1} of {len(review_asset_ids)}")
+
+    target_asset_id = None
+    if previous_clicked:
+        target_asset_id = review_asset_ids[index - 1]
+    elif next_clicked:
+        target_asset_id = review_asset_ids[index + 1]
+
+    if target_asset_id is not None:
+        st.session_state[prompt_review_state_key(character, phase)] = target_asset_id
+        st.session_state[selection_state_key(character, phase)] = target_asset_id
+        st.query_params["page"] = "Prompt Review"
+        st.query_params["review_asset"] = str(target_asset_id)
+        st.query_params["selected_asset"] = str(target_asset_id)
+        st.rerun()
+
+
+def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | None, review_asset_ids: list[int] | None = None) -> None:
     st.subheader("Prompt Review")
+    review_asset_ids = review_asset_ids or []
+    if asset_id is None and review_asset_ids:
+        asset_id = review_asset_ids[0]
     if asset_id is None:
         st.info("Select a PROMPT_REVIEW asset from the Assets tab.")
         return
@@ -313,6 +466,7 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
         f'{asset.body_view} | {asset.pipeline_stage} | {asset.actor}</div>',
         unsafe_allow_html=True,
     )
+    show_prompt_review_navigation(character, phase, asset.asset_id, review_asset_ids)
 
     if not is_prompt_review_asset(asset):
         st.warning("This asset is not currently at PROMPT_REVIEW / HUMAN_AGENT.")
@@ -325,6 +479,10 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
         return
 
     st.caption(str(prompt_path))
+    show_condense_status(context.condense_status)
+    if context.condensed_prompt_path:
+        st.caption(f"Local renders will use condensed prompt: {context.condensed_prompt_path}")
+        show_condensed_prompt_popover(context)
     prompt_text = context.prompt_text or ""
 
     prompt_col, review_col = st.columns([1.35, 0.85], gap="large")
@@ -632,7 +790,7 @@ def main() -> None:
 
     if active_page == "Assets":
         st.subheader("Assets")
-        asset_rows = [asset_to_row(asset) for asset in assets]
+        asset_rows = [asset_to_row(asset, app) for asset in assets]
         selection_event = st.dataframe(
             asset_rows,
             use_container_width=True,
@@ -642,7 +800,7 @@ def main() -> None:
             column_config={
                 "pipeline_stage": st.column_config.LinkColumn(
                     "pipeline_stage",
-                    help="PROMPT_REVIEW links open the prompt review panel.",
+                    help="A camera icon means the review already has an image ready.",
                     display_text=r"stage=([^&]+)",
                 )
             },
@@ -702,7 +860,8 @@ def main() -> None:
                 st.rerun()
 
         disabled_reasons = action_disabled_reason(asset_ref)
-        action_columns = st.columns(7)
+        worker_ready_assets = [item for item in assets if asset_has_configured_worker(app, character, phase, item)]
+        action_columns = st.columns(6)
 
         with action_columns[0]:
             stage_ai_ask_clicked = st.button(
@@ -714,21 +873,19 @@ def main() -> None:
             run_worker_clicked = st.button(
                 "Run Current Worker",
                 use_container_width=True,
-                disabled=disabled_reasons["run_current_worker"] is not None,
+                disabled=not worker_ready_assets,
             )
         with action_columns[2]:
-            move_next_clicked = st.button("Move Next", use_container_width=True)
-        with action_columns[3]:
             run_housekeeping_clicked = st.button("Run Housekeeping", use_container_width=True)
-        with action_columns[4]:
+        with action_columns[3]:
             retry_ai_clicked = st.button(
                 "Retry AI",
                 use_container_width=True,
                 disabled=disabled_reasons["retry_ai"] is not None,
             )
-        with action_columns[5]:
+        with action_columns[4]:
             regenerate_clicked = st.button("Regenerate", use_container_width=True)
-        with action_columns[6]:
+        with action_columns[5]:
             promote_clicked = st.button(
                 "Promote to LOCKED",
                 use_container_width=True,
@@ -737,8 +894,8 @@ def main() -> None:
 
         if disabled_reasons["stage_ai_ask"]:
             st.caption(disabled_reasons["stage_ai_ask"])
-        if disabled_reasons["run_current_worker"]:
-            st.caption(disabled_reasons["run_current_worker"])
+        if not worker_ready_assets:
+            st.caption("No PYTHON assets have a configured worker ready to run.")
         if disabled_reasons["retry_ai"]:
             st.caption(disabled_reasons["retry_ai"])
         if disabled_reasons["promote_to_locked"]:
@@ -751,18 +908,12 @@ def main() -> None:
                 store_action_message("success", f"AI ask staged for Asset {selected_asset_id} at {ask_path}.")
                 st.rerun()
             if run_worker_clicked:
-                updated_asset = asset_ref.run_current_worker()
-                worker_name = app.asset_service.worker_service.last_worker_module_name or "unknown"
-                st.session_state[state_key] = updated_asset.asset_id
-                store_action_message(
-                    "success",
-                    f"Worker {worker_name} executed for Asset {updated_asset.asset_id}.",
-                )
-                st.rerun()
-            if move_next_clicked:
-                updated_asset = asset_ref.move_next()
-                st.session_state[state_key] = updated_asset.asset_id
-                store_action_message("success", f"Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
+                results = app.run_available_workers(character, phase)
+                level, message = worker_poll_message(results)
+                refreshed_ids = {item.asset_id for item in app.list_assets(character, phase)}
+                if selected_asset_id in refreshed_ids:
+                    st.session_state[state_key] = selected_asset_id
+                store_action_message(level, message)
                 st.rerun()
             if run_housekeeping_clicked:
                 pipeline_path = asset_ref.run_housekeeping()
@@ -848,7 +999,7 @@ def main() -> None:
 
     if active_page == "Prompt Review":
         review_asset_id = st.session_state.get(review_key) or st.session_state.get(state_key)
-        show_prompt_review(app, character, phase, review_asset_id)
+        show_prompt_review(app, character, phase, review_asset_id, prompt_review_asset_ids(assets))
 
     if active_page == "Template Editor":
         show_template_editor(config, character, phase)
@@ -865,6 +1016,14 @@ def main() -> None:
             monitor_clicked = st.button("Send Monitor Test", use_container_width=True)
         with ai_control_col_5:
             monitor_instruction = st.text_input(label = "", label_visibility="collapsed", placeholder="Optional note for workers")
+
+        if getattr(config, "ai_harvest_auto_enabled", True) and getattr(config, "ai_harvest_interval_seconds", 300) > 0:
+            st.caption(
+                f"Background auto harvest is configured for every {config.ai_harvest_interval_seconds} seconds. "
+                "Run run_auto_harvest.bat to keep it active."
+            )
+        else:
+            st.caption("Auto harvest is disabled.")
 
         try:
             if harvest_clicked:

@@ -23,9 +23,14 @@ class PromptReviewContext:
     asset: Asset
     prompt_path: Path | None
     prompt_text: str | None
+    condensed_prompt_path: Path | None
+    condensed_prompt_text: str | None
+    render_prompt_path: Path | None
+    render_prompt_text: str | None
     prompt_review_path: Path | None
     prompt_candidates: list[Path]
     latest_local_test_render: Path | None
+    condense_status: dict
 
 
 def is_prompt_review_asset(asset: Asset) -> bool:
@@ -50,15 +55,25 @@ class PromptReviewService:
         prompt_candidates = self.prompt_file_candidates(asset)
         prompt_path = self.resolve_prompt_file(asset, prompt_candidates)
         prompt_text = prompt_path.read_text(encoding="utf-8") if prompt_path else None
+        condensed_prompt_path = self.resolve_condensed_prompt_file(prompt_path) if prompt_path else None
+        condensed_prompt_text = condensed_prompt_path.read_text(encoding="utf-8") if condensed_prompt_path else None
+        render_prompt_path = condensed_prompt_path or prompt_path
+        render_prompt_text = condensed_prompt_text or prompt_text
         prompt_review_path = self.resolve_prompt_review_file(prompt_path) if prompt_path else None
         latest_render = self.latest_local_test_render(prompt_path) if prompt_path else None
+        condense_status = self.prompt_condense_status(asset, prompt_path, condensed_prompt_path)
         return PromptReviewContext(
             asset=asset,
             prompt_path=prompt_path,
             prompt_text=prompt_text,
+            condensed_prompt_path=condensed_prompt_path,
+            condensed_prompt_text=condensed_prompt_text,
+            render_prompt_path=render_prompt_path,
+            render_prompt_text=render_prompt_text,
             prompt_review_path=prompt_review_path,
             prompt_candidates=prompt_candidates,
             latest_local_test_render=latest_render,
+            condense_status=condense_status,
         )
 
     def prompt_file_candidates(self, asset: Asset) -> list[Path]:
@@ -82,6 +97,100 @@ class PromptReviewService:
         path = prompt_path.parent / "Prompt_Review.md"
         return path if path.exists() else None
 
+    def resolve_condensed_prompt_file(self, prompt_path: Path) -> Path | None:
+        path = prompt_path.parent / "Condensed_Image_Prompt.md"
+        return path if path.exists() and path.is_file() else None
+
+    def _read_json_if_exists(self, path: Path) -> dict:
+        if not path.exists() or not path.is_file():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _condense_answer_status(self, answer_path: Path) -> str:
+        harvest_manifest = self._read_json_if_exists(answer_path / "harvest_manifest.json")
+        if harvest_manifest:
+            return str(harvest_manifest.get("status") or "HARVESTED")
+        answer_manifest = self._read_json_if_exists(answer_path / "answer_manifest.json")
+        return str(answer_manifest.get("status") or "ANSWER_READY")
+
+    def _condense_queue_items(self, asset: Asset) -> list[dict]:
+        proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Ollama_Proxy"
+        roots = [
+            ("ASKED", proxy_root / "Ask"),
+            ("ANSWER", proxy_root / "Answer"),
+        ]
+        claimed_root = proxy_root / "Claimed"
+        if claimed_root.exists():
+            roots.extend((f"CLAIMED:{worker_dir.name}", worker_dir) for worker_dir in claimed_root.iterdir() if worker_dir.is_dir())
+
+        items: list[dict] = []
+        for state, root in roots:
+            if not root.exists():
+                continue
+            for ask_path in root.iterdir():
+                if not ask_path.is_dir():
+                    continue
+                manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
+                if manifest.get("asset_id") != asset.asset_id or manifest.get("task_type") != "prompt_condense":
+                    continue
+                item_state = self._condense_answer_status(ask_path) if state == "ANSWER" else state
+                items.append(
+                    {
+                        "state": item_state,
+                        "ask_id": manifest.get("ask_id") or ask_path.name,
+                        "attempt_id": manifest.get("ollama_attempt_id"),
+                        "worker_type": manifest.get("worker_type"),
+                        "model": manifest.get("ollama_model"),
+                        "path": ask_path,
+                        "updated_at": ask_path.stat().st_mtime,
+                    }
+                )
+        items.sort(key=lambda item: item["updated_at"], reverse=True)
+        return items
+
+    def prompt_condense_status(
+        self,
+        asset: Asset,
+        prompt_path: Path | None,
+        condensed_prompt_path: Path | None,
+    ) -> dict:
+        enabled = bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
+        model = str(getattr(self.path_service.config, "prompt_condense_model", ""))
+        queue_items = self._condense_queue_items(asset)
+        latest_queue_item = queue_items[0] if queue_items else None
+        condensed_exists = condensed_prompt_path is not None
+        condensed_current = False
+        if prompt_path is not None and condensed_prompt_path is not None:
+            condensed_current = condensed_prompt_path.stat().st_mtime >= prompt_path.stat().st_mtime
+
+        if latest_queue_item is not None and latest_queue_item["state"] in {"ASKED", "ANSWER_READY", "SUCCESS"}:
+            state = latest_queue_item["state"]
+        elif latest_queue_item is not None and str(latest_queue_item["state"]).startswith("CLAIMED:"):
+            state = latest_queue_item["state"]
+        elif condensed_exists and condensed_current:
+            state = "READY"
+        elif condensed_exists:
+            state = "STALE"
+        elif enabled:
+            state = "NOT_CREATED"
+        else:
+            state = "DISABLED"
+
+        return {
+            "enabled": enabled,
+            "model": model,
+            "state": state,
+            "condensed_exists": condensed_exists,
+            "condensed_current": condensed_current,
+            "condensed_prompt_path": condensed_prompt_path,
+            "latest_queue_item": latest_queue_item,
+            "queue_items": queue_items,
+        }
+
     def latest_local_test_render(self, prompt_path: Path) -> Path | None:
         render_dir = prompt_path.parent / "Local_Test_Renders"
         if not render_dir.exists():
@@ -97,12 +206,12 @@ class PromptReviewService:
 
     def generate_local_test_render(self, character: str, phase: str, asset_id: int) -> LocalRenderResult:
         context = self.get_context(character, phase, asset_id)
-        if context.prompt_path is None:
+        if context.render_prompt_path is None:
             raise FileNotFoundError(f"No prompt file was found for asset {asset_id}.")
         return render_image(
             project_root=self.project_root,
-            final_prompt_path=context.prompt_path,
-            job_output_dir=context.prompt_path.parent,
+            final_prompt_path=context.render_prompt_path,
+            job_output_dir=context.render_prompt_path.parent,
             prompt_review_path=context.prompt_review_path,
         )
 

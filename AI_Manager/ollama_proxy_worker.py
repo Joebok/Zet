@@ -42,6 +42,11 @@ def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def log(message: str, *, error: bool = False) -> None:
+    stream = sys.stderr if error else sys.stdout
+    print(f"{now_iso()} {message}", file=stream, flush=True)
+
+
 def read_json(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -131,6 +136,12 @@ def ensure_dirs(proxy_root: Path, worker_id: str) -> dict[str, Path]:
     for path in dirs.values():
         ensure_directory(path)
     return dirs
+
+
+def normalize_proxy_root(path: Path) -> Path:
+    if path.name != "Ollama_Proxy" and (path.name == "AI_Queue" or (path / "Ollama_Proxy").exists()):
+        return path / "Ollama_Proxy"
+    return path
 
 
 def stop_manifest_path(dirs: dict[str, Path]) -> Path:
@@ -414,6 +425,7 @@ def claim_one(dirs: dict[str, Path], worker_id: str) -> Path | None:
                 shutil.rmtree(ask, ignore_errors=True)
             except Exception:
                 pass
+            log(f"CLAIMED {ask.name} -> {dest}")
             return dest
         except Exception:
             try:
@@ -524,6 +536,14 @@ def process_claimed(
     }
 
     t0 = time.time()
+    log(
+        "START "
+        f"{folder.name} ask_id={job_id} asset_id={asset_id} "
+        f"worker_type={ask_manifest.get('worker_type') or ''} "
+        f"task_type={ask_manifest.get('task_type') or ''} "
+        f"model={model} prompt_file={prompt_file or '<blank>'} "
+        f"expected_output={expected_output or '<blank>'}"
+    )
     try:
         if not prompt_file or not (folder / prompt_file).exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
@@ -553,11 +573,12 @@ def process_claimed(
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
         dest = move_to_answer(folder, dirs)
-        print(f"SUCCESS {folder.name} -> {dest}")
+        log(f"DONE SUCCESS {folder.name} -> {dest} elapsed={answer_manifest['elapsed_seconds']}s")
         return "SUCCESS"
     except TransientOllamaConnectionError as exc:
         if return_transient_to_ask:
             release_claim_to_ask(folder, dirs, worker_id, str(exc))
+            log(f"DONE RETRY_LATER {folder.name}: {exc}", error=True)
             return "RETRY_LATER"
 
         answer_manifest["status"] = "RETRY_LATER"
@@ -568,7 +589,11 @@ def process_claimed(
         try:
             write_json(folder / "answer_manifest.json", answer_manifest)
             dest = move_to_answer(folder, dirs)
-            print(f"RETRY_LATER {folder.name} -> {dest}: {exc}", file=sys.stderr)
+            log(
+                f"DONE RETRY_LATER {folder.name} -> {dest} "
+                f"elapsed={answer_manifest['elapsed_seconds']}s: {exc}",
+                error=True,
+            )
         except Exception:
             try:
                 shutil.move(str(folder), str(dirs["failed"] / folder.name))
@@ -584,7 +609,11 @@ def process_claimed(
         try:
             write_json(folder / "answer_manifest.json", answer_manifest)
             dest = move_to_answer(folder, dirs)
-            print(f"ERROR {folder.name} -> {dest}: {exc}", file=sys.stderr)
+            log(
+                f"DONE ERROR {folder.name} -> {dest} "
+                f"elapsed={answer_manifest['elapsed_seconds']}s: {exc}",
+                error=True,
+            )
         except Exception:
             try:
                 shutil.move(str(folder), str(dirs["failed"] / folder.name))
@@ -609,10 +638,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-jobs", type=int, default=None, help="Process at most N asks and exit")
     args = parser.parse_args(argv)
 
-    proxy_root = Path(args.proxy_root).expanduser().resolve()
+    proxy_root = normalize_proxy_root(Path(args.proxy_root).expanduser()).resolve()
     dirs = ensure_dirs(proxy_root, args.worker_id)
     processed = 0
-    print(f"Worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")
+    log(f"Worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")
 
     while True:
         process_monitor_tests(dirs, args.worker_id, args.ollama_url)
