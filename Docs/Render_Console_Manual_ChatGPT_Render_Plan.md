@@ -252,13 +252,22 @@ Completed in commit after Milestone 0:
 - Existing local image render remains available when backend is not `manual_chatgpt`.
 - Smoke check verified manifest generation and condensed prompt selection.
 
-### Milestone 2 - Render Console Skeleton
+### Milestone 2 - Render Console Skeleton - Complete
 
 - Add FastAPI app.
 - Add minimal HTML page.
 - Load config and queue root.
 - List pending `manual_chatgpt_render` asks.
 - Show current task with Previous / Next navigation.
+
+Completed:
+
+- Added `zet/render_console`.
+- Added FastAPI app skeleton.
+- Added queue reader for pending `manual_chatgpt_render` asks.
+- Added minimal HTML/JS/CSS console with Previous / Next navigation.
+- Added `run_render_console.bat`.
+- Added `fastapi` and `uvicorn` to requirements.
 
 ### Milestone 3 - Prompt And Reference Console
 

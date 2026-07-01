@@ -23,6 +23,10 @@ class Config:
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
+    render_console_host: str = "127.0.0.1"
+    render_console_port: int = 8090
+    render_console_require_token: bool = False
+    render_console_token: str = ""
 
 
 class ConfigService:
@@ -67,6 +71,11 @@ class ConfigService:
         return render if isinstance(render, dict) else {}
 
     @staticmethod
+    def _render_console_config(payload: dict) -> dict:
+        render_console = payload.get("RenderConsole", {})
+        return render_console if isinstance(render_console, dict) else {}
+
+    @staticmethod
     def load(config_path: str | Path) -> Config:
         path = Path(config_path)
         if not path.exists():
@@ -82,6 +91,7 @@ class ConfigService:
             local_render = ConfigService._local_render_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
+            render_console = ConfigService._render_console_config(payload)
             return Config(
                 base_character_path=ConfigService._normalize_path_value(base_folders["BaseCharacterPath"]),
                 base_asset_path=ConfigService._normalize_path_value(base_folders["BaseAssetPath"]),
@@ -97,6 +107,10 @@ class ConfigService:
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),
+                render_console_host=str(render_console.get("Host", "127.0.0.1")),
+                render_console_port=int(render_console.get("Port", 8090)),
+                render_console_require_token=bool(render_console.get("RequireToken", False)),
+                render_console_token=str(render_console.get("Token", "")),
             )
         except Exception as exc:
             raise ConfigServiceError(f"Config file is missing required BaseFolders entries: {path}") from exc

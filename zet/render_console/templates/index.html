@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zet Render Console</title>
+  <link rel="stylesheet" href="/static/render_console.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Render Console</h1>
+        <p id="task-count">Loading tasks...</p>
+      </div>
+      <button id="refresh-button" type="button">Refresh</button>
+    </header>
+
+    <section id="empty-state" class="empty" hidden>
+      <h2>No manual render tasks waiting.</h2>
+      <p>When Zet queues a ChatGPT manual render task, it will appear here.</p>
+    </section>
+
+    <section id="task-panel" class="task-panel" hidden>
+      <nav class="task-nav">
+        <button id="previous-button" type="button">Previous</button>
+        <span id="position-label"></span>
+        <button id="next-button" type="button">Next</button>
+      </nav>
+
+      <div class="details-grid">
+        <div>
+          <label>Ask</label>
+          <p id="ask-id"></p>
+        </div>
+        <div>
+          <label>Asset</label>
+          <p id="asset-label"></p>
+        </div>
+        <div>
+          <label>Pipeline</label>
+          <p id="pipeline-label"></p>
+        </div>
+        <div>
+          <label>Expected Output</label>
+          <p id="expected-output"></p>
+        </div>
+      </div>
+
+      <div class="prompt-toolbar">
+        <h2>Prompt</h2>
+        <button id="copy-prompt-button" type="button">Copy Prompt</button>
+      </div>
+      <textarea id="prompt-text" spellcheck="false"></textarea>
+    </section>
+  </main>
+  <script src="/static/render_console.js"></script>
+</body>
+</html>
