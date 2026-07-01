@@ -1,6 +1,6 @@
 # Compiled Sections
 
-Job ID: BodyRef_Tsaeytte_Adult_Front_Rebuild
+Job ID: BodyRef_Tsaeytte_Adult_Front_Refined5
 Task: body-reference
 Character: Tsaeytte
 Phase: Adult
@@ -31,7 +31,7 @@ View Token: FRONT
 * Apparent age: young adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, inverted triangle figure, shoulders wider than hips, narrow waist.
+* Core silhouette: compact elven frame, narrow-to-moderate softly sloped shoulders, slim waist, balanced hips, long slim legs.
 
 # BODY_DESCRIPTION_FACTS
 
@@ -42,7 +42,7 @@ View Token: FRONT
 * Shoulder shape: narrow-to-moderate, softly sloped, refined rather than broad.
 * Torso shape: slim waist, gentle hourglass, compact ribcage, visible but not exaggerated abdomen.
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
-* Hand shape: small, elegant hands with long fingers suitable for spellcasting gestures.
+* Hand shape: small, elegant hands with long fingers.
 * Hip/leg proportions: slim hips, long tapered legs, knees and ankles cleanly articulated; legs should not become thick or overly muscular.
 * Foot stance: feet generally placed under her center of balance unless the requested pose indicates motion.
 * Movement baseline: quick, buoyant, agile, and expressive; motion often leads with head, eyes, hands, or a light forward step.
@@ -52,38 +52,36 @@ View Token: FRONT
 Body preservation rules:
 
 * Preserve petite, lithe, graceful adult build with light athletic tone.
-* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso
-* Preserve her buoyant, alert, expressive posture and quick movement identity.
+* Preserve the short-to-average height impression, narrow-to-moderate shoulders, slim waist, compact torso, balanced hips, and long slim legs.
+* Preserve her buoyant, alert, expressive posture without turning the pose into action or performance.
 * Do not alter body type to match generic fantasy archetypes such as bulky warrior, exaggerated pin-up, childlike waif, or heavy stocky adventurer.
 
 # FITMENT_RENDERING_RULES
 
-Use these rules for body-reference, head-fitment, costume-fitment, turnaround, and other technical reference jobs.
-
-Reference rendering priorities:
+Rendering priorities:
 
 * Neutral, readable pose.
 * Clear silhouette.
+* Full body visible.
+* Feet visible.
 * No dramatic lighting.
-* No narrative scene unless explicitly requested.
-* No emotional acting unless explicitly requested.
-* No unnecessary props.
+* No narrative scene.
+* No emotional acting.
+* Uncluttered image.
 * Preserve scale and proportions.
 * Preserve requested view angle.
 
 # TECHNICAL_MODESTY_LAYER
 
-For technical fitment and reference stages, use an opaque, matte, neutral technical fitment shell or equivalent non-sensual reference covering.
+For body-reference, use a plain tank top and shorts.
 
-The fitment layer should be:
+Fitment clothing rules:
 
-* Opaque.
-* Matte.
-* Neutral in color.
-* Clearly a technical visualization layer.
-* Non-sensual.
-* Non-revealing.
-* Suitable for body proportion, head attachment, costume planning, and reference alignment.
+* Plain opaque matte neutral tank top and shorts.
+* Non-sensual, non-revealing coverage.
+* Simple garment edges.
+* Minimal detail.
+* Readable body silhouette.
 
 # NEGATIVE_GUIDANCE_GENERAL
 
@@ -97,25 +95,19 @@ Avoid:
 * Incorrect hair length, texture, or silhouette.
 * Missing chin-length inward-hooking black bob.
 * Incorrect eye color.
-* Incorrect left/right equipment placement.
-* Dagger on the left hip instead of anatomical right.
-* Pouches, flask, or scroll case moved to the right side.
 * Overly ornate redesign unless requested.
-* Unrequested costume changes, armor, cape, straps, modern clothing, long gown, or different color palette.
+* Armor, cape, modern clothing, long gown, or ornate costume redesign.
 * Unrequested weapons or props.
 * Dramatic pose when a technical pose is requested.
 * Narrative acting when a neutral reference is requested.
-* Hiding the face, eyes, ears, hair silhouette, belt gear, or costume identity anchors.
+* Hiding the face, eyes, ears, or hair silhouette.
 
 # BODY_DESCRIPTION_VIEW_FRONT
 
-* Front view body should read as petite and symmetrical, with wide shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Front view body should read as petite and symmetrical, with narrow-to-moderate softly sloped shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
 
 # NEGATIVE_GUIDANCE_JOB_SPECIFIC
 
-* For body-reference: avoid facial emotion, costume details, dramatic scene lighting, and body-type drift; preserve petite lithe adult proportions.
-* For head-fitment: avoid changing facial identity, violet eye color, hair silhouette, ear shape, ear visibility, or neck alignment.
-* For costume-fitment: avoid changing body proportions to fit the costume; costume must adapt to Tsaeytte, not the reverse.
-* For turnaround: avoid pose variation between views; keep proportions, hair, ears, equipment placement, and costume silhouette consistent.
-* For expression sheets: avoid changing identity to exaggerate expression; preserve face shape, eyes, ears, hair, and age.
-* For narrative scenes: avoid letting scenery, crowds, props, or lighting obscure Tsaeytte's identity anchors.
+* Avoid facial emotion, costume details, dramatic scene lighting, and body-type drift.
+* Preserve petite, lithe adult proportions.
+* Do not add weapons, props, jewelry, or decorative accessories.

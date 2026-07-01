@@ -4,11 +4,10 @@
     "body_reference_prompt_review_v1": {
       "required_phrases": [
         "full-body technical body-reference",
-        "neutral technical reference image",
-        "plain studio background",
-        "even lighting",
-        "full body must be visible",
-        "technical fitment shell"
+        "plain neutral studio background",
+        "Even studio lighting",
+        "Entire body visible",
+        "tank top and shorts"
       ],
       "forbidden_phrases": [
         "picaresque",

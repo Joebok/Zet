@@ -157,7 +157,7 @@ Reviewed At:
 - [ ] Prompt includes requested view token and plain-language view instruction.
 - [ ] Prompt includes body facts.
 - [ ] Prompt includes identity/body preservation rules.
-- [ ] Prompt includes technical fitment shell.
+- [ ] Prompt includes plain tank top and shorts fitment clothing.
 - [ ] Prompt avoids costume sections.
 - [ ] Prompt avoids picaresque/flavor sections.
 - [ ] Prompt avoids narrative scene instructions.

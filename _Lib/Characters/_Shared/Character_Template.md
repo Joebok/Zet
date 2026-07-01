@@ -830,16 +830,16 @@ Costume preservation rules:
 
 <!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
 
-Use these rules for body-reference, head-fitment, costume-fitment, turnaround, and other technical reference jobs.
-
-Reference rendering priorities:
+Rendering priorities:
 
 * Neutral, readable pose.
 * Clear silhouette.
+* Full body visible when the job requests full body.
+* Feet visible when the job requests full body.
 * No dramatic lighting.
-* No narrative scene unless explicitly requested.
-* No emotional acting unless explicitly requested.
-* No unnecessary props.
+* No narrative scene.
+* No emotional acting.
+* Uncluttered image.
 * Preserve scale and proportions.
 * Preserve requested view angle.
 
@@ -849,17 +849,15 @@ Reference rendering priorities:
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 
-For technical fitment and reference stages, use an opaque, matte, neutral technical fitment shell or equivalent non-sensual reference covering.
+For body-reference, use `[plain tank top and shorts / preferred neutral fitment clothing]`.
 
-The fitment layer should be:
+Fitment clothing rules:
 
-* Opaque.
-* Matte.
-* Neutral in color.
-* Clearly a technical visualization layer.
-* Non-sensual.
-* Non-revealing.
-* Suitable for body proportion, head attachment, costume planning, and reference alignment.
+* Plain opaque matte neutral tank top and shorts.
+* Non-sensual, non-revealing coverage.
+* Simple garment edges.
+* Minimal detail.
+* Readable body silhouette.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER -->
 

@@ -21,6 +21,8 @@ DEFAULT_NEGATIVE_PROMPT = (
     "dramatic lighting, narrative background, props, weapons"
 )
 
+NEGATIVE_SECTION_MARKER = "Negative constraints:"
+
 
 class LocalRenderError(Exception):
     pass
@@ -184,6 +186,7 @@ def inject_preview_values(
     api_prompt: dict[str, Any],
     positive_prompt: str,
     preset: dict[str, Any],
+    negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
 ) -> None:
     seed = preset.get("seed", "random")
     if str(seed).lower() == "random":
@@ -194,7 +197,7 @@ def inject_preview_values(
             if node.get("class_type") != "KSampler":
                 continue
             inputs = node.get("inputs", {})
-            for input_name, text in (("positive", positive_prompt), ("negative", DEFAULT_NEGATIVE_PROMPT)):
+            for input_name, text in (("positive", positive_prompt), ("negative", negative_prompt)):
                 link = inputs.get(input_name)
                 if isinstance(link, list) and link:
                     clip_node = api_prompt.get(str(link[0]))
@@ -208,7 +211,7 @@ def inject_preview_values(
             if positive_node:
                 api_prompt[str(positive_node["id"])]["inputs"]["text"] = positive_prompt
             if negative_node:
-                api_prompt[str(negative_node["id"])]["inputs"]["text"] = DEFAULT_NEGATIVE_PROMPT
+                api_prompt[str(negative_node["id"])]["inputs"]["text"] = negative_prompt
 
     for node_id, node in api_prompt.items():
         class_type = node.get("class_type")
@@ -225,6 +228,14 @@ def inject_preview_values(
                 inputs["seed"] = seed
         if class_type == "SaveImage" and "filename_prefix" in inputs:
             inputs["filename_prefix"] = "Zet_Local_Test"
+
+
+def split_positive_negative_prompt(prompt_text: str) -> tuple[str, str]:
+    if NEGATIVE_SECTION_MARKER not in prompt_text:
+        return prompt_text, DEFAULT_NEGATIVE_PROMPT
+    positive, negative = prompt_text.split(NEGATIVE_SECTION_MARKER, 1)
+    negative_parts = [negative.strip(), DEFAULT_NEGATIVE_PROMPT]
+    return positive.rstrip(), "\n\n".join(part for part in negative_parts if part)
 
 
 def sampler_settings(api_prompt: dict[str, Any]) -> dict[str, Any]:
@@ -337,9 +348,10 @@ def render_preview(
     server_url = str(preset.get("server_url", "http://127.0.0.1:8188"))
     workflow_path = project_root / str(preset["workflow_file"])
     prompt_text = final_prompt_path.read_text(encoding="utf-8")
+    positive_prompt, negative_prompt = split_positive_negative_prompt(prompt_text)
     workflow = _read_json(workflow_path)
     api_prompt = workflow_to_api_prompt(workflow)
-    inject_preview_values(workflow, api_prompt, prompt_text, preset)
+    inject_preview_values(workflow, api_prompt, positive_prompt, preset, negative_prompt)
     settings = sampler_settings(api_prompt)
 
     prompt_id = queue_prompt(server_url, api_prompt)
