@@ -3,6 +3,7 @@ from datetime import datetime
 import html
 import json
 from pathlib import Path
+import re
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -14,13 +15,13 @@ import streamlit.components.v1 as components
 
 from zet.app import ZetApp
 from zet.services.config_service import ConfigService, ConfigServiceError
+from zet.services.prompt_review_service import LocalRenderUnavailable, PromptReviewService, is_prompt_review_asset
 
 SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
 from Template_Section_Editor import load_bundles, load_editor_sections, list_pipeline_names, save_template_sections
-from Local_Render_Adapters.comfyui_adapter import LocalRenderUnavailable, render_preview
 
 
 def format_value(value):
@@ -70,10 +71,6 @@ def discover_phases(base_character_path: str, character: str) -> list[str]:
     return sorted(path.name for path in root.iterdir() if path.is_dir())
 
 
-def is_prompt_review_asset(asset) -> bool:
-    return asset.pipeline_stage == "PROMPT_REVIEW" and asset.actor == "HUMAN_AGENT"
-
-
 def asset_to_row(asset) -> dict:
     stage_url = f"?page=Assets&selected_asset={asset.asset_id}&stage={asset.pipeline_stage}"
     if is_prompt_review_asset(asset):
@@ -119,6 +116,10 @@ def prompt_review_state_key(character: str, phase: str) -> str:
 
 def dashboard_page_state_key(character: str, phase: str) -> str:
     return f"dashboard_page::{character}::{phase}"
+
+
+def pending_dashboard_page_state_key(character: str, phase: str) -> str:
+    return f"pending_dashboard_page::{character}::{phase}"
 
 
 def handled_review_query_state_key(character: str, phase: str) -> str:
@@ -179,50 +180,44 @@ def load_text_if_exists(path: Path) -> str | None:
     return path.read_text(encoding="utf-8")
 
 
-def view_folder_for_asset(asset) -> str:
-    views = load_view_options()
-    for view in views.values():
-        if not isinstance(view, dict):
-            continue
-        if asset.body_view in {view.get("folder_name"), view.get("output_name_fragment")}:
-            return str(view.get("folder_name"))
-    return str(asset.body_view).replace("-", "_")
+def prompt_review_service_for_app(app: ZetApp) -> PromptReviewService:
+    service = getattr(app, "prompt_review_service", None)
+    if service is None:
+        service = PromptReviewService(app.asset_repository, app.asset_service, app.path_service)
+        app.prompt_review_service = service
+    return service
 
 
-def prompt_file_candidates(app: ZetApp, asset) -> list[Path]:
-    pipeline_path = app.path_service.pipeline_path(asset)
-    character_path = app.path_service.character_path(asset.character, asset.phase)
-    view_folder = view_folder_for_asset(asset)
-    return [
-        pipeline_path / "Final_Image_Prompt.md",
-        pipeline_path / "OLLAMA_PROMPT.md",
-        character_path / "Body_Reference" / view_folder / "Final_Image_Prompt.md",
-        character_path / "Body_Reference" / str(asset.body_view) / "Final_Image_Prompt.md",
-    ]
+def search_terms_from_query(query: str) -> list[str]:
+    return [term.strip() for term in query.split(",") if term.strip()]
 
 
-def resolve_prompt_file(app: ZetApp, asset) -> Path | None:
-    for path in prompt_file_candidates(app, asset):
-        if path.exists() and path.is_file():
-            return path
-    return None
+def highlighted_prompt_html(prompt_text: str, search_terms: list[str]) -> tuple[str, int]:
+    if not search_terms:
+        return html.escape(prompt_text), 0
+
+    pattern = re.compile("|".join(re.escape(term) for term in search_terms), re.IGNORECASE)
+    count = 0
+    pieces: list[str] = []
+    cursor = 0
+    for match in pattern.finditer(prompt_text):
+        count += 1
+        pieces.append(html.escape(prompt_text[cursor:match.start()]))
+        pieces.append(f"<mark>{html.escape(match.group(0))}</mark>")
+        cursor = match.end()
+    pieces.append(html.escape(prompt_text[cursor:]))
+    return "".join(pieces), count
 
 
-def resolve_prompt_review_file(prompt_path: Path) -> Path | None:
-    path = prompt_path.parent / "Prompt_Review.md"
-    return path if path.exists() else None
-
-
-def latest_local_test_render(prompt_path: Path) -> Path | None:
-    render_dir = prompt_path.parent / "Local_Test_Renders"
-    if not render_dir.exists():
-        return None
-    images = sorted(render_dir.glob("test_*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
-    return images[0] if images else None
-
-
-def show_copyable_prompt(prompt_text: str) -> None:
+def show_copyable_prompt(prompt_text: str, search_query: str = "") -> None:
     prompt_json = json.dumps(prompt_text)
+    search_terms = search_terms_from_query(search_query)
+    prompt_html, match_count = highlighted_prompt_html(prompt_text, search_terms)
+    if search_query.strip():
+        if match_count:
+            st.caption(f"{match_count} match(es) for: {', '.join(search_terms)}")
+        else:
+            st.warning(f"No matches for: {', '.join(search_terms)}")
     components.html(
         f"""
         <style>
@@ -268,10 +263,16 @@ def show_copyable_prompt(prompt_text: str) -> None:
             white-space: pre-wrap;
             word-break: normal;
         }}
+        mark {{
+            background: #fde68a;
+            color: #111827;
+            border-radius: 0.15rem;
+            padding: 0.02rem 0.08rem;
+        }}
         </style>
         <div class="prompt-shell">
           <button class="copy-link" type="button" onclick="copyPrompt()">copy</button>
-          <pre>{html.escape(prompt_text)}</pre>
+          <pre>{prompt_html}</pre>
         </div>
         <script>
         const promptText = {prompt_json};
@@ -300,8 +301,9 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
         return
 
     try:
-        asset_ref = app.asset(character, phase, asset_id)
-        asset = asset_ref.get()
+        prompt_review_service = prompt_review_service_for_app(app)
+        context = prompt_review_service.get_context(character, phase, asset_id)
+        asset = context.asset
     except Exception as exc:
         st.error(str(exc))
         return
@@ -316,30 +318,30 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
         st.warning("This asset is not currently at PROMPT_REVIEW / HUMAN_AGENT.")
         return
 
-    prompt_path = resolve_prompt_file(app, asset)
+    prompt_path = context.prompt_path
     if prompt_path is None:
         st.error("No prompt file was found for this asset.")
-        st.table([path_row("Candidate", path) for path in prompt_file_candidates(app, asset)])
+        st.table([path_row("Candidate", path) for path in context.prompt_candidates])
         return
 
     st.caption(str(prompt_path))
-    prompt_text = prompt_path.read_text(encoding="utf-8")
+    prompt_text = context.prompt_text or ""
 
     prompt_col, review_col = st.columns([1.35, 0.85], gap="large")
     with prompt_col:
-        show_copyable_prompt(prompt_text)
+        search_query = st.text_input(
+            "Search prompt",
+            placeholder="Search terms, comma-separated",
+            key=f"prompt_search::{character}::{phase}::{asset.asset_id}",
+        )
+        show_copyable_prompt(prompt_text, search_query)
 
     with review_col:
         if asset.pipeline == "Body-Reference":
             if st.button("Generate Local Test Image", use_container_width=True):
                 try:
                     with st.spinner("Generating local test image with ComfyUI..."):
-                        result = render_preview(
-                            project_root=PROJECT_ROOT,
-                            final_prompt_path=prompt_path,
-                            job_output_dir=prompt_path.parent,
-                            prompt_review_path=resolve_prompt_review_file(prompt_path),
-                        )
+                        result = prompt_review_service.generate_local_test_render(character, phase, asset.asset_id)
                     store_action_message("success", f"Local test image generated: {result.image_path}")
                     st.rerun()
                 except LocalRenderUnavailable:
@@ -347,7 +349,7 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
                 except Exception as exc:
                     st.error(str(exc))
 
-            latest_render = latest_local_test_render(prompt_path)
+            latest_render = context.latest_local_test_render
             if latest_render:
                 st.image(str(latest_render), caption="Latest local test render", use_container_width=True)
             else:
@@ -358,13 +360,19 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
 
     try:
         if approve_clicked:
-            updated_asset = asset_ref.approve_prompt_review()
+            updated_asset = prompt_review_service.approve(character, phase, asset.asset_id)
             st.session_state[selection_state_key(character, phase)] = updated_asset.asset_id
+            st.session_state[pending_dashboard_page_state_key(character, phase)] = "Assets"
+            st.query_params["page"] = "Assets"
+            st.query_params.pop("review_asset", None)
             store_action_message("success", f"Prompt approved. Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
             st.rerun()
         if fail_clicked:
-            updated_asset = asset_ref.fail_prompt_review()
+            updated_asset = prompt_review_service.fail(character, phase, asset.asset_id)
             st.session_state[selection_state_key(character, phase)] = updated_asset.asset_id
+            st.session_state[pending_dashboard_page_state_key(character, phase)] = "Assets"
+            st.query_params["page"] = "Assets"
+            st.query_params.pop("review_asset", None)
             store_action_message("error", f"Prompt failed. Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
             st.rerun()
     except Exception as exc:
@@ -571,8 +579,12 @@ def main() -> None:
     state_key = selection_state_key(character, phase)
     review_key = prompt_review_state_key(character, phase)
     page_key = dashboard_page_state_key(character, phase)
+    pending_page_key = pending_dashboard_page_state_key(character, phase)
     handled_review_key = handled_review_query_state_key(character, phase)
     page_options = ["Assets", "Prompt Review", "Template Editor", "AI Controls"]
+    pending_page = st.session_state.pop(pending_page_key, None)
+    if pending_page in page_options:
+        st.session_state[page_key] = pending_page
     query_page = st.query_params.get("page")
     if query_page in page_options and page_key not in st.session_state:
         st.session_state[page_key] = query_page
@@ -684,7 +696,7 @@ def main() -> None:
         if is_prompt_review_asset(asset):
             if st.button("Open Prompt Review", use_container_width=True):
                 st.session_state[review_key] = asset.asset_id
-                st.session_state[page_key] = "Prompt Review"
+                st.session_state[pending_page_key] = "Prompt Review"
                 st.query_params["page"] = "Prompt Review"
                 st.query_params["review_asset"] = str(asset.asset_id)
                 st.rerun()

@@ -110,17 +110,15 @@ Recommended usage:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_FACTS -->
 
-* Build: petite, lithe, graceful, lightly athletic; slim limbs with natural strength rather than bulky musculature.
-* Height impression: short-to-average for an elf, visually petite beside most adult adventurers.
-* Proportions: elegant high-elf proportions with long limbs, narrow waist, modest shoulders, and balanced hips; avoid heavy thighs or stocky proportions.
+* Build: petite, lithe, graceful, lightly athletic; slim limbs
+* Height impression: short-to-average
+* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders, and narrow hips
 * Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
-* Shoulder shape: narrow-to-moderate, softly sloped, refined rather than broad.
-* Torso shape: slim waist, gentle hourglass, compact ribcage, visible but not exaggerated abdomen.
+* Shoulder shape: wide, softly sloped
+* Torso shape: slim waist, inverted triangle figure
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
 * Hand shape: small, elegant hands with long fingers.
-* Hip/leg proportions: slim hips, long tapered legs, knees and ankles cleanly articulated; legs should not become thick or overly muscular.
-* Foot stance: feet generally placed under her center of balance unless the requested pose indicates motion.
-* Movement baseline: quick, buoyant, agile, and expressive; motion often leads with head, eyes, hands, or a light forward step.
+* Hip/leg proportions: slim hips, long tapered legs, knees and ankles cleanly articulated
 
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
@@ -128,7 +126,7 @@ Recommended usage:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
 
-* Front view body should read as petite and symmetrical, with narrow-to-moderate softly sloped shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
 
@@ -697,12 +695,11 @@ Rendering priorities:
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 
-For body-reference, use a plain tank top and shorts.
+For body-reference, use form-fitting plain tank top and compression shorts.
 
 Fitment clothing rules:
 
 * Plain opaque matte neutral tank top and shorts.
-* Non-sensual, non-revealing coverage.
 * Simple garment edges.
 * Minimal detail.
 * Readable body silhouette.
@@ -750,17 +747,9 @@ Avoid:
 * Generic replacement face.
 * Wrong age phase.
 * Wrong species markers.
-* Missing, hidden, rounded, or human ears when elf ears should be visible.
-* Incorrect body type: bulky, stocky, heavy-thighed, childlike, or exaggerated pin-up proportions.
-* Incorrect hair length, texture, or silhouette.
-* Missing chin-length inward-hooking black bob.
-* Incorrect eye color.
-* Overly ornate redesign unless requested.
-* Armor, cape, modern clothing, long gown, or ornate costume redesign.
-* Unrequested weapons or props.
-* Dramatic pose when a technical pose is requested.
-* Narrative acting when a neutral reference is requested.
-* Hiding the face, eyes, ears, or hair silhouette.
+* Missing, hidden, rounded, or human ears
+* Incorrect body type: bulky, stocky, heavy-thighed, childlike
+* Dramatic pose
 
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
 

@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-07-01T05:33:52",
+  "preset": "body-reference-preview",
+  "backend": "comfyui",
+  "server_url": "http://127.0.0.1:8188",
+  "workflow_file": "C:\\Users\\Joe\\Projects\\Zet\\Config\\Local_Render_Workflows\\body_reference_preview_comfyui-api.json",
+  "final_prompt": "_Lib\\Characters\\Tsaeytte\\Adult\\Body_Reference\\Front\\Final_Image_Prompt.md",
+  "prompt_id": "cee187e5-3a18-4eb6-a422-898cdc106328",
+  "comfyui_image": {
+    "filename": "Zet_Local_Test_00012_.png",
+    "subfolder": "",
+    "type": "output"
+  },
+  "local_image": "_Lib\\Characters\\Tsaeytte\\Adult\\Body_Reference\\Front\\Local_Test_Renders\\test_20260701_053352.png",
+  "settings": {
+    "width": 512,
+    "height": 768,
+    "steps": 24,
+    "cfg": 7.0,
+    "batch_size": 1,
+    "seed": 4164936019623751108
+  }
+}

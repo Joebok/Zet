@@ -11,6 +11,7 @@ from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.config_service import ConfigService
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
+from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
 
@@ -43,10 +44,16 @@ class AssetRef:
         return self._app.asset_service.move_next(self._character, self._phase, self._asset_id)
 
     def approve_prompt_review(self) -> Asset:
-        return self._app.asset_service.approve_prompt_review(self._character, self._phase, self._asset_id)
+        return self._app.prompt_review_service.approve(self._character, self._phase, self._asset_id)
 
     def fail_prompt_review(self, reason: str = "") -> Asset:
-        return self._app.asset_service.fail_prompt_review(self._character, self._phase, self._asset_id, reason)
+        return self._app.prompt_review_service.fail(self._character, self._phase, self._asset_id, reason)
+
+    def prompt_review_context(self) -> PromptReviewContext:
+        return self._app.prompt_review_service.get_context(self._character, self._phase, self._asset_id)
+
+    def generate_local_test_render(self):
+        return self._app.prompt_review_service.generate_local_test_render(self._character, self._phase, self._asset_id)
 
     def run_housekeeping(self) -> Path:
         return self._app.asset_service.run_housekeeping(self._character, self._phase, self._asset_id)
@@ -74,6 +81,7 @@ class ZetApp:
         asset_repository: AssetRepository,
         pipeline_repository: PipelineRepository,
         asset_service: AssetService,
+        prompt_review_service: PromptReviewService,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
     ):
@@ -81,6 +89,7 @@ class ZetApp:
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
+        self.prompt_review_service = prompt_review_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
 
@@ -120,11 +129,17 @@ class ZetApp:
             ai_proxy_service,
             ai_answer_harvester,
         )
+        prompt_review_service = PromptReviewService(
+            asset_repository,
+            asset_service,
+            path_service,
+        )
         app = cls(
             config,
             asset_repository,
             pipeline_repository,
             asset_service,
+            prompt_review_service,
             housekeeping_service,
             path_service,
         )
@@ -136,6 +151,18 @@ class ZetApp:
 
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
+
+    def prompt_review_context(self, character: str, phase: str, asset_id: int) -> PromptReviewContext:
+        return self.prompt_review_service.get_context(character, phase, asset_id)
+
+    def approve_prompt_review(self, character: str, phase: str, asset_id: int) -> Asset:
+        return self.prompt_review_service.approve(character, phase, asset_id)
+
+    def fail_prompt_review(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
+        return self.prompt_review_service.fail(character, phase, asset_id, reason)
+
+    def generate_local_test_render(self, character: str, phase: str, asset_id: int):
+        return self.prompt_review_service.generate_local_test_render(character, phase, asset_id)
 
     def harvest_ai_answers(self):
         return self.asset_service.harvest_ai_answers()
