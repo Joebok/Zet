@@ -19,7 +19,7 @@ Use this image only as a body proportion, fitment, silhouette, and reference-ali
 * Apparent age: young adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, sharp pointed ears, chin-length black bob, off-shoulder teal adventuring costume, high-low teal skirt, dark leggings, tall brown boots, broad brown belt, and small adventuring tools.
+* Core silhouette: compact elven frame, inverted triangle figure, shoulders wider than hips, narrow waist.
 
 * Build: petite, lithe, graceful, lightly athletic; slim limbs with natural strength rather than bulky musculature.
 * Height impression: short-to-average for an elf, visually petite beside most adult adventurers.
@@ -33,26 +33,12 @@ Use this image only as a body proportion, fitment, silhouette, and reference-ali
 * Foot stance: feet generally placed under her center of balance unless the requested pose indicates motion.
 * Movement baseline: quick, buoyant, agile, and expressive; motion often leads with head, eyes, hands, or a light forward step.
 
-* Front view body should read as petite and symmetrical, with narrow shoulders, slim waist, visible centered torso line, long slim legs under the high-low skirt opening, and balanced feet beneath the body.
-
-These rules should be included whenever the image must preserve character identity.
-
-Core identity anchors:
-
-* Soft heart-shaped adult elven face with delicate features and small pointed chin.
-* Large violet-purple almond eyes with anime-influenced proportions and bright expressive gaze.
-* Thick black tousled chin-length bob with inward-hooking face-framing ends.
-* Long pointed elf ears angled outward/upward; at least one ear or ear tip should be visible in most non-back views.
-* Petite, lithe, graceful adult build with narrow shoulders, slim waist, long slim legs, and light athletic movement.
-* Teal off-shoulder ruffled crop top, exposed midriff, high-low teal skirt, dark leggings, brown leather belt, and tall brown boots.
-* Signature jewelry: layered necklace with blue-violet pendant and matching dangling earrings; signature right-hip compact dagger plus left-side pouches/scroll case.
-
-The rendered character must be recognizably the same person across views, expressions, outfits, and rendering passes.
+* Front view body should read as petite and symmetrical, with wide shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
 
 Body preservation rules:
 
 * Preserve petite, lithe, graceful adult build with light athletic tone.
-* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso, and long slim legs.
+* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso
 * Preserve her buoyant, alert, expressive posture and quick movement identity.
 * Do not alter body type to match generic fantasy archetypes such as bulky warrior, exaggerated pin-up, childlike waif, or heavy stocky adventurer.
 

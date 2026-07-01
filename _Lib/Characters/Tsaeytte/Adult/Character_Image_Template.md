@@ -36,7 +36,7 @@ Recommended usage:
 * Apparent age: young adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, sharp pointed ears, chin-length black bob, off-shoulder teal adventuring costume, high-low teal skirt, dark leggings, tall brown boots, broad brown belt, and small adventuring tools.
+* Core silhouette: compact elven frame, inverted triangle figure, shoulders wider than hips, narrow waist.
 
 <!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
 
@@ -128,7 +128,7 @@ Recommended usage:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
 
-* Front view body should read as petite and symmetrical, with narrow shoulders, slim waist, visible centered torso line, long slim legs under the high-low skirt opening, and balanced feet beneath the body.
+* Front view body should read as petite and symmetrical, with wide shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
 
@@ -650,7 +650,7 @@ Ear preservation rules:
 Body preservation rules:
 
 * Preserve petite, lithe, graceful adult build with light athletic tone.
-* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso, and long slim legs.
+* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso
 * Preserve her buoyant, alert, expressive posture and quick movement identity.
 * Do not alter body type to match generic fantasy archetypes such as bulky warrior, exaggerated pin-up, childlike waif, or heavy stocky adventurer.
 

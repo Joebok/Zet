@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from zet.app import ZetApp
 from zet.services.config_service import ConfigService, ConfigServiceError
@@ -220,6 +221,78 @@ def latest_local_test_render(prompt_path: Path) -> Path | None:
     return images[0] if images else None
 
 
+def show_copyable_prompt(prompt_text: str) -> None:
+    prompt_json = json.dumps(prompt_text)
+    components.html(
+        f"""
+        <style>
+        body {{
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }}
+        .prompt-shell {{
+            position: relative;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.35rem;
+            color: #111827;
+            height: 720px;
+            overflow: auto;
+            padding: 2.6rem 1rem 1rem 1rem;
+            box-sizing: border-box;
+        }}
+        .copy-link {{
+            position: sticky;
+            top: 0;
+            float: right;
+            margin-top: -1.8rem;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.25rem;
+            color: #2563eb;
+            cursor: pointer;
+            font-size: 0.82rem;
+            line-height: 1;
+            padding: 0.35rem 0.55rem;
+            z-index: 2;
+        }}
+        .copy-link:hover {{
+            background: #eff6ff;
+        }}
+        pre {{
+            color: #111827;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: normal;
+        }}
+        </style>
+        <div class="prompt-shell">
+          <button class="copy-link" type="button" onclick="copyPrompt()">copy</button>
+          <pre>{html.escape(prompt_text)}</pre>
+        </div>
+        <script>
+        const promptText = {prompt_json};
+        async function copyPrompt() {{
+            const button = document.querySelector('.copy-link');
+            try {{
+                await navigator.clipboard.writeText(promptText);
+                button.textContent = 'copied';
+                setTimeout(() => button.textContent = 'copy', 1400);
+            }} catch (error) {{
+                button.textContent = 'copy failed';
+                setTimeout(() => button.textContent = 'copy', 1800);
+            }}
+        }}
+        </script>
+        """,
+        height=735,
+        scrolling=False,
+    )
+
+
 def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | None) -> None:
     st.subheader("Prompt Review")
     if asset_id is None:
@@ -251,49 +324,36 @@ def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | 
 
     st.caption(str(prompt_path))
     prompt_text = prompt_path.read_text(encoding="utf-8")
-    st.markdown(
-        f"""
-        <div class="zet-prompt-viewer">
-          <pre>{html.escape(prompt_text)}</pre>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    if asset.pipeline == "Body-Reference":
-        st.markdown("**Local Preview Render**")
-        preview_col_1, preview_col_2 = st.columns([1, 1])
-        with preview_col_1:
-            local_render_clicked = st.button("Generate Local Test Image", use_container_width=True)
-        with preview_col_2:
+    prompt_col, review_col = st.columns([1.35, 0.85], gap="large")
+    with prompt_col:
+        show_copyable_prompt(prompt_text)
+
+    with review_col:
+        if asset.pipeline == "Body-Reference":
+            if st.button("Generate Local Test Image", use_container_width=True):
+                try:
+                    with st.spinner("Generating local test image with ComfyUI..."):
+                        result = render_preview(
+                            project_root=PROJECT_ROOT,
+                            final_prompt_path=prompt_path,
+                            job_output_dir=prompt_path.parent,
+                            prompt_review_path=resolve_prompt_review_file(prompt_path),
+                        )
+                    store_action_message("success", f"Local test image generated: {result.image_path}")
+                    st.rerun()
+                except LocalRenderUnavailable:
+                    st.error("Local render backend unavailable.")
+                except Exception as exc:
+                    st.error(str(exc))
+
             latest_render = latest_local_test_render(prompt_path)
             if latest_render:
-                st.caption(str(latest_render))
+                st.image(str(latest_render), caption="Latest local test render", use_container_width=True)
+            else:
+                st.info("No local test render yet.")
 
-        if local_render_clicked:
-            try:
-                with st.spinner("Generating local test image with ComfyUI..."):
-                    result = render_preview(
-                        project_root=PROJECT_ROOT,
-                        final_prompt_path=prompt_path,
-                        job_output_dir=prompt_path.parent,
-                        prompt_review_path=resolve_prompt_review_file(prompt_path),
-                    )
-                store_action_message("success", f"Local test image generated: {result.image_path}")
-                st.rerun()
-            except LocalRenderUnavailable:
-                st.error("Local render backend unavailable.")
-            except Exception as exc:
-                st.error(str(exc))
-
-        latest_render = latest_local_test_render(prompt_path)
-        if latest_render:
-            st.image(str(latest_render), caption="Latest local test render", use_container_width=False)
-
-    review_col_1, review_col_2 = st.columns([1, 1])
-    with review_col_1:
         approve_clicked = st.button("Approve", type="primary", use_container_width=True)
-    with review_col_2:
         fail_clicked = st.button("Fail", use_container_width=True)
 
     try:

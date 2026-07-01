@@ -1,6 +1,6 @@
 # Prompt Review
 
-Job ID: BodyRef_Tsaeytte_Adult_Front
+Job ID: BodyRef_Tsaeytte_Adult_Front_Rebuild
 Task: body-reference
 Character: Tsaeytte
 Phase: Adult
@@ -46,6 +46,15 @@ Reviewed At:
 ## Notes
 ## Local Test Renders
 
-- 2026-06-30 22:52:31: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_225231.png`
-  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_225231.json`
-  - ComfyUI prompt id: `9e4541f4-b20e-4f20-b07b-1dcda31d8af3`
+- 2026-06-30 23:10:33: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231033.png`
+  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231033.json`
+  - ComfyUI prompt id: `de905847-88dd-458f-a7d1-f29da5507df4`
+- 2026-06-30 23:11:51: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231151.png`
+  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231151.json`
+  - ComfyUI prompt id: `b4e9b8a4-a716-4bb0-9030-32abea02f3b3`
+- 2026-06-30 23:12:25: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231225.png`
+  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231225.json`
+  - ComfyUI prompt id: `9e039baa-a1e1-4464-abb0-adafc2514042`
+- 2026-06-30 23:15:04: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231504.png`
+  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260630_231504.json`
+  - ComfyUI prompt id: `53893383-3e96-4c11-bf3e-a9cd9350e19a`

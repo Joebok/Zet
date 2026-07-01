@@ -1,6 +1,6 @@
 # Compiled Sections
 
-Job ID: BodyRef_Tsaeytte_Adult_Front
+Job ID: BodyRef_Tsaeytte_Adult_Front_Rebuild
 Task: body-reference
 Character: Tsaeytte
 Phase: Adult
@@ -10,7 +10,6 @@ View Token: FRONT
 
 - GENERAL_DESCRIPTION_FACTS
 - BODY_DESCRIPTION_FACTS
-- IDENTITY_PRESERVATION_CORE
 - IDENTITY_PRESERVATION_BODY
 - FITMENT_RENDERING_RULES
 - TECHNICAL_MODESTY_LAYER
@@ -32,7 +31,7 @@ View Token: FRONT
 * Apparent age: young adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, sharp pointed ears, chin-length black bob, off-shoulder teal adventuring costume, high-low teal skirt, dark leggings, tall brown boots, broad brown belt, and small adventuring tools.
+* Core silhouette: compact elven frame, inverted triangle figure, shoulders wider than hips, narrow waist.
 
 # BODY_DESCRIPTION_FACTS
 
@@ -48,28 +47,12 @@ View Token: FRONT
 * Foot stance: feet generally placed under her center of balance unless the requested pose indicates motion.
 * Movement baseline: quick, buoyant, agile, and expressive; motion often leads with head, eyes, hands, or a light forward step.
 
-# IDENTITY_PRESERVATION_CORE
-
-These rules should be included whenever the image must preserve character identity.
-
-Core identity anchors:
-
-* Soft heart-shaped adult elven face with delicate features and small pointed chin.
-* Large violet-purple almond eyes with anime-influenced proportions and bright expressive gaze.
-* Thick black tousled chin-length bob with inward-hooking face-framing ends.
-* Long pointed elf ears angled outward/upward; at least one ear or ear tip should be visible in most non-back views.
-* Petite, lithe, graceful adult build with narrow shoulders, slim waist, long slim legs, and light athletic movement.
-* Teal off-shoulder ruffled crop top, exposed midriff, high-low teal skirt, dark leggings, brown leather belt, and tall brown boots.
-* Signature jewelry: layered necklace with blue-violet pendant and matching dangling earrings; signature right-hip compact dagger plus left-side pouches/scroll case.
-
-The rendered character must be recognizably the same person across views, expressions, outfits, and rendering passes.
-
 # IDENTITY_PRESERVATION_BODY
 
 Body preservation rules:
 
 * Preserve petite, lithe, graceful adult build with light athletic tone.
-* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso, and long slim legs.
+* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso
 * Preserve her buoyant, alert, expressive posture and quick movement identity.
 * Do not alter body type to match generic fantasy archetypes such as bulky warrior, exaggerated pin-up, childlike waif, or heavy stocky adventurer.
 
@@ -126,7 +109,7 @@ Avoid:
 
 # BODY_DESCRIPTION_VIEW_FRONT
 
-* Front view body should read as petite and symmetrical, with narrow shoulders, slim waist, visible centered torso line, long slim legs under the high-low skirt opening, and balanced feet beneath the body.
+* Front view body should read as petite and symmetrical, with wide shoulders, slim waist, visible centered torso line, long slim legs, and balanced feet beneath the body.
 
 # NEGATIVE_GUIDANCE_JOB_SPECIFIC
 
