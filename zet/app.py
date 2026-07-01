@@ -42,6 +42,12 @@ class AssetRef:
     def move_next(self) -> Asset:
         return self._app.asset_service.move_next(self._character, self._phase, self._asset_id)
 
+    def approve_prompt_review(self) -> Asset:
+        return self._app.asset_service.approve_prompt_review(self._character, self._phase, self._asset_id)
+
+    def fail_prompt_review(self, reason: str = "") -> Asset:
+        return self._app.asset_service.fail_prompt_review(self._character, self._phase, self._asset_id, reason)
+
     def run_housekeeping(self) -> Path:
         return self._app.asset_service.run_housekeeping(self._character, self._phase, self._asset_id)
 

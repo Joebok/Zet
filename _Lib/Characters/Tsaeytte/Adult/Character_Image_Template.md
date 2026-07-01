@@ -1,10 +1,10 @@
 # Character Image Template
 
-Character Name: `[Character Name]`
-Character Phase: `[Adult / Youth / Variant / Costume Phase]`
-Species / Ancestry: `[Species]`
-Gender Presentation: `[Optional, non-sensitive rendering descriptor]`
-Canonical Art Style: `[Painterly semi-realistic, anime-influenced facial proportions, etc.]`
+Character Name: `[Tsaeytte]`
+Character Phase: `[Adult]`
+Species / Ancestry: `[High elf]`
+Gender Presentation: `[Feminine adult woman]`
+Canonical Art Style: `[Painterly semi-realistic fantasy illustration with anime-influenced facial proportions, large expressive eyes, refined linework, and warm parchment reference-sheet presentation]`
 
 ---
 
@@ -32,14 +32,11 @@ Recommended usage:
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 
-[Brief factual summary of the character without mood, story, or emotional interpretation.]
-
-Example stub:
-
-* `[Character Name]` is a `[species/ancestry]` `[role/class/archetype]`.
-* Apparent age: `[adult / young adult / etc.]`.
-* Overall visual impression: `[short factual description]`.
-* Canonical style: `[style]`.
+* Tsaeytte is an adult high-elf sorceress.
+* Apparent age: young adult.
+* Overall visual impression: petite, lithe, graceful, bright, and confident.
+* Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
+* Core silhouette: compact elven frame, sharp pointed ears, chin-length black bob, off-shoulder teal adventuring costume, high-low teal skirt, dark leggings, tall brown boots, broad brown belt, and small adventuring tools.
 
 <!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
 
@@ -47,65 +44,49 @@ Example stub:
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT -->
 
-Front view notes:
-
-* `[Any front-view-specific general information.]`
+* Front view should clearly establish her full identity: face, violet eyes, pointed ears, bob haircut, teal off-shoulder top, high-low skirt front, dark leggings, boots, belt, jewelry, and right-side dagger.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 view notes:
-
-* `[Any front-left 3/4-specific general information.]`
+* Front-left 3/4 view should preserve the same identity while showing depth through the torso, skirt layers, belt gear, and one prominent pointed ear.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 view notes:
-
-* `[Any front-right 3/4-specific general information.]`
+* Front-right 3/4 view should preserve the same identity while making the right hip dagger and near-side ear especially readable.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile view notes:
-
-* `[Any left-profile-specific general information.]`
+* Left profile should show the elegant elven facial profile, pointed ear, short bob silhouette, off-shoulder neckline, skirt cascade, and left-side belt gear.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile view notes:
-
-* `[Any right-profile-specific general information.]`
+* Right profile should show the elegant elven facial profile, pointed ear, short bob silhouette, off-shoulder neckline, skirt cascade, and right-side dagger.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 view notes:
-
-* `[Any back-left 3/4-specific general information.]`
+* Back-left 3/4 view should preserve her recognizable hair, ears, narrow back, off-shoulder costume back, high-low skirt length, boots, and rear-left belt gear.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 view notes:
-
-* `[Any back-right 3/4-specific general information.]`
+* Back-right 3/4 view should preserve her recognizable hair, ears, narrow back, off-shoulder costume back, high-low skirt length, boots, and rear-right dagger silhouette.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK -->
 
-Back view notes:
-
-* `[Any back-view-specific general information.]`
+* Back view should emphasize the rounded black bob at the nape, visible pointed ear tips when not fully covered, bare shoulders, fitted teal back, long rear skirt, belt, boots, and compact elven proportions.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK -->
 
@@ -115,13 +96,9 @@ Back view notes:
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_PICARESQUE -->
 
-[Flavor-rich description of the character’s presence, attitude, role in the world, or visual storytelling identity.]
-
-Example stub:
-
-* `[Character Name]` carries herself with `[personality impression]`.
-* Her visual presence suggests `[story/worldbuilding impression]`.
-* In narrative scenes, she should feel like `[dramatic or emotional anchor]`.
+* Tsaeytte carries herself like someone who meets danger with curiosity, wit, and a little theatrical sparkle.
+* Her visual presence suggests an elven adventurer-sorceress who is both charming and capable, with an expressive face and quick, buoyant movement.
+* In narrative scenes, she should feel like a bright emotional anchor: clever, alive, playful, and ready to act before anyone else has quite caught up.
 
 <!-- ZET:END GENERAL_DESCRIPTION_PICARESQUE -->
 
@@ -133,21 +110,17 @@ Example stub:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_FACTS -->
 
-[Technical body description. Use stable, measurable, non-sensational language.]
-
-Suggested fields:
-
-* Build:
-* Height impression:
-* Proportions:
-* Posture:
-* Shoulder shape:
-* Torso shape:
-* Arm shape:
-* Hand shape:
-* Hip/leg proportions:
-* Foot stance:
-* Movement baseline:
+* Build: petite, lithe, graceful, lightly athletic; slim limbs with natural strength rather than bulky musculature.
+* Height impression: short-to-average for an elf, visually petite beside most adult adventurers.
+* Proportions: elegant high-elf proportions with long limbs, narrow waist, modest shoulders, and balanced hips; avoid heavy thighs or stocky proportions.
+* Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
+* Shoulder shape: narrow-to-moderate, softly sloped, refined rather than broad.
+* Torso shape: slim waist, gentle hourglass, compact ribcage, visible but not exaggerated abdomen.
+* Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
+* Hand shape: small, elegant hands with long fingers suitable for spellcasting gestures.
+* Hip/leg proportions: slim hips, long tapered legs, knees and ankles cleanly articulated; legs should not become thick or overly muscular.
+* Foot stance: feet generally placed under her center of balance unless the requested pose indicates motion.
+* Movement baseline: quick, buoyant, agile, and expressive; motion often leads with head, eyes, hands, or a light forward step.
 
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
@@ -155,65 +128,49 @@ Suggested fields:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
 
-Front view body notes:
-
-* `[Shoulder width, stance, symmetry, limb visibility, etc.]`
+* Front view body should read as petite and symmetrical, with narrow shoulders, slim waist, visible centered torso line, long slim legs under the high-low skirt opening, and balanced feet beneath the body.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 body notes:
-
-* `[Rotation, visible side, silhouette, overlap rules, etc.]`
+* Front-left 3/4 body should show torso depth without broadening her frame; the near shoulder and hip overlap naturally while preserving narrow waist and long slim legs.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 body notes:
-
-* `[Rotation, visible side, silhouette, overlap rules, etc.]`
+* Front-right 3/4 body should show torso depth without broadening her frame; the near shoulder and hip overlap naturally while preserving narrow waist and long slim legs.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile body notes:
-
-* `[Profile posture, torso depth, leg alignment, etc.]`
+* Left profile body should keep an elegant vertical line: lifted head, narrow torso depth, relaxed shoulder, slight natural spinal curve, slim leg line, and no exaggerated chest or hip projection.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile body notes:
-
-* `[Profile posture, torso depth, leg alignment, etc.]`
+* Right profile body should keep an elegant vertical line: lifted head, narrow torso depth, relaxed shoulder, slight natural spinal curve, slim leg line, and no exaggerated chest or hip projection.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 body notes:
-
-* `[Back silhouette, shoulder/hip rotation, limb visibility, etc.]`
+* Back-left 3/4 body should show a narrow back, sloped shoulders, compact waist, one side of the hip line, and long rear skirt shape without making her body stocky.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 body notes:
-
-* `[Back silhouette, shoulder/hip rotation, limb visibility, etc.]`
+* Back-right 3/4 body should show a narrow back, sloped shoulders, compact waist, one side of the hip line, and long rear skirt shape without making her body stocky.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK -->
 
-Back view body notes:
-
-* `[Back posture, hair/clothing overlap, shoulder/hip symmetry, etc.]`
+* Back view body should show straight balanced posture, narrow shoulders, slim back, compact waist, symmetrical arms, long rear skirt, and boots aligned under her frame.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK -->
 
@@ -223,12 +180,9 @@ Back view body notes:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_PICARESQUE -->
 
-[Expressive description of physical presence, gesture, grace, tension, confidence, awkwardness, athleticism, etc.]
-
-Example stub:
-
-* Her movement feels `[fluid / wary / buoyant / precise / theatrical]`.
-* Her posture communicates `[confidence / curiosity / nervousness / resolve]`.
+* Her movement feels quick, bright, and buoyant, as if she is always one thought ahead of the room.
+* Her posture communicates confidence, curiosity, and readiness without turning her into a warrior archetype.
+* Even in still poses, she should feel lightly animated: alert eyes, relaxed shoulders, expressive hands, and a hint that she could step forward at any moment.
 
 <!-- ZET:END BODY_DESCRIPTION_PICARESQUE -->
 
@@ -240,21 +194,17 @@ Example stub:
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
 
-[Technical head and face description.]
-
-Suggested fields:
-
-* Face shape:
-* Jaw/chin:
-* Cheekbones:
-* Nose:
-* Mouth:
-* Eye shape:
-* Eye color:
-* Eyebrows:
-* Ears:
-* Neck:
-* Head-to-body proportion:
+* Face shape: soft heart-shaped face with delicate elven structure.
+* Jaw/chin: small refined jaw and gentle pointed chin; not square or heavy.
+* Cheekbones: softly defined high cheekbones, visible but not severe.
+* Nose: small, refined, slightly upturned or delicate; avoid large or blunt noses.
+* Mouth: expressive medium-small mouth with a bright smile potential; lips natural, not overdone.
+* Eye shape: large anime-influenced almond eyes with an alert, luminous look.
+* Eye color: vivid violet-purple.
+* Eyebrows: dark, fine, expressive brows that support curiosity, confidence, and mischief.
+* Ears: long pointed elf ears, angled outward and slightly upward; ear tips are an identity anchor.
+* Neck: slim graceful neck, proportionate to a petite elven frame.
+* Head-to-body proportion: slightly stylized large-eyed fantasy proportions, but still adult and semi-realistic.
 
 <!-- ZET:END HEAD_DESCRIPTION_FACTS -->
 
@@ -262,65 +212,49 @@ Suggested fields:
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
 
-Front view head notes:
-
-* `[Face symmetry, both eyes visible, ear visibility, etc.]`
+* Front view head should show both large violet eyes, the heart-shaped face, small chin, delicate nose, and at least partial pointed ear visibility through or beyond the hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 head notes:
-
-* `[Visible cheek, far eye visibility, ear visibility, nose angle, etc.]`
+* Front-left 3/4 head should show the left cheek and left ear strongly, with the far eye still visible; preserve the small nose, soft chin, and bright violet gaze.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 head notes:
-
-* `[Visible cheek, far eye visibility, ear visibility, nose angle, etc.]`
+* Front-right 3/4 head should show the right cheek and right ear strongly, with the far eye still visible; preserve the small nose, soft chin, and bright violet gaze.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile head notes:
-
-* `[Profile nose/chin/ear rules, eye visibility, etc.]`
+* Left profile should show the delicate nose-to-lips-to-chin line, one almond eye or eyelash edge, and a clearly pointed left ear extending from the hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile head notes:
-
-* `[Profile nose/chin/ear rules, eye visibility, etc.]`
+* Right profile should show the delicate nose-to-lips-to-chin line, one almond eye or eyelash edge, and a clearly pointed right ear extending from the hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 head notes:
-
-* `[Hair mass, ear edge visibility, cheek/jaw hints, etc.]`
+* Back-left 3/4 head should show the rounded bob mass, nape, left ear tip or outer rim, and a small hint of cheek or jaw if the rotation allows.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 head notes:
-
-* `[Hair mass, ear edge visibility, cheek/jaw hints, etc.]`
+* Back-right 3/4 head should show the rounded bob mass, nape, right ear tip or outer rim, and a small hint of cheek or jaw if the rotation allows.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK -->
 
-Back view head notes:
-
-* `[Back of skull, hair silhouette, ear tips if visible, neck connection, etc.]`
+* Back view head should show the compact rounded skull and bob silhouette at the nape; pointed ear tips may protrude at the sides if not covered by hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK -->
 
@@ -330,12 +264,9 @@ Back view head notes:
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_PICARESQUE -->
 
-[Expressive face/head description.]
-
-Example stub:
-
-* Her face tends to read as `[watchful / bright / mischievous / thoughtful / guarded]`.
-* Her expressions should preserve `[core emotional identity]`.
+* Her face tends to read as bright, mischievous, warmly confident, and quick to delight.
+* Her expressions should preserve a clever elven spark: alert violet eyes, mobile brows, and a smile that can turn from playful to determined without changing who she is.
+* Even in grief, anger, or vulnerability, she should remain recognizably Tsaeytte rather than becoming a generic fantasy heroine.
 
 <!-- ZET:END HEAD_DESCRIPTION_PICARESQUE -->
 
@@ -347,19 +278,15 @@ Example stub:
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_FACTS -->
 
-[Technical hair description.]
-
-Suggested fields:
-
-* Hair color:
-* Hair length:
-* Hair texture:
-* Hair volume:
-* Hairline:
-* Part/asymmetry:
-* Face-framing behavior:
-* Back silhouette:
-* Forbidden drift:
+* Hair color: black with subtle painterly highlights.
+* Hair length: chin-length bob; ends cluster around jawline and just under the chin, with some uneven wisps around the neck.
+* Hair texture: tousled, soft, slightly wavy; never curly, ringleted, braided, or long unless a variant explicitly asks for it.
+* Hair volume: thick and lively, with airy strands and a compact rounded mass.
+* Hairline: natural, partly obscured by loose fringe and side-swept locks.
+* Part/asymmetry: slightly asymmetrical side part; one side can fall heavier across the forehead while both eyes remain readable when front-facing.
+* Face-framing behavior: locks frame both sides of the face and gently hook inward toward the chin.
+* Back silhouette: rounded bob at the nape, compact and not shoulder-length.
+* Forbidden drift: do not turn the hair into long hair, tight curls, smooth helmet hair, a generic pixie cut, a braid, ponytail, or symmetrical salon bob.
 
 <!-- ZET:END HAIR_DESCRIPTION_FACTS -->
 
@@ -367,65 +294,49 @@ Suggested fields:
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT -->
 
-Front view hair notes:
-
-* `[How hair frames the face from the front.]`
+* Front view hair should frame both sides of the face, with a tousled side-swept fringe and inward-hooking ends near the chin; both eyes should remain visible unless a requested expression says otherwise.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 hair notes:
-
-* `[Near-side/far-side hair visibility.]`
+* Front-left 3/4 hair should show near-side volume and a clear inward hook under the chin, with far-side locks still framing the opposite cheek.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 hair notes:
-
-* `[Near-side/far-side hair visibility.]`
+* Front-right 3/4 hair should show near-side volume and a clear inward hook under the chin, with far-side locks still framing the opposite cheek.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile hair notes:
-
-* `[Profile silhouette and face-framing edge.]`
+* Left profile hair should form a compact rounded bob, with a tousled fringe, cheek-framing side locks, and ends resting near the jaw and nape.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile hair notes:
-
-* `[Profile silhouette and face-framing edge.]`
+* Right profile hair should form a compact rounded bob, with a tousled fringe, cheek-framing side locks, and ends resting near the jaw and nape.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 hair notes:
-
-* `[Back mass, side curve, neck overlap.]`
+* Back-left 3/4 hair should show the rounded back mass of the bob, layered uneven wisps at the nape, and side strands curving toward the jaw.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 hair notes:
-
-* `[Back mass, side curve, neck overlap.]`
+* Back-right 3/4 hair should show the rounded back mass of the bob, layered uneven wisps at the nape, and side strands curving toward the jaw.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_BACK -->
 
-Back view hair notes:
-
-* `[Back silhouette, nape behavior, length endpoints.]`
+* Back view hair should be a compact chin-length bob with a rounded crown, tousled uneven lower edge at the nape, and no long curtain of hair below the neck.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK -->
 
@@ -435,12 +346,9 @@ Back view hair notes:
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_PICARESQUE -->
 
-[Flavor description of how the hair contributes to the character’s identity.]
-
-Example stub:
-
-* Her hair gives her silhouette `[distinctive impression]`.
-* In motion, it should `[swing / hook / frame / remain compact / etc.]`.
+* Her hair gives her silhouette a lively, instantly recognizable shape: a dark, tousled bob that frames her face like a moving ink brush.
+* In motion, it should swing and lift in small expressive strands while keeping the compact bob identity.
+* The inward hook beneath the chin is a key charm point and should survive most poses and expressions.
 
 <!-- ZET:END HAIR_DESCRIPTION_PICARESQUE -->
 
@@ -452,26 +360,22 @@ Example stub:
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->
 
-[Technical costume description.]
-
-Suggested fields:
-
-* Costume name:
-* Top:
-* Sleeves:
-* Neckline:
-* Waist/midriff:
-* Lower garment:
-* Legwear:
-* Footwear:
-* Belt:
-* Pouches:
-* Weapons/tools:
-* Jewelry:
-* Materials:
-* Colors:
-* Fit:
-* Forbidden drift:
+* Costume name: adult adventuring sorceress outfit.
+* Top: teal off-shoulder ruffled crop top with fitted bodice and decorative seams; rich dark teal fabric with subtle gold/star-like ornamentation.
+* Sleeves: separate or gathered off-shoulder puff sleeves ending above the elbow with layered ruffles; forearms mostly exposed.
+* Neckline: off-shoulder neckline below the shoulders; ruffled upper edge; no straps.
+* Waist/midriff: exposed midriff and navel between crop top and belt/skirt; keep adult, non-explicit fantasy styling.
+* Lower garment: teal high-low skirt, short in front with layered drape and longer in back to mid-calf or lower; flowing uneven hem with gold decorative motifs.
+* Legwear: dark blue/navy leggings visible under the front opening, possibly with subtle diamond or seam pattern.
+* Footwear: tall brown leather heeled adventuring boots with straps, panels, buckles, and worn practical texture.
+* Belt: broad brown leather utility belt with large central buckle and side attachments.
+* Pouches: multiple brown leather pouches and containers on the belt, especially on the left hip.
+* Weapons/tools: compact dagger at the right hip; scroll case and practical adventuring containers on the left/rear-left side.
+* Jewelry: layered dark necklace with central blue-violet teardrop pendant; matching dangling blue-violet earrings with gold settings.
+* Materials: teal cloth, gold embroidery/trim, brown leather, dark leggings, metal buckles, polished blue-violet stones.
+* Colors: dominant teal and dark teal, dark navy leggings, warm brown leather, gold accents, violet-blue jewelry, black hair.
+* Fit: tailored, mobile, theatrical adventuring wear; elegant but practical enough for travel.
+* Forbidden drift: do not add armor plates, corset-only redesign, long formal gown, modern clothing, visible straps, random capes, extra weapons, or different color palette unless explicitly requested.
 
 <!-- ZET:END COSTUME_DESCRIPTION_FACTS -->
 
@@ -479,65 +383,49 @@ Suggested fields:
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->
 
-Front view costume notes:
-
-* `[Visible costume elements from front.]`
+* Front view should show off-shoulder ruffled teal crop top, exposed midriff, central belt buckle, high-low skirt opening, dark leggings, tall boots, necklace pendant, earrings, and right-side dagger if visible.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 costume notes:
-
-* `[Visible costume elements and left/right item placement.]`
+* Front-left 3/4 should show the teal top and skirt depth, central belt buckle, left-side pouches/flask/scroll case, necklace, earrings, leggings, and boots; keep right-side dagger placement anatomically correct if visible across the body.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 costume notes:
-
-* `[Visible costume elements and left/right item placement.]`
+* Front-right 3/4 should show the teal top and skirt depth, central belt buckle, right-side dagger clearly, necklace, earrings, leggings, and boots; left-side pouches may remain visible across the belt line.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile costume notes:
-
-* `[Left-side equipment, silhouette, garment overlap.]`
+* Left profile should emphasize left hip equipment: potion/flask, large pouch, smaller pouch, and scroll case; show the side cascade of the high-low skirt and tall boot profile.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile costume notes:
-
-* `[Right-side equipment, silhouette, garment overlap.]`
+* Right profile should emphasize the compact dagger at the right hip, off-shoulder sleeve profile, side skirt cascade, dark leggings, and tall boot profile.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 costume notes:
-
-* `[Rear garment shape, left-side equipment, back silhouette.]`
+* Back-left 3/4 should show the rear length of the high-low skirt, back of the teal top, bare shoulders, belt across the back, left/rear-left pouches and scroll case, and tall boots.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 costume notes:
-
-* `[Rear garment shape, right-side equipment, back silhouette.]`
+* Back-right 3/4 should show the rear length of the high-low skirt, back of the teal top, bare shoulders, belt across the back, right-side dagger silhouette, and tall boots.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK -->
 
-Back view costume notes:
-
-* `[Back garment shape, hair overlap, rear equipment, boots.]`
+* Back view should show bare shoulders, off-shoulder teal back, compact waist, broad belt, long rear skirt with gold motifs, boot backs, and rear-visible belt gear without inventing a cape or backpack.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK -->
 
@@ -547,12 +435,9 @@ Back view costume notes:
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_PICARESQUE -->
 
-[Flavor description of the costume’s storytelling function.]
-
-Example stub:
-
-* The outfit suggests `[adventurer / scholar / courtly performer / rural student / etc.]`.
-* It should feel `[practical / theatrical / elegant / improvised / disciplined / etc.]`.
+* The outfit suggests a sorceress-adventurer who treats danger as a stage but still carries real road-worn tools.
+* It should feel elegant, theatrical, clever, and mobile: a blend of charm, spellcraft, and practical adventuring life.
+* The teal fabric, gold detail, dark leggings, leather belt, and blue-violet jewelry should all reinforce her identity rather than becoming generic fantasy ornament.
 
 <!-- ZET:END COSTUME_DESCRIPTION_PICARESQUE -->
 
@@ -564,19 +449,15 @@ Example stub:
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->
 
-[Technical description of carried items.]
-
-Suggested fields:
-
-* Primary weapon/tool:
-* Secondary weapon/tool:
-* Containers:
-* Scrolls/books:
-* Jewelry:
-* Magical objects:
-* Placement rules:
-* Scale rules:
-* Forbidden drift:
+* Primary weapon/tool: compact dagger carried at the right hip in a sheath; practical scale, not a sword.
+* Secondary weapon/tool: scroll case carried on the left/rear-left side of the belt.
+* Containers: potion or round flask near the front of the left hip; large buckled leather pouch on the left hip; smaller buckled pouch nearby; additional small utility attachments acceptable if they do not crowd the silhouette.
+* Scrolls/books: cylindrical scroll case on the left side toward the rear.
+* Jewelry: layered dark necklace with central blue-violet teardrop pendant; matching dangling blue-violet earrings in gold-toned settings.
+* Magical objects: jewelry and containers may read as mildly arcane, but do not add glowing artifacts unless requested.
+* Placement rules: right hip has the dagger; left hip carries potion/flask, pouches, and scroll case; do not swap left and right.
+* Scale rules: equipment is sized for a petite adult elf; dagger remains compact, pouches practical, scroll case cylindrical and belt-mounted.
+* Forbidden drift: no sword, staff, wand, bow, shield, armor, backpack, random spellbook, or large glowing object unless explicitly requested.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->
 
@@ -584,65 +465,49 @@ Suggested fields:
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
 
-Front view equipment notes:
-
-* `[What should be visible from front.]`
+* Front view should show the belt buckle, necklace pendant, earrings, front-left potion/flask if unobscured, and compact right-hip dagger if the skirt and arm allow.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 equipment notes:
-
-* `[Left/right placement clarity.]`
+* Front-left 3/4 should clarify left-side equipment order: potion/flask near front, large pouch, smaller pouch, scroll case farther rear; keep dagger on anatomical right.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 equipment notes:
-
-* `[Left/right placement clarity.]`
+* Front-right 3/4 should clarify the compact right-hip dagger; left-side pouches and scroll case may remain visible across the far side of the belt.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile equipment notes:
-
-* `[Left-side carried items.]`
+* Left profile should feature the potion/flask, pouches, and cylindrical scroll case along the left belt line; dagger should not migrate to this side.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile equipment notes:
-
-* `[Right-side carried items.]`
+* Right profile should feature the compact dagger and sheath on the right hip; left-side pouches should not migrate to this side.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 equipment notes:
-
-* `[Rear/left-side carried items.]`
+* Back-left 3/4 should show rear-left scroll case and pouches attached to the belt, partially overlapping the long rear skirt.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 equipment notes:
-
-* `[Rear/right-side carried items.]`
+* Back-right 3/4 should show the right-side dagger silhouette and any rear belt line details without adding large new gear.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK -->
 
-Back view equipment notes:
-
-* `[Rear-visible equipment.]`
+* Back view should show belt continuity, rear-visible pouch/scroll-case silhouettes, boot backs, and jewelry only if visible around the neck or ears.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK -->
 
@@ -652,12 +517,9 @@ Back view equipment notes:
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_PICARESQUE -->
 
-[Flavor description of props and equipment.]
-
-Example stub:
-
-* Her gear should feel `[well-used / lovingly maintained / practical / magical / eccentric]`.
-* Equipment should reinforce `[character identity or story role]`.
+* Her gear should feel lovingly maintained and practical, like tools she actually uses rather than decorative clutter.
+* Equipment should reinforce her identity as a clever traveling sorceress: prepared, stylish, a little eccentric, and never overburdened.
+* The dagger is a backup tool, while the pouches, flask, scroll case, and jewelry support the impression of spellwork and adventuring readiness.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_PICARESQUE -->
 
@@ -669,16 +531,12 @@ Example stub:
 
 <!-- ZET:BEGIN EXPRESSION_DESCRIPTION_FACTS -->
 
-[Technical baseline expression rules.]
-
-Suggested fields:
-
-* Neutral expression:
-* Default eye behavior:
-* Default mouth behavior:
-* Brow behavior:
-* Allowed emotional range:
-* Forbidden expression drift:
+* Neutral expression: alert, observant, and softly confident.
+* Default eye behavior: large violet eyes with clear gaze direction; eyes are expressive and should not become dull or generic.
+* Default mouth behavior: relaxed mouth or slight knowing smile; smile can broaden for joyful, flirtatious, or encouraging expressions.
+* Brow behavior: fine dark brows, mobile and expressive; use brows to support curiosity, resolve, amusement, concern, or anger without changing face identity.
+* Allowed emotional range: curious, confident, amused, flirtatious, encouraging, vulnerable, grieving, determined, frustrated, angry, joyful, resolved.
+* Forbidden expression drift: do not change her age, species, face structure, eye color, ear shape, or haircut to exaggerate emotion.
 
 <!-- ZET:END EXPRESSION_DESCRIPTION_FACTS -->
 
@@ -686,12 +544,9 @@ Suggested fields:
 
 <!-- ZET:BEGIN EXPRESSION_DESCRIPTION_PICARESQUE -->
 
-[Flavor description of emotional presence.]
-
-Example stub:
-
-* Her expressions tend to combine `[trait]` with `[trait]`.
-* Even in intense emotion, she should remain recognizably `[core identity]`.
+* Her expressions tend to combine warmth with mischief, quick intelligence with emotional openness.
+* Even in intense emotion, she should remain recognizably bright-eyed and elven, with the same face shape, violet gaze, and lively black bob.
+* Joyful resolve should read as lifted head, off-path gaze, bright smile, brisk forward energy, and determination that feels light rather than grim.
 
 <!-- ZET:END EXPRESSION_DESCRIPTION_PICARESQUE -->
 
@@ -703,18 +558,14 @@ Example stub:
 
 <!-- ZET:BEGIN POSE_GESTURE_FACTS -->
 
-[Technical pose rules.]
-
-Suggested fields:
-
-* Neutral standing pose:
-* Turnaround pose:
-* Fitment pose:
-* Action pose limits:
-* Hand behavior:
-* Foot placement:
-* Balance:
-* Forbidden pose drift:
+* Neutral standing pose: upright, relaxed, balanced, hands visible when possible, feet under the body.
+* Turnaround pose: consistent stance across views, minimal acting, clear silhouette, no dramatic foreshortening.
+* Fitment pose: readable technical posture, symmetrical enough for reference, no narrative gesture unless requested.
+* Action pose limits: keep the body petite and balanced; avoid extreme contortion, pin-up exaggeration, or weapon-first combat posing unless requested.
+* Hand behavior: expressive long-fingered hands; suitable for spellcasting, conversational gestures, dancing, or light arm swing.
+* Foot placement: centered and readable for references; in motion, steps should feel light and agile rather than heavy.
+* Balance: buoyant but grounded; motion should not distort anatomy.
+* Forbidden pose drift: do not make her broad, heavy, aggressively martial, limp, childlike, or oversexualized.
 
 <!-- ZET:END POSE_GESTURE_FACTS -->
 
@@ -722,12 +573,9 @@ Suggested fields:
 
 <!-- ZET:BEGIN POSE_GESTURE_PICARESQUE -->
 
-[Flavor description of movement and body language.]
-
-Example stub:
-
-* Her gestures should feel `[expressive / precise / playful / guarded / theatrical]`.
-* She carries energy through `[hands / shoulders / eyes / posture / step]`.
+* Her gestures should feel expressive, clever, theatrical, and quick.
+* She carries energy through her eyes, hands, shoulders, and a light forward step.
+* In joyful or confident scenes, she should look like she is already moving toward the next delightful disaster.
 
 <!-- ZET:END POSE_GESTURE_PICARESQUE -->
 
@@ -743,13 +591,13 @@ These rules should be included whenever the image must preserve character identi
 
 Core identity anchors:
 
-* `[Face shape anchor]`
-* `[Eye color and eye shape anchor]`
-* `[Hair silhouette anchor]`
-* `[Ear shape/visibility anchor]`
-* `[Body proportion anchor]`
-* `[Costume silhouette anchor]`
-* `[Signature item anchor]`
+* Soft heart-shaped adult elven face with delicate features and small pointed chin.
+* Large violet-purple almond eyes with anime-influenced proportions and bright expressive gaze.
+* Thick black tousled chin-length bob with inward-hooking face-framing ends.
+* Long pointed elf ears angled outward/upward; at least one ear or ear tip should be visible in most non-back views.
+* Petite, lithe, graceful adult build with narrow shoulders, slim waist, long slim legs, and light athletic movement.
+* Teal off-shoulder ruffled crop top, exposed midriff, high-low teal skirt, dark leggings, brown leather belt, and tall brown boots.
+* Signature jewelry: layered necklace with blue-violet pendant and matching dangling earrings; signature right-hip compact dagger plus left-side pouches/scroll case.
 
 The rendered character must be recognizably the same person across views, expressions, outfits, and rendering passes.
 
@@ -761,9 +609,9 @@ The rendered character must be recognizably the same person across views, expres
 
 Face preservation rules:
 
-* Preserve `[specific face shape]`.
-* Preserve `[specific eye shape/color]`.
-* Preserve `[specific nose/mouth/chin relationships]`.
+* Preserve the soft heart-shaped adult elven face with delicate cheekbones and small pointed chin.
+* Preserve the large violet-purple almond eyes, bright gaze, and dark expressive brows.
+* Preserve the small refined nose, expressive medium-small mouth, and gentle chin relationship.
 * Do not age the character up or down unless the task explicitly requests that phase.
 * Do not replace the face with a generic fantasy/anime face.
 
@@ -775,10 +623,10 @@ Face preservation rules:
 
 Hair preservation rules:
 
-* Preserve `[canonical haircut / silhouette / length / texture]`.
-* Preserve `[face-framing behavior]`.
-* Preserve `[asymmetry, if any]`.
-* Do not make the hair curly, overly long, overly short, or generically styled unless the task explicitly requests a variant.
+* Preserve the canonical thick black tousled chin-length bob.
+* Preserve the face-framing locks that curve inward and hook toward the chin on both sides.
+* Preserve the subtle asymmetrical side part and uneven lively strands.
+* Do not make the hair curly, overly long, overly short, smooth helmet-like, braided, ponytailed, or generically styled unless the task explicitly requests a variant.
 
 <!-- ZET:END IDENTITY_PRESERVATION_HAIR -->
 
@@ -788,8 +636,8 @@ Hair preservation rules:
 
 Ear preservation rules:
 
-* Preserve `[ear shape]`.
-* Preserve `[ear tip visibility expectations]`.
+* Preserve long pointed high-elf ears angled outward and slightly upward.
+* Preserve ear tip visibility expectations: at least one ear or ear tip visible in front, 3/4, and profile views unless explicitly covered by pose or costume; both ears may be partially visible in front or back views.
 * Do not hide both ears when the requested view should show at least one ear or ear tip.
 * Do not make ears round/human unless the character phase explicitly requires it.
 
@@ -801,10 +649,10 @@ Ear preservation rules:
 
 Body preservation rules:
 
-* Preserve `[canonical build]`.
-* Preserve `[height/proportion impression]`.
-* Preserve `[posture/movement identity]`.
-* Do not alter body type to match generic fantasy archetypes.
+* Preserve petite, lithe, graceful adult build with light athletic tone.
+* Preserve the short-to-average height impression, narrow shoulders, slim waist, compact torso, and long slim legs.
+* Preserve her buoyant, alert, expressive posture and quick movement identity.
+* Do not alter body type to match generic fantasy archetypes such as bulky warrior, exaggerated pin-up, childlike waif, or heavy stocky adventurer.
 
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
@@ -814,10 +662,10 @@ Body preservation rules:
 
 Costume preservation rules:
 
-* Preserve `[canonical outfit silhouette]`.
-* Preserve `[critical colors/materials]`.
-* Preserve `[left/right equipment placement]`.
-* Preserve `[signature jewelry/tools/weapons]`.
+* Preserve the canonical adult adventuring outfit silhouette: teal off-shoulder ruffled crop top, visible midriff, high-low teal skirt, dark leggings, tall brown boots, and broad brown belt.
+* Preserve critical colors/materials: dark teal cloth, gold ornament, dark navy leggings, warm brown leather, blue-violet jewelry stones, and metal buckles.
+* Preserve left/right equipment placement: dagger on anatomical right hip; potion/flask, pouches, and scroll case on anatomical left hip/rear-left side.
+* Preserve signature jewelry/tools/weapons: layered necklace with central blue-violet pendant, matching dangling earrings, compact right-hip dagger, left-side pouches and scroll case.
 * Do not simplify away key costume identity elements.
 
 <!-- ZET:END IDENTITY_PRESERVATION_COSTUME -->
@@ -871,17 +719,13 @@ The fitment layer should be:
 
 <!-- ZET:BEGIN SCENE_RENDERING_FACTS -->
 
-[Technical scene rules.]
-
-Suggested fields:
-
-* Default camera:
-* Default framing:
-* Default lighting:
-* Default background treatment:
-* Character priority:
-* Prop priority:
-* Crowd/background rules:
+* Default camera: character-first framing with clear readable face and silhouette; use requested view angle when specified.
+* Default framing: full body or medium-full for character images; closer framing only for expression or portrait tasks.
+* Default lighting: readable painterly fantasy lighting; avoid harsh shadow that hides face, ears, costume, or equipment.
+* Default background treatment: supportive and secondary; simple parchment/reference background for sheets, atmospheric environment for narrative scenes.
+* Character priority: Tsaeytte's identity, face, hair, ears, outfit, and equipment must remain the visual priority.
+* Prop priority: include only requested props and canonical carried items; do not let props obscure key identity anchors.
+* Crowd/background rules: background figures may be loose and out of focus; they should not compete with or replace Tsaeytte.
 
 <!-- ZET:END SCENE_RENDERING_FACTS -->
 
@@ -889,12 +733,9 @@ Suggested fields:
 
 <!-- ZET:BEGIN SCENE_RENDERING_PICARESQUE -->
 
-[Flavor guidance for narrative images.]
-
-Example stub:
-
-* Scenes involving this character should emphasize `[theme / mood / visual contrast]`.
+* Scenes involving Tsaeytte should emphasize charm under pressure, clever motion, elven grace, and emotional vividness.
 * The environment should support the character without overpowering identity preservation.
+* Her role in a scene should usually read through her expression and gesture first, then through magic, props, or setting.
 
 <!-- ZET:END SCENE_RENDERING_PICARESQUE -->
 
@@ -911,16 +752,20 @@ Avoid:
 * Generic replacement face.
 * Wrong age phase.
 * Wrong species markers.
-* Incorrect body type.
-* Incorrect hair length or texture.
-* Missing signature silhouette.
+* Missing, hidden, rounded, or human ears when elf ears should be visible.
+* Incorrect body type: bulky, stocky, heavy-thighed, childlike, or exaggerated pin-up proportions.
+* Incorrect hair length, texture, or silhouette.
+* Missing chin-length inward-hooking black bob.
 * Incorrect eye color.
 * Incorrect left/right equipment placement.
+* Dagger on the left hip instead of anatomical right.
+* Pouches, flask, or scroll case moved to the right side.
 * Overly ornate redesign unless requested.
-* Unrequested costume changes.
+* Unrequested costume changes, armor, cape, straps, modern clothing, long gown, or different color palette.
 * Unrequested weapons or props.
 * Dramatic pose when a technical pose is requested.
 * Narrative acting when a neutral reference is requested.
+* Hiding the face, eyes, ears, hair silhouette, belt gear, or costume identity anchors.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
 
@@ -928,15 +773,12 @@ Avoid:
 
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 
-[Add task-specific avoid rules here.]
-
-Examples:
-
-* For body-reference: avoid facial emotion, costume details, dramatic scene lighting.
-* For head-fitment: avoid changing facial identity, hair silhouette, ear shape, eye color, or neck alignment.
-* For costume-fitment: avoid changing body proportions to fit the costume.
-* For turnaround: avoid pose variation between views.
-* For expression sheets: avoid changing identity to exaggerate expression.
+* For body-reference: avoid facial emotion, costume details, dramatic scene lighting, and body-type drift; preserve petite lithe adult proportions.
+* For head-fitment: avoid changing facial identity, violet eye color, hair silhouette, ear shape, ear visibility, or neck alignment.
+* For costume-fitment: avoid changing body proportions to fit the costume; costume must adapt to Tsaeytte, not the reverse.
+* For turnaround: avoid pose variation between views; keep proportions, hair, ears, equipment placement, and costume silhouette consistent.
+* For expression sheets: avoid changing identity to exaggerate expression; preserve face shape, eyes, ears, hair, and age.
+* For narrative scenes: avoid letting scenery, crowds, props, or lighting obscure Tsaeytte's identity anchors.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 
@@ -1065,6 +907,9 @@ Recommended sections for narrative scene images:
 
 <!-- ZET:BEGIN FREEFORM_NOTES -->
 
-[Human notes, unresolved decisions, experimental additions, or future compiler ideas.]
+* Source reference used for this draft: Tsaeytte Adult Expression Sheet, Joyful Resolve, Version 1.0 in development.
+* Strongest visible identity anchors in the reference: violet eyes, pointed elf ears, black tousled chin-length bob, off-shoulder teal ruffled adventuring outfit, high-low teal skirt, dark leggings, brown leather belt and boots, blue-violet pendant and earrings.
+* Current testing priority: preserve identity across body-reference, head-fitment, costume-fitment, turnaround, expression sheet, and narrative scene prompts.
+* Particular drift risks to watch: hair becoming too long or curly; ears disappearing; body becoming too heavy; skirt front/back high-low structure flattening; left/right equipment swapping; dagger becoming too large.
 
 <!-- ZET:END FREEFORM_NOTES -->

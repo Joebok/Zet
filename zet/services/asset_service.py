@@ -78,6 +78,31 @@ class AssetService:
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
 
+    def approve_prompt_review(self, character: str, phase: str, asset_id: int) -> Asset:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline_stage != "PROMPT_REVIEW" or asset.actor != "HUMAN_AGENT":
+            raise AssetServiceError("Prompt review approval is only available at PROMPT_REVIEW / HUMAN_AGENT.")
+        return self.move_next(character, phase, asset_id)
+
+    def fail_prompt_review(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline_stage != "PROMPT_REVIEW" or asset.actor != "HUMAN_AGENT":
+            raise AssetServiceError("Prompt review failure is only available at PROMPT_REVIEW / HUMAN_AGENT.")
+
+        message = reason.strip() or "Prompt review failed."
+        updated_asset = replace(asset)
+        updated_asset.asset_state = "BLOCKED"
+        updated_asset.pipeline_stage = "ERROR"
+        updated_asset.actor = "HUMAN_AGENT"
+        updated_asset.ai_state = None
+        updated_asset.error_code = "PROMPT_REVIEW_FAILED"
+        updated_asset.error_message = message
+        updated_asset.updated_at = self._timestamp()
+
+        self.asset_repository.save_asset(updated_asset)
+        self.housekeeping_service.prepare_stage(updated_asset)
+        return updated_asset
+
     def run_housekeeping(self, character: str, phase: str, asset_id: int) -> Path:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         return self.housekeeping_service.prepare_stage(asset)

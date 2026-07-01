@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
 
+        {
+            
+            "name": "Dashboard",
+            "type": "python",
+            "request": "launch",
+            "program": "streamlit run zet/dashboard/app.py",
+            "console": "integratedTerminal"
+        }
 
 // python3 -m zet.scripts.show_pipeline --character Tsaeytte --phase Adult --asset-id 1
 {

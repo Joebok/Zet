@@ -74,6 +74,13 @@ def job_get(job: dict, *keys: str) -> str:
     return ""
 
 
+def resolve_project_path(project_root: Path, raw_path: str) -> Path:
+    path = Path(raw_path).expanduser()
+    if path.is_absolute():
+        return path
+    return project_root / path
+
+
 def require_job_field(job: dict, canonical: str, *keys: str) -> str:
     value = job_get(job, canonical, *keys)
     if not value:
@@ -84,15 +91,15 @@ def require_job_field(job: dict, canonical: str, *keys: str) -> str:
 def template_path_for_job(project_root: Path, job: dict, character: str, phase: str) -> Path:
     explicit = job_get(job, "Template Path", "template_path", "character_image_template")
     if explicit:
-        return Path(explicit).expanduser()
+        return resolve_project_path(project_root, explicit)
     return project_root / "_Lib" / "Characters" / character / phase / "Character_Image_Template.md"
 
 
 def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str, view_data: dict) -> Path:
     explicit = job_get(job, "Output Directory", "output_directory", "Folder", "folder")
     if explicit:
-        return Path(explicit).expanduser()
-    return project_root / "Characters" / character / phase / "Body_Reference" / str(view_data["folder_name"])
+        return resolve_project_path(project_root, explicit)
+    return project_root / "_Lib" / "Characters" / character / phase / "Body_Reference" / str(view_data["folder_name"])
 
 
 def expected_output_for_job(job: dict, view_data: dict) -> str:
@@ -284,11 +291,13 @@ def load_job_list(path: Path) -> dict:
     if isinstance(data, dict):
         data.setdefault("jobs", [])
         return data
-    raise TemplateCompileError("MISSING_CONFIG", f"Job list must be a JSON object: {path}")
+    if isinstance(data, list):
+        return {"version": 1, "jobs": data}
+    raise TemplateCompileError("MISSING_CONFIG", f"Job list must be a JSON object or array: {path}")
 
 
 def row_matches(job: dict, only_job: str | None = None) -> bool:
-    if only_job and job_get(job, "Job", "job_id") != only_job:
+    if only_job and job_get(job, "Job", "Job ID", "job_id") != only_job:
         return False
     return (
         job_get(job, "Task", "task") == "body-reference"
@@ -298,6 +307,18 @@ def row_matches(job: dict, only_job: str | None = None) -> bool:
 
 
 def update_job_success(job: dict, result: dict) -> None:
+    timestamp = now_iso()
+    job["Status"] = result["status"]
+    job["Next Actor"] = result["next_actor"]
+    job["Final Prompt"] = result["final_prompt"]
+    job["Compiled Sections"] = result["compiled_sections"]
+    job["Dependency Manifest"] = result["dependency_manifest"]
+    job["Prompt Review"] = result["prompt_review"]
+    job["Image Review"] = result["image_review"]
+    job["Expected Output"] = result["expected_output"]
+    job["Last Updated"] = timestamp
+    job["Error Code"] = ""
+    job["Error Message"] = ""
     job["status"] = result["status"]
     job["next_actor"] = result["next_actor"]
     job["final_prompt"] = result["final_prompt"]
@@ -306,19 +327,24 @@ def update_job_success(job: dict, result: dict) -> None:
     job["prompt_review"] = result["prompt_review"]
     job["image_review"] = result["image_review"]
     job["expected_output"] = result["expected_output"]
-    job["last_updated"] = now_iso()
+    job["last_updated"] = timestamp
     job["error"] = {"state": "NONE", "code": "", "message": "", "time": ""}
 
 
 def update_job_error(job: dict, exc: Exception) -> None:
     code = exc.code if isinstance(exc, TemplateCompileError) else type(exc).__name__
+    timestamp = now_iso()
+    job["Status"] = "ERROR"
+    job["Last Updated"] = timestamp
+    job["Error Code"] = code
+    job["Error Message"] = str(exc)
     job["status"] = "ERROR"
-    job["last_updated"] = now_iso()
+    job["last_updated"] = timestamp
     job["error"] = {
         "state": "ERROR",
         "code": code,
         "message": str(exc),
-        "time": now_iso(),
+        "time": timestamp,
     }
 
 

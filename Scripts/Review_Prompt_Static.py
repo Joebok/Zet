@@ -6,11 +6,36 @@ import json
 import re
 
 
+NEGATIVE_CONTEXT_RE = re.compile(
+    r"\b(avoid|do not|don't|no|without|forbid|forbidden|absent|should not|must not)\b",
+    re.IGNORECASE,
+)
+
+
 def load_checklist(project_root: Path, checklist_name: str) -> dict:
     path = project_root / "Config" / "Prompt_Review_Checklists.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     checklists = data.get("checklists", data)
     return dict(checklists.get(checklist_name, {}))
+
+
+def _forbidden_phrase_in_positive_context(prompt_text: str, phrase: str) -> bool:
+    phrase_lower = str(phrase).lower()
+    in_avoid_block = False
+    for raw_line in prompt_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line_lower = line.lower()
+        if line_lower.rstrip(":") == "avoid":
+            in_avoid_block = True
+            continue
+        if phrase_lower not in line_lower:
+            continue
+        if in_avoid_block or NEGATIVE_CONTEXT_RE.search(line):
+            continue
+        return True
+    return False
 
 
 def review_prompt_text(prompt_text: str, checklist: dict) -> list[str]:
@@ -22,7 +47,7 @@ def review_prompt_text(prompt_text: str, checklist: dict) -> list[str]:
         else:
             findings.append(f"FAIL required phrase missing: {phrase}")
     for phrase in checklist.get("forbidden_phrases", []):
-        if str(phrase).lower() in lower:
+        if _forbidden_phrase_in_positive_context(prompt_text, str(phrase)):
             findings.append(f"FAIL forbidden phrase present: {phrase}")
         else:
             findings.append(f"PASS forbidden phrase absent: {phrase}")

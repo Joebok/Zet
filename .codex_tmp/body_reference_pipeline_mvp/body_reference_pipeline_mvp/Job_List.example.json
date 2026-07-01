@@ -1,0 +1,14 @@
+{
+  "jobs": [
+    {
+      "Job ID": "Job_001",
+      "Task": "body-reference",
+      "Character": "Tsaeytte",
+      "Phase": "Adult",
+      "View": "front-left-3/4",
+      "Status": "READY_FOR_COMPILE",
+      "Next Actor": "PYTHON",
+      "Template Path": "Characters/Tsaeytte/Adult/Character_Image_Template.md"
+    }
+  ]
+}

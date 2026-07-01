@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from datetime import datetime
+import html
 import json
 from pathlib import Path
 import sys
@@ -18,6 +19,7 @@ if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
 from Template_Section_Editor import load_bundles, load_editor_sections, list_pipeline_names, save_template_sections
+from Local_Render_Adapters.comfyui_adapter import LocalRenderUnavailable, render_preview
 
 
 def format_value(value):
@@ -67,7 +69,14 @@ def discover_phases(base_character_path: str, character: str) -> list[str]:
     return sorted(path.name for path in root.iterdir() if path.is_dir())
 
 
+def is_prompt_review_asset(asset) -> bool:
+    return asset.pipeline_stage == "PROMPT_REVIEW" and asset.actor == "HUMAN_AGENT"
+
+
 def asset_to_row(asset) -> dict:
+    stage_url = f"?page=Assets&selected_asset={asset.asset_id}&stage={asset.pipeline_stage}"
+    if is_prompt_review_asset(asset):
+        stage_url = f"?page=Prompt%20Review&selected_asset={asset.asset_id}&review_asset={asset.asset_id}&stage={asset.pipeline_stage}"
     return {
         "asset_id": asset.asset_id,
         "pipeline": asset.pipeline,
@@ -76,7 +85,7 @@ def asset_to_row(asset) -> dict:
         "costume": format_value(asset.costume),
         "expression": format_value(asset.expression),
         "asset_state": asset.asset_state,
-        "pipeline_stage": asset.pipeline_stage,
+        "pipeline_stage": stage_url,
         "actor": asset.actor,
         "ai_state": format_value(asset.ai_state),
         "final_image_output": format_value(asset.final_image_output),
@@ -101,6 +110,18 @@ def selected_asset_id_from_event(selection_event, asset_rows: list[dict]) -> int
 
 def selection_state_key(character: str, phase: str) -> str:
     return f"selected_asset_id::{character}::{phase}"
+
+
+def prompt_review_state_key(character: str, phase: str) -> str:
+    return f"prompt_review_asset_id::{character}::{phase}"
+
+
+def dashboard_page_state_key(character: str, phase: str) -> str:
+    return f"dashboard_page::{character}::{phase}"
+
+
+def handled_review_query_state_key(character: str, phase: str) -> str:
+    return f"handled_review_query::{character}::{phase}"
 
 
 def store_action_message(level: str, message: str) -> None:
@@ -155,6 +176,140 @@ def load_text_if_exists(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
         return None
     return path.read_text(encoding="utf-8")
+
+
+def view_folder_for_asset(asset) -> str:
+    views = load_view_options()
+    for view in views.values():
+        if not isinstance(view, dict):
+            continue
+        if asset.body_view in {view.get("folder_name"), view.get("output_name_fragment")}:
+            return str(view.get("folder_name"))
+    return str(asset.body_view).replace("-", "_")
+
+
+def prompt_file_candidates(app: ZetApp, asset) -> list[Path]:
+    pipeline_path = app.path_service.pipeline_path(asset)
+    character_path = app.path_service.character_path(asset.character, asset.phase)
+    view_folder = view_folder_for_asset(asset)
+    return [
+        pipeline_path / "Final_Image_Prompt.md",
+        pipeline_path / "OLLAMA_PROMPT.md",
+        character_path / "Body_Reference" / view_folder / "Final_Image_Prompt.md",
+        character_path / "Body_Reference" / str(asset.body_view) / "Final_Image_Prompt.md",
+    ]
+
+
+def resolve_prompt_file(app: ZetApp, asset) -> Path | None:
+    for path in prompt_file_candidates(app, asset):
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
+def resolve_prompt_review_file(prompt_path: Path) -> Path | None:
+    path = prompt_path.parent / "Prompt_Review.md"
+    return path if path.exists() else None
+
+
+def latest_local_test_render(prompt_path: Path) -> Path | None:
+    render_dir = prompt_path.parent / "Local_Test_Renders"
+    if not render_dir.exists():
+        return None
+    images = sorted(render_dir.glob("test_*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
+    return images[0] if images else None
+
+
+def show_prompt_review(app: ZetApp, character: str, phase: str, asset_id: int | None) -> None:
+    st.subheader("Prompt Review")
+    if asset_id is None:
+        st.info("Select a PROMPT_REVIEW asset from the Assets tab.")
+        return
+
+    try:
+        asset_ref = app.asset(character, phase, asset_id)
+        asset = asset_ref.get()
+    except Exception as exc:
+        st.error(str(exc))
+        return
+
+    st.markdown(
+        f'<div class="zet-selected-bar">asset_id: {asset.asset_id} | {asset.pipeline} | '
+        f'{asset.body_view} | {asset.pipeline_stage} | {asset.actor}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not is_prompt_review_asset(asset):
+        st.warning("This asset is not currently at PROMPT_REVIEW / HUMAN_AGENT.")
+        return
+
+    prompt_path = resolve_prompt_file(app, asset)
+    if prompt_path is None:
+        st.error("No prompt file was found for this asset.")
+        st.table([path_row("Candidate", path) for path in prompt_file_candidates(app, asset)])
+        return
+
+    st.caption(str(prompt_path))
+    prompt_text = prompt_path.read_text(encoding="utf-8")
+    st.markdown(
+        f"""
+        <div class="zet-prompt-viewer">
+          <pre>{html.escape(prompt_text)}</pre>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if asset.pipeline == "Body-Reference":
+        st.markdown("**Local Preview Render**")
+        preview_col_1, preview_col_2 = st.columns([1, 1])
+        with preview_col_1:
+            local_render_clicked = st.button("Generate Local Test Image", use_container_width=True)
+        with preview_col_2:
+            latest_render = latest_local_test_render(prompt_path)
+            if latest_render:
+                st.caption(str(latest_render))
+
+        if local_render_clicked:
+            try:
+                with st.spinner("Generating local test image with ComfyUI..."):
+                    result = render_preview(
+                        project_root=PROJECT_ROOT,
+                        final_prompt_path=prompt_path,
+                        job_output_dir=prompt_path.parent,
+                        prompt_review_path=resolve_prompt_review_file(prompt_path),
+                    )
+                store_action_message("success", f"Local test image generated: {result.image_path}")
+                st.rerun()
+            except LocalRenderUnavailable:
+                st.error("Local render backend unavailable.")
+            except Exception as exc:
+                st.error(str(exc))
+
+        latest_render = latest_local_test_render(prompt_path)
+        if latest_render:
+            st.image(str(latest_render), caption="Latest local test render", use_container_width=False)
+
+    review_col_1, review_col_2 = st.columns([1, 1])
+    with review_col_1:
+        approve_clicked = st.button("Approve", type="primary", use_container_width=True)
+    with review_col_2:
+        fail_clicked = st.button("Fail", use_container_width=True)
+
+    try:
+        if approve_clicked:
+            updated_asset = asset_ref.approve_prompt_review()
+            st.session_state[selection_state_key(character, phase)] = updated_asset.asset_id
+            store_action_message("success", f"Prompt approved. Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
+            st.rerun()
+        if fail_clicked:
+            updated_asset = asset_ref.fail_prompt_review()
+            st.session_state[selection_state_key(character, phase)] = updated_asset.asset_id
+            store_action_message("error", f"Prompt failed. Asset {updated_asset.asset_id} moved to {updated_asset.pipeline_stage}.")
+            st.rerun()
+    except Exception as exc:
+        store_action_message("error", str(exc))
+        st.rerun()
 
 
 def monitor_row(result) -> dict:
@@ -277,6 +432,24 @@ def main() -> None:
             padding: 0.45rem 0.7rem;
             margin: 0.15rem 0 0.45rem 0;
         }
+        .zet-prompt-viewer {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.35rem;
+            color: #111827;
+            max-height: 68vh;
+            overflow: auto;
+            padding: 1rem;
+        }
+        .zet-prompt-viewer pre {
+            color: #111827;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: normal;
+        }
         div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stHorizontalBlock"]) {
             gap: 0.45rem;
         }
@@ -335,6 +508,32 @@ def main() -> None:
     with control_col_2:
         phase = st.selectbox("Phase", phases)
 
+    state_key = selection_state_key(character, phase)
+    review_key = prompt_review_state_key(character, phase)
+    page_key = dashboard_page_state_key(character, phase)
+    handled_review_key = handled_review_query_state_key(character, phase)
+    page_options = ["Assets", "Prompt Review", "Template Editor", "AI Controls"]
+    query_page = st.query_params.get("page")
+    if query_page in page_options and page_key not in st.session_state:
+        st.session_state[page_key] = query_page
+    query_selected_asset = st.query_params.get("selected_asset")
+    if query_selected_asset:
+        try:
+            st.session_state[state_key] = int(query_selected_asset)
+        except ValueError:
+            st.query_params.pop("selected_asset", None)
+    query_review_asset = st.query_params.get("review_asset")
+    if query_review_asset:
+        try:
+            review_asset_id = int(query_review_asset)
+            st.session_state[state_key] = review_asset_id
+            st.session_state[review_key] = review_asset_id
+            if st.session_state.get(handled_review_key) != query_review_asset:
+                st.session_state[page_key] = "Prompt Review"
+                st.session_state[handled_review_key] = query_review_asset
+        except ValueError:
+            st.query_params.pop("review_asset", None)
+
     try:
         assets = app.list_assets(character, phase)
     except Exception as exc:
@@ -343,14 +542,23 @@ def main() -> None:
 
     if not assets:
         st.info(f"No assets found for {character}/{phase}.")
-        tab_editor_only = st.tabs(["Template Editor"])[0]
-        with tab_editor_only:
-            show_template_editor(config, character, phase)
+        show_template_editor(config, character, phase)
         return
 
-    tab_assets, tab_editor, tab_ai = st.tabs(["Assets", "Template Editor", "AI Controls"])
+    if st.session_state.get(page_key) not in page_options:
+        st.session_state[page_key] = "Assets"
 
-    with tab_assets:
+    active_page = st.segmented_control(
+        "Dashboard section",
+        page_options,
+        key=page_key,
+        label_visibility="collapsed",
+    )
+    st.query_params["page"] = active_page
+    if active_page != "Prompt Review":
+        st.query_params.pop("review_asset", None)
+
+    if active_page == "Assets":
         st.subheader("Assets")
         asset_rows = [asset_to_row(asset) for asset in assets]
         selection_event = st.dataframe(
@@ -359,10 +567,30 @@ def main() -> None:
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
+            column_config={
+                "pipeline_stage": st.column_config.LinkColumn(
+                    "pipeline_stage",
+                    help="PROMPT_REVIEW links open the prompt review panel.",
+                    display_text=r"stage=([^&]+)",
+                )
+            },
+            column_order=[
+                "asset_id",
+                "pipeline",
+                "body_view",
+                "head_view",
+                "costume",
+                "expression",
+                "asset_state",
+                "pipeline_stage",
+                "actor",
+                "ai_state",
+                "final_image_output",
+                "updated_at",
+            ],
         )
 
         selected_asset_id = selected_asset_id_from_event(selection_event, asset_rows)
-        state_key = selection_state_key(character, phase)
         if selected_asset_id is not None:
             st.session_state[state_key] = selected_asset_id
         else:
@@ -393,6 +621,13 @@ def main() -> None:
             f'<div class="zet-selected-bar">{" | ".join(summary_items)}</div>',
             unsafe_allow_html=True,
         )
+        if is_prompt_review_asset(asset):
+            if st.button("Open Prompt Review", use_container_width=True):
+                st.session_state[review_key] = asset.asset_id
+                st.session_state[page_key] = "Prompt Review"
+                st.query_params["page"] = "Prompt Review"
+                st.query_params["review_asset"] = str(asset.asset_id)
+                st.rerun()
 
         disabled_reasons = action_disabled_reason(asset_ref)
         action_columns = st.columns(7)
@@ -539,10 +774,14 @@ def main() -> None:
                 st.markdown("**History Log**")
                 st.text(history_contents)
 
-    with tab_editor:
+    if active_page == "Prompt Review":
+        review_asset_id = st.session_state.get(review_key) or st.session_state.get(state_key)
+        show_prompt_review(app, character, phase, review_asset_id)
+
+    if active_page == "Template Editor":
         show_template_editor(config, character, phase)
 
-    with tab_ai:
+    if active_page == "AI Controls":
         ai_control_col_1, ai_control_col_2, ai_control_col_3, ai_control_col_4, ai_control_col_5 = st.columns([1, 1, 1, 1, 1.5])
         with ai_control_col_1:
             harvest_clicked = st.button("Harvest AI Answers", use_container_width=True)
