@@ -556,8 +556,9 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             prompt_path = root / "Pipelines" / "Test" / "Adult" / "Head-Fitment" / "Front" / "Front" / "Asset_2" / "Final_Image_Prompt.md"
             prompt_text = prompt_path.read_text(encoding="utf-8")
             self.assertIn("HEAD-FITMENT CHARACTER REFERENCE IMAGE", prompt_text)
-            self.assertIn("Use the attached body-reference image", prompt_text)
-            self.assertIn("Use the attached headshot reference image", prompt_text)
+            self.assertIn("The attached body-reference image is the Reference Body source.", prompt_text)
+            self.assertIn("The attached headshot reference is the Character Head source.", prompt_text)
+            self.assertIn("The output must be a standalone head-and-neck module.", prompt_text)
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
