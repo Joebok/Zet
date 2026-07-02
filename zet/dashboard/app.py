@@ -93,12 +93,6 @@ def asset_to_row(asset, app: ZetApp) -> dict:
     stage_label = asset.pipeline_stage
     if review_image_ready(app, asset):
         stage_label = f"📷{asset.pipeline_stage}"
-    stage_url = f"?page=Assets&selected_asset={asset.asset_id}&stage={stage_label}"
-    if is_prompt_review_asset(asset):
-        stage_url = (
-            f"?page=Prompt%20Review&selected_asset={asset.asset_id}"
-            f"&review_asset={asset.asset_id}&stage={stage_label}"
-        )
     return {
         "asset_id": asset.asset_id,
         "pipeline": asset.pipeline,
@@ -107,7 +101,7 @@ def asset_to_row(asset, app: ZetApp) -> dict:
         "costume": format_value(asset.costume),
         "expression": format_value(asset.expression),
         "asset_state": asset.asset_state,
-        "pipeline_stage": stage_url,
+        "pipeline_stage": stage_label,
         "actor": asset.actor,
         "ai_state": format_value(asset.ai_state),
         "final_image_output": format_value(asset.final_image_output),
@@ -984,10 +978,9 @@ def main() -> None:
             on_select="rerun",
             selection_mode="single-row",
             column_config={
-                "pipeline_stage": st.column_config.LinkColumn(
+                "pipeline_stage": st.column_config.TextColumn(
                     "pipeline_stage",
                     help="A camera icon means the review already has an image ready.",
-                    display_text=r"stage=([^&]+)",
                 )
             },
             column_order=[
