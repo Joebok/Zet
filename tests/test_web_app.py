@@ -237,7 +237,7 @@ Avoid head-fitment drift.
                                 "RENDER": "AI_AGENT",
                             },
                             "worker_by_stage": {
-                                "MANIFEST": "zet.workers.noop_worker",
+                                "MANIFEST": "zet.workers.head_fitment_manifest_worker",
                                 "PROMPT": "zet.workers.head_fitment_prompt_worker",
                             },
                         },
@@ -834,6 +834,28 @@ Backend = "manual_chatgpt"
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
+
+    def test_head_fitment_manifest_worker_blocks_before_prompt_when_headshot_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_head_fitment_fixture(root)
+            (root / "Characters" / "Test" / "Adult" / "Reference_Images" / "Headshots" / "head_front.png").unlink()
+            client = TestClient(create_app(config_path))
+
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
+            body_path = detail.json()["body_reference_options"][0]["path"]
+            client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={"body_reference_path": body_path, "headshot_path": ""},
+            )
+
+            manifest_done = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
+
+            self.assertEqual(manifest_done.status_code, 200)
+            asset = manifest_done.json()["detail"]["asset"]
+            self.assertEqual(asset["pipeline_stage"], "ERROR")
+            self.assertEqual(asset["error_code"], "MISSING_HEADSHOT_REFERENCE")
 
     def test_character_assembly_workers_resolve_refs_compile_prompt_and_stage_render(self):
         with tempfile.TemporaryDirectory() as temp_dir:

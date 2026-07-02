@@ -38,7 +38,7 @@
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
       "worker_by_stage": {
-        "MANIFEST": "zet.workers.noop_worker",
+        "MANIFEST": "zet.workers.head_fitment_manifest_worker",
         "PROMPT": "zet.workers.head_fitment_prompt_worker",
         "RENDER": "zet.workers.noop_worker",
         "RENDER_REVIEW": "zet.workers.noop_worker"
