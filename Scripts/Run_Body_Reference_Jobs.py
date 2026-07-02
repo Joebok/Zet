@@ -66,6 +66,76 @@ def load_view_data(project_root: Path, view_token: str) -> dict:
     return view
 
 
+def _clean_template_field(value: str) -> str:
+    return str(value or "").strip().strip("`").strip().strip("[]").strip()
+
+
+def _race_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def extract_character_race(template_path: Path) -> str:
+    text = template_path.read_text(encoding="utf-8")
+    patterns = [
+        r"(?im)^\s*(?:Character\s+)?Race\s*:\s*(.+?)\s*$",
+        r"(?im)^\s*Species\s*/\s*Ancestry\s*:\s*(.+?)\s*$",
+        r"(?im)^\s*Species\s*:\s*(.+?)\s*$",
+        r"(?im)^\s*Ancestry\s*:\s*(.+?)\s*$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return _clean_template_field(match.group(1))
+    return ""
+
+
+def _format_rule_lines(values: object) -> str:
+    if isinstance(values, str):
+        return values.strip()
+    if isinstance(values, list):
+        return "\n".join(f"* {str(value).strip()}" for value in values if str(value).strip())
+    return ""
+
+
+def load_race_render_rules(project_root: Path, template_path: Path) -> dict[str, str]:
+    data = load_json(project_root / "Config" / "Race_Render_Rules.json")
+    races = data.get("races", {})
+    if not isinstance(races, dict) or not races:
+        raise TemplateCompileError("MISSING_CONFIG", "Race_Render_Rules.json must define at least one race.")
+
+    raw_race = extract_character_race(template_path)
+    default_race = str(data.get("default_race", "")).strip()
+    requested_key = _race_key(raw_race or default_race)
+    alias_map: dict[str, str] = {}
+
+    for canonical, config in races.items():
+        canonical_key = _race_key(canonical)
+        alias_map[canonical_key] = canonical
+        if isinstance(config, dict):
+            label = str(config.get("label", "")).strip()
+            if label:
+                alias_map[_race_key(label)] = canonical
+            for alias in config.get("aliases", []):
+                alias_map[_race_key(str(alias))] = canonical
+
+    canonical = alias_map.get(requested_key)
+    if not canonical:
+        source = raw_race or default_race or "(missing)"
+        raise TemplateCompileError("UNKNOWN_RACE", f"Unknown character race/species for render rules: {source}")
+
+    config = races.get(canonical, {})
+    body_reference = config.get("body_reference", {}) if isinstance(config, dict) else {}
+    if not isinstance(body_reference, dict):
+        body_reference = {}
+
+    label = str(config.get("label", canonical)).strip() if isinstance(config, dict) else canonical
+    return {
+        "CHARACTER_RACE": label,
+        "RACE_BODY_REFERENCE_POSITIVE": _format_rule_lines(body_reference.get("positive", [])),
+        "RACE_BODY_REFERENCE_NEGATIVE": _format_rule_lines(body_reference.get("negative", [])),
+    }
+
+
 def job_get(job: dict, *keys: str) -> str:
     for key in keys:
         value = job.get(key)
@@ -256,6 +326,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
             "VIEW_TOKEN": view_token,
             "VIEW_LABEL": str(view_data["label"]),
             "VIEW_INSTRUCTION": str(view_data["instruction"]),
+            **load_race_render_rules(project_root, template_path),
         },
         selection,
         list(bundle.get("required_sections", [])),

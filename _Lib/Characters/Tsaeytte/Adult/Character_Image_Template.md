@@ -108,17 +108,6 @@ Recommended usage:
 * Hand shape: small, elegant hands with long fingers.
 * Hip/leg proportions: long slender legs, knees and ankles cleanly articulated
 
-**Use mannaquin elf head**
-* Placeholder for character head
-* Generic elvish features, especially ears.
-* Neutral gray
-* Thin marking lines for feature placement
-* Mannaquin head meets body in clean line around the neck at the collar bone.
-* Always faces same direction as body.
-
-Mannaquin head does NOT:
-* show eye, nose, mouth, or hair detail.
-
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
 ### Body Description - View Stubs

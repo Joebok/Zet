@@ -28,6 +28,20 @@ Prioritize readable proportions, clean silhouette, and accurate view angle.
 
 {{SECTION:BODY_DESCRIPTION_FACTS}}
 
+Character race/species for mannequin silhouette: {{CHARACTER_RACE}}.
+
+Use a simplified neutral mannequin head as a placeholder for the character head.
+The mannequin head is neutral gray.
+The mannequin head may have thin marking lines for feature placement.
+The mannequin head meets the body in a clean line around the neck at the collar bone.
+The mannequin head always faces the same direction as the body.
+
+Race-specific mannequin silhouette rules:
+{{RACE_BODY_REFERENCE_POSITIVE}}
+
+Mannequin head negative rules:
+{{RACE_BODY_REFERENCE_NEGATIVE}}
+
 {{SECTION:BODY_DESCRIPTION_VIEW_{VIEW}}}
 
 {{SECTION:IDENTITY_PRESERVATION_BODY}}
