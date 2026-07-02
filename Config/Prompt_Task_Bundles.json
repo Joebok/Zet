@@ -8,7 +8,7 @@
           "GENERAL_DESCRIPTION_FACTS",
           "BODY_DESCRIPTION_FACTS",
           "IDENTITY_PRESERVATION_BODY",
-          "FITMENT_RENDERING_RULES",
+          "BODY_REFERENCE_RENDERING_RULES",
           "TECHNICAL_MODESTY_LAYER",
         "NEGATIVE_GUIDANCE_GENERAL"
       ],
@@ -55,7 +55,7 @@
         "IDENTITY_PRESERVATION_FACE",
         "IDENTITY_PRESERVATION_HAIR",
         "IDENTITY_PRESERVATION_EARS",
-        "FITMENT_RENDERING_RULES",
+        "HEAD_FITMENT_RENDERING_RULES",
         "NEGATIVE_GUIDANCE_GENERAL"
       ],
       "optional_sections": [
@@ -106,15 +106,14 @@
         "IDENTITY_PRESERVATION_EARS",
         "IDENTITY_PRESERVATION_BODY",
         "IDENTITY_PRESERVATION_COSTUME",
-        "FITMENT_RENDERING_RULES",
+        "TECHNICAL_MODESTY_LAYER",
         "NEGATIVE_GUIDANCE_GENERAL"
       ],
       "optional_sections": [
         "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
       ],
       "forbidden_sections": [
-        "*_PICARESQUE",
-        "TECHNICAL_MODESTY_LAYER"
+        "*_PICARESQUE"
       ],
       "static_prompt_template": "character_assembly_v1",
       "resources": {

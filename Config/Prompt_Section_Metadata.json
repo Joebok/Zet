@@ -21,9 +21,13 @@
       "label": "Identity Preservation - Body",
       "description": "Rules for preserving the character's body proportions and physical type."
     },
-    "FITMENT_RENDERING_RULES": {
-      "label": "Fitment Rendering Rules",
-      "description": "Rules for neutral technical reference rendering."
+    "BODY_REFERENCE_RENDERING_RULES": {
+      "label": "Body-Reference Rendering Rules",
+      "description": "Rules for neutral technical full-body reference rendering."
+    },
+    "HEAD_FITMENT_RENDERING_RULES": {
+      "label": "Head-Fitment Rendering Rules",
+      "description": "Rules for neutral technical head-and-neck fitment rendering."
     },
     "TECHNICAL_MODESTY_LAYER": {
       "label": "Technical Modesty / Safety Layer",

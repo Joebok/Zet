@@ -1,4 +1,4 @@
-FULL-CHARACTER ASSEMBLY IMAGE.
+FULL-BODY HEAD-ASSEMBLY FITMENT IMAGE
 
 Character: {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 Canonical Art Style: {{CANONICAL_ART_STYLE}}
@@ -12,7 +12,6 @@ Create one complete full-body character render by placing the Character Head sou
 The Reference Body is the locked body source.
 The Character Head is the locked head/identity source.
 
-Replace the mannequin head / placeholder head on the Reference Body with the Character Head.
 The final result should look like one naturally rendered character, not a collage, not a pasted cutout, not a mannequin, and not a reference sheet.
 
 Most important rule:
@@ -20,6 +19,19 @@ Preserve the Reference Body exactly except where the mannequin/placeholder head 
 The Reference Body is not a style suggestion.
 The Character Head is not a loose inspiration image.
 Use them as direct source references for the specified regions.
+
+FITMENT-ASSET PURPOSE
+
+This is an intermediate body-reference assembly, not a finished costume render.
+The goal is to create a generic full-body pose with the real character head attached.
+This image will be used later as the base for costume fitting.
+
+Preserve the Reference Body clothing exactly:
+{{SECTION:TECHNICAL_MODESTY_LAYER}}
+
+Do not create or infer the character’s costume; preserve the Reference Body’s simple tan fitment clothing exactly, because this is a generic pose-and-fitment base for later costume work.
+Do not replace the fitment clothing with the character’s adventuring costume.
+Do not add skirts, leggings, boots, belts, pouches, weapons, props, jewelry, armor, robes, or decorative costume elements.
 
 REFERENCE BODY CONTROLS
 
@@ -36,7 +48,6 @@ Use the Reference Body as the authority for:
 - crop and full-body framing
 - shoulder position
 - neck base / head attachment point
-- costume placement on the body, if already present
 
 Do not re-pose the Reference Body.
 Do not rotate the body.
@@ -95,7 +106,7 @@ ALLOWED CHANGES
 Only change what is necessary to:
 - remove the mannequin/placeholder head from the Reference Body
 - attach the Character Head naturally at the neck
-- harmonize skin tone between head and exposed body skin
+Do not harmonize by changing clothing, pose, anatomy, or adding costume elements.
 
 FORBIDDEN CHANGES
 
@@ -114,6 +125,12 @@ Do not change:
 - character age
 - character species
 
+The Reference Body clothing is locked.
+Preserve the Reference Body fitment clothing exactly: 
+{{SECTION:TECHNICAL_MODESTY_LAYER}}
+Do not replace, redesign, embellish, recolor, or interpret the fitment clothing as costume.
+This image is a generic fitment/body-reference asset for later costume work.
+
 Body view instruction:
 {{BODY_VIEW_INSTRUCTION}}
 
@@ -125,22 +142,21 @@ Good output:
 - Body proportions and stance match the Reference Body.
 - Head, face, hair, ears, and fitted neck match the Character Head source.
 - The head is cleanly attached at the neck.
-- Identity anchors and clothing match the character template.
+- Identity anchors from the Character Head are preserved.
 - Full body is visible, including feet.
 - skin tone and texture of head clearly matches the exposed skin of body
 
 Bad output:
 - Head is rotated, mirrored, re-posed, or changed to a different view.
 - Body proportions, stance, or requested view drift away from the Reference Body.
-- Character appears as a mannequin, gray fitment shell, or technical modesty render.
 - Head and body look pasted together without a clean neck connection.
 - Image becomes a portrait, bust shot, waist-up shot, collage, reference sheet, or two separate images.
 
 IMPORTANT — TEMPLATE DETAILS ARE SECONDARY TO SOURCE PRESERVATION
 
-The character template below is used to preserve identity, costume, and species details.
-It must not override the supplied Reference Body pose, proportions, stance, camera angle, or full-body framing.
-It must not override the supplied Character Head identity, view, hair, ears, face, or neck fitment.
+The identity notes below are used only to preserve face, hair, ears, species, and adult identity.
+They are not costume instructions.
+They must not change the Reference Body clothing.
 
 ~{{SECTION:GENERAL_DESCRIPTION_FACTS}}
 
@@ -172,6 +188,6 @@ Negative constraints:
 
 {{SECTION:NEGATIVE_GUIDANCE_JOB_SPECIFIC}}
 
-Do not render: mannequin head, gray head, fitment shell, tank top, compression shorts, underwear, missing costume, generic replacement face, wrong species markers, human ears, rounded ears, hidden ears, wrong eye color, wrong hair silhouette, long hair, curly hair, changed body type, changed camera angle, portrait crop, bust shot, waist-up framing, missing feet, cut-off feet, narrative scene, dramatic lighting, extra props, extra weapons, seductive pose, fashion pose, pin-up pose, collage, split image, reference sheet.
+Do not render: mannequin head, gray head, generic replacement face, wrong eye color, wrong hair silhouette, changed body type, changed camera angle, portrait crop, bust shot, waist-up framing, missing feet, cut-off feet, narrative scene, dramatic lighting, props, jewelry, accessories, weapons, belts, pouches, scroll cases, potion flasks, boots, skirts, leggings, robes, armor, adventuring costume, fashion pose, pin-up pose, collage, split image, reference sheet.
 
 The final image should look like the selected full character in the requested view, assembled from the Reference Body and Character Head sources.

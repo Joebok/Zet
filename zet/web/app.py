@@ -396,6 +396,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     if _is_prompt_review_asset(asset)
                 ],
             }
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -413,6 +415,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     if _is_prompt_review_asset(asset)
                 ],
             }
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -434,10 +438,23 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/render-review/{asset_id}/promote-to-locked")
-    def render_review_promote_to_locked(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+    def render_review_promote_to_locked(
+        asset_id: int,
+        character: str = Query(...),
+        phase: str = Query(...),
+        replace_existing: bool = Query(False),
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            updated = zet_app.asset(character, phase, asset_id).promote_to_locked()
+            asset_ref = zet_app.asset(character, phase, asset_id)
+            asset = asset_ref.get()
+            locked_image_path = zet_app.path_service.locked_image_path(asset)
+            if locked_image_path.exists() and not replace_existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A locked image already exists. Confirm replacement before promoting.",
+                )
+            updated = asset_ref.promote_to_locked()
             return {
                 "message": f"Render approved. Asset {updated.asset_id} moved to LOCKED.",
                 "asset": _asset_payload(zet_app, updated),
@@ -447,6 +464,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     if _is_render_review_asset(asset)
                 ],
             }
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -732,8 +751,11 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def run_current_worker(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            updated = zet_app.asset(character, phase, asset_id).run_current_worker()
-            return _action_response(zet_app, character, phase, updated.asset_id, f"Worker finished at {updated.pipeline_stage}.")
+            result = zet_app.asset(character, phase, asset_id).run_current_worker_chain()
+            message = f"Ran {result.worker_count} worker(s). Finished at {result.asset.pipeline_stage}."
+            if result.messages:
+                message = f"{message} " + " | ".join(result.messages)
+            return _action_response(zet_app, character, phase, result.asset.asset_id, message)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -25,7 +25,7 @@ Use this image only as a body proportion, fitment, silhouette, and reference-ali
 
 {{SECTION:IDENTITY_PRESERVATION_BODY}}
 
-{{SECTION:FITMENT_RENDERING_RULES}}
+{{SECTION:BODY_REFERENCE_RENDERING_RULES}}
 
 {{SECTION:TECHNICAL_MODESTY_LAYER}}
 

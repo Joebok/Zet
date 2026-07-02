@@ -138,6 +138,12 @@ Dashboard-local logic:
 - prompt review navigation state
 - Streamlit session/query-param coordination after approve/fail
 
+Planned source-attribution and source-edit routing for compiled prompt text is tracked in:
+
+```text
+Docs/Prompt_Source_Attribution_and_Editing_Plan.md
+```
+
 ## Template Editor
 
 The Template Editor inspects and edits prompt template sections.

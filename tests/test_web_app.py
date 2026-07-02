@@ -159,9 +159,9 @@ Preserve hair.
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_EARS -->
 Preserve ears.
 <!-- ZET:END IDENTITY_PRESERVATION_EARS -->
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN HEAD_FITMENT_RENDERING_RULES -->
 Use neutral fitment rendering.
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:END HEAD_FITMENT_RENDERING_RULES -->
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
 Avoid drift.
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
@@ -325,9 +325,9 @@ Preserve body.
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME -->
 Preserve costume.
 <!-- ZET:END IDENTITY_PRESERVATION_COSTUME -->
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
-Use neutral readable rendering.
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
+Plain tan tank top and shorts.
+<!-- ZET:END TECHNICAL_MODESTY_LAYER -->
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
 Avoid drift.
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
@@ -494,7 +494,8 @@ Backend = "manual_chatgpt"
 
             self.assertEqual(response.status_code, 200)
             payload = response.json()
-            self.assertIn("Worker finished", payload["message"])
+            self.assertIn("Ran 1 worker(s)", payload["message"])
+            self.assertIn("Finished at RENDER", payload["message"])
             self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
 
     def test_prompt_review_api_serves_tasks_detail_and_fail(self):
@@ -521,6 +522,7 @@ Backend = "manual_chatgpt"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root, stage="RENDER_REVIEW", actor="HUMAN_AGENT")
+            (root / "Assets" / "Test" / "Adult" / "front.png").write_bytes(b"locked image")
             client = TestClient(create_app(config_path))
 
             tasks = client.get("/api/render-review/tasks", params={"character": "Test", "phase": "Adult"})
@@ -532,10 +534,19 @@ Backend = "manual_chatgpt"
             self.assertEqual(detail.status_code, 200)
             self.assertTrue(detail.json()["is_reviewable"])
             self.assertTrue(detail.json()["exists"]["candidate_image"])
+            self.assertTrue(detail.json()["exists"]["locked_image"])
+            self.assertTrue(detail.json()["candidate_image_path"].endswith("front.png"))
+            self.assertTrue(detail.json()["locked_image_path"].endswith("front.png"))
+
+            unconfirmed = client.post(
+                "/api/render-review/1/promote-to-locked",
+                params={"character": "Test", "phase": "Adult"},
+            )
+            self.assertEqual(unconfirmed.status_code, 409)
 
             promoted = client.post(
                 "/api/render-review/1/promote-to-locked",
-                params={"character": "Test", "phase": "Adult"},
+                params={"character": "Test", "phase": "Adult", "replace_existing": "true"},
             )
             self.assertEqual(promoted.status_code, 200)
             self.assertEqual(promoted.json()["asset"]["asset_state"], "LOCKED")
@@ -818,11 +829,7 @@ Backend = "manual_chatgpt"
 
             manifest_done = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(manifest_done.status_code, 200)
-            self.assertEqual(manifest_done.json()["detail"]["asset"]["pipeline_stage"], "PROMPT")
-
-            prompt_done = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(prompt_done.status_code, 200)
-            asset = prompt_done.json()["detail"]["asset"]
+            asset = manifest_done.json()["detail"]["asset"]
             self.assertEqual(asset["pipeline_stage"], "RENDER")
             self.assertEqual(asset["actor"], "AI_AGENT")
             self.assertEqual(asset["ai_state"], "ASKED")
@@ -833,6 +840,8 @@ Backend = "manual_chatgpt"
             self.assertIn("The attached body-reference image is the Reference Body source.", prompt_text)
             self.assertIn("The attached headshot reference is the Character Head source.", prompt_text)
             self.assertIn("The output must be a standalone head-and-neck module.", prompt_text)
+            self.assertIn("Use the Reference Body as a direct front-view neck-fitment source.", prompt_text)
+            self.assertIn("Render the Character Head and fitted neck from a direct front view", prompt_text)
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
@@ -898,8 +907,9 @@ Backend = "manual_chatgpt"
             resumed = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(resumed.status_code, 200)
             asset = resumed.json()["detail"]["asset"]
-            self.assertEqual(asset["pipeline_stage"], "PROMPT")
-            self.assertEqual(asset["actor"], "PYTHON")
+            self.assertEqual(asset["pipeline_stage"], "RENDER")
+            self.assertEqual(asset["actor"], "AI_AGENT")
+            self.assertEqual(asset["ai_state"], "ASKED")
             self.assertIsNone(asset["error_code"])
 
     def test_character_assembly_workers_resolve_refs_compile_prompt_and_stage_render(self):
@@ -911,22 +921,19 @@ Backend = "manual_chatgpt"
             manifest_done = client.post("/api/assets/3/run-current-worker", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(manifest_done.status_code, 200)
             manifest_asset = manifest_done.json()["detail"]["asset"]
-            self.assertEqual(manifest_asset["pipeline_stage"], "PROMPT")
+            self.assertEqual(manifest_asset["pipeline_stage"], "RENDER")
+            self.assertEqual(manifest_asset["actor"], "AI_AGENT")
+            self.assertEqual(manifest_asset["ai_state"], "ASKED")
             self.assertEqual(
                 [item["role"] for item in manifest_asset["reference_files"]],
                 ["body_reference", "head_fitment"],
             )
 
-            prompt_done = client.post("/api/assets/3/run-current-worker", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(prompt_done.status_code, 200)
-            asset = prompt_done.json()["detail"]["asset"]
-            self.assertEqual(asset["pipeline_stage"], "RENDER")
-            self.assertEqual(asset["actor"], "AI_AGENT")
-            self.assertEqual(asset["ai_state"], "ASKED")
-
             prompt_path = root / "Pipelines" / "Test" / "Adult" / "Character-Assembly" / "Front" / "Front" / "Asset_3" / "Final_Image_Prompt.md"
             prompt_text = prompt_path.read_text(encoding="utf-8")
-            self.assertIn("FULL-CHARACTER ASSEMBLY IMAGE", prompt_text)
+            self.assertIn("FULL-BODY HEAD-ASSEMBLY FITMENT IMAGE", prompt_text)
+            self.assertIn("Preserve the Reference Body as a direct front-view full-body source", prompt_text)
+            self.assertIn("Preserve the Character Head as a direct front-view head source", prompt_text)
             self.assertNotIn("{{", prompt_text)
 
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())

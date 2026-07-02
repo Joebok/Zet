@@ -8,6 +8,7 @@ from Compile_Character_Template import CompiledSelection, TemplateCompileError, 
 
 
 SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
+RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Z0-9_{}]+)\}\}")
 COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{SECTION:[A-Z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^}]+(?:}[^}]*)?\}\}")
 
@@ -47,6 +48,17 @@ def render_static_prompt(
         return text
 
     rendered = SECTION_PLACEHOLDER_RE.sub(replace_section, rendered)
+
+    def replace_raw_section(match: re.Match) -> str:
+        name = resolve_section_name(match.group(1), view_token)
+        text = selection.sections.get(name)
+        if text is None:
+            return match.group(0)
+        if name in required_set and not text.strip():
+            raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
+        return text
+
+    rendered = RAW_SECTION_PLACEHOLDER_RE.sub(replace_raw_section, rendered)
     rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip() + "\n"
 
     if ANY_PLACEHOLDER_RE.search(rendered):

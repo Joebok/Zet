@@ -81,6 +81,9 @@ class AssetRef:
     def run_current_worker(self) -> Asset:
         return self._app.asset_service.run_current_worker(self._character, self._phase, self._asset_id)
 
+    def run_current_worker_chain(self):
+        return self._app.asset_service.run_current_worker_chain(self._character, self._phase, self._asset_id)
+
     def stage_ai_ask(self) -> Path:
         return self._app.asset_service.stage_ai_ask(self._character, self._phase, self._asset_id)
 

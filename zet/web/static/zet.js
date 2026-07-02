@@ -5,6 +5,11 @@ const state = {
   phase: null,
   assets: [],
   selectedAssetId: null,
+  assetFilters: {
+    todoOnly: false,
+    pipeline: "",
+  },
+  assetDetailMode: "status",
   promptReviewTasks: [],
   selectedPromptReviewAssetId: null,
   promptReviewDetail: null,
@@ -24,6 +29,8 @@ const state = {
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
+const assetFilterTodo = document.querySelector("#asset-filter-todo");
+const assetFilterPipeline = document.querySelector("#asset-filter-pipeline");
 const assetTableBody = document.querySelector("#asset-table tbody");
 const assetStatus = document.querySelector("#asset-status");
 const detailTitle = document.querySelector("#detail-title");
@@ -35,6 +42,12 @@ const historyText = document.querySelector("#history-text");
 const placeholderTitle = document.querySelector("#placeholder-title");
 const actionMessage = document.querySelector("#action-message");
 const actionButtons = Array.from(document.querySelectorAll("[data-action]"));
+const assetDetailStatusMode = document.querySelector("#asset-detail-status-mode");
+const assetDetailImageMode = document.querySelector("#asset-detail-image-mode");
+const assetStatusDetail = document.querySelector("#asset-status-detail");
+const assetLockedDetail = document.querySelector("#asset-locked-detail");
+const assetLockedImage = document.querySelector("#asset-locked-image");
+const assetLockedPath = document.querySelector("#asset-locked-path");
 const promptReviewStatus = document.querySelector("#prompt-review-status");
 const promptReviewTaskBody = document.querySelector("#prompt-review-task-table tbody");
 const promptReviewPrev = document.querySelector("#prompt-review-prev");
@@ -61,6 +74,7 @@ const renderReviewTitle = document.querySelector("#render-review-title");
 const renderReviewPath = document.querySelector("#render-review-path");
 const renderReviewMessage = document.querySelector("#render-review-message");
 const candidateRender = document.querySelector("#candidate-render");
+const lockedRender = document.querySelector("#locked-render");
 const renderPromoteButton = document.querySelector("#render-promote");
 const renderFailRenderButton = document.querySelector("#render-fail-render");
 const renderFailRegenerateButton = document.querySelector("#render-fail-regenerate");
@@ -152,6 +166,14 @@ async function fetchJson(url, options = {}) {
     throw new Error(detail);
   }
   return response.json();
+}
+
+function fileUrl(path, cacheKey = "") {
+  const params = new URLSearchParams({ path });
+  if (cacheKey) {
+    params.set("v", cacheKey);
+  }
+  return `/api/file?${params.toString()}`;
 }
 
 function showActionMessage(message, kind = "info") {
@@ -259,12 +281,34 @@ async function loadAssets(preferredAssetId = null) {
   } else {
     clearDetail();
   }
-  assetStatus.textContent = `${state.assets.length} asset(s)`;
+}
+
+function filteredAssets() {
+  return state.assets.filter((asset) => {
+    if (state.assetFilters.todoOnly && asset.asset_state === "LOCKED") {
+      return false;
+    }
+    if (state.assetFilters.pipeline && asset.pipeline !== state.assetFilters.pipeline) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function renderAssetTable() {
   assetTableBody.replaceChildren();
-  for (const asset of state.assets) {
+  const visibleAssets = filteredAssets();
+  const visibleIds = new Set(visibleAssets.map((asset) => asset.asset_id));
+  if (state.selectedAssetId && !visibleIds.has(state.selectedAssetId)) {
+    state.selectedAssetId = visibleAssets[0]?.asset_id || null;
+    if (state.selectedAssetId) {
+      selectAsset(state.selectedAssetId);
+    } else {
+      clearDetail();
+    }
+  }
+  assetStatus.textContent = `${visibleAssets.length} of ${state.assets.length} asset(s)`;
+  for (const asset of visibleAssets) {
     const row = document.createElement("tr");
     row.dataset.assetId = asset.asset_id;
     if (asset.asset_id === state.selectedAssetId) {
@@ -291,6 +335,12 @@ function renderAssetTable() {
   }
 }
 
+function applyAssetFilters() {
+  state.assetFilters.todoOnly = assetFilterTodo.checked;
+  state.assetFilters.pipeline = assetFilterPipeline.value;
+  renderAssetTable();
+}
+
 async function selectAsset(assetId) {
   state.selectedAssetId = Number(assetId);
   for (const row of assetTableBody.querySelectorAll("tr")) {
@@ -307,6 +357,9 @@ function clearDetail() {
   pathList.replaceChildren();
   stageText.textContent = "";
   historyText.textContent = "";
+  assetLockedImage.textContent = "No locked image.";
+  assetLockedPath.textContent = "";
+  updateAssetDetailMode();
   updateActionButtons(null);
 }
 
@@ -331,7 +384,38 @@ function renderDetail(detail) {
   }
   stageText.textContent = detail.stage_text || "No stage marker found.";
   historyText.textContent = detail.history_text || "No history found.";
+  renderAssetLockedImage(detail);
+  updateAssetDetailMode();
   updateActionButtons(detail);
+}
+
+function updateAssetDetailMode() {
+  const imageMode = state.assetDetailMode === "locked";
+  assetDetailStatusMode.classList.toggle("selected", !imageMode);
+  assetDetailImageMode.classList.toggle("selected", imageMode);
+  assetStatusDetail.hidden = imageMode;
+  assetLockedDetail.hidden = !imageMode;
+}
+
+function setAssetDetailMode(mode) {
+  state.assetDetailMode = mode === "locked" ? "locked" : "status";
+  updateAssetDetailMode();
+}
+
+function renderAssetLockedImage(detail) {
+  assetLockedImage.replaceChildren();
+  const path = detail.paths?.locked_image_path || "";
+  const exists = Boolean(detail.exists?.locked_image);
+  assetLockedPath.textContent = path;
+  if (!exists || !path) {
+    assetLockedImage.textContent = "No locked image.";
+    return;
+  }
+  const image = document.createElement("img");
+  image.alt = "Locked asset";
+  image.src = fileUrl(path, detail.asset?.updated_at || Date.now().toString());
+  image.title = path;
+  assetLockedImage.append(image);
 }
 
 function updateActionButtons(detail) {
@@ -526,7 +610,7 @@ function renderLocalTestRender(path) {
   }
   const image = document.createElement("img");
   image.alt = "Latest local test render";
-  image.src = `/api/file?path=${encodeURIComponent(path)}`;
+  image.src = fileUrl(path, Date.now().toString());
   image.title = path;
   localTestRender.append(image);
 }
@@ -618,6 +702,7 @@ function clearRenderReview() {
   renderReviewTitle.textContent = "Select a render";
   renderReviewPath.textContent = "";
   candidateRender.textContent = "No candidate image.";
+  lockedRender.textContent = "No locked image.";
   renderStageText.textContent = "";
   renderHistoryText.textContent = "";
   renderReviewPrev.disabled = true;
@@ -635,23 +720,46 @@ function renderRenderReview(detail) {
   renderStageText.textContent = detail.stage_text || "No stage marker found.";
   renderHistoryText.textContent = detail.history_text || "No history found.";
   renderCandidateImage(detail);
+  renderLockedImage(detail);
   renderPromoteButton.disabled = !detail.is_reviewable || !detail.exists?.candidate_image;
   renderFailRenderButton.disabled = !detail.is_reviewable;
   renderFailRegenerateButton.disabled = !detail.is_reviewable;
   updateRenderReviewNavigation();
 }
 
-function renderCandidateImage(detail) {
-  candidateRender.replaceChildren();
-  if (!detail.exists?.candidate_image || !detail.candidate_image_path) {
-    candidateRender.textContent = "No candidate image.";
+function renderReviewImage(container, path, exists, emptyText, altText, cacheKey = "") {
+  container.replaceChildren();
+  if (!exists || !path) {
+    container.textContent = emptyText;
     return;
   }
   const image = document.createElement("img");
-  image.alt = "Candidate render";
-  image.src = `/api/file?path=${encodeURIComponent(detail.candidate_image_path)}`;
-  image.title = detail.candidate_image_path;
-  candidateRender.append(image);
+  image.alt = altText;
+  image.src = fileUrl(path, cacheKey || Date.now().toString());
+  image.title = path;
+  container.append(image);
+}
+
+function renderCandidateImage(detail) {
+  renderReviewImage(
+    candidateRender,
+    detail.candidate_image_path,
+    detail.exists?.candidate_image,
+    "No candidate image.",
+    "Candidate render",
+    detail.asset?.updated_at || "",
+  );
+}
+
+function renderLockedImage(detail) {
+  renderReviewImage(
+    lockedRender,
+    detail.locked_image_path,
+    detail.exists?.locked_image,
+    "No locked image.",
+    "Locked render",
+    detail.asset?.updated_at || "",
+  );
 }
 
 function updateRenderReviewNavigation() {
@@ -671,6 +779,33 @@ async function runRenderReviewAction(action) {
       { method: "POST" },
     );
     showRenderMessage(payload.message || "Review action complete.");
+    await loadRenderReviewTasks();
+    await loadAssets(state.selectedAssetId);
+  } catch (error) {
+    showRenderMessage(error.message, "error");
+  }
+}
+
+async function promoteRenderReview() {
+  if (!state.selectedRenderReviewAssetId) {
+    return;
+  }
+  const replacingLockedImage = Boolean(state.renderReviewDetail?.exists?.locked_image);
+  const params = currentQuery();
+  if (replacingLockedImage) {
+    const confirmed = window.confirm("A locked image already exists for this asset. Replace it with the candidate image?");
+    if (!confirmed) {
+      return;
+    }
+    params.set("replace_existing", "true");
+  }
+  showRenderMessage("Working...");
+  try {
+    const payload = await fetchJson(
+      `/api/render-review/${state.selectedRenderReviewAssetId}/promote-to-locked?${params.toString()}`,
+      { method: "POST" },
+    );
+    showRenderMessage(payload.message || "Render approved.");
     await loadRenderReviewTasks();
     await loadAssets(state.selectedAssetId);
   } catch (error) {
@@ -946,7 +1081,7 @@ function renderConsoleReferenceFiles(referenceFiles) {
     if (reference.path) {
       const image = document.createElement("img");
       image.alt = title.textContent;
-      image.src = `/api/file?path=${encodeURIComponent(reference.path)}`;
+      image.src = fileUrl(reference.path, Date.now().toString());
       section.append(image);
     }
     container.append(section);
@@ -1159,7 +1294,7 @@ function renderImagePreview(container, path, emptyText) {
   }
   const image = document.createElement("img");
   image.alt = emptyText;
-  image.src = `/api/file?path=${encodeURIComponent(path)}`;
+  image.src = fileUrl(path, Date.now().toString());
   image.title = path;
   container.append(image);
 }
@@ -1286,6 +1421,11 @@ for (const button of actionButtons) {
   button.addEventListener("click", () => runAssetAction(button.dataset.action));
 }
 
+assetFilterTodo.addEventListener("change", applyAssetFilters);
+assetFilterPipeline.addEventListener("change", applyAssetFilters);
+assetDetailStatusMode.addEventListener("click", () => setAssetDetailMode("status"));
+assetDetailImageMode.addEventListener("click", () => setAssetDetailMode("locked"));
+
 promptSearch.addEventListener("input", renderPromptText);
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt_text || "", "Prompt copied."));
 copyCondensedButton.addEventListener("click", () => copyText(condensedText.value, "Condensed prompt copied."));
@@ -1305,7 +1445,7 @@ promptReviewNext.addEventListener("click", () => {
     selectPromptReviewAsset(state.promptReviewTasks[index + 1].asset_id);
   }
 });
-renderPromoteButton.addEventListener("click", () => runRenderReviewAction("promote-to-locked"));
+renderPromoteButton.addEventListener("click", promoteRenderReview);
 renderFailRenderButton.addEventListener("click", () => runRenderReviewAction("fail-to-render"));
 renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction("fail-to-regenerate"));
 renderReviewPrev.addEventListener("click", () => {

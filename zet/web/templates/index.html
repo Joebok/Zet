@@ -8,7 +8,10 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">ZET</div>
+    <div class="brand">
+      <img src="/api/file?path=img/logo.png" alt="ZET logo">
+      <span>ZET</span>
+    </div>
     <div class="context-controls">
       <label>
         Character
@@ -40,6 +43,21 @@
       </div>
       <div class="asset-layout">
         <section class="asset-table-panel">
+          <div class="asset-filters">
+            <label class="checkbox-row">
+              <input id="asset-filter-todo" type="checkbox">
+              To Do Only
+            </label>
+            <label>
+              Pipeline
+              <select id="asset-filter-pipeline">
+                <option value="">All</option>
+                <option value="Body-Reference">Body-Reference</option>
+                <option value="Head-Fitment">Head-Fitment</option>
+                <option value="Character-Assembly">Character-Assembly</option>
+              </select>
+            </label>
+          </div>
           <table id="asset-table">
             <thead>
               <tr>
@@ -61,6 +79,10 @@
           <h2 id="detail-title">Select an asset</h2>
           <div id="detail-summary" class="summary-bar"></div>
           <div id="action-message" class="action-message" hidden></div>
+          <div class="asset-detail-toggle" role="group" aria-label="Asset detail display">
+            <button id="asset-detail-status-mode" class="selected" type="button">Status</button>
+            <button id="asset-detail-image-mode" type="button">Locked Image</button>
+          </div>
           <div class="button-row">
             <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
             <button id="run-current-worker" data-action="run-current-worker" disabled>Run Current Worker</button>
@@ -69,22 +91,31 @@
             <button id="regenerate" data-action="regenerate" disabled>Regenerate</button>
             <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
           </div>
-          <div class="detail-grid">
+          <div id="asset-status-detail" class="asset-detail-view">
+            <div class="detail-grid">
+              <section>
+                <h3>Asset</h3>
+                <pre id="asset-json"></pre>
+              </section>
+              <section>
+                <h3>Paths</h3>
+                <dl id="path-list"></dl>
+              </section>
+              <section>
+                <h3>Stage Marker</h3>
+                <pre id="stage-text"></pre>
+              </section>
+              <section>
+                <h3>History</h3>
+                <pre id="history-text"></pre>
+              </section>
+            </div>
+          </div>
+          <div id="asset-locked-detail" class="asset-detail-view" hidden>
             <section>
-              <h3>Asset</h3>
-              <pre id="asset-json"></pre>
-            </section>
-            <section>
-              <h3>Paths</h3>
-              <dl id="path-list"></dl>
-            </section>
-            <section>
-              <h3>Stage Marker</h3>
-              <pre id="stage-text"></pre>
-            </section>
-            <section>
-              <h3>History</h3>
-              <pre id="history-text"></pre>
+              <h3>Locked Asset</h3>
+              <div id="asset-locked-image" class="asset-locked-image-viewer">No locked image.</div>
+              <div id="asset-locked-path" class="status-text"></div>
             </section>
           </div>
         </aside>
@@ -217,7 +248,16 @@
             <span id="render-review-path" class="status-text"></span>
           </div>
           <div id="render-review-message" class="action-message" hidden></div>
-          <div id="candidate-render" class="render-image-viewer">No candidate image.</div>
+          <div class="render-comparison">
+            <section class="render-comparison-panel">
+              <h3>Candidate</h3>
+              <div id="candidate-render" class="render-image-viewer">No candidate image.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Locked</h3>
+              <div id="locked-render" class="render-image-viewer">No locked image.</div>
+            </section>
+          </div>
         </section>
         <aside class="review-actions">
           <button id="render-promote" class="primary-action">Promote to LOCKED</button>
@@ -279,9 +319,9 @@
             <input id="render-console-file-input" type="file" accept="image/*">
           </div>
           <img id="render-console-image-preview" class="image-preview" alt="Pasted render preview" hidden>
-          <div id="render-console-reference-files" class="reference-preview-list"></div>
           <button id="render-console-save-image" class="primary-action" disabled>Save Image Answer</button>
           <p id="render-console-save-status" class="status-text"></p>
+          <div id="render-console-reference-files" class="reference-preview-list"></div>
           <h2>Fail Task</h2>
           <textarea id="render-console-fail-reason" placeholder="Reason for failure"></textarea>
           <button id="render-console-fail-task">Fail Task</button>

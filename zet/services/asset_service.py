@@ -40,6 +40,13 @@ class WorkerPollResult:
 
 
 @dataclass(frozen=True)
+class WorkerChainResult:
+    asset: Asset
+    worker_count: int
+    messages: list[str]
+
+
+@dataclass(frozen=True)
 class BatchRenderResetResult:
     asset_id: int
     before_stage: str
@@ -468,6 +475,38 @@ class AssetService:
 
     def stage_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
         return self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+
+    def run_current_worker_chain(self, character: str, phase: str, asset_id: int, max_steps: int = 10) -> WorkerChainResult:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.actor != "PYTHON":
+            raise AssetServiceError("Current worker can only run when Actor is PYTHON.")
+
+        messages: list[str] = []
+        worker_count = 0
+        updated_asset = asset
+
+        while worker_count < max_steps and updated_asset.actor == "PYTHON":
+            before_stage = updated_asset.pipeline_stage
+            before_actor = updated_asset.actor
+            updated_asset = self.run_current_worker(character, phase, asset_id)
+            worker_count += 1
+
+            worker_result = self.worker_service.last_worker_result
+            if worker_result is not None:
+                messages.append(f"{before_stage}/{before_actor}: {worker_result.message}")
+            else:
+                messages.append(f"{before_stage}/{before_actor}: Worker executed.")
+
+            if updated_asset.actor != "PYTHON":
+                break
+            if updated_asset.pipeline_stage == "ERROR":
+                break
+            if updated_asset.pipeline_stage == "ADD_REF" and (updated_asset.error_code or "") in MISSING_REFERENCE_ERROR_CODES:
+                break
+            if updated_asset.pipeline_stage == before_stage:
+                break
+
+        return WorkerChainResult(asset=updated_asset, worker_count=worker_count, messages=messages)
 
     def _worker_name_for_asset(self, character: str, phase: str, asset: Asset) -> str | None:
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)

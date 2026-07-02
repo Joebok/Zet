@@ -139,7 +139,7 @@ Bad output:
 - The Character Head is rotated, re-posed, mirrored, or converted to a different view.
 - Hair, ears, face, skin tone, or camera orientation drift away from the Character Head source.
 
-{{SECTION:FITMENT_RENDERING_RULES}}
+{{SECTION:HEAD_FITMENT_RENDERING_RULES}}
 
 {{SECTION:GENERAL_DESCRIPTION_FACTS}}
 

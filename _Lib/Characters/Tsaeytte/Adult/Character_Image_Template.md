@@ -753,7 +753,7 @@ Avoid:
 
 * Avoid exaggerated facial emotion, invented costume details, dramatic scene lighting, and body-type drift.
 * Preserve petite, lithe adult proportions.
-* Do not add extra weapons, props, jewelry, or decorative accessories beyond the specified character outfit.
+* Do not add extra weapons, props, jewelry, or decorative accessories.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 

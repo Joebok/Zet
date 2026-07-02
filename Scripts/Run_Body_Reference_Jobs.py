@@ -66,6 +66,31 @@ def load_view_data(project_root: Path, view_token: str) -> dict:
     return view
 
 
+def view_instruction(view_data: dict, role: str, task: str) -> str:
+    role_key = f"{role}_instructions"
+    task_key = str(task or "").strip()
+    role_instructions = view_data.get(role_key)
+    if isinstance(role_instructions, dict):
+        value = role_instructions.get(task_key)
+        if isinstance(value, str) and value.strip():
+            return value
+
+    task_instructions = view_data.get("instructions_by_task")
+    if isinstance(task_instructions, dict):
+        value = task_instructions.get(task_key)
+        if isinstance(value, str) and value.strip():
+            return value
+
+    value = view_data.get("instruction")
+    if isinstance(value, str) and value.strip():
+        return value
+
+    raise TemplateCompileError(
+        "MISSING_VIEW_INSTRUCTION",
+        f"No {role} view instruction configured for task {task_key} and view {view_data.get('label', '')}.",
+    )
+
+
 def _clean_template_field(value: str) -> str:
     return str(value or "").strip().strip("`").strip().strip("[]").strip()
 
@@ -359,7 +384,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
             "CHARACTER_PHASE": phase,
             "VIEW_TOKEN": view_token,
             "VIEW_LABEL": str(view_data["label"]),
-            "VIEW_INSTRUCTION": str(view_data["instruction"]),
+            "VIEW_INSTRUCTION": view_instruction(view_data, "body", task),
             **template_metadata(template_path),
             **load_race_render_rules(project_root, template_path),
         },

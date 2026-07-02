@@ -44,9 +44,9 @@ Canonical Art Style: `[ink and watercolor reference art]`
 * Preserve body proportions only.
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
 * Render as a technical fitment image.
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 * Plain tank top and shorts.
@@ -126,9 +126,9 @@ Gender Presentation: `[Feminine adult woman]`
 * Preserve body proportions only.
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
 * Render as a technical fitment image.
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
 
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
 * No costume.
@@ -179,9 +179,9 @@ Species / Ancestry: `[Starlight being]`
 * Preserve proportions.
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
 * Render as a technical fitment image.
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 * Plain tank top and shorts.

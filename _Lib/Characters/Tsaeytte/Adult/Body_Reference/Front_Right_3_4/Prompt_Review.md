@@ -1,6 +1,6 @@
 # Prompt Review
 
-Job ID: Asset_5_Body-Reference_Front-Right-3-4
+Job ID: Asset_3_Body-Reference_Front-Right-3-4
 Task: body-reference
 Character: Tsaeytte
 Phase: Adult
@@ -43,3 +43,8 @@ Reviewed At:
 - PASS no ZET markers
 
 ## Notes
+## Local Test Renders
+
+- 2026-07-02 15:58:18: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front_Right_3_4\Local_Test_Renders\test_20260702_155818.png`
+  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front_Right_3_4\Local_Test_Renders\test_20260702_155818.json`
+  - ComfyUI prompt id: `3c3d045a-83d3-4084-9b18-84a324ee7f1d`

@@ -12,11 +12,12 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt, write_compiled_sections
-from Compile_Character_Template import TemplateCompileError, load_template_sections, select_sections
+from Compile_Character_Template import TemplateCompileError, select_sections
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     job_get,
     load_bundle,
+    load_body_reference_sections,
     load_view_data,
     normalize_view,
     output_files,
@@ -24,6 +25,7 @@ from Run_Body_Reference_Jobs import (
     resolve_project_path,
     template_metadata,
     template_path_for_job,
+    view_instruction,
 )
 
 
@@ -154,7 +156,7 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
     validate_reference(body_reference, "body_reference")
     validate_reference(headshot, "headshot")
 
-    all_sections = load_template_sections(template_path)
+    all_sections = load_body_reference_sections(project_root, template_path)
     selection = select_sections(all_sections, bundle, head_view_token)
     if selection.missing_required:
         raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
@@ -183,13 +185,13 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
             "CHARACTER_PHASE": phase,
             "BODY_VIEW_TOKEN": body_view_token,
             "BODY_VIEW_LABEL": str(body_view_data["label"]),
-            "BODY_VIEW_INSTRUCTION": str(body_view_data["instruction"]),
+            "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
             "HEAD_VIEW_TOKEN": head_view_token,
             "HEAD_VIEW_LABEL": str(head_view_data["label"]),
-            "HEAD_VIEW_INSTRUCTION": str(head_view_data["instruction"]),
+            "HEAD_VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
             "VIEW_TOKEN": head_view_token,
             "VIEW_LABEL": str(head_view_data["label"]),
-            "VIEW_INSTRUCTION": str(head_view_data["instruction"]),
+            "VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
             **template_metadata(template_path),
         },
         selection,

@@ -826,24 +826,42 @@ Costume preservation rules:
 
 # Technical Fitment / Reference-Only Rendering
 
-## Fitment Rendering Rules
+## Body Reference Rendering Rules
 
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
 
 Rendering priorities:
 
-* Neutral, readable pose.
+* Full-body technical body-reference image.
+* Entire body visible from top of head to soles of feet.
+* Feet fully visible.
 * Clear silhouette.
-* Full body visible when the job requests full body.
-* Feet visible when the job requests full body.
+* Preserve requested body view.
+* Render in the Canonical Art Style.
 * No dramatic lighting.
 * No narrative scene.
-* No emotional acting.
-* Uncluttered image.
-* Preserve scale and proportions.
-* Preserve requested view angle.
+* No acting.
 
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
+
+## Head Fitment Rendering Rules
+
+<!-- ZET:BEGIN HEAD_FITMENT_RENDERING_RULES -->
+
+Rendering priorities:
+
+* Head-and-neck module only.
+* Transparent background.
+* Clear silhouette.
+* Preserve requested head view.
+* Preserve identity and fitment geometry.
+* Render in the Canonical Art Style.
+* No dramatic lighting.
+* No narrative scene.
+* No acting.
+* No shoulders, torso, bust, clothing, costume, mannequin, or stand.
+
+<!-- ZET:END HEAD_FITMENT_RENDERING_RULES -->
 
 ## Technical Modesty / Safety Layer
 
@@ -978,7 +996,7 @@ Recommended sections for body-reference:
 * BODY_DESCRIPTION_FACTS
 * BODY_DESCRIPTION_VIEW_[REQUESTED_VIEW]
 * IDENTITY_PRESERVATION_BODY
-* FITMENT_RENDERING_RULES
+* BODY_REFERENCE_RENDERING_RULES
 * TECHNICAL_MODESTY_LAYER
 * NEGATIVE_GUIDANCE_GENERAL
 
@@ -997,8 +1015,7 @@ Recommended sections for head-fitment:
 * IDENTITY_PRESERVATION_FACE
 * IDENTITY_PRESERVATION_HAIR
 * IDENTITY_PRESERVATION_EARS
-* FITMENT_RENDERING_RULES
-* TECHNICAL_MODESTY_LAYER
+* HEAD_FITMENT_RENDERING_RULES
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_HEAD_FITMENT -->
@@ -1016,7 +1033,6 @@ Recommended sections for costume-fitment:
 * IDENTITY_PRESERVATION_CORE
 * IDENTITY_PRESERVATION_BODY
 * IDENTITY_PRESERVATION_COSTUME
-* FITMENT_RENDERING_RULES
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_COSTUME_FITMENT -->
@@ -1037,7 +1053,6 @@ Recommended sections for turnaround sheets:
 * IDENTITY_PRESERVATION_EARS
 * IDENTITY_PRESERVATION_BODY
 * IDENTITY_PRESERVATION_COSTUME
-* FITMENT_RENDERING_RULES
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_TURNAROUND -->
