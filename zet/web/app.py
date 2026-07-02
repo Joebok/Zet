@@ -145,7 +145,53 @@ def _render_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
     }
 
 
+def _monitor_request_payloads(zet_app: ZetApp) -> list[dict[str, Any]]:
+    root = zet_app.ai_proxy_service.ai_proxy_path_service.monitor_requests_root()
+    if not root.exists():
+        return []
+    rows = []
+    for request_path in sorted((path for path in root.iterdir() if path.is_dir()), reverse=True):
+        manifest_path = request_path / "request.json"
+        payload: dict[str, Any] = {}
+        if manifest_path.exists():
+            try:
+                import json
+
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {}
+        rows.append(
+            {
+                "test_id": payload.get("test_id") or request_path.name,
+                "instruction": payload.get("instruction") or "",
+                "created_at": payload.get("created_at") or "",
+                "path": str(request_path),
+            }
+        )
+    return rows
+
+
+def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
+    queue_snapshot = zet_app.queue_snapshot()
+    manual_render_asks = [
+        item for item in queue_snapshot["ask"]
+        if item.get("worker_type") == "manual_chatgpt_render"
+    ]
+    return {
+        "stop_state": _jsonable(zet_app.proxy_stop_state()),
+        "queue": _jsonable(queue_snapshot),
+        "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
+        "manual_render_asks": _jsonable(manual_render_asks),
+        "monitor_requests": _monitor_request_payloads(zet_app),
+        "monitor_responses": _jsonable(zet_app.list_monitor_responses()),
+        "processes": [status.to_dict() for status in zet_app.process_statuses()],
+        "render_console_url": f"http://{zet_app.config.render_console_host}:{zet_app.config.render_console_port}",
+    }
+
+
 def _jsonable(value: Any) -> Any:
+    if hasattr(value, "__dataclass_fields__"):
+        return _jsonable(asdict(value))
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -373,6 +419,80 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     if _is_render_review_asset(asset)
                 ],
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/ai-controls")
+    def ai_controls() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _ai_controls_payload(zet_app)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/ai-controls/harvest")
+    def ai_controls_harvest() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            results = zet_app.harvest_ai_answers()
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = f"Harvested {len(results)} AI answer folder(s)." if results else "No AI answer folders found."
+            payload["harvest_results"] = _jsonable(results)
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/ai-controls/monitor-test")
+    def ai_controls_monitor_test(instruction: str = Query("", max_length=1000)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            request_path = zet_app.issue_monitor_test(instruction)
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = f"Monitor test sent: {request_path.name}"
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/ai-controls/stop")
+    def ai_controls_stop() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            stop_state = zet_app.activate_proxy_stop()
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = f"Proxy stop activated. Cleared {stop_state['cleared_asks']} ask folder(s)."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/ai-controls/resume")
+    def ai_controls_resume() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            zet_app.resume_proxy_stop()
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = "Proxy stop cleared. New asks may be processed."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/ai-controls/processes/{process_id}/{action}")
+    def ai_controls_process_action(process_id: str, action: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            if action == "start":
+                zet_app.start_process(process_id)
+                message = f"Started {process_id}."
+            elif action == "stop":
+                count = zet_app.stop_process(process_id)
+                message = f"Stopped {count} process(es) for {process_id}."
+            elif action == "restart":
+                count = zet_app.restart_process(process_id)
+                message = f"Restarted {process_id}; stopped {count} old process(es)."
+            else:
+                raise ValueError(f"Unsupported process action: {action}")
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = message
+            return payload
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

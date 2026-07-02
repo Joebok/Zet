@@ -389,6 +389,41 @@ dl {
   object-fit: contain;
 }
 
+.ai-controls-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(520px, 1.2fr);
+}
+
+.control-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.queue-panel {
+  grid-column: 1 / -1;
+}
+
+.queue-tables {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mini-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.mini-actions button {
+  min-height: 28px;
+  padding: 3px 7px;
+}
+
 dialog {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -411,6 +446,11 @@ dd {
   }
 
   .review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-controls-grid,
+  .queue-tables {
     grid-template-columns: 1fr;
   }
 

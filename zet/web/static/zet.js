@@ -11,6 +11,7 @@ const state = {
   renderReviewTasks: [],
   selectedRenderReviewAssetId: null,
   renderReviewDetail: null,
+  aiControls: null,
 };
 
 const characterSelect = document.querySelector("#character-select");
@@ -57,6 +58,26 @@ const renderFailRenderButton = document.querySelector("#render-fail-render");
 const renderFailRegenerateButton = document.querySelector("#render-fail-regenerate");
 const renderStageText = document.querySelector("#render-stage-text");
 const renderHistoryText = document.querySelector("#render-history-text");
+const aiControlsStatus = document.querySelector("#ai-controls-status");
+const aiControlsMessage = document.querySelector("#ai-controls-message");
+const proxyStopState = document.querySelector("#proxy-stop-state");
+const harvestAiButton = document.querySelector("#harvest-ai");
+const refreshAiControlsButton = document.querySelector("#refresh-ai-controls");
+const activateProxyStopButton = document.querySelector("#activate-proxy-stop");
+const resumeProxyStopButton = document.querySelector("#resume-proxy-stop");
+const monitorInstruction = document.querySelector("#monitor-instruction");
+const sendMonitorTestButton = document.querySelector("#send-monitor-test");
+const processTableBody = document.querySelector("#process-table tbody");
+const queueCounts = document.querySelector("#queue-counts");
+const queueAskTableBody = document.querySelector("#queue-ask-table tbody");
+const queueClaimedTableBody = document.querySelector("#queue-claimed-table tbody");
+const queueAnswerTableBody = document.querySelector("#queue-answer-table tbody");
+const queueFailedTableBody = document.querySelector("#queue-failed-table tbody");
+const renderConsoleLink = document.querySelector("#render-console-link");
+const manualRenderCount = document.querySelector("#manual-render-count");
+const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
+const monitorRequestTableBody = document.querySelector("#monitor-request-table tbody");
+const monitorResponseTableBody = document.querySelector("#monitor-response-table tbody");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -89,6 +110,12 @@ function showRenderMessage(message, kind = "info") {
   renderReviewMessage.textContent = message || "";
   renderReviewMessage.className = `action-message ${kind}`;
   renderReviewMessage.hidden = !message;
+}
+
+function showAiControlsMessage(message, kind = "info") {
+  aiControlsMessage.textContent = message || "";
+  aiControlsMessage.className = `action-message ${kind}`;
+  aiControlsMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -285,15 +312,19 @@ function setupTabs() {
       document.querySelector("#assets-page").classList.toggle("active", page === "assets");
       document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
       document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
+      document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
       document
         .querySelector("#placeholder-page")
-        .classList.toggle("active", !["assets", "prompt-review", "render-review"].includes(page));
+        .classList.toggle("active", !["assets", "prompt-review", "render-review", "ai-controls"].includes(page));
       placeholderTitle.textContent = button.textContent;
       if (page === "prompt-review") {
         loadPromptReviewTasks();
       }
       if (page === "render-review") {
         loadRenderReviewTasks();
+      }
+      if (page === "ai-controls") {
+        loadAiControls();
       }
     });
   }
@@ -554,6 +585,92 @@ async function runRenderReviewAction(action) {
   }
 }
 
+function renderRows(tbody, rows, columns) {
+  tbody.replaceChildren();
+  if (!rows || rows.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = Math.max(1, columns.length);
+    cell.textContent = "None.";
+    row.append(cell);
+    tbody.append(row);
+    return;
+  }
+  for (const item of rows) {
+    const row = document.createElement("tr");
+    for (const column of columns) {
+      const cell = document.createElement("td");
+      cell.textContent = item[column] ?? "";
+      row.append(cell);
+    }
+    tbody.append(row);
+  }
+}
+
+async function loadAiControls() {
+  aiControlsStatus.textContent = "Loading AI controls...";
+  const payload = await fetchJson("/api/ai-controls");
+  renderAiControls(payload);
+}
+
+function renderAiControls(payload) {
+  state.aiControls = payload;
+  const stopState = payload.stop_state || {};
+  proxyStopState.textContent = stopState.active
+    ? `Proxy STOPPED | stop_id: ${stopState.stop_id || ""} | cleared asks: ${stopState.cleared_asks || 0}`
+    : "Proxy ACTIVE";
+  const counts = payload.queue_counts || {};
+  queueCounts.textContent =
+    `Ask: ${counts.ask || 0} | Claimed: ${counts.claimed || 0} | Answer: ${counts.answer || 0} | Failed: ${counts.failed || 0}`;
+  renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
+  renderRows(queueClaimedTableBody, payload.queue?.claimed || [], ["worker_id", "ask_id", "asset_id", "worker_type", "task_type"]);
+  renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id"]);
+  renderRows(queueFailedTableBody, payload.queue?.failed || [], ["worker_id", "name"]);
+  renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
+  renderRows(monitorRequestTableBody, payload.monitor_requests || [], ["test_id", "instruction", "created_at"]);
+  renderRows(monitorResponseTableBody, payload.monitor_responses || [], ["test_id", "worker_id", "host", "status", "ollama_ok", "responded_at"]);
+  manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
+  renderConsoleLink.href = payload.render_console_url || "#";
+  renderProcessRows(payload.processes || []);
+  aiControlsStatus.textContent = "Ready";
+}
+
+function renderProcessRows(processes) {
+  processTableBody.replaceChildren();
+  for (const item of processes) {
+    const row = document.createElement("tr");
+    for (const value of [item.label || item.process_id, item.running, item.duplicates, item.pids]) {
+      const cell = document.createElement("td");
+      cell.textContent = value ?? "";
+      row.append(cell);
+    }
+    const actionCell = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "mini-actions";
+    for (const action of ["start", "stop", "restart"]) {
+      const button = document.createElement("button");
+      button.textContent = action;
+      button.disabled = item.manageable !== "yes";
+      button.addEventListener("click", () => runAiControlsAction(`/api/ai-controls/processes/${item.process_id}/${action}`));
+      actions.append(button);
+    }
+    actionCell.append(actions);
+    row.append(actionCell);
+    processTableBody.append(row);
+  }
+}
+
+async function runAiControlsAction(url) {
+  showAiControlsMessage("Working...");
+  try {
+    const payload = await fetchJson(url, { method: "POST" });
+    renderAiControls(payload);
+    showAiControlsMessage(payload.message || "Action complete.");
+  } catch (error) {
+    showAiControlsMessage(error.message, "error");
+  }
+}
+
 characterSelect.addEventListener("change", async () => {
   state.character = characterSelect.value;
   state.phase = null;
@@ -568,6 +685,9 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#render-review-page").classList.contains("active")) {
     await loadRenderReviewTasks();
   }
+  if (document.querySelector("#ai-controls-page").classList.contains("active")) {
+    await loadAiControls();
+  }
 });
 
 phaseSelect.addEventListener("change", async () => {
@@ -581,6 +701,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#render-review-page").classList.contains("active")) {
     await loadRenderReviewTasks();
+  }
+  if (document.querySelector("#ai-controls-page").classList.contains("active")) {
+    await loadAiControls();
   }
 });
 
@@ -621,6 +744,14 @@ renderReviewNext.addEventListener("click", () => {
   if (index >= 0 && index < state.renderReviewTasks.length - 1) {
     selectRenderReviewAsset(state.renderReviewTasks[index + 1].asset_id);
   }
+});
+refreshAiControlsButton.addEventListener("click", loadAiControls);
+harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
+activateProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/stop"));
+resumeProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/resume"));
+sendMonitorTestButton.addEventListener("click", () => {
+  const params = new URLSearchParams({ instruction: monitorInstruction.value || "" });
+  runAiControlsAction(`/api/ai-controls/monitor-test?${params.toString()}`);
 });
 
 async function main() {

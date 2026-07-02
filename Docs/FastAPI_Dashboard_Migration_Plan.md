@@ -136,13 +136,21 @@ Completed:
 
 ### Milestone 5 - AI Controls
 
-- Replace AI Controls in the FastAPI UI.
-- Show queue counts and tables.
-- Show process status and controls.
-- Show monitor tests and responses.
-- Show proxy stop/resume controls.
-- Show manual render task counts.
-- Move remaining AI Controls aggregation out of Streamlit-only code where appropriate.
+- [x] Replace AI Controls in the FastAPI UI.
+- [x] Show queue counts and tables.
+- [x] Show process status and controls.
+- [x] Show monitor tests and responses.
+- [x] Show proxy stop/resume controls.
+- [x] Show manual render task counts.
+- [x] Move remaining AI Controls aggregation out of Streamlit-only code where appropriate.
+
+Completed:
+
+- Added an AI Controls snapshot API.
+- Added harvest, monitor test, proxy stop/resume, and process action APIs.
+- Added the FastAPI AI Controls page with queue, manual render, process, and monitor tables.
+- Kept process management behind the existing `ProcessService`.
+- Added regression coverage for the snapshot and monitor-test APIs.
 
 ### Milestone 6 - Pipeline Controls
 

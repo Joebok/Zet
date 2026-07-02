@@ -189,6 +189,25 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
             self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
 
+    def test_ai_controls_api_serves_snapshot_and_monitor_test(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            snapshot = client.get("/api/ai-controls")
+            self.assertEqual(snapshot.status_code, 200)
+            self.assertIn("queue_counts", snapshot.json())
+            self.assertIn("processes", snapshot.json())
+
+            monitor = client.post(
+                "/api/ai-controls/monitor-test",
+                params={"instruction": "ping"},
+            )
+            self.assertEqual(monitor.status_code, 200)
+            self.assertIn("Monitor test sent", monitor.json()["message"])
+            self.assertEqual(monitor.json()["monitor_requests"][0]["instruction"], "ping")
+
 
 if __name__ == "__main__":
     unittest.main()

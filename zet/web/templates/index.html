@@ -184,6 +184,82 @@
       </div>
     </section>
 
+    <section id="ai-controls-page" class="page">
+      <div class="page-title-row">
+        <h1>AI Controls</h1>
+        <div id="ai-controls-status" class="status-text"></div>
+      </div>
+      <div id="ai-controls-message" class="action-message" hidden></div>
+      <div class="ai-controls-grid">
+        <section class="control-panel">
+          <h2>Actions</h2>
+          <div id="proxy-stop-state" class="summary-bar"></div>
+          <div class="button-row two">
+            <button id="harvest-ai">Harvest AI Answers</button>
+            <button id="refresh-ai-controls">Refresh</button>
+            <button id="activate-proxy-stop">Activate Stop</button>
+            <button id="resume-proxy-stop">Resume</button>
+          </div>
+          <label>
+            Monitor note
+            <input id="monitor-instruction" type="text" placeholder="Optional note for workers">
+          </label>
+          <button id="send-monitor-test">Send Monitor Test</button>
+        </section>
+        <section class="control-panel">
+          <h2>Processes</h2>
+          <table id="process-table">
+            <thead>
+              <tr>
+                <th>process</th>
+                <th>running</th>
+                <th>duplicates</th>
+                <th>pids</th>
+                <th>actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="control-panel queue-panel">
+          <h2>Queue</h2>
+          <div id="queue-counts" class="summary-bar"></div>
+          <div class="queue-tables">
+            <section>
+              <h3>Ask</h3>
+              <table id="queue-ask-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Claimed</h3>
+              <table id="queue-claimed-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Answer</h3>
+              <table id="queue-answer-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Failed</h3>
+              <table id="queue-failed-table"><tbody></tbody></table>
+            </section>
+          </div>
+        </section>
+        <section class="control-panel">
+          <h2>Render Console</h2>
+          <p><a id="render-console-link" href="#" target="_blank" rel="noreferrer">Open Render Console</a></p>
+          <div id="manual-render-count" class="summary-bar"></div>
+          <table id="manual-render-table"><tbody></tbody></table>
+        </section>
+        <section class="control-panel">
+          <h2>Monitor Tests</h2>
+          <table id="monitor-request-table"><tbody></tbody></table>
+        </section>
+        <section class="control-panel">
+          <h2>Monitor Responses</h2>
+          <table id="monitor-response-table"><tbody></tbody></table>
+        </section>
+      </div>
+    </section>
+
     <section id="placeholder-page" class="page">
       <h1 id="placeholder-title">Coming Soon</h1>
       <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
