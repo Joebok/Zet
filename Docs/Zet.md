@@ -555,7 +555,7 @@ Standalone worker deployments outside the repo, such as `C:/Users/Joe/Ollama`, m
 
 1. Build a proper `RENDER_REVIEW` page with approve/fail actions and image review history.
 2. Move `Promote to LOCKED` into Render Review instead of relying on the Assets detail panel.
-3. Decide the default render-review fail path: back to prompt review, back to render, or blocked.
+3. Add two render-review fail paths: `Fail to Render` to requeue the current render stage, and `Fail to Regenerate` to reset upstream work through regeneration.
 4. Add a process-management surface for dashboard, unified proxy worker, auto harvester, and render console.
 5. Prevent or clearly flag duplicate worker/harvester/render-console processes.
 6. Add pipeline/config visibility and safe controls for stages, actors, workers, render backend, prompt condense, auto preview render, and auto harvest interval.

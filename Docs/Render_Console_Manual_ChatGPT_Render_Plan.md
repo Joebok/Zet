@@ -342,7 +342,9 @@ Completed:
 - Show relevant prompt/render metadata.
 - Include Previous / Next navigation across render-review assets.
 - Move `Promote to LOCKED` from the Assets detail controls into Render Review.
-- Add a Fail action that sends the asset back to an appropriate regeneration path or blocks it with a clear reason.
+- Add two Fail actions:
+  - `Fail to Render`: send the asset back to `RENDER` so the assigned render agent queues and performs the render again.
+  - `Fail to Regenerate`: treat the asset as needing upstream rework and reset it through the regeneration path.
 - Keep the Assets table as the status overview rather than the main review workflow.
 
 ### Milestone 11 - Pipeline And Automation Controls
@@ -365,4 +367,4 @@ Completed:
 - Should the Render Console support batch completion from a grid later, or remain one-task-at-a-time?
 - Should completed manual render answers be archived after harvesting?
 - Should process supervision live inside Zet, or should Zet generate scripts for an external supervisor?
-- Which render-review fail path should be the default: back to prompt review, back to render, or blocked?
+- Should Render Review offer a default fail button, or require the human to explicitly choose `Fail to Render` vs `Fail to Regenerate` every time?
