@@ -48,21 +48,18 @@
       "stages": [
         "MANIFEST",
         "PROMPT",
-        "PROMPT_REVIEW",
         "RENDER",
         "RENDER_REVIEW"
       ],
       "actor_by_stage": {
         "MANIFEST": "PYTHON",
         "PROMPT": "PYTHON",
-        "PROMPT_REVIEW": "HUMAN_AGENT",
         "RENDER": "AI_AGENT",
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
       "worker_by_stage": {
-        "MANIFEST": "zet.workers.noop_worker",
-        "PROMPT": "zet.workers.noop_worker",
-        "PROMPT_REVIEW": "zet.workers.noop_worker",
+        "MANIFEST": "zet.workers.character_assembly_manifest_worker",
+        "PROMPT": "zet.workers.character_assembly_prompt_worker",
         "RENDER": "zet.workers.noop_worker",
         "RENDER_REVIEW": "zet.workers.noop_worker"
       }

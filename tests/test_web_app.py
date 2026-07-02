@@ -261,6 +261,198 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         )
         return config_path
 
+    def _write_character_assembly_fixture(self, root: Path) -> Path:
+        character_dir = root / "Characters" / "Test" / "Adult"
+        asset_dir = root / "Assets" / "Test" / "Adult"
+        character_dir.mkdir(parents=True)
+        asset_dir.mkdir(parents=True)
+        (root / "Pipelines").mkdir()
+        (root / "Queue").mkdir()
+        (asset_dir / "body_front.png").write_bytes(b"body")
+        (asset_dir / "head_fitment_front.png").write_bytes(b"head")
+        (character_dir / "Character_Image_Template.md").write_text(
+            """
+<!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
+Test character general facts.
+<!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN BODY_DESCRIPTION_FACTS -->
+Test body facts.
+<!-- ZET:END BODY_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
+Test front body view.
+<!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
+Test head facts.
+<!-- ZET:END HEAD_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
+Test front head view.
+<!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HAIR_DESCRIPTION_FACTS -->
+Test hair facts.
+<!-- ZET:END HAIR_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT -->
+Test front hair view.
+<!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->
+Test costume facts.
+<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->
+Test front costume view.
+<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->
+Test equipment facts.
+<!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
+Test front equipment view.
+<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->
+Preserve core identity.
+<!-- ZET:END IDENTITY_PRESERVATION_CORE -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_FACE -->
+Preserve face.
+<!-- ZET:END IDENTITY_PRESERVATION_FACE -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_HAIR -->
+Preserve hair.
+<!-- ZET:END IDENTITY_PRESERVATION_HAIR -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_EARS -->
+Preserve ears.
+<!-- ZET:END IDENTITY_PRESERVATION_EARS -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_BODY -->
+Preserve body.
+<!-- ZET:END IDENTITY_PRESERVATION_BODY -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME -->
+Preserve costume.
+<!-- ZET:END IDENTITY_PRESERVATION_COSTUME -->
+<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+Use neutral readable rendering.
+<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
+Avoid drift.
+<!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+Avoid assembly drift.
+<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+""".lstrip(),
+            encoding="utf-8",
+        )
+        (character_dir / "Assets.json").write_text(
+            json.dumps(
+                {
+                    "assets": [
+                        {
+                            "asset_id": 1,
+                            "character": "Test",
+                            "phase": "Adult",
+                            "pipeline": "Body-Reference",
+                            "body_view": "Front",
+                            "head_view": None,
+                            "costume": None,
+                            "expression": None,
+                            "asset_state": "LOCKED",
+                            "pipeline_stage": "LOCKED",
+                            "actor": "HUMAN_AGENT",
+                            "ai_state": None,
+                            "final_image_output": "body_front.png",
+                            "last_ai_update": None,
+                            "error_code": None,
+                            "error_message": None,
+                            "updated_at": None,
+                        },
+                        {
+                            "asset_id": 2,
+                            "character": "Test",
+                            "phase": "Adult",
+                            "pipeline": "Head-Fitment",
+                            "body_view": "Front",
+                            "head_view": "Front",
+                            "costume": None,
+                            "expression": None,
+                            "asset_state": "LOCKED",
+                            "pipeline_stage": "LOCKED",
+                            "actor": "HUMAN_AGENT",
+                            "ai_state": None,
+                            "final_image_output": "head_fitment_front.png",
+                            "last_ai_update": None,
+                            "error_code": None,
+                            "error_message": None,
+                            "updated_at": None,
+                        },
+                        {
+                            "asset_id": 3,
+                            "character": "Test",
+                            "phase": "Adult",
+                            "pipeline": "Character-Assembly",
+                            "body_view": "Front",
+                            "head_view": "Front",
+                            "costume": "Default",
+                            "expression": None,
+                            "asset_state": "IN_PROGRESS",
+                            "pipeline_stage": "MANIFEST",
+                            "actor": "PYTHON",
+                            "ai_state": None,
+                            "final_image_output": "character_assembly_front.png",
+                            "last_ai_update": None,
+                            "error_code": None,
+                            "error_message": None,
+                            "updated_at": None,
+                        },
+                    ]
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (character_dir / "Pipelines.json").write_text(
+            json.dumps(
+                {
+                    "pipelines": {
+                        "Body-Reference": {
+                            "stages": ["LOCKED"],
+                            "actor_by_stage": {"LOCKED": "HUMAN_AGENT"},
+                            "worker_by_stage": {},
+                        },
+                        "Head-Fitment": {
+                            "stages": ["LOCKED"],
+                            "actor_by_stage": {"LOCKED": "HUMAN_AGENT"},
+                            "worker_by_stage": {},
+                        },
+                        "Character-Assembly": {
+                            "stages": ["MANIFEST", "PROMPT", "RENDER", "RENDER_REVIEW"],
+                            "actor_by_stage": {
+                                "MANIFEST": "PYTHON",
+                                "PROMPT": "PYTHON",
+                                "RENDER": "AI_AGENT",
+                                "RENDER_REVIEW": "HUMAN_AGENT",
+                            },
+                            "worker_by_stage": {
+                                "MANIFEST": "zet.workers.character_assembly_manifest_worker",
+                                "PROMPT": "zet.workers.character_assembly_prompt_worker",
+                            },
+                        },
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = root / "config.toml"
+        config_path.write_text(
+            f"""
+[BaseFolders]
+BaseCharacterPath = "{(root / 'Characters').as_posix()}"
+BaseAssetPath = "{(root / 'Assets').as_posix()}"
+BasePipelinePath = "{(root / 'Pipelines').as_posix()}"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+
+[Render]
+Backend = "manual_chatgpt"
+""".lstrip(),
+            encoding="utf-8",
+        )
+        return config_path
+
     def test_assets_api_serves_context_list_and_detail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = self._write_fixture(Path(temp_dir))
@@ -562,6 +754,42 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
+
+    def test_character_assembly_workers_resolve_refs_compile_prompt_and_stage_render(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_character_assembly_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            manifest_done = client.post("/api/assets/3/run-current-worker", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(manifest_done.status_code, 200)
+            manifest_asset = manifest_done.json()["detail"]["asset"]
+            self.assertEqual(manifest_asset["pipeline_stage"], "PROMPT")
+            self.assertEqual(
+                [item["role"] for item in manifest_asset["reference_files"]],
+                ["body_reference", "head_fitment"],
+            )
+
+            prompt_done = client.post("/api/assets/3/run-current-worker", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(prompt_done.status_code, 200)
+            asset = prompt_done.json()["detail"]["asset"]
+            self.assertEqual(asset["pipeline_stage"], "RENDER")
+            self.assertEqual(asset["actor"], "AI_AGENT")
+            self.assertEqual(asset["ai_state"], "ASKED")
+
+            prompt_path = root / "Pipelines" / "Test" / "Adult" / "Character-Assembly" / "Front" / "Front" / "Asset_3" / "Final_Image_Prompt.md"
+            prompt_text = prompt_path.read_text(encoding="utf-8")
+            self.assertIn("FULL-CHARACTER ASSEMBLY IMAGE", prompt_text)
+            self.assertIn("The attached body-reference image is the Reference Body source.", prompt_text)
+            self.assertIn("The attached head-fitment image is the Character Head source.", prompt_text)
+            self.assertIn("Test costume facts.", prompt_text)
+
+            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            self.assertEqual(len(ask_dirs), 1)
+            ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(ask_manifest["worker_type"], "manual_chatgpt_render")
+            self.assertEqual(ask_manifest["prompt_file"], "Final_Image_Prompt.md")
+            self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "head_fitment"])
 
 
 if __name__ == "__main__":

@@ -200,6 +200,25 @@ class AIProxyService:
                 manual=True,
                 reference_files=asset.reference_files or [],
             )
+        if asset.pipeline == "Character-Assembly" and asset.pipeline_stage == "RENDER":
+            return AIProxyAsk(
+                ask_id=ask_id,
+                asset_id=asset.asset_id,
+                character=asset.character,
+                phase=asset.phase,
+                pipeline=asset.pipeline,
+                pipeline_stage=asset.pipeline_stage,
+                ollama_attempt_id=attempt_id,
+                worker_type="manual_chatgpt_render",
+                ollama_model="",
+                prompt_file="Final_Image_Prompt.md",
+                expected_output=asset.final_image_output,
+                candidate_output_file=asset.final_image_output,
+                task_type="render",
+                render_preset="chatgpt-manual",
+                manual=True,
+                reference_files=asset.reference_files or [],
+            )
         return AIProxyAsk(
             ask_id=ask_id,
             asset_id=asset.asset_id,
@@ -269,6 +288,12 @@ class AIProxyService:
             return context.render_prompt_text
 
         if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "RENDER":
+            prompt_path = self.path_service.pipeline_path(asset) / "Final_Image_Prompt.md"
+            if not prompt_path.exists():
+                raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
+            return prompt_path.read_text(encoding="utf-8")
+
+        if asset.pipeline == "Character-Assembly" and asset.pipeline_stage == "RENDER":
             prompt_path = self.path_service.pipeline_path(asset) / "Final_Image_Prompt.md"
             if not prompt_path.exists():
                 raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
