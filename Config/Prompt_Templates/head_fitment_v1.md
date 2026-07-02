@@ -7,12 +7,12 @@ Requested head view: {{HEAD_VIEW_TOKEN}}.
 All necessary information is in these instructions and in the attached reference images.
 Follow these instructions exactly.
 
+Render an image exactly like the Character Head except that the Character neck should be fitted to the Reference Body.
+
 Reference roles:
 
 - The attached headshot reference is the Character Head source.
 - The attached body-reference image is the Reference Body source.
-
-Render an image exactly like the Character Head except that the Character neck should be fitted to the Reference Body.
 
 The Character Neck may be slightly adjusted so it could blend seamlessly into the Reference Body neck connection point.
 
