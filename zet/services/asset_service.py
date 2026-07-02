@@ -214,7 +214,6 @@ class AssetService:
 
     def promote_to_locked(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
-        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         candidate_image_path = self.path_service.candidate_image_path(asset)
         locked_image_path = self.path_service.locked_image_path(asset)
 
@@ -231,10 +230,9 @@ class AssetService:
 
         shutil.copy2(candidate_image_path, locked_image_path)
 
-        final_stage = pipeline.stages[-1]
         updated_asset = replace(asset)
         updated_asset.asset_state = "LOCKED"
-        updated_asset.pipeline_stage = final_stage
+        updated_asset.pipeline_stage = "LOCKED"
         updated_asset.actor = "HUMAN_AGENT"
         updated_asset.ai_state = None
         updated_asset.error_code = None

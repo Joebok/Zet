@@ -40,7 +40,7 @@ Add a manual render ask type:
   "phase": "Adult",
   "pipeline": "Body-Reference",
   "pipeline_stage": "RENDER",
-  "prompt_file": "Condensed_Image_Prompt.md",
+  "prompt_file": "Final_Image_Prompt.md",
   "expected_output": "Body-Reference_Front.png",
   "render_preset": "chatgpt-manual",
   "reference_files": []
@@ -241,7 +241,8 @@ Implementation research items:
 
 - Add config for render backend selection.
 - Add `manual_chatgpt_render` ask generation when an asset enters `RENDER`.
-- Prefer `Condensed_Image_Prompt.md` when present.
+- Use `Final_Image_Prompt.md` for manual ChatGPT render asks.
+- Preserve condensed prompt use for local image render backends.
 - Preserve the current ComfyUI/local render path behind config.
 - Add tests or a smoke script for manifest generation.
 
@@ -250,7 +251,7 @@ Completed in commit after Milestone 0:
 - `[Render].Backend` config added.
 - `manual_chatgpt_render` ask generation added for Body-Reference `RENDER`.
 - Existing local image render remains available when backend is not `manual_chatgpt`.
-- Smoke check verified manifest generation and condensed prompt selection.
+- Manual ChatGPT render asks use `Final_Image_Prompt.md`; local image render asks can still use `Condensed_Image_Prompt.md`.
 
 ### Milestone 2 - Render Console Skeleton - Complete
 

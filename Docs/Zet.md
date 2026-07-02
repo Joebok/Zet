@@ -25,7 +25,7 @@ The current first working end-to-end path is:
 
 ```text
 Body-Reference asset
-MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW
+MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW -> LOCKED
 ```
 
 The current mature test asset is `asset_id = 1` for `Tsaeytte / Adult / Body-Reference / Front`.
@@ -127,12 +127,19 @@ Current stages used by the configured pipelines:
 - `PROMPT_REVIEW`
 - `RENDER`
 - `RENDER_REVIEW`
+- `LOCKED`
 - `ERROR`
 
 The standard configured flow is:
 
 ```text
 MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW
+```
+
+Approved render reviews promote the asset into:
+
+```text
+LOCKED
 ```
 
 `GPT_HANDOFF` was part of the original planning vocabulary but is not part of the current configured pipeline flow.
@@ -375,6 +382,8 @@ When `LocalRender.AutoQueueAfterCondense` is true, harvesting a successful `prom
 
 Local render calls prefer `Condensed_Image_Prompt.md` when it exists. If no condensed prompt exists, they use `Final_Image_Prompt.md`.
 
+Manual ChatGPT final render tasks always use `Final_Image_Prompt.md`. The condensed prompt is treated as a local-render aid, not the source of truth for the human ChatGPT render console.
+
 ## Local Rendering
 
 Zet has a backend-neutral local render layer under:
@@ -480,6 +489,7 @@ Current worker types:
 
 - `ollama_generate`
 - `local_image_render`
+- `manual_chatgpt_render`
 
 `local_image_render` is backend-neutral. The concrete backend is selected by `render_preset`.
 

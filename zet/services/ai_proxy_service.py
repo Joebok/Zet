@@ -141,11 +141,6 @@ class AIProxyService:
         ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}"
         attempt_id = f"{stamp}_{asset.asset_id}_{asset.pipeline_stage}"
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
-            prompt_file = "Final_Image_Prompt.md"
-            if self.prompt_review_service is not None:
-                context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
-                if context.condensed_prompt_path is not None:
-                    prompt_file = "Condensed_Image_Prompt.md"
             render_backend = self._render_backend()
             if render_backend == "manual_chatgpt":
                 return AIProxyAsk(
@@ -158,13 +153,18 @@ class AIProxyService:
                     ollama_attempt_id=attempt_id,
                     worker_type="manual_chatgpt_render",
                     ollama_model="",
-                    prompt_file=prompt_file,
+                    prompt_file="Final_Image_Prompt.md",
                     expected_output=asset.final_image_output,
                     candidate_output_file=asset.final_image_output,
                     task_type="render",
                     render_preset="chatgpt-manual",
                     manual=True,
                 )
+            prompt_file = "Final_Image_Prompt.md"
+            if self.prompt_review_service is not None:
+                context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+                if context.condensed_prompt_path is not None:
+                    prompt_file = "Condensed_Image_Prompt.md"
             return AIProxyAsk(
                 ask_id=ask_id,
                 asset_id=asset.asset_id,
@@ -241,8 +241,12 @@ class AIProxyService:
             if self.prompt_review_service is None:
                 raise AIProxyServiceError("Prompt review service is required to stage body-reference render asks.")
             context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+            if self._render_backend() == "manual_chatgpt":
+                if not context.prompt_text:
+                    raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
+                return context.prompt_text
             if not context.render_prompt_text:
-                raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
+                raise AIProxyServiceError(f"No render prompt found for Asset {asset.asset_id}.")
             return context.render_prompt_text
 
         head_view = self._safe_head_view(asset.head_view)
