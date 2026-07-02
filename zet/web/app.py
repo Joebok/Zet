@@ -64,6 +64,10 @@ def _is_prompt_review_asset(asset) -> bool:
     return asset.pipeline_stage == "PROMPT_REVIEW" and asset.actor == "HUMAN_AGENT"
 
 
+def _is_render_review_asset(asset) -> bool:
+    return asset.pipeline_stage == "RENDER_REVIEW" and asset.actor == "HUMAN_AGENT"
+
+
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data = asdict(asset)
     data["head_view"] = _format_value(asset.head_view)
@@ -106,6 +110,38 @@ def _prompt_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
         "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
         "prompt_candidates": [str(path) for path in context.prompt_candidates],
         "condense_status": _jsonable(context.condense_status),
+    }
+
+
+def _render_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
+    payload = _asset_payload(zet_app, asset)
+    try:
+        candidate_image_path = zet_app.path_service.candidate_image_path(asset)
+        locked_image_path = zet_app.path_service.locked_image_path(asset)
+        payload["candidate_image_path"] = str(candidate_image_path)
+        payload["candidate_image_exists"] = candidate_image_path.exists()
+        payload["locked_image_path"] = str(locked_image_path)
+        payload["locked_image_exists"] = locked_image_path.exists()
+    except Exception:
+        payload["candidate_image_path"] = None
+        payload["candidate_image_exists"] = False
+        payload["locked_image_path"] = None
+        payload["locked_image_exists"] = False
+    return payload
+
+
+def _render_review_context_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
+    detail = _asset_detail_payload(zet_app, character, phase, asset_id)
+    asset = detail["asset"]
+    return {
+        "asset": asset,
+        "is_reviewable": _is_render_review_asset(zet_app.asset(character, phase, asset_id).get()),
+        "paths": detail["paths"],
+        "exists": detail["exists"],
+        "stage_text": detail["stage_text"],
+        "history_text": detail["history_text"],
+        "candidate_image_path": detail["paths"]["candidate_image_path"],
+        "locked_image_path": detail["paths"]["locked_image_path"],
     }
 
 
@@ -267,6 +303,74 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     _prompt_review_task_payload(zet_app, asset)
                     for asset in zet_app.list_assets(character, phase)
                     if _is_prompt_review_asset(asset)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-review/tasks")
+    def render_review_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            assets = [asset for asset in zet_app.list_assets(character, phase) if _is_render_review_asset(asset)]
+            return {"tasks": [_render_review_task_payload(zet_app, asset) for asset in assets]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-review/{asset_id}")
+    def render_review_detail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _render_review_context_payload(zet_app, character, phase, asset_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/{asset_id}/promote-to-locked")
+    def render_review_promote_to_locked(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).promote_to_locked()
+            return {
+                "message": f"Render approved. Asset {updated.asset_id} moved to LOCKED.",
+                "asset": _asset_payload(zet_app, updated),
+                "tasks": [
+                    _render_review_task_payload(zet_app, asset)
+                    for asset in zet_app.list_assets(character, phase)
+                    if _is_render_review_asset(asset)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/{asset_id}/fail-to-render")
+    def render_review_fail_to_render(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.fail_render_review_to_render(character, phase, asset_id)
+            return {
+                "message": f"Render rejected. Asset {updated.asset_id} moved back to RENDER.",
+                "asset": _asset_payload(zet_app, updated),
+                "tasks": [
+                    _render_review_task_payload(zet_app, asset)
+                    for asset in zet_app.list_assets(character, phase)
+                    if _is_render_review_asset(asset)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/{asset_id}/fail-to-regenerate")
+    def render_review_fail_to_regenerate(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).regenerate()
+            return {
+                "message": f"Render rejected. Asset {updated.asset_id} reset to {updated.pipeline_stage}.",
+                "asset": _asset_payload(zet_app, updated),
+                "tasks": [
+                    _render_review_task_payload(zet_app, asset)
+                    for asset in zet_app.list_assets(character, phase)
+                    if _is_render_review_asset(asset)
                 ],
             }
         except Exception as exc:

@@ -12,12 +12,14 @@ class WebAppTests(unittest.TestCase):
     def _write_fixture(self, root: Path, *, stage: str = "LOCKED", actor: str = "HUMAN_AGENT") -> Path:
         character_dir = root / "Characters" / "Test" / "Adult"
         prompt_dir = character_dir / "Body_Reference" / "Front"
+        pipeline_dir = root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1"
         character_dir.mkdir(parents=True)
         prompt_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_dir.mkdir(parents=True, exist_ok=True)
         (root / "Assets" / "Test" / "Adult").mkdir(parents=True)
-        (root / "Pipelines").mkdir()
         (root / "Queue").mkdir()
         (prompt_dir / "Final_Image_Prompt.md").write_text("full final prompt\n", encoding="utf-8")
+        (pipeline_dir / "front.png").write_bytes(b"test image")
         (character_dir / "Assets.json").write_text(
             json.dumps(
                 {
@@ -142,6 +144,50 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual(failed.status_code, 200)
             self.assertIn("Prompt failed", failed.json()["message"])
             self.assertEqual(failed.json()["asset"]["pipeline_stage"], "ERROR")
+
+    def test_render_review_api_serves_tasks_detail_and_promotes_to_locked(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="RENDER_REVIEW", actor="HUMAN_AGENT")
+            client = TestClient(create_app(config_path))
+
+            tasks = client.get("/api/render-review/tasks", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["asset_id"], 1)
+            self.assertTrue(tasks.json()["tasks"][0]["candidate_image_exists"])
+
+            detail = client.get("/api/render-review/1", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(detail.status_code, 200)
+            self.assertTrue(detail.json()["is_reviewable"])
+            self.assertTrue(detail.json()["exists"]["candidate_image"])
+
+            promoted = client.post(
+                "/api/render-review/1/promote-to-locked",
+                params={"character": "Test", "phase": "Adult"},
+            )
+            self.assertEqual(promoted.status_code, 200)
+            self.assertEqual(promoted.json()["asset"]["asset_state"], "LOCKED")
+            self.assertEqual(promoted.json()["asset"]["pipeline_stage"], "LOCKED")
+            self.assertTrue((root / "Assets" / "Test" / "Adult" / "front.png").exists())
+
+    def test_render_review_api_can_fail_back_to_render(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="RENDER_REVIEW", actor="HUMAN_AGENT")
+            client = TestClient(create_app(config_path))
+
+            failed = client.post(
+                "/api/render-review/1/fail-to-render",
+                params={"character": "Test", "phase": "Adult"},
+            )
+
+            self.assertEqual(failed.status_code, 200)
+            payload = failed.json()
+            self.assertEqual(payload["asset"]["pipeline_stage"], "RENDER")
+            self.assertEqual(payload["asset"]["actor"], "AI_AGENT")
+            self.assertEqual(payload["asset"]["ai_state"], "ASKED")
+            self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
+            self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
 
 
 if __name__ == "__main__":

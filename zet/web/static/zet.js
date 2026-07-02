@@ -8,6 +8,9 @@ const state = {
   promptReviewTasks: [],
   selectedPromptReviewAssetId: null,
   promptReviewDetail: null,
+  renderReviewTasks: [],
+  selectedRenderReviewAssetId: null,
+  renderReviewDetail: null,
 };
 
 const characterSelect = document.querySelector("#character-select");
@@ -41,6 +44,19 @@ const promptFailButton = document.querySelector("#prompt-fail");
 const condensedDialog = document.querySelector("#condensed-dialog");
 const condensedText = document.querySelector("#condensed-text");
 const copyCondensedButton = document.querySelector("#copy-condensed");
+const renderReviewStatus = document.querySelector("#render-review-status");
+const renderReviewTaskBody = document.querySelector("#render-review-task-table tbody");
+const renderReviewPrev = document.querySelector("#render-review-prev");
+const renderReviewNext = document.querySelector("#render-review-next");
+const renderReviewTitle = document.querySelector("#render-review-title");
+const renderReviewPath = document.querySelector("#render-review-path");
+const renderReviewMessage = document.querySelector("#render-review-message");
+const candidateRender = document.querySelector("#candidate-render");
+const renderPromoteButton = document.querySelector("#render-promote");
+const renderFailRenderButton = document.querySelector("#render-fail-render");
+const renderFailRegenerateButton = document.querySelector("#render-fail-regenerate");
+const renderStageText = document.querySelector("#render-stage-text");
+const renderHistoryText = document.querySelector("#render-history-text");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -67,6 +83,12 @@ function showPromptMessage(message, kind = "info") {
   promptReviewMessage.textContent = message || "";
   promptReviewMessage.className = `action-message ${kind}`;
   promptReviewMessage.hidden = !message;
+}
+
+function showRenderMessage(message, kind = "info") {
+  renderReviewMessage.textContent = message || "";
+  renderReviewMessage.className = `action-message ${kind}`;
+  renderReviewMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -262,10 +284,16 @@ function setupTabs() {
       const page = button.dataset.page;
       document.querySelector("#assets-page").classList.toggle("active", page === "assets");
       document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
-      document.querySelector("#placeholder-page").classList.toggle("active", !["assets", "prompt-review"].includes(page));
+      document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
+      document
+        .querySelector("#placeholder-page")
+        .classList.toggle("active", !["assets", "prompt-review", "render-review"].includes(page));
       placeholderTitle.textContent = button.textContent;
       if (page === "prompt-review") {
         loadPromptReviewTasks();
+      }
+      if (page === "render-review") {
+        loadRenderReviewTasks();
       }
     });
   }
@@ -413,15 +441,132 @@ async function runPromptReviewAction(action) {
   }
 }
 
+async function loadRenderReviewTasks(preferredAssetId = null) {
+  if (!state.character || !state.phase) {
+    renderReviewStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  renderReviewStatus.textContent = "Loading render reviews...";
+  const payload = await fetchJson(`/api/render-review/tasks?${currentQuery().toString()}`);
+  state.renderReviewTasks = payload.tasks || [];
+  const taskIds = new Set(state.renderReviewTasks.map((task) => task.asset_id));
+  state.selectedRenderReviewAssetId =
+    preferredAssetId || state.selectedRenderReviewAssetId || state.renderReviewTasks[0]?.asset_id || null;
+  if (state.selectedRenderReviewAssetId && !taskIds.has(state.selectedRenderReviewAssetId)) {
+    state.selectedRenderReviewAssetId = state.renderReviewTasks[0]?.asset_id || null;
+  }
+  renderRenderReviewTaskTable();
+  renderReviewStatus.textContent = `${state.renderReviewTasks.length} render(s) waiting`;
+  if (state.selectedRenderReviewAssetId) {
+    await selectRenderReviewAsset(state.selectedRenderReviewAssetId);
+  } else {
+    clearRenderReview();
+  }
+}
+
+function renderRenderReviewTaskTable() {
+  renderReviewTaskBody.replaceChildren();
+  for (const task of state.renderReviewTasks) {
+    const row = document.createElement("tr");
+    row.dataset.assetId = task.asset_id;
+    row.classList.toggle("selected", task.asset_id === state.selectedRenderReviewAssetId);
+    for (const value of [task.asset_id, task.body_view, task.candidate_image_exists ? "CAMERA" : ""]) {
+      const cell = document.createElement("td");
+      cell.textContent = value ?? "";
+      row.append(cell);
+    }
+    row.addEventListener("click", () => selectRenderReviewAsset(task.asset_id));
+    renderReviewTaskBody.append(row);
+  }
+}
+
+async function selectRenderReviewAsset(assetId) {
+  state.selectedRenderReviewAssetId = Number(assetId);
+  for (const row of renderReviewTaskBody.querySelectorAll("tr")) {
+    row.classList.toggle("selected", Number(row.dataset.assetId) === state.selectedRenderReviewAssetId);
+  }
+  const detail = await fetchJson(`/api/render-review/${state.selectedRenderReviewAssetId}?${currentQuery().toString()}`);
+  renderRenderReview(detail);
+}
+
+function clearRenderReview() {
+  state.renderReviewDetail = null;
+  renderReviewTitle.textContent = "Select a render";
+  renderReviewPath.textContent = "";
+  candidateRender.textContent = "No candidate image.";
+  renderStageText.textContent = "";
+  renderHistoryText.textContent = "";
+  renderReviewPrev.disabled = true;
+  renderReviewNext.disabled = true;
+  renderPromoteButton.disabled = true;
+  renderFailRenderButton.disabled = true;
+  renderFailRegenerateButton.disabled = true;
+}
+
+function renderRenderReview(detail) {
+  state.renderReviewDetail = detail;
+  const asset = detail.asset;
+  renderReviewTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view}`;
+  renderReviewPath.textContent = detail.candidate_image_path || "";
+  renderStageText.textContent = detail.stage_text || "No stage marker found.";
+  renderHistoryText.textContent = detail.history_text || "No history found.";
+  renderCandidateImage(detail);
+  renderPromoteButton.disabled = !detail.is_reviewable || !detail.exists?.candidate_image;
+  renderFailRenderButton.disabled = !detail.is_reviewable;
+  renderFailRegenerateButton.disabled = !detail.is_reviewable;
+  updateRenderReviewNavigation();
+}
+
+function renderCandidateImage(detail) {
+  candidateRender.replaceChildren();
+  if (!detail.exists?.candidate_image || !detail.candidate_image_path) {
+    candidateRender.textContent = "No candidate image.";
+    return;
+  }
+  const image = document.createElement("img");
+  image.alt = "Candidate render";
+  image.src = `/api/file?path=${encodeURIComponent(detail.candidate_image_path)}`;
+  image.title = detail.candidate_image_path;
+  candidateRender.append(image);
+}
+
+function updateRenderReviewNavigation() {
+  const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
+  renderReviewPrev.disabled = index <= 0;
+  renderReviewNext.disabled = index < 0 || index >= state.renderReviewTasks.length - 1;
+}
+
+async function runRenderReviewAction(action) {
+  if (!state.selectedRenderReviewAssetId) {
+    return;
+  }
+  showRenderMessage("Working...");
+  try {
+    const payload = await fetchJson(
+      `/api/render-review/${state.selectedRenderReviewAssetId}/${action}?${currentQuery().toString()}`,
+      { method: "POST" },
+    );
+    showRenderMessage(payload.message || "Review action complete.");
+    await loadRenderReviewTasks();
+    await loadAssets(state.selectedAssetId);
+  } catch (error) {
+    showRenderMessage(error.message, "error");
+  }
+}
+
 characterSelect.addEventListener("change", async () => {
   state.character = characterSelect.value;
   state.phase = null;
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
+  state.selectedRenderReviewAssetId = null;
   updatePhaseSelect();
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
     await loadPromptReviewTasks();
+  }
+  if (document.querySelector("#render-review-page").classList.contains("active")) {
+    await loadRenderReviewTasks();
   }
 });
 
@@ -429,9 +574,13 @@ phaseSelect.addEventListener("change", async () => {
   state.phase = phaseSelect.value;
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
+  state.selectedRenderReviewAssetId = null;
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
     await loadPromptReviewTasks();
+  }
+  if (document.querySelector("#render-review-page").classList.contains("active")) {
+    await loadRenderReviewTasks();
   }
 });
 
@@ -456,6 +605,21 @@ promptReviewNext.addEventListener("click", () => {
   const index = state.promptReviewTasks.findIndex((task) => task.asset_id === state.selectedPromptReviewAssetId);
   if (index >= 0 && index < state.promptReviewTasks.length - 1) {
     selectPromptReviewAsset(state.promptReviewTasks[index + 1].asset_id);
+  }
+});
+renderPromoteButton.addEventListener("click", () => runRenderReviewAction("promote-to-locked"));
+renderFailRenderButton.addEventListener("click", () => runRenderReviewAction("fail-to-render"));
+renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction("fail-to-regenerate"));
+renderReviewPrev.addEventListener("click", () => {
+  const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
+  if (index > 0) {
+    selectRenderReviewAsset(state.renderReviewTasks[index - 1].asset_id);
+  }
+});
+renderReviewNext.addEventListener("click", () => {
+  const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
+  if (index >= 0 && index < state.renderReviewTasks.length - 1) {
+    selectRenderReviewAsset(state.renderReviewTasks[index + 1].asset_id);
   }
 });
 

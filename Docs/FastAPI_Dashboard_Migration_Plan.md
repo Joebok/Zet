@@ -116,13 +116,23 @@ Completed:
 
 ### Milestone 4 - Render Review
 
-- Add Render Review page.
-- Show candidate image, locked image, prompt/render metadata.
-- Add Promote to LOCKED.
-- Add fail paths:
+- [x] Add Render Review page.
+- [x] Show candidate image and render metadata.
+- [x] Add Promote to LOCKED.
+- [x] Add fail paths:
   - Fail to Render
   - Fail to Regenerate
-- Add Previous / Next across render-review tasks.
+- [x] Add Previous / Next across render-review tasks.
+
+Completed:
+
+- Added Render Review task and detail APIs.
+- Added Render Review page in the FastAPI UI.
+- Added candidate image display through the local file endpoint.
+- Moved Promote to LOCKED into the render review workflow.
+- Added Fail to RENDER, which clears the current candidate image and stages a fresh render ask.
+- Added Fail to REGENERATE, which reuses the existing full regeneration path.
+- Added Previous / Next navigation across render-review tasks.
 
 ### Milestone 5 - AI Controls
 

@@ -368,6 +368,34 @@ class AssetService:
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
 
+    def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline_stage != "RENDER_REVIEW" or asset.actor != "HUMAN_AGENT":
+            raise AssetServiceError("Render retry is only available at RENDER_REVIEW / HUMAN_AGENT.")
+
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+        render_actor = self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
+        if render_actor != "AI_AGENT":
+            raise AssetServiceError(f"Pipeline {pipeline.name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
+
+        self.ai_proxy_service.clear_asset_queue_items(asset)
+        self._clear_render_outputs(asset)
+
+        updated_asset = replace(asset)
+        updated_asset.asset_state = "IN_PROGRESS"
+        updated_asset.pipeline_stage = "RENDER"
+        updated_asset.actor = render_actor
+        updated_asset.ai_state = "ASKED"
+        updated_asset.error_code = None
+        updated_asset.error_message = None
+        updated_asset.last_ai_update = reason.strip() or f"Render review retry requested at {self._timestamp()}"
+        updated_asset.updated_at = self._timestamp()
+
+        self.asset_repository.save_asset(updated_asset)
+        self.housekeeping_service.prepare_stage(updated_asset)
+        self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+        return self.asset_repository.get_asset(character, phase, asset_id)
+
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.actor != "PYTHON":

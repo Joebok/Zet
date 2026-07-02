@@ -69,6 +69,14 @@ class AssetRef:
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
 
+    def fail_render_review_to_render(self, reason: str = "") -> Asset:
+        return self._app.asset_service.fail_render_review_to_render(
+            self._character,
+            self._phase,
+            self._asset_id,
+            reason,
+        )
+
     def run_current_worker(self) -> Asset:
         return self._app.asset_service.run_current_worker(self._character, self._phase, self._asset_id)
 
@@ -192,6 +200,9 @@ class ZetApp:
         include_locked: bool = False,
     ) -> list[BatchRenderResetResult]:
         return self.asset_service.reset_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
+
+    def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
+        return self.asset_service.fail_render_review_to_render(character, phase, asset_id, reason)
 
     def issue_monitor_test(self, instruction: str = ""):
         return self.ai_proxy_service.issue_monitor_test(instruction)

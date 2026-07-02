@@ -365,6 +365,30 @@ dl {
   max-width: 100%;
 }
 
+.render-review-layout {
+  grid-template-columns: 260px minmax(560px, 1fr) 300px;
+}
+
+.render-image-viewer {
+  align-items: center;
+  background: #101828;
+  border-radius: 8px;
+  color: #e4e7ec;
+  display: flex;
+  justify-content: center;
+  min-height: 660px;
+  overflow: auto;
+  padding: 12px;
+  text-align: center;
+}
+
+.render-image-viewer img {
+  height: auto;
+  max-height: calc(100vh - 260px);
+  max-width: 100%;
+  object-fit: contain;
+}
+
 dialog {
   border: 1px solid var(--line);
   border-radius: 8px;

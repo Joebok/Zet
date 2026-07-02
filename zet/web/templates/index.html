@@ -138,6 +138,52 @@
       </div>
     </section>
 
+    <section id="render-review-page" class="page">
+      <div class="page-title-row">
+        <h1>Render Review</h1>
+        <div id="render-review-status" class="status-text"></div>
+      </div>
+      <div class="review-layout render-review-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="render-review-prev">Previous</button>
+            <button id="render-review-next">Next</button>
+          </div>
+          <table id="render-review-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>view</th>
+                <th>image</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="render-review-title">Select a render</h2>
+            <span id="render-review-path" class="status-text"></span>
+          </div>
+          <div id="render-review-message" class="action-message" hidden></div>
+          <div id="candidate-render" class="render-image-viewer">No candidate image.</div>
+        </section>
+        <aside class="review-actions">
+          <button id="render-promote" class="primary-action">Promote to LOCKED</button>
+          <button id="render-fail-render">Fail to RENDER</button>
+          <button id="render-fail-regenerate">Fail to REGENERATE</button>
+          <section>
+            <h3>Stage Marker</h3>
+            <pre id="render-stage-text"></pre>
+          </section>
+          <section>
+            <h3>History</h3>
+            <pre id="render-history-text"></pre>
+          </section>
+        </aside>
+      </div>
+    </section>
+
     <section id="placeholder-page" class="page">
       <h1 id="placeholder-title">Coming Soon</h1>
       <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
