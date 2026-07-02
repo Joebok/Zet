@@ -11,15 +11,15 @@
       "head_view": null,
       "costume": null,
       "expression": null,
-      "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "PROMPT_REVIEW",
+      "asset_state": "LOCKED",
+      "pipeline_stage": "RENDER_REVIEW",
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Front.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_1_RENDER_20260701_062417 (20260701_062417_1_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_1_RENDER_20260701_172205 (20260701_172205_1_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-01T15:01:45"
+      "updated_at": "2026-07-01T18:20:00"
     },
     {
       "asset_id": 2,
@@ -69,14 +69,14 @@
       "costume": "Default-Adventuring",
       "expression": null,
       "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "PROMPT_REVIEW",
+      "pipeline_stage": "RENDER_REVIEW",
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Character-Assembly_Front_Front_Default-Adventuring.png",
-      "last_ai_update": null,
+      "last_ai_update": "AI answer harvested: Ask_Asset_4_RENDER_20260701_175203 (20260701_175203_4_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-01T13:00:57"
+      "updated_at": "2026-07-01T17:55:57"
     },
     {
       "asset_id": 5,
@@ -88,14 +88,14 @@
       "costume": null,
       "expression": null,
       "asset_state": "IN_PROGRESS",
-      "pipeline_stage": "RENDER_REVIEW",
-      "actor": "HUMAN_AGENT",
-      "ai_state": null,
+      "pipeline_stage": "RENDER",
+      "actor": "AI_AGENT",
+      "ai_state": "ASKED",
       "final_image_output": "Body-Reference_Front-Right-3-4.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_5_RENDER_20260701_162029 (20260701_162029_5_RENDER)",
+      "last_ai_update": "AI ask staged: Ask_Asset_5_RENDER_20260701_182153 (20260701_182153_5_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-01T16:24:42"
+      "updated_at": "2026-07-01T18:21:53"
     },
     {
       "asset_id": 6,
