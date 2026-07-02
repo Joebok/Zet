@@ -169,18 +169,36 @@ Completed:
 - Reused `PipelineControlService` and `AssetService` rather than moving workflow logic into the UI.
 - Added regression coverage for settings save and batch reset APIs.
 
-### Milestone 7 - Template Editor
+### Milestone 7 - Template Editor - Deferred
 
 - Replace Template Editor.
 - Move script-helper behavior behind service/API boundaries where useful.
 - Preserve view-specific section editing.
 
+Deferred:
+
+- Template Editor migration is intentionally paused while body-reference template/editing ideas are being reconsidered.
+- Do not port the current editor blindly until the desired body-reference authoring workflow is clearer.
+
 ### Milestone 8 - Merge Render Console
 
-- Fold the existing Render Console into the main Zet web app.
-- Preserve paste/drop/file-picker behavior.
-- Preserve task navigation.
-- Retire separate Render Console launcher once merged.
+- [x] Fold the existing Render Console into the main Zet web app.
+- [x] Preserve paste/drop/file-picker behavior.
+- [x] Preserve task navigation.
+- [ ] Retire separate Render Console launcher once merged.
+
+Completed:
+
+- Added namespaced render-console APIs to the main FastAPI app.
+- Added a Render Console tab to the dashboard.
+- Preserved manual render task navigation, prompt copy, image paste/drop/file picker, save answer, and fail task behavior.
+- Reused `RenderConsoleQueue` for all filesystem queue operations.
+- Changed AI Controls to open the in-dashboard Render Console tab.
+- Added regression coverage for task listing, prompt detail, and saving an image answer.
+
+Remaining:
+
+- Keep the standalone Render Console launcher temporarily for fallback while the integrated page settles.
 
 ### Milestone 9 - Retire Streamlit
 

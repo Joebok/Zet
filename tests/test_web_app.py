@@ -83,6 +83,37 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         )
         return config_path
 
+    def _write_manual_render_ask(self, root: Path) -> Path:
+        ask_path = root / "Queue" / "Ollama_Proxy" / "Ask" / "Ask_Asset_1_RENDER_TEST"
+        ask_path.mkdir(parents=True, exist_ok=True)
+        (ask_path / "ask_manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "ask_id": "Ask_Asset_1_RENDER_TEST",
+                    "asset_id": 1,
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline": "Body-Reference",
+                    "pipeline_stage": "RENDER",
+                    "ollama_attempt_id": "render-test",
+                    "worker_type": "manual_chatgpt_render",
+                    "ollama_model": "",
+                    "prompt_file": "Final_Image_Prompt.md",
+                    "expected_output": "front.png",
+                    "candidate_output_file": "front.png",
+                    "task_type": "render",
+                    "render_preset": "chatgpt-manual",
+                    "manual": True,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (ask_path / "Final_Image_Prompt.md").write_text("manual render prompt\n", encoding="utf-8")
+        return ask_path
+
     def test_assets_api_serves_context_list_and_detail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = self._write_fixture(Path(temp_dir))
@@ -257,6 +288,34 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertIn("1 reset", reset.json()["message"])
             self.assertEqual(reset.json()["batch_results"][0]["status"], "RESET")
             self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+
+    def test_render_console_api_lists_task_detail_and_saves_image_answer(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            ask_path = self._write_manual_render_ask(root)
+            client = TestClient(create_app(config_path))
+
+            tasks = client.get("/api/render-console/tasks")
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["ask_id"], "Ask_Asset_1_RENDER_TEST")
+
+            detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(detail.json()["prompt"], "manual render prompt\n")
+
+            saved = client.post(
+                "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
+                content=b"image bytes",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(saved.status_code, 200)
+            self.assertEqual(saved.json()["status"], "SUCCESS")
+            self.assertFalse(ask_path.exists())
+            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Asset_1_RENDER_TEST"
+            self.assertTrue((answer_path / "front.png").exists())
+            manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], "SUCCESS")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@
     <button class="tab active" data-page="assets">Assets</button>
     <button class="tab" data-page="prompt-review">Prompt Review</button>
     <button class="tab" data-page="render-review">Render Review</button>
+    <button class="tab" data-page="render-console">Render Console</button>
     <button class="tab" data-page="ai-controls">AI Controls</button>
     <button class="tab" data-page="pipeline-controls">Pipeline Controls</button>
     <button class="tab" data-page="template-editor">Template Editor</button>
@@ -184,6 +185,60 @@
       </div>
     </section>
 
+    <section id="render-console-page" class="page">
+      <div class="page-title-row">
+        <h1>Render Console</h1>
+        <div id="render-console-status" class="status-text"></div>
+      </div>
+      <div class="render-console-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="render-console-prev">Previous</button>
+            <button id="render-console-next">Next</button>
+          </div>
+          <button id="render-console-refresh">Refresh</button>
+          <table id="render-console-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>ask</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="render-console-title">Select a render task</h2>
+            <button id="render-console-copy-prompt">Copy Prompt</button>
+          </div>
+          <div id="render-console-message" class="action-message" hidden></div>
+          <div class="details-grid compact-details">
+            <div><label>Ask</label><p id="console-ask-id"></p></div>
+            <div><label>Asset</label><p id="console-asset-label"></p></div>
+            <div><label>Pipeline</label><p id="console-pipeline-label"></p></div>
+            <div><label>Expected Output</label><p id="console-expected-output"></p></div>
+          </div>
+          <textarea id="render-console-prompt" spellcheck="false"></textarea>
+        </section>
+        <aside class="review-actions render-console-actions">
+          <h2>Returned Image</h2>
+          <div id="render-console-paste-zone" class="paste-zone" tabindex="0">
+            <p>Click here, then press Ctrl+V to paste the rendered image.</p>
+            <p class="status-text">Drag/drop and file picker also work.</p>
+            <input id="render-console-file-input" type="file" accept="image/*">
+          </div>
+          <img id="render-console-image-preview" class="image-preview" alt="Pasted render preview" hidden>
+          <button id="render-console-save-image" class="primary-action" disabled>Save Image Answer</button>
+          <p id="render-console-save-status" class="status-text"></p>
+          <h2>Fail Task</h2>
+          <textarea id="render-console-fail-reason" placeholder="Reason for failure"></textarea>
+          <button id="render-console-fail-task">Fail Task</button>
+          <p id="render-console-fail-status" class="status-text"></p>
+        </aside>
+      </div>
+    </section>
+
     <section id="ai-controls-page" class="page">
       <div class="page-title-row">
         <h1>AI Controls</h1>
@@ -245,7 +300,7 @@
         </section>
         <section class="control-panel">
           <h2>Render Console</h2>
-          <p><a id="render-console-link" href="#" target="_blank" rel="noreferrer">Open Render Console</a></p>
+          <button id="open-render-console-tab">Open Render Console</button>
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
         </section>

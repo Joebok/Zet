@@ -5,11 +5,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from zet.app import ZetApp
+from zet.render_console.queue import RenderConsoleQueue
 from zet.services.config_service import ConfigService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.prompt_review_service import LocalRenderUnavailable
@@ -20,6 +21,10 @@ PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
 def _app(config_path: str | Path) -> ZetApp:
     return ZetApp.from_config(config_path)
+
+
+def _render_console_queue(config_path: str | Path) -> RenderConsoleQueue:
+    return RenderConsoleQueue(ConfigService.load(config_path))
 
 
 def _format_value(value: Any) -> str:
@@ -567,6 +572,64 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             )
             response["batch_results"] = _jsonable(results)
             return response
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-console/tasks")
+    def render_console_tasks() -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        try:
+            return {"tasks": [task.to_dict() for task in queue.list_tasks()]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-console/tasks/{ask_id}")
+    def render_console_task_detail(ask_id: str) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = queue.get_task(ask_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        return {
+            "task": task.to_dict(),
+            "manifest": _jsonable(task.manifest),
+            "prompt": queue.read_prompt(task),
+        }
+
+    @app.post("/api/render-console/tasks/{ask_id}/answer-image")
+    async def render_console_answer_image(ask_id: str, request: Request) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = queue.get_task(ask_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        image_bytes = await request.body()
+        content_type = request.headers.get("content-type", "")
+        try:
+            answer_path = queue.write_answer_image(task, image_bytes, content_type)
+            tasks = queue.list_tasks()
+            return {
+                "status": "SUCCESS",
+                "answer_path": str(answer_path),
+                "remaining_tasks": [item.to_dict() for item in tasks],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-console/tasks/{ask_id}/fail")
+    async def render_console_fail_task(ask_id: str, request: Request) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = queue.get_task(ask_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        payload = await request.json()
+        reason = str(payload.get("reason") or "")
+        try:
+            answer_path = queue.write_failed_answer(task, reason)
+            tasks = queue.list_tasks()
+            return {
+                "status": "ERROR",
+                "answer_path": str(answer_path),
+                "remaining_tasks": [item.to_dict() for item in tasks],
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

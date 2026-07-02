@@ -13,6 +13,10 @@ const state = {
   renderReviewDetail: null,
   aiControls: null,
   pipelineControls: null,
+  renderConsoleTasks: [],
+  selectedRenderConsoleAskId: null,
+  renderConsoleDetail: null,
+  renderConsoleImageBlob: null,
 };
 
 const characterSelect = document.querySelector("#character-select");
@@ -74,7 +78,7 @@ const queueAskTableBody = document.querySelector("#queue-ask-table tbody");
 const queueClaimedTableBody = document.querySelector("#queue-claimed-table tbody");
 const queueAnswerTableBody = document.querySelector("#queue-answer-table tbody");
 const queueFailedTableBody = document.querySelector("#queue-failed-table tbody");
-const renderConsoleLink = document.querySelector("#render-console-link");
+const openRenderConsoleTab = document.querySelector("#open-render-console-tab");
 const manualRenderCount = document.querySelector("#manual-render-count");
 const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
 const monitorRequestTableBody = document.querySelector("#monitor-request-table tbody");
@@ -97,6 +101,27 @@ const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
 const batchIncludeLocked = document.querySelector("#batch-include-locked");
 const batchRenderResetButton = document.querySelector("#batch-render-reset");
 const batchRenderResultTableBody = document.querySelector("#batch-render-result-table tbody");
+const renderConsoleStatus = document.querySelector("#render-console-status");
+const renderConsoleTaskBody = document.querySelector("#render-console-task-table tbody");
+const renderConsolePrev = document.querySelector("#render-console-prev");
+const renderConsoleNext = document.querySelector("#render-console-next");
+const renderConsoleRefresh = document.querySelector("#render-console-refresh");
+const renderConsoleTitle = document.querySelector("#render-console-title");
+const renderConsoleCopyPrompt = document.querySelector("#render-console-copy-prompt");
+const renderConsoleMessage = document.querySelector("#render-console-message");
+const consoleAskId = document.querySelector("#console-ask-id");
+const consoleAssetLabel = document.querySelector("#console-asset-label");
+const consolePipelineLabel = document.querySelector("#console-pipeline-label");
+const consoleExpectedOutput = document.querySelector("#console-expected-output");
+const renderConsolePrompt = document.querySelector("#render-console-prompt");
+const renderConsolePasteZone = document.querySelector("#render-console-paste-zone");
+const renderConsoleFileInput = document.querySelector("#render-console-file-input");
+const renderConsoleImagePreview = document.querySelector("#render-console-image-preview");
+const renderConsoleSaveImage = document.querySelector("#render-console-save-image");
+const renderConsoleSaveStatus = document.querySelector("#render-console-save-status");
+const renderConsoleFailReason = document.querySelector("#render-console-fail-reason");
+const renderConsoleFailTask = document.querySelector("#render-console-fail-task");
+const renderConsoleFailStatus = document.querySelector("#render-console-fail-status");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -141,6 +166,12 @@ function showPipelineControlsMessage(message, kind = "info") {
   pipelineControlsMessage.textContent = message || "";
   pipelineControlsMessage.className = `action-message ${kind}`;
   pipelineControlsMessage.hidden = !message;
+}
+
+function showRenderConsoleMessage(message, kind = "info") {
+  renderConsoleMessage.textContent = message || "";
+  renderConsoleMessage.className = `action-message ${kind}`;
+  renderConsoleMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -339,11 +370,12 @@ function setupTabs() {
       document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
       document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
       document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
+      document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
       document
         .querySelector("#placeholder-page")
         .classList.toggle(
           "active",
-          !["assets", "prompt-review", "render-review", "ai-controls", "pipeline-controls"].includes(page),
+          !["assets", "prompt-review", "render-review", "render-console", "ai-controls", "pipeline-controls"].includes(page),
         );
       placeholderTitle.textContent = button.textContent;
       if (page === "prompt-review") {
@@ -357,6 +389,9 @@ function setupTabs() {
       }
       if (page === "pipeline-controls") {
         loadPipelineControls();
+      }
+      if (page === "render-console") {
+        loadRenderConsoleTasks();
       }
     });
   }
@@ -662,7 +697,6 @@ function renderAiControls(payload) {
   renderRows(monitorRequestTableBody, payload.monitor_requests || [], ["test_id", "instruction", "created_at"]);
   renderRows(monitorResponseTableBody, payload.monitor_responses || [], ["test_id", "worker_id", "host", "status", "ollama_ok", "responded_at"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
-  renderConsoleLink.href = payload.render_console_url || "#";
   renderProcessRows(payload.processes || []);
   aiControlsStatus.textContent = "Ready";
 }
@@ -791,6 +825,198 @@ async function runBatchRenderReset() {
   }
 }
 
+async function loadRenderConsoleTasks(preferredAskId = null) {
+  renderConsoleStatus.textContent = "Loading render tasks...";
+  const payload = await fetchJson("/api/render-console/tasks");
+  state.renderConsoleTasks = payload.tasks || [];
+  const askIds = new Set(state.renderConsoleTasks.map((task) => task.ask_id));
+  state.selectedRenderConsoleAskId =
+    preferredAskId || state.selectedRenderConsoleAskId || state.renderConsoleTasks[0]?.ask_id || null;
+  if (state.selectedRenderConsoleAskId && !askIds.has(state.selectedRenderConsoleAskId)) {
+    state.selectedRenderConsoleAskId = state.renderConsoleTasks[0]?.ask_id || null;
+  }
+  renderRenderConsoleTaskTable();
+  renderConsoleStatus.textContent = `${state.renderConsoleTasks.length} manual render task(s) waiting`;
+  if (state.selectedRenderConsoleAskId) {
+    await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
+  } else {
+    clearRenderConsole();
+  }
+}
+
+function renderRenderConsoleTaskTable() {
+  renderConsoleTaskBody.replaceChildren();
+  for (const task of state.renderConsoleTasks) {
+    const row = document.createElement("tr");
+    row.dataset.askId = task.ask_id;
+    row.classList.toggle("selected", task.ask_id === state.selectedRenderConsoleAskId);
+    for (const value of [task.asset_id ?? "", task.ask_id]) {
+      const cell = document.createElement("td");
+      cell.textContent = value ?? "";
+      row.append(cell);
+    }
+    row.addEventListener("click", () => selectRenderConsoleTask(task.ask_id));
+    renderConsoleTaskBody.append(row);
+  }
+}
+
+async function selectRenderConsoleTask(askId) {
+  state.selectedRenderConsoleAskId = askId;
+  for (const row of renderConsoleTaskBody.querySelectorAll("tr")) {
+    row.classList.toggle("selected", row.dataset.askId === state.selectedRenderConsoleAskId);
+  }
+  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}`);
+  renderRenderConsoleDetail(detail);
+}
+
+function clearRenderConsole() {
+  state.renderConsoleDetail = null;
+  state.renderConsoleImageBlob = null;
+  renderConsoleTitle.textContent = "Select a render task";
+  consoleAskId.textContent = "";
+  consoleAssetLabel.textContent = "";
+  consolePipelineLabel.textContent = "";
+  consoleExpectedOutput.textContent = "";
+  renderConsolePrompt.value = "";
+  renderConsoleImagePreview.hidden = true;
+  renderConsoleImagePreview.removeAttribute("src");
+  renderConsoleSaveImage.disabled = true;
+  renderConsoleCopyPrompt.disabled = true;
+  renderConsolePrev.disabled = true;
+  renderConsoleNext.disabled = true;
+  renderConsoleFailTask.disabled = true;
+  renderConsoleSaveStatus.textContent = "";
+  renderConsoleFailStatus.textContent = "";
+}
+
+function renderRenderConsoleDetail(detail) {
+  state.renderConsoleDetail = detail;
+  clearRenderConsoleImageSelection();
+  const task = detail.task;
+  renderConsoleTitle.textContent = `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
+  consoleAskId.textContent = task.ask_id;
+  consoleAssetLabel.textContent = `Asset ${task.asset_id ?? "unknown"} | ${task.character} / ${task.phase}`;
+  consolePipelineLabel.textContent = `${task.pipeline} | ${task.pipeline_stage}`;
+  consoleExpectedOutput.textContent = task.expected_output || "";
+  renderConsolePrompt.value = detail.prompt || "";
+  renderConsoleCopyPrompt.disabled = !detail.prompt;
+  renderConsoleFailTask.disabled = false;
+  updateRenderConsoleNavigation();
+}
+
+function updateRenderConsoleNavigation() {
+  const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
+  renderConsolePrev.disabled = index <= 0;
+  renderConsoleNext.disabled = index < 0 || index >= state.renderConsoleTasks.length - 1;
+}
+
+function clearRenderConsoleImageSelection() {
+  state.renderConsoleImageBlob = null;
+  renderConsoleImagePreview.hidden = true;
+  renderConsoleImagePreview.removeAttribute("src");
+  renderConsoleSaveImage.disabled = true;
+  renderConsoleSaveStatus.textContent = "";
+  renderConsoleFailReason.value = "";
+  renderConsoleFailStatus.textContent = "";
+}
+
+function setRenderConsoleImageSelection(blob) {
+  if (!blob || !blob.type.startsWith("image/")) {
+    renderConsoleSaveStatus.textContent = "Clipboard or file did not contain an image.";
+    return;
+  }
+  state.renderConsoleImageBlob = blob;
+  renderConsoleImagePreview.src = URL.createObjectURL(blob);
+  renderConsoleImagePreview.hidden = false;
+  renderConsoleSaveImage.disabled = false;
+  renderConsoleSaveStatus.textContent = `Ready to save ${Math.round(blob.size / 1024)} KB image.`;
+}
+
+function imageBlobFromPasteEvent(event) {
+  const items = event.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      return item.getAsFile();
+    }
+  }
+  return null;
+}
+
+async function saveRenderConsoleImage() {
+  if (!state.renderConsoleImageBlob || !state.selectedRenderConsoleAskId) {
+    return;
+  }
+  renderConsoleSaveImage.disabled = true;
+  renderConsoleSaveStatus.textContent = "Saving image answer...";
+  try {
+    const response = await fetch(
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/answer-image`,
+      {
+        method: "POST",
+        headers: { "Content-Type": state.renderConsoleImageBlob.type || "application/octet-stream" },
+        body: state.renderConsoleImageBlob,
+      },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    showRenderConsoleMessage(`Saved answer: ${payload.answer_path}`);
+    state.renderConsoleTasks = payload.remaining_tasks || [];
+    state.selectedRenderConsoleAskId = state.renderConsoleTasks[0]?.ask_id || null;
+    renderRenderConsoleTaskTable();
+    if (state.selectedRenderConsoleAskId) {
+      await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
+    } else {
+      clearRenderConsole();
+    }
+    renderConsoleStatus.textContent = `${state.renderConsoleTasks.length} manual render task(s) waiting`;
+    await loadAiControls().catch(() => {});
+  } catch (error) {
+    renderConsoleSaveStatus.textContent = `Save failed: ${error.message}`;
+    renderConsoleSaveImage.disabled = false;
+  }
+}
+
+async function failRenderConsoleTask() {
+  if (!state.selectedRenderConsoleAskId) {
+    return;
+  }
+  if (!window.confirm("Fail this manual render task? The asset will be blocked when harvested.")) {
+    return;
+  }
+  renderConsoleFailTask.disabled = true;
+  renderConsoleFailStatus.textContent = "Writing failed answer...";
+  try {
+    const response = await fetch(`/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/fail`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: renderConsoleFailReason.value || "" }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    showRenderConsoleMessage(`Failed answer written: ${payload.answer_path}`);
+    state.renderConsoleTasks = payload.remaining_tasks || [];
+    state.selectedRenderConsoleAskId = state.renderConsoleTasks[0]?.ask_id || null;
+    renderRenderConsoleTaskTable();
+    if (state.selectedRenderConsoleAskId) {
+      await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
+    } else {
+      clearRenderConsole();
+    }
+    renderConsoleStatus.textContent = `${state.renderConsoleTasks.length} manual render task(s) waiting`;
+    await loadAiControls().catch(() => {});
+  } catch (error) {
+    renderConsoleFailStatus.textContent = `Fail failed: ${error.message}`;
+  } finally {
+    renderConsoleFailTask.disabled = false;
+  }
+}
+
 characterSelect.addEventListener("change", async () => {
   state.character = characterSelect.value;
   state.phase = null;
@@ -811,6 +1037,9 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#pipeline-controls-page").classList.contains("active")) {
     await loadPipelineControls();
   }
+  if (document.querySelector("#render-console-page").classList.contains("active")) {
+    await loadRenderConsoleTasks();
+  }
 });
 
 phaseSelect.addEventListener("change", async () => {
@@ -830,6 +1059,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#pipeline-controls-page").classList.contains("active")) {
     await loadPipelineControls();
+  }
+  if (document.querySelector("#render-console-page").classList.contains("active")) {
+    await loadRenderConsoleTasks();
   }
 });
 
@@ -879,8 +1111,52 @@ sendMonitorTestButton.addEventListener("click", () => {
   const params = new URLSearchParams({ instruction: monitorInstruction.value || "" });
   runAiControlsAction(`/api/ai-controls/monitor-test?${params.toString()}`);
 });
+openRenderConsoleTab.addEventListener("click", () => {
+  document.querySelector('.tab[data-page="render-console"]').click();
+});
 automationForm.addEventListener("submit", saveAutomationSettings);
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
+renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
+renderConsoleCopyPrompt.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(state.renderConsoleDetail?.prompt || "");
+  showRenderConsoleMessage("Prompt copied.");
+});
+renderConsolePrev.addEventListener("click", () => {
+  const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
+  if (index > 0) {
+    selectRenderConsoleTask(state.renderConsoleTasks[index - 1].ask_id);
+  }
+});
+renderConsoleNext.addEventListener("click", () => {
+  const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
+  if (index >= 0 && index < state.renderConsoleTasks.length - 1) {
+    selectRenderConsoleTask(state.renderConsoleTasks[index + 1].ask_id);
+  }
+});
+renderConsolePasteZone.addEventListener("paste", (event) => {
+  const blob = imageBlobFromPasteEvent(event);
+  if (blob) {
+    event.preventDefault();
+    setRenderConsoleImageSelection(blob);
+  }
+});
+renderConsolePasteZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  renderConsolePasteZone.classList.add("drag-over");
+});
+renderConsolePasteZone.addEventListener("dragleave", () => {
+  renderConsolePasteZone.classList.remove("drag-over");
+});
+renderConsolePasteZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  renderConsolePasteZone.classList.remove("drag-over");
+  setRenderConsoleImageSelection(event.dataTransfer?.files?.[0]);
+});
+renderConsoleFileInput.addEventListener("change", () => {
+  setRenderConsoleImageSelection(renderConsoleFileInput.files?.[0]);
+});
+renderConsoleSaveImage.addEventListener("click", saveRenderConsoleImage);
+renderConsoleFailTask.addEventListener("click", failRenderConsoleTask);
 
 async function main() {
   setupTabs();
