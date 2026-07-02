@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +55,13 @@ class RenderConsoleQueue:
     @property
     def ask_root(self) -> Path:
         return self.proxy_root / "Ask"
+
+    @property
+    def answer_root(self) -> Path:
+        return self.proxy_root / "Answer"
+
+    def _timestamp(self) -> str:
+        return datetime.now().isoformat(timespec="seconds")
 
     def _read_json_if_exists(self, path: Path) -> dict[str, Any]:
         if not path.exists() or not path.is_file():
@@ -111,3 +120,41 @@ class RenderConsoleQueue:
         if not prompt_path.exists() or not prompt_path.is_file():
             return ""
         return prompt_path.read_text(encoding="utf-8")
+
+    def write_answer_image(self, task: ManualRenderTask, image_bytes: bytes, content_type: str = "") -> Path:
+        if not image_bytes:
+            raise ValueError("No image data was provided.")
+        if not task.expected_output:
+            raise ValueError(f"Task {task.ask_id} has no expected_output.")
+
+        self.answer_root.mkdir(parents=True, exist_ok=True)
+        answer_path = self.answer_root / task.ask_path.name
+        if answer_path.exists():
+            raise FileExistsError(f"Answer folder already exists: {answer_path}")
+
+        shutil.copytree(task.ask_path, answer_path)
+        output_path = answer_path / task.expected_output
+        output_path.write_bytes(image_bytes)
+
+        completed_at = self._timestamp()
+        answer_manifest = {
+            "version": 1,
+            "ask_id": task.ask_id,
+            "asset_id": task.asset_id,
+            "ollama_attempt_id": str(task.manifest.get("ollama_attempt_id") or ""),
+            "worker_id": "manual-chatgpt-render-console",
+            "status": "SUCCESS",
+            "expected_output": task.expected_output,
+            "started_at": completed_at,
+            "completed_at": completed_at,
+            "elapsed_seconds": 0,
+            "error_type": "",
+            "error_message": "",
+            "content_type": content_type,
+        }
+        (answer_path / "answer_manifest.json").write_text(
+            json.dumps(answer_manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        shutil.rmtree(task.ask_path)
+        return answer_path

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -45,6 +45,26 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             "task": task.to_dict(),
             "manifest": task.manifest,
             "prompt": app.state.queue.read_prompt(task),
+        }
+
+    @app.post("/api/tasks/{ask_id}/answer-image")
+    async def answer_image(ask_id: str, request: Request) -> dict:
+        task = app.state.queue.get_task(ask_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+
+        image_bytes = await request.body()
+        content_type = request.headers.get("content-type", "")
+        try:
+            answer_path = app.state.queue.write_answer_image(task, image_bytes, content_type)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        tasks = app.state.queue.list_tasks()
+        return {
+            "status": "SUCCESS",
+            "answer_path": str(answer_path),
+            "remaining_tasks": [item.to_dict() for item in tasks],
         }
 
     return app

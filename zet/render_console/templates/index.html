@@ -52,6 +52,23 @@
         <button id="copy-prompt-button" type="button">Copy Prompt</button>
       </div>
       <textarea id="prompt-text" spellcheck="false"></textarea>
+
+      <section class="answer-panel">
+        <div class="prompt-toolbar">
+          <div>
+            <h2>Returned Image</h2>
+            <p>Paste the image copied from ChatGPT, drop an image file, or choose a file.</p>
+          </div>
+          <button id="save-image-button" type="button" disabled>Save Image Answer</button>
+        </div>
+        <div id="paste-zone" class="paste-zone" tabindex="0">
+          <p>Click here, then press Ctrl+V to paste the rendered image.</p>
+          <p class="muted">Drag/drop and file picker also work.</p>
+          <input id="file-input" type="file" accept="image/*">
+        </div>
+        <img id="image-preview" class="image-preview" alt="Pasted render preview" hidden>
+        <p id="save-status" class="save-status"></p>
+      </section>
     </section>
   </main>
   <script src="/static/render_console.js"></script>

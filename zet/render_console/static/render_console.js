@@ -1,6 +1,7 @@
 let tasks = [];
 let currentIndex = 0;
 let currentPrompt = "";
+let currentImageBlob = null;
 
 const emptyState = document.getElementById("empty-state");
 const taskPanel = document.getElementById("task-panel");
@@ -11,6 +12,11 @@ const nextButton = document.getElementById("next-button");
 const refreshButton = document.getElementById("refresh-button");
 const copyPromptButton = document.getElementById("copy-prompt-button");
 const promptText = document.getElementById("prompt-text");
+const pasteZone = document.getElementById("paste-zone");
+const fileInput = document.getElementById("file-input");
+const imagePreview = document.getElementById("image-preview");
+const saveImageButton = document.getElementById("save-image-button");
+const saveStatus = document.getElementById("save-status");
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -26,6 +32,7 @@ function setText(id, value) {
 
 async function showTask(index) {
   currentIndex = index;
+  clearImageSelection();
   const task = tasks[currentIndex];
   const detail = await fetchJson(`/api/tasks/${encodeURIComponent(task.ask_id)}`);
   currentPrompt = detail.prompt || "";
@@ -39,6 +46,36 @@ async function showTask(index) {
   positionLabel.textContent = `Task ${currentIndex + 1} of ${tasks.length}`;
   previousButton.disabled = currentIndex === 0;
   nextButton.disabled = currentIndex >= tasks.length - 1;
+}
+
+function clearImageSelection() {
+  currentImageBlob = null;
+  imagePreview.hidden = true;
+  imagePreview.removeAttribute("src");
+  saveImageButton.disabled = true;
+  saveStatus.textContent = "";
+}
+
+function setImageSelection(blob) {
+  if (!blob || !blob.type.startsWith("image/")) {
+    saveStatus.textContent = "Clipboard or file did not contain an image.";
+    return;
+  }
+  currentImageBlob = blob;
+  imagePreview.src = URL.createObjectURL(blob);
+  imagePreview.hidden = false;
+  saveImageButton.disabled = false;
+  saveStatus.textContent = `Ready to save ${Math.round(blob.size / 1024)} KB image.`;
+}
+
+function imageBlobFromPasteEvent(event) {
+  const items = event.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      return item.getAsFile();
+    }
+  }
+  return null;
 }
 
 async function loadTasks() {
@@ -82,6 +119,71 @@ copyPromptButton.addEventListener("click", async () => {
   setTimeout(() => {
     copyPromptButton.textContent = "Copy Prompt";
   }, 1400);
+});
+
+pasteZone.addEventListener("paste", (event) => {
+  const blob = imageBlobFromPasteEvent(event);
+  if (blob) {
+    event.preventDefault();
+    setImageSelection(blob);
+  }
+});
+
+pasteZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  pasteZone.classList.add("drag-over");
+});
+
+pasteZone.addEventListener("dragleave", () => {
+  pasteZone.classList.remove("drag-over");
+});
+
+pasteZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  pasteZone.classList.remove("drag-over");
+  const file = event.dataTransfer?.files?.[0];
+  setImageSelection(file);
+});
+
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files?.[0];
+  setImageSelection(file);
+});
+
+saveImageButton.addEventListener("click", async () => {
+  if (!currentImageBlob || !tasks[currentIndex]) {
+    return;
+  }
+  const task = tasks[currentIndex];
+  saveImageButton.disabled = true;
+  saveStatus.textContent = "Saving image answer...";
+  try {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(task.ask_id)}/answer-image`, {
+      method: "POST",
+      headers: {
+        "Content-Type": currentImageBlob.type || "application/octet-stream",
+      },
+      body: currentImageBlob,
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    saveStatus.textContent = `Saved answer: ${payload.answer_path}`;
+    tasks = payload.remaining_tasks || [];
+    if (!tasks.length) {
+      taskCount.textContent = "0 manual render tasks waiting";
+      emptyState.hidden = false;
+      taskPanel.hidden = true;
+      return;
+    }
+    currentIndex = Math.min(currentIndex, tasks.length - 1);
+    await showTask(currentIndex);
+  } catch (error) {
+    saveStatus.textContent = `Save failed: ${error.message}`;
+    saveImageButton.disabled = false;
+  }
 });
 
 loadTasks().catch((error) => {

@@ -277,7 +277,7 @@ Completed:
 - Add copy path/copy filename helpers.
 - Add Open ChatGPT button/link.
 
-### Milestone 4 - Pasted Image Answer Flow
+### Milestone 4 - Pasted Image Answer Flow - Complete
 
 - Add paste/drop/file-picker image input.
 - Preview pasted image.
@@ -285,6 +285,14 @@ Completed:
 - Write `answer_manifest.json`.
 - Move task from `Ask/` to `Answer/`.
 - Verify existing harvester advances the asset to `RENDER_REVIEW`.
+
+Completed:
+
+- Added paste zone, drag/drop support, file-picker fallback, and image preview.
+- Added `POST /api/tasks/{ask_id}/answer-image`.
+- Saving writes the expected output image and compatible `answer_manifest.json`.
+- Saving moves the manual render task from `Ask/` to `Answer/`.
+- Queue-layer smoke test verified the write/move behavior.
 
 ### Milestone 5 - Failure Flow
 
