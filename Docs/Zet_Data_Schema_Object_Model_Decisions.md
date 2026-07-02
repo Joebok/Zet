@@ -215,6 +215,8 @@ These slots are selected during the `MANIFEST` stage from the FastAPI dashboard 
 
 Template text should describe how references are used. It should not be the source of truth for which image files are attached to a render task.
 
+Head-fitment prompt compilation is static. It does not use Prompt Review or ComfyUI. The `PROMPT` stage writes `Final_Image_Prompt.md` from the selected template sections and then advances directly to the manual ChatGPT `RENDER` stage.
+
 ## Pipeline Configuration Decision
 
 Pipeline definitions live in `Pipelines.json` under the selected character phase.

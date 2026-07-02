@@ -239,6 +239,21 @@ Current dashboard pages:
 
 The Template Editor is intentionally deferred while the body-reference authoring workflow is reconsidered.
 
+### Head-Fitment Pipeline
+
+Head-Fitment now uses structured image references:
+
+- `body_reference`: a locked Body-Reference output selected in the Manifest page
+- `headshot`: a selected or uploaded headshot reference image
+
+The active stage path is:
+
+```text
+MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
+```
+
+Head-Fitment does not use Prompt Review or ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character_Image_Template.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
+
 ### Assets Page
 
 The Assets page shows asset records for the selected character and phase.

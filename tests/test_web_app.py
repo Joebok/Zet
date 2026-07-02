@@ -61,7 +61,10 @@ class WebAppTests(unittest.TestCase):
                                 "RENDER": "AI_AGENT",
                                 "RENDER_REVIEW": "HUMAN_AGENT",
                             },
-                            "worker_by_stage": {"MANIFEST": "zet.workers.noop_worker"},
+                            "worker_by_stage": {
+                                "MANIFEST": "zet.workers.noop_worker",
+                                "PROMPT": "zet.workers.body_reference_prompt_worker",
+                            },
                         }
                     }
                 },
@@ -127,6 +130,47 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         (asset_dir / "body_front.png").write_bytes(b"body")
         (headshot_dir / "head_front.png").write_bytes(b"head")
         (prompt_dir / "Final_Image_Prompt.md").write_text("head fitment final prompt\n", encoding="utf-8")
+        (character_dir / "Character_Image_Template.md").write_text(
+            """
+<!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
+Test character general facts.
+<!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
+Test head facts.
+<!-- ZET:END HEAD_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
+Test front head view.
+<!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HAIR_DESCRIPTION_FACTS -->
+Test hair facts.
+<!-- ZET:END HAIR_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT -->
+Test front hair view.
+<!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->
+Preserve core identity.
+<!-- ZET:END IDENTITY_PRESERVATION_CORE -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_FACE -->
+Preserve face.
+<!-- ZET:END IDENTITY_PRESERVATION_FACE -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_HAIR -->
+Preserve hair.
+<!-- ZET:END IDENTITY_PRESERVATION_HAIR -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_EARS -->
+Preserve ears.
+<!-- ZET:END IDENTITY_PRESERVATION_EARS -->
+<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+Use neutral fitment rendering.
+<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
+Avoid drift.
+<!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+Avoid head-fitment drift.
+<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+""".lstrip(),
+            encoding="utf-8",
+        )
         (character_dir / "Assets.json").write_text(
             json.dumps(
                 {
@@ -192,7 +236,10 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                                 "PROMPT": "PYTHON",
                                 "RENDER": "AI_AGENT",
                             },
-                            "worker_by_stage": {"MANIFEST": "zet.workers.noop_worker"},
+                            "worker_by_stage": {
+                                "MANIFEST": "zet.workers.noop_worker",
+                                "PROMPT": "zet.workers.head_fitment_prompt_worker",
+                            },
                         },
                     }
                 },
@@ -479,6 +526,41 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
             self.assertEqual(manifest["prompt_file"], "Final_Image_Prompt.md")
             self.assertEqual([item["role"] for item in manifest["reference_files"]], ["body_reference", "headshot"])
+
+    def test_head_fitment_prompt_worker_compiles_prompt_and_stages_render_ask(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_head_fitment_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
+            body_path = detail.json()["body_reference_options"][0]["path"]
+            headshot_path = detail.json()["headshot_options"][0]["path"]
+            client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={"body_reference_path": body_path, "headshot_path": headshot_path},
+            )
+
+            manifest_done = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(manifest_done.status_code, 200)
+            self.assertEqual(manifest_done.json()["detail"]["asset"]["pipeline_stage"], "PROMPT")
+
+            prompt_done = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(prompt_done.status_code, 200)
+            asset = prompt_done.json()["detail"]["asset"]
+            self.assertEqual(asset["pipeline_stage"], "RENDER")
+            self.assertEqual(asset["actor"], "AI_AGENT")
+            self.assertEqual(asset["ai_state"], "ASKED")
+
+            prompt_path = root / "Pipelines" / "Test" / "Adult" / "Head-Fitment" / "Front" / "Front" / "Asset_2" / "Final_Image_Prompt.md"
+            prompt_text = prompt_path.read_text(encoding="utf-8")
+            self.assertIn("HEAD-FITMENT CHARACTER REFERENCE IMAGE", prompt_text)
+            self.assertIn("Use the attached body-reference image", prompt_text)
+            self.assertIn("Use the attached headshot reference image", prompt_text)
+            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
 
 
 if __name__ == "__main__":

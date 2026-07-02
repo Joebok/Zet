@@ -41,6 +41,49 @@
       },
       "next_status": "READY_FOR_PROMPT_REVIEW",
       "next_actor": "HUMAN"
+    },
+    "head-fitment": {
+      "description": "Static head-fitment prompt using selected body-reference and headshot image references. No prompt review and no local preview render.",
+      "prompt_builder": "static",
+      "required_sections": [
+        "GENERAL_DESCRIPTION_FACTS",
+        "HEAD_DESCRIPTION_FACTS",
+        "HEAD_DESCRIPTION_VIEW_{VIEW}",
+        "HAIR_DESCRIPTION_FACTS",
+        "HAIR_DESCRIPTION_VIEW_{VIEW}",
+        "IDENTITY_PRESERVATION_CORE",
+        "IDENTITY_PRESERVATION_FACE",
+        "IDENTITY_PRESERVATION_HAIR",
+        "IDENTITY_PRESERVATION_EARS",
+        "FITMENT_RENDERING_RULES",
+        "NEGATIVE_GUIDANCE_GENERAL"
+      ],
+      "optional_sections": [
+        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+      ],
+      "forbidden_sections": [
+        "*_PICARESQUE",
+        "BODY_DESCRIPTION_VIEW_*",
+        "COSTUME_DESCRIPTION_*",
+        "EQUIPMENT_DESCRIPTION_*",
+        "EXPRESSION_DESCRIPTION_*",
+        "SCENE_RENDERING_*"
+      ],
+      "static_prompt_template": "head_fitment_v1",
+      "resources": {
+        "required_reference_roles": [
+          "body_reference",
+          "headshot"
+        ]
+      },
+      "output_files": {
+        "compiled_sections": "Compiled_Sections.md",
+        "final_prompt": "Final_Image_Prompt.md",
+        "dependency_manifest": "dependency_manifest.json",
+        "image_review": "Image_Review.md"
+      },
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     }
   }
 }
