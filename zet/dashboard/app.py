@@ -214,6 +214,14 @@ def worker_poll_message(results) -> tuple[str, str]:
     return "success", f"Worker poll ran {len(results)} job(s). {detail}"
 
 
+def render_console_url(config) -> str:
+    host = str(getattr(config, "render_console_host", "127.0.0.1") or "127.0.0.1")
+    if host == "0.0.0.0":
+        host = "127.0.0.1"
+    port = int(getattr(config, "render_console_port", 8090) or 8090)
+    return f"http://{host}:{port}/"
+
+
 def path_row(label: str, path: Path) -> dict:
     return {
         "Path": label,
@@ -1062,11 +1070,23 @@ def main() -> None:
             st.info("Proxy is ACTIVE.")
 
         queue_snapshot = app.queue_snapshot()
+        manual_render_asks = [
+            item for item in queue_snapshot["ask"]
+            if item.get("worker_type") == "manual_chatgpt_render"
+        ]
         monitor_results = app.list_monitor_responses()
         monitor_request_root = app.ai_proxy_service.ai_proxy_path_service.monitor_requests_root()
         request_rows = []
         if monitor_request_root.exists():
             request_rows = [request_row(path) for path in sorted(monitor_request_root.iterdir(), reverse=True) if path.is_dir()]
+
+        st.subheader("Render Console")
+        st.markdown(
+            f"[Open Render Console]({render_console_url(config)}) | "
+            f"Manual render tasks waiting: {len(manual_render_asks)}"
+        )
+        if manual_render_asks:
+            st.dataframe(manual_render_asks, use_container_width=True, hide_index=True)
 
         queue_col_1, queue_col_2 = st.columns(2)
         with queue_col_1:

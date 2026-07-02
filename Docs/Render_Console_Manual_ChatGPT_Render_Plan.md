@@ -354,11 +354,17 @@ Windows firewall may need to allow inbound connections to the configured port.
 - Keep paste/drop/file-picker fallback even if direct clipboard writes are browser-dependent.
 - Document setup steps.
 
-### Milestone 8 - Dashboard Integration
+### Milestone 8 - Dashboard Integration - Complete
 
 - Add `Open Render Console` link/button from AI Controls or Assets.
 - Add visual indicator for pending manual render tasks.
 - Add docs for the full manual render workflow.
+
+Completed:
+
+- Added AI Controls link to the configured Render Console URL.
+- Added pending `manual_chatgpt_render` task count.
+- Added pending manual render task table.
 
 ### Milestone 9 - Process Management
 
