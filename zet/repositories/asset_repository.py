@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import shutil
 from dataclasses import fields
@@ -36,11 +37,24 @@ class AssetRepository:
         return payload
 
     def _asset_from_dict(self, record: dict) -> Asset:
-        required = [field.name for field in fields(Asset)]
+        model_fields = list(fields(Asset))
+        required = [
+            field.name
+            for field in model_fields
+            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
+        ]
         missing = sorted(set(required) - set(record))
         if missing:
             raise AssetRepositoryError(f"Asset record is missing required fields: {', '.join(missing)}")
-        return Asset(**{name: record[name] for name in required})
+        values = {}
+        for field in model_fields:
+            if field.name in record:
+                values[field.name] = record[field.name]
+            elif field.default is not dataclasses.MISSING:
+                values[field.name] = field.default
+            elif field.default_factory is not dataclasses.MISSING:
+                values[field.name] = field.default_factory()
+        return Asset(**values)
 
     def _serialize_asset(self, asset: Asset) -> dict:
         return {field.name: getattr(asset, field.name) for field in fields(Asset)}

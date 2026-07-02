@@ -230,6 +230,7 @@ dashboard.bat
 Current dashboard pages:
 
 - `Assets`
+- `Manifest`
 - `Prompt Review`
 - `Render Review`
 - `Render Console`

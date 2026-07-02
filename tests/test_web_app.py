@@ -114,6 +114,106 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         (ask_path / "Final_Image_Prompt.md").write_text("manual render prompt\n", encoding="utf-8")
         return ask_path
 
+    def _write_head_fitment_fixture(self, root: Path) -> Path:
+        character_dir = root / "Characters" / "Test" / "Adult"
+        asset_dir = root / "Assets" / "Test" / "Adult"
+        headshot_dir = character_dir / "Reference_Images" / "Headshots"
+        prompt_dir = root / "Pipelines" / "Test" / "Adult" / "Head-Fitment" / "Front" / "Front" / "Asset_2"
+        character_dir.mkdir(parents=True)
+        asset_dir.mkdir(parents=True)
+        headshot_dir.mkdir(parents=True)
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        (root / "Queue").mkdir()
+        (asset_dir / "body_front.png").write_bytes(b"body")
+        (headshot_dir / "head_front.png").write_bytes(b"head")
+        (prompt_dir / "Final_Image_Prompt.md").write_text("head fitment final prompt\n", encoding="utf-8")
+        (character_dir / "Assets.json").write_text(
+            json.dumps(
+                {
+                    "assets": [
+                        {
+                            "asset_id": 1,
+                            "character": "Test",
+                            "phase": "Adult",
+                            "pipeline": "Body-Reference",
+                            "body_view": "Front",
+                            "head_view": None,
+                            "costume": None,
+                            "expression": None,
+                            "asset_state": "LOCKED",
+                            "pipeline_stage": "LOCKED",
+                            "actor": "HUMAN_AGENT",
+                            "ai_state": None,
+                            "final_image_output": "body_front.png",
+                            "last_ai_update": None,
+                            "error_code": None,
+                            "error_message": None,
+                            "updated_at": None,
+                        },
+                        {
+                            "asset_id": 2,
+                            "character": "Test",
+                            "phase": "Adult",
+                            "pipeline": "Head-Fitment",
+                            "body_view": "Front",
+                            "head_view": "Front",
+                            "costume": None,
+                            "expression": None,
+                            "asset_state": "IN_PROGRESS",
+                            "pipeline_stage": "MANIFEST",
+                            "actor": "PYTHON",
+                            "ai_state": None,
+                            "final_image_output": "head_fitment.png",
+                            "last_ai_update": None,
+                            "error_code": None,
+                            "error_message": None,
+                            "updated_at": None,
+                        },
+                    ]
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (character_dir / "Pipelines.json").write_text(
+            json.dumps(
+                {
+                    "pipelines": {
+                        "Body-Reference": {
+                            "stages": ["LOCKED"],
+                            "actor_by_stage": {"LOCKED": "HUMAN_AGENT"},
+                            "worker_by_stage": {},
+                        },
+                        "Head-Fitment": {
+                            "stages": ["MANIFEST", "PROMPT", "RENDER"],
+                            "actor_by_stage": {
+                                "MANIFEST": "PYTHON",
+                                "PROMPT": "PYTHON",
+                                "RENDER": "AI_AGENT",
+                            },
+                            "worker_by_stage": {"MANIFEST": "zet.workers.noop_worker"},
+                        },
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = root / "config.toml"
+        config_path.write_text(
+            f"""
+[BaseFolders]
+BaseCharacterPath = "{(root / 'Characters').as_posix()}"
+BaseAssetPath = "{(root / 'Assets').as_posix()}"
+BasePipelinePath = "{(root / 'Pipelines').as_posix()}"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+""".lstrip(),
+            encoding="utf-8",
+        )
+        return config_path
+
     def test_assets_api_serves_context_list_and_detail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = self._write_fixture(Path(temp_dir))
@@ -316,6 +416,69 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertTrue((answer_path / "front.png").exists())
             manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "SUCCESS")
+
+    def test_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_head_fitment_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            tasks = client.get("/api/head-fitment-manifest/tasks", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["asset_id"], 2)
+
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(detail.status_code, 200)
+            body_path = detail.json()["body_reference_options"][0]["path"]
+            headshot_path = detail.json()["headshot_options"][0]["path"]
+
+            uploaded = client.post(
+                "/api/head-fitment-manifest/headshots",
+                params={"character": "Test", "phase": "Adult", "filename": "new_head.png"},
+                content=b"new head",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(uploaded.status_code, 200)
+            self.assertTrue(Path(uploaded.json()["path"]).exists())
+
+            saved = client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={"body_reference_path": body_path, "headshot_path": headshot_path},
+            )
+            self.assertEqual(saved.status_code, 200)
+            self.assertEqual(len(saved.json()["reference_files"]), 2)
+            self.assertEqual(saved.json()["reference_files"][0]["role"], "body_reference")
+
+    def test_head_fitment_render_ask_includes_reference_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_head_fitment_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
+            body_path = detail.json()["body_reference_options"][0]["path"]
+            headshot_path = detail.json()["headshot_options"][0]["path"]
+            client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={"body_reference_path": body_path, "headshot_path": headshot_path},
+            )
+
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            payload["assets"][1]["pipeline_stage"] = "RENDER"
+            payload["assets"][1]["actor"] = "AI_AGENT"
+            payload["assets"][1]["ai_state"] = "ASKED"
+            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+            staged = client.post("/api/assets/2/stage-ai-ask", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(staged.status_code, 200)
+            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
+            self.assertEqual(manifest["prompt_file"], "Final_Image_Prompt.md")
+            self.assertEqual([item["role"] for item in manifest["reference_files"]], ["body_reference", "headshot"])
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@
 
   <nav class="tabs" aria-label="Dashboard sections">
     <button class="tab active" data-page="assets">Assets</button>
+    <button class="tab" data-page="manifest">Manifest</button>
     <button class="tab" data-page="prompt-review">Prompt Review</button>
     <button class="tab" data-page="render-review">Render Review</button>
     <button class="tab" data-page="render-console">Render Console</button>
@@ -86,6 +87,55 @@
               <pre id="history-text"></pre>
             </section>
           </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="manifest-page" class="page">
+      <div class="page-title-row">
+        <h1>Manifest</h1>
+        <div id="manifest-status" class="status-text"></div>
+      </div>
+      <div class="review-layout manifest-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="manifest-prev">Previous</button>
+            <button id="manifest-next">Next</button>
+          </div>
+          <table id="manifest-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>body</th>
+                <th>head</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="manifest-title">Select a manifest task</h2>
+            <button id="save-manifest-references" class="primary-action">Save References</button>
+          </div>
+          <div id="manifest-message" class="action-message" hidden></div>
+          <div class="manifest-picker-grid">
+            <section>
+              <h3>Body Reference</h3>
+              <select id="body-reference-select"></select>
+              <div id="body-reference-preview" class="image-placeholder">No body reference selected.</div>
+            </section>
+            <section>
+              <h3>Headshot</h3>
+              <select id="headshot-reference-select"></select>
+              <input id="headshot-upload" type="file" accept="image/*">
+              <div id="headshot-reference-preview" class="image-placeholder">No headshot selected.</div>
+            </section>
+          </div>
+        </section>
+        <aside class="review-actions">
+          <h3>Saved Reference Slots</h3>
+          <pre id="manifest-reference-json"></pre>
         </aside>
       </div>
     </section>
@@ -229,6 +279,7 @@
             <input id="render-console-file-input" type="file" accept="image/*">
           </div>
           <img id="render-console-image-preview" class="image-preview" alt="Pasted render preview" hidden>
+          <div id="render-console-reference-files" class="reference-preview-list"></div>
           <button id="render-console-save-image" class="primary-action" disabled>Save Image Answer</button>
           <p id="render-console-save-status" class="status-text"></p>
           <h2>Fail Task</h2>

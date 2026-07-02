@@ -288,6 +288,10 @@ dl {
   grid-template-columns: 260px minmax(520px, 1fr) 280px;
 }
 
+.manifest-layout {
+  grid-template-columns: 260px minmax(620px, 1fr) 300px;
+}
+
 .review-sidebar,
 .review-main,
 .review-actions {
@@ -362,6 +366,43 @@ dl {
 
 .image-placeholder img {
   height: auto;
+  max-width: 100%;
+}
+
+.manifest-picker-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.manifest-picker-grid section {
+  display: grid;
+  gap: 8px;
+}
+
+.manifest-picker-grid .image-placeholder {
+  min-height: 420px;
+}
+
+.reference-preview-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reference-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.reference-preview h3 {
+  margin-bottom: 6px;
+}
+
+.reference-preview img {
+  display: block;
+  height: auto;
+  max-height: 220px;
   max-width: 100%;
 }
 
@@ -558,6 +599,10 @@ dd {
   }
 
   .review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .manifest-picker-grid {
     grid-template-columns: 1fr;
   }
 

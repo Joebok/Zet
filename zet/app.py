@@ -14,6 +14,7 @@ from zet.services.path_service import PathService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
+from zet.services.reference_service import ReferenceService
 from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
 
@@ -92,6 +93,7 @@ class ZetApp:
         pipeline_repository: PipelineRepository,
         asset_service: AssetService,
         prompt_review_service: PromptReviewService,
+        reference_service: ReferenceService,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
         config_path: str | Path = "config.toml",
@@ -102,6 +104,7 @@ class ZetApp:
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
         self.prompt_review_service = prompt_review_service
+        self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
@@ -154,6 +157,7 @@ class ZetApp:
             asset_service,
             path_service,
         )
+        reference_service = ReferenceService(asset_repository, path_service)
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -161,6 +165,7 @@ class ZetApp:
             pipeline_repository,
             asset_service,
             prompt_review_service,
+            reference_service,
             housekeeping_service,
             path_service,
             config_path,
@@ -239,3 +244,25 @@ class ZetApp:
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
+
+    def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
+        return self.reference_service.head_fitment_context(character, phase, asset_id)
+
+    def save_head_fitment_references(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        body_reference_path: str,
+        headshot_path: str,
+    ) -> Asset:
+        return self.reference_service.save_head_fitment_references(
+            character,
+            phase,
+            asset_id,
+            body_reference_path,
+            headshot_path,
+        )
+
+    def upload_headshot_reference(self, character: str, phase: str, filename: str, contents: bytes) -> Path:
+        return self.reference_service.upload_headshot(character, phase, filename, contents)

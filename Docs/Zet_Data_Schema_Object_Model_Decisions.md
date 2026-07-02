@@ -202,6 +202,19 @@ asset_ref.locked_image_path()
 
 Prompt review and local render operations are exposed through `PromptReviewService` and facade methods.
 
+## Reference Slot Decision
+
+Assets may carry structured image references in `reference_files`.
+
+Head-fitment uses explicit reference slots instead of searching markdown for image filenames:
+
+- `body_reference`: a locked Body-Reference output image
+- `headshot`: a headshot reference image stored under `Reference_Images/Headshots/`
+
+These slots are selected during the `MANIFEST` stage from the FastAPI dashboard Manifest page. The selected references are saved on the asset and propagated into manual ChatGPT render asks through `ask_manifest.json.reference_files`.
+
+Template text should describe how references are used. It should not be the source of truth for which image files are attached to a render task.
+
 ## Pipeline Configuration Decision
 
 Pipeline definitions live in `Pipelines.json` under the selected character phase.

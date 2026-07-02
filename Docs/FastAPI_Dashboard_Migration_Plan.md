@@ -31,6 +31,20 @@ Avoid a heavy frontend framework until there is a concrete need.
 - Business logic belongs in services.
 - Existing Render Console behavior should be folded into the main Zet web UI instead of remaining a separate app long term.
 
+## Post-Migration Additions
+
+### Head-Fitment Manifest Picker
+
+Head-fitment uses a Manifest page to choose explicit image reference slots before prompt/render work continues.
+
+Implemented:
+
+- Head-Fitment assets at `MANIFEST / PYTHON` appear as manifest tasks.
+- Locked Body-Reference images are available as body-reference slot choices.
+- Headshot reference images can be selected from or uploaded to `Reference_Images/Headshots/`.
+- Saved selections are stored in `asset.reference_files`.
+- Manual ChatGPT render asks for Head-Fitment include those references in `ask_manifest.json.reference_files`.
+
 ## Milestones
 
 ### Milestone 0 - Plan And Direction - Complete

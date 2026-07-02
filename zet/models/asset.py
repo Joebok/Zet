@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -21,4 +21,5 @@ class Asset:
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     updated_at: Optional[str] = None
+    reference_files: list[dict] = field(default_factory=list)
 

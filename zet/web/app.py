@@ -74,6 +74,10 @@ def _is_render_review_asset(asset) -> bool:
     return asset.pipeline_stage == "RENDER_REVIEW" and asset.actor == "HUMAN_AGENT"
 
 
+def _is_head_fitment_manifest_asset(asset) -> bool:
+    return asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "MANIFEST" and asset.actor == "PYTHON"
+
+
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data = asdict(asset)
     data["head_view"] = _format_value(asset.head_view)
@@ -148,6 +152,27 @@ def _render_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
         "history_text": detail["history_text"],
         "candidate_image_path": detail["paths"]["candidate_image_path"],
         "locked_image_path": detail["paths"]["locked_image_path"],
+    }
+
+
+def _head_fitment_manifest_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
+    payload = _asset_payload(zet_app, asset)
+    payload["reference_count"] = len(asset.reference_files or [])
+    payload["has_body_reference"] = any(ref.get("role") == "body_reference" for ref in asset.reference_files or [])
+    payload["has_headshot"] = any(ref.get("role") == "headshot" for ref in asset.reference_files or [])
+    return payload
+
+
+def _head_fitment_manifest_context_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
+    context = zet_app.head_fitment_reference_context(character, phase, asset_id)
+    return {
+        "asset": _asset_payload(zet_app, context["asset"]),
+        "is_manifest_editable": context["is_manifest_editable"],
+        "body_reference_options": _jsonable(context["body_reference_options"]),
+        "headshot_options": _jsonable(context["headshot_options"]),
+        "selected_body_reference": _jsonable(context["selected_body_reference"]),
+        "selected_headshot": _jsonable(context["selected_headshot"]),
+        "reference_files": _jsonable(context["reference_files"]),
     }
 
 
@@ -451,6 +476,62 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     if _is_render_review_asset(asset)
                 ],
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/head-fitment-manifest/tasks")
+    def head_fitment_manifest_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            assets = [
+                asset for asset in zet_app.list_assets(character, phase)
+                if _is_head_fitment_manifest_asset(asset)
+            ]
+            return {"tasks": [_head_fitment_manifest_task_payload(zet_app, asset) for asset in assets]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/head-fitment-manifest/{asset_id}")
+    def head_fitment_manifest_detail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _head_fitment_manifest_context_payload(zet_app, character, phase, asset_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/head-fitment-manifest/{asset_id}/references")
+    def head_fitment_manifest_save_references(
+        asset_id: int,
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.save_head_fitment_references(
+                character,
+                phase,
+                asset_id,
+                str(payload.get("body_reference_path") or ""),
+                str(payload.get("headshot_path") or ""),
+            )
+            response = _head_fitment_manifest_context_payload(zet_app, character, phase, updated.asset_id)
+            response["message"] = "Head-fitment reference slots saved."
+            return response
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/head-fitment-manifest/headshots")
+    async def head_fitment_manifest_upload_headshot(
+        request: Request,
+        filename: str = Query(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            path = zet_app.upload_headshot_reference(character, phase, filename, await request.body())
+            return {"path": str(path), "name": path.name}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

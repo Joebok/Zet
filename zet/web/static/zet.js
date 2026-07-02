@@ -17,6 +17,9 @@ const state = {
   selectedRenderConsoleAskId: null,
   renderConsoleDetail: null,
   renderConsoleImageBlob: null,
+  manifestTasks: [],
+  selectedManifestAssetId: null,
+  manifestDetail: null,
 };
 
 const characterSelect = document.querySelector("#character-select");
@@ -122,6 +125,19 @@ const renderConsoleSaveStatus = document.querySelector("#render-console-save-sta
 const renderConsoleFailReason = document.querySelector("#render-console-fail-reason");
 const renderConsoleFailTask = document.querySelector("#render-console-fail-task");
 const renderConsoleFailStatus = document.querySelector("#render-console-fail-status");
+const manifestStatus = document.querySelector("#manifest-status");
+const manifestTaskBody = document.querySelector("#manifest-task-table tbody");
+const manifestPrev = document.querySelector("#manifest-prev");
+const manifestNext = document.querySelector("#manifest-next");
+const manifestTitle = document.querySelector("#manifest-title");
+const manifestMessage = document.querySelector("#manifest-message");
+const saveManifestReferencesButton = document.querySelector("#save-manifest-references");
+const bodyReferenceSelect = document.querySelector("#body-reference-select");
+const headshotReferenceSelect = document.querySelector("#headshot-reference-select");
+const headshotUpload = document.querySelector("#headshot-upload");
+const bodyReferencePreview = document.querySelector("#body-reference-preview");
+const headshotReferencePreview = document.querySelector("#headshot-reference-preview");
+const manifestReferenceJson = document.querySelector("#manifest-reference-json");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -172,6 +188,12 @@ function showRenderConsoleMessage(message, kind = "info") {
   renderConsoleMessage.textContent = message || "";
   renderConsoleMessage.className = `action-message ${kind}`;
   renderConsoleMessage.hidden = !message;
+}
+
+function showManifestMessage(message, kind = "info") {
+  manifestMessage.textContent = message || "";
+  manifestMessage.className = `action-message ${kind}`;
+  manifestMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -366,6 +388,7 @@ function setupTabs() {
       }
       const page = button.dataset.page;
       document.querySelector("#assets-page").classList.toggle("active", page === "assets");
+      document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
       document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
       document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
       document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
@@ -375,11 +398,14 @@ function setupTabs() {
         .querySelector("#placeholder-page")
         .classList.toggle(
           "active",
-          !["assets", "prompt-review", "render-review", "render-console", "ai-controls", "pipeline-controls"].includes(page),
+          !["assets", "manifest", "prompt-review", "render-review", "render-console", "ai-controls", "pipeline-controls"].includes(page),
         );
       placeholderTitle.textContent = button.textContent;
       if (page === "prompt-review") {
         loadPromptReviewTasks();
+      }
+      if (page === "manifest") {
+        loadManifestTasks();
       }
       if (page === "render-review") {
         loadRenderReviewTasks();
@@ -901,7 +927,30 @@ function renderRenderConsoleDetail(detail) {
   renderConsolePrompt.value = detail.prompt || "";
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
+  renderConsoleReferenceFiles(detail.manifest?.reference_files || []);
   updateRenderConsoleNavigation();
+}
+
+function renderConsoleReferenceFiles(referenceFiles) {
+  const container = document.querySelector("#render-console-reference-files");
+  container.replaceChildren();
+  for (const reference of referenceFiles || []) {
+    const section = document.createElement("section");
+    section.className = "reference-preview";
+    const title = document.createElement("h3");
+    title.textContent = reference.label || reference.role || "Reference";
+    const path = document.createElement("p");
+    path.className = "status-text";
+    path.textContent = reference.path || "";
+    section.append(title, path);
+    if (reference.path) {
+      const image = document.createElement("img");
+      image.alt = title.textContent;
+      image.src = `/api/file?path=${encodeURIComponent(reference.path)}`;
+      section.append(image);
+    }
+    container.append(section);
+  }
 }
 
 function updateRenderConsoleNavigation() {
@@ -1017,16 +1066,178 @@ async function failRenderConsoleTask() {
   }
 }
 
+async function loadManifestTasks(preferredAssetId = null) {
+  if (!state.character || !state.phase) {
+    manifestStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  manifestStatus.textContent = "Loading manifest tasks...";
+  const payload = await fetchJson(`/api/head-fitment-manifest/tasks?${currentQuery().toString()}`);
+  state.manifestTasks = payload.tasks || [];
+  const taskIds = new Set(state.manifestTasks.map((task) => task.asset_id));
+  state.selectedManifestAssetId = preferredAssetId || state.selectedManifestAssetId || state.manifestTasks[0]?.asset_id || null;
+  if (state.selectedManifestAssetId && !taskIds.has(state.selectedManifestAssetId)) {
+    state.selectedManifestAssetId = state.manifestTasks[0]?.asset_id || null;
+  }
+  renderManifestTaskTable();
+  manifestStatus.textContent = `${state.manifestTasks.length} manifest task(s) waiting`;
+  if (state.selectedManifestAssetId) {
+    await selectManifestAsset(state.selectedManifestAssetId);
+  } else {
+    clearManifest();
+  }
+}
+
+function renderManifestTaskTable() {
+  manifestTaskBody.replaceChildren();
+  for (const task of state.manifestTasks) {
+    const row = document.createElement("tr");
+    row.dataset.assetId = task.asset_id;
+    row.classList.toggle("selected", task.asset_id === state.selectedManifestAssetId);
+    for (const value of [task.asset_id, task.has_body_reference ? "yes" : "", task.has_headshot ? "yes" : ""]) {
+      const cell = document.createElement("td");
+      cell.textContent = value ?? "";
+      row.append(cell);
+    }
+    row.addEventListener("click", () => selectManifestAsset(task.asset_id));
+    manifestTaskBody.append(row);
+  }
+}
+
+async function selectManifestAsset(assetId) {
+  state.selectedManifestAssetId = Number(assetId);
+  for (const row of manifestTaskBody.querySelectorAll("tr")) {
+    row.classList.toggle("selected", Number(row.dataset.assetId) === state.selectedManifestAssetId);
+  }
+  const detail = await fetchJson(`/api/head-fitment-manifest/${state.selectedManifestAssetId}?${currentQuery().toString()}`);
+  renderManifest(detail);
+}
+
+function clearManifest() {
+  state.manifestDetail = null;
+  manifestTitle.textContent = "Select a manifest task";
+  bodyReferenceSelect.replaceChildren();
+  headshotReferenceSelect.replaceChildren();
+  bodyReferencePreview.textContent = "No body reference selected.";
+  headshotReferencePreview.textContent = "No headshot selected.";
+  manifestReferenceJson.textContent = "";
+  saveManifestReferencesButton.disabled = true;
+  manifestPrev.disabled = true;
+  manifestNext.disabled = true;
+}
+
+function renderManifest(detail) {
+  state.manifestDetail = detail;
+  const asset = detail.asset;
+  manifestTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view} / ${asset.head_view}`;
+  fillReferenceSelect(bodyReferenceSelect, detail.body_reference_options || [], detail.selected_body_reference?.path || "");
+  fillReferenceSelect(headshotReferenceSelect, detail.headshot_options || [], detail.selected_headshot?.path || "");
+  manifestReferenceJson.textContent = JSON.stringify(detail.reference_files || [], null, 2);
+  saveManifestReferencesButton.disabled = !detail.is_manifest_editable;
+  updateManifestPreviews();
+  updateManifestNavigation();
+}
+
+function fillReferenceSelect(select, options, selectedPath) {
+  const items = [option("", "Select image...")];
+  for (const item of options) {
+    const choice = option(item.path, item.label || item.path);
+    choice.disabled = !item.exists;
+    items.push(choice);
+  }
+  select.replaceChildren(...items);
+  select.value = selectedPath || "";
+}
+
+function renderImagePreview(container, path, emptyText) {
+  container.replaceChildren();
+  if (!path) {
+    container.textContent = emptyText;
+    return;
+  }
+  const image = document.createElement("img");
+  image.alt = emptyText;
+  image.src = `/api/file?path=${encodeURIComponent(path)}`;
+  image.title = path;
+  container.append(image);
+}
+
+function updateManifestPreviews() {
+  renderImagePreview(bodyReferencePreview, bodyReferenceSelect.value, "No body reference selected.");
+  renderImagePreview(headshotReferencePreview, headshotReferenceSelect.value, "No headshot selected.");
+}
+
+function updateManifestNavigation() {
+  const index = state.manifestTasks.findIndex((task) => task.asset_id === state.selectedManifestAssetId);
+  manifestPrev.disabled = index <= 0;
+  manifestNext.disabled = index < 0 || index >= state.manifestTasks.length - 1;
+}
+
+async function saveManifestReferences() {
+  if (!state.selectedManifestAssetId) {
+    return;
+  }
+  showManifestMessage("Saving...");
+  try {
+    const payload = await fetchJson(
+      `/api/head-fitment-manifest/${state.selectedManifestAssetId}/references?${currentQuery().toString()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body_reference_path: bodyReferenceSelect.value,
+          headshot_path: headshotReferenceSelect.value,
+        }),
+      },
+    );
+    renderManifest(payload);
+    showManifestMessage(payload.message || "References saved.");
+    await loadAssets(state.selectedAssetId);
+    await loadManifestTasks(state.selectedManifestAssetId);
+  } catch (error) {
+    showManifestMessage(error.message, "error");
+  }
+}
+
+async function uploadHeadshotReference() {
+  const file = headshotUpload.files?.[0];
+  if (!file) {
+    return;
+  }
+  showManifestMessage("Uploading headshot...");
+  const params = currentQuery();
+  params.set("filename", file.name);
+  try {
+    const payload = await fetchJson(`/api/head-fitment-manifest/headshots?${params.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    showManifestMessage(`Uploaded ${payload.name}.`);
+    await selectManifestAsset(state.selectedManifestAssetId);
+    headshotReferenceSelect.value = payload.path;
+    updateManifestPreviews();
+  } catch (error) {
+    showManifestMessage(error.message, "error");
+  } finally {
+    headshotUpload.value = "";
+  }
+}
+
 characterSelect.addEventListener("change", async () => {
   state.character = characterSelect.value;
   state.phase = null;
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
+  state.selectedManifestAssetId = null;
   updatePhaseSelect();
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
     await loadPromptReviewTasks();
+  }
+  if (document.querySelector("#manifest-page").classList.contains("active")) {
+    await loadManifestTasks();
   }
   if (document.querySelector("#render-review-page").classList.contains("active")) {
     await loadRenderReviewTasks();
@@ -1047,9 +1258,13 @@ phaseSelect.addEventListener("change", async () => {
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
+  state.selectedManifestAssetId = null;
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
     await loadPromptReviewTasks();
+  }
+  if (document.querySelector("#manifest-page").classList.contains("active")) {
+    await loadManifestTasks();
   }
   if (document.querySelector("#render-review-page").classList.contains("active")) {
     await loadRenderReviewTasks();
@@ -1157,6 +1372,22 @@ renderConsoleFileInput.addEventListener("change", () => {
 });
 renderConsoleSaveImage.addEventListener("click", saveRenderConsoleImage);
 renderConsoleFailTask.addEventListener("click", failRenderConsoleTask);
+bodyReferenceSelect.addEventListener("change", updateManifestPreviews);
+headshotReferenceSelect.addEventListener("change", updateManifestPreviews);
+headshotUpload.addEventListener("change", uploadHeadshotReference);
+saveManifestReferencesButton.addEventListener("click", saveManifestReferences);
+manifestPrev.addEventListener("click", () => {
+  const index = state.manifestTasks.findIndex((task) => task.asset_id === state.selectedManifestAssetId);
+  if (index > 0) {
+    selectManifestAsset(state.manifestTasks[index - 1].asset_id);
+  }
+});
+manifestNext.addEventListener("click", () => {
+  const index = state.manifestTasks.findIndex((task) => task.asset_id === state.selectedManifestAssetId);
+  if (index >= 0 && index < state.manifestTasks.length - 1) {
+    selectManifestAsset(state.manifestTasks[index + 1].asset_id);
+  }
+});
 
 async function main() {
   setupTabs();
