@@ -27,6 +27,15 @@ Reference roles:
 - The attached headshot reference is the Character Head source.
 - The attached body-reference image is the Reference Body source.
 
+CANONICAL ART STYLE DIRECTIVE
+
+Render the fitted Character Head and neck in the Canonical Art Style listed above.
+
+If the Character Head source uses a different art style, repaint only the rendering style into the Canonical Art Style while preserving the Character Head identity, expression, view angle, face shape, facial proportions, hair silhouette, ear shape, eye color, skin tone, and neck fitment.
+
+The art-style conversion must not redesign the character.
+The art-style conversion must not change the head view, camera angle, face identity, hairstyle, ears, expression, age, species, or neck geometry.
+
 **Neck-column anchor**: the midpoint of the visible neck column, clearly above the torso and shoulder mass, halfway between the underside of the jaw/skull and the base of the neck where the neck begins to widen into the shoulders. This anchor is on the neck itself, not on the collarbone, chest, shoulders, or torso.
 
 Neck-column anchor — controls where the head/neck module is centered and vertically placed.
@@ -37,9 +46,34 @@ Fit the Character Neck to the Reference Body’s neck-column anchor and base-nec
 
 The Character Neck may be slightly adjusted so it could blend seamlessly into the Reference Body Neck-column anchor.
 
+CANONICAL ART STYLE REINFORCEMENT
+
+The final fitted head-and-neck module must be rendered in the Canonical Art Style listed at the top of this prompt.
+
+If the Character Head source is not already in the Canonical Art Style, convert only the rendering style. Preserve the Character Head’s identity, expression, face shape, facial proportions, eye color, gaze, hair silhouette, ear shape, skin tone, view angle, camera orientation, and fitted neck geometry.
+
+Do not let the art-style conversion become a redesign.
+
+ART-STYLE CONVERSION BUDGET
+
+Allowed style changes:
+- convert line quality, brush texture, shading, rendering finish, and reference-sheet presentation into the Canonical Art Style
+- harmonize the fitted neck with the head in the same Canonical Art Style
+
+Forbidden style changes:
+- changing facial structure
+- changing expression
+- changing eye shape or eye color
+- changing hair shape, length, part, or silhouette
+- changing ear shape, size, angle, or visibility
+- changing the requested view angle
+- changing the fitted neck length, width, angle, or docking shape
+
 The Character Head MUST NOT BE ROTATED.
 
-Do not change the Character Head view, camera orientation, head shape, face, hair, ears, eye visibility, nose visibility, skin tone, or painterly style.
+Do not change the Character Head view, camera orientation, head shape, face, hair, ears, eye visibility, nose visibility, skin tone, expression, or identity.
+
+Render all visible head-and-neck features in the Canonical Art Style listed above.
 
 The only allowed adjustment is to align the Character Head and Character Neck to the Reference Body neck connection point, then suppress the Reference Body and any body/torso material, leaving only a fitted character head-and-neck image.
 

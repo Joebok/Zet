@@ -31,30 +31,20 @@ View Token: FRONT_LEFT_3_4
 * Apparent age: adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, wide shoulders, narrow waist, long slim legs, inverted triangle.
+* Core silhouette: compact elven frame, narrow waist, softly sloped shoulders, slightly broader than the narrow waist, petite, graceful, long slim legs.
 
 # BODY_DESCRIPTION_FACTS
 
 * Build: petite, lithe, graceful, lightly athletic; slim limbs
 * Height impression: short-to-average
-* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders
+* Proportions: elegant high-elf proportions with long limbs, narrow waist
+* Softly sloped shoulders, slightly broader than the narrow waist, but still petite and graceful
 * Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
-* Shoulder shape: wide, softly sloped
+* Softly sloped shoulders, slightly broader than the narrow waist, but still petite and graceful
 * Torso shape: slim waist, inverted triangle figure
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
 * Hand shape: small, elegant hands with long fingers.
 * Hip/leg proportions: long slender legs, knees and ankles cleanly articulated
-
-**Use mannaquin elf head**
-* Placeholder for character head
-* Generic elvish features, especially ears.
-* Neutral gray
-* Thin marking lines for feature placement
-* Mannaquin head meets body in clean line around the neck at the collar bone.
-* Always faces same direction as body.
-
-Mannaquin head does NOT:
-* show eye, nose, mouth, or hair detail.
 
 # IDENTITY_PRESERVATION_BODY
 
@@ -69,23 +59,25 @@ Body preservation rules:
 
 Rendering priorities:
 
-* Neutral, readable pose.
+* Head-and-neck module only.
+* Transparent background.
 * Clear silhouette.
-* Full body visible.
-* Feet visible.
+* Preserve requested head view.
+* Preserve identity and fitment geometry.
+* Render in the Canonical Art Style.
 * No dramatic lighting.
 * No narrative scene.
 * No acting.
-* Uncluttered image.
-* Preserve scale and proportions.
-* Preserve view angle.
+* No shoulders, torso, bust, clothing, costume, mannequin, or stand.
 
 # TECHNICAL_MODESTY_LAYER
 
+For body-reference, use simple neutral fitment clothing.
+
 Clothing rules:
 
-* tube top.
-* compression shorts.
+* neutral tan tube top.
+* neutral tan compression shorts.
 * Minimal detail.
 * no additional garments
 * Readable body silhouette.
@@ -107,6 +99,6 @@ Avoid:
 
 # NEGATIVE_GUIDANCE_JOB_SPECIFIC
 
-* Avoid facial emotion, costume details, dramatic scene lighting, and body-type drift.
+* Avoid exaggerated facial emotion, invented costume details, dramatic scene lighting, and body-type drift.
 * Preserve petite, lithe adult proportions.
-* Do not add weapons, props, jewelry, or decorative accessories.
+* Do not add extra weapons, props, jewelry, or decorative accessories beyond the specified character outfit.

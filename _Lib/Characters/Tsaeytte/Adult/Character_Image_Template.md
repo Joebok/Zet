@@ -36,7 +36,7 @@ Recommended usage:
 * Apparent age: adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, wide shoulders, narrow waist, long slim legs, inverted triangle.
+* Core silhouette: compact elven frame, narrow waist, softly sloped shoulders, slightly broader than the narrow waist, petite, graceful, long slim legs.
 
 <!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
 
@@ -100,9 +100,10 @@ Recommended usage:
 
 * Build: petite, lithe, graceful, lightly athletic; slim limbs
 * Height impression: short-to-average
-* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders
+* Proportions: elegant high-elf proportions with long limbs, narrow waist
+* Softly sloped shoulders, slightly broader than the narrow waist, but still petite and graceful
 * Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
-* Shoulder shape: wide, softly sloped
+* Softly sloped shoulders, slightly broader than the narrow waist, but still petite and graceful
 * Torso shape: slim waist, inverted triangle figure
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
 * Hand shape: small, elegant hands with long fingers.
@@ -266,7 +267,7 @@ Recommended usage:
 
 * Hair color: black with subtle painterly highlights.
 * Hair length: collarbone-length bob; ends curve in around jawline and under the chin.
-* Hair texture: tousled, soft, curves around head unter chin in graceful arc; never curly, ringleted, braided, or long unless a variant explicitly asks for it.
+* Hair texture: tousled, soft, curves around head under the chin in graceful arc; never curly, ringleted, braided, or long unless a variant explicitly asks for it.
 * Hair volume: thick and lively.
 * Hairline: natural, partly obscured by loose fringe and side-swept locks.
 * Part/asymmetry: parted on left side, most hair on right side that can fall heavier across the forehead and partially obscure right eye.
@@ -582,8 +583,6 @@ Core identity anchors:
 * Thick black tousled chin-length bob with inward-hooking face-framing ends.
 * Long pointed elf ears angled outward/upward; at least one ear or ear tip should be visible in most non-back views.
 * Petite, lithe, graceful adult build with narrow shoulders, slim waist, long slim legs, and light athletic movement.
-* Teal off-shoulder ruffled crop top, exposed midriff, high-low teal skirt, dark leggings, brown leather belt, and tall brown boots.
-* Signature jewelry: layered necklace with blue-violet pendant and matching dangling earrings; signature right-hip compact dagger plus left-side pouches/scroll case.
 
 The rendered character must be recognizably the same person across views, expressions, outfits, and rendering passes.
 
@@ -660,24 +659,44 @@ Costume preservation rules:
 
 # Technical Fitment / Reference-Only Rendering
 
-## Fitment Rendering Rules
+## Body Reference Rendering Rules
 
-<!-- ZET:BEGIN FITMENT_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
 
 Rendering priorities:
 
-* Neutral, readable pose.
-* Clear silhouette.
-* Full body visible.
-* Feet visible.
+* Full-body technical body-reference image.
+* Entire body visible from top of head to soles of feet.
+* Feet fully visible.
+* Clear readable silhouette.
+* Preserve requested body view.
+* Head placeholder faces the same direction as the body.
+* Render in the Canonical Art Style.
 * No dramatic lighting.
 * No narrative scene.
 * No acting.
-* Uncluttered image.
-* Preserve scale and proportions.
-* Preserve view angle.
+* No props, weapons, jewelry, costume, armor, or accessories.
 
-<!-- ZET:END FITMENT_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
+
+## Fitment Rendering Rules
+
+<!-- ZET:BEGIN HEAD_FITMENT_RENDERING_RULES -->
+
+Rendering priorities:
+
+* Head-and-neck module only.
+* Transparent background.
+* Clear silhouette.
+* Preserve requested head view.
+* Preserve identity and fitment geometry.
+* Render in the Canonical Art Style.
+* No dramatic lighting.
+* No narrative scene.
+* No acting.
+* No shoulders, torso, bust, clothing, costume, mannequin, or stand.
+
+<!-- ZET:END HEAD_FITMENT_RENDERING_RULES -->
 
 ## Technical Modesty / Safety Layer
 
@@ -732,9 +751,9 @@ Avoid:
 
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 
-* Avoid facial emotion, costume details, dramatic scene lighting, and body-type drift.
+* Avoid exaggerated facial emotion, invented costume details, dramatic scene lighting, and body-type drift.
 * Preserve petite, lithe adult proportions.
-* Do not add weapons, props, jewelry, or decorative accessories.
+* Do not add extra weapons, props, jewelry, or decorative accessories beyond the specified character outfit.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 
@@ -750,7 +769,7 @@ Recommended sections for body-reference:
 * BODY_DESCRIPTION_FACTS
 * BODY_DESCRIPTION_VIEW_[REQUESTED_VIEW]
 * IDENTITY_PRESERVATION_BODY
-* FITMENT_RENDERING_RULES
+* BODY_REFERENCE_RENDERING_RULES
 * TECHNICAL_MODESTY_LAYER
 * NEGATIVE_GUIDANCE_GENERAL
 
@@ -769,7 +788,7 @@ Recommended sections for head-fitment:
 * IDENTITY_PRESERVATION_FACE
 * IDENTITY_PRESERVATION_HAIR
 * IDENTITY_PRESERVATION_EARS
-* FITMENT_RENDERING_RULES
+* HEAD_FITMENT_RENDERING_RULES
 * TECHNICAL_MODESTY_LAYER
 * NEGATIVE_GUIDANCE_GENERAL
 
@@ -788,7 +807,7 @@ Recommended sections for costume-fitment:
 * IDENTITY_PRESERVATION_CORE
 * IDENTITY_PRESERVATION_BODY
 * IDENTITY_PRESERVATION_COSTUME
-* FITMENT_RENDERING_RULES
+* HEAD_FITMENT_RENDERING_RULES
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_COSTUME_FITMENT -->
@@ -809,7 +828,7 @@ Recommended sections for turnaround sheets:
 * IDENTITY_PRESERVATION_EARS
 * IDENTITY_PRESERVATION_BODY
 * IDENTITY_PRESERVATION_COSTUME
-* FITMENT_RENDERING_RULES
+* HEAD_FITMENT_RENDERING_RULES
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_TURNAROUND -->
