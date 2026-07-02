@@ -4,7 +4,7 @@ from datetime import datetime
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
-from zet.services.asset_service import AssetService
+from zet.services.asset_service import AssetService, BatchRenderResetResult
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
@@ -183,6 +183,15 @@ class ZetApp:
 
     def run_available_workers(self, character: str, phase: str):
         return self.asset_service.run_available_workers(character, phase)
+
+    def reset_pipeline_assets_to_render(
+        self,
+        character: str,
+        phase: str,
+        pipeline_name: str,
+        include_locked: bool = False,
+    ) -> list[BatchRenderResetResult]:
+        return self.asset_service.reset_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
 
     def issue_monitor_test(self, instruction: str = ""):
         return self.ai_proxy_service.issue_monitor_test(instruction)

@@ -34,6 +34,16 @@ class WorkerPollResult:
     message: str
 
 
+@dataclass(frozen=True)
+class BatchRenderResetResult:
+    asset_id: int
+    before_stage: str
+    before_actor: str
+    before_state: str
+    status: str
+    message: str
+
+
 class AssetService:
     def __init__(
         self,
@@ -188,6 +198,98 @@ class AssetService:
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
+
+    def _clear_render_outputs(self, asset: Asset) -> None:
+        for path in (
+            self.path_service.candidate_image_path(asset),
+            self.path_service.pipeline_path(asset) / "LOCAL_RENDER_METADATA.json",
+            self.path_service.pipeline_path(asset) / "COMFYUI_RENDER_METADATA.json",
+        ):
+            path.unlink(missing_ok=True)
+
+    def reset_pipeline_assets_to_render(
+        self,
+        character: str,
+        phase: str,
+        pipeline_name: str,
+        include_locked: bool = False,
+    ) -> list[BatchRenderResetResult]:
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, pipeline_name)
+        if "RENDER" not in pipeline.stages:
+            raise AssetServiceError(f"Pipeline {pipeline_name} has no RENDER stage.")
+        render_actor = self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
+        if render_actor != "AI_AGENT":
+            raise AssetServiceError(f"Pipeline {pipeline_name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
+
+        results: list[BatchRenderResetResult] = []
+        for asset in self.asset_repository.list_assets(character, phase):
+            if asset.pipeline != pipeline_name:
+                continue
+            if asset.asset_state == "LOCKED" and not include_locked:
+                results.append(
+                    BatchRenderResetResult(
+                        asset_id=asset.asset_id,
+                        before_stage=asset.pipeline_stage,
+                        before_actor=asset.actor,
+                        before_state=asset.asset_state,
+                        status="SKIPPED",
+                        message="Asset is LOCKED. Enable include locked assets to reset it.",
+                    )
+                )
+                continue
+
+            try:
+                self.ai_proxy_service.clear_asset_queue_items(asset)
+                self._clear_render_outputs(asset)
+
+                updated_asset = replace(asset)
+                updated_asset.asset_state = "IN_PROGRESS"
+                updated_asset.pipeline_stage = "RENDER"
+                updated_asset.actor = render_actor
+                updated_asset.ai_state = "ASKED"
+                updated_asset.error_code = None
+                updated_asset.error_message = None
+                updated_asset.last_ai_update = f"Batch render reset requested at {self._timestamp()}"
+                updated_asset.updated_at = self._timestamp()
+                self.asset_repository.save_asset(updated_asset)
+                self.housekeeping_service.prepare_stage(updated_asset)
+
+                ask_path = self.ai_proxy_service.stage_current_ai_ask(character, phase, asset.asset_id)
+                refreshed = self.asset_repository.get_asset(character, phase, asset.asset_id)
+                results.append(
+                    BatchRenderResetResult(
+                        asset_id=asset.asset_id,
+                        before_stage=asset.pipeline_stage,
+                        before_actor=asset.actor,
+                        before_state=asset.asset_state,
+                        status="RESET",
+                        message=f"Moved to RENDER and staged ask {ask_path.name}.",
+                    )
+                )
+                self.housekeeping_service.prepare_stage(refreshed)
+            except Exception as exc:
+                failed_asset = replace(asset)
+                failed_asset.asset_state = "BLOCKED"
+                failed_asset.pipeline_stage = "ERROR"
+                failed_asset.actor = "HUMAN_AGENT"
+                failed_asset.ai_state = None
+                failed_asset.error_code = "BATCH_RENDER_RESET_FAILED"
+                failed_asset.error_message = str(exc)
+                failed_asset.updated_at = self._timestamp()
+                self.asset_repository.save_asset(failed_asset)
+                self.housekeeping_service.prepare_stage(failed_asset)
+                results.append(
+                    BatchRenderResetResult(
+                        asset_id=asset.asset_id,
+                        before_stage=asset.pipeline_stage,
+                        before_actor=asset.actor,
+                        before_state=asset.asset_state,
+                        status="ERROR",
+                        message=str(exc),
+                    )
+                )
+
+        return results
 
     def regenerate(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)

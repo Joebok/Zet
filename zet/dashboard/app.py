@@ -592,6 +592,17 @@ def pipeline_stage_row(row) -> dict:
     }
 
 
+def batch_render_reset_row(result) -> dict:
+    return {
+        "asset_id": result.asset_id,
+        "status": result.status,
+        "before_stage": result.before_stage,
+        "before_actor": result.before_actor,
+        "before_state": result.before_state,
+        "message": result.message,
+    }
+
+
 def show_pipeline_controls(app: ZetApp, character: str, phase: str) -> None:
     st.subheader("Pipeline Controls")
     try:
@@ -686,6 +697,55 @@ def show_pipeline_controls(app: ZetApp, character: str, phase: str) -> None:
         )
     else:
         st.info("No pipelines configured for this character phase.")
+
+    st.markdown("**Batch Render Reset**")
+    pipeline_names = sorted({row.pipeline for row in snapshot.pipeline_rows})
+    if not pipeline_names:
+        st.info("No pipelines are available for batch actions.")
+    else:
+        with st.form(f"batch-render-reset::{character}::{phase}"):
+            batch_col_1, batch_col_2 = st.columns([1, 1])
+            with batch_col_1:
+                target_pipeline = st.selectbox("Pipeline", pipeline_names)
+            with batch_col_2:
+                include_locked = st.checkbox(
+                    "Include locked assets",
+                    value=False,
+                    help="Locked assets are skipped unless this is enabled.",
+                )
+            st.caption(
+                "Moves matching assets to RENDER / AI_AGENT, clears stale queued work for those assets, "
+                "removes old candidate render outputs, and stages fresh render asks."
+            )
+            reset_clicked = st.form_submit_button("Set Pipeline Assets Back To Render")
+
+        if reset_clicked:
+            try:
+                results = app.reset_pipeline_assets_to_render(
+                    character,
+                    phase,
+                    target_pipeline,
+                    include_locked=include_locked,
+                )
+                reset_count = sum(1 for result in results if result.status == "RESET")
+                skipped_count = sum(1 for result in results if result.status == "SKIPPED")
+                error_count = sum(1 for result in results if result.status == "ERROR")
+                st.session_state["batch_render_reset_results"] = [batch_render_reset_row(result) for result in results]
+                level = "error" if error_count else "success"
+                store_action_message(
+                    level,
+                    f"Batch render reset complete for {target_pipeline}: "
+                    f"{reset_count} reset, {skipped_count} skipped, {error_count} error.",
+                )
+                st.rerun()
+            except Exception as exc:
+                store_action_message("error", str(exc))
+                st.rerun()
+
+    batch_results = st.session_state.get("batch_render_reset_results")
+    if batch_results:
+        st.markdown("**Latest Batch Result**")
+        st.dataframe(batch_results, use_container_width=True, hide_index=True)
 
     st.markdown("**Editing Boundary**")
     st.info(

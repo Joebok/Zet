@@ -320,6 +320,16 @@ Config saves are written through `PipelineControlService`, which creates a times
 
 The selected character/phase `Pipelines.json` is shown as a read-only table of stages, actors, worker modules, and current asset counts. Structural pipeline editing is intentionally deferred until there is validation and safe write support for `Pipelines.json`.
 
+Pipeline Controls also includes a batch render reset action. For a selected pipeline, it can move matching assets back to:
+
+```text
+pipeline_stage = RENDER
+actor = AI_AGENT
+ai_state = ASKED
+```
+
+The batch reset clears stale proxy queue items for each affected asset, removes old candidate render outputs and local render metadata, and stages fresh render asks. Locked assets are skipped unless `Include locked assets` is enabled. This is not a full regeneration; compiled prompts and prompt-review artifacts are preserved.
+
 ## Body-Reference Prompt Pipeline
 
 Body-reference prompt generation uses:
