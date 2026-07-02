@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from zet.app import ZetApp
 from zet.services.config_service import ConfigService
+from zet.services.prompt_review_service import LocalRenderUnavailable
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
@@ -59,6 +60,10 @@ def _review_image_ready(zet_app: ZetApp, asset) -> bool:
     return False
 
 
+def _is_prompt_review_asset(asset) -> bool:
+    return asset.pipeline_stage == "PROMPT_REVIEW" and asset.actor == "HUMAN_AGENT"
+
+
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data = asdict(asset)
     data["head_view"] = _format_value(asset.head_view)
@@ -70,6 +75,50 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["review_image_ready"] = _review_image_ready(zet_app, asset)
     data["pipeline_stage_display"] = f"CAMERA {asset.pipeline_stage}" if data["review_image_ready"] else asset.pipeline_stage
     return data
+
+
+def _prompt_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
+    payload = _asset_payload(zet_app, asset)
+    try:
+        context = zet_app.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+        payload["prompt_path"] = str(context.prompt_path) if context.prompt_path else None
+        payload["condense_state"] = context.condense_status.get("state")
+        payload["latest_local_test_render"] = str(context.latest_local_test_render) if context.latest_local_test_render else None
+    except Exception:
+        payload["prompt_path"] = None
+        payload["condense_state"] = None
+        payload["latest_local_test_render"] = None
+    return payload
+
+
+def _prompt_review_context_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
+    context = zet_app.prompt_review_service.get_context(character, phase, asset_id)
+    asset = context.asset
+    return {
+        "asset": _asset_payload(zet_app, asset),
+        "is_reviewable": _is_prompt_review_asset(asset),
+        "prompt_path": str(context.prompt_path) if context.prompt_path else None,
+        "prompt_text": context.prompt_text or "",
+        "condensed_prompt_path": str(context.condensed_prompt_path) if context.condensed_prompt_path else None,
+        "condensed_prompt_text": context.condensed_prompt_text or "",
+        "render_prompt_path": str(context.render_prompt_path) if context.render_prompt_path else None,
+        "prompt_review_path": str(context.prompt_review_path) if context.prompt_review_path else None,
+        "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
+        "prompt_candidates": [str(path) for path in context.prompt_candidates],
+        "condense_status": _jsonable(context.condense_status),
+    }
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    return value
 
 
 def _asset_detail_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
@@ -151,6 +200,77 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return _asset_detail_payload(zet_app, character, phase, asset_id)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/file")
+    def local_file(path: str = Query(...)):
+        requested = Path(path)
+        if not requested.exists() or not requested.is_file():
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+        return FileResponse(requested)
+
+    @app.get("/api/prompt-review/tasks")
+    def prompt_review_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            assets = [asset for asset in zet_app.list_assets(character, phase) if _is_prompt_review_asset(asset)]
+            return {"tasks": [_prompt_review_task_payload(zet_app, asset) for asset in assets]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-review/{asset_id}")
+    def prompt_review_detail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _prompt_review_context_payload(zet_app, character, phase, asset_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-review/{asset_id}/local-test-render")
+    def prompt_review_local_test_render(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.generate_local_test_render(character, phase, asset_id)
+            payload = _prompt_review_context_payload(zet_app, character, phase, asset_id)
+            payload["message"] = f"Local test image generated: {result.image_path}"
+            return payload
+        except LocalRenderUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Local render backend unavailable.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-review/{asset_id}/approve")
+    def prompt_review_approve(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.approve_prompt_review(character, phase, asset_id)
+            return {
+                "message": f"Prompt approved. Asset {updated.asset_id} moved to {updated.pipeline_stage}.",
+                "asset": _asset_payload(zet_app, updated),
+                "tasks": [
+                    _prompt_review_task_payload(zet_app, asset)
+                    for asset in zet_app.list_assets(character, phase)
+                    if _is_prompt_review_asset(asset)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-review/{asset_id}/fail")
+    def prompt_review_fail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.fail_prompt_review(character, phase, asset_id)
+            return {
+                "message": f"Prompt failed. Asset {updated.asset_id} moved to {updated.pipeline_stage}.",
+                "asset": _asset_payload(zet_app, updated),
+                "tasks": [
+                    _prompt_review_task_payload(zet_app, asset)
+                    for asset in zet_app.list_assets(character, phase)
+                    if _is_prompt_review_asset(asset)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/assets/{asset_id}/stage-ai-ask")
     def stage_ai_ask(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:

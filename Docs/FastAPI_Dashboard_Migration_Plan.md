@@ -95,7 +95,7 @@ Completed:
 - Added button enable/disable rules based on selected asset state.
 - Kept table selection stable after action refreshes.
 
-### Milestone 3 - Prompt Review
+### Milestone 3 - Prompt Review - Complete
 
 - Add Prompt Review page.
 - Show full prompt with readable scrolling.
@@ -104,6 +104,15 @@ Completed:
 - Add local test render button and image preview.
 - Add Approve / Fail.
 - Add Previous / Next across review tasks.
+
+Completed:
+
+- Added Prompt Review task and detail APIs.
+- Added Prompt Review page in the FastAPI UI.
+- Added prompt search, copy prompt, condensed prompt dialog, and copy condensed prompt.
+- Added local test render action and latest render image display.
+- Added Approve / Fail actions.
+- Added Previous / Next navigation across prompt-review tasks.
 
 ### Milestone 4 - Render Review
 

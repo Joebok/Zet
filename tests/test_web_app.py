@@ -123,6 +123,26 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertIn("Worker finished", payload["message"])
             self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
 
+    def test_prompt_review_api_serves_tasks_detail_and_fail(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="PROMPT_REVIEW", actor="HUMAN_AGENT")
+            client = TestClient(create_app(config_path))
+
+            tasks = client.get("/api/prompt-review/tasks", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["asset_id"], 1)
+
+            detail = client.get("/api/prompt-review/1", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(detail.status_code, 200)
+            self.assertTrue(detail.json()["is_reviewable"])
+            self.assertEqual(detail.json()["prompt_text"], "full final prompt\n")
+
+            failed = client.post("/api/prompt-review/1/fail", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(failed.status_code, 200)
+            self.assertIn("Prompt failed", failed.json()["message"])
+            self.assertEqual(failed.json()["asset"]["pipeline_stage"], "ERROR")
+
 
 if __name__ == "__main__":
     unittest.main()

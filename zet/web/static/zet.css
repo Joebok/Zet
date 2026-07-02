@@ -48,6 +48,8 @@ label {
 }
 
 select,
+input,
+textarea,
 button {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -59,6 +61,17 @@ select {
   background: #fff;
   min-width: 170px;
   padding: 4px 8px;
+}
+
+input {
+  padding: 4px 8px;
+}
+
+textarea {
+  min-height: 360px;
+  padding: 8px;
+  resize: vertical;
+  width: 100%;
 }
 
 button {
@@ -209,6 +222,21 @@ tbody tr.selected {
   margin-bottom: 12px;
 }
 
+.button-row.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.button-row.compact {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.primary-action {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .action-message {
   border-radius: 6px;
   font-size: 13px;
@@ -254,6 +282,96 @@ dl {
   margin: 0;
 }
 
+.review-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 260px minmax(520px, 1fr) 280px;
+}
+
+.review-sidebar,
+.review-main,
+.review-actions {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.review-sidebar,
+.review-main,
+.review-actions {
+  max-height: calc(100vh - 170px);
+  overflow: auto;
+}
+
+.review-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.prompt-tools {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 0.35fr) 1fr;
+  margin-bottom: 10px;
+}
+
+.prompt-text {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 620px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.prompt-text mark {
+  background: #fde68a;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.review-actions {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.image-placeholder {
+  align-items: center;
+  background: #f9fafb;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 240px;
+  overflow: hidden;
+  padding: 10px;
+  text-align: center;
+}
+
+.image-placeholder img {
+  height: auto;
+  max-width: 100%;
+}
+
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-width: 760px;
+  width: min(760px, calc(100vw - 32px));
+}
+
 dt {
   color: var(--muted);
 }
@@ -265,6 +383,10 @@ dd {
 
 @media (max-width: 1000px) {
   .asset-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .review-layout {
     grid-template-columns: 1fr;
   }
 

@@ -89,10 +89,70 @@
       </div>
     </section>
 
+    <section id="prompt-review-page" class="page">
+      <div class="page-title-row">
+        <h1>Prompt Review</h1>
+        <div id="prompt-review-status" class="status-text"></div>
+      </div>
+      <div class="review-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="prompt-review-prev">Previous</button>
+            <button id="prompt-review-next">Next</button>
+          </div>
+          <table id="prompt-review-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>view</th>
+                <th>condense</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="prompt-review-title">Select a prompt</h2>
+            <div class="button-row compact">
+              <button id="copy-prompt">Copy Prompt</button>
+              <button id="view-condensed">View Condensed</button>
+            </div>
+          </div>
+          <div id="prompt-review-message" class="action-message" hidden></div>
+          <div class="prompt-tools">
+            <label>
+              Search
+              <input id="prompt-search" type="search" placeholder="Search prompt text">
+            </label>
+            <span id="prompt-path" class="status-text"></span>
+          </div>
+          <div id="prompt-text" class="prompt-text"></div>
+        </section>
+        <aside class="review-actions">
+          <button id="generate-local-test">Generate Local Test Image</button>
+          <div id="local-test-render" class="image-placeholder">No local test render.</div>
+          <button id="prompt-approve" class="primary-action">Approve</button>
+          <button id="prompt-fail">Fail</button>
+        </aside>
+      </div>
+    </section>
+
     <section id="placeholder-page" class="page">
       <h1 id="placeholder-title">Coming Soon</h1>
       <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
     </section>
+
+    <dialog id="condensed-dialog">
+      <form method="dialog">
+        <h2>Condensed Prompt</h2>
+        <textarea id="condensed-text" readonly></textarea>
+        <div class="button-row compact">
+          <button id="copy-condensed" type="button">Copy</button>
+          <button>Close</button>
+        </div>
+      </form>
+    </dialog>
   </main>
 
   <script src="/static/zet.js"></script>
