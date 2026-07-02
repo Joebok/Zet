@@ -14,6 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from zet.app import ZetApp
+from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.config_service import ConfigService, ConfigServiceError
 from zet.services.prompt_review_service import LocalRenderUnavailable, PromptReviewService, is_prompt_review_asset
 
@@ -580,6 +581,119 @@ def process_status_row(status) -> dict:
     return status.to_dict()
 
 
+def pipeline_stage_row(row) -> dict:
+    return {
+        "pipeline": row.pipeline,
+        "step": row.step,
+        "stage": row.stage,
+        "actor": row.actor,
+        "worker": row.worker,
+        "assets_here": row.asset_count,
+    }
+
+
+def show_pipeline_controls(app: ZetApp, character: str, phase: str) -> None:
+    st.subheader("Pipeline Controls")
+    try:
+        snapshot = app.pipeline_control_snapshot(character, phase)
+    except Exception as exc:
+        st.error(str(exc))
+        return
+
+    st.markdown("**Project Config**")
+    st.caption(f"Safe automation settings from {snapshot.config_path}. Changes here write to project config and take effect after the dashboard reruns.")
+    st.dataframe(snapshot.project_config_rows, use_container_width=True, hide_index=True)
+
+    automation = snapshot.automation
+    with st.form(f"automation-settings::{character}::{phase}"):
+        config_col_1, config_col_2 = st.columns(2)
+        with config_col_1:
+            prompt_condense_enabled = st.checkbox(
+                "Prompt condense enabled",
+                value=automation.prompt_condense_enabled,
+                help="Queue an auxiliary Ollama condense ask when Final_Image_Prompt.md reaches prompt review.",
+            )
+            prompt_condense_model = st.text_input(
+                "Prompt condense model",
+                value=automation.prompt_condense_model,
+            )
+            prompt_condense_file = st.text_input(
+                "Prompt condense task file",
+                value=automation.prompt_condense_file,
+            )
+            ai_harvest_auto_enabled = st.checkbox(
+                "Auto harvest enabled",
+                value=automation.ai_harvest_auto_enabled,
+                help="Used by the standalone auto-harvest process.",
+            )
+            ai_harvest_interval_seconds = st.number_input(
+                "Auto harvest interval seconds",
+                min_value=0,
+                max_value=86400,
+                value=int(automation.ai_harvest_interval_seconds),
+                step=30,
+            )
+        with config_col_2:
+            render_backend_options = ["manual_chatgpt", "local_image"]
+            render_backend = st.selectbox(
+                "Final render backend",
+                render_backend_options,
+                index=render_backend_options.index(automation.render_backend)
+                if automation.render_backend in render_backend_options
+                else 0,
+                help="manual_chatgpt queues the Render Console. local_image queues the local image worker.",
+            )
+            local_render_auto_queue_after_condense = st.checkbox(
+                "Auto preview render after condense",
+                value=automation.local_render_auto_queue_after_condense,
+                help="When a condense answer is harvested, queue a review-only local test render.",
+            )
+            local_render_preset = st.text_input(
+                "Local render preset",
+                value=automation.local_render_preset,
+            )
+
+        save_clicked = st.form_submit_button("Save Project Settings", type="primary")
+
+    if save_clicked:
+        try:
+            app.save_automation_settings(
+                AutomationSettings(
+                    prompt_condense_enabled=prompt_condense_enabled,
+                    prompt_condense_model=prompt_condense_model,
+                    prompt_condense_file=prompt_condense_file,
+                    local_render_auto_queue_after_condense=local_render_auto_queue_after_condense,
+                    local_render_preset=local_render_preset,
+                    ai_harvest_auto_enabled=ai_harvest_auto_enabled,
+                    ai_harvest_interval_seconds=int(ai_harvest_interval_seconds),
+                    render_backend=render_backend,
+                )
+            )
+            store_action_message("success", "Project automation settings saved.")
+            st.rerun()
+        except Exception as exc:
+            store_action_message("error", str(exc))
+            st.rerun()
+
+    st.markdown("**Character / Phase Pipeline Config**")
+    st.caption(f"Read-only view from {snapshot.pipelines_path}. Structural pipeline editing is intentionally guarded for now.")
+    if snapshot.pipeline_rows:
+        st.dataframe(
+            [pipeline_stage_row(row) for row in snapshot.pipeline_rows],
+            use_container_width=True,
+            hide_index=True,
+            column_order=["pipeline", "step", "stage", "actor", "worker", "assets_here"],
+        )
+    else:
+        st.info("No pipelines configured for this character phase.")
+
+    st.markdown("**Editing Boundary**")
+    st.info(
+        "This page can edit known project-level automation settings. Pipeline stages, actors, and worker modules "
+        "are shown for visibility only until we add validation and safe write controls for Pipelines.json."
+    )
+
+
 def load_view_options() -> dict:
     path = PROJECT_ROOT / "Config" / "Prompt_View_Text.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -751,7 +865,7 @@ def main() -> None:
     page_key = dashboard_page_state_key(character, phase)
     pending_page_key = pending_dashboard_page_state_key(character, phase)
     handled_review_key = handled_review_query_state_key(character, phase)
-    page_options = ["Assets", "Prompt Review", "Template Editor", "AI Controls"]
+    page_options = ["Assets", "Prompt Review", "Template Editor", "AI Controls", "Pipeline Controls"]
     pending_page = st.session_state.pop(pending_page_key, None)
     if pending_page in page_options:
         st.session_state[page_key] = pending_page
@@ -1015,6 +1129,9 @@ def main() -> None:
 
     if active_page == "Template Editor":
         show_template_editor(config, character, phase)
+
+    if active_page == "Pipeline Controls":
+        show_pipeline_controls(app, character, phase)
 
     if active_page == "AI Controls":
         ai_control_col_1, ai_control_col_2, ai_control_col_3, ai_control_col_4, ai_control_col_5 = st.columns([1, 1, 1, 1, 1.5])

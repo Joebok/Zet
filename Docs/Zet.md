@@ -197,6 +197,7 @@ Key backend components:
 - `AIProxyService`
 - `AIAnswerHarvester`
 - `PromptReviewService`
+- `PipelineControlService`
 
 The dashboard should remain a UI layer. Reusable behavior belongs in services or scripts, not directly in Streamlit callbacks.
 
@@ -212,6 +213,7 @@ Current dashboard pages:
 - `Prompt Review`
 - `Template Editor`
 - `AI Controls`
+- `Pipeline Controls`
 
 ### Assets Page
 
@@ -298,6 +300,25 @@ AI Controls also supports:
 - Send Monitor Test
 
 When `AIHarvest.AutoEnabled` is true, `run_auto_harvest.bat` starts a separate background harvester loop that runs at `AIHarvest.IntervalSeconds`. The dashboard does not refresh itself to harvest.
+
+### Pipeline Controls
+
+Pipeline Controls shows project-level automation settings beside the selected character/phase pipeline definitions.
+
+It can edit known safe settings in `config.toml`:
+
+- `PromptCondense.Enabled`
+- `PromptCondense.Model`
+- `PromptCondense.PromptFile`
+- `LocalRender.AutoQueueAfterCondense`
+- `LocalRender.Preset`
+- `AIHarvest.AutoEnabled`
+- `AIHarvest.IntervalSeconds`
+- `Render.Backend`
+
+Config saves are written through `PipelineControlService`, which creates a timestamped `config.backup.*.toml` file and validates the updated TOML before replacing `config.toml`.
+
+The selected character/phase `Pipelines.json` is shown as a read-only table of stages, actors, worker modules, and current asset counts. Structural pipeline editing is intentionally deferred until there is validation and safe write support for `Pipelines.json`.
 
 ## Body-Reference Prompt Pipeline
 
@@ -581,7 +602,7 @@ The dashboard process is status-only. The other services can be started, stopped
 1. Build a proper `RENDER_REVIEW` page with approve/fail actions and image review history.
 2. Move `Promote to LOCKED` into Render Review instead of relying on the Assets detail panel.
 3. Add two render-review fail paths: `Fail to Render` to requeue the current render stage, and `Fail to Regenerate` to reset upstream work through regeneration.
-4. Add pipeline/config visibility and safe controls for stages, actors, workers, render backend, prompt condense, auto preview render, and auto harvest interval.
+4. Add safe validated editing for `Pipelines.json` stages, actors, and worker modules when that becomes necessary.
 5. Add a clean way to archive or hide old harvested answer folders.
 6. Add dashboard visibility for harvested vs pending answers.
 7. Add stale claim detection and recovery for interrupted workers.

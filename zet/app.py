@@ -12,6 +12,7 @@ from zet.services.config_service import ConfigService
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
 from zet.services.process_service import ProcessService
+from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
@@ -85,8 +86,10 @@ class ZetApp:
         prompt_review_service: PromptReviewService,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
+        config_path: str | Path = "config.toml",
     ):
         self.config = config
+        self.config_path = Path(config_path)
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
@@ -94,6 +97,12 @@ class ZetApp:
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
+        self.pipeline_control_service = PipelineControlService(
+            self.config_path,
+            config,
+            asset_repository,
+            pipeline_repository,
+        )
 
     @classmethod
     def from_config(cls, config_path: str | Path) -> "ZetApp":
@@ -146,6 +155,7 @@ class ZetApp:
             prompt_review_service,
             housekeeping_service,
             path_service,
+            config_path,
         )
         app.ai_proxy_service = ai_proxy_service
         return app
@@ -203,3 +213,9 @@ class ZetApp:
 
     def restart_process(self, process_id: str):
         return self.process_service.restart(process_id)
+
+    def pipeline_control_snapshot(self, character: str, phase: str) -> PipelineControlSnapshot:
+        return self.pipeline_control_service.snapshot(character, phase)
+
+    def save_automation_settings(self, settings: AutomationSettings) -> None:
+        self.pipeline_control_service.save_automation_settings(settings)

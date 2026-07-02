@@ -411,7 +411,7 @@ Completed:
   - `Fail to Regenerate`: treat the asset as needing upstream rework and reset it through the regeneration path.
 - Keep the Assets table as the status overview rather than the main review workflow.
 
-### Milestone 11 - Pipeline And Automation Controls
+### Milestone 11 - Pipeline And Automation Controls - Complete
 
 - Add dashboard visibility for configured pipeline stages, actors, and worker modules.
 - Show active render backend and manual/local render settings.
@@ -423,6 +423,22 @@ Completed:
 - Allow editing safe config toggles from the UI.
 - Keep deeper structural pipeline edits guarded by validation before writing `Pipelines.json`.
 - Make it clear which settings are project config vs character/phase pipeline config.
+
+Completed:
+
+- Added `PipelineControlService` for project automation settings and character/phase pipeline visibility.
+- Added a `Pipeline Controls` dashboard page.
+- Project-level settings can now be edited safely from the UI:
+  - prompt condense enabled
+  - prompt condense model
+  - prompt condense task file
+  - auto preview render after condense
+  - local render preset
+  - final render backend
+  - auto harvest enabled
+  - auto harvest interval
+- Character/phase `Pipelines.json` is shown as a read-only table of stages, actors, workers, and current asset counts.
+- Config writes create timestamped `config.backup.*.toml` files and validate the resulting TOML before replacing `config.toml`.
 
 ## Open Questions
 
