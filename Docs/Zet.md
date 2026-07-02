@@ -207,6 +207,12 @@ The dashboard should remain a UI layer. Reusable behavior belongs in services or
 
 The dashboard is currently implemented in Streamlit at `zet/dashboard/app.py`.
 
+A detailed inventory of current dashboard behavior and UI direction is maintained in:
+
+```text
+Docs/Dashboard_Functionality_and_UI_Direction.md
+```
+
 Current dashboard pages:
 
 - `Assets`
