@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zet</title>
+  <link rel="stylesheet" href="/static/zet.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">ZET</div>
+    <div class="context-controls">
+      <label>
+        Character
+        <select id="character-select"></select>
+      </label>
+      <label>
+        Phase
+        <select id="phase-select"></select>
+      </label>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Dashboard sections">
+    <button class="tab active" data-page="assets">Assets</button>
+    <button class="tab" data-page="prompt-review">Prompt Review</button>
+    <button class="tab" data-page="render-review">Render Review</button>
+    <button class="tab" data-page="ai-controls">AI Controls</button>
+    <button class="tab" data-page="pipeline-controls">Pipeline Controls</button>
+    <button class="tab" data-page="template-editor">Template Editor</button>
+  </nav>
+
+  <main>
+    <section id="assets-page" class="page active">
+      <div class="page-title-row">
+        <h1>Assets</h1>
+        <div id="asset-status" class="status-text"></div>
+      </div>
+      <div class="asset-layout">
+        <section class="asset-table-panel">
+          <table id="asset-table">
+            <thead>
+              <tr>
+                <th>asset_id</th>
+                <th>pipeline</th>
+                <th>body_view</th>
+                <th>head_view</th>
+                <th>asset_state</th>
+                <th>pipeline_stage</th>
+                <th>actor</th>
+                <th>ai_state</th>
+                <th>updated_at</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="asset-detail-panel">
+          <h2 id="detail-title">Select an asset</h2>
+          <div id="detail-summary" class="summary-bar"></div>
+          <div class="button-row">
+            <button disabled>Stage AI Ask</button>
+            <button disabled>Run Current Worker</button>
+            <button disabled>Run Housekeeping</button>
+            <button disabled>Retry AI</button>
+            <button disabled>Regenerate</button>
+            <button disabled>Promote to LOCKED</button>
+          </div>
+          <div class="detail-grid">
+            <section>
+              <h3>Asset</h3>
+              <pre id="asset-json"></pre>
+            </section>
+            <section>
+              <h3>Paths</h3>
+              <dl id="path-list"></dl>
+            </section>
+            <section>
+              <h3>Stage Marker</h3>
+              <pre id="stage-text"></pre>
+            </section>
+            <section>
+              <h3>History</h3>
+              <pre id="history-text"></pre>
+            </section>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="placeholder-page" class="page">
+      <h1 id="placeholder-title">Coming Soon</h1>
+      <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
+    </section>
+  </main>
+
+  <script src="/static/zet.js"></script>
+</body>
+</html>

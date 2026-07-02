@@ -213,6 +213,18 @@ A detailed inventory of current dashboard behavior and UI direction is maintaine
 Docs/Dashboard_Functionality_and_UI_Direction.md
 ```
 
+The replacement FastAPI dashboard is being built under:
+
+```text
+zet/web/
+```
+
+Run it locally with:
+
+```text
+run_zet_web.bat
+```
+
 Current dashboard pages:
 
 - `Assets`
