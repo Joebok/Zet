@@ -5,5 +5,6 @@ $ollamaWorkerRoot = "C:\Users\Joe\Ollama"
 
 Start-Process -FilePath "cmd.exe" -ArgumentList "/k", "call run_proxy_worker.bat" -WorkingDirectory $ollamaWorkerRoot
 Start-Process -FilePath "cmd.exe" -ArgumentList "/k", "call run_auto_harvest.bat" -WorkingDirectory $zetRoot
+Start-Process -FilePath "cmd.exe" -ArgumentList "/k", "call run_render_console.bat" -WorkingDirectory $zetRoot
 
-Write-Host "Started Zet Proxy Worker and Zet Auto Harvest."
+Write-Host "Started Zet Proxy Worker, Zet Auto Harvest, and Zet Render Console."

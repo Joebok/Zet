@@ -309,12 +309,43 @@ Completed:
 - Failing moves the task from `Ask/` to `Answer/`.
 - Queue-layer smoke test verified the failed-answer write/move behavior.
 
-### Milestone 6 - Launchers And LAN/Tailscale Hosting
+### Milestone 6 - Launchers And LAN/Tailscale Hosting - Complete
 
 - Add `run_render_console.bat`.
 - Add optional PowerShell launcher.
 - Document how to bind to localhost, all interfaces, or Tailscale IP.
 - Confirm access from another Tailscale machine.
+
+Completed:
+
+- Added `run_render_console.bat`.
+- Added `run_render_console.ps1`.
+- Updated `run_ai_services.bat` and `run_ai_services.ps1` to start the Render Console alongside the unified proxy worker and auto harvester.
+- Render Console bind host and port are controlled by `[RenderConsole]` in `config.toml`.
+- Local-only default:
+
+```toml
+[RenderConsole]
+Host = "127.0.0.1"
+Port = 8090
+```
+
+- Tailscale/LAN option:
+
+```toml
+[RenderConsole]
+Host = "0.0.0.0"
+Port = 8090
+```
+
+Access from another Tailscale machine using the Zet host's Tailscale name or IP:
+
+```text
+http://<zet-host-tailnet-name>:8090
+http://100.x.y.z:8090
+```
+
+Windows firewall may need to allow inbound connections to the configured port.
 
 ### Milestone 7 - HTTPS Over Tailscale
 
