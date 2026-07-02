@@ -860,9 +860,8 @@ Backend = "manual_chatgpt"
             prompt_path = root / "Pipelines" / "Test" / "Adult" / "Character-Assembly" / "Front" / "Front" / "Asset_3" / "Final_Image_Prompt.md"
             prompt_text = prompt_path.read_text(encoding="utf-8")
             self.assertIn("FULL-CHARACTER ASSEMBLY IMAGE", prompt_text)
-            self.assertIn("The attached body-reference image is the Reference Body source.", prompt_text)
-            self.assertIn("The attached head-fitment image is the Character Head source.", prompt_text)
-            self.assertIn("Test costume facts.", prompt_text)
+            self.assertIn("Test character general facts.", prompt_text)
+            self.assertNotIn("{{", prompt_text)
 
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
             self.assertEqual(len(ask_dirs), 1)

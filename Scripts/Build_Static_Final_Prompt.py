@@ -8,6 +8,7 @@ from Compile_Character_Template import CompiledSelection, TemplateCompileError, 
 
 
 SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
+COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{SECTION:[A-Z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^}]+(?:}[^}]*)?\}\}")
 
 
@@ -31,7 +32,8 @@ def render_static_prompt(
     required_section_names: list[str],
     view_token: str,
 ) -> str:
-    rendered = template_text.replace("{VIEW}", view_token)
+    rendered = COMMENTED_SECTION_PLACEHOLDER_LINE_RE.sub("", template_text)
+    rendered = rendered.replace("{VIEW}", view_token)
     for key, value in metadata.items():
         rendered = rendered.replace("{{" + key + "}}", value)
 
