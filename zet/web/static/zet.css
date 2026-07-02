@@ -424,6 +424,46 @@ dl {
   padding: 3px 7px;
 }
 
+.pipeline-controls-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(420px, 0.9fr) minmax(520px, 1.1fr);
+}
+
+.pipeline-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-form {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-form label,
+.checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.settings-form label:not(:has(input[type="checkbox"])) {
+  align-items: stretch;
+  display: grid;
+}
+
+.settings-form input[type="checkbox"],
+.checkbox-row input {
+  min-height: auto;
+}
+
+.batch-controls {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(240px, 0.4fr) minmax(180px, 0.25fr) max-content;
+  margin-bottom: 12px;
+}
+
 dialog {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -450,7 +490,12 @@ dd {
   }
 
   .ai-controls-grid,
+  .pipeline-controls-grid,
   .queue-tables {
+    grid-template-columns: 1fr;
+  }
+
+  .batch-controls {
     grid-template-columns: 1fr;
   }
 

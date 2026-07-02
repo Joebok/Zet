@@ -12,6 +12,7 @@ const state = {
   selectedRenderReviewAssetId: null,
   renderReviewDetail: null,
   aiControls: null,
+  pipelineControls: null,
 };
 
 const characterSelect = document.querySelector("#character-select");
@@ -78,6 +79,24 @@ const manualRenderCount = document.querySelector("#manual-render-count");
 const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
 const monitorRequestTableBody = document.querySelector("#monitor-request-table tbody");
 const monitorResponseTableBody = document.querySelector("#monitor-response-table tbody");
+const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
+const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
+const automationForm = document.querySelector("#automation-form");
+const settingPromptCondenseEnabled = document.querySelector("#setting-prompt-condense-enabled");
+const settingPromptCondenseModel = document.querySelector("#setting-prompt-condense-model");
+const settingPromptCondenseFile = document.querySelector("#setting-prompt-condense-file");
+const settingLocalRenderAuto = document.querySelector("#setting-local-render-auto");
+const settingLocalRenderPreset = document.querySelector("#setting-local-render-preset");
+const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
+const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
+const settingRenderBackend = document.querySelector("#setting-render-backend");
+const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
+const projectConfigTableBody = document.querySelector("#project-config-table tbody");
+const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
+const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
+const batchIncludeLocked = document.querySelector("#batch-include-locked");
+const batchRenderResetButton = document.querySelector("#batch-render-reset");
+const batchRenderResultTableBody = document.querySelector("#batch-render-result-table tbody");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -116,6 +135,12 @@ function showAiControlsMessage(message, kind = "info") {
   aiControlsMessage.textContent = message || "";
   aiControlsMessage.className = `action-message ${kind}`;
   aiControlsMessage.hidden = !message;
+}
+
+function showPipelineControlsMessage(message, kind = "info") {
+  pipelineControlsMessage.textContent = message || "";
+  pipelineControlsMessage.className = `action-message ${kind}`;
+  pipelineControlsMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -313,9 +338,13 @@ function setupTabs() {
       document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
       document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
       document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
+      document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
       document
         .querySelector("#placeholder-page")
-        .classList.toggle("active", !["assets", "prompt-review", "render-review", "ai-controls"].includes(page));
+        .classList.toggle(
+          "active",
+          !["assets", "prompt-review", "render-review", "ai-controls", "pipeline-controls"].includes(page),
+        );
       placeholderTitle.textContent = button.textContent;
       if (page === "prompt-review") {
         loadPromptReviewTasks();
@@ -325,6 +354,9 @@ function setupTabs() {
       }
       if (page === "ai-controls") {
         loadAiControls();
+      }
+      if (page === "pipeline-controls") {
+        loadPipelineControls();
       }
     });
   }
@@ -671,6 +703,94 @@ async function runAiControlsAction(url) {
   }
 }
 
+async function loadPipelineControls() {
+  if (!state.character || !state.phase) {
+    pipelineControlsStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  pipelineControlsStatus.textContent = "Loading pipeline controls...";
+  const payload = await fetchJson(`/api/pipeline-controls?${currentQuery().toString()}`);
+  renderPipelineControls(payload);
+}
+
+function renderPipelineControls(payload) {
+  state.pipelineControls = payload;
+  const automation = payload.automation || {};
+  settingPromptCondenseEnabled.checked = Boolean(automation.prompt_condense_enabled);
+  settingPromptCondenseModel.value = automation.prompt_condense_model || "";
+  settingPromptCondenseFile.value = automation.prompt_condense_file || "";
+  settingLocalRenderAuto.checked = Boolean(automation.local_render_auto_queue_after_condense);
+  settingLocalRenderPreset.value = automation.local_render_preset || "";
+  settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
+  settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
+  settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
+  pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
+  renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
+  renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
+  const currentPipeline = batchRenderPipeline.value;
+  setSelectOptions(batchRenderPipeline, payload.pipeline_names || []);
+  if ((payload.pipeline_names || []).includes(currentPipeline)) {
+    batchRenderPipeline.value = currentPipeline;
+  }
+  pipelineControlsStatus.textContent = "Ready";
+}
+
+function automationPayloadFromForm() {
+  return {
+    prompt_condense_enabled: settingPromptCondenseEnabled.checked,
+    prompt_condense_model: settingPromptCondenseModel.value,
+    prompt_condense_file: settingPromptCondenseFile.value,
+    local_render_auto_queue_after_condense: settingLocalRenderAuto.checked,
+    local_render_preset: settingLocalRenderPreset.value,
+    ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
+    ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
+    render_backend: settingRenderBackend.value,
+  };
+}
+
+async function saveAutomationSettings(event) {
+  event.preventDefault();
+  showPipelineControlsMessage("Saving...");
+  try {
+    const payload = await fetchJson(`/api/pipeline-controls/automation?${currentQuery().toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(automationPayloadFromForm()),
+    });
+    renderPipelineControls(payload);
+    showPipelineControlsMessage(payload.message || "Settings saved.");
+  } catch (error) {
+    showPipelineControlsMessage(error.message, "error");
+  }
+}
+
+async function runBatchRenderReset() {
+  const pipeline = batchRenderPipeline.value;
+  if (!pipeline) {
+    return;
+  }
+  showPipelineControlsMessage("Working...");
+  const params = currentQuery();
+  params.set("pipeline_name", pipeline);
+  params.set("include_locked", batchIncludeLocked.checked ? "true" : "false");
+  try {
+    const payload = await fetchJson(`/api/pipeline-controls/batch-render-reset?${params.toString()}`, { method: "POST" });
+    renderPipelineControls(payload);
+    renderRows(batchRenderResultTableBody, payload.batch_results || [], [
+      "asset_id",
+      "before_stage",
+      "before_actor",
+      "before_state",
+      "status",
+      "message",
+    ]);
+    showPipelineControlsMessage(payload.message || "Batch reset complete.");
+    await loadAssets(state.selectedAssetId);
+  } catch (error) {
+    showPipelineControlsMessage(error.message, "error");
+  }
+}
+
 characterSelect.addEventListener("change", async () => {
   state.character = characterSelect.value;
   state.phase = null;
@@ -688,6 +808,9 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#ai-controls-page").classList.contains("active")) {
     await loadAiControls();
   }
+  if (document.querySelector("#pipeline-controls-page").classList.contains("active")) {
+    await loadPipelineControls();
+  }
 });
 
 phaseSelect.addEventListener("change", async () => {
@@ -704,6 +827,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#ai-controls-page").classList.contains("active")) {
     await loadAiControls();
+  }
+  if (document.querySelector("#pipeline-controls-page").classList.contains("active")) {
+    await loadPipelineControls();
   }
 });
 
@@ -753,6 +879,8 @@ sendMonitorTestButton.addEventListener("click", () => {
   const params = new URLSearchParams({ instruction: monitorInstruction.value || "" });
   runAiControlsAction(`/api/ai-controls/monitor-test?${params.toString()}`);
 });
+automationForm.addEventListener("submit", saveAutomationSettings);
+batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 
 async function main() {
   setupTabs();

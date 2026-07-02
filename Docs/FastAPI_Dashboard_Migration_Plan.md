@@ -154,11 +154,20 @@ Completed:
 
 ### Milestone 6 - Pipeline Controls
 
-- Replace Pipeline Controls in the FastAPI UI.
-- Show project automation settings.
-- Edit safe config toggles.
-- Show pipeline stage/actor/worker table.
-- Support batch render reset.
+- [x] Replace Pipeline Controls in the FastAPI UI.
+- [x] Show project automation settings.
+- [x] Edit safe config toggles.
+- [x] Show pipeline stage/actor/worker table.
+- [x] Support batch render reset.
+
+Completed:
+
+- Added Pipeline Controls snapshot, automation-save, and batch-render-reset APIs.
+- Added editable project automation settings to the FastAPI UI.
+- Added read-only pipeline stage/actor/worker visibility with asset counts.
+- Added batch render reset controls and result reporting.
+- Reused `PipelineControlService` and `AssetService` rather than moving workflow logic into the UI.
+- Added regression coverage for settings save and batch reset APIs.
 
 ### Milestone 7 - Template Editor
 

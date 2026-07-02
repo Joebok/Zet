@@ -5,12 +5,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from zet.app import ZetApp
 from zet.services.config_service import ConfigService
+from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.prompt_review_service import LocalRenderUnavailable
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -186,6 +187,32 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
         "monitor_responses": _jsonable(zet_app.list_monitor_responses()),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
         "render_console_url": f"http://{zet_app.config.render_console_host}:{zet_app.config.render_console_port}",
+    }
+
+
+def _automation_settings_from_payload(payload: dict[str, Any]) -> AutomationSettings:
+    return AutomationSettings(
+        prompt_condense_enabled=bool(payload.get("prompt_condense_enabled", False)),
+        prompt_condense_model=str(payload.get("prompt_condense_model", "")),
+        prompt_condense_file=str(payload.get("prompt_condense_file", "")),
+        local_render_auto_queue_after_condense=bool(payload.get("local_render_auto_queue_after_condense", False)),
+        local_render_preset=str(payload.get("local_render_preset", "")),
+        ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", False)),
+        ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", 0)),
+        render_backend=str(payload.get("render_backend", "")),
+    )
+
+
+def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> dict[str, Any]:
+    snapshot = zet_app.pipeline_control_snapshot(character, phase)
+    pipeline_names = sorted({row.pipeline for row in snapshot.pipeline_rows})
+    return {
+        "config_path": str(snapshot.config_path),
+        "pipelines_path": str(snapshot.pipelines_path),
+        "automation": _jsonable(snapshot.automation),
+        "pipeline_rows": _jsonable(snapshot.pipeline_rows),
+        "project_config_rows": _jsonable(snapshot.project_config_rows),
+        "pipeline_names": pipeline_names,
     }
 
 
@@ -493,6 +520,53 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             payload = _ai_controls_payload(zet_app)
             payload["message"] = message
             return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/pipeline-controls")
+    def pipeline_controls(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _pipeline_controls_payload(zet_app, character, phase)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/pipeline-controls/automation")
+    def pipeline_controls_save_automation(
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            zet_app.save_automation_settings(_automation_settings_from_payload(payload))
+            refreshed = _app(app.state.config_path)
+            response = _pipeline_controls_payload(refreshed, character, phase)
+            response["message"] = "Project automation settings saved."
+            return response
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/pipeline-controls/batch-render-reset")
+    def pipeline_controls_batch_render_reset(
+        pipeline_name: str = Query(...),
+        include_locked: bool = Query(False),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            results = zet_app.reset_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
+            response = _pipeline_controls_payload(zet_app, character, phase)
+            reset_count = sum(1 for result in results if result.status == "RESET")
+            skipped_count = sum(1 for result in results if result.status == "SKIPPED")
+            error_count = sum(1 for result in results if result.status == "ERROR")
+            response["message"] = (
+                f"Batch render reset complete for {pipeline_name}: "
+                f"{reset_count} reset, {skipped_count} skipped, {error_count} error."
+            )
+            response["batch_results"] = _jsonable(results)
+            return response
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

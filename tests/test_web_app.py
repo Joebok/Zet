@@ -208,6 +208,56 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertIn("Monitor test sent", monitor.json()["message"])
             self.assertEqual(monitor.json()["monitor_requests"][0]["instruction"], "ping")
 
+    def test_pipeline_controls_api_serves_snapshot_and_saves_automation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            snapshot = client.get("/api/pipeline-controls", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(snapshot.status_code, 200)
+            self.assertEqual(snapshot.json()["pipeline_names"], ["Body-Reference"])
+
+            saved = client.post(
+                "/api/pipeline-controls/automation",
+                params={"character": "Test", "phase": "Adult"},
+                json={
+                    "prompt_condense_enabled": True,
+                    "prompt_condense_model": "vision-test",
+                    "prompt_condense_file": "Config/Prompt_Condense_Tasks/body_reference_condense.md",
+                    "local_render_auto_queue_after_condense": True,
+                    "local_render_preset": "body-reference-preview",
+                    "ai_harvest_auto_enabled": True,
+                    "ai_harvest_interval_seconds": 600,
+                    "render_backend": "manual_chatgpt",
+                },
+            )
+            self.assertEqual(saved.status_code, 200)
+            self.assertTrue(saved.json()["automation"]["prompt_condense_enabled"])
+            self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
+            self.assertIn("[PromptCondense]", config_path.read_text(encoding="utf-8"))
+
+    def test_pipeline_controls_api_can_batch_reset_to_render(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="LOCKED", actor="HUMAN_AGENT")
+            client = TestClient(create_app(config_path))
+
+            reset = client.post(
+                "/api/pipeline-controls/batch-render-reset",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "true",
+                },
+            )
+
+            self.assertEqual(reset.status_code, 200)
+            self.assertIn("1 reset", reset.json()["message"])
+            self.assertEqual(reset.json()["batch_results"][0]["status"], "RESET")
+            self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+
 
 if __name__ == "__main__":
     unittest.main()

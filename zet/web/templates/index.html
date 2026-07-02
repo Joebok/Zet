@@ -260,6 +260,69 @@
       </div>
     </section>
 
+    <section id="pipeline-controls-page" class="page">
+      <div class="page-title-row">
+        <h1>Pipeline Controls</h1>
+        <div id="pipeline-controls-status" class="status-text"></div>
+      </div>
+      <div id="pipeline-controls-message" class="action-message" hidden></div>
+      <div class="pipeline-controls-grid">
+        <section class="control-panel">
+          <h2>Project Automation</h2>
+          <form id="automation-form" class="settings-form">
+            <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
+            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text"></label>
+            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text"></label>
+            <label><input id="setting-local-render-auto" type="checkbox"> Auto preview render after condense</label>
+            <label>Local render preset<input id="setting-local-render-preset" type="text"></label>
+            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
+            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
+            <label>
+              Final render backend
+              <select id="setting-render-backend">
+                <option value="manual_chatgpt">manual_chatgpt</option>
+                <option value="local_image">local_image</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Save Project Settings</button>
+          </form>
+        </section>
+        <section class="control-panel">
+          <h2>Project Config</h2>
+          <div id="pipeline-config-paths" class="summary-bar"></div>
+          <table id="project-config-table"><tbody></tbody></table>
+        </section>
+        <section class="control-panel pipeline-wide">
+          <h2>Character / Phase Pipeline Config</h2>
+          <table id="pipeline-stage-table">
+            <thead>
+              <tr>
+                <th>pipeline</th>
+                <th>step</th>
+                <th>stage</th>
+                <th>actor</th>
+                <th>worker</th>
+                <th>assets</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="control-panel pipeline-wide">
+          <h2>Batch Render Reset</h2>
+          <div class="batch-controls">
+            <label>
+              Pipeline
+              <select id="batch-render-pipeline"></select>
+            </label>
+            <label class="checkbox-row"><input id="batch-include-locked" type="checkbox"> Include locked assets</label>
+            <button id="batch-render-reset">Set Pipeline Assets Back To Render</button>
+          </div>
+          <table id="batch-render-result-table"><tbody></tbody></table>
+        </section>
+      </div>
+    </section>
+
     <section id="placeholder-page" class="page">
       <h1 id="placeholder-title">Coming Soon</h1>
       <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
