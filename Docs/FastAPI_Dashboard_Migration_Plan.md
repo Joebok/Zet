@@ -68,7 +68,7 @@ Completed:
 - Added single-click row selection without Streamlit reruns.
 - Added read-only context, asset list, and asset detail APIs.
 
-### Milestone 2 - Assets Actions
+### Milestone 2 - Assets Actions - Complete
 
 - Add service-backed buttons to the Assets page:
   - Stage AI Ask
@@ -80,6 +80,20 @@ Completed:
 - Add API endpoints for those actions.
 - Preserve action messages without page-state surprises.
 - Keep selection stable after action refreshes.
+
+Completed:
+
+- Added service-backed asset action APIs:
+  - `POST /api/assets/{asset_id}/stage-ai-ask`
+  - `POST /api/assets/{asset_id}/run-current-worker`
+  - `POST /api/assets/{asset_id}/run-housekeeping`
+  - `POST /api/assets/{asset_id}/retry-ai`
+  - `POST /api/assets/{asset_id}/regenerate`
+  - `POST /api/assets/{asset_id}/promote-to-locked`
+- Wired AJAX buttons on the Assets page.
+- Added action-message display without full page reloads.
+- Added button enable/disable rules based on selected asset state.
+- Kept table selection stable after action refreshes.
 
 ### Milestone 3 - Prompt Review
 

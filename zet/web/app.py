@@ -100,6 +100,14 @@ def _asset_detail_payload(zet_app: ZetApp, character: str, phase: str, asset_id:
     }
 
 
+def _action_response(zet_app: ZetApp, character: str, phase: str, asset_id: int, message: str) -> dict[str, Any]:
+    return {
+        "message": message,
+        "detail": _asset_detail_payload(zet_app, character, phase, asset_id),
+        "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+    }
+
+
 def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     config_path = Path(config_path)
     config = ConfigService.load(config_path)
@@ -143,6 +151,60 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return _asset_detail_payload(zet_app, character, phase, asset_id)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/stage-ai-ask")
+    def stage_ai_ask(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            ask_path = zet_app.asset(character, phase, asset_id).stage_ai_ask()
+            return _action_response(zet_app, character, phase, asset_id, f"AI ask staged at {ask_path}.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/run-current-worker")
+    def run_current_worker(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).run_current_worker()
+            return _action_response(zet_app, character, phase, updated.asset_id, f"Worker finished at {updated.pipeline_stage}.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/run-housekeeping")
+    def run_housekeeping(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            path = zet_app.asset(character, phase, asset_id).run_housekeeping()
+            return _action_response(zet_app, character, phase, asset_id, f"Housekeeping complete at {path}.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/retry-ai")
+    def retry_ai(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).retry_ai()
+            return _action_response(zet_app, character, phase, updated.asset_id, "AI retry requested.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/regenerate")
+    def regenerate(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).regenerate()
+            return _action_response(zet_app, character, phase, updated.asset_id, f"Asset reset to {updated.pipeline_stage}.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/promote-to-locked")
+    def promote_to_locked(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).promote_to_locked()
+            return _action_response(zet_app, character, phase, updated.asset_id, "Asset promoted to LOCKED.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app
 

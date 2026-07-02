@@ -18,6 +18,8 @@ const pathList = document.querySelector("#path-list");
 const stageText = document.querySelector("#stage-text");
 const historyText = document.querySelector("#history-text");
 const placeholderTitle = document.querySelector("#placeholder-title");
+const actionMessage = document.querySelector("#action-message");
+const actionButtons = Array.from(document.querySelectorAll("[data-action]"));
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -32,6 +34,12 @@ async function fetchJson(url, options = {}) {
     throw new Error(detail);
   }
   return response.json();
+}
+
+function showActionMessage(message, kind = "info") {
+  actionMessage.textContent = message || "";
+  actionMessage.className = `action-message ${kind}`;
+  actionMessage.hidden = !message;
 }
 
 function option(value, label = value) {
@@ -77,7 +85,11 @@ async function loadAssets(preferredAssetId = null) {
   assetStatus.textContent = "Loading assets...";
   const payload = await fetchJson(`/api/assets?${currentQuery().toString()}`);
   state.assets = payload.assets || [];
+  const assetIds = new Set(state.assets.map((asset) => asset.asset_id));
   state.selectedAssetId = preferredAssetId || state.selectedAssetId || state.assets[0]?.asset_id || null;
+  if (state.selectedAssetId && !assetIds.has(state.selectedAssetId)) {
+    state.selectedAssetId = state.assets[0]?.asset_id || null;
+  }
   renderAssetTable();
   if (state.selectedAssetId) {
     await selectAsset(state.selectedAssetId);
@@ -132,6 +144,7 @@ function clearDetail() {
   pathList.replaceChildren();
   stageText.textContent = "";
   historyText.textContent = "";
+  updateActionButtons(null);
 }
 
 function renderDetail(detail) {
@@ -155,6 +168,53 @@ function renderDetail(detail) {
   }
   stageText.textContent = detail.stage_text || "No stage marker found.";
   historyText.textContent = detail.history_text || "No history found.";
+  updateActionButtons(detail);
+}
+
+function updateActionButtons(detail) {
+  const asset = detail?.asset || null;
+  const candidateExists = Boolean(detail?.exists?.candidate_image);
+  for (const button of actionButtons) {
+    const action = button.dataset.action;
+    let enabled = Boolean(asset);
+    if (action === "stage-ai-ask" || action === "retry-ai") {
+      enabled = enabled && asset.actor === "AI_AGENT";
+    }
+    if (action === "run-current-worker") {
+      enabled = enabled && asset.actor === "PYTHON";
+    }
+    if (action === "promote-to-locked") {
+      enabled = enabled && candidateExists;
+    }
+    button.disabled = !enabled;
+  }
+}
+
+async function runAssetAction(action) {
+  if (!state.selectedAssetId) {
+    return;
+  }
+  showActionMessage("Working...");
+  for (const button of actionButtons) {
+    button.disabled = true;
+  }
+  try {
+    const payload = await fetchJson(
+      `/api/assets/${state.selectedAssetId}/${action}?${currentQuery().toString()}`,
+      { method: "POST" },
+    );
+    state.assets = payload.assets || state.assets;
+    renderAssetTable();
+    if (payload.detail) {
+      renderDetail(payload.detail);
+    } else {
+      await selectAsset(state.selectedAssetId);
+    }
+    showActionMessage(payload.message || "Action complete.");
+  } catch (error) {
+    showActionMessage(error.message, "error");
+    await selectAsset(state.selectedAssetId);
+  }
 }
 
 function setupTabs() {
@@ -184,6 +244,10 @@ phaseSelect.addEventListener("change", async () => {
   state.selectedAssetId = null;
   await loadAssets();
 });
+
+for (const button of actionButtons) {
+  button.addEventListener("click", () => runAssetAction(button.dataset.action));
+}
 
 async function main() {
   setupTabs();

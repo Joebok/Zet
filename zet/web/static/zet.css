@@ -209,6 +209,25 @@ tbody tr.selected {
   margin-bottom: 12px;
 }
 
+.action-message {
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+.action-message.info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+
+.action-message.error {
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  color: var(--danger);
+}
+
 .detail-grid {
   display: grid;
   gap: 10px;

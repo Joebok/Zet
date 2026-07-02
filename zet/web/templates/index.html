@@ -58,13 +58,14 @@
         <aside class="asset-detail-panel">
           <h2 id="detail-title">Select an asset</h2>
           <div id="detail-summary" class="summary-bar"></div>
+          <div id="action-message" class="action-message" hidden></div>
           <div class="button-row">
-            <button disabled>Stage AI Ask</button>
-            <button disabled>Run Current Worker</button>
-            <button disabled>Run Housekeeping</button>
-            <button disabled>Retry AI</button>
-            <button disabled>Regenerate</button>
-            <button disabled>Promote to LOCKED</button>
+            <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
+            <button id="run-current-worker" data-action="run-current-worker" disabled>Run Current Worker</button>
+            <button id="run-housekeeping" data-action="run-housekeeping" disabled>Run Housekeeping</button>
+            <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
+            <button id="regenerate" data-action="regenerate" disabled>Regenerate</button>
+            <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
           </div>
           <div class="detail-grid">
             <section>
