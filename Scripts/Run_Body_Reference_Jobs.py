@@ -70,23 +70,22 @@ def _clean_template_field(value: str) -> str:
     return str(value or "").strip().strip("`").strip().strip("[]").strip()
 
 
+def extract_template_field(template_path: Path, labels: list[str]) -> str:
+    text = template_path.read_text(encoding="utf-8")
+    for label in labels:
+        escaped = re.escape(label).replace(r"\ ", r"\s+")
+        match = re.search(rf"(?im)^\s*{escaped}\s*:\s*(.+?)\s*$", text)
+        if match:
+            return _clean_template_field(match.group(1))
+    return ""
+
+
 def _race_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
 def extract_character_race(template_path: Path) -> str:
-    text = template_path.read_text(encoding="utf-8")
-    patterns = [
-        r"(?im)^\s*(?:Character\s+)?Race\s*:\s*(.+?)\s*$",
-        r"(?im)^\s*Species\s*/\s*Ancestry\s*:\s*(.+?)\s*$",
-        r"(?im)^\s*Species\s*:\s*(.+?)\s*$",
-        r"(?im)^\s*Ancestry\s*:\s*(.+?)\s*$",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return _clean_template_field(match.group(1))
-    return ""
+    return extract_template_field(template_path, ["Character Race", "Race", "Species / Ancestry", "Species", "Ancestry"])
 
 
 def _format_rule_lines(values: object) -> str:
@@ -134,6 +133,35 @@ def load_race_render_rules(project_root: Path, template_path: Path) -> dict[str,
         "RACE_BODY_REFERENCE_POSITIVE": _format_rule_lines(body_reference.get("positive", [])),
         "RACE_BODY_REFERENCE_NEGATIVE": _format_rule_lines(body_reference.get("negative", [])),
     }
+
+
+def _technical_modesty_variant_for_gender(gender_presentation: str) -> str:
+    value = _race_key(gender_presentation)
+    if any(term in value.split() for term in ("female", "feminine", "woman", "girl")):
+        return "TECHNICAL_MODESTY_LAYER_FEMININE"
+    if any(term in value.split() for term in ("male", "masculine", "man", "boy")):
+        return "TECHNICAL_MODESTY_LAYER_MASCULINE"
+    return ""
+
+
+def load_body_reference_sections(project_root: Path, template_path: Path) -> dict[str, str]:
+    shared_path = project_root / "_Lib" / "Characters" / "_Shared" / "Character_Template.md"
+    sections = load_template_sections(template_path)
+    shared_sections = load_template_sections(shared_path) if shared_path.exists() else {}
+
+    for name in (
+        "TECHNICAL_MODESTY_LAYER",
+        "TECHNICAL_MODESTY_LAYER_FEMININE",
+        "TECHNICAL_MODESTY_LAYER_MASCULINE",
+    ):
+        if name in shared_sections:
+            sections[name] = shared_sections[name]
+
+    gender_presentation = extract_template_field(template_path, ["Gender Presentation", "Gender"])
+    variant_name = _technical_modesty_variant_for_gender(gender_presentation)
+    if variant_name and variant_name in sections:
+        sections["TECHNICAL_MODESTY_LAYER"] = sections[variant_name]
+    return sections
 
 
 def job_get(job: dict, *keys: str) -> str:
@@ -296,7 +324,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     output_dir = output_dir_for_job(project_root, job, character, phase, view_data)
     expected_output = expected_output_for_job(job, view_data)
 
-    all_sections = load_template_sections(template_path)
+    all_sections = load_body_reference_sections(project_root, template_path)
     selection = select_sections(all_sections, bundle, view_token)
     if selection.missing_required:
         raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))

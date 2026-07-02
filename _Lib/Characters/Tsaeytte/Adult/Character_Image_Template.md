@@ -681,18 +681,6 @@ Rendering priorities:
 
 ## Technical Modesty / Safety Layer
 
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
-
-Clothing rules:
-
-* tube top.
-* compression shorts.
-* Minimal detail.
-* no additional garments
-* Readable body silhouette.
-
-<!-- ZET:END TECHNICAL_MODESTY_LAYER -->
-
 ---
 
 # Scene / Narrative Rendering

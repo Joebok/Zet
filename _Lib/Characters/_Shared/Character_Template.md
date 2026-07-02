@@ -849,16 +849,45 @@ Rendering priorities:
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 
-For body-reference, use `[form-fitting tank top and compression shorts / preferred neutral fitment clothing]`.
+For body-reference, use simple neutral fitment clothing.
 
-Fitment clothing rules:
+Clothing rules:
 
-* Plain opaque matte neutral compression shorts.
-* Simple garment edges.
+* neutral tan sleeveless tank top.
+* neutral tan compression shorts.
 * Minimal detail.
+* no additional garments
 * Readable body silhouette.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER -->
+
+<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_FEMININE -->
+
+For body-reference, use simple neutral fitment clothing.
+
+Clothing rules:
+
+* neutral tan tube top.
+* neutral tan compression shorts.
+* Minimal detail.
+* no additional garments
+* Readable body silhouette.
+
+<!-- ZET:END TECHNICAL_MODESTY_LAYER_FEMININE -->
+
+<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_MASCULINE -->
+
+For body-reference, use simple neutral fitment clothing.
+
+Clothing rules:
+
+* neutral tan compression shorts.
+* No shirt, tube top, chest wrap, bra, harness, costume top, or decorative upper-body garment.
+* Minimal detail.
+* no additional garments
+* Readable body silhouette.
+
+<!-- ZET:END TECHNICAL_MODESTY_LAYER_MASCULINE -->
 
 ---
 
