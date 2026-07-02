@@ -209,7 +209,9 @@ Or bind directly to the machine's Tailscale IP if preferred.
 
 ## HTTPS Over Tailscale
 
-Add a dedicated milestone for HTTPS over Tailscale.
+HTTPS over Tailscale is on hold. The current deployment target remains plain HTTP over a private Tailscale network or localhost. Keep the paste/drop/file-picker fallback as the dependable path for image transfer.
+
+This section remains as future notes for when HTTPS becomes worth revisiting.
 
 Desired outcome:
 
@@ -348,12 +350,17 @@ http://100.x.y.z:8090
 
 Windows firewall may need to allow inbound connections to the configured port.
 
-### Milestone 7 - HTTPS Over Tailscale
+### Milestone 7 - HTTPS Over Tailscale - On Hold
 
 - Enable HTTPS access over Tailscale.
 - Verify clipboard button behavior from the Tailscale URL.
 - Keep paste/drop/file-picker fallback even if direct clipboard writes are browser-dependent.
 - Document setup steps.
+
+Status:
+
+- Deferred by user decision.
+- Do not prioritize this while the HTTP Render Console flow is working over localhost or Tailscale.
 
 ### Milestone 8 - Dashboard Integration - Complete
 

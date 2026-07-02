@@ -561,6 +561,8 @@ The main known cross-machine path is the external Dropbox AI queue. Project-loca
 
 Standalone worker deployments outside the repo, such as `C:/Users/Joe/Ollama`, must be kept in sync manually for now. The batch files there should point at the same `Ollama_Proxy` path resolved by Zet.
 
+HTTPS over Tailscale for the Render Console is intentionally on hold. The current practical deployment is localhost or plain HTTP over the private Tailscale network.
+
 ## Process Management
 
 AI Controls includes a process-management section for the local Zet service set.
