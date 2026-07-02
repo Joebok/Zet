@@ -294,12 +294,20 @@ Completed:
 - Saving moves the manual render task from `Ask/` to `Answer/`.
 - Queue-layer smoke test verified the write/move behavior.
 
-### Milestone 5 - Failure Flow
+### Milestone 5 - Failure Flow - Complete
 
 - Add Fail task form.
 - Write error answer manifest.
 - Move task to `Answer/`.
 - Verify existing harvester blocks the asset with useful error text.
+
+Completed:
+
+- Added Render Console fail panel with a reason field.
+- Added `POST /api/tasks/{ask_id}/fail`.
+- Failing writes a compatible `ERROR` answer manifest with `MANUAL_RENDER_FAILED`.
+- Failing moves the task from `Ask/` to `Answer/`.
+- Queue-layer smoke test verified the failed-answer write/move behavior.
 
 ### Milestone 6 - Launchers And LAN/Tailscale Hosting
 

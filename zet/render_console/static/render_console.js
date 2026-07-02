@@ -17,6 +17,9 @@ const fileInput = document.getElementById("file-input");
 const imagePreview = document.getElementById("image-preview");
 const saveImageButton = document.getElementById("save-image-button");
 const saveStatus = document.getElementById("save-status");
+const failReason = document.getElementById("fail-reason");
+const failTaskButton = document.getElementById("fail-task-button");
+const failStatus = document.getElementById("fail-status");
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -54,6 +57,8 @@ function clearImageSelection() {
   imagePreview.removeAttribute("src");
   saveImageButton.disabled = true;
   saveStatus.textContent = "";
+  failReason.value = "";
+  failStatus.textContent = "";
 }
 
 function setImageSelection(blob) {
@@ -183,6 +188,46 @@ saveImageButton.addEventListener("click", async () => {
   } catch (error) {
     saveStatus.textContent = `Save failed: ${error.message}`;
     saveImageButton.disabled = false;
+  }
+});
+
+failTaskButton.addEventListener("click", async () => {
+  if (!tasks[currentIndex]) {
+    return;
+  }
+  if (!window.confirm("Fail this manual render task? The asset will be blocked when harvested.")) {
+    return;
+  }
+  const task = tasks[currentIndex];
+  failTaskButton.disabled = true;
+  failStatus.textContent = "Writing failed answer...";
+  try {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(task.ask_id)}/fail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason: failReason.value || "" }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || `${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json();
+    failStatus.textContent = `Failed answer written: ${payload.answer_path}`;
+    tasks = payload.remaining_tasks || [];
+    if (!tasks.length) {
+      taskCount.textContent = "0 manual render tasks waiting";
+      emptyState.hidden = false;
+      taskPanel.hidden = true;
+      return;
+    }
+    currentIndex = Math.min(currentIndex, tasks.length - 1);
+    await showTask(currentIndex);
+  } catch (error) {
+    failStatus.textContent = `Fail failed: ${error.message}`;
+  } finally {
+    failTaskButton.disabled = false;
   }
 });
 

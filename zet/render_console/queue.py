@@ -158,3 +158,33 @@ class RenderConsoleQueue:
         )
         shutil.rmtree(task.ask_path)
         return answer_path
+
+    def write_failed_answer(self, task: ManualRenderTask, reason: str = "") -> Path:
+        self.answer_root.mkdir(parents=True, exist_ok=True)
+        answer_path = self.answer_root / task.ask_path.name
+        if answer_path.exists():
+            raise FileExistsError(f"Answer folder already exists: {answer_path}")
+
+        shutil.copytree(task.ask_path, answer_path)
+        completed_at = self._timestamp()
+        message = reason.strip() or "Manual ChatGPT render failed from Render Console."
+        answer_manifest = {
+            "version": 1,
+            "ask_id": task.ask_id,
+            "asset_id": task.asset_id,
+            "ollama_attempt_id": str(task.manifest.get("ollama_attempt_id") or ""),
+            "worker_id": "manual-chatgpt-render-console",
+            "status": "ERROR",
+            "expected_output": task.expected_output,
+            "started_at": completed_at,
+            "completed_at": completed_at,
+            "elapsed_seconds": 0,
+            "error_type": "MANUAL_RENDER_FAILED",
+            "error_message": message,
+        }
+        (answer_path / "answer_manifest.json").write_text(
+            json.dumps(answer_manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        shutil.rmtree(task.ask_path)
+        return answer_path

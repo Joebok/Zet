@@ -67,6 +67,26 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             "remaining_tasks": [item.to_dict() for item in tasks],
         }
 
+    @app.post("/api/tasks/{ask_id}/fail")
+    async def fail_task(ask_id: str, request: Request) -> dict:
+        task = app.state.queue.get_task(ask_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+
+        payload = await request.json()
+        reason = str(payload.get("reason") or "")
+        try:
+            answer_path = app.state.queue.write_failed_answer(task, reason)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        tasks = app.state.queue.list_tasks()
+        return {
+            "status": "ERROR",
+            "answer_path": str(answer_path),
+            "remaining_tasks": [item.to_dict() for item in tasks],
+        }
+
     return app
 
 

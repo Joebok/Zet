@@ -69,6 +69,14 @@
         <img id="image-preview" class="image-preview" alt="Pasted render preview" hidden>
         <p id="save-status" class="save-status"></p>
       </section>
+
+      <section class="fail-panel">
+        <h2>Fail Task</h2>
+        <p>Use this when the manual render cannot be completed. The harvester will block the asset with this reason.</p>
+        <textarea id="fail-reason" placeholder="Reason for failure"></textarea>
+        <button id="fail-task-button" type="button">Fail Task</button>
+        <p id="fail-status" class="save-status"></p>
+      </section>
     </section>
   </main>
   <script src="/static/render_console.js"></script>
