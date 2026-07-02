@@ -56,10 +56,18 @@ class ProcessService:
         ollama_root = Path("C:/Users/Joe/Ollama")
         return [
             ManagedProcessSpec(
-                process_id="dashboard",
-                label="Dashboard",
+                process_id="zet_web",
+                label="Zet Web Dashboard",
+                match_terms=("zet.web.app",),
+                command="run_zet_web.bat",
+                cwd=self.project_root,
+            ),
+            ManagedProcessSpec(
+                process_id="streamlit_legacy",
+                label="Streamlit Legacy Dashboard",
                 match_terms=("streamlit", "zet/dashboard/app.py"),
-                manageable=False,
+                command="run_streamlit_dashboard.bat",
+                cwd=self.project_root,
             ),
             ManagedProcessSpec(
                 process_id="proxy_worker",
@@ -77,7 +85,7 @@ class ProcessService:
             ),
             ManagedProcessSpec(
                 process_id="render_console",
-                label="Render Console",
+                label="Standalone Render Console Legacy",
                 match_terms=("zet.render_console.app",),
                 command="run_render_console.bat",
                 cwd=self.project_root,

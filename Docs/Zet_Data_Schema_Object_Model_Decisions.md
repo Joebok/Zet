@@ -155,7 +155,7 @@ Current important services:
 - `PromptReviewService`
 - `ConfigService`
 
-The service layer is the boundary that should be reusable by scripts, Streamlit, and any future API/frontend.
+The service layer is the boundary that should be reusable by scripts, the FastAPI dashboard, and any legacy/diagnostic UI.
 
 The dashboard must not become the home of reusable business logic.
 
@@ -497,9 +497,9 @@ This is a recovery feature, not the normal flow.
 
 ## Dashboard Boundary Decision
 
-The Streamlit dashboard is an operations UI.
+The FastAPI dashboard is the primary operations UI. The Streamlit dashboard is legacy/diagnostic.
 
-It may own:
+The dashboard may own:
 
 - layout
 - session state
@@ -529,9 +529,11 @@ This boundary is also recorded in `AGENTS.md`.
 - path derivation
 - state machine
 - housekeeping
-- Streamlit dashboard
+- FastAPI dashboard
 - dashboard actions
 - prompt review page
+- render review page
+- integrated render console
 - body-reference prompt compiler integration
 - optional prompt-review local test renders
 - AI proxy ask staging
@@ -542,8 +544,6 @@ This boundary is also recorded in `AGENTS.md`.
 
 ### Partially Working
 
-- render review
-- lock/promotion workflow after render review
 - worker deployment outside the repo
 - stale worker/claim recovery
 - queue observability
@@ -551,7 +551,7 @@ This boundary is also recorded in `AGENTS.md`.
 
 ### Not Yet Implemented Or Needs Design
 
-- robust render review approve/fail workflow
+- Template Editor migration after the body-reference authoring workflow is clarified
 - automated worker packaging/deployment
 - richer AI/proxy state model
 - answer archival/retention policy
@@ -561,13 +561,10 @@ This boundary is also recorded in `AGENTS.md`.
 
 ## Current Open Questions
 
-1. Should `RENDER_REVIEW` approval promote directly to `LOCKED`, move to a new `LOCK_REVIEW`, or simply mark the candidate as accepted?
-2. Should failed render review return to `PROMPT_REVIEW`, `PROMPT`, or `RENDER` with the same prompt?
-3. Should old harvested answer folders be archived out of `Answer/`, or is `harvest_manifest.json` enough?
-4. Should the AI proxy root continue to be called `Ollama_Proxy` now that it also handles local image rendering?
-5. How should workers be deployed and updated on the AI machine?
-6. Should worker heartbeat/monitoring be generalized beyond Ollama monitor tests?
-7. Should `ai_state` remain simple, or should it mirror queue states like `CLAIMED`, `ANSWER_READY`, and `FAILED`?
-8. How much of the dashboard should remain Streamlit once workflows stabilize?
-9. How should prompt/render artifacts be versioned when an asset regenerates multiple times?
-10. Which fields are needed for multiple candidate renders per asset?
+1. Should old harvested answer folders be archived out of `Answer/`, or is `harvest_manifest.json` enough?
+2. Should the AI proxy root continue to be called `Ollama_Proxy` now that it also handles local image rendering?
+3. How should workers be deployed and updated on the AI machine?
+4. Should worker heartbeat/monitoring be generalized beyond Ollama monitor tests?
+5. Should `ai_state` remain simple, or should it mirror queue states like `CLAIMED`, `ANSWER_READY`, and `FAILED`?
+6. How should prompt/render artifacts be versioned when an asset regenerates multiple times?
+7. Which fields are needed for multiple candidate renders per asset?

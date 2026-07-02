@@ -2,11 +2,42 @@
 
 ## Purpose
 
-This document captures what the current Streamlit dashboard does, where dashboard-specific logic still lives, and why Zet may want to move core workflow screens to a more conventional web UI.
+This document captures what the dashboard does, what has moved to the FastAPI web UI, and what remains legacy or deferred.
 
-The backend is increasingly service-oriented and is working well. Most dashboard actions now call Python service methods through `ZetApp` or `AssetRef`. The main concern is the interaction layer: Streamlit is convenient for fast internal tooling, but some high-frequency workflow behaviors are becoming awkward.
+The backend is service-oriented and remains the source of truth. Dashboard actions call Python service methods through `ZetApp`, `AssetRef`, or focused services. The main dashboard has moved to FastAPI plus HTML/CSS/JavaScript so high-frequency workflow screens behave like normal web pages.
 
-## Current Dashboard Pages
+## Current Primary Dashboard
+
+The primary dashboard is:
+
+```text
+zet/web/app.py
+```
+
+Launch it with:
+
+```text
+dashboard.bat
+```
+
+or:
+
+```text
+run_zet_web.bat
+```
+
+The FastAPI dashboard currently covers:
+
+- `Assets`
+- `Prompt Review`
+- `Render Review`
+- `Render Console`
+- `AI Controls`
+- `Pipeline Controls`
+
+The Template Editor is intentionally deferred while the body-reference authoring workflow is reconsidered.
+
+## Legacy Streamlit Dashboard
 
 The Streamlit dashboard lives at:
 
@@ -14,15 +45,13 @@ The Streamlit dashboard lives at:
 zet/dashboard/app.py
 ```
 
-Current pages:
+It is now legacy/diagnostic. Launch it with:
 
-- `Assets`
-- `Prompt Review`
-- `Template Editor`
-- `AI Controls`
-- `Pipeline Controls`
+```text
+run_streamlit_dashboard.bat
+```
 
-Navigation is handled with a Streamlit segmented control plus `st.session_state` and `st.query_params`.
+Do not add new workflow functionality to Streamlit unless it is explicitly temporary diagnostic work.
 
 ## Assets Page
 

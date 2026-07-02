@@ -9,7 +9,7 @@ The current implementation is centered on one character phase at a time. A chara
 Zet currently supports:
 
 - file-backed asset and pipeline records
-- Streamlit dashboard controls
+- FastAPI dashboard controls
 - service-layer asset state transitions
 - body-reference prompt compilation
 - human prompt review
@@ -167,7 +167,7 @@ Currently implemented human review points:
 - `PROMPT_REVIEW`
 - `RENDER_REVIEW`
 
-Prompt review has a dedicated page. Render review is currently represented by the asset detail page showing candidate/locked images; a richer render review page is still needed.
+Prompt review and render review both have dedicated FastAPI dashboard pages. Render review handles promotion to `LOCKED` and supports fail paths back to `RENDER` or full regeneration.
 
 ### `AI_AGENT`
 
@@ -199,13 +199,15 @@ Key backend components:
 - `PromptReviewService`
 - `PipelineControlService`
 
-The dashboard should remain a UI layer. Reusable behavior belongs in services or scripts, not directly in Streamlit callbacks.
+The dashboard should remain a UI layer. Reusable behavior belongs in services or scripts, not directly in UI callbacks.
 
 `ZetApp` is the facade used by scripts and the dashboard. `AssetRef` is the convenience wrapper for asset-specific actions.
 
 ## Dashboard
 
-The dashboard is currently implemented in Streamlit at `zet/dashboard/app.py`.
+The primary dashboard is implemented in FastAPI at `zet/web/app.py`.
+
+The legacy Streamlit dashboard remains available at `zet/dashboard/app.py` for fallback/diagnostic use only.
 
 A detailed inventory of current dashboard behavior and UI direction is maintained in:
 
@@ -213,7 +215,7 @@ A detailed inventory of current dashboard behavior and UI direction is maintaine
 Docs/Dashboard_Functionality_and_UI_Direction.md
 ```
 
-The replacement FastAPI dashboard is being built under:
+The FastAPI dashboard lives under:
 
 ```text
 zet/web/
@@ -222,16 +224,19 @@ zet/web/
 Run it locally with:
 
 ```text
-run_zet_web.bat
+dashboard.bat
 ```
 
 Current dashboard pages:
 
 - `Assets`
 - `Prompt Review`
-- `Template Editor`
+- `Render Review`
+- `Render Console`
 - `AI Controls`
 - `Pipeline Controls`
+
+The Template Editor is intentionally deferred while the body-reference authoring workflow is reconsidered.
 
 ### Assets Page
 
@@ -618,25 +623,22 @@ AI Controls includes a process-management section for the local Zet service set.
 
 Current tracked processes:
 
-- Dashboard
+- Zet Web Dashboard
 - Unified Proxy Worker
 - Auto Harvester
-- Render Console
+- Standalone Render Console Legacy
 
-The dashboard process is status-only. The other services can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot.
+The primary dashboard and service processes can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot. The standalone Render Console remains available only as a temporary fallback because the console is now integrated into the main dashboard.
 
 ## Current Open Items
 
-1. Build a proper `RENDER_REVIEW` page with approve/fail actions and image review history.
-2. Move `Promote to LOCKED` into Render Review instead of relying on the Assets detail panel.
-3. Add two render-review fail paths: `Fail to Render` to requeue the current render stage, and `Fail to Regenerate` to reset upstream work through regeneration.
-4. Add safe validated editing for `Pipelines.json` stages, actors, and worker modules when that becomes necessary.
-5. Add a clean way to archive or hide old harvested answer folders.
-6. Add dashboard visibility for harvested vs pending answers.
-7. Add stale claim detection and recovery for interrupted workers.
-8. Make standalone worker deployment reproducible instead of manually copying files into `C:/Users/Joe/Ollama`.
-9. Improve body-reference prompt and/or ComfyUI workflow so renders obey tank top and shorts more reliably.
-10. Add support for additional local image backends behind `Local_Render_Adapters/local_render.py`.
-11. Add tests for harvester idempotency, stale answer handling, and automatic ask staging.
-12. Decide whether Streamlit remains the long-term UI or becomes an operations console behind a future API/frontend.
-13. Keep moving reusable behavior out of dashboard code and into services.
+1. Revisit the Template Editor after the body-reference authoring workflow is clarified.
+2. Add safe validated editing for `Pipelines.json` stages, actors, and worker modules when that becomes necessary.
+3. Add a clean way to archive or hide old harvested answer folders.
+4. Add dashboard visibility for harvested vs pending answers.
+5. Add stale claim detection and recovery for interrupted workers.
+6. Make standalone worker deployment reproducible instead of manually copying files into `C:/Users/Joe/Ollama`.
+7. Improve body-reference prompt and/or ComfyUI workflow so renders obey tank top and shorts more reliably.
+8. Add support for additional local image backends behind `Local_Render_Adapters/local_render.py`.
+9. Add tests for harvester idempotency, stale answer handling, and automatic ask staging.
+10. Keep moving reusable behavior out of dashboard code and into services.

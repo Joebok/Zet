@@ -202,10 +202,18 @@ Remaining:
 
 ### Milestone 9 - Retire Streamlit
 
-- Confirm the FastAPI UI covers all dashboard functions.
-- Update launch scripts to start the FastAPI UI as the main dashboard.
-- Move Streamlit dashboard to legacy/diagnostic status or remove it.
-- Update docs and process controls.
+- [x] Confirm the FastAPI UI covers all dashboard functions except the intentionally deferred Template Editor.
+- [x] Update launch scripts to start the FastAPI UI as the main dashboard.
+- [x] Move Streamlit dashboard to legacy/diagnostic status.
+- [x] Update docs and process controls.
+
+Completed:
+
+- `dashboard.bat` now launches the FastAPI dashboard through `run_zet_web.bat`.
+- Added `run_streamlit_dashboard.bat` for the legacy Streamlit dashboard.
+- Updated process controls to show `Zet Web Dashboard` as the primary dashboard process.
+- Updated AI service startup scripts so they no longer start the standalone Render Console by default.
+- Left the standalone Render Console launcher available as temporary fallback.
 
 ## Near-Term Recommendation
 
