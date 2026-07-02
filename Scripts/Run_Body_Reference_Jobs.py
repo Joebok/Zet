@@ -88,6 +88,12 @@ def extract_character_race(template_path: Path) -> str:
     return extract_template_field(template_path, ["Character Race", "Race", "Species / Ancestry", "Species", "Ancestry"])
 
 
+def template_metadata(template_path: Path) -> dict[str, str]:
+    return {
+        "CANONICAL_ART_STYLE": extract_template_field(template_path, ["Canonical Art Style"]),
+    }
+
+
 def _format_rule_lines(values: object) -> str:
     if isinstance(values, str):
         return values.strip()
@@ -354,6 +360,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
             "VIEW_TOKEN": view_token,
             "VIEW_LABEL": str(view_data["label"]),
             "VIEW_INSTRUCTION": str(view_data["instruction"]),
+            **template_metadata(template_path),
             **load_race_render_rules(project_root, template_path),
         },
         selection,

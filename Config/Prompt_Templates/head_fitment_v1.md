@@ -1,6 +1,7 @@
 HEAD-FITMENT CHARACTER REFERENCE IMAGE.
 
 Character: {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
+Canonical Art Style: {{CANONICAL_ART_STYLE}}
 Requested body view: {{BODY_VIEW_TOKEN}}.
 Requested head view: {{HEAD_VIEW_TOKEN}}.
 

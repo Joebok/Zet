@@ -30,6 +30,7 @@ class BodyReferenceRaceRulesTests(unittest.TestCase):
 Character Name: `[Testa]`
 Character Phase: `[Adult]`
 Species / Ancestry: `[High elf]`
+Canonical Art Style: `[ink and watercolor reference art]`
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 * Adult high-elf woman.
@@ -70,6 +71,7 @@ Species / Ancestry: `[High elf]`
             )
 
             prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("Canonical Art Style: ink and watercolor reference art", prompt)
             self.assertIn("Character race/species for mannequin silhouette: elf.", prompt)
             self.assertIn("Use a simplified elf mannequin head.", prompt)
             self.assertIn("Long pointed elf ears should be visible", prompt)

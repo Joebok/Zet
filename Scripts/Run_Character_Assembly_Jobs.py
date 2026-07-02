@@ -22,6 +22,7 @@ from Run_Body_Reference_Jobs import (
     output_files,
     require_job_field,
     resolve_project_path,
+    template_metadata,
     template_path_for_job,
 )
 from Run_Head_Fitment_Jobs import reference_by_role, reference_files_for_job, validate_reference
@@ -169,6 +170,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
             "VIEW_TOKEN": body_view_token,
             "VIEW_LABEL": str(body_view_data["label"]),
             "VIEW_INSTRUCTION": str(body_view_data["instruction"]),
+            **template_metadata(template_path),
         },
         selection,
         list(bundle.get("required_sections", [])),

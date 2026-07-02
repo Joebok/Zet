@@ -22,6 +22,7 @@ from Run_Body_Reference_Jobs import (
     output_files,
     require_job_field,
     resolve_project_path,
+    template_metadata,
     template_path_for_job,
 )
 
@@ -189,6 +190,7 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
             "VIEW_TOKEN": head_view_token,
             "VIEW_LABEL": str(head_view_data["label"]),
             "VIEW_INSTRUCTION": str(head_view_data["instruction"]),
+            **template_metadata(template_path),
         },
         selection,
         list(bundle.get("required_sections", [])),
