@@ -3,3 +3,6 @@ _Lib/Assets
 _Lib/Pipelines
 *.png
 *.backup.*
+__pycache__/
+*.py[cod]
+*$py.class
