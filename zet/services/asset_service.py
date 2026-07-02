@@ -207,6 +207,15 @@ class AssetService:
         ):
             path.unlink(missing_ok=True)
 
+    def _render_reset_skip_message(self, asset: Asset) -> str | None:
+        if asset.pipeline_stage in {"MANIFEST", "PROMPT"}:
+            return f"Asset is at {asset.pipeline_stage}; upstream regeneration/compile work should finish before render reset."
+        if asset.pipeline == "Body-Reference" and self.ai_proxy_service.prompt_review_service is not None:
+            context = self.ai_proxy_service.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+            if not context.prompt_text:
+                return "No Final_Image_Prompt.md found; asset is not render-ready."
+        return None
+
     def reset_pipeline_assets_to_render(
         self,
         character: str,
@@ -239,6 +248,20 @@ class AssetService:
                 continue
 
             try:
+                skip_message = self._render_reset_skip_message(asset)
+                if skip_message is not None:
+                    results.append(
+                        BatchRenderResetResult(
+                            asset_id=asset.asset_id,
+                            before_stage=asset.pipeline_stage,
+                            before_actor=asset.actor,
+                            before_state=asset.asset_state,
+                            status="SKIPPED",
+                            message=skip_message,
+                        )
+                    )
+                    continue
+
                 self.ai_proxy_service.clear_asset_queue_items(asset)
                 self._clear_render_outputs(asset)
 

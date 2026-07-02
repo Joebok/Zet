@@ -32,11 +32,11 @@ Recommended usage:
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 
-* Tsaeytte is an adult high-elf sorceress.
-* Apparent age: young adult.
+* Tsaeytte is an adult high-elf female.
+* Apparent age: adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, wide shoulders, slim waist, slim thighs, long slim legs.
+* Core silhouette: compact elven frame, wide shoulders, narrow waist, long slim legs, inverted triangle.
 
 <!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
 
@@ -44,49 +44,37 @@ Recommended usage:
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT -->
 
-* Front view should clearly establish her full identity: face, violet eyes, pointed ears, bob haircut, teal off-shoulder top, high-low skirt front, dark leggings, boots, belt, jewelry, and right-side dagger.
-
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-* Front-left 3/4 view should preserve the same identity while showing depth through the torso, skirt layers, belt gear, and one prominent pointed ear.
+* Tip of right elven ear should remain visible.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-* Front-right 3/4 view should preserve the same identity while making the right hip dagger and near-side ear especially readable.
+* Tip of left elven ear should remain visible.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-* Left profile should show the elegant elven facial profile, pointed ear, short bob silhouette, off-shoulder neckline, skirt cascade, and left-side belt gear.
-
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-* Right profile should show the elegant elven facial profile, pointed ear, short bob silhouette, off-shoulder neckline, skirt cascade, and right-side dagger.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-* Back-left 3/4 view should preserve her recognizable hair, ears, narrow back, off-shoulder costume back, high-low skirt length, boots, and rear-left belt gear.
-
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-* Back-right 3/4 view should preserve her recognizable hair, ears, narrow back, off-shoulder costume back, high-low skirt length, boots, and rear-right dagger silhouette.
-
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK -->
-
-* Back view should emphasize the rounded black bob at the nape, visible pointed ear tips when not fully covered, bare shoulders, fitted teal back, long rear skirt, belt, boots, and compact elven proportions.
 
 <!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK -->
 
@@ -112,13 +100,24 @@ Recommended usage:
 
 * Build: petite, lithe, graceful, lightly athletic; slim limbs
 * Height impression: short-to-average
-* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders, slim thighs
+* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders
 * Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
 * Shoulder shape: wide, softly sloped
 * Torso shape: slim waist, inverted triangle figure
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
 * Hand shape: small, elegant hands with long fingers.
-* Hip/leg proportions: slim thighs, long tapered legs, knees and ankles cleanly articulated
+* Hip/leg proportions: long slender legs, knees and ankles cleanly articulated
+
+**Use mannaquin elf head**
+* Placeholder for character head
+* Generic elvish features, especially ears.
+* Neutral gray
+* Thin marking lines for feature placement
+* Mannaquin head meets body in clean line around the neck at the collar bone.
+* Always faces same direction as body.
+
+Mannaquin head does NOT:
+* show eye, nose, mouth, or hair detail.
 
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
@@ -156,19 +155,19 @@ Recommended usage:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-* Back-left 3/4 body should show a narrow back, sloped shoulders, compact waist, one side of the hip line, and long rear skirt shape without making her body stocky.
+* Back-left 3/4 body should show a narrow back, sloped shoulders, compact waist, one side of the hip line without making her body stocky.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-* Back-right 3/4 body should show a narrow back, sloped shoulders, compact waist, one side of the hip line, and long rear skirt shape without making her body stocky.
+* Back-right 3/4 body should show a narrow back, sloped shoulders, compact waist, one side of the hip line without making her body stocky.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK -->
 
-* Back view body should show straight balanced posture, narrow shoulders, slim back, compact waist, symmetrical arms, long rear skirt, and boots aligned under her frame.
+* Back view body should show straight balanced posture, narrow shoulders, slim back, compact waist, symmetrical arms, feet aligned under her frame.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK -->
 
@@ -277,12 +276,12 @@ Recommended usage:
 <!-- ZET:BEGIN HAIR_DESCRIPTION_FACTS -->
 
 * Hair color: black with subtle painterly highlights.
-* Hair length: chin-length bob; ends cluster around jawline and just under the chin, with some uneven wisps around the neck.
-* Hair texture: tousled, soft, slightly wavy; never curly, ringleted, braided, or long unless a variant explicitly asks for it.
-* Hair volume: thick and lively, with airy strands and a compact rounded mass.
+* Hair length: collarbone-length bob; ends curve in around jawline and under the chin.
+* Hair texture: tousled, soft, curves around head unter chin in graceful arc; never curly, ringleted, braided, or long unless a variant explicitly asks for it.
+* Hair volume: thick and lively.
 * Hairline: natural, partly obscured by loose fringe and side-swept locks.
-* Part/asymmetry: slightly asymmetrical side part; one side can fall heavier across the forehead while both eyes remain readable when front-facing.
-* Face-framing behavior: locks frame both sides of the face and gently hook inward toward the chin.
+* Part/asymmetry: parted on left side, most hair on right side that can fall heavier across the forehead and partially obscure right eye.
+* Face-framing behavior: locks frame both sides of the face and gently hook inward and under the chin.
 * Back silhouette: rounded bob at the nape, compact and not shoulder-length.
 * Forbidden drift: do not turn the hair into long hair, tight curls, smooth helmet hair, a generic pixie cut, a braid, ponytail, or symmetrical salon bob.
 
@@ -292,7 +291,7 @@ Recommended usage:
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT -->
 
-* Front view hair should frame both sides of the face, with a tousled side-swept fringe and inward-hooking ends near the chin; both eyes should remain visible unless a requested expression says otherwise.
+* Front view hair should frame both sides of the face, curving in and under the chin to a point on either side.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT -->
 

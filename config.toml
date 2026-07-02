@@ -11,12 +11,12 @@ BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
-Enabled = true
+Enabled = false
 Model = "qwen3.5:4b-condenser"
 PromptFile = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
 
 [LocalRender]
-AutoQueueAfterCondense = true
+AutoQueueAfterCondense = false
 Preset = "body-reference-preview"
 
 [AIHarvest]

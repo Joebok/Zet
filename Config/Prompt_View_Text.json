@@ -11,13 +11,13 @@
       "label": "front-left three-quarter view",
       "folder_name": "Front_Left_3_4",
       "output_name_fragment": "Front-Left-3-4",
-      "instruction": "Render the character from a front-left three-quarter view. The character faces partly toward the viewer, with the character's left side more visible than the right. Do not render this as a straight front view or profile view."
+      "instruction": "Render the character from a front-left three-quarter view. The character faces forward, they do not turn their head. Do not render this as a straight front view or profile view."
     },
     "FRONT_RIGHT_3_4": {
       "label": "front-right three-quarter view",
       "folder_name": "Front_Right_3_4",
       "output_name_fragment": "Front-Right-3-4",
-      "instruction": "Render the character from a front-right three-quarter view. The character faces partly toward the viewer, with the character's right side more visible than the left. Do not render this as a straight front view or profile view."
+      "instruction": "Render the character from a front-right three-quarter view. The character faces forward, they do not turn their head. Do not render this as a straight front view or profile view."
     },
     "LEFT_PROFILE": {
       "label": "left profile view",
@@ -35,13 +35,13 @@
       "label": "back-left three-quarter view",
       "folder_name": "Back_Left_3_4",
       "output_name_fragment": "Back-Left-3-4",
-      "instruction": "Render the character from a back-left three-quarter view. The character is turned partly away from the viewer, with the character's left side more visible than the right. Do not render this as a straight back view or profile view."
+      "instruction": "Render the character from a back-left three-quarter view. The character faces forward, they do not turn their head. Do not render this as a straight back view or profile view."
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
       "folder_name": "Back_Right_3_4",
       "output_name_fragment": "Back-Right-3-4",
-      "instruction": "Render the character from a back-right three-quarter view. The character is turned partly away from the viewer, with the character's right side more visible than the left. Do not render this as a straight back view or profile view."
+      "instruction": "Render the character from a back-right three-quarter view. The character faces forward, they do not turn their head. Do not render this as a straight back view or profile view."
     },
     "BACK": {
       "label": "back view",

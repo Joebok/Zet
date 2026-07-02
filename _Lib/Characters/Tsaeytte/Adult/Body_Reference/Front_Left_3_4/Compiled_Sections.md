@@ -27,23 +27,34 @@ View Token: FRONT_LEFT_3_4
 
 # GENERAL_DESCRIPTION_FACTS
 
-* Tsaeytte is an adult high-elf sorceress.
-* Apparent age: young adult.
+* Tsaeytte is an adult high-elf female.
+* Apparent age: adult.
 * Overall visual impression: petite, lithe, graceful, bright, and confident.
 * Canonical style: painterly semi-realistic fantasy illustration with anime-influenced facial proportions and large expressive violet eyes.
-* Core silhouette: compact elven frame, wide shoulders, slim waist, slim thighs, long slim legs.
+* Core silhouette: compact elven frame, wide shoulders, narrow waist, long slim legs, inverted triangle.
 
 # BODY_DESCRIPTION_FACTS
 
 * Build: petite, lithe, graceful, lightly athletic; slim limbs
 * Height impression: short-to-average
-* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders, slim thighs
+* Proportions: elegant high-elf proportions with long limbs, narrow waist, wide shoulders
 * Posture: upright, lively, alert, and balanced; relaxed shoulders with a lifted chest and mobile head.
 * Shoulder shape: wide, softly sloped
 * Torso shape: slim waist, inverted triangle figure
 * Arm shape: slender, lightly toned arms; delicate wrists and expressive hands.
 * Hand shape: small, elegant hands with long fingers.
-* Hip/leg proportions: slim thighs, long tapered legs, knees and ankles cleanly articulated
+* Hip/leg proportions: long slender legs, knees and ankles cleanly articulated
+
+**Use mannaquin elf head**
+* Placeholder for character head
+* Generic elvish features, especially ears.
+* Neutral gray
+* Thin marking lines for feature placement
+* Mannaquin head meets body in clean line around the neck at the collar bone.
+* Always faces same direction as body.
+
+Mannaquin head does NOT:
+* show eye, nose, mouth, or hair detail.
 
 # IDENTITY_PRESERVATION_BODY
 
