@@ -321,9 +321,48 @@ Completed:
 - Add visual indicator for pending manual render tasks.
 - Add docs for the full manual render workflow.
 
+### Milestone 9 - Process Management
+
+- Add a single process-control surface for the local Zet service set:
+  - dashboard
+  - unified proxy worker
+  - auto harvester
+  - render console
+- Show whether each expected process is running.
+- Show PID, command, host/port where relevant, and last known activity.
+- Provide Start / Stop / Restart controls where safe.
+- Avoid duplicate worker and harvester instances unless explicitly requested.
+- Prefer a single launcher/supervisor script over scattered console windows.
+- Preserve readable logs for each service.
+
+### Milestone 10 - Render Review Page
+
+- Add a dedicated `RENDER_REVIEW` page similar to Prompt Review.
+- Show the candidate image prominently.
+- Show relevant prompt/render metadata.
+- Include Previous / Next navigation across render-review assets.
+- Move `Promote to LOCKED` from the Assets detail controls into Render Review.
+- Add a Fail action that sends the asset back to an appropriate regeneration path or blocks it with a clear reason.
+- Keep the Assets table as the status overview rather than the main review workflow.
+
+### Milestone 11 - Pipeline And Automation Controls
+
+- Add dashboard visibility for configured pipeline stages, actors, and worker modules.
+- Show active render backend and manual/local render settings.
+- Show automation toggles:
+  - prompt condense enabled
+  - auto queue local preview after condense
+  - render backend
+  - auto harvester enabled/interval
+- Allow editing safe config toggles from the UI.
+- Keep deeper structural pipeline edits guarded by validation before writing `Pipelines.json`.
+- Make it clear which settings are project config vs character/phase pipeline config.
+
 ## Open Questions
 
 - Should manual render tasks be generated for all pipelines or only Body-Reference first?
 - Which reference files should be attached for Body-Reference final render?
 - Should the Render Console support batch completion from a grid later, or remain one-task-at-a-time?
 - Should completed manual render answers be archived after harvesting?
+- Should process supervision live inside Zet, or should Zet generate scripts for an external supervisor?
+- Which render-review fail path should be the default: back to prompt review, back to render, or blocked?

@@ -554,14 +554,18 @@ Standalone worker deployments outside the repo, such as `C:/Users/Joe/Ollama`, m
 ## Current Open Items
 
 1. Build a proper `RENDER_REVIEW` page with approve/fail actions and image review history.
-2. Decide what render approval does: promote to locked, move to lock review, or advance to another configured stage.
-3. Add a clean way to archive or hide old harvested answer folders.
-4. Add dashboard visibility for harvested vs pending answers.
-5. Add stale claim detection and recovery for interrupted workers.
-6. Make standalone worker deployment reproducible instead of manually copying files into `C:/Users/Joe/Ollama`.
-7. Add a worker/process status view showing which worker types are currently online.
-8. Improve body-reference prompt and/or ComfyUI workflow so renders obey tank top and shorts more reliably.
-9. Add support for additional local image backends behind `Local_Render_Adapters/local_render.py`.
-10. Add tests for harvester idempotency, stale answer handling, and automatic ask staging.
-11. Decide whether Streamlit remains the long-term UI or becomes an operations console behind a future API/frontend.
-12. Keep moving reusable behavior out of dashboard code and into services.
+2. Move `Promote to LOCKED` into Render Review instead of relying on the Assets detail panel.
+3. Decide the default render-review fail path: back to prompt review, back to render, or blocked.
+4. Add a process-management surface for dashboard, unified proxy worker, auto harvester, and render console.
+5. Prevent or clearly flag duplicate worker/harvester/render-console processes.
+6. Add pipeline/config visibility and safe controls for stages, actors, workers, render backend, prompt condense, auto preview render, and auto harvest interval.
+7. Add a clean way to archive or hide old harvested answer folders.
+8. Add dashboard visibility for harvested vs pending answers.
+9. Add stale claim detection and recovery for interrupted workers.
+10. Make standalone worker deployment reproducible instead of manually copying files into `C:/Users/Joe/Ollama`.
+11. Add a worker/process status view showing which worker types are currently online.
+12. Improve body-reference prompt and/or ComfyUI workflow so renders obey tank top and shorts more reliably.
+13. Add support for additional local image backends behind `Local_Render_Adapters/local_render.py`.
+14. Add tests for harvester idempotency, stale answer handling, and automatic ask staging.
+15. Decide whether Streamlit remains the long-term UI or becomes an operations console behind a future API/frontend.
+16. Keep moving reusable behavior out of dashboard code and into services.
