@@ -656,6 +656,86 @@ Backend = "manual_chatgpt"
             manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "SUCCESS")
 
+    def test_harvest_continues_after_malformed_answer_folder(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="RENDER", actor="AI_AGENT")
+            queue_root = root / "Queue" / "Ollama_Proxy" / "Answer"
+            malformed = queue_root / "Ask_Asset_1_RENDER_A_MALFORMED"
+            malformed.mkdir(parents=True)
+            (malformed / "answer_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "ask_id": "Ask_Asset_1_RENDER_A_MALFORMED",
+                        "asset_id": 1,
+                        "ollama_attempt_id": "malformed",
+                        "worker_id": "test",
+                        "status": "SUCCESS",
+                        "expected_output": "front.png",
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            valid = queue_root / "Ask_Asset_1_RENDER_B_FAILED"
+            valid.mkdir()
+            (valid / "ask_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "ask_id": "Ask_Asset_1_RENDER_B_FAILED",
+                        "asset_id": 1,
+                        "character": "Test",
+                        "phase": "Adult",
+                        "pipeline": "Body-Reference",
+                        "pipeline_stage": "RENDER",
+                        "ollama_attempt_id": "failed",
+                        "worker_type": "manual_chatgpt_render",
+                        "prompt_file": "Final_Image_Prompt.md",
+                        "expected_output": "front.png",
+                        "task_type": "render",
+                        "auxiliary": False,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (valid / "answer_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "ask_id": "Ask_Asset_1_RENDER_B_FAILED",
+                        "asset_id": 1,
+                        "ollama_attempt_id": "failed",
+                        "worker_id": "manual-chatgpt-render-console",
+                        "status": "ERROR",
+                        "expected_output": "front.png",
+                        "error_type": "MANUAL_RENDER_FAILED",
+                        "error_message": "redo prompt",
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            client = TestClient(create_app(config_path))
+            harvested = client.post("/api/ai-controls/harvest")
+
+            self.assertEqual(harvested.status_code, 200)
+            statuses = [item["status"] for item in harvested.json()["harvest_results"]]
+            self.assertIn("MALFORMED", statuses)
+            self.assertIn("BLOCKED", statuses)
+            self.assertTrue((malformed / "harvest_manifest.json").exists())
+
+            detail = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(detail.json()["asset"]["pipeline_stage"], "ERROR")
+            self.assertEqual(detail.json()["asset"]["error_code"], "MANUAL_RENDER_FAILED")
+
     def test_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

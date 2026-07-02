@@ -345,5 +345,16 @@ class AIAnswerHarvester:
 
         results: list[HarvestResult] = []
         for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
-            results.append(self.apply_answer_folder(answer_path))
+            try:
+                results.append(self.apply_answer_folder(answer_path))
+            except AIAnswerHarvesterError as exc:
+                result = HarvestResult(
+                    answer_path=answer_path,
+                    ask_id=answer_path.name,
+                    asset_id=None,
+                    status="MALFORMED",
+                    message=str(exc),
+                )
+                self._write_harvest_manifest(answer_path, result)
+                results.append(result)
         return results
