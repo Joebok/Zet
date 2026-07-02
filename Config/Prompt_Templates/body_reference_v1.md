@@ -30,11 +30,19 @@ Prioritize readable proportions, clean silhouette, and accurate view angle.
 
 Character race/species for mannequin silhouette: {{CHARACTER_RACE}}.
 
+**Neck-column anchor**: the midpoint of the visible neck column, clearly above the torso and shoulder mass, halfway between the underside of the jaw/skull and the base of the neck where the neck begins to widen into the shoulders. This anchor is on the neck itself, not on the collarbone, chest, shoulders, or torso.
+
+Neck-column anchor — controls where the head/neck module is centered and vertically placed.
+
+Base-neck docking shape — controls the lower cut/join where the fitted neck will attach back to the body.
+
 Use a simplified neutral mannequin head as a placeholder for the character head.
 The mannequin head is neutral gray.
 The mannequin head may have thin marking lines for feature placement.
-The mannequin head meets the body in a clean line around the neck at the collar bone.
+The mannequin head meets the body in a clean line at the Neck-column anchor.
 The mannequin head always faces the same direction as the body.
+
+Place the mannequin head using the Reference Body’s neck-column anchor. The head placeholder should align to the neck column above the torso, with the lower head/upper neck connection centered on the visible neck column. Do not use the collarbone, chest, shoulders, or top of the torso as the anchor.
 
 Race-specific mannequin silhouette rules:
 {{RACE_BODY_REFERENCE_POSITIVE}}

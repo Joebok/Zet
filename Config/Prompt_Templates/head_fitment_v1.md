@@ -7,14 +7,34 @@ Requested head view: {{HEAD_VIEW_TOKEN}}.
 All necessary information is in these instructions and in the attached reference images.
 Follow these instructions exactly.
 
-Render an image exactly like the Character Head except that the Character neck should be fitted to the Reference Body.
+# INSTRUCTIONS
+
+Render a head shot only image exactly like the Character Head except that the Character neck should be adjusted to fit the Reference Body.
+
+The image should:
+ 
+ * be head and neck only 
+ * preserve identity, expression, hair, and all features of the referenced head image above the neck.
+ * have transparent background
+
+The image should NOT:
+
+* Have any part of the body below the neck
 
 Reference roles:
 
 - The attached headshot reference is the Character Head source.
 - The attached body-reference image is the Reference Body source.
 
-The Character Neck may be slightly adjusted so it could blend seamlessly into the Reference Body neck connection point.
+**Neck-column anchor**: the midpoint of the visible neck column, clearly above the torso and shoulder mass, halfway between the underside of the jaw/skull and the base of the neck where the neck begins to widen into the shoulders. This anchor is on the neck itself, not on the collarbone, chest, shoulders, or torso.
+
+Neck-column anchor — controls where the head/neck module is centered and vertically placed.
+
+Base-neck docking shape — controls the lower cut/join where the fitted neck will attach back to the body.
+
+Fit the Character Neck to the Reference Body’s neck-column anchor and base-neck docking shape. The neck-column anchor is the midpoint of the visible neck column, clearly above the torso and shoulder mass. Use it to control neck length, width, angle, and vertical placement so the fitted head-and-neck module can join cleanly to the body-reference neck.
+
+The Character Neck may be slightly adjusted so it could blend seamlessly into the Reference Body Neck-column anchor.
 
 The Character Head MUST NOT BE ROTATED.
 
@@ -40,12 +60,7 @@ The image must not include:
 - chest
 - upper body
 - mannequin body
-- mannequin stand
-- gray mannequin head
-- Reference Body geometry
-- fitment shell
-- costume
-- clothing
+- mannequin head
 - scene background
 
 Reference Body is alignment-only.

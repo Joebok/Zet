@@ -882,7 +882,7 @@ For body-reference, use simple neutral fitment clothing.
 Clothing rules:
 
 * neutral tan compression shorts.
-* No shirt, tube top, chest wrap, bra, harness, costume top, or decorative upper-body garment.
+* No shirt.
 * Minimal detail.
 * no additional garments
 * Readable body silhouette.

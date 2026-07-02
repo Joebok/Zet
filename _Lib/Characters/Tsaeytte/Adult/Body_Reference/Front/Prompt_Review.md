@@ -43,3 +43,8 @@ Reviewed At:
 - PASS no ZET markers
 
 ## Notes
+## Local Test Renders
+
+- 2026-07-02 09:07:27: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260702_090727.png`
+  - Metadata: `_Lib\Characters\Tsaeytte\Adult\Body_Reference\Front\Local_Test_Renders\test_20260702_090727.json`
+  - ComfyUI prompt id: `6440b8f2-4087-4377-9487-0571752dc954`

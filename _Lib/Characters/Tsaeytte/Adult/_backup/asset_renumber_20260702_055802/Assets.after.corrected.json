@@ -16,11 +16,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Front.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_1_RENDER_20260702_090732 (20260702_090732_1_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_1_RENDER_20260701_194148 (20260701_194148_1_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-02T09:17:30",
-      "reference_files": []
+      "updated_at": "2026-07-01T19:58:42"
     },
     {
       "asset_id": 2,
@@ -55,7 +54,7 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Front-Right-3-4.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_3_RENDER_20260701_194203 (20260701_194203_3_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_5_RENDER_20260701_194203 (20260701_194203_5_RENDER)",
       "error_code": null,
       "error_message": null,
       "updated_at": "2026-07-01T19:57:58"
@@ -74,7 +73,7 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Left-Profile.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_4_RENDER_20260701_194207 (20260701_194207_4_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_6_RENDER_20260701_194207 (20260701_194207_6_RENDER)",
       "error_code": null,
       "error_message": null,
       "updated_at": "2026-07-01T19:59:50"
@@ -93,7 +92,7 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Right-Profile.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_5_RENDER_20260701_194211 (20260701_194211_5_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_7_RENDER_20260701_194211 (20260701_194211_7_RENDER)",
       "error_code": null,
       "error_message": null,
       "updated_at": "2026-07-01T20:00:05"
@@ -112,7 +111,7 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Back-Left-3-4.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_6_RENDER_20260701_193918 (20260701_193918_6_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_8_RENDER_20260701_193918 (20260701_193918_8_RENDER)",
       "error_code": null,
       "error_message": null,
       "updated_at": "2026-07-01T20:00:15"
@@ -131,7 +130,7 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Back-Right-3-4.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_7_RENDER_20260701_194214 (20260701_194214_7_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_9_RENDER_20260701_194214 (20260701_194214_9_RENDER)",
       "error_code": null,
       "error_message": null,
       "updated_at": "2026-07-01T19:56:31"
@@ -150,7 +149,7 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Body-Reference_Back.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_8_RENDER_20260701_194218 (20260701_194218_8_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_10_RENDER_20260701_194218 (20260701_194218_10_RENDER)",
       "error_code": null,
       "error_message": null,
       "updated_at": "2026-07-01T20:00:24"
@@ -164,15 +163,15 @@
       "head_view": "Front",
       "costume": null,
       "expression": null,
-      "asset_state": "LOCKED",
-      "pipeline_stage": "LOCKED",
-      "actor": "HUMAN_AGENT",
-      "ai_state": null,
+      "asset_state": "IN_PROGRESS",
+      "pipeline_stage": "RENDER",
+      "actor": "AI_AGENT",
+      "ai_state": "ASKED",
       "final_image_output": "Head-Fitment_Front_Front.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_9_RENDER_20260702_093130 (20260702_093130_9_RENDER)",
+      "last_ai_update": "AI ask staged: Ask_Asset_9_RENDER_20260702_053519 (20260702_053519_9_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-02T09:45:54",
+      "updated_at": "2026-07-02T05:35:19",
       "reference_files": [
         {
           "role": "body_reference",

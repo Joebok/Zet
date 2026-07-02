@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "ask_id": "Ask_Asset_3_RENDER_20260702_053519",
+  "asset_id": 3,
+  "character": "Tsaeytte",
+  "phase": "Adult",
+  "pipeline": "Head-Fitment",
+  "pipeline_stage": "RENDER",
+  "ollama_attempt_id": "20260702_053519_3_RENDER",
+  "worker_type": "manual_chatgpt_render",
+  "ollama_model": "",
+  "prompt_file": "Final_Image_Prompt.md",
+  "expected_output": "Head-Fitment_Front_Front.png",
+  "candidate_output_file": "Head-Fitment_Front_Front.png",
+  "task_type": "render",
+  "auxiliary": false,
+  "manual": true,
+  "target_output_file": null,
+  "render_preset": "chatgpt-manual",
+  "reference_files": [
+    {
+      "role": "body_reference",
+      "label": "Locked body-reference image",
+      "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Body-Reference_Front.png",
+      "source_asset_id": 1,
+      "body_view": "Front"
+    },
+    {
+      "role": "headshot",
+      "label": "Headshot reference image",
+      "path": "_Lib\\Characters\\Tsaeytte\\Adult\\Reference_Images\\Headshots\\Front.png"
+    }
+  ]
+}

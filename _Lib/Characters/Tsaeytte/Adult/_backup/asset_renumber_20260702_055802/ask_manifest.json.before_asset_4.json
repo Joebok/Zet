@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "ask_id": "Ask_Asset_4_RENDER_20260701_175203",
+  "asset_id": 4,
+  "character": "Tsaeytte",
+  "phase": "Adult",
+  "pipeline": "Character-Assembly",
+  "pipeline_stage": "RENDER",
+  "ollama_attempt_id": "20260701_175203_4_RENDER",
+  "worker_type": "ollama_generate",
+  "ollama_model": "llama3.2:3b",
+  "prompt_file": "OLLAMA_PROMPT.md",
+  "expected_output": "OLLAMA_RESPONSE.md",
+  "candidate_output_file": "Character-Assembly_Front_Front_Default-Adventuring.png",
+  "task_type": "generate",
+  "auxiliary": false,
+  "manual": false,
+  "target_output_file": null,
+  "render_preset": null,
+  "reference_files": []
+}

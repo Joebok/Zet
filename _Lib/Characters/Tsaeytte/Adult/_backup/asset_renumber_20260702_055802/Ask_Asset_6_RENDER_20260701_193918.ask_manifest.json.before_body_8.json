@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "ask_id": "Ask_Asset_8_RENDER_20260701_193918",
+  "asset_id": 8,
+  "character": "Tsaeytte",
+  "phase": "Adult",
+  "pipeline": "Body-Reference",
+  "pipeline_stage": "RENDER",
+  "ollama_attempt_id": "20260701_193918_8_RENDER",
+  "worker_type": "manual_chatgpt_render",
+  "ollama_model": "",
+  "prompt_file": "Final_Image_Prompt.md",
+  "expected_output": "Body-Reference_Back-Left-3-4.png",
+  "candidate_output_file": "Body-Reference_Back-Left-3-4.png",
+  "task_type": "render",
+  "auxiliary": false,
+  "manual": true,
+  "target_output_file": null,
+  "render_preset": "chatgpt-manual",
+  "reference_files": []
+}

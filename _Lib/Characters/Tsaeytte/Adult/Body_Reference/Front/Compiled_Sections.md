@@ -45,17 +45,6 @@ View Token: FRONT
 * Hand shape: small, elegant hands with long fingers.
 * Hip/leg proportions: long slender legs, knees and ankles cleanly articulated
 
-**Use mannaquin elf head**
-* Placeholder for character head
-* Generic elvish features, especially ears.
-* Neutral gray
-* Thin marking lines for feature placement
-* Mannaquin head meets body in clean line around the neck at the collar bone.
-* Always faces same direction as body.
-
-Mannaquin head does NOT:
-* show eye, nose, mouth, or hair detail.
-
 # IDENTITY_PRESERVATION_BODY
 
 Body preservation rules:
@@ -82,10 +71,12 @@ Rendering priorities:
 
 # TECHNICAL_MODESTY_LAYER
 
+For body-reference, use simple neutral fitment clothing.
+
 Clothing rules:
 
-* tube top.
-* compression shorts.
+* neutral tan tube top.
+* neutral tan compression shorts.
 * Minimal detail.
 * no additional garments
 * Readable body silhouette.

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "ask_id": "Ask_Asset_5_RENDER_20260701_194203",
+  "asset_id": 5,
+  "ollama_attempt_id": "20260701_194203_5_RENDER",
+  "worker_id": "manual-chatgpt-render-console",
+  "status": "SUCCESS",
+  "expected_output": "Body-Reference_Front-Right-3-4.png",
+  "started_at": "2026-07-01T19:51:04",
+  "completed_at": "2026-07-01T19:51:04",
+  "elapsed_seconds": 0,
+  "error_type": "",
+  "error_message": "",
+  "content_type": "image/png"
+}
