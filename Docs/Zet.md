@@ -551,21 +551,31 @@ The main known cross-machine path is the external Dropbox AI queue. Project-loca
 
 Standalone worker deployments outside the repo, such as `C:/Users/Joe/Ollama`, must be kept in sync manually for now. The batch files there should point at the same `Ollama_Proxy` path resolved by Zet.
 
+## Process Management
+
+AI Controls includes a process-management section for the local Zet service set.
+
+Current tracked processes:
+
+- Dashboard
+- Unified Proxy Worker
+- Auto Harvester
+- Render Console
+
+The dashboard process is status-only. The other services can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot.
+
 ## Current Open Items
 
 1. Build a proper `RENDER_REVIEW` page with approve/fail actions and image review history.
 2. Move `Promote to LOCKED` into Render Review instead of relying on the Assets detail panel.
 3. Add two render-review fail paths: `Fail to Render` to requeue the current render stage, and `Fail to Regenerate` to reset upstream work through regeneration.
-4. Add a process-management surface for dashboard, unified proxy worker, auto harvester, and render console.
-5. Prevent or clearly flag duplicate worker/harvester/render-console processes.
-6. Add pipeline/config visibility and safe controls for stages, actors, workers, render backend, prompt condense, auto preview render, and auto harvest interval.
-7. Add a clean way to archive or hide old harvested answer folders.
-8. Add dashboard visibility for harvested vs pending answers.
-9. Add stale claim detection and recovery for interrupted workers.
-10. Make standalone worker deployment reproducible instead of manually copying files into `C:/Users/Joe/Ollama`.
-11. Add a worker/process status view showing which worker types are currently online.
-12. Improve body-reference prompt and/or ComfyUI workflow so renders obey tank top and shorts more reliably.
-13. Add support for additional local image backends behind `Local_Render_Adapters/local_render.py`.
-14. Add tests for harvester idempotency, stale answer handling, and automatic ask staging.
-15. Decide whether Streamlit remains the long-term UI or becomes an operations console behind a future API/frontend.
-16. Keep moving reusable behavior out of dashboard code and into services.
+4. Add pipeline/config visibility and safe controls for stages, actors, workers, render backend, prompt condense, auto preview render, and auto harvest interval.
+5. Add a clean way to archive or hide old harvested answer folders.
+6. Add dashboard visibility for harvested vs pending answers.
+7. Add stale claim detection and recovery for interrupted workers.
+8. Make standalone worker deployment reproducible instead of manually copying files into `C:/Users/Joe/Ollama`.
+9. Improve body-reference prompt and/or ComfyUI workflow so renders obey tank top and shorts more reliably.
+10. Add support for additional local image backends behind `Local_Render_Adapters/local_render.py`.
+11. Add tests for harvester idempotency, stale answer handling, and automatic ask staging.
+12. Decide whether Streamlit remains the long-term UI or becomes an operations console behind a future API/frontend.
+13. Keep moving reusable behavior out of dashboard code and into services.

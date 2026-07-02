@@ -11,6 +11,7 @@ from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.config_service import ConfigService
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
+from zet.services.process_service import ProcessService
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
@@ -92,6 +93,7 @@ class ZetApp:
         self.prompt_review_service = prompt_review_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
+        self.process_service = ProcessService(Path(__file__).resolve().parents[1])
 
     @classmethod
     def from_config(cls, config_path: str | Path) -> "ZetApp":
@@ -189,3 +191,15 @@ class ZetApp:
 
     def list_monitor_responses(self):
         return self.ai_proxy_service.list_monitor_responses()
+
+    def process_statuses(self):
+        return self.process_service.statuses()
+
+    def start_process(self, process_id: str):
+        return self.process_service.start(process_id)
+
+    def stop_process(self, process_id: str):
+        return self.process_service.stop(process_id)
+
+    def restart_process(self, process_id: str):
+        return self.process_service.restart(process_id)

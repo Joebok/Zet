@@ -576,6 +576,10 @@ def request_row(request_dir: Path) -> dict:
     }
 
 
+def process_status_row(status) -> dict:
+    return status.to_dict()
+
+
 def load_view_options() -> dict:
     path = PROJECT_ROOT / "Config" / "Prompt_View_Text.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -1032,6 +1036,67 @@ def main() -> None:
             )
         else:
             st.caption("Auto harvest is disabled.")
+
+        try:
+            process_statuses = app.process_statuses()
+        except Exception as exc:
+            process_statuses = []
+            st.error(f"Unable to read process status: {exc}")
+
+        if process_statuses:
+            st.subheader("Processes")
+            st.dataframe(
+                [process_status_row(status) for status in process_statuses],
+                use_container_width=True,
+                hide_index=True,
+            )
+            for status in process_statuses:
+                if not status.manageable:
+                    continue
+                process_cols = st.columns([1.4, 1, 1, 1])
+                with process_cols[0]:
+                    label = status.label
+                    if status.duplicate_count:
+                        label += f" ({status.duplicate_count} duplicate)"
+                    st.markdown(f"**{label}**")
+                with process_cols[1]:
+                    start_clicked = st.button(
+                        "Start",
+                        key=f"process_start::{status.process_id}",
+                        disabled=status.running,
+                        use_container_width=True,
+                    )
+                with process_cols[2]:
+                    stop_clicked = st.button(
+                        "Stop",
+                        key=f"process_stop::{status.process_id}",
+                        disabled=not status.running,
+                        use_container_width=True,
+                    )
+                with process_cols[3]:
+                    restart_clicked = st.button(
+                        "Restart",
+                        key=f"process_restart::{status.process_id}",
+                        disabled=not status.running,
+                        use_container_width=True,
+                    )
+
+                try:
+                    if start_clicked:
+                        app.start_process(status.process_id)
+                        store_action_message("success", f"Started {status.label}.")
+                        st.rerun()
+                    if stop_clicked:
+                        count = app.stop_process(status.process_id)
+                        store_action_message("success", f"Stopped {count} {status.label} process(es).")
+                        st.rerun()
+                    if restart_clicked:
+                        count = app.restart_process(status.process_id)
+                        store_action_message("success", f"Restarted {status.label}; stopped {count} old process(es).")
+                        st.rerun()
+                except Exception as exc:
+                    store_action_message("error", str(exc))
+                    st.rerun()
 
         try:
             if harvest_clicked:

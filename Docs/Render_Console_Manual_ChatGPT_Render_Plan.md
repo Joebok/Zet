@@ -366,7 +366,7 @@ Completed:
 - Added pending `manual_chatgpt_render` task count.
 - Added pending manual render task table.
 
-### Milestone 9 - Process Management
+### Milestone 9 - Process Management - Complete
 
 - Add a single process-control surface for the local Zet service set:
   - dashboard
@@ -379,6 +379,17 @@ Completed:
 - Avoid duplicate worker and harvester instances unless explicitly requested.
 - Prefer a single launcher/supervisor script over scattered console windows.
 - Preserve readable logs for each service.
+
+Completed:
+
+- Added `ProcessService` for expected Zet service status.
+- Added AI Controls process table with running state, duplicate count, PIDs, manageability, and command lines.
+- Added Start / Stop / Restart controls for:
+  - unified proxy worker
+  - auto harvester
+  - render console
+- Dashboard is shown as status-only to avoid self-termination from inside the Streamlit process.
+- Process detection is currently lightweight and command-line based.
 
 ### Milestone 10 - Render Review Page
 
