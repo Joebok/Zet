@@ -75,7 +75,7 @@ def _is_render_review_asset(asset) -> bool:
 
 
 def _is_head_fitment_manifest_asset(asset) -> bool:
-    return asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "MANIFEST" and asset.actor == "PYTHON"
+    return asset.pipeline == "Head-Fitment" and asset.pipeline_stage in {"MANIFEST", "ADD_REF"} and asset.actor == "PYTHON"
 
 
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
@@ -87,7 +87,12 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["final_image_output"] = _format_value(asset.final_image_output)
     data["updated_at_display"] = _format_timestamp_with_age(asset.updated_at)
     data["review_image_ready"] = _review_image_ready(zet_app, asset)
-    data["pipeline_stage_display"] = f"CAMERA {asset.pipeline_stage}" if data["review_image_ready"] else asset.pipeline_stage
+    if asset.pipeline_stage == "ADD_REF" and asset.error_code:
+        data["pipeline_stage_display"] = f"ADD_REF ({asset.error_code})"
+    elif data["review_image_ready"]:
+        data["pipeline_stage_display"] = f"CAMERA {asset.pipeline_stage}"
+    else:
+        data["pipeline_stage_display"] = asset.pipeline_stage
     return data
 
 

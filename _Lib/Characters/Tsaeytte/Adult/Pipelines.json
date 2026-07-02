@@ -26,18 +26,21 @@
     },
     "Head-Fitment": {
       "stages": [
+        "ADD_REF",
         "MANIFEST",
         "PROMPT",
         "RENDER",
         "RENDER_REVIEW"
       ],
       "actor_by_stage": {
+        "ADD_REF": "PYTHON",
         "MANIFEST": "PYTHON",
         "PROMPT": "PYTHON",
         "RENDER": "AI_AGENT",
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
       "worker_by_stage": {
+        "ADD_REF": "zet.workers.head_fitment_manifest_worker",
         "MANIFEST": "zet.workers.head_fitment_manifest_worker",
         "PROMPT": "zet.workers.head_fitment_prompt_worker",
         "RENDER": "zet.workers.noop_worker",

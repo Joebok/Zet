@@ -230,13 +230,15 @@ Avoid head-fitment drift.
                             "worker_by_stage": {},
                         },
                         "Head-Fitment": {
-                            "stages": ["MANIFEST", "PROMPT", "RENDER"],
+                            "stages": ["ADD_REF", "MANIFEST", "PROMPT", "RENDER"],
                             "actor_by_stage": {
+                                "ADD_REF": "PYTHON",
                                 "MANIFEST": "PYTHON",
                                 "PROMPT": "PYTHON",
                                 "RENDER": "AI_AGENT",
                             },
                             "worker_by_stage": {
+                                "ADD_REF": "zet.workers.head_fitment_manifest_worker",
                                 "MANIFEST": "zet.workers.head_fitment_manifest_worker",
                                 "PROMPT": "zet.workers.head_fitment_prompt_worker",
                             },
@@ -835,7 +837,7 @@ Backend = "manual_chatgpt"
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
 
-    def test_head_fitment_manifest_worker_blocks_before_prompt_when_headshot_is_missing(self):
+    def test_head_fitment_manifest_worker_moves_to_add_ref_when_headshot_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -854,8 +856,51 @@ Backend = "manual_chatgpt"
 
             self.assertEqual(manifest_done.status_code, 200)
             asset = manifest_done.json()["detail"]["asset"]
-            self.assertEqual(asset["pipeline_stage"], "ERROR")
+            self.assertEqual(asset["pipeline_stage"], "ADD_REF")
+            self.assertEqual(asset["actor"], "PYTHON")
+            self.assertEqual(asset["asset_state"], "IN_PROGRESS")
             self.assertEqual(asset["error_code"], "MISSING_HEADSHOT_REFERENCE")
+
+            manifest_tasks = client.get("/api/head-fitment-manifest/tasks", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(manifest_tasks.status_code, 200)
+            task = manifest_tasks.json()["tasks"][0]
+            self.assertEqual(task["pipeline_stage"], "ADD_REF")
+            self.assertTrue(task["has_body_reference"])
+            self.assertFalse(task["has_headshot"])
+
+    def test_head_fitment_add_ref_can_resume_after_reference_is_added(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_head_fitment_fixture(root)
+            headshot_dir = root / "Characters" / "Test" / "Adult" / "Reference_Images" / "Headshots"
+            (headshot_dir / "head_front.png").unlink()
+            client = TestClient(create_app(config_path))
+
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
+            body_path = detail.json()["body_reference_options"][0]["path"]
+            client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={"body_reference_path": body_path, "headshot_path": ""},
+            )
+            client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
+
+            added_headshot = headshot_dir / "Front.png"
+            added_headshot.write_bytes(b"fake")
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
+            self.assertTrue(detail.json()["is_manifest_editable"])
+            client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={"body_reference_path": body_path, "headshot_path": str(added_headshot)},
+            )
+
+            resumed = client.post("/api/assets/2/run-current-worker", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(resumed.status_code, 200)
+            asset = resumed.json()["detail"]["asset"]
+            self.assertEqual(asset["pipeline_stage"], "PROMPT")
+            self.assertEqual(asset["actor"], "PYTHON")
+            self.assertIsNone(asset["error_code"])
 
     def test_character_assembly_workers_resolve_refs_compile_prompt_and_stage_render(self):
         with tempfile.TemporaryDirectory() as temp_dir:

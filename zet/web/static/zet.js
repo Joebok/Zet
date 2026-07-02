@@ -1094,7 +1094,9 @@ function renderManifestTaskTable() {
     const row = document.createElement("tr");
     row.dataset.assetId = task.asset_id;
     row.classList.toggle("selected", task.asset_id === state.selectedManifestAssetId);
-    for (const value of [task.asset_id, task.has_body_reference ? "yes" : "", task.has_headshot ? "yes" : ""]) {
+    const bodyState = task.has_body_reference ? "yes" : (task.pipeline_stage === "ADD_REF" ? "missing" : "");
+    const headshotState = task.has_headshot ? "yes" : (task.pipeline_stage === "ADD_REF" ? "missing" : "");
+    for (const value of [task.asset_id, bodyState, headshotState]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);

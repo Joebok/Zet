@@ -77,7 +77,7 @@ class ReferenceService:
         headshot = self._selected_reference(asset, "headshot") or {}
         return {
             "asset": asset,
-            "is_manifest_editable": asset.pipeline_stage == "MANIFEST" and asset.actor == "PYTHON",
+            "is_manifest_editable": asset.pipeline_stage in {"MANIFEST", "ADD_REF"} and asset.actor == "PYTHON",
             "body_reference_options": self._body_reference_options(character, phase, str(body_ref.get("path") or "")),
             "headshot_options": self._headshot_options(character, phase, str(headshot.get("path") or "")),
             "selected_body_reference": body_ref,
@@ -96,8 +96,8 @@ class ReferenceService:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.pipeline != "Head-Fitment":
             raise ReferenceServiceError("Reference picker is only available for Head-Fitment assets.")
-        if asset.pipeline_stage != "MANIFEST" or asset.actor != "PYTHON":
-            raise ReferenceServiceError("Head-fitment references can only be edited at MANIFEST / PYTHON.")
+        if asset.pipeline_stage not in {"MANIFEST", "ADD_REF"} or asset.actor != "PYTHON":
+            raise ReferenceServiceError("Head-fitment references can only be edited at MANIFEST or ADD_REF / PYTHON.")
 
         body_path = Path(body_reference_path)
         head_path = Path(headshot_path)

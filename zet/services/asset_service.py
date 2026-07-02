@@ -16,6 +16,11 @@ from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
 
 VALID_ACTORS = {"PYTHON", "AI_AGENT", "HUMAN_AGENT"}
+MISSING_REFERENCE_ERROR_CODES = {
+    "MISSING_REFERENCE",
+    "MISSING_BODY_REFERENCE",
+    "MISSING_HEADSHOT_REFERENCE",
+}
 
 
 class AssetServiceError(Exception):
@@ -407,7 +412,21 @@ class AssetService:
         if result.success:
             refreshed_asset = self.asset_repository.get_asset(character, phase, asset_id)
             if result.advance_stage:
-                updated_asset = self.move_next(character, phase, asset_id)
+                if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "ADD_REF":
+                    pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+                    prompt_actor = self._validate_actor(pipeline.name, "PROMPT", pipeline.actor_by_stage.get("PROMPT"))
+                    updated_asset = replace(refreshed_asset)
+                    updated_asset.asset_state = "IN_PROGRESS"
+                    updated_asset.pipeline_stage = "PROMPT"
+                    updated_asset.actor = prompt_actor
+                    updated_asset.ai_state = None
+                    updated_asset.error_code = None
+                    updated_asset.error_message = None
+                    updated_asset.updated_at = self._timestamp()
+                    self.asset_repository.save_asset(updated_asset)
+                    self.housekeeping_service.prepare_stage(updated_asset)
+                else:
+                    updated_asset = self.move_next(character, phase, asset_id)
             else:
                 updated_asset = replace(refreshed_asset)
                 updated_asset.error_code = None
@@ -416,6 +435,23 @@ class AssetService:
                 self.asset_repository.save_asset(updated_asset)
                 self.housekeeping_service.prepare_stage(updated_asset)
             return updated_asset
+
+        if asset.pipeline == "Head-Fitment" and (result.error_code or "") in MISSING_REFERENCE_ERROR_CODES:
+            refreshed_asset = self.asset_repository.get_asset(character, phase, asset_id)
+            pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+            add_ref_actor = self._validate_actor(pipeline.name, "ADD_REF", pipeline.actor_by_stage.get("ADD_REF"))
+            waiting_asset = replace(refreshed_asset)
+            waiting_asset.asset_state = "IN_PROGRESS"
+            waiting_asset.pipeline_stage = "ADD_REF"
+            waiting_asset.actor = add_ref_actor
+            waiting_asset.ai_state = None
+            waiting_asset.error_code = result.error_code or "MISSING_REFERENCE"
+            waiting_asset.error_message = result.error_message or result.message
+            waiting_asset.updated_at = self._timestamp()
+
+            self.asset_repository.save_asset(waiting_asset)
+            self.housekeeping_service.prepare_stage(waiting_asset)
+            return waiting_asset
 
         failed_asset = replace(asset)
         failed_asset.asset_state = "BLOCKED"
@@ -458,7 +494,10 @@ class AssetService:
                 before_actor = asset.actor
                 try:
                     updated_asset = self.run_current_worker(character, phase, asset.asset_id)
-                    status = "SUCCESS" if updated_asset.pipeline_stage != "ERROR" else "ERROR"
+                    if updated_asset.pipeline_stage == "ADD_REF":
+                        status = "WAITING"
+                    else:
+                        status = "SUCCESS" if updated_asset.pipeline_stage != "ERROR" else "ERROR"
                     worker_result = self.worker_service.last_worker_result
                     message = worker_result.message if worker_result is not None else "Worker executed."
                 except Exception as exc:

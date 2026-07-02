@@ -64,6 +64,15 @@ def _matching_headshot(context, head_view: str) -> Path | None:
     return None
 
 
+def _save_references(assets_path: Path, payload: dict, asset_id: int, references: list[dict]) -> bool:
+    for record in payload.get("assets", []):
+        if record.get("asset_id") == asset_id:
+            record["reference_files"] = references
+            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            return True
+    return False
+
+
 def run(asset, context) -> WorkerResult:
     if asset.pipeline != "Head-Fitment":
         return WorkerResult(
@@ -105,6 +114,7 @@ def run(asset, context) -> WorkerResult:
         head_view = asset.head_view or asset.body_view
         headshot_path = _matching_headshot(context, head_view)
         if headshot_path is None:
+            _save_references(assets_path, payload, asset.asset_id, [body_reference])
             return WorkerResult(
                 success=False,
                 message=f"No headshot image found for head view {head_view}.",
@@ -122,11 +132,7 @@ def run(asset, context) -> WorkerResult:
         }
 
     references = [body_reference, headshot_reference]
-    for record in payload.get("assets", []):
-        if record.get("asset_id") == asset.asset_id:
-            record["reference_files"] = references
-            break
-    else:
+    if not _save_references(assets_path, payload, asset.asset_id, references):
         return WorkerResult(
             success=False,
             message=f"Asset {asset.asset_id} not found in Assets.json.",
@@ -135,7 +141,6 @@ def run(asset, context) -> WorkerResult:
             error_message=f"Asset {asset.asset_id} not found in {assets_path}.",
         )
 
-    assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return WorkerResult(
         success=True,
         message=f"Resolved head-fitment references for Asset {asset.asset_id}.",
