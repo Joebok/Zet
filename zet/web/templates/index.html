@@ -4,12 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Zet</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/img/favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/img/favicon_io/site.webmanifest">
+  <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
   <link rel="stylesheet" href="/static/zet.css">
 </head>
 <body>
   <header class="app-header">
     <div class="brand">
-      <img src="/api/file?path=img/logo.png" alt="ZET logo">
+      <img src="/img/logo.png" alt="ZET logo">
       <span>ZET</span>
     </div>
     <div class="context-controls">
@@ -29,7 +34,7 @@
     <button class="tab" data-page="manifest">Manifest</button>
     <button class="tab" data-page="prompt-review">Prompt Review</button>
     <button class="tab" data-page="render-console">Render Console</button>
-    <button class="tab" data-page="render-review">Render Review</button>
+    <button class="tab" data-page="render-review">Image Review</button>
     <button class="tab" data-page="ai-controls">AI Controls</button>
     <button class="tab" data-page="pipeline-controls">Pipeline Controls</button>
     <button class="tab" data-page="template-editor">Template Editor</button>
@@ -216,6 +221,13 @@
           <div id="local-test-render" class="image-placeholder">No local test render.</div>
           <button id="prompt-approve" class="primary-action">Approve</button>
           <button id="prompt-fail">Fail</button>
+          <section class="source-inspector">
+            <h3>Source Inspector</h3>
+            <div id="source-inspector-empty" class="status-text">Select a source badge.</div>
+            <dl id="source-inspector-detail" hidden></dl>
+            <pre id="source-inspector-text" hidden></pre>
+            <button id="source-open-editor" disabled>Open Editor</button>
+          </section>
         </aside>
       </div>
     </section>
@@ -469,6 +481,32 @@
       </div>
     </section>
 
+    <section id="template-editor-page" class="page">
+      <div class="page-title-row">
+        <h1>Source Editor</h1>
+        <div id="source-editor-status" class="status-text"></div>
+      </div>
+      <div id="source-editor-message" class="action-message" hidden></div>
+      <div id="source-editor-warning" class="action-message error" hidden></div>
+      <div class="source-editor-layout">
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="source-editor-title">Select a source from Prompt Review</h2>
+          </div>
+          <div class="source-editor-toolbar">
+            <button id="source-editor-save" class="primary-action" disabled>Save Source</button>
+            <button id="source-editor-recompile" disabled>Recompile Current Prompt</button>
+            <label class="checkbox-row source-editor-option">
+              <input id="source-editor-clear-review-aids" type="checkbox" checked>
+              Clear condensed prompt and local test renders
+            </label>
+          </div>
+          <dl id="source-editor-meta" class="editor-meta"></dl>
+          <textarea id="source-editor-text" spellcheck="false"></textarea>
+        </section>
+      </div>
+    </section>
+
     <section id="placeholder-page" class="page">
       <h1 id="placeholder-title">Coming Soon</h1>
       <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
@@ -481,6 +519,25 @@
         <div class="button-row compact">
           <button id="copy-condensed" type="button">Copy</button>
           <button>Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="prompt-diff-dialog" class="wide-dialog">
+      <form method="dialog">
+        <div class="review-header">
+          <h2>Prompt Recompile Diff</h2>
+          <button>Close</button>
+        </div>
+        <div id="prompt-diff-summary" class="summary-bar"></div>
+        <div class="prompt-diff-grid">
+          <section>
+            <h3>Before</h3>
+            <div id="prompt-diff-old" class="prompt-diff-pane"></div>
+          </section>
+          <section>
+            <h3>After</h3>
+            <div id="prompt-diff-new" class="prompt-diff-pane"></div>
+          </section>
         </div>
       </form>
     </dialog>

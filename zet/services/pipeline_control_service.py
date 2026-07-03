@@ -117,8 +117,6 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
-            {"Scope": "Project config", "Setting": "RenderConsole.Host", "Value": self.config.render_console_host},
-            {"Scope": "Project config", "Setting": "RenderConsole.Port", "Value": self.config.render_console_port},
         ]
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:

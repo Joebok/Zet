@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import shutil
 import sys
 
 from zet.models.asset import Asset
@@ -16,6 +17,7 @@ if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
 from Local_Render_Adapters import LocalRenderResult, LocalRenderUnavailable, render_image
+from zet.workers import body_reference_prompt_worker
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,8 @@ class PromptReviewContext:
     condensed_prompt_text: str | None
     render_prompt_path: Path | None
     render_prompt_text: str | None
+    source_map_path: Path | None
+    source_map: dict
     prompt_review_path: Path | None
     prompt_candidates: list[Path]
     latest_local_test_render: Path | None
@@ -59,6 +63,8 @@ class PromptReviewService:
         condensed_prompt_text = condensed_prompt_path.read_text(encoding="utf-8") if condensed_prompt_path else None
         render_prompt_path = condensed_prompt_path or prompt_path
         render_prompt_text = condensed_prompt_text or prompt_text
+        source_map_path = self.resolve_source_map_file(prompt_path) if prompt_path else None
+        source_map = self._read_json_if_exists(source_map_path) if source_map_path else {}
         prompt_review_path = self.resolve_prompt_review_file(prompt_path) if prompt_path else None
         latest_render = self.latest_local_test_render(prompt_path) if prompt_path else None
         condense_status = self.prompt_condense_status(asset, prompt_path, condensed_prompt_path)
@@ -70,6 +76,8 @@ class PromptReviewService:
             condensed_prompt_text=condensed_prompt_text,
             render_prompt_path=render_prompt_path,
             render_prompt_text=render_prompt_text,
+            source_map_path=source_map_path,
+            source_map=source_map,
             prompt_review_path=prompt_review_path,
             prompt_candidates=prompt_candidates,
             latest_local_test_render=latest_render,
@@ -99,6 +107,10 @@ class PromptReviewService:
 
     def resolve_condensed_prompt_file(self, prompt_path: Path) -> Path | None:
         path = prompt_path.parent / "Condensed_Image_Prompt.md"
+        return path if path.exists() and path.is_file() else None
+
+    def resolve_source_map_file(self, prompt_path: Path) -> Path | None:
+        path = prompt_path.parent / "Prompt_Source_Map.json"
         return path if path.exists() and path.is_file() else None
 
     def _read_json_if_exists(self, path: Path) -> dict:
@@ -203,6 +215,37 @@ class PromptReviewService:
 
     def fail(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         return self.asset_service.fail_prompt_review(character, phase, asset_id, reason)
+
+    def recompile(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        invalidate_review_artifacts: bool = False,
+    ) -> PromptReviewContext:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline != "Body-Reference":
+            raise ValueError("Prompt review recompile currently supports Body-Reference assets.")
+        if not is_prompt_review_asset(asset):
+            raise ValueError(f"Asset {asset_id} is not currently in prompt review.")
+
+        prompt_path = self.resolve_prompt_file(asset, self.prompt_file_candidates(asset))
+        if invalidate_review_artifacts and prompt_path is not None:
+            self._clear_review_aids(prompt_path)
+
+        context = self.asset_service.worker_service._build_context(asset)
+        result = body_reference_prompt_worker.run(asset, context)
+        if not result.success:
+            raise ValueError(result.error_message or result.message)
+        return self.get_context(character, phase, asset_id)
+
+    def _clear_review_aids(self, prompt_path: Path) -> None:
+        condensed_prompt = prompt_path.parent / "Condensed_Image_Prompt.md"
+        if condensed_prompt.exists():
+            condensed_prompt.unlink()
+        local_render_dir = prompt_path.parent / "Local_Test_Renders"
+        if local_render_dir.exists() and local_render_dir.is_dir():
+            shutil.rmtree(local_render_dir)
 
     def generate_local_test_render(self, character: str, phase: str, asset_id: int) -> LocalRenderResult:
         context = self.get_context(character, phase, asset_id)

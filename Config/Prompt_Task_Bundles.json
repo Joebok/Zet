@@ -10,7 +10,9 @@
           "IDENTITY_PRESERVATION_BODY",
           "BODY_REFERENCE_RENDERING_RULES",
           "TECHNICAL_MODESTY_LAYER",
-        "NEGATIVE_GUIDANCE_GENERAL"
+          "NEUTRAL_POSE_STANCE",
+          "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
+          "NEGATIVE_GUIDANCE_GENERAL"
       ],
       "optional_sections": [
         "BODY_DESCRIPTION_VIEW_{VIEW}",
@@ -107,6 +109,8 @@
         "IDENTITY_PRESERVATION_BODY",
         "IDENTITY_PRESERVATION_COSTUME",
         "TECHNICAL_MODESTY_LAYER",
+        "NEUTRAL_POSE_STANCE",
+        "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
         "NEGATIVE_GUIDANCE_GENERAL"
       ],
       "optional_sections": [

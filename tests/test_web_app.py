@@ -935,6 +935,11 @@ Backend = "manual_chatgpt"
             self.assertIn("Preserve the Reference Body as a direct front-view full-body source", prompt_text)
             self.assertIn("Preserve the Character Head as a direct front-view head source", prompt_text)
             self.assertNotIn("{{", prompt_text)
+            source_map = json.loads((prompt_path.parent / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+            source_kinds = {fragment["source_kind"] for fragment in source_map["fragments"]}
+            self.assertIn("static_prompt_template", source_kinds)
+            self.assertIn("shared_template_section", source_kinds)
+            self.assertIn("config_view_instruction", source_kinds)
 
             ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
             self.assertEqual(len(ask_dirs), 1)

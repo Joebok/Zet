@@ -863,11 +863,123 @@ Rendering priorities:
 
 <!-- ZET:END HEAD_FITMENT_RENDERING_RULES -->
 
+
+## STANCE AND FOOT PLACEMENT — CRITICAL
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE -->
+
+Use a neutral anatomical reference stance.
+
+Both feet are flat on the floor.
+Both heels are fully planted.
+Both forefeet and toes touch the ground.
+No raised heel.
+No lifted foot.
+No tiptoe stance.
+No walking step.
+No crossed ankles.
+No ballet pose.
+No contrapposto.
+No weight-shift pose.
+
+The legs remain straight and relaxed, with only a slight natural knee softness.
+Both knees point in the same direction as the torso.
+Feet are placed directly under the hips, shoulder-width or slightly narrower.
+Left and right feet are parallel or nearly parallel.
+The feet must preserve the requested body view.
+
+For {VIEW} view:
+<!-- ZET:END NEUTRAL_POSE_STANCE -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT -->
+
+- Feet are side-by-side and symmetrical.
+- Knees, ankles, and toes align vertically beneath the hips.
+- No staggered foot placement.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
+
+- Both feet remain flat on the ground.
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4 -->
+
+- Both feet remain flat on the ground.
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4 -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_LEFT_PROFILE -->
+
+- Both feet remain flat on the ground.
+- One foot may partially overlap the other because of the view angle, but neither foot is lifted.
+- The body is not stepping forward.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_LEFT_PROFILE -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE -->
+
+- Both feet remain flat on the ground.
+- One foot may partially overlap the other because of the view angle, but neither foot is lifted.
+- The body is not stepping forward.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK_LEFT_3_4 -->
+
+- Both feet remain flat on the ground.
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK_LEFT_3_4 -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK_RIGHT_3_4 -->
+
+- Both feet remain flat on the ground.
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK_RIGHT_3_4 -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK -->
+
+- Feet are side-by-side and symmetrical.
+- Knees, ankles, and toes align vertically beneath the hips.
+- No staggered foot placement.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK -->
+
+For body-reference, use simple neutral form-fitting clothing.
+
 ## Technical Modesty / Safety Layer
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
-
-For body-reference, use simple neutral fitment clothing.
 
 Clothing rules:
 
@@ -895,7 +1007,7 @@ Clothing rules:
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_MASCULINE -->
 
-For body-reference, use simple neutral fitment clothing.
+For body-reference, use simple neutral form-fitting clothing.
 
 Clothing rules:
 
@@ -998,6 +1110,8 @@ Recommended sections for body-reference:
 * IDENTITY_PRESERVATION_BODY
 * BODY_REFERENCE_RENDERING_RULES
 * TECHNICAL_MODESTY_LAYER
+* NEUTRAL_POSE_STANCE
+* NEUTRAL_POSE_STANCE_VIEW_[REQUESTED_VIEW]
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_BODY_REFERENCE -->

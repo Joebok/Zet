@@ -57,6 +57,11 @@ Do not change the camera angle.
 Do not crop the feet.
 Do not turn the image into a portrait, bust shot, waist-up image, collage, or split reference sheet.
 
+STANCE AND FOOT PLACEMENT — CRITICAL
+
+{{NEUTRAL_POSE_STANCE}}
+{{NEUTRAL_POSE_STANCE_VIEW_{VIEW}}}
+
 CHARACTER HEAD CONTROLS
 
 Use the Character Head source as the authority for:

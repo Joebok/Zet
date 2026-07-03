@@ -37,21 +37,11 @@ The FastAPI dashboard currently covers:
 
 The Template Editor is intentionally deferred while the body-reference authoring workflow is reconsidered.
 
-## Legacy Streamlit Dashboard
+## Retired Dashboards
 
-The Streamlit dashboard lives at:
+The old Streamlit dashboard and standalone Render Console have been retired. The FastAPI dashboard in `zet/web/` is the only supported dashboard surface.
 
-```text
-zet/dashboard/app.py
-```
-
-It is now legacy/diagnostic. Launch it with:
-
-```text
-run_streamlit_dashboard.bat
-```
-
-Do not add new workflow functionality to Streamlit unless it is explicitly temporary diagnostic work.
+Do not add new workflow functionality to the retired surfaces.
 
 ## Assets Page
 
@@ -273,46 +263,16 @@ Important proven behavior:
 
 This has been smoother for the manual render workflow than forcing everything through Streamlit.
 
-## Streamlit Fit Assessment
+## Dashboard Direction
 
-Streamlit remains useful for:
-
-- quick internal tools
-- read-heavy status pages
-- buttons that call Python service methods
-- simple forms
-- low-frequency admin controls
-
-Streamlit is showing strain for:
-
-- precise table row selection
-- app-like navigation
-- review workflows where one click should always do exactly one thing
-- multi-page state with query params and session state
-- rich clipboard/image workflows
-- high-frequency operational dashboards
-- preventing browser-level link behavior in places where we want in-app transitions
-
-The current double-click row selection issue is a practical example. We can keep applying Streamlit workarounds, but that cost will repeat.
-
-## Recommendation
-
-Do not rewrite everything immediately.
-
-The backend/service split is strong enough to support a gradual UI migration. The best next step is to keep Streamlit running while moving high-friction workflow screens to a small FastAPI/HTML frontend, similar to the Render Console.
+The Streamlit assessment phase is complete. The FastAPI dashboard is now the supported workflow console for assets, prompt review, render console, image review, AI controls, and pipeline controls.
 
 Recommended direction:
 
-1. Keep Streamlit for AI Controls, Pipeline Controls, and simple admin/status pages for now.
-2. Build or expand FastAPI/HTML pages for daily workflow screens:
-   - Assets table
-   - Prompt Review
-   - Render Review
-3. Add JSON endpoints that expose service-backed state instead of putting dashboard logic directly in the page.
-4. Move dashboard-local aggregation into services when it is not purely display formatting.
-5. Let Streamlit become an operations/admin console while the FastAPI UI becomes the production workflow console.
-
-This avoids a risky rewrite and lets the working backend remain the center of gravity.
+1. Add new workflow pages to `zet/web/`.
+2. Add JSON endpoints that expose service-backed state instead of putting workflow logic directly in browser code.
+3. Move dashboard-local aggregation into services when it is not purely display formatting.
+4. Keep the working backend as the center of gravity.
 
 ## Candidate API Surface
 
@@ -348,7 +308,7 @@ The Render Console already proves the pattern.
 
 ## Current Cleanup Candidates
 
-Move these out of `zet/dashboard/app.py` when convenient:
+Keep these out of `zet/web/app.py` when convenient:
 
 - `review_image_ready`
 - manual render ask filtering/counting
@@ -356,7 +316,6 @@ Move these out of `zet/dashboard/app.py` when convenient:
 - queue count summary
 - selected asset fallback behavior
 - prompt-review navigation list
-- render console URL construction
 
 Add service-level snapshots for:
 

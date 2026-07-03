@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
+import difflib
+import json
 from dataclasses import asdict
 from pathlib import Path
+import sys
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
@@ -13,10 +17,16 @@ from zet.app import ZetApp
 from zet.render_console.queue import RenderConsoleQueue
 from zet.services.config_service import ConfigService
 from zet.services.pipeline_control_service import AutomationSettings
-from zet.services.prompt_review_service import LocalRenderUnavailable
-
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
+SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
+if str(SCRIPTS_PATH) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_PATH))
+
+from zet.services.prompt_review_service import LocalRenderUnavailable
+
+from Compile_Character_Template import MARKER_RE
+from Template_Section_Editor import save_template_sections
 
 
 def _app(config_path: str | Path) -> ZetApp:
@@ -121,6 +131,8 @@ def _prompt_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
         "condensed_prompt_path": str(context.condensed_prompt_path) if context.condensed_prompt_path else None,
         "condensed_prompt_text": context.condensed_prompt_text or "",
         "render_prompt_path": str(context.render_prompt_path) if context.render_prompt_path else None,
+        "source_map_path": str(context.source_map_path) if context.source_map_path else None,
+        "source_map": _jsonable(context.source_map),
         "prompt_review_path": str(context.prompt_review_path) if context.prompt_review_path else None,
         "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
         "prompt_candidates": [str(path) for path in context.prompt_candidates],
@@ -221,7 +233,6 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
         "monitor_requests": _monitor_request_payloads(zet_app),
         "monitor_responses": _jsonable(zet_app.list_monitor_responses()),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
-        "render_console_url": f"http://{zet_app.config.render_console_host}:{zet_app.config.render_console_port}",
     }
 
 
@@ -263,6 +274,211 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     return value
+
+
+def _source_for_line(source_map: dict[str, Any], line_number: int) -> dict[str, Any]:
+    fragments = source_map.get("fragments") if isinstance(source_map, dict) else []
+    if not isinstance(fragments, list):
+        return {}
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            continue
+        start = int(fragment.get("prompt_start_line") or 0)
+        end = int(fragment.get("prompt_end_line") or start)
+        if start <= line_number <= end:
+            return fragment
+    return {}
+
+
+def _prompt_diff_payload(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    old_text = str(before.get("prompt_text") or "")
+    new_text = str(after.get("prompt_text") or "")
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    old_map = before.get("source_map") if isinstance(before.get("source_map"), dict) else {}
+    new_map = after.get("source_map") if isinstance(after.get("source_map"), dict) else {}
+    old_rows: list[dict[str, Any]] = []
+    new_rows: list[dict[str, Any]] = []
+
+    def row(line_no: int, text: str, status: str, source_map: dict[str, Any]) -> dict[str, Any]:
+        source = _source_for_line(source_map, line_no)
+        return {
+            "line_no": line_no,
+            "text": text,
+            "status": status,
+            "source_kind": source.get("source_kind") or "",
+            "source_label": source.get("source_label") or "",
+        }
+
+    matcher = difflib.SequenceMatcher(a=old_lines, b=new_lines)
+    for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+        old_status = "unchanged" if tag == "equal" else "changed"
+        new_status = "unchanged" if tag == "equal" else "changed"
+        if tag == "delete":
+            old_status = "removed"
+        elif tag == "insert":
+            new_status = "added"
+
+        for index in range(old_start, old_end):
+            old_rows.append(row(index + 1, old_lines[index], old_status, old_map))
+        for index in range(new_start, new_end):
+            new_rows.append(row(index + 1, new_lines[index], new_status, new_map))
+
+    return {
+        "changed": old_text != new_text,
+        "old_prompt_path": before.get("prompt_path"),
+        "new_prompt_path": after.get("prompt_path"),
+        "old_rows": old_rows,
+        "new_rows": new_rows,
+    }
+
+
+def _record_source_edit(payload: dict[str, Any], result: dict[str, Any]) -> None:
+    log_dir = PROJECT_ROOT / "Logs"
+    log_dir.mkdir(exist_ok=True)
+    entry = {
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+        "path": result.get("path"),
+        "editor_type": result.get("editor_type"),
+        "section_name": payload.get("section_name"),
+        "json_pointer": payload.get("json_pointer"),
+        "text_length": len(str(payload.get("text") or "")),
+    }
+    with (log_dir / "Source_Edits.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _resolve_editable_source_path(path: str) -> Path:
+    requested = Path(path)
+    if not requested.is_absolute():
+        requested = PROJECT_ROOT / requested
+    resolved = requested.resolve()
+    project_root = PROJECT_ROOT.resolve()
+    try:
+        resolved.relative_to(project_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Source path must be inside the Zet project.") from exc
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail=f"Source file not found: {path}")
+    return resolved
+
+
+def _json_pointer_parts(pointer: str) -> list[str]:
+    raw = str(pointer or "").strip()
+    if not raw.startswith("/"):
+        raise HTTPException(status_code=400, detail="JSON pointer must start with '/'.")
+    return [part.replace("~1", "/").replace("~0", "~") for part in raw.split("/")[1:]]
+
+
+def _get_json_pointer(data: Any, pointer: str) -> Any:
+    item = data
+    for part in _json_pointer_parts(pointer):
+        if isinstance(item, dict):
+            item = item[part]
+        elif isinstance(item, list):
+            item = item[int(part)]
+        else:
+            raise KeyError(part)
+    return item
+
+
+def _set_json_pointer(data: Any, pointer: str, value: Any) -> None:
+    parts = _json_pointer_parts(pointer)
+    if not parts:
+        raise HTTPException(status_code=400, detail="Cannot replace the whole JSON document here.")
+    item = data
+    for part in parts[:-1]:
+        item = item[int(part)] if isinstance(item, list) else item[part]
+    last = parts[-1]
+    if isinstance(item, list):
+        item[int(last)] = value
+    elif isinstance(item, dict):
+        item[last] = value
+    else:
+        raise HTTPException(status_code=400, detail="JSON pointer does not reference an editable field.")
+
+
+def _extract_markdown_section(path: Path, section_name: str) -> tuple[str, int | None, int | None]:
+    text = path.read_text(encoding="utf-8")
+    open_name = None
+    content_start = 0
+    start_line = None
+    for marker in MARKER_RE.finditer(text):
+        kind, name = marker.group(1), marker.group(2)
+        if kind == "BEGIN":
+            open_name = name
+            content_start = marker.end()
+            start_line = text.count("\n", 0, content_start) + 1
+            continue
+        if open_name == section_name and kind == "END" and name == section_name:
+            end_line = text.count("\n", 0, marker.start()) + 1
+            return text[content_start:marker.start()].strip("\n"), start_line, end_line
+        open_name = None
+    raise HTTPException(status_code=404, detail=f"Section not found: {section_name}")
+
+
+def _edit_source_payload(source: dict[str, Any]) -> dict[str, Any]:
+    kind = str(source.get("source_kind") or "")
+    path = _resolve_editable_source_path(str(source.get("source_path") or ""))
+    section = str(source.get("section_name") or "")
+    json_pointer = str(source.get("json_pointer") or "")
+    warning = ""
+    if kind == "shared_template_section":
+        warning = "Shared template edits can affect multiple characters and phases."
+    if section:
+        text, start_line, end_line = _extract_markdown_section(path, section)
+        editor_type = "markdown_section"
+    elif json_pointer:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        text = _get_json_pointer(data, json_pointer)
+        if isinstance(text, (list, dict)):
+            text = json.dumps(text, indent=2, ensure_ascii=False)
+        editor_type = "json_field"
+        start_line = end_line = None
+    else:
+        text = path.read_text(encoding="utf-8")
+        editor_type = "markdown_file"
+        start_line = end_line = None
+    return {
+        "source": source,
+        "editor_type": editor_type,
+        "path": str(path),
+        "section_name": section or None,
+        "json_pointer": json_pointer or None,
+        "text": str(text),
+        "start_line": start_line,
+        "end_line": end_line,
+        "warning": warning,
+    }
+
+
+def _save_edit_source(payload: dict[str, Any]) -> dict[str, Any]:
+    path = _resolve_editable_source_path(str(payload.get("path") or ""))
+    editor_type = str(payload.get("editor_type") or "")
+    text = str(payload.get("text") or "")
+    if editor_type == "markdown_section":
+        section = str(payload.get("section_name") or "")
+        if not section:
+            raise HTTPException(status_code=400, detail="Missing section name.")
+        save_template_sections(path, {section: text}, [section])
+    elif editor_type == "json_field":
+        pointer = str(payload.get("json_pointer") or "")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        current = _get_json_pointer(data, pointer)
+        value: Any = text
+        if isinstance(current, list):
+            value = [line.strip() for line in text.splitlines() if line.strip()]
+        elif isinstance(current, (int, float, bool, dict)):
+            value = json.loads(text)
+        _set_json_pointer(data, pointer, value)
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    elif editor_type == "markdown_file":
+        path.write_text(text, encoding="utf-8")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported editor type: {editor_type}")
+    result = {"status": "SAVED", "path": str(path), "editor_type": editor_type}
+    _record_source_edit(payload, result)
+    return result
 
 
 def _asset_detail_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
@@ -308,6 +524,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     app.state.config_path = str(config_path)
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
+    app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -352,6 +569,26 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
         return FileResponse(requested)
 
+    @app.post("/api/edit-source/load")
+    def edit_source_load(source: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            if source.get("editable") is False:
+                raise HTTPException(status_code=400, detail="This source is not editable.")
+            return _edit_source_payload(source)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/edit-source/save")
+    def edit_source_save(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _save_edit_source(payload)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/prompt-review/tasks")
     def prompt_review_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -379,6 +616,30 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return payload
         except LocalRenderUnavailable as exc:
             raise HTTPException(status_code=503, detail="Local render backend unavailable.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-review/{asset_id}/recompile")
+    def prompt_review_recompile(
+        asset_id: int,
+        character: str = Query(...),
+        phase: str = Query(...),
+        invalidate_review_artifacts: bool = Query(False),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            before = _prompt_review_context_payload(zet_app, character, phase, asset_id)
+            zet_app.recompile_prompt_review(
+                character,
+                phase,
+                asset_id,
+                invalidate_review_artifacts=invalidate_review_artifacts,
+            )
+            payload = _prompt_review_context_payload(zet_app, character, phase, asset_id)
+            payload["prompt_diff"] = _prompt_diff_payload(before, payload)
+            suffix = " Review aids were cleared." if invalidate_review_artifacts else ""
+            payload["message"] = f"Prompt recompiled for Asset {asset_id}.{suffix}"
+            return payload
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

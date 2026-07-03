@@ -18,6 +18,20 @@ The image should:
  * preserve identity, expression, hair, and all features of the referenced head image above the neck.
  * have transparent background
 
+This is a technical fitment asset, not a portrait crop.
+
+Do not compose the image using a conventional bust or shoulder framing.
+
+Visible neck extent:
+
+Approximately the upper half of the neck is visible.
+
+The neck-column anchor defines the lowest visible point of the neck.
+
+The future body attachment begins immediately below the neck-column anchor and is outside the image.
+
+No portion of the shoulder slope, trapezius, collarbones, upper back, chest, or torso is visible.
+
 The image should NOT:
 
 * Have any part of the body below the neck
@@ -36,7 +50,11 @@ If the Character Head source uses a different art style, repaint only the render
 The art-style conversion must not redesign the character.
 The art-style conversion must not change the head view, camera angle, face identity, hairstyle, ears, expression, age, species, or neck geometry.
 
-**Neck-column anchor**: the midpoint of the visible neck column, clearly above the torso and shoulder mass, halfway between the underside of the jaw/skull and the base of the neck where the neck begins to widen into the shoulders. This anchor is on the neck itself, not on the collarbone, chest, shoulders, or torso.
+The neck-column anchor is halfway along the visible neck column, between the underside of the jaw/skull and the base of the neck where the neck begins to widen into the shoulders.
+
+The neck-column anchor defines the lowest visible point of the neck.
+
+The future body attachment begins immediately below this point and is outside the image.
 
 Neck-column anchor — controls where the head/neck module is centered and vertically placed.
 
@@ -44,7 +62,13 @@ Base-neck docking shape — controls the lower cut/join where the fitted neck wi
 
 Fit the Character Neck to the Reference Body’s neck-column anchor and base-neck docking shape. The neck-column anchor is the midpoint of the visible neck column, clearly above the torso and shoulder mass. Use it to control neck length, width, angle, and vertical placement so the fitted head-and-neck module can join cleanly to the body-reference neck.
 
-The Character Neck may be slightly adjusted so it could blend seamlessly into the Reference Body Neck-column anchor.
+Adjust only the neck geometry required to match the Reference Body.
+
+The visible neck remains approximately cylindrical and does not widen toward the shoulders before terminating at the neck-column anchor.
+
+Do not render the base of the neck, shoulder slope, trapezius, collarbones, chest, upper back, or torso.
+
+The future body attachment point lies immediately below the neck-column anchor and is outside the image.
 
 CANONICAL ART STYLE REINFORCEMENT
 
@@ -79,24 +103,19 @@ The only allowed adjustment is to align the Character Head and Character Neck to
 
 The output must be a standalone head-and-neck module.
 
-The image only includes:
-- Character Head
-- character hair
-- character ears
-- visible character face if visible in the Character Head source view
-- fitted character neck
-- optional subtle neck connection edge/guide only if required for downstream fitment
+The image contains only the head and the visible portion of the neck.
 
-The image must not include:
-- shoulders
-- torso
-- bust
-- bust wrap
-- chest
-- upper body
-- mannequin body
-- mannequin head
-- scene background
+The visible neck terminates at the neck-column anchor.
+
+No anatomy below the neck-column anchor is rendered.
+
+The image is incorrect if the neck widens into the shoulders.
+
+The image is incorrect if any shoulder slope, trapezius, collarbone, upper back, chest, or torso is visible.
+
+The image is incorrect if the lower edge includes the beginning of the shoulder slope.
+
+The image is incorrect if the neck visibly flares into the trapezius or shoulder mass.
 
 Reference Body is alignment-only.
 

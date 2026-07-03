@@ -157,30 +157,7 @@ zet/render_console/
     render_console.css
 ```
 
-Suggested endpoints:
-
-```text
-GET  /
-GET  /api/tasks
-GET  /api/tasks/{ask_id}
-GET  /api/tasks/{ask_id}/prompt
-GET  /api/tasks/{ask_id}/reference/{index}
-POST /api/tasks/{ask_id}/answer-image
-POST /api/tasks/{ask_id}/fail
-POST /api/tasks/{ask_id}/manual-status
-```
-
-Suggested launcher:
-
-```text
-run_render_console.bat
-```
-
-Default run command:
-
-```text
-python3 -B -m zet.render_console.app --config config.toml
-```
+The original standalone API and launcher have been replaced by integrated dashboard APIs under `/api/render-console/...`.
 
 ## Configuration
 
@@ -189,23 +166,9 @@ Add:
 ```toml
 [Render]
 Backend = "manual_chatgpt"
-
-[RenderConsole]
-Host = "127.0.0.1"
-Port = 8090
-RequireToken = false
-Token = ""
 ```
 
-For Tailscale deployment:
-
-```toml
-[RenderConsole]
-Host = "0.0.0.0"
-Port = 8090
-```
-
-Or bind directly to the machine's Tailscale IP if preferred.
+Tailscale/LAN deployment now applies to the main FastAPI dashboard host and port.
 
 ## HTTPS Over Tailscale
 
@@ -230,7 +193,7 @@ Implementation research items:
 - Confirm the active Tailscale MagicDNS name for the Zet host.
 - Enable or document Tailscale HTTPS certificates.
 - Decide whether uvicorn serves TLS directly or a small reverse proxy terminates TLS.
-- Update `run_render_console.bat` or a companion PowerShell script to use the HTTPS configuration.
+- Update the main FastAPI dashboard launch/deployment path to use the HTTPS configuration.
 - Document firewall and Tailscale ACL expectations.
 
 ## Milestones
@@ -265,11 +228,10 @@ Completed in commit after Milestone 0:
 
 Completed:
 
-- Added `zet/render_console`.
-- Added FastAPI app skeleton.
+- Added `zet/render_console.queue`.
+- Added integrated FastAPI dashboard API skeleton.
 - Added queue reader for pending `manual_chatgpt_render` asks.
 - Added minimal HTML/JS/CSS console with Previous / Next navigation.
-- Added `run_render_console.bat`.
 - Added `fastapi` and `uvicorn` to requirements.
 
 ### Milestone 3 - Prompt And Reference Console
@@ -312,41 +274,14 @@ Completed:
 - Failing moves the task from `Ask/` to `Answer/`.
 - Queue-layer smoke test verified the failed-answer write/move behavior.
 
-### Milestone 6 - Launchers And LAN/Tailscale Hosting - Complete
+### Milestone 6 - Launchers And LAN/Tailscale Hosting - Retired
 
-- Add `run_render_console.bat`.
-- Add optional PowerShell launcher.
-- Document how to bind to localhost, all interfaces, or Tailscale IP.
-- Confirm access from another Tailscale machine.
+The standalone Render Console launchers were useful during development. They have been removed because the Render Console is now integrated into the main FastAPI dashboard.
 
 Completed:
 
-- Added `run_render_console.bat`.
-- Added `run_render_console.ps1`.
-- Updated `run_ai_services.bat` and `run_ai_services.ps1` to start the Render Console alongside the unified proxy worker and auto harvester.
-- Render Console bind host and port are controlled by `[RenderConsole]` in `config.toml`.
-- Local-only default:
-
-```toml
-[RenderConsole]
-Host = "127.0.0.1"
-Port = 8090
-```
-
-- Tailscale/LAN option:
-
-```toml
-[RenderConsole]
-Host = "0.0.0.0"
-Port = 8090
-```
-
-Access from another Tailscale machine using the Zet host's Tailscale name or IP:
-
-```text
-http://<zet-host-tailnet-name>:8090
-http://100.x.y.z:8090
-```
+- Render Console is available as a dashboard tab.
+- `run_ai_services.bat` and `run_ai_services.ps1` start the unified proxy worker and auto harvester only.
 
 Windows firewall may need to allow inbound connections to the configured port.
 
@@ -395,11 +330,10 @@ Completed:
 - Added Start / Stop / Restart controls for:
   - unified proxy worker
   - auto harvester
-  - render console
-- Dashboard is shown as status-only to avoid self-termination from inside the Streamlit process.
+  - Zet Web Dashboard
 - Process detection is currently lightweight and command-line based.
 
-### Milestone 10 - Render Review Page
+### Milestone 10 - Render Review Page - Complete
 
 - Add a dedicated `RENDER_REVIEW` page similar to Prompt Review.
 - Show the candidate image prominently.
@@ -448,3 +382,7 @@ Completed:
 - Should completed manual render answers be archived after harvesting?
 - Should process supervision live inside Zet, or should Zet generate scripts for an external supervisor?
 - Should Render Review offer a default fail button, or require the human to explicitly choose `Fail to Render` vs `Fail to Regenerate` every time?
+
+## Retirement Notes
+
+The standalone Render Console server and launch scripts have been retired. The supported Render Console is the integrated FastAPI dashboard tab backed by the shared `RenderConsoleQueue`.

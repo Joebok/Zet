@@ -134,6 +134,14 @@ Line-level attribution is enough for the first version. Character offsets can be
 
 ## Prompt Review UI Plan
 
+### Implementation Status
+
+- Milestone 1 is implemented: Prompt Review shows source badges beside nonblank prompt lines.
+- Milestone 2 is implemented: clicking a badge opens the Source Inspector with source metadata and selected line text.
+- Milestone 3 is implemented: editable sources route to the Source Editor for markdown sections, full markdown files, and JSON fields.
+- Milestone 4 is implemented: source saves are recorded in `Logs/Source_Edits.jsonl`, and the Source Editor offers an explicit recompile action without advancing the asset. Clearing condensed prompts and local test renders is available and checked by default.
+- Milestone 5 is implemented as a first pass: after recompiling, the dashboard shows a before/after prompt diff with changed lines highlighted and source labels displayed.
+
 ### Milestone 1: Read-Only Attribution
 
 Add source badges or gutters beside the prompt text:
@@ -228,8 +236,16 @@ Do not force all text into the current template editor shape. The current editor
 ## Open Questions
 
 - Should source maps include character offsets, or only line ranges?
-- Should edits save immediately to source files, or create draft patches for review?
-- Should source edits automatically invalidate previous render candidates?
-- Should Prompt Review show attribution always, or as a toggle to avoid visual noise?
-- Should shared template edits warn that they affect multiple characters/phases?
+Line ranges is fine. Most are lines anyway, and if it becomes and issue I would rather edit the templates to keep things on their own lines.
 
+- Should edits save immediately to source files, or create draft patches for review?
+Save immediately especially with milestones 4 and 5. We are not in a production environment where the stakes are high.
+
+- Should source edits automatically invalidate previous render candidates?
+This should be an option when saving.
+
+- Should Prompt Review show attribution always, or as a toggle to avoid visual noise?
+Always show - this is a tuning step to get the prompts coming out right. Once that is done, I expect pipelines to skip this step and go right to render.
+
+- Should shared template edits warn that they affect multiple characters/phases?
+Yes, should be immediately obvious with a warning banner at the top!

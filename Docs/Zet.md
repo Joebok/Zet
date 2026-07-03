@@ -207,7 +207,7 @@ The dashboard should remain a UI layer. Reusable behavior belongs in services or
 
 The primary dashboard is implemented in FastAPI at `zet/web/app.py`.
 
-The legacy Streamlit dashboard remains available at `zet/dashboard/app.py` for fallback/diagnostic use only.
+The old Streamlit dashboard has been retired. New dashboard work belongs in `zet/web/` and should call backend services rather than owning workflow logic directly.
 
 A detailed inventory of current dashboard behavior and UI direction is maintained in:
 
@@ -642,9 +642,8 @@ Current tracked processes:
 - Zet Web Dashboard
 - Unified Proxy Worker
 - Auto Harvester
-- Standalone Render Console Legacy
 
-The primary dashboard and service processes can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot. The standalone Render Console remains available only as a temporary fallback because the console is now integrated into the main dashboard.
+The primary dashboard and service processes can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot. The Render Console is integrated into the main FastAPI dashboard and no longer has a standalone server.
 
 ## Current Open Items
 

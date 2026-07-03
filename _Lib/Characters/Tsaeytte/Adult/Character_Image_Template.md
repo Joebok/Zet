@@ -744,6 +744,12 @@ Avoid:
 * Missing, hidden, rounded, or human ears
 * Incorrect body type: bulky, stocky, heavy-thighed, childlike
 * Dramatic pose
+* feet not flat on floor.
+* raised heel, lifted heel, lifted toes, tiptoe stance 
+* walking pose, stepping pose, crossed feet, crossed ankles, staggered stance, 
+* dance pose, contrapposto, model pose, fashion stance, 
+* one leg bearing all weight, one knee bent dramatically 
+* feet not flat on floor.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
 

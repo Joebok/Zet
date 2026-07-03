@@ -25,6 +25,8 @@ const state = {
   manifestTasks: [],
   selectedManifestAssetId: null,
   manifestDetail: null,
+  selectedSource: null,
+  sourceEditor: null,
 };
 
 const characterSelect = document.querySelector("#character-select");
@@ -63,9 +65,17 @@ const generateLocalTestButton = document.querySelector("#generate-local-test");
 const localTestRender = document.querySelector("#local-test-render");
 const promptApproveButton = document.querySelector("#prompt-approve");
 const promptFailButton = document.querySelector("#prompt-fail");
+const sourceInspectorEmpty = document.querySelector("#source-inspector-empty");
+const sourceInspectorDetail = document.querySelector("#source-inspector-detail");
+const sourceInspectorText = document.querySelector("#source-inspector-text");
+const sourceOpenEditor = document.querySelector("#source-open-editor");
 const condensedDialog = document.querySelector("#condensed-dialog");
 const condensedText = document.querySelector("#condensed-text");
 const copyCondensedButton = document.querySelector("#copy-condensed");
+const promptDiffDialog = document.querySelector("#prompt-diff-dialog");
+const promptDiffSummary = document.querySelector("#prompt-diff-summary");
+const promptDiffOld = document.querySelector("#prompt-diff-old");
+const promptDiffNew = document.querySelector("#prompt-diff-new");
 const renderReviewStatus = document.querySelector("#render-review-status");
 const renderReviewTaskBody = document.querySelector("#render-review-task-table tbody");
 const renderReviewPrev = document.querySelector("#render-review-prev");
@@ -118,6 +128,15 @@ const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
 const batchIncludeLocked = document.querySelector("#batch-include-locked");
 const batchRenderResetButton = document.querySelector("#batch-render-reset");
 const batchRenderResultTableBody = document.querySelector("#batch-render-result-table tbody");
+const sourceEditorStatus = document.querySelector("#source-editor-status");
+const sourceEditorMessage = document.querySelector("#source-editor-message");
+const sourceEditorWarning = document.querySelector("#source-editor-warning");
+const sourceEditorTitle = document.querySelector("#source-editor-title");
+const sourceEditorSave = document.querySelector("#source-editor-save");
+const sourceEditorRecompile = document.querySelector("#source-editor-recompile");
+const sourceEditorClearReviewAids = document.querySelector("#source-editor-clear-review-aids");
+const sourceEditorMeta = document.querySelector("#source-editor-meta");
+const sourceEditorText = document.querySelector("#source-editor-text");
 const renderConsoleStatus = document.querySelector("#render-console-status");
 const renderConsoleTaskBody = document.querySelector("#render-console-task-table tbody");
 const renderConsolePrev = document.querySelector("#render-console-prev");
@@ -204,6 +223,12 @@ function showPipelineControlsMessage(message, kind = "info") {
   pipelineControlsMessage.textContent = message || "";
   pipelineControlsMessage.className = `action-message ${kind}`;
   pipelineControlsMessage.hidden = !message;
+}
+
+function showSourceEditorMessage(message, kind = "info") {
+  sourceEditorMessage.textContent = message || "";
+  sourceEditorMessage.className = `action-message ${kind}`;
+  sourceEditorMessage.hidden = !message;
 }
 
 function showRenderConsoleMessage(message, kind = "info") {
@@ -464,46 +489,49 @@ async function runAssetAction(action) {
   }
 }
 
+function activatePage(page) {
+  for (const button of document.querySelectorAll(".tab")) {
+    button.classList.toggle("active", button.dataset.page === page);
+  }
+  document.querySelector("#assets-page").classList.toggle("active", page === "assets");
+  document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
+  document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
+  document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
+  document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
+  document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
+  document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
+  document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
+  document
+    .querySelector("#placeholder-page")
+    .classList.toggle(
+      "active",
+      !["assets", "manifest", "prompt-review", "render-review", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+    );
+  const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
+  placeholderTitle.textContent = activeButton?.textContent || "Page";
+  if (page === "prompt-review") {
+    loadPromptReviewTasks();
+  }
+  if (page === "manifest") {
+    loadManifestTasks();
+  }
+  if (page === "render-review") {
+    loadRenderReviewTasks();
+  }
+  if (page === "ai-controls") {
+    loadAiControls();
+  }
+  if (page === "pipeline-controls") {
+    loadPipelineControls();
+  }
+  if (page === "render-console") {
+    loadRenderConsoleTasks();
+  }
+}
+
 function setupTabs() {
   for (const button of document.querySelectorAll(".tab")) {
-    button.addEventListener("click", () => {
-      for (const item of document.querySelectorAll(".tab")) {
-        item.classList.toggle("active", item === button);
-      }
-      const page = button.dataset.page;
-      document.querySelector("#assets-page").classList.toggle("active", page === "assets");
-      document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
-      document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
-      document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
-      document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
-      document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
-      document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
-      document
-        .querySelector("#placeholder-page")
-        .classList.toggle(
-          "active",
-          !["assets", "manifest", "prompt-review", "render-review", "render-console", "ai-controls", "pipeline-controls"].includes(page),
-        );
-      placeholderTitle.textContent = button.textContent;
-      if (page === "prompt-review") {
-        loadPromptReviewTasks();
-      }
-      if (page === "manifest") {
-        loadManifestTasks();
-      }
-      if (page === "render-review") {
-        loadRenderReviewTasks();
-      }
-      if (page === "ai-controls") {
-        loadAiControls();
-      }
-      if (page === "pipeline-controls") {
-        loadPipelineControls();
-      }
-      if (page === "render-console") {
-        loadRenderConsoleTasks();
-      }
-    });
+    button.addEventListener("click", () => activatePage(button.dataset.page));
   }
 }
 
@@ -560,6 +588,7 @@ function clearPromptReview() {
   promptReviewTitle.textContent = "Select a prompt";
   promptPath.textContent = "";
   promptText.textContent = "";
+  clearSourceInspector();
   localTestRender.textContent = "No local test render.";
   promptReviewPrev.disabled = true;
   promptReviewNext.disabled = true;
@@ -583,23 +612,277 @@ function renderPromptReview(detail) {
   promptApproveButton.disabled = !detail.is_reviewable;
   promptFailButton.disabled = !detail.is_reviewable;
   renderLocalTestRender(detail.latest_local_test_render);
+  clearSourceInspector();
   updatePromptReviewNavigation();
 }
 
 function renderPromptText() {
   const detail = state.promptReviewDetail;
   if (!detail) {
-    promptText.textContent = "";
+    promptText.replaceChildren();
     return;
   }
   const query = promptSearch.value.trim();
   const raw = detail.prompt_text || "";
+  const lines = raw.split(/\r?\n/);
+  if (lines.length && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
   if (!query) {
-    promptText.textContent = raw || "No prompt text found.";
+    renderPromptLines(lines, null);
     return;
   }
   const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-  promptText.innerHTML = escapeHtml(raw).replace(pattern, (match) => `<mark>${escapeHtml(match)}</mark>`);
+  renderPromptLines(lines, pattern);
+}
+
+function sourceForPromptLine(lineNumber) {
+  const fragments = state.promptReviewDetail?.source_map?.fragments || [];
+  return fragments.find(
+    (fragment) => lineNumber >= Number(fragment.prompt_start_line || 0) && lineNumber <= Number(fragment.prompt_end_line || 0),
+  );
+}
+
+function sourceBadgeLabel(source) {
+  const kind = source?.source_kind || "unknown";
+  const labels = {
+    static_prompt_template: "template",
+    character_template_section: "character",
+    shared_template_section: "shared",
+    config_view_instruction: "view",
+    config_rule: "rule",
+    template_metadata_field: "metadata",
+    runtime_generated: "generated",
+  };
+  return labels[kind] || kind;
+}
+
+function sourceTooltip(source) {
+  if (!source) {
+    return "No source map entry for this line.";
+  }
+  const parts = [
+    source.source_label || source.source_kind || "Source",
+    source.section_name ? `Section: ${source.section_name}` : "",
+    source.json_pointer ? `JSON: ${source.json_pointer}` : "",
+    source.source_path ? `Path: ${source.source_path}` : "",
+    source.start_line ? `Source lines: ${source.start_line}-${source.end_line || source.start_line}` : "",
+  ];
+  return parts.filter(Boolean).join("\n");
+}
+
+function clearSourceInspector() {
+  state.selectedSource = null;
+  sourceInspectorEmpty.hidden = false;
+  sourceInspectorDetail.hidden = true;
+  sourceInspectorText.hidden = true;
+  sourceOpenEditor.disabled = true;
+  sourceInspectorDetail.replaceChildren();
+  sourceInspectorText.textContent = "";
+}
+
+function addInspectorRow(label, value) {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const definition = document.createElement("dd");
+  definition.textContent = String(value);
+  sourceInspectorDetail.append(term, definition);
+}
+
+function showSourceInspector(source, lineNumber, lineText) {
+  state.selectedSource = source || null;
+  sourceInspectorEmpty.hidden = true;
+  sourceInspectorDetail.hidden = false;
+  sourceInspectorText.hidden = false;
+  sourceOpenEditor.disabled = !source || source.editable === false || !source.source_path;
+  sourceInspectorDetail.replaceChildren();
+  addInspectorRow("Prompt line", lineNumber);
+  addInspectorRow("Source", sourceBadgeLabel(source));
+  addInspectorRow("Label", source?.source_label);
+  addInspectorRow("Path", source?.source_path);
+  addInspectorRow("Section", source?.section_name);
+  addInspectorRow("JSON", source?.json_pointer);
+  addInspectorRow("Metadata", source?.metadata_key);
+  addInspectorRow("Source lines", source?.start_line ? `${source.start_line}-${source.end_line || source.start_line}` : "");
+  addInspectorRow("Editable", source?.editable === false ? "No" : "Yes");
+  sourceInspectorText.textContent = lineText || "";
+}
+
+function addEditorMeta(label, value) {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const definition = document.createElement("dd");
+  definition.textContent = String(value);
+  sourceEditorMeta.append(term, definition);
+}
+
+function renderSourceEditor(detail) {
+  state.sourceEditor = detail;
+  sourceEditorTitle.textContent = detail.source?.source_label || detail.path || "Source";
+  sourceEditorStatus.textContent = detail.editor_type || "";
+  sourceEditorMeta.replaceChildren();
+  addEditorMeta("Path", detail.path);
+  addEditorMeta("Type", detail.editor_type);
+  addEditorMeta("Section", detail.section_name);
+  addEditorMeta("JSON", detail.json_pointer);
+  addEditorMeta("Source lines", detail.start_line ? `${detail.start_line}-${detail.end_line || detail.start_line}` : "");
+  sourceEditorText.value = detail.text || "";
+  sourceEditorSave.disabled = false;
+  sourceEditorRecompile.disabled = !state.promptReviewDetail?.is_reviewable;
+  sourceEditorClearReviewAids.checked = true;
+  sourceEditorWarning.textContent = detail.warning || "";
+  sourceEditorWarning.hidden = !detail.warning;
+  showSourceEditorMessage("");
+}
+
+async function openSelectedSourceEditor() {
+  if (!state.selectedSource) {
+    return;
+  }
+  showSourceEditorMessage("Loading source...");
+  try {
+    const detail = await fetchJson("/api/edit-source/load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.selectedSource),
+    });
+    renderSourceEditor(detail);
+    activatePage("template-editor");
+  } catch (error) {
+    showPromptMessage(error.message, "error");
+  }
+}
+
+async function saveSourceEditor() {
+  if (!state.sourceEditor) {
+    return;
+  }
+  sourceEditorSave.disabled = true;
+  showSourceEditorMessage("Saving...");
+  try {
+    const payload = {
+      editor_type: state.sourceEditor.editor_type,
+      path: state.sourceEditor.path,
+      section_name: state.sourceEditor.section_name,
+      json_pointer: state.sourceEditor.json_pointer,
+      text: sourceEditorText.value,
+    };
+    const result = await fetchJson("/api/edit-source/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    showSourceEditorMessage(`Saved ${result.path}.`);
+  } catch (error) {
+    showSourceEditorMessage(error.message, "error");
+  } finally {
+    sourceEditorSave.disabled = false;
+  }
+}
+
+async function recompileCurrentPrompt() {
+  const assetId = state.promptReviewDetail?.asset?.asset_id || state.selectedPromptReviewAssetId;
+  if (!assetId) {
+    showSourceEditorMessage("No prompt review asset is selected.", "error");
+    return;
+  }
+  const params = currentQuery();
+  params.set("invalidate_review_artifacts", sourceEditorClearReviewAids.checked ? "true" : "false");
+  sourceEditorRecompile.disabled = true;
+  showSourceEditorMessage("Recompiling current prompt...");
+  try {
+    const payload = await fetchJson(`/api/prompt-review/${assetId}/recompile?${params.toString()}`, { method: "POST" });
+    renderPromptReview(payload);
+    await loadPromptReviewTasks(assetId);
+    await loadAssets(state.selectedAssetId);
+    showSourceEditorMessage(payload.message || "Prompt recompiled.");
+    showPromptMessage(payload.message || "Prompt recompiled.");
+    renderPromptDiff(payload.prompt_diff);
+  } catch (error) {
+    showSourceEditorMessage(error.message, "error");
+  } finally {
+    sourceEditorRecompile.disabled = !state.promptReviewDetail?.is_reviewable;
+  }
+}
+
+function renderPromptDiff(diff) {
+  if (!diff) {
+    return;
+  }
+  promptDiffOld.replaceChildren();
+  promptDiffNew.replaceChildren();
+  renderPromptDiffPane(promptDiffOld, diff.old_rows || []);
+  renderPromptDiffPane(promptDiffNew, diff.new_rows || []);
+  const oldChanged = (diff.old_rows || []).filter((row) => row.status !== "unchanged").length;
+  const newChanged = (diff.new_rows || []).filter((row) => row.status !== "unchanged").length;
+  promptDiffSummary.textContent = diff.changed
+    ? `Changed lines: before ${oldChanged}, after ${newChanged}`
+    : "No prompt text changes detected.";
+  promptDiffDialog.showModal();
+}
+
+function renderPromptDiffPane(container, rows) {
+  if (!rows.length) {
+    container.textContent = "No prompt lines.";
+    return;
+  }
+  for (const row of rows) {
+    const line = document.createElement("div");
+    line.className = `prompt-diff-row ${row.status || "unchanged"}`;
+    const lineNo = document.createElement("span");
+    lineNo.className = "prompt-diff-line";
+    lineNo.textContent = row.line_no ?? "";
+    const source = document.createElement("span");
+    source.className = "prompt-diff-source";
+    source.textContent = sourceBadgeLabel(row);
+    source.title = row.source_label || row.source_kind || "";
+    const text = document.createElement("span");
+    text.className = "prompt-diff-text";
+    text.textContent = row.text || " ";
+    line.append(lineNo, source, text);
+    container.append(line);
+  }
+}
+
+function renderPromptLines(lines, searchPattern) {
+  promptText.replaceChildren();
+  if (!lines.length) {
+    promptText.textContent = "No prompt text found.";
+    return;
+  }
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const source = sourceForPromptLine(lineNumber);
+    const row = document.createElement("div");
+    row.className = "prompt-line";
+    if (!line.trim()) {
+      row.classList.add("blank");
+      row.append(document.createElement("span"), document.createElement("span"));
+      promptText.append(row);
+      return;
+    }
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = `prompt-source-badge source-${sourceBadgeLabel(source).replace(/[^a-z0-9_-]/gi, "-")}`;
+    badge.textContent = sourceBadgeLabel(source);
+    badge.title = sourceTooltip(source);
+    badge.addEventListener("click", () => showSourceInspector(source, lineNumber, line));
+    const text = document.createElement("span");
+    text.className = "prompt-line-text";
+    if (searchPattern) {
+      text.innerHTML = escapeHtml(line || " ").replace(searchPattern, (match) => `<mark>${escapeHtml(match)}</mark>`);
+    } else {
+      text.textContent = line || " ";
+    }
+    row.append(badge, text);
+    promptText.append(row);
+  });
 }
 
 function renderLocalTestRender(path) {
@@ -1430,6 +1713,9 @@ promptSearch.addEventListener("input", renderPromptText);
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt_text || "", "Prompt copied."));
 copyCondensedButton.addEventListener("click", () => copyText(condensedText.value, "Condensed prompt copied."));
 viewCondensedButton.addEventListener("click", () => condensedDialog.showModal());
+sourceOpenEditor.addEventListener("click", openSelectedSourceEditor);
+sourceEditorSave.addEventListener("click", saveSourceEditor);
+sourceEditorRecompile.addEventListener("click", recompileCurrentPrompt);
 generateLocalTestButton.addEventListener("click", () => runPromptReviewAction("local-test-render"));
 promptApproveButton.addEventListener("click", () => runPromptReviewAction("approve"));
 promptFailButton.addEventListener("click", () => runPromptReviewAction("fail"));

@@ -13,6 +13,8 @@ View Token: FRONT_RIGHT_3_4
 - IDENTITY_PRESERVATION_BODY
 - BODY_REFERENCE_RENDERING_RULES
 - TECHNICAL_MODESTY_LAYER
+- NEUTRAL_POSE_STANCE
+- NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4
 - NEGATIVE_GUIDANCE_GENERAL
 
 ## Included Optional Sections
@@ -83,6 +85,39 @@ Clothing rules:
 * no additional garments
 * Readable body silhouette.
 
+# NEUTRAL_POSE_STANCE
+
+Use a neutral anatomical reference stance.
+
+Both feet are flat on the floor.
+Both heels are fully planted.
+Both forefeet and toes touch the ground.
+No raised heel.
+No lifted foot.
+No tiptoe stance.
+No walking step.
+No crossed ankles.
+No ballet pose.
+No contrapposto.
+No weight-shift pose.
+
+The legs remain straight and relaxed, with only a slight natural knee softness.
+Both knees point in the same direction as the torso.
+Feet are placed directly under the hips, shoulder-width or slightly narrower.
+Left and right feet are parallel or nearly parallel.
+The feet must preserve the requested body view.
+
+For {VIEW} view:
+
+# NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4
+
+- Both feet remain flat on the ground.
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
+
+Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+
 # NEGATIVE_GUIDANCE_GENERAL
 
 Avoid:
@@ -93,6 +128,12 @@ Avoid:
 * Missing, hidden, rounded, or human ears
 * Incorrect body type: bulky, stocky, heavy-thighed, childlike
 * Dramatic pose
+* feet not flat on floor.
+* raised heel, lifted heel, lifted toes, tiptoe stance 
+* walking pose, stepping pose, crossed feet, crossed ankles, staggered stance, 
+* dance pose, contrapposto, model pose, fashion stance, 
+* one leg bearing all weight, one knee bent dramatically 
+* feet not flat on floor.
 
 # BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4
 

@@ -17,10 +17,31 @@ from Run_Body_Reference_Jobs import compile_body_reference_job
 
 
 class BodyReferenceRaceRulesTests(unittest.TestCase):
+    def _write_shared_stance_sections(self, root: Path, extra_sections: str = "") -> None:
+        shared_dir = root / "_Lib" / "Characters" / "_Shared"
+        shared_dir.mkdir(parents=True, exist_ok=True)
+        (shared_dir / "Character_Template.md").write_text(
+            f"""# Shared Character Template
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE -->
+* Shared neutral stance.
+* For {{VIEW}} view.
+<!-- ZET:END NEUTRAL_POSE_STANCE -->
+
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT -->
+* Shared front stance.
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT -->
+
+{extra_sections}
+""",
+            encoding="utf-8",
+        )
+
     def test_high_elf_species_injects_elf_body_reference_rules(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            self._write_shared_stance_sections(root)
 
             character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
             character_dir.mkdir(parents=True)
@@ -31,6 +52,7 @@ Character Name: `[Testa]`
 Character Phase: `[Adult]`
 Species / Ancestry: `[High elf]`
 Canonical Art Style: `[ink and watercolor reference art]`
+Gender Presentation: `[Feminine adult woman]`
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 * Adult high-elf woman.
@@ -71,7 +93,12 @@ Canonical Art Style: `[ink and watercolor reference art]`
             )
 
             prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-            self.assertIn("Canonical Art Style: ink and watercolor reference art", prompt)
+            self.assertIn("Adult elf female", prompt)
+            self.assertNotIn("{{CHARACTER_GENDER}}", prompt)
+            self.assertIn("Shared neutral stance.", prompt)
+            self.assertIn("For FRONT view.", prompt)
+            self.assertNotIn("{VIEW}", prompt)
+            self.assertIn("Shared front stance.", prompt)
             self.assertIn("Character race/species for mannequin silhouette: elf.", prompt)
             self.assertIn("Use a simplified elf mannequin head.", prompt)
             self.assertIn("Long pointed elf ears should be visible", prompt)
@@ -83,10 +110,9 @@ Canonical Art Style: `[ink and watercolor reference art]`
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
 
-            shared_dir = root / "_Lib" / "Characters" / "_Shared"
-            shared_dir.mkdir(parents=True)
-            (shared_dir / "Character_Template.md").write_text(
-                """# Shared Character Template
+            self._write_shared_stance_sections(
+                root,
+                """
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 * default shared fitment clothing.
@@ -101,7 +127,6 @@ Canonical Art Style: `[ink and watercolor reference art]`
 * shared masculine compression shorts.
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_MASCULINE -->
 """,
-                encoding="utf-8",
             )
 
             character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
@@ -157,6 +182,7 @@ Gender Presentation: `[Feminine adult woman]`
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            self._write_shared_stance_sections(root)
 
             character_dir = root / "_Lib" / "Characters" / "Mystery" / "Adult"
             character_dir.mkdir(parents=True)

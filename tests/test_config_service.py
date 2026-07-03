@@ -30,12 +30,6 @@ IntervalSeconds = 300
 
 [Render]
 Backend = "manual_chatgpt"
-
-[RenderConsole]
-Host = "0.0.0.0"
-Port = 8090
-RequireToken = true
-Token = "test-token"
 """.lstrip(),
                 encoding="utf-8",
             )
@@ -48,10 +42,6 @@ Token = "test-token"
             self.assertTrue(config.ai_harvest_auto_enabled)
             self.assertEqual(config.ai_harvest_interval_seconds, 300)
             self.assertEqual(config.render_backend, "manual_chatgpt")
-            self.assertEqual(config.render_console_host, "0.0.0.0")
-            self.assertEqual(config.render_console_port, 8090)
-            self.assertTrue(config.render_console_require_token)
-            self.assertEqual(config.render_console_token, "test-token")
 
 
 if __name__ == "__main__":

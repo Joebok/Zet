@@ -512,7 +512,7 @@ This is a recovery feature, not the normal flow.
 
 ## Dashboard Boundary Decision
 
-The FastAPI dashboard is the primary operations UI. The Streamlit dashboard is legacy/diagnostic.
+The FastAPI dashboard is the primary operations UI. The old Streamlit dashboard and standalone Render Console are retired.
 
 The dashboard may own:
 

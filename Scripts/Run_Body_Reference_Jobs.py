@@ -12,8 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt, write_compiled_sections
-from Compile_Character_Template import TemplateCompileError, load_template_sections, select_sections
+from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
+from Compile_Character_Template import TemplateCompileError, load_template_sections, load_template_sections_with_sources, select_sections
 from Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 
 
@@ -113,9 +113,93 @@ def extract_character_race(template_path: Path) -> str:
     return extract_template_field(template_path, ["Character Race", "Race", "Species / Ancestry", "Species", "Ancestry"])
 
 
+def character_gender(template_path: Path) -> str:
+    value = extract_template_field(template_path, ["Character Gender", "Gender Presentation", "Gender"])
+    key = _race_key(value)
+    terms = set(key.split())
+    if terms.intersection({"female", "feminine", "woman", "girl"}):
+        return "female"
+    if terms.intersection({"male", "masculine", "man", "boy"}):
+        return "male"
+    return value
+
+
 def template_metadata(template_path: Path) -> dict[str, str]:
     return {
         "CANONICAL_ART_STYLE": extract_template_field(template_path, ["Canonical Art Style"]),
+        "CHARACTER_GENDER": character_gender(template_path),
+    }
+
+
+def metadata_source_map(project_root: Path, template_path: Path, view_token: str, task: str, view_role: str) -> dict[str, dict]:
+    view_pointer = f"/views/{view_token}/{view_role}_instructions/{task}"
+    view_config_path = project_root / "Config" / "Prompt_View_Text.json"
+    race_config_path = project_root / "Config" / "Race_Render_Rules.json"
+    return {
+        "CHARACTER_NAME": {
+            "source_kind": "runtime_generated",
+            "source_path": "",
+            "source_label": "Asset character",
+            "editable": False,
+        },
+        "CHARACTER_PHASE": {
+            "source_kind": "runtime_generated",
+            "source_path": "",
+            "source_label": "Asset phase",
+            "editable": False,
+        },
+        "VIEW_TOKEN": {
+            "source_kind": "runtime_generated",
+            "source_path": "",
+            "source_label": "Normalized view token",
+            "editable": False,
+        },
+        "VIEW_LABEL": {
+            "source_kind": "config_view_instruction",
+            "source_path": str(view_config_path),
+            "source_label": "View label",
+            "json_pointer": f"/views/{view_token}/label",
+            "editable": True,
+        },
+        "VIEW_INSTRUCTION": {
+            "source_kind": "config_view_instruction",
+            "source_path": str(view_config_path),
+            "source_label": f"{task} {view_role} view instruction",
+            "json_pointer": view_pointer,
+            "editable": True,
+        },
+        "CANONICAL_ART_STYLE": {
+            "source_kind": "template_metadata_field",
+            "source_path": str(template_path),
+            "source_label": "Canonical Art Style",
+            "metadata_key": "CANONICAL_ART_STYLE",
+            "editable": True,
+        },
+        "CHARACTER_GENDER": {
+            "source_kind": "template_metadata_field",
+            "source_path": str(template_path),
+            "source_label": "Gender Presentation",
+            "metadata_key": "CHARACTER_GENDER",
+            "editable": True,
+        },
+        "CHARACTER_RACE": {
+            "source_kind": "config_rule",
+            "source_path": str(race_config_path),
+            "source_label": "Race label",
+            "editable": True,
+        },
+        "RACE_BODY_REFERENCE_POSITIVE": {
+            "source_kind": "config_rule",
+            "source_path": str(race_config_path),
+            "source_label": "Race body-reference positive rules",
+            "editable": True,
+        },
+        "RACE_BODY_REFERENCE_NEGATIVE": {
+            "source_kind": "config_rule",
+            "source_path": str(race_config_path),
+            "source_label": "Race body-reference negative rules",
+            "editable": True,
+        },
     }
 
 
@@ -176,23 +260,46 @@ def _technical_modesty_variant_for_gender(gender_presentation: str) -> str:
 
 
 def load_body_reference_sections(project_root: Path, template_path: Path) -> dict[str, str]:
-    shared_path = project_root / "_Lib" / "Characters" / "_Shared" / "Character_Template.md"
-    sections = load_template_sections(template_path)
-    shared_sections = load_template_sections(shared_path) if shared_path.exists() else {}
+    return load_body_reference_section_data(project_root, template_path)[0]
 
-    for name in (
+
+def load_body_reference_section_data(project_root: Path, template_path: Path) -> tuple[dict[str, str], dict[str, dict]]:
+    shared_path = project_root / "_Lib" / "Characters" / "_Shared" / "Character_Template.md"
+    sections, sources = load_template_sections_with_sources(
+        template_path,
+        source_kind="character_template_section",
+        source_label=f"Character template: {template_path.name}",
+    )
+    if shared_path.exists():
+        shared_sections, shared_sources = load_template_sections_with_sources(
+            shared_path,
+            source_kind="shared_template_section",
+            source_label="Shared character template",
+        )
+    else:
+        shared_sections, shared_sources = {}, {}
+
+    shared_section_names = [
         "TECHNICAL_MODESTY_LAYER",
         "TECHNICAL_MODESTY_LAYER_FEMININE",
         "TECHNICAL_MODESTY_LAYER_MASCULINE",
-    ):
+    ]
+    shared_section_names.extend(
+        name for name in shared_sections
+        if name == "NEUTRAL_POSE_STANCE" or name.startswith("NEUTRAL_POSE_STANCE_VIEW_")
+    )
+    for name in shared_section_names:
         if name in shared_sections:
             sections[name] = shared_sections[name]
+            sources[name] = shared_sources.get(name, {})
 
     gender_presentation = extract_template_field(template_path, ["Gender Presentation", "Gender"])
     variant_name = _technical_modesty_variant_for_gender(gender_presentation)
     if variant_name and variant_name in sections:
         sections["TECHNICAL_MODESTY_LAYER"] = sections[variant_name]
-    return sections
+        if variant_name in sources:
+            sources["TECHNICAL_MODESTY_LAYER"] = dict(sources[variant_name], section_name="TECHNICAL_MODESTY_LAYER")
+    return sections, sources
 
 
 def job_get(job: dict, *keys: str) -> str:
@@ -355,8 +462,8 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     output_dir = output_dir_for_job(project_root, job, character, phase, view_data)
     expected_output = expected_output_for_job(job, view_data)
 
-    all_sections = load_body_reference_sections(project_root, template_path)
-    selection = select_sections(all_sections, bundle, view_token)
+    all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
+    selection = select_sections(all_sections, bundle, view_token, section_sources)
     if selection.missing_required:
         raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
     if selection.forbidden_matches:
@@ -366,6 +473,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     files = output_files(bundle)
     final_prompt_path = output_dir / files.get("final_prompt", "Final_Image_Prompt.md")
     compiled_sections_path = output_dir / files.get("compiled_sections", "Compiled_Sections.md")
+    source_map_path = output_dir / files.get("source_map", "Prompt_Source_Map.json")
     manifest_path = output_dir / files.get("dependency_manifest", "dependency_manifest.json")
     prompt_review_path = output_dir / files.get("prompt_review", "Prompt_Review.md")
     image_review_path = output_dir / files.get("image_review", "Image_Review.md")
@@ -377,22 +485,28 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "phase": phase,
         "view_token": view_token,
     }
-    prompt_text = render_static_prompt(
-        prompt_template_path(project_root, str(bundle.get("static_prompt_template", ""))).read_text(encoding="utf-8"),
-        {
-            "CHARACTER_NAME": character,
-            "CHARACTER_PHASE": phase,
-            "VIEW_TOKEN": view_token,
-            "VIEW_LABEL": str(view_data["label"]),
-            "VIEW_INSTRUCTION": view_instruction(view_data, "body", task),
-            **template_metadata(template_path),
-            **load_race_render_rules(project_root, template_path),
-        },
-        selection,
-        list(bundle.get("required_sections", [])),
-        view_token,
+    template_file = prompt_template_path(project_root, str(bundle.get("static_prompt_template", "")))
+    metadata_values = {
+        "CHARACTER_NAME": character,
+        "CHARACTER_PHASE": phase,
+        "VIEW_TOKEN": view_token,
+        "VIEW_LABEL": str(view_data["label"]),
+        "VIEW_INSTRUCTION": view_instruction(view_data, "body", task),
+        **template_metadata(template_path),
+        **load_race_render_rules(project_root, template_path),
+    }
+    prompt_text, source_map = render_static_prompt_with_source_map(
+        template_file.read_text(encoding="utf-8"),
+        template_path=template_file,
+        metadata=metadata_values,
+        metadata_sources=metadata_source_map(project_root, template_path, view_token, task, "body"),
+        selection=selection,
+        required_section_names=list(bundle.get("required_sections", [])),
+        view_token=view_token,
+        final_prompt_name=final_prompt_path.name,
     )
     final_prompt_path.write_text(prompt_text, encoding="utf-8")
+    source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token=view_token, selection=selection)
     write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle)
 

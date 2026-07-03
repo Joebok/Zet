@@ -212,23 +212,22 @@ Completed:
 
 Remaining:
 
-- Keep the standalone Render Console launcher temporarily for fallback while the integrated page settles.
+- None. The standalone Render Console launcher has been retired.
 
-### Milestone 9 - Retire Streamlit
+### Milestone 9 - Retire Streamlit - Complete
 
 - [x] Confirm the FastAPI UI covers all dashboard functions except the intentionally deferred Template Editor.
 - [x] Update launch scripts to start the FastAPI UI as the main dashboard.
-- [x] Move Streamlit dashboard to legacy/diagnostic status.
+- [x] Retire the Streamlit dashboard.
 - [x] Update docs and process controls.
 
 Completed:
 
 - `dashboard.bat` now launches the FastAPI dashboard through `run_zet_web.bat`.
-- Added `run_streamlit_dashboard.bat` for the legacy Streamlit dashboard.
+- Removed the old Streamlit dashboard launcher and source files.
 - Updated process controls to show `Zet Web Dashboard` as the primary dashboard process.
-- Updated AI service startup scripts so they no longer start the standalone Render Console by default.
-- Left the standalone Render Console launcher available as temporary fallback.
+- Removed the standalone Render Console launcher and server assets.
 
 ## Near-Term Recommendation
 
-Start with Milestone 1 and make the Assets page feel solid. If the asset table becomes reliably single-click and the detail panel feels natural, continue page-by-page until Streamlit is no longer needed.
+The migration is complete. Future dashboard work should happen in `zet/web/`, with reusable behavior kept in services and repositories.

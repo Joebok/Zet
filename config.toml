@@ -25,9 +25,3 @@ IntervalSeconds = 300
 
 [Render]
 Backend = "manual_chatgpt"
-
-[RenderConsole]
-Host = "127.0.0.1"
-Port = 8090
-RequireToken = false
-Token = ""

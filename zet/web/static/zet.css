@@ -387,6 +387,11 @@ dl {
   justify-content: space-between;
 }
 
+.review-header h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .prompt-tools {
   align-items: end;
   display: grid;
@@ -406,13 +411,132 @@ dl {
   min-height: 620px;
   overflow: auto;
   padding: 12px;
-  white-space: pre-wrap;
 }
 
 .prompt-text mark {
   background: #fde68a;
   border-radius: 3px;
   padding: 0 2px;
+}
+
+.prompt-line {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 90px minmax(0, 1fr);
+  min-height: 21px;
+}
+
+.prompt-line.blank {
+  min-height: 10px;
+}
+
+.prompt-line-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.prompt-source-badge {
+  border-radius: 999px;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  line-height: 1;
+  min-height: 20px;
+  overflow: hidden;
+  padding: 3px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-source-badge.source-template {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
+.prompt-source-badge.source-character {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #067647;
+}
+
+.prompt-source-badge.source-shared {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.prompt-source-badge.source-view,
+.prompt-source-badge.source-rule {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+  color: #0369a1;
+}
+
+.prompt-source-badge.source-metadata,
+.prompt-source-badge.source-generated {
+  background: #f2f4f7;
+  border-color: #d0d5dd;
+  color: #475467;
+}
+
+.source-inspector {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.source-inspector dl {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.source-inspector dd {
+  overflow-wrap: anywhere;
+}
+
+#source-inspector-text {
+  max-height: 180px;
+}
+
+#source-open-editor {
+  width: 100%;
+}
+
+.source-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(680px, 1fr);
+}
+
+.source-editor-toolbar {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 10px;
+  padding: 10px;
+}
+
+.source-editor-option {
+  margin-left: auto;
+}
+
+.editor-meta {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+#source-editor-text {
+  color: var(--text);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+  min-height: calc(100vh - 330px);
 }
 
 .review-actions {
@@ -667,6 +791,56 @@ dialog {
   border-radius: 8px;
   max-width: 760px;
   width: min(760px, calc(100vw - 32px));
+}
+
+.wide-dialog {
+  max-width: 1180px;
+  width: min(1180px, calc(100vw - 32px));
+}
+
+.prompt-diff-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.prompt-diff-pane {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 8px;
+}
+
+.prompt-diff-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 48px 96px minmax(0, 1fr);
+  padding: 2px 4px;
+}
+
+.prompt-diff-row.changed,
+.prompt-diff-row.added {
+  background: #ecfdf3;
+}
+
+.prompt-diff-row.removed {
+  background: #fff1f3;
+}
+
+.prompt-diff-line,
+.prompt-diff-source {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.prompt-diff-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 dt {

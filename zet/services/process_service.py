@@ -63,13 +63,6 @@ class ProcessService:
                 cwd=self.project_root,
             ),
             ManagedProcessSpec(
-                process_id="streamlit_legacy",
-                label="Streamlit Legacy Dashboard",
-                match_terms=("streamlit", "zet/dashboard/app.py"),
-                command="run_streamlit_dashboard.bat",
-                cwd=self.project_root,
-            ),
-            ManagedProcessSpec(
                 process_id="proxy_worker",
                 label="Unified Proxy Worker",
                 match_terms=("proxy_worker.py", "Ollama_Proxy"),
@@ -81,13 +74,6 @@ class ProcessService:
                 label="Auto Harvester",
                 match_terms=("zet.scripts.auto_harvest_ai_answers",),
                 command="run_auto_harvest.bat",
-                cwd=self.project_root,
-            ),
-            ManagedProcessSpec(
-                process_id="render_console",
-                label="Standalone Render Console Legacy",
-                match_terms=("zet.render_console.app",),
-                command="run_render_console.bat",
                 cwd=self.project_root,
             ),
         ]

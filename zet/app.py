@@ -58,6 +58,14 @@ class AssetRef:
     def generate_local_test_render(self):
         return self._app.prompt_review_service.generate_local_test_render(self._character, self._phase, self._asset_id)
 
+    def recompile_prompt_review(self, invalidate_review_artifacts: bool = False) -> PromptReviewContext:
+        return self._app.prompt_review_service.recompile(
+            self._character,
+            self._phase,
+            self._asset_id,
+            invalidate_review_artifacts,
+        )
+
     def run_housekeeping(self) -> Path:
         return self._app.asset_service.run_housekeeping(self._character, self._phase, self._asset_id)
 
@@ -193,6 +201,15 @@ class ZetApp:
 
     def generate_local_test_render(self, character: str, phase: str, asset_id: int):
         return self.prompt_review_service.generate_local_test_render(character, phase, asset_id)
+
+    def recompile_prompt_review(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        invalidate_review_artifacts: bool = False,
+    ) -> PromptReviewContext:
+        return self.prompt_review_service.recompile(character, phase, asset_id, invalidate_review_artifacts)
 
     def harvest_ai_answers(self):
         return self.asset_service.harvest_ai_answers()

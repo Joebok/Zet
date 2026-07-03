@@ -11,13 +11,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt, write_compiled_sections
+from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, select_sections
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     job_get,
     load_bundle,
     load_body_reference_sections,
+    load_body_reference_section_data,
     load_view_data,
     normalize_view,
     output_files,
@@ -25,6 +26,7 @@ from Run_Body_Reference_Jobs import (
     resolve_project_path,
     template_metadata,
     template_path_for_job,
+    metadata_source_map,
     view_instruction,
 )
 
@@ -156,8 +158,8 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
     validate_reference(body_reference, "body_reference")
     validate_reference(headshot, "headshot")
 
-    all_sections = load_body_reference_sections(project_root, template_path)
-    selection = select_sections(all_sections, bundle, head_view_token)
+    all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
+    selection = select_sections(all_sections, bundle, head_view_token, section_sources)
     if selection.missing_required:
         raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
     if selection.forbidden_matches:
@@ -167,6 +169,7 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
     files = output_files(bundle)
     final_prompt_path = output_dir / files.get("final_prompt", "Final_Image_Prompt.md")
     compiled_sections_path = output_dir / files.get("compiled_sections", "Compiled_Sections.md")
+    source_map_path = output_dir / files.get("source_map", "Prompt_Source_Map.json")
     manifest_path = output_dir / files.get("dependency_manifest", "dependency_manifest.json")
     image_review_path = output_dir / files.get("image_review", "Image_Review.md")
 
@@ -178,9 +181,8 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
     }
-    prompt_text = render_static_prompt(
-        prompt_template_path(project_root, str(bundle.get("static_prompt_template", ""))).read_text(encoding="utf-8"),
-        {
+    template_file = prompt_template_path(project_root, str(bundle.get("static_prompt_template", "")))
+    metadata_values = {
             "CHARACTER_NAME": character,
             "CHARACTER_PHASE": phase,
             "BODY_VIEW_TOKEN": body_view_token,
@@ -193,12 +195,28 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
             "VIEW_LABEL": str(head_view_data["label"]),
             "VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
             **template_metadata(template_path),
-        },
-        selection,
-        list(bundle.get("required_sections", [])),
-        head_view_token,
+        }
+    metadata_sources = {
+        **metadata_source_map(project_root, template_path, body_view_token, task, "body"),
+        "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
+        "BODY_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Body view label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},
+        "BODY_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "head-fitment body view instruction", "json_pointer": f"/views/{body_view_token}/body_instructions/{task}", "editable": True},
+        "HEAD_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Head view token", "editable": False},
+        "HEAD_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Head view label", "json_pointer": f"/views/{head_view_token}/label", "editable": True},
+        "HEAD_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "head-fitment head view instruction", "json_pointer": f"/views/{head_view_token}/head_instructions/{task}", "editable": True},
+    }
+    prompt_text, source_map = render_static_prompt_with_source_map(
+        template_file.read_text(encoding="utf-8"),
+        template_path=template_file,
+        metadata=metadata_values,
+        metadata_sources=metadata_sources,
+        selection=selection,
+        required_section_names=list(bundle.get("required_sections", [])),
+        view_token=head_view_token,
+        final_prompt_name=final_prompt_path.name,
     )
     final_prompt_path.write_text(prompt_text, encoding="utf-8")
+    source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token=head_view_token, selection=selection)
     write_dependency_manifest(
         manifest_path,
