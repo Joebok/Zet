@@ -870,10 +870,8 @@ Rendering priorities:
 
 Use a neutral anatomical reference stance.
 
-Both feet are flat on the floor.
-Both heels are fully planted.
-Both forefeet and toes touch the ground.
-No raised heel.
+{FOOTWEAR_CONTACT}
+No raised-foot pose.
 No lifted foot.
 No tiptoe stance.
 No walking step.
@@ -903,7 +901,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
 
-- Both feet remain flat on the ground.
+- {FOOTWEAR_GROUNDING}
 - The near foot and far foot may be offset only enough to show depth.
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
@@ -914,7 +912,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4 -->
 
-- Both feet remain flat on the ground.
+- {FOOTWEAR_GROUNDING}
 - The near foot and far foot may be offset only enough to show depth.
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
@@ -925,7 +923,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_LEFT_PROFILE -->
 
-- Both feet remain flat on the ground.
+- {FOOTWEAR_GROUNDING}
 - One foot may partially overlap the other because of the view angle, but neither foot is lifted.
 - The body is not stepping forward.
 
@@ -935,7 +933,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE -->
 
-- Both feet remain flat on the ground.
+- {FOOTWEAR_GROUNDING}
 - One foot may partially overlap the other because of the view angle, but neither foot is lifted.
 - The body is not stepping forward.
 
@@ -945,7 +943,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK_LEFT_3_4 -->
 
-- Both feet remain flat on the ground.
+- {FOOTWEAR_GROUNDING}
 - The near foot and far foot may be offset only enough to show depth.
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
@@ -956,7 +954,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK_RIGHT_3_4 -->
 
-- Both feet remain flat on the ground.
+- {FOOTWEAR_GROUNDING}
 - The near foot and far foot may be offset only enough to show depth.
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.

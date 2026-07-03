@@ -125,9 +125,13 @@ def character_gender(template_path: Path) -> str:
 
 
 def template_metadata(template_path: Path) -> dict[str, str]:
+    """Extract reusable metadata values from a character template."""
     return {
         "CANONICAL_ART_STYLE": extract_template_field(template_path, ["Canonical Art Style"]),
         "CHARACTER_GENDER": character_gender(template_path),
+        "FOOTWEAR": extract_template_field(template_path, ["Footwear"]),
+        "FOOTWEAR_CONTACT": extract_template_field(template_path, ["Footwear Contact", "Footwear Contact Rule"]),
+        "FOOTWEAR_GROUNDING": extract_template_field(template_path, ["Footwear Grounding", "Footwear Grounding Rule"]),
     }
 
 

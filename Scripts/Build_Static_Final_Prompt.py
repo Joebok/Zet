@@ -8,7 +8,7 @@ from Compile_Character_Template import CompiledSelection, TemplateCompileError, 
 
 
 SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
-RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Z0-9_{}]+)\}\}")
+RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
 COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{SECTION:[A-Z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^}]+(?:}[^}]*)?\}\}")
 SINGLE_BRACE_TOKEN_RE = re.compile(r"(?<!\{)\{([A-Z0-9_]+)\}(?!\})")
@@ -137,8 +137,15 @@ def prompt_template_path(project_root: Path, template_name: str) -> Path:
 
 
 def _single_brace_token_values(metadata: dict[str, str], view_token: str) -> dict[str, str]:
-    values = {str(key): str(value) for key, value in metadata.items()}
+    """Build replacement values for single-brace prompt tokens."""
+    values = {str(key): str(value) for key, value in metadata.items() if str(value).strip()}
     values["VIEW"] = view_token
+    values.setdefault("FOOTWEAR", "feet")
+    values.setdefault(
+        "FOOTWEAR_CONTACT",
+        "Both feet are flat on the floor.\nBoth heels are fully planted.\nBoth forefeet and toes touch the ground.",
+    )
+    values.setdefault("FOOTWEAR_GROUNDING", "Both feet remain flat on the ground.")
     return values
 
 
@@ -184,7 +191,11 @@ def render_static_prompt(
     rendered = SECTION_PLACEHOLDER_RE.sub(replace_section, rendered)
 
     def replace_raw_section(match: re.Match) -> str:
-        name = resolve_section_name(match.group(1), view_token)
+        inner = match.group(1)
+        metadata_key = inner if inner in metadata else inner.upper()
+        if metadata_key in metadata:
+            return _replace_single_brace_tokens(metadata[metadata_key], single_brace_values)
+        name = resolve_section_name(inner, view_token)
         text = selection.sections.get(name)
         if text is None:
             return match.group(0)
@@ -226,7 +237,7 @@ def render_static_prompt_with_source_map(
         single_brace_values,
     )
     required_set = {resolve_section_name(name, view_token) for name in required_section_names}
-    token_re = re.compile(r"\{\{SECTION:[A-Z0-9_{}]+\}\}|\{\{[A-Z0-9_{}]+\}\}")
+    token_re = re.compile(r"\{\{SECTION:[A-Z0-9_{}]+\}\}|\{\{[A-Za-z0-9_{}]+\}\}")
     pieces: list[dict] = []
     cursor = 0
 
@@ -258,14 +269,15 @@ def render_static_prompt_with_source_map(
             source = section_source(name)
         else:
             name = resolve_section_name(inner, view_token)
-            if inner in metadata:
-                text = _replace_single_brace_tokens(metadata[inner], single_brace_values)
+            metadata_key = inner if inner in metadata else inner.upper()
+            if metadata_key in metadata:
+                text = _replace_single_brace_tokens(metadata[metadata_key], single_brace_values)
                 source = metadata_sources.get(
-                    inner,
+                    metadata_key,
                     {
                         "source_kind": "runtime_generated",
                         "source_path": "",
-                        "source_label": inner,
+                        "source_label": metadata_key,
                         "editable": False,
                     },
                 )

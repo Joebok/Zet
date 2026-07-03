@@ -78,6 +78,14 @@ class AssetRef:
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
 
+    def render_review_comment(self) -> str:
+        """Read the render-review comment for this asset."""
+        return self._app.asset_service.get_render_review_comment(self._character, self._phase, self._asset_id)
+
+    def save_render_review_comment(self, comment: str) -> str:
+        """Save the render-review comment for this asset."""
+        return self._app.asset_service.save_render_review_comment(self._character, self._phase, self._asset_id, comment)
+
     def fail_render_review_to_render(self, reason: str = "") -> Asset:
         return self._app.asset_service.fail_render_review_to_render(
             self._character,
@@ -85,6 +93,10 @@ class AssetRef:
             self._asset_id,
             reason,
         )
+
+    def start_retouch_render(self) -> Asset:
+        """Move this asset to RENDER and stage a manual render ask for retouch upload."""
+        return self._app.asset_service.start_retouch_render(self._character, self._phase, self._asset_id)
 
     def run_current_worker(self) -> Asset:
         return self._app.asset_service.run_current_worker(self._character, self._phase, self._asset_id)
@@ -229,6 +241,18 @@ class ZetApp:
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         return self.asset_service.fail_render_review_to_render(character, phase, asset_id, reason)
 
+    def render_review_comment(self, character: str, phase: str, asset_id: int) -> str:
+        """Read the render-review comment for an asset."""
+        return self.asset_service.get_render_review_comment(character, phase, asset_id)
+
+    def save_render_review_comment(self, character: str, phase: str, asset_id: int, comment: str) -> str:
+        """Save the render-review comment for an asset."""
+        return self.asset_service.save_render_review_comment(character, phase, asset_id, comment)
+
+    def start_retouch_render(self, character: str, phase: str, asset_id: int) -> Asset:
+        """Move an asset to RENDER and stage the render-console ask for retouch work."""
+        return self.asset_service.start_retouch_render(character, phase, asset_id)
+
     def issue_monitor_test(self, instruction: str = ""):
         return self.ai_proxy_service.issue_monitor_test(instruction)
 
@@ -243,6 +267,10 @@ class ZetApp:
 
     def queue_snapshot(self):
         return self.ai_proxy_service.queue_snapshot()
+
+    def archive_harvested_answers(self):
+        """Archive harvested AI answer folders."""
+        return self.ai_proxy_service.archive_harvested_answers()
 
     def list_monitor_responses(self):
         return self.ai_proxy_service.list_monitor_responses()

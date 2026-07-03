@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime
 import difflib
 import json
+import re
 from dataclasses import asdict
 from pathlib import Path
 import sys
@@ -35,6 +36,109 @@ def _app(config_path: str | Path) -> ZetApp:
 
 def _render_console_queue(config_path: str | Path) -> RenderConsoleQueue:
     return RenderConsoleQueue(ConfigService.load(config_path))
+
+
+def _view_key(value: Any) -> str:
+    """Normalize an asset view value to a config lookup key."""
+    return re.sub(r"[^A-Z0-9]+", "_", str(value or "").upper()).strip("_")
+
+
+def _gpt_helper_prompt_path(config_path: str | Path) -> Path:
+    """Resolve the GPT helper prompt config path for this app instance."""
+    local_path = Path(config_path).resolve().parent / "Config" / "GPT_Helper_Prompts.json"
+    if local_path.exists():
+        return local_path
+    return PROJECT_ROOT / "Config" / "GPT_Helper_Prompts.json"
+
+
+def _read_gpt_helper_prompt_config(config_path: str | Path) -> dict[str, Any]:
+    """Read the GPT helper prompt config, returning a valid empty shape if missing."""
+    path = _gpt_helper_prompt_path(config_path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("schema_version", 1)
+    data.setdefault("defaults", {})
+    data.setdefault("pipelines", {})
+    return data
+
+
+def _write_gpt_helper_prompt_config(config_path: str | Path, data: dict[str, Any]) -> Path:
+    """Write the GPT helper prompt config atomically."""
+    path = _gpt_helper_prompt_path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f"{path.name}.tmp")
+    temp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+    return path
+
+
+def _render_console_asset_for_task(zet_app: ZetApp, task):
+    """Look up the asset associated with a render-console task."""
+    if task.asset_id is None:
+        return None
+    try:
+        return zet_app.asset(task.character, task.phase, int(task.asset_id)).get()
+    except Exception:
+        return None
+
+
+def _gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task) -> dict[str, str]:
+    """Return the short manual ChatGPT helper prompt for a render-console task."""
+    asset = _render_console_asset_for_task(zet_app, task)
+    if asset is None:
+        return {"text": "", "view": "", "source": ""}
+
+    view = _view_key(asset.body_view)
+    data = _read_gpt_helper_prompt_config(config_path)
+    pipelines = data.get("pipelines", {}) if isinstance(data, dict) else {}
+    defaults = data.get("defaults", {}) if isinstance(data, dict) else {}
+    pipeline_prompts = pipelines.get(asset.pipeline, {}) if isinstance(pipelines, dict) else {}
+    text = ""
+    source = ""
+    if isinstance(pipeline_prompts, dict):
+        text = str(pipeline_prompts.get(view) or "").strip()
+        source = f"pipeline:{asset.pipeline}" if text else ""
+    if not text and isinstance(defaults, dict):
+        text = str(defaults.get(view) or "").strip()
+        source = "defaults" if text else ""
+    return {"text": text, "view": view, "source": source, "pipeline": asset.pipeline}
+
+
+def _save_gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task, text: str) -> dict[str, str]:
+    """Save a pipeline/view GPT helper prompt override for a render-console task."""
+    asset = _render_console_asset_for_task(zet_app, task)
+    if asset is None:
+        raise ValueError("Cannot save helper prompt because the render task is not tied to an asset.")
+    view = _view_key(asset.body_view)
+    if not view:
+        raise ValueError("Cannot save helper prompt because the asset has no view.")
+
+    data = _read_gpt_helper_prompt_config(config_path)
+    pipelines = data.setdefault("pipelines", {})
+    if not isinstance(pipelines, dict):
+        pipelines = {}
+        data["pipelines"] = pipelines
+    pipeline_prompts = pipelines.setdefault(asset.pipeline, {})
+    if not isinstance(pipeline_prompts, dict):
+        pipeline_prompts = {}
+        pipelines[asset.pipeline] = pipeline_prompts
+
+    cleaned = str(text or "").strip()
+    if cleaned:
+        pipeline_prompts[view] = cleaned
+    else:
+        pipeline_prompts.pop(view, None)
+    if not pipeline_prompts:
+        pipelines.pop(asset.pipeline, None)
+
+    path = _write_gpt_helper_prompt_config(config_path, data)
+    prompt = _gpt_helper_prompt(zet_app, config_path, task)
+    prompt["config_path"] = str(path)
+    return prompt
 
 
 def _format_value(value: Any) -> str:
@@ -96,6 +200,9 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["ai_state"] = _format_value(asset.ai_state)
     data["final_image_output"] = _format_value(asset.final_image_output)
     data["updated_at_display"] = _format_timestamp_with_age(asset.updated_at)
+    render_comment = zet_app.render_review_comment(asset.character, asset.phase, asset.asset_id)
+    data["render_review_comment"] = render_comment
+    data["has_render_review_comment"] = bool(render_comment)
     data["review_image_ready"] = _review_image_ready(zet_app, asset)
     if asset.pipeline_stage == "ADD_REF" and asset.error_code:
         data["pipeline_stage_display"] = f"ADD_REF ({asset.error_code})"
@@ -126,6 +233,7 @@ def _prompt_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
     return {
         "asset": _asset_payload(zet_app, asset),
         "is_reviewable": _is_prompt_review_asset(asset),
+        "supports_local_test_render": asset.pipeline == "Body-Reference",
         "prompt_path": str(context.prompt_path) if context.prompt_path else None,
         "prompt_text": context.prompt_text or "",
         "condensed_prompt_path": str(context.condensed_prompt_path) if context.condensed_prompt_path else None,
@@ -169,6 +277,7 @@ def _render_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
         "history_text": detail["history_text"],
         "candidate_image_path": detail["paths"]["candidate_image_path"],
         "locked_image_path": detail["paths"]["locked_image_path"],
+        "render_review_comment": zet_app.render_review_comment(character, phase, asset_id),
     }
 
 
@@ -764,6 +873,20 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/render-review/{asset_id}/comment")
+    async def render_review_save_comment(asset_id: int, request: Request, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Save the render-review comment for an asset."""
+        zet_app = _app(app.state.config_path)
+        try:
+            payload = await request.json()
+            comment = zet_app.save_render_review_comment(character, phase, asset_id, str(payload.get("comment") or ""))
+            response = _render_review_context_payload(zet_app, character, phase, asset_id)
+            response["message"] = "Image review comment saved." if comment else "Image review comment cleared."
+            response["assets"] = [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)]
+            return response
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/head-fitment-manifest/tasks")
     def head_fitment_manifest_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -836,6 +959,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             payload = _ai_controls_payload(zet_app)
             payload["message"] = f"Harvested {len(results)} AI answer folder(s)." if results else "No AI answer folders found."
             payload["harvest_results"] = _jsonable(results)
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/ai-controls/archive-harvested")
+    def ai_controls_archive_harvested() -> dict[str, Any]:
+        """Archive harvested AI answer folders."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.archive_harvested_answers()
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = (
+                f"Archived {result['moved_count']} harvested answer folder(s); "
+                f"skipped {result['skipped_count']} unharvested folder(s)."
+            )
+            payload["archive_result"] = result
             return payload
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -955,14 +1094,34 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         task = queue.get_task(ask_id)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        zet_app = _app(app.state.config_path)
         return {
             "task": task.to_dict(),
             "manifest": _jsonable(task.manifest),
             "prompt": queue.read_prompt(task),
+            "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
         }
 
+    @app.post("/api/render-console/tasks/{ask_id}/gpt-helper-prompt")
+    async def render_console_save_gpt_helper_prompt(ask_id: str, request: Request) -> dict[str, Any]:
+        """Save the editable GPT helper prompt for a render-console task."""
+        queue = _render_console_queue(app.state.config_path)
+        task = queue.get_task(ask_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            payload = await request.json()
+            zet_app = _app(app.state.config_path)
+            prompt = _save_gpt_helper_prompt(zet_app, app.state.config_path, task, str(payload.get("text") or ""))
+            return {
+                "message": f"Saved GPT helper prompt for {prompt.get('pipeline')} / {prompt.get('view')}.",
+                "gpt_helper_prompt": prompt,
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/render-console/tasks/{ask_id}/answer-image")
-    async def render_console_answer_image(ask_id: str, request: Request) -> dict[str, Any]:
+    async def render_console_answer_image(ask_id: str, request: Request, render_comment: str = Query("", max_length=10000)) -> dict[str, Any]:
         queue = _render_console_queue(app.state.config_path)
         task = queue.get_task(ask_id)
         if task is None:
@@ -970,7 +1129,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         image_bytes = await request.body()
         content_type = request.headers.get("content-type", "")
         try:
-            answer_path = queue.write_answer_image(task, image_bytes, content_type)
+            answer_path = queue.write_answer_image(task, image_bytes, content_type, render_comment)
             tasks = queue.list_tasks()
             return {
                 "status": "SUCCESS",
@@ -1044,6 +1203,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             updated = zet_app.asset(character, phase, asset_id).regenerate()
             return _action_response(zet_app, character, phase, updated.asset_id, f"Asset reset to {updated.pipeline_stage}.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/retouch")
+    def retouch(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Stage a selected asset for manual retouch rendering."""
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).start_retouch_render()
+            return _action_response(
+                zet_app,
+                character,
+                phase,
+                updated.asset_id,
+                "Retouch render staged. Open Render Console to paste the edited image.",
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

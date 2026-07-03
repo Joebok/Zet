@@ -60,6 +60,7 @@
                 <option value="Body-Reference">Body-Reference</option>
                 <option value="Head-Fitment">Head-Fitment</option>
                 <option value="Character-Assembly">Character-Assembly</option>
+                <option value="Costume-Dressing">Costume-Dressing</option>
               </select>
             </label>
           </div>
@@ -74,6 +75,7 @@
                 <th>pipeline_stage</th>
                 <th>actor</th>
                 <th>ai_state</th>
+                <th>note</th>
                 <th>updated_at</th>
               </tr>
             </thead>
@@ -89,11 +91,11 @@
             <button id="asset-detail-image-mode" type="button">Locked Image</button>
           </div>
           <div class="button-row">
-            <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
-            <button id="run-current-worker" data-action="run-current-worker" disabled>Run Current Worker</button>
-            <button id="run-housekeeping" data-action="run-housekeeping" disabled>Run Housekeeping</button>
-            <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
+            <button id="run-current-worker" data-action="run-current-worker" disabled>Advance</button>
             <button id="regenerate" data-action="regenerate" disabled>Regenerate</button>
+            <button id="retouch" data-action="retouch" disabled>Retouch</button>
+            <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
+            <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
             <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
           </div>
           <div id="asset-status-detail" class="asset-detail-view">
@@ -260,6 +262,13 @@
             <span id="render-review-path" class="status-text"></span>
           </div>
           <div id="render-review-message" class="action-message" hidden></div>
+          <section class="review-comment-panel">
+            <div class="helper-panel-header">
+              <label>Image Review Comment</label>
+              <button id="render-comment-save" type="button">Save Comment</button>
+            </div>
+            <textarea id="render-review-comment" spellcheck="false" placeholder="Notes about this render candidate"></textarea>
+          </section>
           <div class="render-comparison">
             <section class="render-comparison-panel">
               <h3>Candidate</h3>
@@ -321,6 +330,16 @@
             <div><label>Pipeline</label><p id="console-pipeline-label"></p></div>
             <div><label>Expected Output</label><p id="console-expected-output"></p></div>
           </div>
+          <div id="render-console-helper-panel" class="helper-panel" hidden>
+            <div class="helper-panel-header">
+              <label>GPT Helper Prompt</label>
+              <div class="button-row compact">
+                <button id="render-console-save-helper" type="button">Save Helper</button>
+                <button id="render-console-copy-helper" type="button">Copy Helper</button>
+              </div>
+            </div>
+            <textarea id="render-console-helper-text" spellcheck="false"></textarea>
+          </div>
           <textarea id="render-console-prompt" spellcheck="false"></textarea>
         </section>
         <aside class="review-actions render-console-actions">
@@ -331,6 +350,10 @@
             <input id="render-console-file-input" type="file" accept="image/*">
           </div>
           <img id="render-console-image-preview" class="image-preview" alt="Pasted render preview" hidden>
+          <label>
+            Image Answer Comment
+            <textarea id="render-console-answer-comment" placeholder="Optional note saved with this image answer"></textarea>
+          </label>
           <button id="render-console-save-image" class="primary-action" disabled>Save Image Answer</button>
           <p id="render-console-save-status" class="status-text"></p>
           <div id="render-console-reference-files" class="reference-preview-list"></div>
@@ -354,6 +377,7 @@
           <div id="proxy-stop-state" class="summary-bar"></div>
           <div class="button-row two">
             <button id="harvest-ai">Harvest AI Answers</button>
+            <button id="archive-harvested-ai">Clean Harvested Answers</button>
             <button id="refresh-ai-controls">Refresh</button>
             <button id="activate-proxy-stop">Activate Stop</button>
             <button id="resume-proxy-stop">Resume</button>
@@ -539,6 +563,15 @@
             <div id="prompt-diff-new" class="prompt-diff-pane"></div>
           </section>
         </div>
+      </form>
+    </dialog>
+    <dialog id="asset-note-dialog">
+      <form method="dialog">
+        <div class="review-header">
+          <h2 id="asset-note-title">Asset Note</h2>
+          <button>Close</button>
+        </div>
+        <textarea id="asset-note-text" readonly></textarea>
       </form>
     </dialog>
   </main>

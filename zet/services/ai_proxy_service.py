@@ -136,30 +136,38 @@ class AIProxyService:
             else:
                 worker_dir.unlink(missing_ok=True)
 
-    def _build_ask(self, asset) -> AIProxyAsk:
+    def _build_manual_render_ask(self, asset, ask_id: str, attempt_id: str) -> AIProxyAsk:
+        """Build a manual ChatGPT render ask for the render console."""
+        return AIProxyAsk(
+            ask_id=ask_id,
+            asset_id=asset.asset_id,
+            character=asset.character,
+            phase=asset.phase,
+            pipeline=asset.pipeline,
+            pipeline_stage=asset.pipeline_stage,
+            ollama_attempt_id=attempt_id,
+            worker_type="manual_chatgpt_render",
+            ollama_model="",
+            prompt_file="Final_Image_Prompt.md",
+            expected_output=asset.final_image_output,
+            candidate_output_file=asset.final_image_output,
+            task_type="render",
+            render_preset="chatgpt-manual",
+            manual=True,
+            reference_files=asset.reference_files or [],
+        )
+
+    def _build_ask(self, asset, force_manual_render: bool = False) -> AIProxyAsk:
+        """Build the queue ask appropriate for an asset's current pipeline stage."""
         stamp = self._timestamp_compact()
         ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}"
         attempt_id = f"{stamp}_{asset.asset_id}_{asset.pipeline_stage}"
+        if force_manual_render and asset.pipeline_stage == "RENDER":
+            return self._build_manual_render_ask(asset, ask_id, attempt_id)
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
             render_backend = self._render_backend()
             if render_backend == "manual_chatgpt":
-                return AIProxyAsk(
-                    ask_id=ask_id,
-                    asset_id=asset.asset_id,
-                    character=asset.character,
-                    phase=asset.phase,
-                    pipeline=asset.pipeline,
-                    pipeline_stage=asset.pipeline_stage,
-                    ollama_attempt_id=attempt_id,
-                    worker_type="manual_chatgpt_render",
-                    ollama_model="",
-                    prompt_file="Final_Image_Prompt.md",
-                    expected_output=asset.final_image_output,
-                    candidate_output_file=asset.final_image_output,
-                    task_type="render",
-                    render_preset="chatgpt-manual",
-                    manual=True,
-                )
+                return self._build_manual_render_ask(asset, ask_id, attempt_id)
             prompt_file = "Final_Image_Prompt.md"
             if self.prompt_review_service is not None:
                 context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
@@ -182,43 +190,11 @@ class AIProxyService:
                 render_preset="body-reference-preview",
             )
         if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "RENDER":
-            return AIProxyAsk(
-                ask_id=ask_id,
-                asset_id=asset.asset_id,
-                character=asset.character,
-                phase=asset.phase,
-                pipeline=asset.pipeline,
-                pipeline_stage=asset.pipeline_stage,
-                ollama_attempt_id=attempt_id,
-                worker_type="manual_chatgpt_render",
-                ollama_model="",
-                prompt_file="Final_Image_Prompt.md",
-                expected_output=asset.final_image_output,
-                candidate_output_file=asset.final_image_output,
-                task_type="render",
-                render_preset="chatgpt-manual",
-                manual=True,
-                reference_files=asset.reference_files or [],
-            )
+            return self._build_manual_render_ask(asset, ask_id, attempt_id)
         if asset.pipeline == "Character-Assembly" and asset.pipeline_stage == "RENDER":
-            return AIProxyAsk(
-                ask_id=ask_id,
-                asset_id=asset.asset_id,
-                character=asset.character,
-                phase=asset.phase,
-                pipeline=asset.pipeline,
-                pipeline_stage=asset.pipeline_stage,
-                ollama_attempt_id=attempt_id,
-                worker_type="manual_chatgpt_render",
-                ollama_model="",
-                prompt_file="Final_Image_Prompt.md",
-                expected_output=asset.final_image_output,
-                candidate_output_file=asset.final_image_output,
-                task_type="render",
-                render_preset="chatgpt-manual",
-                manual=True,
-                reference_files=asset.reference_files or [],
-            )
+            return self._build_manual_render_ask(asset, ask_id, attempt_id)
+        if asset.pipeline == "Costume-Dressing" and asset.pipeline_stage == "RENDER":
+            return self._build_manual_render_ask(asset, ask_id, attempt_id)
         return AIProxyAsk(
             ask_id=ask_id,
             asset_id=asset.asset_id,
@@ -274,12 +250,13 @@ class AIProxyService:
             "reference_files": ask.reference_files,
         }
 
-    def _prompt_contents(self, asset) -> str:
+    def _prompt_contents(self, asset, force_manual_render: bool = False) -> str:
+        """Read the prompt text that should be copied into a queued ask."""
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
             if self.prompt_review_service is None:
                 raise AIProxyServiceError("Prompt review service is required to stage body-reference render asks.")
             context = self.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
-            if self._render_backend() == "manual_chatgpt":
+            if force_manual_render or self._render_backend() == "manual_chatgpt":
                 if not context.prompt_text:
                     raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
                 return context.prompt_text
@@ -299,6 +276,12 @@ class AIProxyService:
                 raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
             return prompt_path.read_text(encoding="utf-8")
 
+        if asset.pipeline == "Costume-Dressing" and asset.pipeline_stage == "RENDER":
+            prompt_path = self.path_service.pipeline_path(asset) / "Final_Image_Prompt.md"
+            if not prompt_path.exists():
+                raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
+            return prompt_path.read_text(encoding="utf-8")
+
         head_view = self._safe_head_view(asset.head_view)
         return (
             "# Zet Ollama Prompt\n\n"
@@ -313,7 +296,8 @@ class AIProxyService:
             "This is a staged placeholder prompt for Zet AI proxy testing.\n"
         )
 
-    def stage_current_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
+    def stage_current_ai_ask(self, character: str, phase: str, asset_id: int, force_manual_render: bool = False) -> Path:
+        """Write an AI queue ask for the asset's current AI_AGENT stage."""
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.actor != "AI_AGENT":
             raise AIProxyServiceError("AI ask staging is only available when Actor is AI_AGENT.")
@@ -321,7 +305,7 @@ class AIProxyService:
             raise AIProxyServiceError(f"Asset {asset.asset_id} is missing final_image_output.")
 
         self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
-        ask = self._build_ask(asset)
+        ask = self._build_ask(asset, force_manual_render=force_manual_render)
         self._ensure_queue_dirs()
 
         ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
@@ -332,7 +316,7 @@ class AIProxyService:
         json.loads(manifest_path.read_text(encoding="utf-8"))
 
         prompt_path = ask_path / ask.prompt_file
-        self._write_text_atomic(prompt_path, self._prompt_contents(asset))
+        self._write_text_atomic(prompt_path, self._prompt_contents(asset, force_manual_render=force_manual_render))
 
         updated_asset = replace(asset)
         updated_asset.ai_state = "ASKED"
@@ -594,6 +578,36 @@ class AIProxyService:
         }
         self._write_json_atomic(self.ai_proxy_path_service.stop_manifest_path(), payload)
         return payload
+
+    def archive_harvested_answers(self) -> dict:
+        """Move harvested answer folders into a dated archive folder."""
+        self._ensure_queue_dirs()
+        answer_root = self.ai_proxy_path_service.answer_root()
+        archive_root = self.ai_proxy_path_service.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
+        archive_root.mkdir(parents=True, exist_ok=True)
+
+        moved: list[dict] = []
+        skipped: list[dict] = []
+        for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
+            harvest_manifest = answer_path / "harvest_manifest.json"
+            if not harvest_manifest.exists():
+                skipped.append({"name": answer_path.name, "reason": "not harvested"})
+                continue
+
+            dest_path = archive_root / answer_path.name
+            if dest_path.exists():
+                suffix = datetime.now().strftime("%H%M%S_%f")
+                dest_path = archive_root / f"{answer_path.name}.{suffix}"
+            shutil.move(str(answer_path), str(dest_path))
+            moved.append({"name": answer_path.name, "archived_to": str(dest_path)})
+
+        return {
+            "archive_root": str(archive_root),
+            "moved_count": len(moved),
+            "skipped_count": len(skipped),
+            "moved": moved,
+            "skipped": skipped,
+        }
 
     def list_monitor_responses(self) -> list[MonitorTestResult]:
         self._ensure_queue_dirs()

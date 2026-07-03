@@ -611,6 +611,28 @@ dl {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.review-comment-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.review-comment-panel textarea {
+  font-size: 14px;
+  min-height: 72px;
+}
+
+.note-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
 .render-comparison-panel {
   min-width: 0;
 }
@@ -661,6 +683,39 @@ dl {
   overflow-wrap: anywhere;
 }
 
+.helper-panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.helper-panel-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.helper-panel-header label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.helper-panel textarea {
+  min-height: 62px;
+}
+
+.helper-panel p,
+.helper-panel textarea {
+  font-size: 15px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 #render-console-prompt {
   color: var(--text);
   font-family: Consolas, "Courier New", monospace;
@@ -709,6 +764,15 @@ dl {
 
 #render-console-fail-reason {
   min-height: 90px;
+}
+
+#render-console-answer-comment {
+  min-height: 90px;
+}
+
+#asset-note-text {
+  min-height: 180px;
+  min-width: min(620px, 80vw);
 }
 
 .ai-controls-grid {

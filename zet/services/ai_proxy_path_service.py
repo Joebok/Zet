@@ -26,6 +26,14 @@ class AIProxyPathService:
     def failed_root(self) -> Path:
         return self.proxy_root() / "Failed"
 
+    def archive_root(self) -> Path:
+        """Return the AI proxy archive root."""
+        return self.proxy_root() / "Archive"
+
+    def harvested_archive_root(self) -> Path:
+        """Return the harvested-answer archive root."""
+        return self.archive_root() / "Harvested"
+
     def control_root(self) -> Path:
         return self.proxy_root() / "Control"
 

@@ -18,6 +18,21 @@ class WebAppTests(unittest.TestCase):
         pipeline_dir.mkdir(parents=True, exist_ok=True)
         (root / "Assets" / "Test" / "Adult").mkdir(parents=True)
         (root / "Queue").mkdir()
+        (root / "Config").mkdir()
+        (root / "Config" / "GPT_Helper_Prompts.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "defaults": {
+                        "FRONT": "The character must face directly toward the viewer, just like the reference image."
+                    },
+                    "pipelines": {},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         (prompt_dir / "Final_Image_Prompt.md").write_text("full final prompt\n", encoding="utf-8")
         (pipeline_dir / "front.png").write_bytes(b"test image")
         (character_dir / "Assets.json").write_text(
@@ -538,6 +553,15 @@ Backend = "manual_chatgpt"
             self.assertTrue(detail.json()["candidate_image_path"].endswith("front.png"))
             self.assertTrue(detail.json()["locked_image_path"].endswith("front.png"))
 
+            comment = client.post(
+                "/api/render-review/1/comment",
+                params={"character": "Test", "phase": "Adult"},
+                json={"comment": "Good face, boots need checking."},
+            )
+            self.assertEqual(comment.status_code, 200)
+            self.assertEqual(comment.json()["render_review_comment"], "Good face, boots need checking.")
+            self.assertTrue(comment.json()["asset"]["has_render_review_comment"])
+
             unconfirmed = client.post(
                 "/api/render-review/1/promote-to-locked",
                 params={"character": "Test", "phase": "Adult"},
@@ -571,6 +595,27 @@ Backend = "manual_chatgpt"
             self.assertEqual(payload["asset"]["ai_state"], "ASKED")
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
             self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+
+    def test_asset_action_api_stages_retouch_as_manual_render(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="LOCKED", actor="HUMAN_AGENT")
+            client = TestClient(create_app(config_path))
+
+            response = client.post("/api/assets/1/retouch", params={"character": "Test", "phase": "Adult"})
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertIn("Retouch render staged", payload["message"])
+            self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
+            self.assertEqual(payload["detail"]["asset"]["actor"], "AI_AGENT")
+            self.assertEqual(payload["detail"]["asset"]["ai_state"], "ASKED")
+            self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
+            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            self.assertEqual(len(ask_dirs), 1)
+            manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
+            self.assertTrue(manifest["manual"])
 
     def test_ai_controls_api_serves_snapshot_and_monitor_test(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -655,9 +700,29 @@ Backend = "manual_chatgpt"
             detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
             self.assertEqual(detail.status_code, 200)
             self.assertEqual(detail.json()["prompt"], "manual render prompt\n")
+            self.assertEqual(
+                detail.json()["gpt_helper_prompt"]["text"],
+                "The character must face directly toward the viewer, just like the reference image.",
+            )
+            saved_helper = client.post(
+                "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/gpt-helper-prompt",
+                json={"text": "Keep this front view absolutely square to the viewer."},
+            )
+            self.assertEqual(saved_helper.status_code, 200)
+            self.assertEqual(
+                saved_helper.json()["gpt_helper_prompt"]["text"],
+                "Keep this front view absolutely square to the viewer.",
+            )
+            self.assertEqual(saved_helper.json()["gpt_helper_prompt"]["source"], "pipeline:Body-Reference")
+            helper_config = json.loads((root / "Config" / "GPT_Helper_Prompts.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                helper_config["pipelines"]["Body-Reference"]["FRONT"],
+                "Keep this front view absolutely square to the viewer.",
+            )
 
             saved = client.post(
                 "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
+                params={"render_comment": "First render has strong silhouette."},
                 content=b"image bytes",
                 headers={"content-type": "image/png"},
             )
@@ -666,8 +731,13 @@ Backend = "manual_chatgpt"
             self.assertFalse(ask_path.exists())
             answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Asset_1_RENDER_TEST"
             self.assertTrue((answer_path / "front.png").exists())
+            self.assertEqual(
+                (answer_path / "Render_Review_Comment.md").read_text(encoding="utf-8").strip(),
+                "First render has strong silhouette.",
+            )
             manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "SUCCESS")
+            self.assertEqual(manifest["render_comment"], "First render has strong silhouette.")
 
     def test_harvest_continues_after_malformed_answer_folder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -748,6 +818,55 @@ Backend = "manual_chatgpt"
             detail = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(detail.json()["asset"]["pipeline_stage"], "ERROR")
             self.assertEqual(detail.json()["asset"]["error_code"], "MANUAL_RENDER_FAILED")
+
+    def test_harvest_applies_render_comment_to_image_review(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="RENDER", actor="AI_AGENT")
+            self._write_manual_render_ask(root)
+            client = TestClient(create_app(config_path))
+
+            saved = client.post(
+                "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
+                params={"render_comment": "Candidate is close; inspect hand shape."},
+                content=b"image bytes",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(saved.status_code, 200)
+            harvested = client.post("/api/ai-controls/harvest")
+            self.assertEqual(harvested.status_code, 200)
+
+            detail = client.get("/api/render-review/1", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(detail.json()["asset"]["pipeline_stage"], "RENDER_REVIEW")
+            self.assertEqual(detail.json()["render_review_comment"], "Candidate is close; inspect hand shape.")
+            self.assertTrue(detail.json()["asset"]["has_render_review_comment"])
+            comment_path = root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "Render_Review_Comment.md"
+            self.assertEqual(comment_path.read_text(encoding="utf-8").strip(), "Candidate is close; inspect hand shape.")
+
+    def test_ai_controls_archives_only_harvested_answer_folders(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            answer_root = root / "Queue" / "Ollama_Proxy" / "Answer"
+            harvested = answer_root / "Ask_Harvested"
+            pending = answer_root / "Ask_Pending"
+            harvested.mkdir(parents=True)
+            pending.mkdir()
+            (harvested / "answer_manifest.json").write_text("{}\n", encoding="utf-8")
+            (harvested / "harvest_manifest.json").write_text("{}\n", encoding="utf-8")
+            (pending / "answer_manifest.json").write_text("{}\n", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            response = client.post("/api/ai-controls/archive-harvested")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertIn("Archived 1 harvested", payload["message"])
+            self.assertFalse(harvested.exists())
+            self.assertTrue(pending.exists())
+            archive_matches = list((root / "Queue" / "Ollama_Proxy" / "Archive" / "Harvested").glob("*/*Ask_Harvested"))
+            self.assertEqual(len(archive_matches), 1)
 
     def test_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -933,7 +1052,8 @@ Backend = "manual_chatgpt"
             prompt_text = prompt_path.read_text(encoding="utf-8")
             self.assertIn("FULL-BODY HEAD-ASSEMBLY FITMENT IMAGE", prompt_text)
             self.assertIn("Preserve the Reference Body as a direct front-view full-body source", prompt_text)
-            self.assertIn("Preserve the Character Head as a direct front-view head source", prompt_text)
+            self.assertIn("The Character Head source is provided only as an identity reference.", prompt_text)
+            self.assertIn("Re-render the Character Head in the exact orientation of the Reference Body mannequin head.", prompt_text)
             self.assertNotIn("{{", prompt_text)
             source_map = json.loads((prompt_path.parent / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
             source_kinds = {fragment["source_kind"] for fragment in source_map["fragments"]}

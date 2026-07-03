@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
 import json
 from pathlib import Path
 import shutil
@@ -17,8 +18,6 @@ if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
 from Local_Render_Adapters import LocalRenderResult, LocalRenderUnavailable, render_image
-from zet.workers import body_reference_prompt_worker
-
 
 @dataclass(frozen=True)
 class PromptReviewContext:
@@ -170,7 +169,7 @@ class PromptReviewService:
         prompt_path: Path | None,
         condensed_prompt_path: Path | None,
     ) -> dict:
-        enabled = bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
+        enabled = asset.pipeline == "Body-Reference" and bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
         model = str(getattr(self.path_service.config, "prompt_condense_model", ""))
         queue_items = self._condense_queue_items(asset)
         latest_queue_item = queue_items[0] if queue_items else None
@@ -224,8 +223,6 @@ class PromptReviewService:
         invalidate_review_artifacts: bool = False,
     ) -> PromptReviewContext:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.pipeline != "Body-Reference":
-            raise ValueError("Prompt review recompile currently supports Body-Reference assets.")
         if not is_prompt_review_asset(asset):
             raise ValueError(f"Asset {asset_id} is not currently in prompt review.")
 
@@ -233,8 +230,17 @@ class PromptReviewService:
         if invalidate_review_artifacts and prompt_path is not None:
             self._clear_review_aids(prompt_path)
 
+        pipeline = self.asset_service.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+        worker_name = pipeline.worker_by_stage.get("PROMPT")
+        if not worker_name:
+            raise ValueError(f"Pipeline {asset.pipeline} has no PROMPT worker configured.")
+        module_name = self.asset_service.worker_service._normalize_worker_name(worker_name)
+        module = importlib.import_module(module_name)
+        run_func = getattr(module, "run", None)
+        if not callable(run_func):
+            raise ValueError(f"Prompt worker module {module_name} has no callable run function.")
         context = self.asset_service.worker_service._build_context(asset)
-        result = body_reference_prompt_worker.run(asset, context)
+        result = run_func(asset, context)
         if not result.success:
             raise ValueError(result.error_message or result.message)
         return self.get_context(character, phase, asset_id)

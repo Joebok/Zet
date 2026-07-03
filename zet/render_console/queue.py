@@ -121,7 +121,8 @@ class RenderConsoleQueue:
             return ""
         return prompt_path.read_text(encoding="utf-8")
 
-    def write_answer_image(self, task: ManualRenderTask, image_bytes: bytes, content_type: str = "") -> Path:
+    def write_answer_image(self, task: ManualRenderTask, image_bytes: bytes, content_type: str = "", render_comment: str = "") -> Path:
+        """Write a successful manual render answer and optional review comment."""
         if not image_bytes:
             raise ValueError("No image data was provided.")
         if not task.expected_output:
@@ -135,6 +136,9 @@ class RenderConsoleQueue:
         shutil.copytree(task.ask_path, answer_path)
         output_path = answer_path / task.expected_output
         output_path.write_bytes(image_bytes)
+        comment = str(render_comment or "").strip()
+        if comment:
+            (answer_path / "Render_Review_Comment.md").write_text(comment + "\n", encoding="utf-8")
 
         completed_at = self._timestamp()
         answer_manifest = {
@@ -151,6 +155,7 @@ class RenderConsoleQueue:
             "error_type": "",
             "error_message": "",
             "content_type": content_type,
+            "render_comment": comment,
         }
         (answer_path / "answer_manifest.json").write_text(
             json.dumps(answer_manifest, indent=2) + "\n",

@@ -20,6 +20,39 @@ The Reference Body is not a style suggestion.
 The Character Head is not a loose inspiration image.
 Use them as direct source references for the specified regions.
 
+HEAD ORIENTATION LOCK — CRITICAL
+
+The Reference Body’s mannequin head is the orientation guide for the final Character Head.
+
+Use the Reference Body mannequin head only to determine:
+- head yaw
+- head pitch
+- head roll
+- face direction
+- neck axis
+- where the nose/face plane points
+- how the head aligns with the torso and shoulders
+
+Replace the mannequin head with the Character Head identity, but preserve the mannequin head’s exact orientation.
+
+The final Character Head must face the same direction as the Reference Body mannequin head.
+The Character Head, neck, shoulders, torso, hips, knees, and feet must all share the same {{BODY_VIEW_TOKEN}} body direction.
+
+Do not let the Character Head look toward the viewer unless the Reference Body mannequin head is looking toward the viewer.
+Do not turn the Character Head independently from the torso.
+Do not use the Character Head source as an independent pose or gaze direction.
+Use the Character Head source for identity, face, hair, ears, expression, and skin tone only.
+Use the Reference Body mannequin head for head orientation and neck alignment.
+
+Imagine that the Character Head is physically replacing the mannequin head.
+
+The mannequin head is removed.
+
+Without moving the neck, shoulders, or skull orientation, redraw the Character Head in exactly the same position.
+
+Only the identity changes.
+Nothing else changes.
+
 FITMENT-ASSET PURPOSE
 
 This is an intermediate body-reference assembly, not a finished costume render.
@@ -64,15 +97,37 @@ STANCE AND FOOT PLACEMENT — CRITICAL
 
 CHARACTER HEAD CONTROLS
 
-Use the Character Head source as the authority for:
+Use the Character Head source as the authority for identity only:
 - face identity
 - head shape
 - facial proportions
-- eye color and gaze
+- eye color
 - hair silhouette and hair placement
 - ear shape and visibility
 - natural neck shape
 - skin tone and texture
+
+Do not use the Character Head source as the authority for head direction if it conflicts with the Reference Body mannequin head.
+
+Use the Reference Body mannequin head as the authority for:
+- face direction
+- gaze direction
+- neck angle
+- head-to-torso alignment
+
+The Character Head must be re-rendered in the same orientation as the Reference Body mannequin head while preserving the Character Head’s identity.
+
+EYE GAZE LOCK
+
+The eyes must look in the same direction that the head faces.
+
+Do not allow the eyes to look toward the viewer independently of the head.
+
+The eye gaze must remain aligned with the face direction.
+
+Do not create sidelong glances.
+
+Do not create eye contact with the viewer.
 
 NECK CONNECTION RULE
 
@@ -86,9 +141,12 @@ The neck must not be too long.
 The neck must not be buried into the shoulders.
 The transition must not show a seam, ring, collar, socket, gray material, mannequin material, hard cut, pasted edge, or visible compositing boundary.
 
-Do not rotate the Character Head.
-Do not mirror the Character Head.
-Do not change the head view.
+Do not rotate the final head away from the Reference Body mannequin head orientation.
+Do not mirror the final head.
+Do not let the final head use a different view from the Reference Body mannequin head.
+
+The source Character Head image provides identity and design, not independent head pose.
+
 Do not redesign the face.
 Do not change the hairstyle.
 Do not hide the elf ears unless the source view already does so.
@@ -140,7 +198,19 @@ Body view instruction:
 {{BODY_VIEW_INSTRUCTION}}
 
 Head view instruction:
-{{HEAD_VIEW_INSTRUCTION}}
+
+The Character Head source is provided only as an identity reference.
+
+Re-render the Character Head in the exact orientation of the Reference Body mannequin head.
+
+Do not preserve the source image's pose if it differs from the mannequin head.
+
+Only preserve:
+- face identity
+- hairstyle
+- ear shape
+- facial proportions
+- expression
 
 Good output:
 - One complete full-body character image.
@@ -162,6 +232,11 @@ IMPORTANT — TEMPLATE DETAILS ARE SECONDARY TO SOURCE PRESERVATION
 The identity notes below are used only to preserve face, hair, ears, species, and adult identity.
 They are not costume instructions.
 They must not change the Reference Body clothing.
+
+Failure condition:
+The image is incorrect if the head appears to be looking in a different direction than the Reference Body mannequin head.
+The image is incorrect if the head is turned toward the viewer more than the mannequin head in the Reference Body.
+The image is incorrect if the neck twists between the shoulders and skull.
 
 ~{{SECTION:GENERAL_DESCRIPTION_FACTS}}
 

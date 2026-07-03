@@ -5,6 +5,9 @@ Character Phase: `[Adult]`
 Species / Ancestry: `[High elf]`
 Gender Presentation: `[Feminine adult woman]`
 Canonical Art Style: `[Painterly semi-realistic fantasy illustration with anime-influenced facial proportions, large expressive eyes, refined linework, and warm parchment reference-sheet presentation]`
+Footwear: `[feet]`
+Footwear Contact: `[Both bare feet are flat on the floor. Both heels are fully planted. Both forefeet and toes touch the ground.]`
+Footwear Grounding: `[Both bare feet remain flat on the ground.]`
 
 ---
 
@@ -744,12 +747,12 @@ Avoid:
 * Missing, hidden, rounded, or human ears
 * Incorrect body type: bulky, stocky, heavy-thighed, childlike
 * Dramatic pose
-* feet not flat on floor.
-* raised heel, lifted heel, lifted toes, tiptoe stance 
+* unstable footwear contact with the floor.
+* raised-foot pose, lifted-foot pose, lifted toes, tiptoe stance 
 * walking pose, stepping pose, crossed feet, crossed ankles, staggered stance, 
 * dance pose, contrapposto, model pose, fashion stance, 
 * one leg bearing all weight, one knee bent dramatically 
-* feet not flat on floor.
+* unstable footwear contact with the floor.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
 

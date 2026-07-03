@@ -4,6 +4,8 @@ Costume Name: `[Canonical Adventure Gear]`
 Character Name: `[Tsaeytte]`
 Character Phase: `[Adult]`
 Costume Role: `[Primary adventuring outfit]`
+Footwear: `[high-heeled boots]`
+Footwear Contact: `[Both high-heeled boots touch the floor in a stable standing position. The boot heels contact the floor. The soles are angled naturally by the high-heeled boot shape; do not turn this into tiptoe, ballet, or a raised-foot pose.]`
 
 ---
 
@@ -35,12 +37,15 @@ Recommended usage:
 * Costume name: canonical adult adventuring sorceress outfit.
 * Overall silhouette: elegant mobile sorceress-adventurer outfit with teal fabric, exposed shoulders, visible midriff, high-low skirt, dark leggings, tall boots, and a utility belt.
 * Top: teal off-shoulder ruffled crop top with fitted bodice and decorative seams; rich dark teal fabric with subtle gold or star-like ornamentation.
-* Sleeves: separate or gathered off-shoulder puff sleeves ending above the elbow with layered ruffles; forearms mostly exposed.
+* Sleeves: short separate off-shoulder puff sleeves gathered around the upper arms only; each sleeve ends clearly above the elbow.
+* Sleeve length rule: elbows, forearms, wrists, and hands remain completely uncovered. Do not extend the sleeves to the elbow, forearm, wrist, or hand.
 * Neckline: off-shoulder neckline below the shoulders; ruffled upper edge; no straps.
 * Waist/midriff: exposed midriff and navel between crop top and belt/skirt; adult non-explicit fantasy styling.
-* Lower garment: teal high-low skirt, short in front with layered drape and longer in back to mid-calf or lower; flowing uneven hem with gold decorative motifs.
-* Legwear: dark blue or navy leggings visible under the front opening, possibly with subtle diamond or seam pattern.
-* Footwear: tall brown leather heeled adventuring boots with straps, panels, buckles, and worn practical texture.
+* Lower garment: teal high-low skirt with three fixed length zones: shortest open front, longer side panels, and longest back panels.
+* High-low skirt construction: the front is a high arched opening that exposes the dark leggings from upper thigh through knees, lower legs, and boots; the side panels fall longer; the back panel is the longest drape.
+* Skirt drift rule: do not turn the high-low skirt into a full front-length gown, cape, cloak, overskirt curtain, or symmetrical long skirt.
+* Legwear: dark navy leggings visible beneath the skirt opening; plain or subtly paneled, not decorative enough to compete with the skirt.
+* Footwear: tall warm brown leather high-heeled adventuring boots with straps, panels, buckles, and worn travel texture; the high heels are canonical and must be preserved.
 * Belt: broad brown leather utility belt with large central buckle and side attachments.
 * Pouches: multiple brown leather pouches and containers on the belt, especially on the left hip.
 * Weapons/tools: compact dagger at the right hip; scroll case and practical adventuring containers on the left or rear-left side.
@@ -48,7 +53,7 @@ Recommended usage:
 * Materials: teal cloth, gold embroidery or trim, brown leather, dark leggings, metal buckles, polished blue-violet stones.
 * Colors: dominant teal and dark teal, dark navy leggings, warm brown leather, gold accents, violet-blue jewelry.
 * Fit: tailored, mobile, theatrical adventuring wear; elegant but practical enough for travel.
-* Forbidden drift: do not add armor plates, corset-only redesign, long formal gown, modern clothing, visible straps, random capes, extra weapons, or a different color palette unless explicitly requested.
+* Forbidden drift: do not add armor plates, corset-only redesign, long formal gown, modern clothing, visible straps, cape, sword, staff, wand, bow, shield, backpack, spellbook, glowing artifact, extra weapons, long sleeves, wrist cuffs, gloves, or a different color palette unless explicitly requested.
 
 <!-- ZET:END COSTUME_DESCRIPTION_FACTS -->
 
@@ -56,49 +61,58 @@ Recommended usage:
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->
 
-* Front view should show off-shoulder ruffled teal crop top, exposed midriff, central belt buckle, high-low skirt opening, dark leggings, tall boots, necklace pendant, earrings, and right-side dagger if visible.
+* Front view should show off-shoulder ruffled teal crop top, short upper-arm sleeves ending above the elbows, exposed elbows and forearms, exposed midriff, central belt buckle, high-low skirt opening, dark leggings, tall boots, necklace pendant, earrings, and right-side dagger if visible.
+* Front view skirt behavior: the skirt front is the shortest zone and forms a high open arch. It must show both dark leggings from upper thighs through knees, lower legs, and boots clearly. The longer back drape may appear only as side or back fabric edges, not as a full front-length gown.
+* Front view anatomical side rule: Tsaeytte's anatomical right appears on the viewer's left; Tsaeytte's anatomical left appears on the viewer's right.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-* Front-left 3/4 should show the teal top and skirt depth, central belt buckle, left-side pouches, flask, scroll case, necklace, earrings, leggings, and boots; keep right-side dagger placement anatomically correct if visible across the body.
+* Front-left 3/4 should show the teal top, short upper-arm sleeves with uncovered elbows and forearms, high-low skirt depth, central belt buckle, left-side pouches, flask, scroll case, necklace, earrings, leggings, and boots; keep right-side dagger placement anatomically correct if visible across the body.
+* Front-left 3/4 skirt behavior: preserve the three-zone hem hierarchy. The front opening remains shortest; the side panel cascades longer; the back panel remains longest.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-* Front-right 3/4 should show the teal top and skirt depth, central belt buckle, right-side dagger clearly, necklace, earrings, leggings, and boots; left-side pouches may remain visible across the belt line.
+* Front-right 3/4 should show the teal top, short upper-arm sleeves with uncovered elbows and forearms, high-low skirt depth, central belt buckle, right-side dagger clearly, necklace, earrings, leggings, and boots; left-side pouches may remain visible across the belt line.
+* Front-right 3/4 skirt behavior: preserve the three-zone hem hierarchy. The front opening remains shortest; the side panel cascades longer; the back panel remains longest.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-* Left profile should emphasize left hip equipment: potion or flask, large pouch, smaller pouch, and scroll case; show the side cascade of the high-low skirt and tall boot profile.
+* Left profile should emphasize left hip equipment: potion or flask, large pouch, smaller pouch, and scroll case; show the side cascade of the high-low skirt, short upper-arm sleeve, uncovered elbow and forearm, and tall boot profile.
+* Left profile skirt behavior: the side panel should be longer than the front opening but shorter than the rear drape.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-* Right profile should emphasize the compact dagger at the right hip, off-shoulder sleeve profile, side skirt cascade, dark leggings, and tall boot profile.
+* Right profile should emphasize the compact dagger at the right hip, short off-shoulder upper-arm sleeve profile, uncovered elbow and forearm, side skirt cascade, dark leggings, and tall boot profile.
+* Right profile skirt behavior: the side panel should be longer than the front opening but shorter than the rear drape.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-* Back-left 3/4 should show the rear length of the high-low skirt, back of the teal top, bare shoulders, belt across the back, left or rear-left pouches and scroll case, and tall boots.
+* Back-left 3/4 should show the longest rear panel of the high-low skirt, back of the teal top, bare shoulders, short upper-arm sleeves, uncovered elbows and forearms, belt across the back, left or rear-left pouches and scroll case, and tall boots.
+* Back-left 3/4 skirt behavior: the back panel is longest, but it remains a skirt panel attached at the waist, not a cape or cloak.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-* Back-right 3/4 should show the rear length of the high-low skirt, back of the teal top, bare shoulders, belt across the back, right-side dagger silhouette, and tall boots.
+* Back-right 3/4 should show the longest rear panel of the high-low skirt, back of the teal top, bare shoulders, short upper-arm sleeves, uncovered elbows and forearms, belt across the back, right-side dagger silhouette, and tall boots.
+* Back-right 3/4 skirt behavior: the back panel is longest, but it remains a skirt panel attached at the waist, not a cape or cloak.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK -->
 
-* Back view should show bare shoulders, off-shoulder teal back, compact waist, broad belt, long rear skirt with gold motifs, boot backs, and rear-visible belt gear without inventing a cape or backpack.
+* Back view should show bare shoulders, off-shoulder teal back, short upper-arm sleeves, uncovered elbows and forearms, compact waist, broad belt, longest rear skirt panel with gold motifs, boot backs, and rear-visible belt gear without inventing a cape or backpack.
+* Back view skirt behavior: the rear panel is the longest zone and may cover much of the leggings from behind, while the side edges still reveal that the front opening is shorter.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK -->
 
@@ -124,11 +138,11 @@ Recommended usage:
 
 * Primary weapon/tool: compact dagger carried at the right hip in a sheath; practical scale, not a sword.
 * Secondary weapon/tool: scroll case carried on the left or rear-left side of the belt.
-* Containers: potion or round flask near the front of the left hip; large buckled leather pouch on the left hip; smaller buckled pouch nearby; additional small utility attachments acceptable if they do not crowd the silhouette.
+* Containers: potion or round flask near the front of the left hip; large buckled leather pouch on the left hip; smaller buckled pouch nearby; no additional attachments beyond the specified dagger, flask, pouches, and scroll case.
 * Scrolls/books: cylindrical scroll case on the left side toward the rear.
 * Jewelry: layered dark necklace with central blue-violet teardrop pendant; matching dangling blue-violet earrings in gold-toned settings.
 * Magical objects: jewelry and containers may read as mildly arcane, but do not add glowing artifacts unless requested.
-* Placement rules: right hip has the dagger; left hip carries potion or flask, pouches, and scroll case; do not swap left and right.
+* Placement rules: use anatomical left and right. Right hip has the compact dagger in a sheath. Left hip carries potion or flask, pouches, and scroll case. Do not swap left and right.
 * Scale rules: equipment is sized for a petite adult elf; dagger remains compact, pouches practical, scroll case cylindrical and belt-mounted.
 * Forbidden drift: no sword, staff, wand, bow, shield, armor, backpack, random spellbook, or large glowing object unless explicitly requested.
 
@@ -139,6 +153,7 @@ Recommended usage:
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
 
 * Front view should show the belt buckle, necklace pendant, earrings, front-left potion or flask if unobscured, and compact right-hip dagger if the skirt and arm allow.
+* In front view, Tsaeytte's anatomical right side appears on the viewer's left and carries the dagger. Tsaeytte's anatomical left side appears on the viewer's right and carries the flask, pouches, and scroll case.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
 
@@ -206,7 +221,7 @@ Recommended usage:
 
 Costume preservation rules:
 
-* Preserve the canonical adult adventuring outfit silhouette: teal off-shoulder ruffled crop top, visible midriff, high-low teal skirt, dark leggings, tall brown boots, and broad brown belt.
+* Preserve the canonical adult adventuring outfit silhouette: teal off-shoulder ruffled crop top, short upper-arm sleeves, uncovered elbows and forearms, visible midriff, three-zone high-low teal skirt, dark leggings, tall brown boots, and broad brown belt.
 * Preserve critical colors and materials: dark teal cloth, gold ornament, dark navy leggings, warm brown leather, blue-violet jewelry stones, and metal buckles.
 * Preserve left/right equipment placement: dagger on anatomical right hip; potion or flask, pouches, and scroll case on anatomical left hip or rear-left side.
 * Preserve signature jewelry, tools, and weapons: layered necklace with central blue-violet pendant, matching dangling earrings, compact right-hip dagger, left-side pouches, and scroll case.

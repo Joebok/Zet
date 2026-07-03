@@ -20,6 +20,7 @@ MISSING_REFERENCE_ERROR_CODES = {
     "MISSING_REFERENCE",
     "MISSING_BODY_REFERENCE",
     "MISSING_HEADSHOT_REFERENCE",
+    "MISSING_CHARACTER_ASSEMBLY",
 }
 
 
@@ -216,8 +217,31 @@ class AssetService:
             self.path_service.candidate_image_path(asset),
             self.path_service.pipeline_path(asset) / "LOCAL_RENDER_METADATA.json",
             self.path_service.pipeline_path(asset) / "COMFYUI_RENDER_METADATA.json",
+            self.render_review_comment_path(asset),
         ):
             path.unlink(missing_ok=True)
+
+    def render_review_comment_path(self, asset: Asset) -> Path:
+        """Return the render-review comment sidecar path for an asset."""
+        return self.path_service.pipeline_path(asset) / "Render_Review_Comment.md"
+
+    def get_render_review_comment(self, character: str, phase: str, asset_id: int) -> str:
+        """Read the render-review comment for an asset."""
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        path = self.render_review_comment_path(asset)
+        return path.read_text(encoding="utf-8").strip() if path.exists() else ""
+
+    def save_render_review_comment(self, character: str, phase: str, asset_id: int, comment: str) -> str:
+        """Save the render-review comment for an asset."""
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        path = self.render_review_comment_path(asset)
+        cleaned = str(comment or "").strip()
+        if cleaned:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(cleaned + "\n", encoding="utf-8")
+        else:
+            path.unlink(missing_ok=True)
+        return cleaned
 
     def _render_reset_skip_message(self, asset: Asset) -> str | None:
         if asset.pipeline_stage in {"MANIFEST", "PROMPT"}:
@@ -408,6 +432,41 @@ class AssetService:
         self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
         return self.asset_repository.get_asset(character, phase, asset_id)
 
+    def start_retouch_render(self, character: str, phase: str, asset_id: int) -> Asset:
+        """Move an asset into the manual render lane so a retouched image can be supplied."""
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+        if "RENDER" not in pipeline.stages:
+            raise AssetServiceError(f"Pipeline {pipeline.name} has no RENDER stage.")
+
+        render_actor = self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
+        if render_actor != "AI_AGENT":
+            raise AssetServiceError(f"Pipeline {pipeline.name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
+
+        self.ai_proxy_service.clear_asset_queue_items(asset)
+
+        updated_asset = replace(asset)
+        updated_asset.asset_state = "IN_PROGRESS"
+        updated_asset.pipeline_stage = "RENDER"
+        updated_asset.actor = render_actor
+        updated_asset.ai_state = "ASKED"
+        updated_asset.error_code = None
+        updated_asset.error_message = None
+        updated_asset.last_ai_update = f"Retouch render requested at {self._timestamp()}"
+        updated_asset.updated_at = self._timestamp()
+
+        self.asset_repository.save_asset(updated_asset)
+        self.housekeeping_service.prepare_stage(updated_asset)
+        try:
+            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id, force_manual_render=True)
+        except Exception:
+            self.asset_repository.save_asset(asset)
+            self.housekeeping_service.prepare_stage(asset)
+            raise
+        self._clear_render_outputs(updated_asset)
+        self.housekeeping_service.prepare_stage(self.asset_repository.get_asset(character, phase, asset_id))
+        return self.asset_repository.get_asset(character, phase, asset_id)
+
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.actor != "PYTHON":
@@ -443,13 +502,17 @@ class AssetService:
                 self.housekeeping_service.prepare_stage(updated_asset)
             return updated_asset
 
-        if asset.pipeline == "Head-Fitment" and (result.error_code or "") in MISSING_REFERENCE_ERROR_CODES:
+        if (result.error_code or "") in MISSING_REFERENCE_ERROR_CODES:
             refreshed_asset = self.asset_repository.get_asset(character, phase, asset_id)
             pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
-            add_ref_actor = self._validate_actor(pipeline.name, "ADD_REF", pipeline.actor_by_stage.get("ADD_REF"))
+            if "ADD_REF" not in pipeline.stages:
+                add_ref_stage = refreshed_asset.pipeline_stage
+            else:
+                add_ref_stage = "ADD_REF"
+            add_ref_actor = self._validate_actor(pipeline.name, add_ref_stage, pipeline.actor_by_stage.get(add_ref_stage))
             waiting_asset = replace(refreshed_asset)
             waiting_asset.asset_state = "IN_PROGRESS"
-            waiting_asset.pipeline_stage = "ADD_REF"
+            waiting_asset.pipeline_stage = add_ref_stage
             waiting_asset.actor = add_ref_actor
             waiting_asset.ai_state = None
             waiting_asset.error_code = result.error_code or "MISSING_REFERENCE"

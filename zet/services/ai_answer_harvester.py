@@ -74,6 +74,10 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"Missing ask_manifest.json in {answer_path}")
         return self._read_json(manifest_path)
 
+    def _render_review_comment_path(self, asset) -> Path:
+        """Return the render-review comment sidecar path for an asset."""
+        return self.path_service.pipeline_path(asset) / "Render_Review_Comment.md"
+
     def _expected_attempt(self, asset) -> str | None:
         last_ai_update = asset.last_ai_update or ""
         if "(" in last_ai_update and last_ai_update.endswith(")"):
@@ -104,6 +108,16 @@ class AIAnswerHarvester:
         pipeline_path.mkdir(parents=True, exist_ok=True)
         dest_response_path = pipeline_path / response_path.name
         shutil.copy2(response_path, dest_response_path)
+        answer_manifest = self._read_json(answer_path / "answer_manifest.json")
+        comment = str(answer_manifest.get("render_comment") or "").strip()
+        comment_source_path = answer_path / "Render_Review_Comment.md"
+        comment_dest_path = self._render_review_comment_path(asset)
+        if comment:
+            comment_dest_path.write_text(comment + "\n", encoding="utf-8")
+        elif comment_source_path.exists():
+            shutil.copy2(comment_source_path, comment_dest_path)
+        else:
+            comment_dest_path.unlink(missing_ok=True)
         for metadata_name in ("LOCAL_RENDER_METADATA.json", "COMFYUI_RENDER_METADATA.json"):
             metadata_path = answer_path / metadata_name
             if metadata_path.exists():

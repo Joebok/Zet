@@ -50,6 +50,9 @@ const assetStatusDetail = document.querySelector("#asset-status-detail");
 const assetLockedDetail = document.querySelector("#asset-locked-detail");
 const assetLockedImage = document.querySelector("#asset-locked-image");
 const assetLockedPath = document.querySelector("#asset-locked-path");
+const assetNoteDialog = document.querySelector("#asset-note-dialog");
+const assetNoteTitle = document.querySelector("#asset-note-title");
+const assetNoteText = document.querySelector("#asset-note-text");
 const promptReviewStatus = document.querySelector("#prompt-review-status");
 const promptReviewTaskBody = document.querySelector("#prompt-review-task-table tbody");
 const promptReviewPrev = document.querySelector("#prompt-review-prev");
@@ -90,10 +93,13 @@ const renderFailRenderButton = document.querySelector("#render-fail-render");
 const renderFailRegenerateButton = document.querySelector("#render-fail-regenerate");
 const renderStageText = document.querySelector("#render-stage-text");
 const renderHistoryText = document.querySelector("#render-history-text");
+const renderReviewComment = document.querySelector("#render-review-comment");
+const renderCommentSave = document.querySelector("#render-comment-save");
 const aiControlsStatus = document.querySelector("#ai-controls-status");
 const aiControlsMessage = document.querySelector("#ai-controls-message");
 const proxyStopState = document.querySelector("#proxy-stop-state");
 const harvestAiButton = document.querySelector("#harvest-ai");
+const archiveHarvestedAiButton = document.querySelector("#archive-harvested-ai");
 const refreshAiControlsButton = document.querySelector("#refresh-ai-controls");
 const activateProxyStopButton = document.querySelector("#activate-proxy-stop");
 const resumeProxyStopButton = document.querySelector("#resume-proxy-stop");
@@ -149,12 +155,17 @@ const consoleAskId = document.querySelector("#console-ask-id");
 const consoleAssetLabel = document.querySelector("#console-asset-label");
 const consolePipelineLabel = document.querySelector("#console-pipeline-label");
 const consoleExpectedOutput = document.querySelector("#console-expected-output");
+const renderConsoleHelperPanel = document.querySelector("#render-console-helper-panel");
+const renderConsoleHelperText = document.querySelector("#render-console-helper-text");
+const renderConsoleSaveHelper = document.querySelector("#render-console-save-helper");
+const renderConsoleCopyHelper = document.querySelector("#render-console-copy-helper");
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
 const renderConsolePasteZone = document.querySelector("#render-console-paste-zone");
 const renderConsoleFileInput = document.querySelector("#render-console-file-input");
 const renderConsoleImagePreview = document.querySelector("#render-console-image-preview");
 const renderConsoleSaveImage = document.querySelector("#render-console-save-image");
 const renderConsoleSaveStatus = document.querySelector("#render-console-save-status");
+const renderConsoleAnswerComment = document.querySelector("#render-console-answer-comment");
 const renderConsoleFailReason = document.querySelector("#render-console-fail-reason");
 const renderConsoleFailTask = document.querySelector("#render-console-fail-task");
 const renderConsoleFailStatus = document.querySelector("#render-console-fail-status");
@@ -348,15 +359,38 @@ function renderAssetTable() {
       asset.pipeline_stage_display,
       asset.actor,
       asset.ai_state,
+      asset.has_render_review_comment ? "NOTE" : "",
       asset.updated_at_display,
     ];
-    for (const value of values) {
+    for (const [index, value] of values.entries()) {
       const cell = document.createElement("td");
-      cell.textContent = value ?? "";
+      if (index === 8 && value) {
+        const badge = document.createElement("span");
+        badge.className = "note-badge";
+        badge.textContent = "NOTE";
+        badge.title = asset.render_review_comment || "";
+        badge.addEventListener("click", (event) => {
+          event.stopPropagation();
+          showAssetNote(asset);
+        });
+        cell.append(badge);
+      } else {
+        cell.textContent = value ?? "";
+      }
       row.append(cell);
     }
     row.addEventListener("click", () => selectAsset(asset.asset_id));
     assetTableBody.append(row);
+  }
+}
+
+function showAssetNote(asset) {
+  assetNoteTitle.textContent = `Asset ${asset.asset_id} Note`;
+  assetNoteText.value = asset.render_review_comment || "";
+  if (assetNoteDialog.showModal) {
+    assetNoteDialog.showModal();
+  } else {
+    alert(asset.render_review_comment || "");
   }
 }
 
@@ -608,7 +642,7 @@ function renderPromptReview(detail) {
   condensedText.value = detail.condensed_prompt_text || "";
   viewCondensedButton.disabled = !detail.condensed_prompt_text;
   copyPromptButton.disabled = !detail.prompt_text;
-  generateLocalTestButton.disabled = !detail.prompt_text || !detail.is_reviewable;
+  generateLocalTestButton.disabled = !detail.prompt_text || !detail.is_reviewable || !detail.supports_local_test_render;
   promptApproveButton.disabled = !detail.is_reviewable;
   promptFailButton.disabled = !detail.is_reviewable;
   renderLocalTestRender(detail.latest_local_test_render);
@@ -649,6 +683,7 @@ function sourceBadgeLabel(source) {
     static_prompt_template: "template",
     character_template_section: "character",
     shared_template_section: "shared",
+    costume_template_section: "costume",
     config_view_instruction: "view",
     config_rule: "rule",
     template_metadata_field: "metadata",
@@ -988,6 +1023,8 @@ function clearRenderReview() {
   lockedRender.textContent = "No locked image.";
   renderStageText.textContent = "";
   renderHistoryText.textContent = "";
+  renderReviewComment.value = "";
+  renderCommentSave.disabled = true;
   renderReviewPrev.disabled = true;
   renderReviewNext.disabled = true;
   renderPromoteButton.disabled = true;
@@ -1000,6 +1037,7 @@ function renderRenderReview(detail) {
   const asset = detail.asset;
   renderReviewTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view}`;
   renderReviewPath.textContent = detail.candidate_image_path || "";
+  renderReviewComment.value = detail.render_review_comment || "";
   renderStageText.textContent = detail.stage_text || "No stage marker found.";
   renderHistoryText.textContent = detail.history_text || "No history found.";
   renderCandidateImage(detail);
@@ -1007,7 +1045,34 @@ function renderRenderReview(detail) {
   renderPromoteButton.disabled = !detail.is_reviewable || !detail.exists?.candidate_image;
   renderFailRenderButton.disabled = !detail.is_reviewable;
   renderFailRegenerateButton.disabled = !detail.is_reviewable;
+  renderCommentSave.disabled = !detail.is_reviewable;
   updateRenderReviewNavigation();
+}
+
+async function saveRenderReviewComment() {
+  if (!state.selectedRenderReviewAssetId) {
+    return;
+  }
+  renderCommentSave.disabled = true;
+  showRenderMessage("Saving comment...");
+  try {
+    const payload = await fetchJson(
+      `/api/render-review/${state.selectedRenderReviewAssetId}/comment?${currentQuery().toString()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: renderReviewComment.value || "" }),
+      },
+    );
+    state.assets = payload.assets || state.assets;
+    renderRenderReview(payload);
+    renderAssetTable();
+    showRenderMessage(payload.message || "Comment saved.");
+  } catch (error) {
+    showRenderMessage(error.message, "error");
+  } finally {
+    renderCommentSave.disabled = false;
+  }
 }
 
 function renderReviewImage(container, path, exists, emptyText, altText, cacheKey = "") {
@@ -1321,10 +1386,15 @@ function clearRenderConsole() {
   consoleAssetLabel.textContent = "";
   consolePipelineLabel.textContent = "";
   consoleExpectedOutput.textContent = "";
+  renderConsoleHelperPanel.hidden = true;
+  renderConsoleHelperText.value = "";
+  renderConsoleSaveHelper.disabled = true;
+  renderConsoleCopyHelper.disabled = true;
   renderConsolePrompt.value = "";
   renderConsoleImagePreview.hidden = true;
   renderConsoleImagePreview.removeAttribute("src");
   renderConsoleSaveImage.disabled = true;
+  renderConsoleAnswerComment.value = "";
   renderConsoleCopyPrompt.disabled = true;
   renderConsolePrev.disabled = true;
   renderConsoleNext.disabled = true;
@@ -1342,6 +1412,11 @@ function renderRenderConsoleDetail(detail) {
   consoleAssetLabel.textContent = `Asset ${task.asset_id ?? "unknown"} | ${task.character} / ${task.phase}`;
   consolePipelineLabel.textContent = `${task.pipeline} | ${task.pipeline_stage}`;
   consoleExpectedOutput.textContent = task.expected_output || "";
+  const helperText = detail.gpt_helper_prompt?.text || "";
+  renderConsoleHelperText.value = helperText;
+  renderConsoleHelperPanel.hidden = false;
+  renderConsoleSaveHelper.disabled = false;
+  renderConsoleCopyHelper.disabled = !helperText;
   renderConsolePrompt.value = detail.prompt || "";
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
@@ -1383,6 +1458,7 @@ function clearRenderConsoleImageSelection() {
   renderConsoleImagePreview.removeAttribute("src");
   renderConsoleSaveImage.disabled = true;
   renderConsoleSaveStatus.textContent = "";
+  renderConsoleAnswerComment.value = "";
   renderConsoleFailReason.value = "";
   renderConsoleFailStatus.textContent = "";
 }
@@ -1397,6 +1473,31 @@ function setRenderConsoleImageSelection(blob) {
   renderConsoleImagePreview.hidden = false;
   renderConsoleSaveImage.disabled = false;
   renderConsoleSaveStatus.textContent = `Ready to save ${Math.round(blob.size / 1024)} KB image.`;
+}
+
+async function saveRenderConsoleHelperPrompt() {
+  if (!state.selectedRenderConsoleAskId) {
+    return;
+  }
+  renderConsoleSaveHelper.disabled = true;
+  try {
+    const payload = await fetchJson(
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/gpt-helper-prompt`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: renderConsoleHelperText.value || "" }),
+      },
+    );
+    state.renderConsoleDetail.gpt_helper_prompt = payload.gpt_helper_prompt;
+    renderConsoleHelperText.value = payload.gpt_helper_prompt?.text || "";
+    renderConsoleCopyHelper.disabled = !renderConsoleHelperText.value;
+    showRenderConsoleMessage(payload.message || "GPT helper prompt saved.");
+  } catch (error) {
+    showRenderConsoleMessage(error.message, "error");
+  } finally {
+    renderConsoleSaveHelper.disabled = false;
+  }
 }
 
 function imageBlobFromPasteEvent(event) {
@@ -1416,8 +1517,9 @@ async function saveRenderConsoleImage() {
   renderConsoleSaveImage.disabled = true;
   renderConsoleSaveStatus.textContent = "Saving image answer...";
   try {
+    const params = new URLSearchParams({ render_comment: renderConsoleAnswerComment.value || "" });
     const response = await fetch(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/answer-image`,
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/answer-image?${params.toString()}`,
       {
         method: "POST",
         headers: { "Content-Type": state.renderConsoleImageBlob.type || "application/octet-stream" },
@@ -1734,6 +1836,7 @@ promptReviewNext.addEventListener("click", () => {
 renderPromoteButton.addEventListener("click", promoteRenderReview);
 renderFailRenderButton.addEventListener("click", () => runRenderReviewAction("fail-to-render"));
 renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction("fail-to-regenerate"));
+renderCommentSave.addEventListener("click", saveRenderReviewComment);
 renderReviewPrev.addEventListener("click", () => {
   const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
   if (index > 0) {
@@ -1748,6 +1851,7 @@ renderReviewNext.addEventListener("click", () => {
 });
 refreshAiControlsButton.addEventListener("click", loadAiControls);
 harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
+archiveHarvestedAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/archive-harvested"));
 activateProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/stop"));
 resumeProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/resume"));
 sendMonitorTestButton.addEventListener("click", () => {
@@ -1763,6 +1867,14 @@ renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsoleCopyPrompt.addEventListener("click", async () => {
   await navigator.clipboard.writeText(state.renderConsoleDetail?.prompt || "");
   showRenderConsoleMessage("Prompt copied.");
+});
+renderConsoleSaveHelper.addEventListener("click", saveRenderConsoleHelperPrompt);
+renderConsoleHelperText.addEventListener("input", () => {
+  renderConsoleCopyHelper.disabled = !renderConsoleHelperText.value;
+});
+renderConsoleCopyHelper.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(renderConsoleHelperText.value || "");
+  showRenderConsoleMessage("GPT helper prompt copied.");
 });
 renderConsolePrev.addEventListener("click", () => {
   const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
