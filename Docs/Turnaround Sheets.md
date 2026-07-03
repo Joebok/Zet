@@ -2,17 +2,13 @@
 
 Once we have 8 locked assets, we can create a turnaround sheet.
 
-It would be best if we can implement this directly by creating a new image file and placing the locked assets into it in a defined pattern. This is a purely deterministic operation, an image generator should not be required.
+## Use Python to assemble
 
-Question: Do we have tools usable by python that can accomplish this task?
+See Docs\codex_character_grid_implementation_prompt.md for a detailed implementation plan for taking the images, finding bouding boxes for the characters in the images (assuming the gray background our assets have) and the scaling and putting the images together in a single file as described.
 
-## Potential issues:
+These instructions are no aware of the larger context, so you will have to integrate them into Zet in a way that makes the most sense. 
 
-* It is possible/likely that the images are not all the same size or even aspect ratio. The turnaround assembly would need to account for that. We would have a set height/width for the turnaround page, and the turnaround assembler would need to scale images to fit in section of layout that view was assigned to.
-
-* Within the image proper, the characters maybe differently sized. The images should all have a neutral gray background - but there is variation and hints of shadows. Nevertheless, is there a deterministic, fool-proof way to scale the characters in each image so they will end up on the turnaround at the same height?
-
-* If that character-scaling isn't really feasible, could the operator have a screen to mark out an outline rectangle that the character fits into, and then use that rectangle as a crop marker to then scale everything the same?
+Additionally, we will probably want to add a "normalization" routine in the pipeline that will scale all the assets of a particular task so they depict the character with the same image height.
 
 ## How to store them
 
