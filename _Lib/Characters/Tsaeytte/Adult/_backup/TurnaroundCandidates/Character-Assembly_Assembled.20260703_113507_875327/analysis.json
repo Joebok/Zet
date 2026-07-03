@@ -1,0 +1,250 @@
+[
+  {
+    "name": "Character-Assembly_Front_Front_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front_Front_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      143,
+      137,
+      135
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1535
+    ],
+    "character_width": 1024,
+    "character_height": 1535,
+    "foot_y": 1535,
+    "mask_pixel_count": 859201,
+    "scale_factor": 1.0006514657980456,
+    "scaled_width": 1025,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1025,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Front-Left-3-4_Front-Left-3-4_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front-Left-3-4_Front-Left-3-4_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      153,
+      149,
+      146
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "character_width": 1024,
+    "character_height": 1536,
+    "foot_y": 1536,
+    "mask_pixel_count": 724676,
+    "scale_factor": 1.0,
+    "scaled_width": 1024,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Left-Profile_Left-Profile_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Left-Profile_Left-Profile_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      150,
+      145,
+      144
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "character_width": 1024,
+    "character_height": 1536,
+    "foot_y": 1536,
+    "mask_pixel_count": 750889,
+    "scale_factor": 1.0,
+    "scaled_width": 1024,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Back-Left-3-4_Back-Left-3-4_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back-Left-3-4_Back-Left-3-4_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      145,
+      140,
+      140
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1535
+    ],
+    "character_width": 1024,
+    "character_height": 1535,
+    "foot_y": 1535,
+    "mask_pixel_count": 680459,
+    "scale_factor": 1.0006514657980456,
+    "scaled_width": 1025,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1025,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Back_Back_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back_Back_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      157,
+      152,
+      150
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1535
+    ],
+    "character_width": 1024,
+    "character_height": 1535,
+    "foot_y": 1535,
+    "mask_pixel_count": 425457,
+    "scale_factor": 1.0006514657980456,
+    "scaled_width": 1025,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1025,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Back-Right-3-4_Back-Right-3-4_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back-Right-3-4_Back-Right-3-4_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      150,
+      144,
+      142
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1535
+    ],
+    "character_width": 1024,
+    "character_height": 1535,
+    "foot_y": 1535,
+    "mask_pixel_count": 657776,
+    "scale_factor": 1.0006514657980456,
+    "scaled_width": 1025,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1025,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Right-Profile_Right-Profile_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Right-Profile_Right-Profile_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      150,
+      146,
+      144
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "character_width": 1024,
+    "character_height": 1536,
+    "foot_y": 1536,
+    "mask_pixel_count": 771746,
+    "scale_factor": 1.0,
+    "scaled_width": 1024,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  },
+  {
+    "name": "Character-Assembly_Front-Right-3-4_Front-Right-3-4_Assembled",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front-Right-3-4_Front-Right-3-4_Assembled.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      164,
+      158,
+      158
+    ],
+    "bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "character_width": 1024,
+    "character_height": 1536,
+    "foot_y": 1536,
+    "mask_pixel_count": 582543,
+    "scale_factor": 1.0,
+    "scaled_width": 1024,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      1024,
+      1536
+    ],
+    "scaled_foot_y": 1536
+  }
+]

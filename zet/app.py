@@ -4,6 +4,7 @@ from datetime import datetime
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
+from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import AssetService, BatchRenderResetResult
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
@@ -16,6 +17,7 @@ from zet.services.pipeline_control_service import AutomationSettings, PipelineCo
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.reference_service import ReferenceService
 from zet.services.state_machine import StateMachine
+from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
 
 
@@ -119,6 +121,7 @@ class ZetApp:
         reference_service: ReferenceService,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
+        turnaround_service: TurnaroundService,
         config_path: str | Path = "config.toml",
     ):
         self.config = config
@@ -130,6 +133,7 @@ class ZetApp:
         self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
+        self.turnaround_service = turnaround_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -144,6 +148,7 @@ class ZetApp:
         path_service = PathService(config)
         asset_repository = AssetRepository(path_service)
         pipeline_repository = PipelineRepository(path_service)
+        turnaround_repository = TurnaroundRepository(path_service)
         state_machine = StateMachine()
         housekeeping_service = HousekeepingService(path_service)
         worker_service = WorkerService(asset_repository, pipeline_repository, path_service)
@@ -181,6 +186,12 @@ class ZetApp:
             path_service,
         )
         reference_service = ReferenceService(asset_repository, path_service)
+        turnaround_service = TurnaroundService(
+            asset_repository,
+            pipeline_repository,
+            turnaround_repository,
+            path_service,
+        )
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -191,6 +202,7 @@ class ZetApp:
             reference_service,
             housekeeping_service,
             path_service,
+            turnaround_service,
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
@@ -314,3 +326,51 @@ class ZetApp:
 
     def upload_headshot_reference(self, character: str, phase: str, filename: str, contents: bytes) -> Path:
         return self.reference_service.upload_headshot(character, phase, filename, contents)
+
+    def list_turnaround_rows(self, character: str, phase: str) -> list[TurnaroundRow]:
+        """List dashboard rows for turnaround sheet generation."""
+        return self.turnaround_service.list_rows(character, phase)
+
+    def turnaround_row(self, character: str, phase: str, turnaround_id: str) -> TurnaroundRow:
+        """Return one dashboard row for a turnaround sheet."""
+        return self.turnaround_service.get_row(character, phase, turnaround_id)
+
+    def generate_turnaround(self, character: str, phase: str, turnaround_id: str) -> TurnaroundRow:
+        """Generate a candidate turnaround sheet for review."""
+        return self.turnaround_service.generate_candidate(character, phase, turnaround_id)
+
+    def promote_turnaround_to_locked(
+        self,
+        character: str,
+        phase: str,
+        turnaround_id: str,
+        replace_existing: bool = False,
+    ) -> TurnaroundRow:
+        """Promote a reviewed turnaround candidate to the locked reference image."""
+        return self.turnaround_service.promote_to_locked(character, phase, turnaround_id, replace_existing)
+
+    def save_partial_turnaround(
+        self,
+        character: str,
+        phase: str,
+        parent_turnaround_id: str,
+        label: str,
+        crop_percent: float,
+    ) -> TurnaroundRow:
+        """Create or update a partial turnaround sheet under a full turnaround."""
+        return self.turnaround_service.upsert_partial_sheet(character, phase, parent_turnaround_id, label, crop_percent)
+
+    def update_partial_turnaround(
+        self,
+        character: str,
+        phase: str,
+        partial_turnaround_id: str,
+        label: str,
+        crop_percent: float,
+    ) -> TurnaroundRow:
+        """Update and regenerate an existing partial turnaround sheet."""
+        return self.turnaround_service.update_partial_sheet(character, phase, partial_turnaround_id, label, crop_percent)
+
+    def delete_partial_turnaround(self, character: str, phase: str, partial_turnaround_id: str) -> TurnaroundRow:
+        """Delete an auxiliary partial turnaround sheet."""
+        return self.turnaround_service.delete_partial_sheet(character, phase, partial_turnaround_id)

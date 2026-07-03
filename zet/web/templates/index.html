@@ -35,6 +35,7 @@
     <button class="tab" data-page="prompt-review">Prompt Review</button>
     <button class="tab" data-page="render-console">Render Console</button>
     <button class="tab" data-page="render-review">Image Review</button>
+    <button class="tab" data-page="turnarounds">Turnarounds</button>
     <button class="tab" data-page="ai-controls">AI Controls</button>
     <button class="tab" data-page="pipeline-controls">Pipeline Controls</button>
     <button class="tab" data-page="template-editor">Template Editor</button>
@@ -361,6 +362,72 @@
           <textarea id="render-console-fail-reason" placeholder="Reason for failure"></textarea>
           <button id="render-console-fail-task">Fail Task</button>
           <p id="render-console-fail-status" class="status-text"></p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="turnarounds-page" class="page">
+      <div class="page-title-row">
+        <h1>Turnarounds</h1>
+        <div id="turnaround-status" class="status-text"></div>
+      </div>
+      <div id="turnaround-message" class="action-message" hidden></div>
+      <div class="turnaround-layout">
+        <section class="control-panel">
+          <table id="turnaround-table">
+            <thead>
+              <tr>
+                <th>task</th>
+                <th>status</th>
+                <th>locked</th>
+                <th>missing</th>
+                <th>action</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="turnaround-title">Select a turnaround</h2>
+          </div>
+          <div class="render-comparison turnaround-comparison">
+            <section class="render-comparison-panel">
+              <h3>Candidate</h3>
+              <div id="turnaround-candidate" class="render-image-viewer">No candidate image.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Locked</h3>
+              <div id="turnaround-locked" class="render-image-viewer">No locked turnaround.</div>
+            </section>
+          </div>
+        </section>
+        <aside class="review-actions">
+          <h3>Partial Sheet</h3>
+          <label>
+            Label
+            <input id="turnaround-partial-label" type="text" placeholder="Head and upper chest">
+          </label>
+          <label>
+            Percent
+            <input id="turnaround-partial-percent" type="number" min="1" max="100" step="1" value="45">
+          </label>
+          <button id="turnaround-save-partial" type="button" disabled>Save Partial</button>
+          <h3>Auxiliary Sheets</h3>
+          <table id="turnaround-aux-table">
+            <thead>
+              <tr>
+                <th>label</th>
+                <th>%</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <h3>Source Assets</h3>
+          <pre id="turnaround-source-assets"></pre>
+          <h3>Paths</h3>
+          <dl id="turnaround-paths"></dl>
         </aside>
       </div>
     </section>

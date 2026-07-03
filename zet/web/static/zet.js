@@ -22,6 +22,10 @@ const state = {
   selectedRenderConsoleAskId: null,
   renderConsoleDetail: null,
   renderConsoleImageBlob: null,
+  turnaroundRows: [],
+  selectedTurnaroundId: null,
+  selectedAuxiliaryTurnaroundId: null,
+  turnaroundDetail: null,
   manifestTasks: [],
   selectedManifestAssetId: null,
   manifestDetail: null,
@@ -182,6 +186,18 @@ const headshotUpload = document.querySelector("#headshot-upload");
 const bodyReferencePreview = document.querySelector("#body-reference-preview");
 const headshotReferencePreview = document.querySelector("#headshot-reference-preview");
 const manifestReferenceJson = document.querySelector("#manifest-reference-json");
+const turnaroundStatus = document.querySelector("#turnaround-status");
+const turnaroundMessage = document.querySelector("#turnaround-message");
+const turnaroundTableBody = document.querySelector("#turnaround-table tbody");
+const turnaroundTitle = document.querySelector("#turnaround-title");
+const turnaroundCandidate = document.querySelector("#turnaround-candidate");
+const turnaroundLocked = document.querySelector("#turnaround-locked");
+const turnaroundSourceAssets = document.querySelector("#turnaround-source-assets");
+const turnaroundPaths = document.querySelector("#turnaround-paths");
+const turnaroundPartialLabel = document.querySelector("#turnaround-partial-label");
+const turnaroundPartialPercent = document.querySelector("#turnaround-partial-percent");
+const turnaroundSavePartial = document.querySelector("#turnaround-save-partial");
+const turnaroundAuxTableBody = document.querySelector("#turnaround-aux-table tbody");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -252,6 +268,12 @@ function showManifestMessage(message, kind = "info") {
   manifestMessage.textContent = message || "";
   manifestMessage.className = `action-message ${kind}`;
   manifestMessage.hidden = !message;
+}
+
+function showTurnaroundMessage(message, kind = "info") {
+  turnaroundMessage.textContent = message || "";
+  turnaroundMessage.className = `action-message ${kind}`;
+  turnaroundMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -531,6 +553,7 @@ function activatePage(page) {
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
   document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
   document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
+  document.querySelector("#turnarounds-page").classList.toggle("active", page === "turnarounds");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
@@ -539,7 +562,7 @@ function activatePage(page) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["assets", "manifest", "prompt-review", "render-review", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+      !["assets", "manifest", "prompt-review", "render-review", "turnarounds", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -551,6 +574,9 @@ function activatePage(page) {
   }
   if (page === "render-review") {
     loadRenderReviewTasks();
+  }
+  if (page === "turnarounds") {
+    loadTurnarounds();
   }
   if (page === "ai-controls") {
     loadAiControls();
@@ -1161,6 +1187,389 @@ async function promoteRenderReview() {
   }
 }
 
+async function loadTurnarounds(preferredTurnaroundId = null) {
+  if (!state.character || !state.phase) {
+    turnaroundStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  turnaroundStatus.textContent = "Loading turnarounds...";
+  const payload = await fetchJson(`/api/turnarounds?${currentQuery().toString()}`);
+  state.turnaroundRows = payload.rows || [];
+  const ids = new Set(state.turnaroundRows.map((row) => row.turnaround_id));
+  state.selectedTurnaroundId =
+    preferredTurnaroundId || state.selectedTurnaroundId || state.turnaroundRows[0]?.turnaround_id || null;
+  if (state.selectedTurnaroundId && !ids.has(state.selectedTurnaroundId)) {
+    state.selectedTurnaroundId = state.turnaroundRows[0]?.turnaround_id || null;
+  }
+  renderTurnaroundTable();
+  const readyCount = state.turnaroundRows.filter((row) => row.ready).length;
+  turnaroundStatus.textContent = `${readyCount} ready of ${state.turnaroundRows.length} turnaround task(s)`;
+  if (state.selectedTurnaroundId) {
+    await selectTurnaround(state.selectedTurnaroundId);
+  } else {
+    clearTurnaround();
+  }
+}
+
+function renderTurnaroundTable() {
+  turnaroundTableBody.replaceChildren();
+  for (const rowData of state.turnaroundRows) {
+    const row = document.createElement("tr");
+    row.dataset.turnaroundId = rowData.turnaround_id;
+    row.classList.toggle("selected", rowData.turnaround_id === state.selectedTurnaroundId);
+    const actionCell = document.createElement("td");
+    const generateButton = document.createElement("button");
+    generateButton.type = "button";
+    generateButton.textContent = "Generate";
+    generateButton.disabled = !rowData.ready;
+    generateButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      generateTurnaround(rowData.turnaround_id);
+    });
+    actionCell.append(generateButton);
+    const promoteButton = document.createElement("button");
+    promoteButton.type = "button";
+    promoteButton.textContent = "Promote";
+    promoteButton.disabled = !rowData.candidate_image_exists;
+    promoteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      promoteTurnaround(rowData);
+    });
+    actionCell.append(promoteButton);
+    const statusCell = document.createElement("td");
+    const statusBadge = document.createElement("span");
+    statusBadge.className = `status-badge ${rowData.ready ? "ready" : "missing"}`;
+    statusBadge.textContent = rowData.ready ? "READY" : "MISSING";
+    statusBadge.title = rowData.status || "";
+    statusCell.append(statusBadge);
+    const cells = [
+      rowData.label,
+      statusCell,
+      `${rowData.locked_count}/8`,
+      (rowData.missing_views || []).join(", "),
+    ];
+    for (const value of cells) {
+      const cell = document.createElement("td");
+      if (value instanceof HTMLElement) {
+        cell.append(...value.childNodes);
+      } else {
+        cell.textContent = value ?? "";
+      }
+      row.append(cell);
+    }
+    row.append(actionCell);
+    row.addEventListener("click", () => selectTurnaround(rowData.turnaround_id));
+    turnaroundTableBody.append(row);
+    for (const aux of rowData.auxiliary_sheets || []) {
+      turnaroundTableBody.append(renderAuxiliaryMainTableRow(rowData, aux));
+    }
+  }
+}
+
+function renderAuxiliaryMainTableRow(parentRow, aux) {
+  const row = document.createElement("tr");
+  row.dataset.turnaroundId = aux.turnaround_id;
+  row.dataset.parentTurnaroundId = parentRow.turnaround_id;
+  row.classList.add("auxiliary-row");
+  row.classList.toggle("selected", aux.turnaround_id === state.selectedAuxiliaryTurnaroundId);
+
+  const labelCell = document.createElement("td");
+  labelCell.textContent = `  ${aux.label}`;
+
+  const statusCell = document.createElement("td");
+  const statusBadge = document.createElement("span");
+  statusBadge.className = `status-badge ${aux.locked_image_exists ? "ready" : "review"}`;
+  statusBadge.textContent = aux.locked_image_exists ? "LOCKED" : "REVIEW";
+  statusBadge.title = aux.status || "";
+  statusCell.append(statusBadge);
+
+  const countCell = document.createElement("td");
+  countCell.textContent = `${aux.crop_percent}%`;
+
+  const missingCell = document.createElement("td");
+  missingCell.textContent = "partial";
+
+  const actionCell = document.createElement("td");
+  const promoteButton = document.createElement("button");
+  promoteButton.type = "button";
+  promoteButton.textContent = "Promote";
+  promoteButton.disabled = !aux.candidate_image_exists;
+  promoteButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    promoteTurnaround(aux);
+  });
+  actionCell.append(promoteButton);
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete";
+  deleteButton.disabled = !aux.deletable;
+  deleteButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deletePartialTurnaround(aux.turnaround_id);
+  });
+  actionCell.append(deleteButton);
+
+  row.append(labelCell, statusCell, countCell, missingCell, actionCell);
+  row.addEventListener("click", () => selectAuxiliaryTurnaround(parentRow.turnaround_id, aux.turnaround_id));
+  return row;
+}
+
+async function selectTurnaround(turnaroundId) {
+  state.selectedTurnaroundId = turnaroundId;
+  state.selectedAuxiliaryTurnaroundId = null;
+  turnaroundPartialLabel.value = "";
+  turnaroundPartialPercent.value = "45";
+  for (const row of turnaroundTableBody.querySelectorAll("tr")) {
+    row.classList.toggle("selected", row.dataset.turnaroundId === state.selectedTurnaroundId);
+  }
+  const detail = await fetchJson(`/api/turnarounds/${encodeURIComponent(turnaroundId)}?${currentQuery().toString()}`);
+  renderTurnaround(detail.row);
+}
+
+async function selectAuxiliaryTurnaround(parentTurnaroundId, auxiliaryTurnaroundId) {
+  state.selectedTurnaroundId = parentTurnaroundId;
+  state.selectedAuxiliaryTurnaroundId = auxiliaryTurnaroundId;
+  const detail = await fetchJson(`/api/turnarounds/${encodeURIComponent(parentTurnaroundId)}?${currentQuery().toString()}`);
+  renderTurnaroundTable();
+  renderTurnaround(detail.row);
+}
+
+function clearTurnaround() {
+  state.turnaroundDetail = null;
+  state.selectedAuxiliaryTurnaroundId = null;
+  turnaroundTitle.textContent = "Select a turnaround";
+  turnaroundCandidate.textContent = "No candidate image.";
+  turnaroundLocked.textContent = "No locked turnaround.";
+  turnaroundSourceAssets.textContent = "";
+  turnaroundPaths.replaceChildren();
+  turnaroundAuxTableBody.replaceChildren();
+  turnaroundPartialLabel.value = "";
+  turnaroundPartialPercent.value = "45";
+  turnaroundSavePartial.disabled = true;
+}
+
+function renderTurnaround(row) {
+  state.turnaroundDetail = row;
+  const selectedAux = (row?.auxiliary_sheets || []).find((item) => item.turnaround_id === state.selectedAuxiliaryTurnaroundId);
+  if (selectedAux) {
+    turnaroundPartialLabel.value = selectedAux.label || "";
+    turnaroundPartialPercent.value = selectedAux.crop_percent || 45;
+  }
+  turnaroundTitle.textContent = selectedAux ? `${row.label} | ${selectedAux.label}` : (row ? row.label : "Select a turnaround");
+  renderTurnaroundPrimaryPreview(row);
+  if (selectedAux) {
+    renderReviewImage(
+      turnaroundLocked,
+      selectedAux.locked_image_path,
+      selectedAux.locked_image_exists,
+      "No locked partial.",
+      "Locked partial turnaround",
+      selectedAux.updated_at || "",
+    );
+  } else {
+    renderReviewImage(
+      turnaroundLocked,
+      row?.locked_image_path,
+      row?.locked_image_exists,
+      "No locked turnaround.",
+      "Locked turnaround",
+      row?.updated_at || "",
+    );
+  }
+  turnaroundSourceAssets.textContent = JSON.stringify(row?.source_asset_ids || [], null, 2);
+  turnaroundPaths.replaceChildren();
+  const paths = {
+    candidate_image_path: row?.candidate_image_path || "",
+    locked_image_path: row?.locked_image_path || "",
+    analysis_path: row?.analysis_path || "",
+    diagnostics_path: row?.diagnostics_path || "",
+  };
+  for (const [key, value] of Object.entries(paths)) {
+    const term = document.createElement("dt");
+    term.textContent = key;
+    const definition = document.createElement("dd");
+    definition.textContent = value;
+    turnaroundPaths.append(term, definition);
+  }
+  turnaroundSavePartial.disabled = !row?.ready;
+  turnaroundSavePartial.textContent = selectedAux ? "Update Partial" : "Create Partial";
+  renderAuxiliaryTurnaroundTable(row?.auxiliary_sheets || []);
+}
+
+function renderTurnaroundPrimaryPreview(row) {
+  const selectedAux = (row?.auxiliary_sheets || []).find((item) => item.turnaround_id === state.selectedAuxiliaryTurnaroundId);
+  if (selectedAux) {
+    renderReviewImage(
+      turnaroundCandidate,
+      selectedAux.candidate_image_path,
+      selectedAux.candidate_image_exists,
+      "No partial image.",
+      "Partial turnaround",
+      selectedAux.updated_at || "",
+    );
+    return;
+  }
+  renderReviewImage(
+    turnaroundCandidate,
+    row?.candidate_image_path,
+    row?.candidate_image_exists,
+    "No candidate image.",
+    "Candidate turnaround",
+    row?.updated_at || "",
+  );
+}
+
+function renderAuxiliaryTurnaroundTable(items) {
+  turnaroundAuxTableBody.replaceChildren();
+  if (!items.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.textContent = "None.";
+    row.append(cell);
+    turnaroundAuxTableBody.append(row);
+    return;
+  }
+  for (const item of items) {
+    const row = document.createElement("tr");
+    row.dataset.turnaroundId = item.turnaround_id;
+    row.classList.toggle("selected", item.turnaround_id === state.selectedAuxiliaryTurnaroundId);
+    const labelCell = document.createElement("td");
+    labelCell.textContent = item.label || "";
+    const percentCell = document.createElement("td");
+    percentCell.textContent = item.crop_percent ? `${item.crop_percent}%` : "";
+    const actionCell = document.createElement("td");
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.disabled = !item.deletable;
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deletePartialTurnaround(item.turnaround_id);
+    });
+    actionCell.append(deleteButton);
+    row.append(labelCell, percentCell, actionCell);
+    row.addEventListener("click", () => {
+      state.selectedAuxiliaryTurnaroundId = item.turnaround_id;
+      turnaroundPartialLabel.value = item.label || "";
+      turnaroundPartialPercent.value = item.crop_percent || 45;
+      renderTurnaround(state.turnaroundDetail);
+    });
+    turnaroundAuxTableBody.append(row);
+  }
+}
+
+async function generateTurnaround(turnaroundId = state.selectedTurnaroundId) {
+  if (!turnaroundId) {
+    return;
+  }
+  showTurnaroundMessage("Generating turnaround...");
+  try {
+    const payload = await fetchJson(
+      `/api/turnarounds/${encodeURIComponent(turnaroundId)}/generate?${currentQuery().toString()}`,
+      { method: "POST" },
+    );
+    state.turnaroundRows = payload.rows || state.turnaroundRows;
+    renderTurnaroundTable();
+    renderTurnaround(payload.row);
+    state.selectedTurnaroundId = payload.row?.turnaround_id || turnaroundId;
+    showTurnaroundMessage(payload.message || "Turnaround generated.");
+  } catch (error) {
+    showTurnaroundMessage(error.message, "error");
+  }
+}
+
+async function savePartialTurnaround() {
+  const row = state.turnaroundDetail;
+  if (!row?.turnaround_id) {
+    return;
+  }
+  const selectedAux = (row.auxiliary_sheets || []).find((item) => item.turnaround_id === state.selectedAuxiliaryTurnaroundId);
+  showTurnaroundMessage(selectedAux ? "Updating partial turnaround..." : "Saving partial turnaround...");
+  turnaroundSavePartial.disabled = true;
+  try {
+    const body = JSON.stringify({
+      label: turnaroundPartialLabel.value || "",
+      crop_percent: Number(turnaroundPartialPercent.value || 0),
+    });
+    const url = selectedAux
+      ? `/api/turnarounds/partials/${encodeURIComponent(selectedAux.turnaround_id)}?${currentQuery().toString()}`
+      : `/api/turnarounds/${encodeURIComponent(row.turnaround_id)}/partials?${currentQuery().toString()}`;
+    const payload = await fetchJson(url, {
+      method: selectedAux ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    state.turnaroundRows = payload.rows || state.turnaroundRows;
+    const saved = selectedAux
+      ? (payload.row?.auxiliary_sheets || []).find((item) => item.turnaround_id === selectedAux.turnaround_id)
+      : (payload.row?.auxiliary_sheets || []).find((item) => item.label === (turnaroundPartialLabel.value || ""));
+    state.selectedAuxiliaryTurnaroundId = saved?.turnaround_id || null;
+    renderTurnaroundTable();
+    renderTurnaround(payload.row);
+    showTurnaroundMessage(payload.message || (selectedAux ? "Partial turnaround updated." : "Partial turnaround saved."));
+  } catch (error) {
+    showTurnaroundMessage(error.message, "error");
+  } finally {
+    turnaroundSavePartial.disabled = !state.turnaroundDetail?.ready;
+  }
+}
+
+async function deletePartialTurnaround(partialId) {
+  if (!partialId) {
+    return;
+  }
+  if (!window.confirm("Delete this auxiliary turnaround sheet?")) {
+    return;
+  }
+  showTurnaroundMessage("Deleting partial turnaround...");
+  try {
+    const payload = await fetchJson(
+      `/api/turnarounds/partials/${encodeURIComponent(partialId)}?${currentQuery().toString()}`,
+      { method: "DELETE" },
+    );
+    state.turnaroundRows = payload.rows || state.turnaroundRows;
+    state.selectedAuxiliaryTurnaroundId = null;
+    renderTurnaroundTable();
+    renderTurnaround(payload.row);
+    showTurnaroundMessage(payload.message || "Partial turnaround deleted.");
+  } catch (error) {
+    showTurnaroundMessage(error.message, "error");
+  }
+}
+
+async function promoteTurnaround(target = null) {
+  const selectedAux = (state.turnaroundDetail?.auxiliary_sheets || []).find(
+    (item) => item.turnaround_id === state.selectedAuxiliaryTurnaroundId,
+  );
+  const row = target || selectedAux || state.turnaroundDetail;
+  if (!row?.turnaround_id) {
+    return;
+  }
+  const params = currentQuery();
+  if (row.locked_image_exists) {
+    const confirmed = window.confirm("A locked turnaround already exists. Replace it with the candidate image?");
+    if (!confirmed) {
+      return;
+    }
+    params.set("replace_existing", "true");
+  }
+  showTurnaroundMessage("Promoting turnaround...");
+  try {
+    const payload = await fetchJson(
+      `/api/turnarounds/${encodeURIComponent(row.turnaround_id)}/promote?${params.toString()}`,
+      { method: "POST" },
+    );
+    state.turnaroundRows = payload.rows || state.turnaroundRows;
+    renderTurnaroundTable();
+    renderTurnaround(payload.row);
+    showTurnaroundMessage(payload.message || "Turnaround locked.");
+  } catch (error) {
+    showTurnaroundMessage(error.message, "error");
+  }
+}
+
 function renderRows(tbody, rows, columns) {
   tbody.replaceChildren();
   if (!rows || rows.length === 0) {
@@ -1752,6 +2161,8 @@ characterSelect.addEventListener("change", async () => {
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
+  state.selectedTurnaroundId = null;
+  state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
   updatePhaseSelect();
   await loadAssets();
@@ -1763,6 +2174,9 @@ characterSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#render-review-page").classList.contains("active")) {
     await loadRenderReviewTasks();
+  }
+  if (document.querySelector("#turnarounds-page").classList.contains("active")) {
+    await loadTurnarounds();
   }
   if (document.querySelector("#ai-controls-page").classList.contains("active")) {
     await loadAiControls();
@@ -1780,6 +2194,8 @@ phaseSelect.addEventListener("change", async () => {
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
+  state.selectedTurnaroundId = null;
+  state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
@@ -1790,6 +2206,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#render-review-page").classList.contains("active")) {
     await loadRenderReviewTasks();
+  }
+  if (document.querySelector("#turnarounds-page").classList.contains("active")) {
+    await loadTurnarounds();
   }
   if (document.querySelector("#ai-controls-page").classList.contains("active")) {
     await loadAiControls();
@@ -1837,6 +2256,7 @@ renderPromoteButton.addEventListener("click", promoteRenderReview);
 renderFailRenderButton.addEventListener("click", () => runRenderReviewAction("fail-to-render"));
 renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction("fail-to-regenerate"));
 renderCommentSave.addEventListener("click", saveRenderReviewComment);
+turnaroundSavePartial.addEventListener("click", savePartialTurnaround);
 renderReviewPrev.addEventListener("click", () => {
   const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
   if (index > 0) {

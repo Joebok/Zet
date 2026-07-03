@@ -1,0 +1,250 @@
+[
+  {
+    "name": "Head-Fitment_Front_Front",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Front_Front.png",
+    "source_width": 1254,
+    "source_height": 1254,
+    "background_rgb": [
+      254,
+      254,
+      254
+    ],
+    "bbox": [
+      0,
+      0,
+      1254,
+      1254
+    ],
+    "character_width": 1254,
+    "character_height": 1254,
+    "foot_y": 1254,
+    "mask_pixel_count": 775927,
+    "scale_factor": 1.0167464114832536,
+    "scaled_width": 1275,
+    "scaled_height": 1275,
+    "scaled_bbox": [
+      0,
+      0,
+      1275,
+      1275
+    ],
+    "scaled_foot_y": 1275
+  },
+  {
+    "name": "Head-Fitment_Front-Left-3-4_Front-Left-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Front-Left-3-4_Front-Left-3-4.png",
+    "source_width": 1125,
+    "source_height": 1398,
+    "background_rgb": [
+      254,
+      254,
+      254
+    ],
+    "bbox": [
+      68,
+      26,
+      1083,
+      1322
+    ],
+    "character_width": 1015,
+    "character_height": 1296,
+    "foot_y": 1322,
+    "mask_pixel_count": 888180,
+    "scale_factor": 0.9837962962962963,
+    "scaled_width": 1107,
+    "scaled_height": 1375,
+    "scaled_bbox": [
+      67,
+      26,
+      1065,
+      1301
+    ],
+    "scaled_foot_y": 1301
+  },
+  {
+    "name": "Head-Fitment_Left-Profile_Left-Profile",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Left-Profile_Left-Profile.png",
+    "source_width": 1254,
+    "source_height": 1254,
+    "background_rgb": [
+      253,
+      253,
+      253
+    ],
+    "bbox": [
+      1,
+      0,
+      1176,
+      1223
+    ],
+    "character_width": 1175,
+    "character_height": 1223,
+    "foot_y": 1223,
+    "mask_pixel_count": 886763,
+    "scale_factor": 1.0425183973834833,
+    "scaled_width": 1307,
+    "scaled_height": 1307,
+    "scaled_bbox": [
+      1,
+      0,
+      1226,
+      1275
+    ],
+    "scaled_foot_y": 1275
+  },
+  {
+    "name": "Head-Fitment_Back-Left-3-4_Back-Left-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Back-Left-3-4_Back-Left-3-4.png",
+    "source_width": 1086,
+    "source_height": 1448,
+    "background_rgb": [
+      253,
+      253,
+      253
+    ],
+    "bbox": [
+      0,
+      0,
+      1086,
+      1448
+    ],
+    "character_width": 1086,
+    "character_height": 1448,
+    "foot_y": 1448,
+    "mask_pixel_count": 794166,
+    "scale_factor": 0.880524861878453,
+    "scaled_width": 956,
+    "scaled_height": 1275,
+    "scaled_bbox": [
+      0,
+      0,
+      956,
+      1275
+    ],
+    "scaled_foot_y": 1275
+  },
+  {
+    "name": "Head-Fitment_Back_Back",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Back_Back.png",
+    "source_width": 1122,
+    "source_height": 1402,
+    "background_rgb": [
+      254,
+      254,
+      254
+    ],
+    "bbox": [
+      0,
+      0,
+      1122,
+      1402
+    ],
+    "character_width": 1122,
+    "character_height": 1402,
+    "foot_y": 1402,
+    "mask_pixel_count": 835386,
+    "scale_factor": 0.9094151212553495,
+    "scaled_width": 1020,
+    "scaled_height": 1275,
+    "scaled_bbox": [
+      0,
+      0,
+      1020,
+      1275
+    ],
+    "scaled_foot_y": 1275
+  },
+  {
+    "name": "Head-Fitment_Back-Right-3-4_Back-Right-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Back-Right-3-4_Back-Right-3-4.png",
+    "source_width": 1122,
+    "source_height": 1402,
+    "background_rgb": [
+      251,
+      251,
+      251
+    ],
+    "bbox": [
+      114,
+      91,
+      983,
+      1324
+    ],
+    "character_width": 869,
+    "character_height": 1233,
+    "foot_y": 1324,
+    "mask_pixel_count": 706454,
+    "scale_factor": 1.0340632603406326,
+    "scaled_width": 1160,
+    "scaled_height": 1450,
+    "scaled_bbox": [
+      118,
+      94,
+      1016,
+      1369
+    ],
+    "scaled_foot_y": 1369
+  },
+  {
+    "name": "Head-Fitment_Right-Profile_Right-Profile",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Right-Profile_Right-Profile.png",
+    "source_width": 1254,
+    "source_height": 1254,
+    "background_rgb": [
+      254,
+      254,
+      254
+    ],
+    "bbox": [
+      0,
+      0,
+      1254,
+      1254
+    ],
+    "character_width": 1254,
+    "character_height": 1254,
+    "foot_y": 1254,
+    "mask_pixel_count": 942073,
+    "scale_factor": 1.0167464114832536,
+    "scaled_width": 1275,
+    "scaled_height": 1275,
+    "scaled_bbox": [
+      0,
+      0,
+      1275,
+      1275
+    ],
+    "scaled_foot_y": 1275
+  },
+  {
+    "name": "Head-Fitment_Front-Right-3-4_Front-Right-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Head-Fitment_Front-Right-3-4_Front-Right-3-4.png",
+    "source_width": 1122,
+    "source_height": 1402,
+    "background_rgb": [
+      254,
+      254,
+      254
+    ],
+    "bbox": [
+      66,
+      43,
+      1024,
+      1349
+    ],
+    "character_width": 958,
+    "character_height": 1306,
+    "foot_y": 1349,
+    "mask_pixel_count": 854511,
+    "scale_factor": 0.9762633996937213,
+    "scaled_width": 1095,
+    "scaled_height": 1369,
+    "scaled_bbox": [
+      64,
+      42,
+      1000,
+      1317
+    ],
+    "scaled_foot_y": 1317
+  }
+]

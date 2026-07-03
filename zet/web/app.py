@@ -371,6 +371,11 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
     }
 
 
+def _turnaround_row_payload(row) -> dict[str, Any]:
+    """Serialize a turnaround dashboard row for the browser."""
+    return _jsonable(row)
+
+
 def _jsonable(value: Any) -> Any:
     if hasattr(value, "__dataclass_fields__"):
         return _jsonable(asdict(value))
@@ -884,6 +889,123 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             response["message"] = "Image review comment saved." if comment else "Image review comment cleared."
             response["assets"] = [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)]
             return response
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/turnarounds")
+    def turnaround_rows(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List turnaround sheet rows for the selected character phase."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"rows": [_turnaround_row_payload(row) for row in zet_app.list_turnaround_rows(character, phase)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/turnarounds/{turnaround_id}")
+    def turnaround_detail(turnaround_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Return detail for one turnaround sheet row."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"row": _turnaround_row_payload(zet_app.turnaround_row(character, phase, turnaround_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/turnarounds/{turnaround_id}/generate")
+    def turnaround_generate(turnaround_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Generate a candidate turnaround sheet for review."""
+        zet_app = _app(app.state.config_path)
+        try:
+            row = zet_app.generate_turnaround(character, phase, turnaround_id)
+            return {
+                "message": f"Generated turnaround candidate for {row.label}.",
+                "row": _turnaround_row_payload(row),
+                "rows": [_turnaround_row_payload(item) for item in zet_app.list_turnaround_rows(character, phase)],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/turnarounds/{turnaround_id}/promote")
+    def turnaround_promote(
+        turnaround_id: str,
+        character: str = Query(...),
+        phase: str = Query(...),
+        replace_existing: bool = Query(False),
+    ) -> dict[str, Any]:
+        """Promote a turnaround candidate to the locked reference image."""
+        zet_app = _app(app.state.config_path)
+        try:
+            row = zet_app.promote_turnaround_to_locked(character, phase, turnaround_id, replace_existing)
+            return {
+                "message": f"Turnaround locked for {row.label}.",
+                "row": _turnaround_row_payload(row),
+                "rows": [_turnaround_row_payload(item) for item in zet_app.list_turnaround_rows(character, phase)],
+            }
+        except Exception as exc:
+            if "Confirm replacement" in str(exc):
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/turnarounds/{turnaround_id}/partials")
+    def turnaround_save_partial(
+        turnaround_id: str,
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Create or update an auxiliary partial turnaround sheet."""
+        zet_app = _app(app.state.config_path)
+        try:
+            row = zet_app.save_partial_turnaround(
+                character,
+                phase,
+                turnaround_id,
+                str(payload.get("label") or ""),
+                float(payload.get("crop_percent") or 0),
+            )
+            return {
+                "message": "Partial turnaround saved.",
+                "row": _turnaround_row_payload(row),
+                "rows": [_turnaround_row_payload(item) for item in zet_app.list_turnaround_rows(character, phase)],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/turnarounds/partials/{partial_turnaround_id}")
+    def turnaround_update_partial(
+        partial_turnaround_id: str,
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Update and regenerate an existing auxiliary partial turnaround sheet."""
+        zet_app = _app(app.state.config_path)
+        try:
+            row = zet_app.update_partial_turnaround(
+                character,
+                phase,
+                partial_turnaround_id,
+                str(payload.get("label") or ""),
+                float(payload.get("crop_percent") or 0),
+            )
+            return {
+                "message": "Partial turnaround updated.",
+                "row": _turnaround_row_payload(row),
+                "rows": [_turnaround_row_payload(item) for item in zet_app.list_turnaround_rows(character, phase)],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/turnarounds/partials/{partial_turnaround_id}")
+    def turnaround_delete_partial(partial_turnaround_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Delete an auxiliary partial turnaround sheet."""
+        zet_app = _app(app.state.config_path)
+        try:
+            row = zet_app.delete_partial_turnaround(character, phase, partial_turnaround_id)
+            return {
+                "message": "Partial turnaround deleted.",
+                "row": _turnaround_row_payload(row),
+                "rows": [_turnaround_row_payload(item) for item in zet_app.list_turnaround_rows(character, phase)],
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
