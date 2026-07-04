@@ -40,6 +40,7 @@
     <button class="tab workflow-tab" data-page="render-review">Image Review</button>
     <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
     <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
+    <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Resources</button>
     <button class="tab workflow-tab" data-page="costumes">Costumes</button>
     <button class="tab workflow-tab" data-page="expressions">Expressions</button>
     <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
@@ -247,6 +248,65 @@
             </section>
           </div>
         </section>
+      </div>
+    </section>
+
+    <section id="auxiliary-resources-page" class="page">
+      <div class="page-title-row">
+        <h1>Auxiliary Resources</h1>
+        <div id="aux-resource-status" class="status-text"></div>
+      </div>
+      <div id="aux-resource-message" class="action-message" hidden></div>
+      <div class="aux-resource-layout">
+        <section class="control-panel">
+          <div class="button-row compact">
+            <label>
+              Category
+              <select id="aux-resource-category">
+                <option value="person">Person</option>
+                <option value="place">Place</option>
+                <option value="thing">Thing</option>
+              </select>
+            </label>
+            <label class="checkbox-label">
+              <input id="aux-resource-show-thumbnails" type="checkbox">
+              Thumbnails
+            </label>
+          </div>
+          <table id="aux-resource-table">
+            <thead>
+              <tr>
+                <th class="aux-thumbnail-col">image</th>
+                <th>label</th>
+                <th>tag</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions aux-resource-editor">
+          <button id="aux-resource-add" type="button">Add Resource</button>
+          <h3 id="aux-resource-form-title">Add Resource</h3>
+          <p class="category-context">
+            Category: <strong id="aux-resource-form-category">Person</strong>
+          </p>
+          <label>
+            Label
+            <input id="aux-resource-label" type="text" placeholder="Old wizard">
+          </label>
+          <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
+            <p>Click here, then press Ctrl+V to paste an image.</p>
+            <p class="status-text">Drag/drop and file picker also work.</p>
+            <input id="aux-resource-file-input" type="file" accept="image/*">
+          </div>
+          <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
+          <button id="aux-resource-save" type="button">Save Resource</button>
+          <button id="aux-resource-clear" type="button">Clear</button>
+          <h3>Selected Tag</h3>
+          <code id="aux-resource-tag" class="copyable-tag"></code>
+          <button id="aux-resource-copy-tag" type="button" disabled>Copy Tag</button>
+        </aside>
       </div>
     </section>
 
@@ -600,6 +660,12 @@
           </div>
         </section>
         <aside class="review-actions">
+          <h3>Detection</h3>
+          <label>
+            Tolerance
+            <input id="turnaround-detection-tolerance" type="number" min="1" max="200" step="5" value="50">
+          </label>
+          <hr class="section-divider">
           <h3>Partial Sheet</h3>
           <label>
             Label

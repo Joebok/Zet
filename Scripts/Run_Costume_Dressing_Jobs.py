@@ -19,6 +19,8 @@ from Run_Body_Reference_Jobs import (
     job_get,
     load_bundle,
     load_body_reference_section_data,
+    background_treatment_source_map,
+    load_background_treatment,
     load_view_data,
     metadata_source_map,
     normalize_view,
@@ -314,11 +316,13 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "VIEW_TOKEN": body_view_token,
         "VIEW_LABEL": str(body_view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+        "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **template_metadata(character_template_path),
         **costume_metadata(costume_path),
     }
     metadata_sources = {
         **metadata_source_map(project_root, character_template_path, body_view_token, task, "body"),
+        **background_treatment_source_map(project_root),
         **costume_metadata_sources(costume_path),
         "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
         "BODY_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Body view label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},

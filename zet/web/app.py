@@ -473,6 +473,11 @@ def _turnaround_row_payload(row) -> dict[str, Any]:
     return _jsonable(row)
 
 
+def _auxiliary_resource_payload(resource) -> dict[str, Any]:
+    """Serialize an auxiliary resource for the browser."""
+    return _jsonable(resource)
+
+
 def _jsonable(value: Any) -> Any:
     if hasattr(value, "__dataclass_fields__"):
         return _jsonable(asdict(value))
@@ -820,6 +825,28 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"assets": [_asset_payload(zet_app, asset) for asset in items]}
 
+    @app.post("/api/assets/advance-displayed")
+    def advance_displayed_assets(
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Advance the displayed non-locked assets through their current worker stage."""
+        zet_app = _app(app.state.config_path)
+        try:
+            asset_ids = [int(value) for value in payload.get("asset_ids", [])]
+            results = zet_app.advance_assets(character, phase, asset_ids)
+            advanced = len([item for item in results if item.get("status") == "ADVANCED"])
+            errors = len([item for item in results if item.get("status") == "ERROR"])
+            skipped = len([item for item in results if item.get("status") == "SKIPPED"])
+            return {
+                "results": results,
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "message": f"Advanced {advanced} asset(s); skipped {skipped}; errors {errors}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/assets/{asset_id}")
     def asset_detail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -827,6 +854,64 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return _asset_detail_payload(zet_app, character, phase, asset_id)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/auxiliary-resources")
+    def auxiliary_resources(category: str = Query("person")) -> dict[str, Any]:
+        """List global auxiliary resources for one category."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/auxiliary-resources")
+    async def auxiliary_resource_create(
+        request: Request,
+        category: str = Query(...),
+        label: str = Query(...),
+    ) -> dict[str, Any]:
+        """Create a global auxiliary resource from uploaded image bytes."""
+        zet_app = _app(app.state.config_path)
+        try:
+            resource = zet_app.create_auxiliary_resource(
+                category,
+                label,
+                await request.body(),
+                request.headers.get("content-type", ""),
+            )
+            return {
+                "resource": _auxiliary_resource_payload(resource),
+                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
+                "message": f"Created auxiliary resource {resource.label}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/auxiliary-resources/{resource_id}")
+    async def auxiliary_resource_update(
+        resource_id: str,
+        request: Request,
+        category: str = Query(...),
+        label: str = Query(...),
+        replace_image: bool = Query(False),
+    ) -> dict[str, Any]:
+        """Update a global auxiliary resource and optionally replace its image."""
+        zet_app = _app(app.state.config_path)
+        try:
+            image_bytes = await request.body() if replace_image else None
+            resource = zet_app.update_auxiliary_resource(
+                resource_id,
+                label,
+                image_bytes,
+                request.headers.get("content-type", ""),
+            )
+            return {
+                "resource": _auxiliary_resource_payload(resource),
+                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
+                "message": f"Updated auxiliary resource {resource.label}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/identity-keys")
     def identity_keys(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
@@ -1225,11 +1310,21 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/turnarounds/{turnaround_id}/generate")
-    def turnaround_generate(turnaround_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+    def turnaround_generate(
+        turnaround_id: str,
+        payload: dict[str, Any] | None = Body(None),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
         """Generate a candidate turnaround sheet for review."""
         zet_app = _app(app.state.config_path)
         try:
-            row = zet_app.generate_turnaround(character, phase, turnaround_id)
+            row = zet_app.generate_turnaround(
+                character,
+                phase,
+                turnaround_id,
+                float(payload.get("detection_tolerance")) if isinstance(payload, dict) and payload.get("detection_tolerance") is not None else None,
+            )
             return {
                 "message": f"Generated turnaround candidate for {row.label}.",
                 "row": _turnaround_row_payload(row),
@@ -1275,6 +1370,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 turnaround_id,
                 str(payload.get("label") or ""),
                 float(payload.get("crop_percent") or 0),
+                float(payload.get("detection_tolerance")) if payload.get("detection_tolerance") is not None else None,
             )
             return {
                 "message": "Partial turnaround saved.",
@@ -1300,6 +1396,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 partial_turnaround_id,
                 str(payload.get("label") or ""),
                 float(payload.get("crop_percent") or 0),
+                float(payload.get("detection_tolerance")) if payload.get("detection_tolerance") is not None else None,
             )
             return {
                 "message": "Partial turnaround updated.",

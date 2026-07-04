@@ -60,6 +60,18 @@ class PathService:
         """Return the locked image path for an identity key."""
         return self.character_asset_path(character, phase) / "IdentityKeys" / f"{identity_key_id}.png"
 
+    def auxiliary_resource_root(self) -> Path:
+        """Return the global auxiliary resource folder."""
+        return Path(self.config.base_character_path).parent / "AuxiliaryResources"
+
+    def auxiliary_resource_inventory_path(self) -> Path:
+        """Return the global auxiliary resource inventory path."""
+        return self.auxiliary_resource_root() / "AuxiliaryResources.json"
+
+    def auxiliary_resource_image_path(self, category: str, resource_id: str, extension: str = ".png") -> Path:
+        """Return the image path for a global auxiliary resource."""
+        return self.auxiliary_resource_root() / "Images" / category / f"{resource_id}{extension}"
+
     def costume_template_path(self, character: str, phase: str, costume_name: str) -> Path:
         """Return the markdown template path for a costume name."""
         safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(costume_name).strip())

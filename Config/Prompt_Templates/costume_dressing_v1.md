@@ -50,6 +50,10 @@ The costume file controls:
 Do not treat either source as loose inspiration.
 The final image should look like the same assembled character in the same neutral turnaround pose, now naturally dressed in the specified costume.
 
+BACKGROUND TREATMENT
+
+{{BACKGROUND_TREATMENT}}
+
 POSE AND CAMERA PRESERVATION
 
 This is a technical turnaround source image.
@@ -78,6 +82,17 @@ STANCE AND FOOT PLACEMENT
 BODY VIEW INSTRUCTION
 
 {{BODY_VIEW_INSTRUCTION}}
+
+THREE-QUARTER ORIENTATION LOCK
+
+If the requested view is a three-quarter view, preserve the supplied Assembled Character source as one locked physical orientation.
+The head, neck, shoulders, torso, hips, knees, feet, face direction, and gaze direction must all remain aligned to the same requested three-quarter direction.
+Do not repaint the head toward the viewer.
+Do not create sidelong eye contact.
+Do not twist the neck.
+Do not rotate the torso.
+Do not mirror the image.
+Only change the costume.
 
 ANATOMICAL LEFT AND RIGHT
 

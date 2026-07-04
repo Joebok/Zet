@@ -43,6 +43,9 @@ const state = {
   expressionAssets: [],
   expressionDefinitions: [],
   expressionIdentityKeys: [],
+  auxiliaryResources: [],
+  selectedAuxiliaryResourceId: null,
+  auxiliaryResourceImageBlob: null,
 };
 
 const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
@@ -230,6 +233,7 @@ const turnaroundCandidate = document.querySelector("#turnaround-candidate");
 const turnaroundLocked = document.querySelector("#turnaround-locked");
 const turnaroundSourceAssets = document.querySelector("#turnaround-source-assets");
 const turnaroundPaths = document.querySelector("#turnaround-paths");
+const turnaroundDetectionTolerance = document.querySelector("#turnaround-detection-tolerance");
 const turnaroundPartialLabel = document.querySelector("#turnaround-partial-label");
 const turnaroundPartialPercent = document.querySelector("#turnaround-partial-percent");
 const turnaroundSavePartial = document.querySelector("#turnaround-save-partial");
@@ -258,6 +262,23 @@ const expressionLabel = document.querySelector("#expression-label");
 const expressionIdentityKey = document.querySelector("#expression-identity-key");
 const expressionDefinitionFile = document.querySelector("#expression-definition-file");
 const expressionCreate = document.querySelector("#expression-create");
+const auxResourceStatus = document.querySelector("#aux-resource-status");
+const auxResourceMessage = document.querySelector("#aux-resource-message");
+const auxResourceCategory = document.querySelector("#aux-resource-category");
+const auxResourceShowThumbnails = document.querySelector("#aux-resource-show-thumbnails");
+const auxResourceTable = document.querySelector("#aux-resource-table");
+const auxResourceTableBody = document.querySelector("#aux-resource-table tbody");
+const auxResourceAdd = document.querySelector("#aux-resource-add");
+const auxResourceFormTitle = document.querySelector("#aux-resource-form-title");
+const auxResourceFormCategory = document.querySelector("#aux-resource-form-category");
+const auxResourceLabel = document.querySelector("#aux-resource-label");
+const auxResourcePasteZone = document.querySelector("#aux-resource-paste-zone");
+const auxResourceFileInput = document.querySelector("#aux-resource-file-input");
+const auxResourceImagePreview = document.querySelector("#aux-resource-image-preview");
+const auxResourceSave = document.querySelector("#aux-resource-save");
+const auxResourceClear = document.querySelector("#aux-resource-clear");
+const auxResourceTag = document.querySelector("#aux-resource-tag");
+const auxResourceCopyTag = document.querySelector("#aux-resource-copy-tag");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -357,6 +378,12 @@ function showExpressionMessage(message, kind = "info") {
   expressionMessage.textContent = message || "";
   expressionMessage.className = `action-message ${kind}`;
   expressionMessage.hidden = !message;
+}
+
+function showAuxResourceMessage(message, kind = "info") {
+  auxResourceMessage.textContent = message || "";
+  auxResourceMessage.className = `action-message ${kind}`;
+  auxResourceMessage.hidden = !message;
 }
 
 function escapeHtml(value) {
@@ -697,6 +724,10 @@ function filteredAssets() {
   });
 }
 
+function visibleTodoAssets() {
+  return filteredAssets().filter((asset) => asset.asset_state !== "LOCKED" && asset.pipeline_stage !== "LOCKED");
+}
+
 function renderAssetTable() {
   assetTableBody.replaceChildren();
   const visibleAssets = filteredAssets();
@@ -764,6 +795,7 @@ function applyAssetFilters() {
   state.assetFilters.todoOnly = assetFilterTodo.checked;
   state.assetFilters.pipeline = assetFilterPipeline.value;
   renderAssetTable();
+  updateActionButtons(state.assetDetail);
 }
 
 async function selectAsset(assetId) {
@@ -849,6 +881,7 @@ function updateActionButtons(detail) {
   const asset = detail?.asset || null;
   const candidateExists = Boolean(detail?.exists?.candidate_image);
   const lockedExists = Boolean(detail?.exists?.locked_image);
+  const hasVisibleTodo = visibleTodoAssets().length > 0;
   for (const button of actionButtons) {
     const action = button.dataset.action;
     let enabled = Boolean(asset);
@@ -856,7 +889,7 @@ function updateActionButtons(detail) {
       enabled = enabled && asset.actor === "AI_AGENT";
     }
     if (action === "run-current-worker") {
-      enabled = enabled && asset.actor === "PYTHON";
+      enabled = hasVisibleTodo;
     }
     if (action === "promote-to-locked") {
       enabled = enabled && candidateExists;
@@ -887,6 +920,10 @@ function startIdentityKeyFromSelectedAsset() {
 }
 
 async function runAssetAction(action) {
+  if (action === "run-current-worker") {
+    await advanceVisibleAssets();
+    return;
+  }
   if (!state.selectedAssetId) {
     return;
   }
@@ -913,8 +950,46 @@ async function runAssetAction(action) {
   }
 }
 
+async function advanceVisibleAssets() {
+  const visible = visibleTodoAssets();
+  if (!visible.length) {
+    showActionMessage("No displayed todo assets to advance.");
+    updateActionButtons(state.assetDetail);
+    return;
+  }
+  showActionMessage(`Advancing ${visible.length} displayed asset(s)...`);
+  for (const button of actionButtons) {
+    button.disabled = true;
+  }
+  try {
+    const payload = await fetchJson(
+      `/api/assets/advance-displayed?${currentQuery().toString()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset_ids: visible.map((asset) => asset.asset_id) }),
+      },
+    );
+    state.assets = payload.assets || state.assets;
+    renderAssetTable();
+    if (state.selectedAssetId) {
+      await selectAsset(state.selectedAssetId);
+    }
+    const errors = (payload.results || []).filter((item) => item.status === "ERROR");
+    const suffix = errors.length ? ` ${errors.length} error(s); see asset rows/details.` : "";
+    showActionMessage((payload.message || "Advance complete.") + suffix, errors.length ? "error" : "success");
+  } catch (error) {
+    showActionMessage(error.message, "error");
+    if (state.selectedAssetId) {
+      await selectAsset(state.selectedAssetId);
+    }
+  } finally {
+    updateActionButtons(state.assetDetail);
+  }
+}
+
 function activatePage(page) {
-  if (page !== "onboarding" && !selectedPhaseReady()) {
+  if (page !== "onboarding" && page !== "auxiliary-resources" && !selectedPhaseReady()) {
     page = "onboarding";
   }
   for (const button of document.querySelectorAll(".tab")) {
@@ -927,6 +1002,7 @@ function activatePage(page) {
   document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
   document.querySelector("#turnarounds-page").classList.toggle("active", page === "turnarounds");
   document.querySelector("#identity-keys-page").classList.toggle("active", page === "identity-keys");
+  document.querySelector("#auxiliary-resources-page").classList.toggle("active", page === "auxiliary-resources");
   document.querySelector("#costumes-page").classList.toggle("active", page === "costumes");
   document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
@@ -937,7 +1013,7 @@ function activatePage(page) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "costumes", "expressions", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "costumes", "expressions", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -955,6 +1031,9 @@ function activatePage(page) {
   }
   if (page === "identity-keys") {
     loadIdentityKeys();
+  }
+  if (page === "auxiliary-resources") {
+    loadAuxiliaryResources();
   }
   if (page === "costumes") {
     loadCostumes();
@@ -1347,6 +1426,160 @@ async function createExpression() {
     showExpressionMessage(error.message, "error");
   } finally {
     expressionCreate.disabled = false;
+  }
+}
+
+function updateAuxiliaryResourceCategoryDisplay() {
+  // Keep the editor header matched to the currently filtered resource category.
+  const selected = auxResourceCategory.options[auxResourceCategory.selectedIndex];
+  auxResourceFormCategory.textContent = selected?.textContent || "Person";
+}
+
+function clearAuxiliaryResourceForm() {
+  state.selectedAuxiliaryResourceId = null;
+  state.auxiliaryResourceImageBlob = null;
+  updateAuxiliaryResourceCategoryDisplay();
+  auxResourceFormTitle.textContent = "Add Resource";
+  auxResourceLabel.value = "";
+  auxResourceTag.textContent = "";
+  auxResourceCopyTag.disabled = true;
+  auxResourceImagePreview.hidden = true;
+  auxResourceImagePreview.removeAttribute("src");
+  auxResourceSave.textContent = "Save Resource";
+  auxResourceFileInput.value = "";
+  for (const row of auxResourceTableBody.querySelectorAll("tr")) {
+    row.classList.remove("selected");
+  }
+}
+
+function setAuxiliaryResourceImageSelection(blob) {
+  if (!blob || !blob.type.startsWith("image/")) {
+    showAuxResourceMessage("Clipboard or file did not contain an image.", "error");
+    return;
+  }
+  state.auxiliaryResourceImageBlob = blob;
+  auxResourceImagePreview.src = URL.createObjectURL(blob);
+  auxResourceImagePreview.hidden = false;
+  showAuxResourceMessage(`Ready to save ${Math.round(blob.size / 1024)} KB image.`);
+}
+
+async function loadAuxiliaryResources() {
+  updateAuxiliaryResourceCategoryDisplay();
+  auxResourceStatus.textContent = "Loading auxiliary resources...";
+  const params = new URLSearchParams({ category: auxResourceCategory.value || "person" });
+  try {
+    const payload = await fetchJson(`/api/auxiliary-resources?${params.toString()}`);
+    state.auxiliaryResources = payload.resources || [];
+    renderAuxiliaryResourceTable();
+    auxResourceStatus.textContent = `${state.auxiliaryResources.length} ${auxResourceCategory.value} resource(s)`;
+  } catch (error) {
+    auxResourceStatus.textContent = "Load failed.";
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+function renderAuxiliaryResourceTable() {
+  auxResourceTableBody.replaceChildren();
+  auxResourceTable.classList.toggle("aux-resource-table-no-thumbs", !auxResourceShowThumbnails.checked);
+  if (!state.auxiliaryResources.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.textContent = "No resources.";
+    row.append(cell);
+    auxResourceTableBody.append(row);
+    return;
+  }
+  for (const resource of state.auxiliaryResources) {
+    const row = document.createElement("tr");
+    row.dataset.resourceId = resource.resource_id;
+    row.classList.toggle("selected", resource.resource_id === state.selectedAuxiliaryResourceId);
+    const imageCell = document.createElement("td");
+    imageCell.className = "aux-thumbnail-cell";
+    if (resource.image_path) {
+      const image = document.createElement("img");
+      image.className = "aux-resource-thumb";
+      image.alt = resource.label || resource.resource_id;
+      image.src = fileUrl(resource.image_path, resource.updated_at || "");
+      imageCell.append(image);
+    }
+    const labelCell = document.createElement("td");
+    labelCell.textContent = resource.label || "";
+    const tagCell = document.createElement("td");
+    tagCell.textContent = resource.tag || "";
+    const actionCell = document.createElement("td");
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.textContent = "Copy";
+    copyButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      copyText(resource.tag || "", "Resource tag copied.");
+    });
+    actionCell.append(copyButton);
+    row.append(imageCell, labelCell, tagCell, actionCell);
+    row.addEventListener("click", () => selectAuxiliaryResource(resource.resource_id));
+    auxResourceTableBody.append(row);
+  }
+}
+
+function selectAuxiliaryResource(resourceId) {
+  const resource = state.auxiliaryResources.find((item) => item.resource_id === resourceId);
+  if (!resource) {
+    return;
+  }
+  state.selectedAuxiliaryResourceId = resource.resource_id;
+  state.auxiliaryResourceImageBlob = null;
+  updateAuxiliaryResourceCategoryDisplay();
+  auxResourceFormTitle.textContent = "Update Resource";
+  auxResourceLabel.value = resource.label || "";
+  auxResourceTag.textContent = resource.tag || "";
+  auxResourceCopyTag.disabled = !resource.tag;
+  auxResourceSave.textContent = "Update Resource";
+  auxResourceImagePreview.src = fileUrl(resource.image_path, resource.updated_at || "");
+  auxResourceImagePreview.hidden = !resource.image_path;
+  renderAuxiliaryResourceTable();
+}
+
+async function saveAuxiliaryResource() {
+  const label = auxResourceLabel.value.trim();
+  if (!label) {
+    showAuxResourceMessage("Label is required.", "error");
+    return;
+  }
+  const isUpdate = Boolean(state.selectedAuxiliaryResourceId);
+  if (!isUpdate && !state.auxiliaryResourceImageBlob) {
+    showAuxResourceMessage("Image is required.", "error");
+    return;
+  }
+  const params = new URLSearchParams({
+    category: auxResourceCategory.value || "person",
+    label,
+  });
+  if (isUpdate && state.auxiliaryResourceImageBlob) {
+    params.set("replace_image", "true");
+  }
+  auxResourceSave.disabled = true;
+  showAuxResourceMessage(isUpdate ? "Updating resource..." : "Creating resource...");
+  try {
+    const url = isUpdate
+      ? `/api/auxiliary-resources/${encodeURIComponent(state.selectedAuxiliaryResourceId)}?${params.toString()}`
+      : `/api/auxiliary-resources?${params.toString()}`;
+    const blob = state.auxiliaryResourceImageBlob || new Blob([]);
+    const payload = await fetchJson(url, {
+      method: isUpdate ? "PUT" : "POST",
+      headers: { "Content-Type": blob.type || "image/png" },
+      body: blob,
+    });
+    state.auxiliaryResources = payload.resources || state.auxiliaryResources;
+    state.selectedAuxiliaryResourceId = payload.resource?.resource_id || state.selectedAuxiliaryResourceId;
+    state.auxiliaryResourceImageBlob = null;
+    renderAuxiliaryResourceTable();
+    selectAuxiliaryResource(state.selectedAuxiliaryResourceId);
+    showAuxResourceMessage(payload.message || "Resource saved.");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  } finally {
+    auxResourceSave.disabled = false;
   }
 }
 
@@ -1990,7 +2223,7 @@ function renderTurnaroundTable() {
     generateButton.disabled = !rowData.ready;
     generateButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      generateTurnaround(rowData.turnaround_id);
+      generateTurnaround(rowData.turnaround_id, Number(turnaroundDetectionTolerance.value || rowData.detection_tolerance || 50));
     });
     actionCell.append(generateButton);
     const promoteButton = document.createElement("button");
@@ -2095,6 +2328,7 @@ async function selectTurnaround(turnaroundId) {
   state.selectedAuxiliaryTurnaroundId = null;
   turnaroundPartialLabel.value = "";
   turnaroundPartialPercent.value = "45";
+  turnaroundDetectionTolerance.value = "50";
   for (const row of turnaroundTableBody.querySelectorAll("tr")) {
     row.classList.toggle("selected", row.dataset.turnaroundId === state.selectedTurnaroundId);
   }
@@ -2121,6 +2355,7 @@ function clearTurnaround() {
   turnaroundAuxTableBody.replaceChildren();
   turnaroundPartialLabel.value = "";
   turnaroundPartialPercent.value = "45";
+  turnaroundDetectionTolerance.value = "50";
   turnaroundSavePartial.disabled = true;
 }
 
@@ -2131,6 +2366,9 @@ function renderTurnaround(row) {
     turnaroundPartialLabel.value = selectedAux.label || "";
     turnaroundPartialPercent.value = selectedAux.crop_percent || 45;
   }
+  turnaroundDetectionTolerance.value = selectedAux
+    ? (selectedAux.detection_tolerance || 50)
+    : (row?.detection_tolerance || 50);
   turnaroundTitle.textContent = selectedAux ? `${row.label} | ${selectedAux.label}` : (row ? row.label : "Select a turnaround");
   renderTurnaroundPrimaryPreview(row);
   if (selectedAux) {
@@ -2235,15 +2473,24 @@ function renderAuxiliaryTurnaroundTable(items) {
   }
 }
 
-async function generateTurnaround(turnaroundId = state.selectedTurnaroundId) {
+async function generateTurnaround(turnaroundId = state.selectedTurnaroundId, detectionTolerance = null) {
   if (!turnaroundId) {
     return;
   }
   showTurnaroundMessage("Generating turnaround...");
   try {
+    const tolerance = detectionTolerance ?? (
+      turnaroundId === state.selectedTurnaroundId
+        ? Number(turnaroundDetectionTolerance.value || 50)
+        : null
+    );
     const payload = await fetchJson(
       `/api/turnarounds/${encodeURIComponent(turnaroundId)}/generate?${currentQuery().toString()}`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ detection_tolerance: tolerance }),
+      },
     );
     state.turnaroundRows = payload.rows || state.turnaroundRows;
     renderTurnaroundTable();
@@ -2267,6 +2514,7 @@ async function savePartialTurnaround() {
     const body = JSON.stringify({
       label: turnaroundPartialLabel.value || "",
       crop_percent: Number(turnaroundPartialPercent.value || 0),
+      detection_tolerance: Number(turnaroundDetectionTolerance.value || 50),
     });
     const url = selectedAux
       ? `/api/turnarounds/partials/${encodeURIComponent(selectedAux.turnaround_id)}?${currentQuery().toString()}`
@@ -3084,6 +3332,37 @@ identityKeyCreatePreview.addEventListener("click", createIdentityKeyPreview);
 identityKeySave.addEventListener("click", saveIdentityKey);
 costumeCreate.addEventListener("click", createCostume);
 expressionCreate.addEventListener("click", createExpression);
+auxResourceCategory.addEventListener("change", () => {
+  clearAuxiliaryResourceForm();
+  loadAuxiliaryResources();
+});
+auxResourceShowThumbnails.addEventListener("change", renderAuxiliaryResourceTable);
+auxResourceAdd.addEventListener("click", clearAuxiliaryResourceForm);
+auxResourcePasteZone.addEventListener("paste", (event) => {
+  const blob = imageBlobFromPasteEvent(event);
+  if (blob) {
+    event.preventDefault();
+    setAuxiliaryResourceImageSelection(blob);
+  }
+});
+auxResourcePasteZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  auxResourcePasteZone.classList.add("drag-over");
+});
+auxResourcePasteZone.addEventListener("dragleave", () => {
+  auxResourcePasteZone.classList.remove("drag-over");
+});
+auxResourcePasteZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  auxResourcePasteZone.classList.remove("drag-over");
+  setAuxiliaryResourceImageSelection(event.dataTransfer?.files?.[0]);
+});
+auxResourceFileInput.addEventListener("change", () => {
+  setAuxiliaryResourceImageSelection(auxResourceFileInput.files?.[0]);
+});
+auxResourceSave.addEventListener("click", saveAuxiliaryResource);
+auxResourceClear.addEventListener("click", clearAuxiliaryResourceForm);
+auxResourceCopyTag.addEventListener("click", () => copyText(auxResourceTag.textContent || "", "Resource tag copied."));
 
 promptSearch.addEventListener("input", renderPromptText);
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt_text || "", "Prompt copied."));

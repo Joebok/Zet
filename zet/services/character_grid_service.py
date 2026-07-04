@@ -138,7 +138,34 @@ class CharacterGridService:
                 best_label = label
         if best_label is None:
             return cleaned > 0
-        return labels == best_label
+        best_x = int(stats[best_label, cv2.CC_STAT_LEFT])
+        best_y = int(stats[best_label, cv2.CC_STAT_TOP])
+        best_w = int(stats[best_label, cv2.CC_STAT_WIDTH])
+        best_h = int(stats[best_label, cv2.CC_STAT_HEIGHT])
+        best_right = best_x + best_w
+        best_bottom = best_y + best_h
+        horizontal_margin = max(24, int(best_w * 0.45))
+        vertical_margin = max(80, int(best_h * 0.18))
+        keep_labels = {best_label}
+        for label in range(1, num_labels):
+            if label == best_label:
+                continue
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            if area < min_area:
+                continue
+            x = int(stats[label, cv2.CC_STAT_LEFT])
+            y = int(stats[label, cv2.CC_STAT_TOP])
+            w = int(stats[label, cv2.CC_STAT_WIDTH])
+            h = int(stats[label, cv2.CC_STAT_HEIGHT])
+            right = x + w
+            bottom = y + h
+            if x <= 0 or y <= 0 or right >= mask.shape[1] or bottom >= mask.shape[0]:
+                continue
+            horizontally_aligned = right >= best_x - horizontal_margin and x <= best_right + horizontal_margin
+            vertically_near = y <= best_bottom + vertical_margin and bottom >= best_y - vertical_margin
+            if horizontally_aligned and vertically_near:
+                keep_labels.add(label)
+        return np.isin(labels, list(keep_labels))
 
     def mask_to_bbox(self, mask) -> Optional[BBox]:
         """Convert a foreground mask into a bounding box."""

@@ -91,6 +91,33 @@ def view_instruction(view_data: dict, role: str, task: str) -> str:
     )
 
 
+def load_background_treatment(project_root: Path, key: str = "turnaround_source") -> str:
+    """Load globally configured background prompt text."""
+    data = load_json(project_root / "Config" / "Prompt_Background_Text.json")
+    backgrounds = data.get("backgrounds", data)
+    record = backgrounds.get(key) if isinstance(backgrounds, dict) else None
+    if isinstance(record, dict):
+        value = record.get("text")
+    else:
+        value = record
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise TemplateCompileError("MISSING_CONFIG", f"No background treatment configured for key: {key}")
+
+
+def background_treatment_source_map(project_root: Path, key: str = "turnaround_source") -> dict[str, dict]:
+    """Return source-map metadata for globally configured background prompt text."""
+    return {
+        "BACKGROUND_TREATMENT": {
+            "source_kind": "config_background_instruction",
+            "source_path": str(project_root / "Config" / "Prompt_Background_Text.json"),
+            "source_label": "Turnaround source background treatment",
+            "json_pointer": f"/backgrounds/{key}/text",
+            "editable": True,
+        }
+    }
+
+
 def _clean_template_field(value: str) -> str:
     return str(value or "").strip().strip("`").strip().strip("[]").strip()
 
@@ -498,6 +525,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "VIEW_TOKEN": view_token,
         "VIEW_LABEL": str(view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(view_data, "body", task),
+        "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **template_metadata(template_path),
         **load_race_render_rules(project_root, template_path),
     }
@@ -505,7 +533,10 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         template_file.read_text(encoding="utf-8"),
         template_path=template_file,
         metadata=metadata_values,
-        metadata_sources=metadata_source_map(project_root, template_path, view_token, task, "body"),
+        metadata_sources={
+            **metadata_source_map(project_root, template_path, view_token, task, "body"),
+            **background_treatment_source_map(project_root),
+        },
         selection=selection,
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=view_token,
@@ -631,4 +662,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

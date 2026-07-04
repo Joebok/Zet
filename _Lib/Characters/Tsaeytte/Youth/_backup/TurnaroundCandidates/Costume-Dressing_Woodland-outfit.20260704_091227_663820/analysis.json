@@ -1,0 +1,250 @@
+[
+  {
+    "name": "Costume-Dressing_Front_Front_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Front_Front_Woodland-outfit.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      146,
+      140,
+      139
+    ],
+    "bbox": [
+      0,
+      30,
+      862,
+      1479
+    ],
+    "character_width": 862,
+    "character_height": 1449,
+    "foot_y": 1479,
+    "mask_pixel_count": 522521,
+    "scale_factor": 1.0172532781228434,
+    "scaled_width": 1042,
+    "scaled_height": 1561,
+    "scaled_bbox": [
+      0,
+      31,
+      877,
+      1505
+    ],
+    "scaled_foot_y": 1505
+  },
+  {
+    "name": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Woodland-outfit.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      141,
+      136,
+      135
+    ],
+    "bbox": [
+      0,
+      0,
+      740,
+      1492
+    ],
+    "character_width": 740,
+    "character_height": 1492,
+    "foot_y": 1492,
+    "mask_pixel_count": 611492,
+    "scale_factor": 0.9879356568364611,
+    "scaled_width": 1012,
+    "scaled_height": 1516,
+    "scaled_bbox": [
+      0,
+      0,
+      731,
+      1474
+    ],
+    "scaled_foot_y": 1474
+  },
+  {
+    "name": "Costume-Dressing_Left-Profile_Left-Profile_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Left-Profile_Left-Profile_Woodland-outfit.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      137,
+      133,
+      133
+    ],
+    "bbox": [
+      0,
+      0,
+      701,
+      1476
+    ],
+    "character_width": 701,
+    "character_height": 1476,
+    "foot_y": 1476,
+    "mask_pixel_count": 525488,
+    "scale_factor": 0.9986449864498645,
+    "scaled_width": 1023,
+    "scaled_height": 1533,
+    "scaled_bbox": [
+      0,
+      0,
+      700,
+      1474
+    ],
+    "scaled_foot_y": 1474
+  },
+  {
+    "name": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Woodland-outfit.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      133,
+      129,
+      130
+    ],
+    "bbox": [
+      0,
+      0,
+      753,
+      1473
+    ],
+    "character_width": 753,
+    "character_height": 1473,
+    "foot_y": 1473,
+    "mask_pixel_count": 544004,
+    "scale_factor": 1.0006788866259335,
+    "scaled_width": 1025,
+    "scaled_height": 1536,
+    "scaled_bbox": [
+      0,
+      0,
+      754,
+      1474
+    ],
+    "scaled_foot_y": 1474
+  },
+  {
+    "name": "Costume-Dressing_Back_Back_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Back_Back_Woodland-outfit.png",
+    "source_width": 1023,
+    "source_height": 1537,
+    "background_rgb": [
+      132,
+      128,
+      129
+    ],
+    "bbox": [
+      0,
+      51,
+      835,
+      1467
+    ],
+    "character_width": 835,
+    "character_height": 1416,
+    "foot_y": 1467,
+    "mask_pixel_count": 571315,
+    "scale_factor": 1.0409604519774012,
+    "scaled_width": 1065,
+    "scaled_height": 1600,
+    "scaled_bbox": [
+      0,
+      53,
+      869,
+      1527
+    ],
+    "scaled_foot_y": 1527
+  },
+  {
+    "name": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Woodland-outfit.png",
+    "source_width": 1023,
+    "source_height": 1537,
+    "background_rgb": [
+      132,
+      128,
+      129
+    ],
+    "bbox": [
+      0,
+      0,
+      744,
+      1462
+    ],
+    "character_width": 744,
+    "character_height": 1462,
+    "foot_y": 1462,
+    "mask_pixel_count": 584552,
+    "scale_factor": 1.0082079343365253,
+    "scaled_width": 1031,
+    "scaled_height": 1550,
+    "scaled_bbox": [
+      0,
+      0,
+      750,
+      1474
+    ],
+    "scaled_foot_y": 1474
+  },
+  {
+    "name": "Costume-Dressing_Right-Profile_Right-Profile_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Right-Profile_Right-Profile_Woodland-outfit.png",
+    "source_width": 1023,
+    "source_height": 1537,
+    "background_rgb": [
+      126,
+      123,
+      124
+    ],
+    "bbox": [
+      0,
+      56,
+      1023,
+      1537
+    ],
+    "character_width": 1023,
+    "character_height": 1481,
+    "foot_y": 1537,
+    "mask_pixel_count": 542063,
+    "scale_factor": 0.9952734638757597,
+    "scaled_width": 1018,
+    "scaled_height": 1530,
+    "scaled_bbox": [
+      0,
+      56,
+      1018,
+      1530
+    ],
+    "scaled_foot_y": 1530
+  },
+  {
+    "name": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Woodland-outfit",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Woodland-outfit.png",
+    "source_width": 1023,
+    "source_height": 1537,
+    "background_rgb": [
+      125,
+      123,
+      125
+    ],
+    "bbox": [
+      0,
+      0,
+      1023,
+      1537
+    ],
+    "character_width": 1023,
+    "character_height": 1537,
+    "foot_y": 1537,
+    "mask_pixel_count": 639353,
+    "scale_factor": 0.9590110605074821,
+    "scaled_width": 981,
+    "scaled_height": 1474,
+    "scaled_bbox": [
+      0,
+      0,
+      981,
+      1474
+    ],
+    "scaled_foot_y": 1474
+  }
+]

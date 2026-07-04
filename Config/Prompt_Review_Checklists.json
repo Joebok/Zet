@@ -4,7 +4,7 @@
     "body_reference_prompt_review_v1": {
       "required_phrases": [
         "full-body technical body-reference",
-        "plain neutral studio background",
+        "plain smooth neutral light gray studio background",
         "Even studio lighting",
         "Entire body visible",
         "tank top and shorts"

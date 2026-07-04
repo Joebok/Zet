@@ -10,11 +10,19 @@ No cropping.
 No bust portrait.
 No waist-up or thigh-up framing.
 Neutral standing pose.
-Plain neutral gray studio background.
+{{BACKGROUND_TREATMENT}}
 Even studio lighting.
 This is a sober technical reference image, not a narrative scene.
 
 Prioritize readable proportions, clean silhouette, and accurate view angle.
+
+THREE-QUARTER ORIENTATION LOCK
+
+If the requested view is a three-quarter view, the body must use one unified camera angle.
+The torso, shoulders, neck, mannequin head, face direction, hips, knees, and feet all point in the same requested three-quarter direction.
+Do not combine a front-facing head with an angled body.
+Do not combine a profile head with a three-quarter body.
+Do not twist the neck, turn the eyes toward the viewer, rotate the torso separately, mirror the view, or reinterpret the requested direction.
 
 STANCE AND FOOT PLACEMENT — CRITICAL
 

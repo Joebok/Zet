@@ -467,6 +467,12 @@ dl {
   overflow: auto;
 }
 
+.section-divider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 12px 0;
+}
+
 .review-header {
   align-items: center;
   display: flex;
@@ -823,6 +829,56 @@ tr.auxiliary-row td:last-child {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(520px, 0.9fr) minmax(680px, 1.2fr) 300px;
+}
+
+.aux-resource-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(520px, 1fr) minmax(440px, 0.55fr);
+}
+
+.aux-resource-editor {
+  min-width: 0;
+}
+
+.aux-resource-editor .paste-zone {
+  min-height: 190px;
+}
+
+.aux-resource-editor .image-preview {
+  max-height: 520px;
+}
+
+.category-context {
+  color: var(--muted);
+  margin: -4px 0 4px;
+}
+
+.copyable-tag {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  display: block;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.35;
+  min-height: 20px;
+  overflow-wrap: anywhere;
+  padding: 7px 8px;
+}
+
+.aux-resource-thumb {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  height: 72px;
+  object-fit: cover;
+  width: 72px;
+}
+
+.aux-resource-table-no-thumbs .aux-thumbnail-col,
+.aux-resource-table-no-thumbs .aux-thumbnail-cell {
+  display: none;
 }
 
 .turnaround-comparison .render-image-viewer {

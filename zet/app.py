@@ -2,11 +2,14 @@ from pathlib import Path
 from datetime import datetime
 
 from zet.models.asset import Asset
+from zet.models.auxiliary_resource import AuxiliaryResource
+from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import AssetService, BatchRenderResetResult
+from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
@@ -131,6 +134,7 @@ class ZetApp:
         costume_service: CostumeService,
         expression_service: ExpressionService,
         character_onboarding_service: CharacterOnboardingService,
+        auxiliary_resource_service: AuxiliaryResourceService,
         config_path: str | Path = "config.toml",
     ):
         self.config = config
@@ -147,6 +151,7 @@ class ZetApp:
         self.costume_service = costume_service
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service
+        self.auxiliary_resource_service = auxiliary_resource_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -160,6 +165,7 @@ class ZetApp:
         config = ConfigService.load(config_path)
         path_service = PathService(config)
         asset_repository = AssetRepository(path_service)
+        auxiliary_resource_repository = AuxiliaryResourceRepository(path_service)
         pipeline_repository = PipelineRepository(path_service)
         turnaround_repository = TurnaroundRepository(path_service)
         identity_key_repository = IdentityKeyRepository(path_service)
@@ -214,6 +220,7 @@ class ZetApp:
         costume_service = CostumeService(asset_repository, path_service)
         expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
         character_onboarding_service = CharacterOnboardingService(path_service)
+        auxiliary_resource_service = AuxiliaryResourceService(auxiliary_resource_repository, path_service)
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -229,6 +236,7 @@ class ZetApp:
             costume_service,
             expression_service,
             character_onboarding_service,
+            auxiliary_resource_service,
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
@@ -236,6 +244,30 @@ class ZetApp:
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return self.asset_repository.list_assets(character, phase)
+
+    def list_auxiliary_resources(self, category: str) -> list[AuxiliaryResource]:
+        """List global auxiliary resources by category."""
+        return self.auxiliary_resource_service.list_resources(category)
+
+    def create_auxiliary_resource(
+        self,
+        category: str,
+        label: str,
+        image_bytes: bytes,
+        content_type: str,
+    ) -> AuxiliaryResource:
+        """Create a global auxiliary resource."""
+        return self.auxiliary_resource_service.create_resource(category, label, image_bytes, content_type)
+
+    def update_auxiliary_resource(
+        self,
+        resource_id: str,
+        label: str,
+        image_bytes: bytes | None = None,
+        content_type: str = "",
+    ) -> AuxiliaryResource:
+        """Update a global auxiliary resource."""
+        return self.auxiliary_resource_service.update_resource(resource_id, label, image_bytes, content_type)
 
     def character_onboarding_options(self):
         """Return options used by new character and phase onboarding."""
@@ -290,6 +322,48 @@ class ZetApp:
 
     def run_available_workers(self, character: str, phase: str):
         return self.asset_service.run_available_workers(character, phase)
+
+    def advance_assets(self, character: str, phase: str, asset_ids: list[int]) -> list[dict]:
+        """Advance each requested non-locked asset as far as its current worker allows."""
+        results = []
+        for asset_id in asset_ids:
+            try:
+                asset = self.asset_repository.get_asset(character, phase, int(asset_id))
+                if asset.asset_state == "LOCKED" or asset.pipeline_stage == "LOCKED":
+                    results.append(
+                        {
+                            "asset_id": asset.asset_id,
+                            "status": "SKIPPED",
+                            "message": "Asset is locked.",
+                            "before_stage": asset.pipeline_stage,
+                            "after_stage": asset.pipeline_stage,
+                        }
+                    )
+                    continue
+                before_stage = asset.pipeline_stage
+                before_actor = asset.actor
+                result = self.asset_service.run_current_worker_chain(character, phase, asset.asset_id)
+                results.append(
+                    {
+                        "asset_id": result.asset.asset_id,
+                        "status": "ADVANCED" if result.worker_count else "SKIPPED",
+                        "message": " | ".join(result.messages) or "No worker ran.",
+                        "worker_count": result.worker_count,
+                        "before_stage": before_stage,
+                        "before_actor": before_actor,
+                        "after_stage": result.asset.pipeline_stage,
+                        "after_actor": result.asset.actor,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "asset_id": int(asset_id),
+                        "status": "ERROR",
+                        "message": str(exc),
+                    }
+                )
+        return results
 
     def reset_pipeline_assets_to_render(
         self,
@@ -389,9 +463,15 @@ class ZetApp:
         """Return one dashboard row for a turnaround sheet."""
         return self.turnaround_service.get_row(character, phase, turnaround_id)
 
-    def generate_turnaround(self, character: str, phase: str, turnaround_id: str) -> TurnaroundRow:
+    def generate_turnaround(
+        self,
+        character: str,
+        phase: str,
+        turnaround_id: str,
+        detection_tolerance: float | None = None,
+    ) -> TurnaroundRow:
         """Generate a candidate turnaround sheet for review."""
-        return self.turnaround_service.generate_candidate(character, phase, turnaround_id)
+        return self.turnaround_service.generate_candidate(character, phase, turnaround_id, detection_tolerance)
 
     def promote_turnaround_to_locked(
         self,
@@ -410,9 +490,17 @@ class ZetApp:
         parent_turnaround_id: str,
         label: str,
         crop_percent: float,
+        detection_tolerance: float | None = None,
     ) -> TurnaroundRow:
         """Create or update a partial turnaround sheet under a full turnaround."""
-        return self.turnaround_service.upsert_partial_sheet(character, phase, parent_turnaround_id, label, crop_percent)
+        return self.turnaround_service.upsert_partial_sheet(
+            character,
+            phase,
+            parent_turnaround_id,
+            label,
+            crop_percent,
+            detection_tolerance,
+        )
 
     def update_partial_turnaround(
         self,
@@ -421,9 +509,17 @@ class ZetApp:
         partial_turnaround_id: str,
         label: str,
         crop_percent: float,
+        detection_tolerance: float | None = None,
     ) -> TurnaroundRow:
         """Update and regenerate an existing partial turnaround sheet."""
-        return self.turnaround_service.update_partial_sheet(character, phase, partial_turnaround_id, label, crop_percent)
+        return self.turnaround_service.update_partial_sheet(
+            character,
+            phase,
+            partial_turnaround_id,
+            label,
+            crop_percent,
+            detection_tolerance,
+        )
 
     def delete_partial_turnaround(self, character: str, phase: str, partial_turnaround_id: str) -> TurnaroundRow:
         """Delete an auxiliary partial turnaround sheet."""

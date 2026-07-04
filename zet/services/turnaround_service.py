@@ -27,6 +27,8 @@ TURNAROUND_VIEW_ORDER = [
     "Front-Right-3-4",
 ]
 
+DEFAULT_DETECTION_TOLERANCE = 50.0
+
 
 class TurnaroundServiceError(Exception):
     """Report turnaround discovery, generation, or promotion failures."""
@@ -39,6 +41,7 @@ class AuxiliaryTurnaroundRow:
     parent_turnaround_id: str
     label: str
     crop_percent: float
+    detection_tolerance: float
     status: str
     candidate_image_path: Optional[str]
     candidate_image_exists: bool
@@ -62,6 +65,7 @@ class TurnaroundRow:
     label: str
     status: str
     ready: bool
+    detection_tolerance: float
     locked_count: int
     missing_views: list[str]
     source_asset_ids: list[int]
@@ -96,6 +100,19 @@ class TurnaroundService:
     def _timestamp(self) -> str:
         """Return the current timestamp for persisted records."""
         return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+    def _validated_detection_tolerance(self, value: Optional[float]) -> float:
+        """Return a valid foreground detection tolerance for turnaround assembly."""
+        if value is None:
+            return DEFAULT_DETECTION_TOLERANCE
+        tolerance = float(value)
+        if tolerance < 1 or tolerance > 200:
+            raise TurnaroundServiceError("Detection tolerance must be between 1 and 200.")
+        return tolerance
+
+    def _sheet_detection_tolerance(self, sheet: TurnaroundSheet | None) -> float:
+        """Return the stored foreground detection tolerance for a sheet."""
+        return self._validated_detection_tolerance(sheet.detection_tolerance if sheet else DEFAULT_DETECTION_TOLERANCE)
 
     def _slug(self, value: str) -> str:
         """Normalize a label segment for path-safe turnaround ids."""
@@ -156,6 +173,7 @@ class TurnaroundService:
                     parent_turnaround_id=parent_turnaround_id,
                     label=sheet.label or sheet.turnaround_id,
                     crop_percent=float(sheet.crop_percent or 0),
+                    detection_tolerance=self._sheet_detection_tolerance(sheet),
                     status=sheet.status,
                     candidate_image_path=sheet.candidate_image_path,
                     candidate_image_exists=candidate_exists,
@@ -205,6 +223,7 @@ class TurnaroundService:
             label=self._label(pipeline, costume, expression),
             status=status,
             ready=not missing_views,
+            detection_tolerance=self._sheet_detection_tolerance(sheet),
             locked_count=len(assets_by_view),
             missing_views=missing_views,
             source_asset_ids=source_asset_ids,
@@ -263,10 +282,20 @@ class TurnaroundService:
         assets_by_view = self._locked_assets_by_view(assets, key)
         return [assets_by_view[view] for view in TURNAROUND_VIEW_ORDER]
 
-    def generate_candidate(self, character: str, phase: str, turnaround_id: str) -> TurnaroundRow:
+    def generate_candidate(
+        self,
+        character: str,
+        phase: str,
+        turnaround_id: str,
+        detection_tolerance: Optional[float] = None,
+    ) -> TurnaroundRow:
         """Generate a new review candidate image for a turnaround sheet."""
         source_assets = self._assets_for_turnaround(character, phase, turnaround_id)
         first = source_assets[0]
+        existing_sheet = self._sheet_for_id(self.turnaround_repository.list_sheets(character, phase), turnaround_id)
+        tolerance = self._validated_detection_tolerance(
+            detection_tolerance if detection_tolerance is not None else self._sheet_detection_tolerance(existing_sheet)
+        )
         work_path = self.path_service.turnaround_work_path(character, phase, turnaround_id)
         candidate_dir = work_path / "Candidate"
         if candidate_dir.exists():
@@ -278,7 +307,7 @@ class TurnaroundService:
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
-            CharacterGridOptions(tolerance=50.0, crop_width_to_character=True),
+            CharacterGridOptions(tolerance=tolerance, crop_width_to_character=True),
             output_name=f"{turnaround_id}.png",
         )
         sheet = TurnaroundSheet(
@@ -296,6 +325,7 @@ class TurnaroundService:
             sheet_type="full",
             parent_turnaround_id=None,
             crop_percent=None,
+            detection_tolerance=tolerance,
             deletable=False,
             analysis_path=str(result.analysis_path),
             diagnostics_path=str(result.diagnostics_path),
@@ -319,6 +349,7 @@ class TurnaroundService:
         parent_turnaround_id: str,
         label: str,
         crop_percent: float,
+        detection_tolerance: Optional[float] = None,
     ) -> TurnaroundRow:
         """Create or update and render an auxiliary partial turnaround sheet."""
         cleaned_label = str(label or "").strip()
@@ -327,6 +358,13 @@ class TurnaroundService:
         crop_value = float(crop_percent)
         if crop_value <= 0 or crop_value > 100:
             raise TurnaroundServiceError("Partial turnaround percent must be greater than 0 and less than or equal to 100.")
+        existing_sheet = self._sheet_for_id(self.turnaround_repository.list_sheets(character, phase), self._partial_turnaround_id(parent_turnaround_id, cleaned_label))
+        parent_sheet = self._sheet_for_id(self.turnaround_repository.list_sheets(character, phase), parent_turnaround_id)
+        tolerance = self._validated_detection_tolerance(
+            detection_tolerance
+            if detection_tolerance is not None
+            else self._sheet_detection_tolerance(existing_sheet or parent_sheet)
+        )
 
         source_assets = self._assets_for_turnaround(character, phase, parent_turnaround_id)
         first = source_assets[0]
@@ -343,7 +381,7 @@ class TurnaroundService:
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
-            CharacterGridOptions(tolerance=50.0, crop_height_percent=crop_value, crop_width_to_character=True),
+            CharacterGridOptions(tolerance=tolerance, crop_height_percent=crop_value, crop_width_to_character=True),
             output_name=f"{partial_id}.png",
         )
         sheet = TurnaroundSheet(
@@ -357,6 +395,7 @@ class TurnaroundService:
             sheet_type="partial",
             parent_turnaround_id=parent_turnaround_id,
             crop_percent=crop_value,
+            detection_tolerance=tolerance,
             deletable=True,
             status="RENDER_REVIEW",
             source_asset_ids=[asset.asset_id for asset in source_assets],
@@ -376,6 +415,7 @@ class TurnaroundService:
         partial_turnaround_id: str,
         label: str,
         crop_percent: float,
+        detection_tolerance: Optional[float] = None,
     ) -> TurnaroundRow:
         """Update and regenerate an existing auxiliary partial turnaround sheet."""
         sheet = self.turnaround_repository.get_sheet(character, phase, partial_turnaround_id)
@@ -387,6 +427,9 @@ class TurnaroundService:
         crop_value = float(crop_percent)
         if crop_value <= 0 or crop_value > 100:
             raise TurnaroundServiceError("Partial turnaround percent must be greater than 0 and less than or equal to 100.")
+        tolerance = self._validated_detection_tolerance(
+            detection_tolerance if detection_tolerance is not None else self._sheet_detection_tolerance(sheet)
+        )
 
         source_assets = self._assets_for_turnaround(character, phase, sheet.parent_turnaround_id)
         candidate_dir = self.path_service.turnaround_work_path(character, phase, partial_turnaround_id) / "Candidate"
@@ -400,11 +443,12 @@ class TurnaroundService:
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
-            CharacterGridOptions(tolerance=50.0, crop_height_percent=crop_value, crop_width_to_character=True),
+            CharacterGridOptions(tolerance=tolerance, crop_height_percent=crop_value, crop_width_to_character=True),
             output_name=f"{partial_turnaround_id}.png",
         )
         sheet.label = cleaned_label
         sheet.crop_percent = crop_value
+        sheet.detection_tolerance = tolerance
         sheet.status = "RENDER_REVIEW"
         sheet.source_asset_ids = [asset.asset_id for asset in source_assets]
         sheet.candidate_image_path = str(result.grid_path)

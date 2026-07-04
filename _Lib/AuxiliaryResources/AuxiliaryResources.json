@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "resources": [
+    {
+      "resource_id": "tsaeytte-adult-jewelry",
+      "category": "thing",
+      "label": "Tsaeytte-Adult-Jewelry",
+      "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png",
+      "updated_at": "2026-07-04T08:55:21",
+      "created_at": "2026-07-04T08:55:21",
+      "notes": null
+    }
+  ]
+}

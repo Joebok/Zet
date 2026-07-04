@@ -42,10 +42,8 @@ Recommended usage:
 * Lower garment: long plain dark forest-green wool skirt, full and practical, ending around lower calf to ankle height depending on pose.
 * Legwear: plain light neutral socks visible between skirt hem and boots.
 * Footwear: brown leather ankle boots with sturdy soles and low practical heels; preserve visible boot shape and flat ground contact beneath the skirt.
-* Jewelry: no visible jewelry required.
-* Equipment: practical brown leather student pouch or satchel-like side pouch attached at the belt; books, textbooks, or beginner spellbook may be included when gear is requested.
-* Materials: matte woven cloth, wool skirt, leather belt and pouch, leather boots, simple ribbon fabric.
-* Colors: leaf-green blouse, dark plain green wool skirt, brown leather belt/pouch/boots, light neutral socks, woodland-green ribbon.
+* Materials: matte woven cloth, wool skirt, leather belt, leather boots, simple ribbon fabric.
+* Colors: leaf-green blouse, dark plain green wool skirt, brown leather belt/boots, light neutral socks, woodland-green ribbon.
 * Fit: plain, practical, modest, student-like; clothing follows Tsaeytte's youth body without changing anatomy, pose, stance, camera, or framing.
 * Forbidden drift: do not add adult adventuring outfit elements, teal ruffles, leggings, dagger, combat gear, armor, ornate robes, or glamorous academy uniform unless explicitly requested.
 
@@ -58,48 +56,43 @@ Recommended usage:
 * Front view should show the gathered leaf-green blouse, simple neckline tie, brown waist belt, full dark green skirt, light socks, and brown boots.
 * Front view anatomical side rule: the character's anatomical right appears on the viewer's left; the character's anatomical left appears on the viewer's right.
 * Front view garment behavior: preserve the plain student silhouette; the skirt hem should allow socks and boot fronts to remain visible; do not turn the outfit into a gown, cape, armor, robe, or adult adventuring costume.
-* A brown side pouch may hang from the belt; keep it practical and not oversized.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-* Front-left 3/4 should show blouse folds, belt depth, full skirt volume, boot depth, and visible side pouch if on the visible side.
-* Preserve brown leather gear as student equipment, not combat equipment.
+* Front-left 3/4 should show blouse folds, belt depth, full skirt volume, boot depth.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-* Front-right 3/4 should show blouse folds, belt depth, full skirt volume, boot depth, and visible side pouch if on the visible side.
-* Preserve brown leather gear as student equipment, not combat equipment.
+* Front-right 3/4 should show blouse folds, belt depth, full skirt volume.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 * Left profile should show blouse sleeve volume, waist belt, skirt side silhouette, visible socks, and brown boot profile.
-* Any pouch or satchel should sit flat against the hip and remain practical.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 * Right profile should show blouse sleeve volume, waist belt, skirt side silhouette, visible socks, and brown boot profile.
-* Any pouch or satchel should sit flat against the hip and remain practical.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-* Back-left 3/4 should show the gathered blouse back, rear belt line, dark green skirt panels, boot backs, and any side pouch partly visible at the hip.
+* Back-left 3/4 should show the gathered blouse back, rear belt line, dark green skirt panels, boot backs.
 * Hair ribbon may overlap the upper blouse.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-* Back-right 3/4 should show the gathered blouse back, rear belt line, dark green skirt panels, boot backs, and any side pouch partly visible at the hip.
+* Back-right 3/4 should show the gathered blouse back, rear belt line, dark green skirt panels, boot backs.
 * Hair ribbon may overlap the upper blouse.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
@@ -107,7 +100,6 @@ Recommended usage:
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK -->
 
 * Back view should show a plain gathered blouse back, waist belt across the rear, full dark green skirt, socks, and backs of brown boots.
-* No dagger, weapon sheath, or adventuring gear on the back.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK -->
 
@@ -120,16 +112,11 @@ Recommended usage:
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->
 
 * Use anatomical left and right.
-* Right side / right wrist / right hip: no required fixed item; a compact brown leather pouch or satchel strap may appear if the view/job places gear on that side.
-* Left side / left wrist / left hip: no required fixed item; a compact brown leather pouch or satchel strap may appear if the view/job places gear on that side.
+* Right side / right wrist / right hip: no required fixed item;
+* Left side / left wrist / left hip: no required fixed item;.
 * Front-view reminder: anatomical right appears on the viewer's left; anatomical left appears on the viewer's right.
-* Primary weapon/tool: books, textbooks, or beginner spellbook; no weapon.
-* Secondary weapon/tool: ink and quill may appear in accessory-focused images.
-* Containers: brown leather student satchel or belt pouch; pouches and satchel remain at the belt or side.
-* Jewelry: no visible jewelry required; student identification may be present only if the job calls for gear details.
-* Magical objects: basic spell components may be present as simple student supplies; no ornate magical artifacts.
-* Scale rules: books and satchel should be small enough for a young student to carry naturally.
-* Forbidden drift: do not add weapons, dagger, staff, wand, ornate magical artifacts, combat potions, armor, adult adventuring kit, large props, swapped left/right placement, or unlisted attachments unless explicitly requested.
+* Jewelry: no visible jewelry required.
+* Forbidden drift: do not add weapons, dagger, or unlisted attachments unless explicitly requested.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->
 
@@ -137,58 +124,71 @@ Recommended usage:
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
 
-* Front view should show books held against the torso or visible as student accessories when gear is included.
-* A brown side pouch may be visible at the belt.
-* In front view, anatomical right appears on the viewer's left and anatomical left appears on the viewer's right.
+* No default equipment
+* Equipment specifications elsewhere can override.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-* Front-left 3/4 should keep visible side gear clearly attached to the belt or held close to the body.
-* Books should not obscure the full outfit unless the job specifically requests them.
+* No default equipment
+* Equipment specifications elsewhere can override.
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
+* No default equipment
+* Equipment specifications elsewhere can override.
+
+
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-* Front-right 3/4 should keep visible side gear clearly attached to the belt or held close to the body.
-* Books should not obscure the full outfit unless the job specifically requests them.
+* No default equipment
+* Equipment specifications elsewhere can override.
+
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
+* No default equipment
+* Equipment specifications elsewhere can override.
+
+
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-* Left profile may show a book held at the chest or a side pouch in profile.
-* Keep all equipment flat, compact, and student-like.
+* No default equipment
+* Equipment specifications elsewhere can override.
+
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-* Right profile may show a book held at the chest or a side pouch in profile.
-* Keep all equipment flat, compact, and student-like.
+* No default equipment
+* Equipment specifications elsewhere can override.
+
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-* Back-left 3/4 may show the rear edge of satchel, pouch, or belt gear if placed on the side.
-* No weapon silhouette should appear from the back.
+* No default equipment
+* Equipment specifications elsewhere can override.
+
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-* Back-right 3/4 may show the rear edge of satchel, pouch, or belt gear if placed on the side.
-* No weapon silhouette should appear from the back.
+* No default equipment
+* Equipment specifications elsewhere can override.
+
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK -->
 
-* Back view should show belt and possible side pouch edges if gear is included.
-* Do not add a weapon, staff, shield, or backpack unless specifically requested.
+* No default equipment
+* Equipment specifications elsewhere can override.
+
 
 <!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK -->
 
@@ -205,9 +205,8 @@ Costume preservation rules:
 * Preserve the plain youth student outfit silhouette: leaf-green blouse, dark green wool skirt, brown belt, light socks, and brown boots.
 * Preserve practical matte cloth, wool, and brown leather materials.
 * Preserve the core garment layers: gathered blouse, waist belt, full skirt, socks, and ankle boots.
-* Preserve student gear as books, satchel, pouch, beginner spellbook, ink/quill, or basic components when gear is included.
 * Preserve anatomical left/right placement for any gear.
 * Preserve no-weapons status for youth phase unless explicitly overridden.
-* Do not simplify away the green woodland-student identity or replace it with the adult teal adventuring outfit.
+* Do not simplify away the green woodland-student identity or replace it with the adult costumes.
 
 <!-- ZET:END IDENTITY_PRESERVATION_COSTUME -->

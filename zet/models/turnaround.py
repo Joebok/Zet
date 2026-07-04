@@ -15,6 +15,7 @@ class TurnaroundSheet:
     sheet_type: str = "full"
     parent_turnaround_id: Optional[str] = None
     crop_percent: Optional[float] = None
+    detection_tolerance: float = 50.0
     deletable: bool = False
     status: str = "NEW"
     source_asset_ids: list[int] = field(default_factory=list)
