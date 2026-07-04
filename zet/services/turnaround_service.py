@@ -187,12 +187,12 @@ class TurnaroundService:
         locked_path = sheet.locked_image_path if sheet else str(self.path_service.turnaround_locked_image_path(character, phase, turnaround_id))
         candidate_exists = bool(candidate_path and Path(candidate_path).exists())
         locked_exists = bool(locked_path and Path(locked_path).exists())
-        if missing_views:
-            status = "missing locked assets"
+        if locked_exists or (sheet and sheet.status == "LOCKED"):
+            status = "locked"
         elif sheet and sheet.status == "RENDER_REVIEW" and candidate_exists:
             status = "candidate ready for review"
-        elif locked_exists:
-            status = "locked"
+        elif missing_views:
+            status = "missing locked assets"
         else:
             status = "ready for turnaround"
         return TurnaroundRow(
@@ -221,7 +221,11 @@ class TurnaroundService:
     def list_rows(self, character: str, phase: str) -> list[TurnaroundRow]:
         """List all possible turnaround rows from configured pipeline groups."""
         assets = self.asset_repository.list_assets(character, phase)
-        pipeline_names = [pipeline.name for pipeline in self.pipeline_repository.list_pipelines(character, phase)]
+        pipeline_names = [
+            pipeline.name
+            for pipeline in self.pipeline_repository.list_pipelines(character, phase)
+            if pipeline.name != "Expression"
+        ]
         keys: set[tuple[str, Optional[str], Optional[str]]] = set()
         for asset in assets:
             if asset.pipeline in pipeline_names:

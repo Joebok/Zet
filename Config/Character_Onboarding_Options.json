@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "species_ancestry": [
+    "Dwarf",
+    "High Elf",
+    "Wood Elf",
+    "Drow",
+    "Gnome",
+    "Goliath",
+    "Halfling",
+    "Human",
+    "Orc",
+    "Tiefling",
+    "Dragonborn"
+  ],
+  "gender_presentation": [
+    "Feminine Adult",
+    "Masculine Adult",
+    "Feminine Youth",
+    "Masculine Youth"
+  ]
+}

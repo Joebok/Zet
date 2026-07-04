@@ -256,6 +256,8 @@ def load_race_render_rules(project_root: Path, template_path: Path) -> dict[str,
 
 def _technical_modesty_variant_for_gender(gender_presentation: str) -> str:
     value = _race_key(gender_presentation)
+    if "youth" in value.split():
+        return "TECHNICAL_MODESTY_LAYER_MASCULINE"
     if any(term in value.split() for term in ("female", "feminine", "woman", "girl")):
         return "TECHNICAL_MODESTY_LAYER_FEMININE"
     if any(term in value.split() for term in ("male", "masculine", "man", "boy")):

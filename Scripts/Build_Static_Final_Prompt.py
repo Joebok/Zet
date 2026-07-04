@@ -207,8 +207,12 @@ def render_static_prompt(
     rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip() + "\n"
 
     _raise_unresolved_single_brace_token(rendered)
-    if ANY_PLACEHOLDER_RE.search(rendered):
-        raise TemplateCompileError("UNRESOLVED_PLACEHOLDER", "Final prompt contains unresolved placeholders.")
+    match = ANY_PLACEHOLDER_RE.search(rendered)
+    if match:
+        raise TemplateCompileError(
+            "UNRESOLVED_PLACEHOLDER",
+            f"Final prompt contains unresolved placeholder: {match.group(0)}",
+        )
     if "<!-- ZET:" in rendered:
         raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers.")
     return rendered
@@ -295,8 +299,12 @@ def render_static_prompt_with_source_map(
 
     rendered, fragments = _render_lines_with_sources(pieces)
     _raise_unresolved_single_brace_token(rendered)
-    if ANY_PLACEHOLDER_RE.search(rendered):
-        raise TemplateCompileError("UNRESOLVED_PLACEHOLDER", "Final prompt contains unresolved placeholders.")
+    match = ANY_PLACEHOLDER_RE.search(rendered)
+    if match:
+        raise TemplateCompileError(
+            "UNRESOLVED_PLACEHOLDER",
+            f"Final prompt contains unresolved placeholder: {match.group(0)}",
+        )
     if "<!-- ZET:" in rendered:
         raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers.")
 

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-from zet.repositories.asset_repository import AssetRepository
+from zet.repositories.asset_repository import AssetRepository, AssetRepositoryError
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.services.config_service import Config, ConfigService
 
@@ -63,7 +63,10 @@ class PipelineControlService:
 
     def snapshot(self, character: str, phase: str) -> PipelineControlSnapshot:
         pipelines = self.pipeline_repository.list_pipelines(character, phase)
-        assets = self.asset_repository.list_assets(character, phase)
+        try:
+            assets = self.asset_repository.list_assets(character, phase)
+        except AssetRepositoryError:
+            assets = []
         asset_counts: dict[tuple[str, str], int] = {}
         for asset in assets:
             key = (asset.pipeline, asset.pipeline_stage)
@@ -120,6 +123,7 @@ class PipelineControlService:
         ]
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
+        """Persist project-level automation settings."""
         self._validate_settings(settings)
         updates = {
             ("PromptCondense", "Enabled"): settings.prompt_condense_enabled,
@@ -133,6 +137,45 @@ class PipelineControlService:
         }
         self._update_config_values(updates)
         ConfigService.load(self.config_path)
+
+    def set_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
+        """Enable or disable the PROMPT_REVIEW stage for one character phase pipeline."""
+        try:
+            assets = self.asset_repository.list_assets(character, phase)
+        except AssetRepositoryError:
+            assets = []
+        if not enabled and any(asset.pipeline == pipeline_name and asset.pipeline_stage == "PROMPT_REVIEW" for asset in assets):
+            raise PipelineControlServiceError("Cannot disable PROMPT_REVIEW while assets are currently in that stage.")
+        path = Path(self.config.base_character_path) / character / phase / "Pipelines.json"
+        if not path.exists():
+            raise PipelineControlServiceError(f"Pipelines.json not found: {path}")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        pipelines = payload.get("pipelines")
+        if not isinstance(pipelines, dict):
+            raise PipelineControlServiceError("Pipelines.json must contain a pipelines object.")
+        pipeline = pipelines.get(pipeline_name)
+        if not isinstance(pipeline, dict):
+            raise PipelineControlServiceError(f"Pipeline not found: {pipeline_name}")
+        stages = list(pipeline.get("stages") or [])
+        if enabled:
+            if "PROMPT_REVIEW" not in stages:
+                if "PROMPT" not in stages:
+                    raise PipelineControlServiceError(f"Pipeline {pipeline_name} has no PROMPT stage.")
+                stages.insert(stages.index("PROMPT") + 1, "PROMPT_REVIEW")
+            actor_by_stage = pipeline.setdefault("actor_by_stage", {})
+            worker_by_stage = pipeline.setdefault("worker_by_stage", {})
+            if isinstance(actor_by_stage, dict):
+                actor_by_stage["PROMPT_REVIEW"] = "HUMAN_AGENT"
+            if isinstance(worker_by_stage, dict):
+                worker_by_stage["PROMPT_REVIEW"] = "zet.workers.noop_worker"
+        else:
+            stages = [stage for stage in stages if stage != "PROMPT_REVIEW"]
+            if isinstance(pipeline.get("actor_by_stage"), dict):
+                pipeline["actor_by_stage"].pop("PROMPT_REVIEW", None)
+            if isinstance(pipeline.get("worker_by_stage"), dict):
+                pipeline["worker_by_stage"].pop("PROMPT_REVIEW", None)
+        pipeline["stages"] = stages
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     def _validate_settings(self, settings: AutomationSettings) -> None:
         render_backend = settings.render_backend.strip()

@@ -609,12 +609,18 @@ Face preservation rules:
 
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_HAIR -->
 
-Hair preservation rules:
+Canonical Hair Identity:
 
 * Preserve the canonical thick black tousled chin-length bob.
 * Preserve the face-framing locks that curve inward and hook toward the chin on both sides.
-* Preserve the subtle asymmetrical side part and uneven lively strands.
-* Do not make the hair curly, overly long, overly short, smooth helmet-like, braided, ponytailed, or generically styled unless the task explicitly requests a variant.
+* Preserve the subtle asymmetrical side part.
+* Preserve the overall silhouette, volume, and length.
+* Unless explicitly overridden by a Hair Presentation Override, preserve the canonical lightly tousled appearance.
+* Do not change the hairstyle itself unless the task explicitly requests a hairstyle variant, such as a braid, ponytail, longer hair, shorter hair, curled hair, or another intentional hairstyle change.
+
+Hair Presentation Override:
+
+This optional override changes only the grooming and presentation of the canonical hairstyle. It does not permit changes to hairstyle, length, silhouette, part, volume, face-framing locks, or identity.
 
 <!-- ZET:END IDENTITY_PRESERVATION_HAIR -->
 

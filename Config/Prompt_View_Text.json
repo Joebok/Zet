@@ -14,8 +14,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct front view, facing the viewer squarely.",
-        "character-assembly": "Preserve the Character Head as a direct front-view head source, facing the viewer squarely.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct front-view head source, facing the viewer squarely."
+        "character-assembly": "Preserve the Character Head as a direct front-view head source, facing the viewer squarely."
       }
     },
     "FRONT_LEFT_3_4": {
@@ -31,8 +30,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a front-left three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a front-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a front-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a front-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "FRONT_RIGHT_3_4": {
@@ -48,8 +46,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a front-right three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a front-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a front-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a front-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "LEFT_PROFILE": {
@@ -65,8 +62,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct left profile view, showing the character's left side.",
-        "character-assembly": "Preserve the Character Head as a direct left-profile source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct left-profile source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a direct left-profile source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "RIGHT_PROFILE": {
@@ -82,8 +78,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct right profile view, showing the character's right side.",
-        "character-assembly": "Preserve the Character Head as a direct right-profile source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct right-profile source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a direct right-profile source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "BACK_LEFT_3_4": {
@@ -99,8 +94,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a back-left three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a back-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a back-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a back-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "BACK_RIGHT_3_4": {
@@ -116,8 +110,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a back-right three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a back-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a back-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a back-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "BACK": {
@@ -133,8 +126,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct back view, facing away from the viewer squarely.",
-        "character-assembly": "Preserve the Character Head as a direct back-view source, facing away from the viewer squarely.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct back-view source, facing away from the viewer squarely."
+        "character-assembly": "Preserve the Character Head as a direct back-view source, facing away from the viewer squarely."
       }
     }
   }

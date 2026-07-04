@@ -64,6 +64,16 @@ class CharacterGridResult:
     results: list[ImageAnalysisResult]
 
 
+@dataclass(frozen=True)
+class CharacterCropResult:
+    """Describe a deterministic single-image character crop."""
+    image_path: Path
+    analysis_path: Path
+    diagnostics_path: Path
+    result: ImageAnalysisResult
+    crop_box: BBox
+
+
 class CharacterGridServiceError(Exception):
     """Report invalid inputs or image processing failures."""
 
@@ -356,4 +366,52 @@ class CharacterGridService:
             diagnostics_path=diagnostics_dir,
             debug_grid_path=debug_path,
             results=results,
+        )
+
+    def crop_identity_image(
+        self,
+        image_path: Path,
+        output_dir: Path,
+        output_name: str,
+        crop_percent: float,
+        options: Optional[CharacterGridOptions] = None,
+    ) -> CharacterCropResult:
+        """Crop one image using the same top-percent and width-trim routine as partial grids."""
+        _, Image, _ = self._load_image_dependencies()
+        if crop_percent <= 0 or crop_percent > 100:
+            raise CharacterGridServiceError("crop_percent must be greater than 0 and less than or equal to 100.")
+        if not image_path.exists() or not image_path.is_file():
+            raise CharacterGridServiceError(f"Missing input image: {image_path}")
+        options = options or CharacterGridOptions(tolerance=50.0, crop_width_to_character=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        diagnostics_dir = output_dir / "diagnostics"
+        result = self.analyze_image(image_path, options, diagnostics_dir if options.diagnostics else None)
+        target_height = self.choose_target_height([result], options.target_height_mode, options.target_height)
+        self.apply_scaling_metadata([result], target_height)
+        source = Image.open(result.path).convert("RGBA")
+        scaled = source.resize((int(result.scaled_width or 0), int(result.scaled_height or 0)), Image.Resampling.LANCZOS)
+        visible_character_height = int(round(target_height * (crop_percent / 100.0)))
+        visible_bbox = self._scaled_visible_bbox(scaled, result, options, visible_character_height)
+        pad_x = int(options.cell_padding_x)
+        pad_y = int(options.cell_padding_y)
+        left = max(0, int(visible_bbox[0]) - pad_x)
+        top = max(0, int((result.scaled_bbox or visible_bbox)[1]) - pad_y)
+        right = min(scaled.width, int(visible_bbox[2]) + pad_x)
+        bottom = min(scaled.height, int((result.scaled_bbox or visible_bbox)[1]) + visible_character_height + pad_y)
+        if right <= left or bottom <= top:
+            raise CharacterGridServiceError("Unable to compute a valid identity crop.")
+        cropped = scaled.crop((left, top, right, bottom))
+        crop_path = output_dir / output_name
+        cropped.save(crop_path)
+        analysis_path = output_dir / "analysis.json"
+        analysis_path.write_text(
+            json.dumps({"source": asdict(result), "crop_box": [left, top, right, bottom]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return CharacterCropResult(
+            image_path=crop_path,
+            analysis_path=analysis_path,
+            diagnostics_path=diagnostics_dir,
+            result=result,
+            crop_box=(left, top, right, bottom),
         )

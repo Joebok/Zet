@@ -195,6 +195,8 @@ class AIProxyService:
             return self._build_manual_render_ask(asset, ask_id, attempt_id)
         if asset.pipeline == "Costume-Dressing" and asset.pipeline_stage == "RENDER":
             return self._build_manual_render_ask(asset, ask_id, attempt_id)
+        if asset.pipeline == "Expression" and asset.pipeline_stage == "RENDER":
+            return self._build_manual_render_ask(asset, ask_id, attempt_id)
         return AIProxyAsk(
             ask_id=ask_id,
             asset_id=asset.asset_id,
@@ -277,6 +279,12 @@ class AIProxyService:
             return prompt_path.read_text(encoding="utf-8")
 
         if asset.pipeline == "Costume-Dressing" and asset.pipeline_stage == "RENDER":
+            prompt_path = self.path_service.pipeline_path(asset) / "Final_Image_Prompt.md"
+            if not prompt_path.exists():
+                raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
+            return prompt_path.read_text(encoding="utf-8")
+
+        if asset.pipeline == "Expression" and asset.pipeline_stage == "RENDER":
             prompt_path = self.path_service.pipeline_path(asset) / "Final_Image_Prompt.md"
             if not prompt_path.exists():
                 raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")

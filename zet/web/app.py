@@ -102,6 +102,9 @@ def _gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task) -> dict[s
     if isinstance(pipeline_prompts, dict):
         text = str(pipeline_prompts.get(view) or "").strip()
         source = f"pipeline:{asset.pipeline}" if text else ""
+        if not text:
+            text = str(pipeline_prompts.get("__default") or "").strip()
+            source = f"pipeline:{asset.pipeline}:__default" if text else ""
     if not text and isinstance(defaults, dict):
         text = str(defaults.get(view) or "").strip()
         source = "defaults" if text else ""
@@ -193,6 +196,7 @@ def _is_head_fitment_manifest_asset(asset) -> bool:
 
 
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
+    """Serialize an asset for dashboard tables and detail panels."""
     data = asdict(asset)
     data["head_view"] = _format_value(asset.head_view)
     data["costume"] = _format_value(asset.costume)
@@ -211,6 +215,50 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     else:
         data["pipeline_stage_display"] = asset.pipeline_stage
     return data
+
+
+def _identity_key_payload(identity_key) -> dict[str, Any]:
+    """Serialize an identity key for dashboard views."""
+    return asdict(identity_key)
+
+
+def _identity_key_preview_payload(preview) -> dict[str, Any]:
+    """Serialize an identity key preview crop."""
+    return asdict(preview)
+
+
+def _costume_payload(costume) -> dict[str, Any]:
+    """Serialize a costume template for dashboard views."""
+    data = asdict(costume)
+    data["source"] = {
+        "source_kind": "costume_template",
+        "source_label": costume.name,
+        "source_path": costume.path,
+        "editable": True,
+    }
+    return data
+
+
+def _expression_definition_payload(expression) -> dict[str, Any]:
+    """Serialize an expression definition for dashboard views."""
+    data = asdict(expression)
+    data["source"] = {
+        "source_kind": "expression_definition",
+        "source_label": expression.label,
+        "source_path": expression.path,
+        "editable": True,
+    }
+    return data
+
+
+def _onboarding_status_payload(status) -> dict[str, Any]:
+    """Serialize a character onboarding status for dashboard views."""
+    return asdict(status)
+
+
+def _onboarding_options_payload(options) -> dict[str, Any]:
+    """Serialize character onboarding dropdown options."""
+    return asdict(options)
 
 
 def _prompt_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
@@ -361,6 +409,10 @@ def _automation_settings_from_payload(payload: dict[str, Any]) -> AutomationSett
 def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> dict[str, Any]:
     snapshot = zet_app.pipeline_control_snapshot(character, phase)
     pipeline_names = sorted({row.pipeline for row in snapshot.pipeline_rows})
+    prompt_review_enabled = {
+        name: any(row.pipeline == name and row.stage == "PROMPT_REVIEW" for row in snapshot.pipeline_rows)
+        for name in pipeline_names
+    }
     return {
         "config_path": str(snapshot.config_path),
         "pipelines_path": str(snapshot.pipelines_path),
@@ -368,6 +420,7 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
         "pipeline_rows": _jsonable(snapshot.pipeline_rows),
         "project_config_rows": _jsonable(snapshot.project_config_rows),
         "pipeline_names": pipeline_names,
+        "prompt_review_enabled": prompt_review_enabled,
     }
 
 
@@ -647,17 +700,72 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.get("/api/context")
     def context() -> dict[str, Any]:
         current_config = ConfigService.load(app.state.config_path)
+        zet_app = _app(app.state.config_path)
         characters = _discover_characters(current_config.base_character_path)
         phases_by_character = {
             character: _discover_phases(current_config.base_character_path, character)
             for character in characters
         }
+        onboarding_statuses = {
+            character: {
+                phase: _onboarding_status_payload(zet_app.character_onboarding_status(character, phase))
+                for phase in phases_by_character.get(character, [])
+            }
+            for character in characters
+        }
         return {
             "characters": characters,
             "phases_by_character": phases_by_character,
+            "onboarding_statuses": onboarding_statuses,
+            "onboarding_options": _onboarding_options_payload(zet_app.character_onboarding_options()),
             "default_character": characters[0] if characters else None,
             "default_phase": phases_by_character.get(characters[0], [None])[0] if characters else None,
         }
+
+    @app.get("/api/onboarding/prefill")
+    def onboarding_prefill(character: str = Query(""), source_phase: str = Query("")) -> dict[str, Any]:
+        """Return metadata defaults for a new character or phase draft."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"prefill": zet_app.character_onboarding_prefill(character, source_phase)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/onboarding/draft")
+    def onboarding_draft(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Create or update a draft character phase template."""
+        zet_app = _app(app.state.config_path)
+        try:
+            draft = zet_app.save_character_onboarding_draft(payload)
+            return {
+                "draft": {
+                    "character": draft.character,
+                    "phase": draft.phase,
+                    "template_path": draft.template_path,
+                    "status": _onboarding_status_payload(draft.status),
+                },
+                "message": "Draft Character_Image_Template.md saved.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/onboarding/template")
+    async def onboarding_template_upload(
+        request: Request,
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Upload, validate, and initialize a character image template."""
+        zet_app = _app(app.state.config_path)
+        try:
+            contents = (await request.body()).decode("utf-8")
+            status = zet_app.upload_character_template(character, phase, contents)
+            message = "Template validated and foundation assets initialized." if status.complete else "Template saved; validation still has issues."
+            return {"status": _onboarding_status_payload(status), "message": message}
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Character template must be UTF-8 markdown.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/assets")
     def assets(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
@@ -676,11 +784,173 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/identity-keys")
+    def identity_keys(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List saved identity keys."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"identity_keys": [_identity_key_payload(item) for item in zet_app.list_identity_keys(character, phase)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/identity-keys/{identity_key_id}")
+    def identity_key_detail(identity_key_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Return one saved identity key."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"identity_key": _identity_key_payload(zet_app.identity_key(character, phase, identity_key_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/identity-keys/preview")
+    def identity_key_preview(payload: dict[str, Any] = Body(...), character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Generate a preview crop for an identity key."""
+        zet_app = _app(app.state.config_path)
+        try:
+            preview = zet_app.preview_identity_key(
+                character,
+                phase,
+                int(payload.get("source_asset_id") or 0),
+                str(payload.get("label") or ""),
+                float(payload.get("crop_percent") or 0),
+                str(payload.get("identity_key_id") or "") or None,
+            )
+            return {"preview": _identity_key_preview_payload(preview)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/identity-keys")
+    def identity_key_save(payload: dict[str, Any] = Body(...), character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Save a new or existing identity key."""
+        zet_app = _app(app.state.config_path)
+        try:
+            identity_key = zet_app.save_identity_key(
+                character,
+                phase,
+                int(payload.get("source_asset_id") or 0),
+                str(payload.get("label") or ""),
+                float(payload.get("crop_percent") or 0),
+                str(payload.get("identity_key_id") or "") or None,
+            )
+            return {
+                "identity_key": _identity_key_payload(identity_key),
+                "identity_keys": [_identity_key_payload(item) for item in zet_app.list_identity_keys(character, phase)],
+                "message": "Identity Key saved.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/identity-keys/{identity_key_id}")
+    def identity_key_delete(identity_key_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Delete an identity key."""
+        zet_app = _app(app.state.config_path)
+        try:
+            zet_app.delete_identity_key(character, phase, identity_key_id)
+            return {
+                "identity_keys": [_identity_key_payload(item) for item in zet_app.list_identity_keys(character, phase)],
+                "message": "Identity Key deleted.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/costumes")
+    def costumes(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List costume templates."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"costumes": [_costume_payload(item) for item in zet_app.list_costumes(character, phase)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/costumes")
+    async def costume_create(
+        request: Request,
+        character: str = Query(...),
+        phase: str = Query(...),
+        costume_name: str = Query(...),
+    ) -> dict[str, Any]:
+        """Create a costume template and its Costume-Dressing assets."""
+        zet_app = _app(app.state.config_path)
+        try:
+            contents = (await request.body()).decode("utf-8")
+            result = zet_app.create_costume(character, phase, costume_name, contents)
+            return {
+                "costume": _costume_payload(result.costume),
+                "costumes": [_costume_payload(item) for item in zet_app.list_costumes(character, phase)],
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "message": f"Created {len(result.assets)} Costume-Dressing assets for {result.costume.name}.",
+            }
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Costume template must be UTF-8 markdown.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/expressions")
+    def expressions(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List expression assets, definitions, and Identity Key choices."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "expression_assets": [
+                    _asset_payload(zet_app, asset)
+                    for asset in zet_app.list_expression_assets(character, phase)
+                ],
+                "expression_definitions": [
+                    _expression_definition_payload(item)
+                    for item in zet_app.list_expression_definitions(character, phase)
+                ],
+                "identity_keys": [
+                    _identity_key_payload(item)
+                    for item in zet_app.list_identity_keys(character, phase)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/expressions")
+    async def expression_create(
+        request: Request,
+        character: str = Query(...),
+        phase: str = Query(...),
+        label: str = Query(...),
+        identity_key_id: str = Query(...),
+    ) -> dict[str, Any]:
+        """Create an expression definition and its Expression asset."""
+        zet_app = _app(app.state.config_path)
+        try:
+            contents = (await request.body()).decode("utf-8")
+            result = zet_app.create_expression(character, phase, label, identity_key_id, contents)
+            return {
+                "expression": _expression_definition_payload(result.expression),
+                "asset": _asset_payload(zet_app, result.asset),
+                "expression_assets": [
+                    _asset_payload(zet_app, asset)
+                    for asset in zet_app.list_expression_assets(character, phase)
+                ],
+                "expression_definitions": [
+                    _expression_definition_payload(item)
+                    for item in zet_app.list_expression_definitions(character, phase)
+                ],
+                "identity_keys": [
+                    _identity_key_payload(item)
+                    for item in zet_app.list_identity_keys(character, phase)
+                ],
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "message": f"Created Expression asset for {result.expression.label}.",
+            }
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Expression definition must be UTF-8 markdown.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/file")
-    def local_file(path: str = Query(...)):
+    def local_file(path: str = Query(...), download: bool = Query(False)):
+        """Serve a local file inline or as a browser download."""
         requested = Path(path)
         if not requested.exists() or not requested.is_file():
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
+        if download:
+            return FileResponse(requested, filename=requested.name)
         return FileResponse(requested)
 
     @app.post("/api/edit-source/load")
@@ -1175,6 +1445,24 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             refreshed = _app(app.state.config_path)
             response = _pipeline_controls_payload(refreshed, character, phase)
             response["message"] = "Project automation settings saved."
+            return response
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/pipeline-controls/prompt-review")
+    def pipeline_controls_prompt_review(
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Enable or disable PROMPT_REVIEW for one pipeline."""
+        zet_app = _app(app.state.config_path)
+        try:
+            pipeline_name = str(payload.get("pipeline_name") or "").strip()
+            enabled = bool(payload.get("enabled"))
+            zet_app.set_pipeline_prompt_review_enabled(character, phase, pipeline_name, enabled)
+            response = _pipeline_controls_payload(zet_app, character, phase)
+            response["message"] = f"PROMPT_REVIEW {'enabled' if enabled else 'disabled'} for {pipeline_name}."
             return response
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

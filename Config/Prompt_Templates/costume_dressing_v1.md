@@ -7,12 +7,20 @@ Requested body view: {{BODY_VIEW_TOKEN}}.
 Requested head view: {{HEAD_VIEW_TOKEN}}.
 Purpose: single full-body turnaround-source image in a neutral pose.
 
+IMAGE EDITING INSTRUCTIONS
+
+The supplied image is the authoritative Assembled Character source.
+Edit that image directly.
+Preserve all pixels and forms that do not belong to the replaced fitment costume.
+Replace only the fitment clothing, jewelry, equipment, and footwear required by the specified costume.
+
 PRIMARY OBJECTIVE
 
 Create one complete full-body character render by dressing the Assembled Character source in the specified costume.
 
-Preserve the assembled character's pose, body, camera, framing, head, face, hair, ears, neck, and view exactly.
-Replace only the simple fitment clothing, jewelry, belt equipment, and {{footwear}} needed to apply the specified costume.
+The body, face, hair, ears, neck, pose, anatomy, proportions, lighting, camera position, framing, and requested view are already correct.
+Do not regenerate them.
+Only replace the clothing, jewelry, equipment, and {{footwear}} required by the costume.
 
 Do not redesign the character.
 Do not change the pose.
@@ -42,6 +50,15 @@ The costume file controls:
 Do not treat either source as loose inspiration.
 The final image should look like the same assembled character in the same neutral turnaround pose, now naturally dressed in the specified costume.
 
+POSE AND CAMERA PRESERVATION
+
+This is a technical turnaround source image.
+Do not convert the pose into a fashion pose.
+Do not tilt the hips.
+Do not arch the back.
+Do not angle the shoulders.
+Do not shift weight onto one leg.
+
 COSTUME REPLACEMENT RULES
 
 Fully cover or replace the simple fitment garments with the costume garments.
@@ -49,6 +66,9 @@ No fitment clothing remains visible.
 Clothing must appear naturally worn on the body, not pasted on top of the image.
 Do not reconstruct the body or over-focus on removing clothing.
 Change only the clothing, jewelry, belt equipment, and {{footwear}} required by the costume.
+The costume must follow the underlying anatomy naturally.
+Do not distort the character's body to fit the clothing.
+The clothing fits the character, not vice versa.
 
 STANCE AND FOOT PLACEMENT
 
@@ -58,10 +78,6 @@ STANCE AND FOOT PLACEMENT
 BODY VIEW INSTRUCTION
 
 {{BODY_VIEW_INSTRUCTION}}
-
-HEAD VIEW INSTRUCTION
-
-{{HEAD_VIEW_INSTRUCTION}}
 
 ANATOMICAL LEFT AND RIGHT
 
@@ -94,8 +110,6 @@ IDENTITY PRESERVATION
 
 {{SECTION:IDENTITY_PRESERVATION_EARS}}
 
-{{SECTION:IDENTITY_PRESERVATION_BODY}}
-
 {{SECTION:IDENTITY_PRESERVATION_COSTUME}}
 
 GOOD OUTPUT
@@ -104,8 +118,9 @@ GOOD OUTPUT
 - Same body proportions, pose, stance, camera angle, and requested view as the Assembled Character source.
 - Same face, hair, ears, neck, species, and adult identity as the Assembled Character source.
 - Costume, jewelry, equipment, materials, and colors match the costume file.
-- Full body is visible, including feet.
+- The entire body remains visible; footwear and hem visibility follow the costume file.
 - Clothing appears naturally worn on the body.
+- The costume appears naturally tailored to the existing body rather than pasted over it.
 - Equipment stays on the correct anatomical side.
 
 BAD OUTPUT

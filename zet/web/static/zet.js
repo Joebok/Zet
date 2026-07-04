@@ -1,6 +1,8 @@
 const state = {
   characters: [],
   phasesByCharacter: {},
+  onboardingStatuses: {},
+  onboardingOptions: { species_ancestry: [], gender_presentation: [] },
   character: null,
   phase: null,
   assets: [],
@@ -10,6 +12,7 @@ const state = {
     pipeline: "",
   },
   assetDetailMode: "status",
+  assetDetail: null,
   promptReviewTasks: [],
   selectedPromptReviewAssetId: null,
   promptReviewDetail: null,
@@ -31,10 +34,37 @@ const state = {
   manifestDetail: null,
   selectedSource: null,
   sourceEditor: null,
+  identityKeys: [],
+  identityKeyMode: "list",
+  selectedIdentityKeyId: null,
+  identityKeySourceAssetId: null,
+  identityKeyPreview: null,
+  costumes: [],
+  expressionAssets: [],
+  expressionDefinitions: [],
+  expressionIdentityKeys: [],
 };
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
+const newCharacterButton = document.querySelector("#new-character");
+const newPhaseButton = document.querySelector("#new-phase");
+const onboardingStatus = document.querySelector("#onboarding-status");
+const onboardingMessage = document.querySelector("#onboarding-message");
+const onboardingCharacter = document.querySelector("#onboarding-character");
+const onboardingPhase = document.querySelector("#onboarding-phase");
+const onboardingSpecies = document.querySelector("#onboarding-species");
+const onboardingGender = document.querySelector("#onboarding-gender");
+const onboardingArtStyle = document.querySelector("#onboarding-art-style");
+const onboardingSaveDraft = document.querySelector("#onboarding-save-draft");
+const onboardingDownloadTemplate = document.querySelector("#onboarding-download-template");
+const onboardingCopyGptPrompt = document.querySelector("#onboarding-copy-gpt-prompt");
+const onboardingGptPrompt = document.querySelector("#onboarding-gpt-prompt");
+const onboardingTemplateFile = document.querySelector("#onboarding-template-file");
+const onboardingUploadTemplate = document.querySelector("#onboarding-upload-template");
+const onboardingTitle = document.querySelector("#onboarding-title");
+const onboardingStatusList = document.querySelector("#onboarding-status-list");
+const onboardingValidation = document.querySelector("#onboarding-validation");
 const assetFilterTodo = document.querySelector("#asset-filter-todo");
 const assetFilterPipeline = document.querySelector("#asset-filter-pipeline");
 const assetTableBody = document.querySelector("#asset-table tbody");
@@ -54,6 +84,7 @@ const assetStatusDetail = document.querySelector("#asset-status-detail");
 const assetLockedDetail = document.querySelector("#asset-locked-detail");
 const assetLockedImage = document.querySelector("#asset-locked-image");
 const assetLockedPath = document.querySelector("#asset-locked-path");
+const createIdentityFromAssetButton = document.querySelector("#create-identity-from-asset");
 const assetNoteDialog = document.querySelector("#asset-note-dialog");
 const assetNoteTitle = document.querySelector("#asset-note-title");
 const assetNoteText = document.querySelector("#asset-note-text");
@@ -134,6 +165,9 @@ const settingRenderBackend = document.querySelector("#setting-render-backend");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
 const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
+const promptReviewPipeline = document.querySelector("#prompt-review-pipeline");
+const promptReviewEnabled = document.querySelector("#prompt-review-enabled");
+const promptReviewSave = document.querySelector("#prompt-review-save");
 const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
 const batchIncludeLocked = document.querySelector("#batch-include-locked");
 const batchRenderResetButton = document.querySelector("#batch-render-reset");
@@ -198,6 +232,30 @@ const turnaroundPartialLabel = document.querySelector("#turnaround-partial-label
 const turnaroundPartialPercent = document.querySelector("#turnaround-partial-percent");
 const turnaroundSavePartial = document.querySelector("#turnaround-save-partial");
 const turnaroundAuxTableBody = document.querySelector("#turnaround-aux-table tbody");
+const identityKeyStatus = document.querySelector("#identity-key-status");
+const identityKeyMessage = document.querySelector("#identity-key-message");
+const identityKeyTableBody = document.querySelector("#identity-key-table tbody");
+const identityKeyShowList = document.querySelector("#identity-key-show-list");
+const identityKeyTitle = document.querySelector("#identity-key-title");
+const identityKeyLabel = document.querySelector("#identity-key-label");
+const identityKeyPercent = document.querySelector("#identity-key-percent");
+const identityKeyCreatePreview = document.querySelector("#identity-key-create-preview");
+const identityKeySave = document.querySelector("#identity-key-save");
+const identityKeyOriginal = document.querySelector("#identity-key-original");
+const identityKeyPreview = document.querySelector("#identity-key-preview");
+const costumeStatus = document.querySelector("#costume-status");
+const costumeMessage = document.querySelector("#costume-message");
+const costumeTableBody = document.querySelector("#costume-table tbody");
+const costumeName = document.querySelector("#costume-name");
+const costumeTemplateFile = document.querySelector("#costume-template-file");
+const costumeCreate = document.querySelector("#costume-create");
+const expressionStatus = document.querySelector("#expression-status");
+const expressionMessage = document.querySelector("#expression-message");
+const expressionTableBody = document.querySelector("#expression-table tbody");
+const expressionLabel = document.querySelector("#expression-label");
+const expressionIdentityKey = document.querySelector("#expression-identity-key");
+const expressionDefinitionFile = document.querySelector("#expression-definition-file");
+const expressionCreate = document.querySelector("#expression-create");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -219,6 +277,11 @@ function fileUrl(path, cacheKey = "") {
   if (cacheKey) {
     params.set("v", cacheKey);
   }
+  return `/api/file?${params.toString()}`;
+}
+
+function downloadFileUrl(path) {
+  const params = new URLSearchParams({ path, download: "true" });
   return `/api/file?${params.toString()}`;
 }
 
@@ -276,6 +339,24 @@ function showTurnaroundMessage(message, kind = "info") {
   turnaroundMessage.hidden = !message;
 }
 
+function showIdentityKeyMessage(message, kind = "info") {
+  identityKeyMessage.textContent = message || "";
+  identityKeyMessage.className = `action-message ${kind}`;
+  identityKeyMessage.hidden = !message;
+}
+
+function showCostumeMessage(message, kind = "info") {
+  costumeMessage.textContent = message || "";
+  costumeMessage.className = `action-message ${kind}`;
+  costumeMessage.hidden = !message;
+}
+
+function showExpressionMessage(message, kind = "info") {
+  expressionMessage.textContent = message || "";
+  expressionMessage.className = `action-message ${kind}`;
+  expressionMessage.hidden = !message;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -296,6 +377,12 @@ function setSelectOptions(select, values) {
   select.replaceChildren(...values.map((value) => option(value)));
 }
 
+function setSelectValueCaseInsensitive(select, value) {
+  const raw = String(value || "");
+  const match = Array.from(select.options).find((item) => item.value.toLowerCase() === raw.toLowerCase());
+  select.value = match ? match.value : raw;
+}
+
 function currentQuery() {
   return new URLSearchParams({ character: state.character, phase: state.phase });
 }
@@ -304,11 +391,17 @@ async function loadContext() {
   const payload = await fetchJson("/api/context");
   state.characters = payload.characters || [];
   state.phasesByCharacter = payload.phases_by_character || {};
-  state.character = payload.default_character;
-  state.phase = payload.default_phase;
+  state.onboardingStatuses = payload.onboarding_statuses || {};
+  state.onboardingOptions = payload.onboarding_options || { species_ancestry: [], gender_presentation: [] };
+  state.character = state.character && state.characters.includes(state.character) ? state.character : payload.default_character;
+  const phases = state.phasesByCharacter[state.character] || [];
+  state.phase = state.phase && phases.includes(state.phase) ? state.phase : payload.default_phase;
   setSelectOptions(characterSelect, state.characters);
   characterSelect.value = state.character || "";
+  setSelectOptions(onboardingSpecies, state.onboardingOptions.species_ancestry || []);
+  setSelectOptions(onboardingGender, state.onboardingOptions.gender_presentation || []);
   updatePhaseSelect();
+  renderOnboarding();
 }
 
 function updatePhaseSelect() {
@@ -320,9 +413,226 @@ function updatePhaseSelect() {
   phaseSelect.value = state.phase || "";
 }
 
+function selectedOnboardingStatus() {
+  return state.onboardingStatuses?.[state.character]?.[state.phase] || null;
+}
+
+function selectedPhaseReady() {
+  const status = selectedOnboardingStatus();
+  return !status || status.complete;
+}
+
+function showOnboardingMessage(message, kind = "info") {
+  onboardingMessage.hidden = false;
+  onboardingMessage.textContent = message;
+  onboardingMessage.dataset.kind = kind;
+}
+
+function onboardingHelperPrompt(templatePath = "") {
+  const character = onboardingCharacter.value || state.character || "[Character Name]";
+  const phase = onboardingPhase.value || state.phase || "[Character Phase]";
+  const species = onboardingSpecies.value || "[Species / Ancestry]";
+  const gender = onboardingGender.value || "[Gender Presentation]";
+  const artStyle = onboardingArtStyle.value || "[Canonical Art Style]";
+  return `I am building a structured Zet character image template for ${character}, phase ${phase}.
+
+I will attach:
+- The draft markdown file named Character_Image_Template.md${templatePath ? ` from ${templatePath}` : ""}
+- One or more reference images for the character/phase
+
+Your task:
+Fill out the Character_Image_Template.md using the attached reference image(s) and the metadata below, then return the completed template as a downloadable markdown file named Character_Image_Template.md.
+
+Metadata to preserve exactly:
+- Character Name: ${character}
+- Character Phase: ${phase}
+- Species / Ancestry: ${species}
+- Gender Presentation: ${gender}
+- Canonical Art Style: ${artStyle}
+
+Hard rules:
+- Do not remove, rename, reorder, or alter any ZET compiler markers.
+- Preserve every line shaped like <!-- ZET:BEGIN SECTION_NAME --> and <!-- ZET:END SECTION_NAME --> exactly.
+- Keep all section names exactly as written.
+- Do not delete empty sections; fill useful sections, but leave uncertain sections empty rather than inventing facts.
+- Do not add markdown fences around the final file.
+- Do not summarize the file in the final answer.
+- Return the completed markdown file itself, suitable for saving directly as Character_Image_Template.md.
+- Keep prompt language factual, visual, and render-facing.
+- Avoid story, personality, mood, scene action, or narrative unless the section explicitly asks for picaresque/flavor text.
+- Preserve the template's existing structure, headings, bullet style, and metadata fields.
+
+Content guidance:
+- Use the reference image(s) to describe visible body, head, face, hair, ears, costume-neutral appearance, proportions, silhouette, and view-specific notes.
+- Keep the character identity stable across all sections.
+- If a detail is not visible or cannot be confidently inferred, write a cautious generic rule or leave that section blank.
+- Do not invent props, weapons, costume details, injuries, markings, or accessories that are not visible or explicitly provided.
+- Keep species/ancestry-specific traits consistent with ${species}.
+
+Before returning the file:
+- Check that every ZET BEGIN marker has the matching ZET END marker.
+- Check that no compiler marker text has changed.
+- Check that the top metadata fields still match the values above.
+- Check that the result is plain markdown, not a chat explanation.`;
+}
+
+function updateOnboardingHelperPrompt(templatePath = "") {
+  onboardingGptPrompt.value = onboardingHelperPrompt(templatePath || selectedOnboardingStatus()?.template_path || "");
+  onboardingCopyGptPrompt.disabled = !onboardingGptPrompt.value.trim();
+}
+
+function renderOnboarding() {
+  const status = selectedOnboardingStatus();
+  const ready = selectedPhaseReady();
+  for (const button of document.querySelectorAll(".workflow-tab")) {
+    button.disabled = !ready;
+  }
+  const onboardingTab = document.querySelector('.tab[data-page="onboarding"]');
+  onboardingTab.hidden = ready;
+  if (!ready && !document.querySelector("#onboarding-page").classList.contains("active")) {
+    activatePage("onboarding");
+  }
+  onboardingStatus.textContent = ready ? "Complete" : "Waiting for setup";
+  const characterName = status?.character_name || state.character || "";
+  const phaseName = state.phase || "";
+  onboardingTitle.textContent = characterName && phaseName ? `${characterName} / ${phaseName}` : "Character Setup";
+  onboardingCharacter.value = characterName;
+  onboardingPhase.value = phaseName;
+  setSelectValueCaseInsensitive(onboardingSpecies, status?.species_ancestry || onboardingSpecies.value);
+  setSelectValueCaseInsensitive(onboardingGender, status?.gender_presentation || onboardingGender.value);
+  onboardingArtStyle.value = status?.canonical_art_style || onboardingArtStyle.value || "";
+  onboardingDownloadTemplate.hidden = !status?.template_path;
+  if (status?.template_path) {
+    onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
+    onboardingDownloadTemplate.download = "Character_Image_Template.md";
+  }
+  updateOnboardingHelperPrompt(status?.template_path || "");
+  onboardingStatusList.replaceChildren();
+  if (status) {
+    const rows = [
+      ["Template", status.template_exists ? "present" : "missing"],
+      ["Pipelines", status.pipelines_exists ? "present" : "missing"],
+      ["Assets", status.assets_exists ? "present" : "missing"],
+      ["Path", status.template_path || ""],
+    ];
+    for (const [label, value] of rows) {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      onboardingStatusList.append(dt, dd);
+    }
+    const lines = [...(status.messages || []), ...(status.validation_errors || [])];
+    onboardingValidation.textContent = lines.length ? lines.join("\n") : "Template is valid.";
+  } else {
+    onboardingValidation.textContent = "Create a new character or phase to begin.";
+  }
+}
+
+async function refreshCurrentContext() {
+  await loadContext();
+  if (selectedPhaseReady()) {
+    await loadAssets();
+  }
+}
+
+async function prefillOnboarding(character, sourcePhase = "") {
+  const params = new URLSearchParams({ character, source_phase: sourcePhase });
+  const payload = await fetchJson(`/api/onboarding/prefill?${params.toString()}`);
+  const prefill = payload.prefill || {};
+  onboardingCharacter.value = prefill.character || character || "";
+  setSelectValueCaseInsensitive(onboardingSpecies, prefill.species_ancestry || onboardingSpecies.value);
+  setSelectValueCaseInsensitive(onboardingGender, prefill.gender_presentation || onboardingGender.value);
+  onboardingArtStyle.value = prefill.canonical_art_style || onboardingArtStyle.value;
+}
+
+function startNewPhase() {
+  onboardingCharacter.value = state.character || "";
+  onboardingPhase.value = "";
+  onboardingArtStyle.value = "";
+  prefillOnboarding(state.character || "", state.phase || "").catch((error) => showOnboardingMessage(error.message, "error"));
+  activatePage("onboarding");
+}
+
+function startNewCharacter() {
+  onboardingCharacter.value = "";
+  onboardingPhase.value = "Adult";
+  onboardingArtStyle.value = "";
+  if (onboardingSpecies.options.length) {
+    onboardingSpecies.selectedIndex = 0;
+  }
+  if (onboardingGender.options.length) {
+    onboardingGender.selectedIndex = 0;
+  }
+  activatePage("onboarding");
+}
+
+async function saveOnboardingDraft() {
+  try {
+    const payload = await fetchJson("/api/onboarding/draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        character: onboardingCharacter.value,
+        phase: onboardingPhase.value,
+        species_ancestry: onboardingSpecies.value,
+        gender_presentation: onboardingGender.value,
+        canonical_art_style: onboardingArtStyle.value,
+        source_phase: state.character === onboardingCharacter.value ? state.phase : "",
+      }),
+    });
+    state.character = payload.draft?.character || onboardingCharacter.value;
+    state.phase = payload.draft?.phase || onboardingPhase.value;
+    showOnboardingMessage(payload.message || "Draft saved.");
+    await refreshCurrentContext();
+    const templatePath = payload.draft?.template_path;
+    if (templatePath) {
+      onboardingDownloadTemplate.href = downloadFileUrl(templatePath);
+      onboardingDownloadTemplate.download = "Character_Image_Template.md";
+      onboardingDownloadTemplate.hidden = false;
+      updateOnboardingHelperPrompt(templatePath);
+    }
+  } catch (error) {
+    showOnboardingMessage(error.message, "error");
+  }
+}
+
+async function uploadOnboardingTemplate() {
+  const file = onboardingTemplateFile.files?.[0];
+  if (!file) {
+    showOnboardingMessage("Choose a Character_Image_Template.md file first.", "error");
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ character: state.character, phase: state.phase });
+    const payload = await fetchJson(`/api/onboarding/template?${params.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "text/markdown" },
+      body: file,
+    });
+    showOnboardingMessage(payload.message || "Template uploaded.");
+    await refreshCurrentContext();
+    renderOnboarding();
+    if (payload.status?.complete) {
+      activatePage("assets");
+    }
+  } catch (error) {
+    showOnboardingMessage(error.message, "error");
+  } finally {
+    onboardingTemplateFile.value = "";
+  }
+}
+
 async function loadAssets(preferredAssetId = null) {
   if (!state.character || !state.phase) {
     assetStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  if (!selectedPhaseReady()) {
+    assetStatus.textContent = "Onboarding must be completed first.";
+    state.assets = [];
+    renderAssetTable();
+    clearDetail();
     return;
   }
   assetStatus.textContent = "Loading assets...";
@@ -376,7 +686,7 @@ function renderAssetTable() {
       asset.asset_id,
       asset.pipeline,
       asset.body_view,
-      asset.head_view,
+      asset.costume,
       asset.asset_state,
       asset.pipeline_stage_display,
       asset.actor,
@@ -432,6 +742,7 @@ async function selectAsset(assetId) {
 }
 
 function clearDetail() {
+  state.assetDetail = null;
   detailTitle.textContent = "Select an asset";
   detailSummary.textContent = "";
   assetJson.textContent = "";
@@ -445,6 +756,7 @@ function clearDetail() {
 }
 
 function renderDetail(detail) {
+  state.assetDetail = detail;
   const asset = detail.asset;
   detailTitle.textContent = `Asset ${asset.asset_id}`;
   detailSummary.textContent = [
@@ -502,6 +814,7 @@ function renderAssetLockedImage(detail) {
 function updateActionButtons(detail) {
   const asset = detail?.asset || null;
   const candidateExists = Boolean(detail?.exists?.candidate_image);
+  const lockedExists = Boolean(detail?.exists?.locked_image);
   for (const button of actionButtons) {
     const action = button.dataset.action;
     let enabled = Boolean(asset);
@@ -516,6 +829,27 @@ function updateActionButtons(detail) {
     }
     button.disabled = !enabled;
   }
+  createIdentityFromAssetButton.disabled = !(asset && asset.asset_state === "LOCKED" && asset.pipeline_stage === "LOCKED" && lockedExists);
+}
+
+function startIdentityKeyFromSelectedAsset() {
+  const detail = state.assetDetail;
+  if (!detail?.asset) {
+    return;
+  }
+  state.identityKeyMode = "update";
+  state.selectedIdentityKeyId = null;
+  state.identityKeySourceAssetId = detail.asset.asset_id;
+  state.identityKeyPreview = null;
+  identityKeyLabel.value = "";
+  identityKeyPercent.value = "100";
+  activatePage("identity-keys");
+  renderIdentityKeyUpdate({
+    source_asset_id: detail.asset.asset_id,
+    source_image_path: detail.paths?.locked_image_path || "",
+    label: "",
+    crop_percent: 100,
+  });
 }
 
 async function runAssetAction(action) {
@@ -546,14 +880,21 @@ async function runAssetAction(action) {
 }
 
 function activatePage(page) {
+  if (page !== "onboarding" && !selectedPhaseReady()) {
+    page = "onboarding";
+  }
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
+  document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
   document.querySelector("#assets-page").classList.toggle("active", page === "assets");
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
   document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
   document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
   document.querySelector("#turnarounds-page").classList.toggle("active", page === "turnarounds");
+  document.querySelector("#identity-keys-page").classList.toggle("active", page === "identity-keys");
+  document.querySelector("#costumes-page").classList.toggle("active", page === "costumes");
+  document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
@@ -562,7 +903,7 @@ function activatePage(page) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["assets", "manifest", "prompt-review", "render-review", "turnarounds", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "costumes", "expressions", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -578,6 +919,15 @@ function activatePage(page) {
   if (page === "turnarounds") {
     loadTurnarounds();
   }
+  if (page === "identity-keys") {
+    loadIdentityKeys();
+  }
+  if (page === "costumes") {
+    loadCostumes();
+  }
+  if (page === "expressions") {
+    loadExpressions();
+  }
   if (page === "ai-controls") {
     loadAiControls();
   }
@@ -587,11 +937,382 @@ function activatePage(page) {
   if (page === "render-console") {
     loadRenderConsoleTasks();
   }
+  if (page === "onboarding") {
+    renderOnboarding();
+  }
 }
 
 function setupTabs() {
   for (const button of document.querySelectorAll(".tab")) {
-    button.addEventListener("click", () => activatePage(button.dataset.page));
+    button.addEventListener("click", () => {
+      if (button.dataset.page === "identity-keys") {
+        state.identityKeyMode = "list";
+      }
+      activatePage(button.dataset.page);
+    });
+  }
+}
+
+async function loadIdentityKeys() {
+  if (!state.character || !state.phase) {
+    identityKeyStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  identityKeyStatus.textContent = "Loading Identity Keys...";
+  const payload = await fetchJson(`/api/identity-keys?${currentQuery().toString()}`);
+  state.identityKeys = payload.identity_keys || [];
+  renderIdentityKeyTable();
+  identityKeyStatus.textContent = `${state.identityKeys.length} Identity Key(s)`;
+  if (state.identityKeyMode === "list") {
+    clearIdentityKeyUpdate();
+  }
+}
+
+function renderIdentityKeyTable() {
+  identityKeyTableBody.replaceChildren();
+  for (const item of state.identityKeys) {
+    const row = document.createElement("tr");
+    row.dataset.identityKeyId = item.identity_key_id;
+    row.classList.toggle("selected", item.identity_key_id === state.selectedIdentityKeyId);
+    const labelCell = document.createElement("td");
+    labelCell.textContent = item.label || "";
+    const viewCell = document.createElement("td");
+    viewCell.textContent = item.source_body_view || "";
+    const imageCell = document.createElement("td");
+    imageCell.className = "thumb-cell";
+    if (item.image_path) {
+      const image = document.createElement("img");
+      image.alt = item.label || "Identity Key";
+      image.src = fileUrl(item.image_path, item.updated_at || "");
+      image.title = item.image_path;
+      imageCell.append(image);
+    }
+    const actionCell = document.createElement("td");
+    const updateButton = document.createElement("button");
+    updateButton.type = "button";
+    updateButton.textContent = "Update";
+    updateButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectIdentityKey(item.identity_key_id);
+    });
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteIdentityKey(item.identity_key_id);
+    });
+    actionCell.append(updateButton, deleteButton);
+    row.append(labelCell, viewCell, imageCell, actionCell);
+    row.addEventListener("click", () => selectIdentityKey(item.identity_key_id));
+    identityKeyTableBody.append(row);
+  }
+}
+
+function clearIdentityKeyUpdate() {
+  state.selectedIdentityKeyId = null;
+  state.identityKeySourceAssetId = null;
+  state.identityKeyPreview = null;
+  identityKeyTitle.textContent = "Select or create an Identity Key";
+  identityKeyLabel.value = "";
+  identityKeyPercent.value = "100";
+  identityKeyCreatePreview.disabled = true;
+  identityKeySave.disabled = true;
+  identityKeyOriginal.textContent = "No source image.";
+  identityKeyPreview.textContent = "No crop preview.";
+}
+
+function renderIdentityKeyUpdate(item) {
+  state.identityKeyMode = "update";
+  state.identityKeySourceAssetId = Number(item.source_asset_id || 0);
+  identityKeyTitle.textContent = item.identity_key_id ? `Identity Key | ${item.label}` : `New Identity Key | Asset ${item.source_asset_id}`;
+  identityKeyLabel.value = item.label || "";
+  identityKeyPercent.value = item.crop_percent || 100;
+  renderReviewImage(
+    identityKeyOriginal,
+    item.source_image_path || "",
+    Boolean(item.source_image_path),
+    "No source image.",
+    "Identity Key source",
+    item.updated_at || "",
+  );
+  renderReviewImage(
+    identityKeyPreview,
+    state.identityKeyPreview?.preview_path || item.image_path || "",
+    Boolean(state.identityKeyPreview?.preview_path || item.image_path),
+    "No crop preview.",
+    "Identity Key crop",
+    item.updated_at || Date.now().toString(),
+  );
+  identityKeyCreatePreview.disabled = !state.identityKeySourceAssetId;
+  identityKeySave.disabled = !state.identityKeySourceAssetId;
+}
+
+async function selectIdentityKey(identityKeyId) {
+  const item = state.identityKeys.find((key) => key.identity_key_id === identityKeyId);
+  if (!item) {
+    return;
+  }
+  state.selectedIdentityKeyId = identityKeyId;
+  state.identityKeySourceAssetId = item.source_asset_id;
+  state.identityKeyPreview = null;
+  renderIdentityKeyTable();
+  renderIdentityKeyUpdate(item);
+}
+
+async function createIdentityKeyPreview() {
+  const sourceAssetId = state.identityKeySourceAssetId;
+  if (!sourceAssetId) {
+    return;
+  }
+  showIdentityKeyMessage("Creating Identity Key preview...");
+  identityKeyCreatePreview.disabled = true;
+  try {
+    const payload = await fetchJson(`/api/identity-keys/preview?${currentQuery().toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_asset_id: sourceAssetId,
+        identity_key_id: state.selectedIdentityKeyId,
+        label: identityKeyLabel.value || "",
+        crop_percent: Number(identityKeyPercent.value || 0),
+      }),
+    });
+    state.identityKeyPreview = payload.preview;
+    const item = state.selectedIdentityKeyId
+      ? state.identityKeys.find((key) => key.identity_key_id === state.selectedIdentityKeyId)
+      : {
+          source_asset_id: sourceAssetId,
+          source_image_path: payload.preview?.source_image_path,
+          label: identityKeyLabel.value || "",
+          crop_percent: Number(identityKeyPercent.value || 0),
+        };
+    renderIdentityKeyUpdate(item || {});
+    showIdentityKeyMessage("Identity Key preview created.");
+  } catch (error) {
+    showIdentityKeyMessage(error.message, "error");
+  } finally {
+    identityKeyCreatePreview.disabled = !state.identityKeySourceAssetId;
+  }
+}
+
+async function saveIdentityKey() {
+  const sourceAssetId = state.identityKeySourceAssetId;
+  if (!sourceAssetId) {
+    return;
+  }
+  showIdentityKeyMessage("Saving Identity Key...");
+  identityKeySave.disabled = true;
+  try {
+    const payload = await fetchJson(`/api/identity-keys?${currentQuery().toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_asset_id: sourceAssetId,
+        identity_key_id: state.selectedIdentityKeyId,
+        label: identityKeyLabel.value || "",
+        crop_percent: Number(identityKeyPercent.value || 0),
+      }),
+    });
+    state.identityKeys = payload.identity_keys || state.identityKeys;
+    state.selectedIdentityKeyId = payload.identity_key?.identity_key_id || state.selectedIdentityKeyId;
+    state.identityKeyPreview = null;
+    renderIdentityKeyTable();
+    renderIdentityKeyUpdate(payload.identity_key);
+    showIdentityKeyMessage(payload.message || "Identity Key saved.");
+  } catch (error) {
+    showIdentityKeyMessage(error.message, "error");
+  } finally {
+    identityKeySave.disabled = !state.identityKeySourceAssetId;
+  }
+}
+
+async function deleteIdentityKey(identityKeyId) {
+  if (!window.confirm("Delete this Identity Key?")) {
+    return;
+  }
+  showIdentityKeyMessage("Deleting Identity Key...");
+  try {
+    const payload = await fetchJson(`/api/identity-keys/${encodeURIComponent(identityKeyId)}?${currentQuery().toString()}`, {
+      method: "DELETE",
+    });
+    state.identityKeys = payload.identity_keys || [];
+    if (state.selectedIdentityKeyId === identityKeyId) {
+      clearIdentityKeyUpdate();
+    }
+    renderIdentityKeyTable();
+    showIdentityKeyMessage(payload.message || "Identity Key deleted.");
+  } catch (error) {
+    showIdentityKeyMessage(error.message, "error");
+  }
+}
+
+async function loadCostumes() {
+  if (!state.character || !state.phase) {
+    costumeStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  costumeStatus.textContent = "Loading costumes...";
+  const payload = await fetchJson(`/api/costumes?${currentQuery().toString()}`);
+  state.costumes = payload.costumes || [];
+  renderCostumeTable();
+  costumeStatus.textContent = `${state.costumes.length} costume(s)`;
+}
+
+function renderCostumeTable() {
+  costumeTableBody.replaceChildren();
+  for (const costume of state.costumes) {
+    const row = document.createElement("tr");
+    const nameCell = document.createElement("td");
+    nameCell.textContent = costume.name || "";
+    const countCell = document.createElement("td");
+    countCell.textContent = costume.asset_count ?? 0;
+    const pathCell = document.createElement("td");
+    pathCell.textContent = costume.path || "";
+    const actionCell = document.createElement("td");
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.textContent = "Open";
+    openButton.addEventListener("click", () => openSourceEditorForSource(costume.source, showCostumeMessage));
+    actionCell.append(openButton);
+    row.append(nameCell, countCell, pathCell, actionCell);
+    costumeTableBody.append(row);
+  }
+}
+
+async function createCostume() {
+  const name = costumeName.value.trim();
+  const file = costumeTemplateFile.files?.[0];
+  if (!name || !file) {
+    showCostumeMessage("Costume name and markdown file are required.", "error");
+    return;
+  }
+  showCostumeMessage("Creating costume...");
+  costumeCreate.disabled = true;
+  try {
+    const params = currentQuery();
+    params.set("costume_name", name);
+    const payload = await fetchJson(`/api/costumes?${params.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: await file.text(),
+    });
+    state.costumes = payload.costumes || state.costumes;
+    state.assets = payload.assets || state.assets;
+    renderCostumeTable();
+    renderAssetTable();
+    costumeName.value = "";
+    costumeTemplateFile.value = "";
+    showCostumeMessage(payload.message || "Costume created.");
+  } catch (error) {
+    showCostumeMessage(error.message, "error");
+  } finally {
+    costumeCreate.disabled = false;
+  }
+}
+
+async function loadExpressions() {
+  if (!state.character || !state.phase) {
+    expressionStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  expressionStatus.textContent = "Loading expressions...";
+  const payload = await fetchJson(`/api/expressions?${currentQuery().toString()}`);
+  state.expressionAssets = payload.expression_assets || [];
+  state.expressionDefinitions = payload.expression_definitions || [];
+  state.expressionIdentityKeys = payload.identity_keys || [];
+  fillExpressionIdentityKeySelect();
+  renderExpressionTable();
+  expressionStatus.textContent = `${state.expressionAssets.length} expression asset(s)`;
+}
+
+function fillExpressionIdentityKeySelect() {
+  const items = [option("", "Select Identity Key...")];
+  for (const key of state.expressionIdentityKeys) {
+    const label = [key.label, key.source_body_view, key.source_costume].filter(Boolean).join(" | ");
+    items.push(option(key.identity_key_id, label || key.identity_key_id));
+  }
+  expressionIdentityKey.replaceChildren(...items);
+}
+
+function expressionDefinitionForAsset(asset) {
+  return state.expressionDefinitions.find((item) => item.path === asset.expression_definition_path) || null;
+}
+
+function renderExpressionTable() {
+  expressionTableBody.replaceChildren();
+  for (const asset of state.expressionAssets) {
+    const row = document.createElement("tr");
+    row.dataset.assetId = asset.asset_id;
+    const identityKey = state.expressionIdentityKeys.find((key) => key.identity_key_id === asset.identity_key_id);
+    const values = [
+      asset.asset_id,
+      asset.expression,
+      identityKey?.label || asset.identity_key_id || "",
+      asset.pipeline_stage_display || asset.pipeline_stage,
+      asset.asset_state,
+      asset.final_image_output,
+    ];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value ?? "";
+      row.append(cell);
+    }
+    const actionCell = document.createElement("td");
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.textContent = "Open";
+    editButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const definition = expressionDefinitionForAsset(asset);
+      if (definition?.source) {
+        openSourceEditorForSource(definition.source, showExpressionMessage);
+      }
+    });
+    actionCell.append(editButton);
+    row.append(actionCell);
+    row.addEventListener("click", () => {
+      state.selectedAssetId = asset.asset_id;
+      activatePage("assets");
+      loadAssets(asset.asset_id);
+    });
+    expressionTableBody.append(row);
+  }
+}
+
+async function createExpression() {
+  const label = expressionLabel.value.trim();
+  const identityKeyId = expressionIdentityKey.value;
+  const file = expressionDefinitionFile.files?.[0];
+  if (!label || !identityKeyId || !file) {
+    showExpressionMessage("Label, Identity Key, and markdown file are required.", "error");
+    return;
+  }
+  showExpressionMessage("Creating expression...");
+  expressionCreate.disabled = true;
+  try {
+    const params = currentQuery();
+    params.set("label", label);
+    params.set("identity_key_id", identityKeyId);
+    const payload = await fetchJson(`/api/expressions?${params.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: await file.text(),
+    });
+    state.expressionAssets = payload.expression_assets || state.expressionAssets;
+    state.expressionDefinitions = payload.expression_definitions || state.expressionDefinitions;
+    state.expressionIdentityKeys = payload.identity_keys || state.expressionIdentityKeys;
+    state.assets = payload.assets || state.assets;
+    fillExpressionIdentityKeySelect();
+    renderExpressionTable();
+    renderAssetTable();
+    expressionLabel.value = "";
+    expressionDefinitionFile.value = "";
+    showExpressionMessage(payload.message || "Expression created.");
+  } catch (error) {
+    showExpressionMessage(error.message, "error");
+  } finally {
+    expressionCreate.disabled = false;
   }
 }
 
@@ -713,6 +1434,7 @@ function sourceBadgeLabel(source) {
     config_view_instruction: "view",
     config_rule: "rule",
     template_metadata_field: "metadata",
+    expression_definition: "expression",
     runtime_generated: "generated",
   };
   return labels[kind] || kind;
@@ -806,17 +1528,24 @@ async function openSelectedSourceEditor() {
   if (!state.selectedSource) {
     return;
   }
+  await openSourceEditorForSource(state.selectedSource, showPromptMessage);
+}
+
+async function openSourceEditorForSource(source, errorHandler = showSourceEditorMessage) {
+  if (!source) {
+    return;
+  }
   showSourceEditorMessage("Loading source...");
   try {
     const detail = await fetchJson("/api/edit-source/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.selectedSource),
+      body: JSON.stringify(source),
     });
     renderSourceEditor(detail);
     activatePage("template-editor");
   } catch (error) {
-    showPromptMessage(error.message, "error");
+    errorHandler(error.message, "error");
   }
 }
 
@@ -984,6 +1713,9 @@ async function runPromptReviewAction(action) {
       showPromptMessage(payload.message || "Review action complete.");
       await loadPromptReviewTasks();
       await loadAssets(state.selectedAssetId);
+      if (action === "approve" && state.promptReviewTasks.length === 0) {
+        activatePage("render-console");
+      }
       return;
     }
     renderPromptReview(payload);
@@ -1238,15 +1970,21 @@ function renderTurnaroundTable() {
     actionCell.append(promoteButton);
     const statusCell = document.createElement("td");
     const statusBadge = document.createElement("span");
+    const normalizedStatus = String(rowData.status || "").toLowerCase();
+    let badgeText = rowData.ready ? "READY" : "MISSING";
+    if (normalizedStatus === "locked") {
+      badgeText = "LOCKED";
+    } else if (normalizedStatus.includes("candidate")) {
+      badgeText = "CANDIDATE";
+    }
     statusBadge.className = `status-badge ${rowData.ready ? "ready" : "missing"}`;
-    statusBadge.textContent = rowData.ready ? "READY" : "MISSING";
+    statusBadge.textContent = badgeText;
     statusBadge.title = rowData.status || "";
     statusCell.append(statusBadge);
     const cells = [
       rowData.label,
       statusCell,
       `${rowData.locked_count}/8`,
-      (rowData.missing_views || []).join(", "),
     ];
     for (const value of cells) {
       const cell = document.createElement("td");
@@ -1258,6 +1996,9 @@ function renderTurnaroundTable() {
       row.append(cell);
     }
     row.append(actionCell);
+    const missingCell = document.createElement("td");
+    missingCell.textContent = (rowData.missing_views || []).join(", ");
+    row.append(missingCell);
     row.addEventListener("click", () => selectTurnaround(rowData.turnaround_id));
     turnaroundTableBody.append(row);
     for (const aux of rowData.auxiliary_sheets || []) {
@@ -1310,7 +2051,7 @@ function renderAuxiliaryMainTableRow(parentRow, aux) {
   });
   actionCell.append(deleteButton);
 
-  row.append(labelCell, statusCell, countCell, missingCell, actionCell);
+  row.append(labelCell, statusCell, countCell, actionCell, missingCell);
   row.addEventListener("click", () => selectAuxiliaryTurnaround(parentRow.turnaround_id, aux.turnaround_id));
   return row;
 }
@@ -1679,12 +2420,23 @@ function renderPipelineControls(payload) {
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
   renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
+  const currentPromptReviewPipeline = promptReviewPipeline.value;
+  setSelectOptions(promptReviewPipeline, payload.pipeline_names || []);
+  if ((payload.pipeline_names || []).includes(currentPromptReviewPipeline)) {
+    promptReviewPipeline.value = currentPromptReviewPipeline;
+  }
+  updatePromptReviewToggle();
   const currentPipeline = batchRenderPipeline.value;
   setSelectOptions(batchRenderPipeline, payload.pipeline_names || []);
   if ((payload.pipeline_names || []).includes(currentPipeline)) {
     batchRenderPipeline.value = currentPipeline;
   }
   pipelineControlsStatus.textContent = "Ready";
+}
+
+function updatePromptReviewToggle() {
+  const enabledByPipeline = state.pipelineControls?.prompt_review_enabled || {};
+  promptReviewEnabled.checked = Boolean(enabledByPipeline[promptReviewPipeline.value]);
 }
 
 function automationPayloadFromForm() {
@@ -1713,6 +2465,26 @@ async function saveAutomationSettings(event) {
     showPipelineControlsMessage(payload.message || "Settings saved.");
   } catch (error) {
     showPipelineControlsMessage(error.message, "error");
+  }
+}
+
+async function savePromptReviewStage() {
+  const pipelineName = promptReviewPipeline.value;
+  if (!pipelineName) {
+    return;
+  }
+  showPipelineControlsMessage("Saving...");
+  try {
+    const payload = await fetchJson(`/api/pipeline-controls/prompt-review?${currentQuery().toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pipeline_name: pipelineName, enabled: promptReviewEnabled.checked }),
+    });
+    renderPipelineControls(payload);
+    showPipelineControlsMessage(payload.message || "Prompt review setting saved.");
+  } catch (error) {
+    showPipelineControlsMessage(error.message, "error");
+    updatePromptReviewToggle();
   }
 }
 
@@ -1948,6 +2720,7 @@ async function saveRenderConsoleImage() {
       await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
     } else {
       clearRenderConsole();
+      activatePage("render-review");
     }
     renderConsoleStatus.textContent = `${state.renderConsoleTasks.length} manual render task(s) waiting`;
     await loadAiControls().catch(() => {});
@@ -2164,7 +2937,11 @@ characterSelect.addEventListener("change", async () => {
   state.selectedTurnaroundId = null;
   state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
+  state.selectedIdentityKeyId = null;
+  state.identityKeySourceAssetId = null;
+  state.identityKeyMode = "list";
   updatePhaseSelect();
+  renderOnboarding();
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
     await loadPromptReviewTasks();
@@ -2177,6 +2954,15 @@ characterSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#turnarounds-page").classList.contains("active")) {
     await loadTurnarounds();
+  }
+  if (document.querySelector("#identity-keys-page").classList.contains("active")) {
+    await loadIdentityKeys();
+  }
+  if (document.querySelector("#costumes-page").classList.contains("active")) {
+    await loadCostumes();
+  }
+  if (document.querySelector("#expressions-page").classList.contains("active")) {
+    await loadExpressions();
   }
   if (document.querySelector("#ai-controls-page").classList.contains("active")) {
     await loadAiControls();
@@ -2197,6 +2983,10 @@ phaseSelect.addEventListener("change", async () => {
   state.selectedTurnaroundId = null;
   state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
+  state.selectedIdentityKeyId = null;
+  state.identityKeySourceAssetId = null;
+  state.identityKeyMode = "list";
+  renderOnboarding();
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
     await loadPromptReviewTasks();
@@ -2209,6 +2999,15 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#turnarounds-page").classList.contains("active")) {
     await loadTurnarounds();
+  }
+  if (document.querySelector("#identity-keys-page").classList.contains("active")) {
+    await loadIdentityKeys();
+  }
+  if (document.querySelector("#costumes-page").classList.contains("active")) {
+    await loadCostumes();
+  }
+  if (document.querySelector("#expressions-page").classList.contains("active")) {
+    await loadExpressions();
   }
   if (document.querySelector("#ai-controls-page").classList.contains("active")) {
     await loadAiControls();
@@ -2225,10 +3024,30 @@ for (const button of actionButtons) {
   button.addEventListener("click", () => runAssetAction(button.dataset.action));
 }
 
+newCharacterButton.addEventListener("click", startNewCharacter);
+newPhaseButton.addEventListener("click", startNewPhase);
+onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
+onboardingCopyGptPrompt.addEventListener("click", () => copyText(onboardingGptPrompt.value, "ChatGPT prompt copied."));
+onboardingCharacter.addEventListener("input", () => updateOnboardingHelperPrompt());
+onboardingPhase.addEventListener("input", () => updateOnboardingHelperPrompt());
+onboardingSpecies.addEventListener("change", () => updateOnboardingHelperPrompt());
+onboardingGender.addEventListener("change", () => updateOnboardingHelperPrompt());
+onboardingArtStyle.addEventListener("input", () => updateOnboardingHelperPrompt());
+onboardingUploadTemplate.addEventListener("click", uploadOnboardingTemplate);
 assetFilterTodo.addEventListener("change", applyAssetFilters);
 assetFilterPipeline.addEventListener("change", applyAssetFilters);
 assetDetailStatusMode.addEventListener("click", () => setAssetDetailMode("status"));
 assetDetailImageMode.addEventListener("click", () => setAssetDetailMode("locked"));
+createIdentityFromAssetButton.addEventListener("click", startIdentityKeyFromSelectedAsset);
+identityKeyShowList.addEventListener("click", () => {
+  state.identityKeyMode = "list";
+  clearIdentityKeyUpdate();
+  renderIdentityKeyTable();
+});
+identityKeyCreatePreview.addEventListener("click", createIdentityKeyPreview);
+identityKeySave.addEventListener("click", saveIdentityKey);
+costumeCreate.addEventListener("click", createCostume);
+expressionCreate.addEventListener("click", createExpression);
 
 promptSearch.addEventListener("input", renderPromptText);
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt_text || "", "Prompt copied."));
@@ -2282,6 +3101,8 @@ openRenderConsoleTab.addEventListener("click", () => {
   document.querySelector('.tab[data-page="render-console"]').click();
 });
 automationForm.addEventListener("submit", saveAutomationSettings);
+promptReviewPipeline.addEventListener("change", updatePromptReviewToggle);
+promptReviewSave.addEventListener("click", savePromptReviewStage);
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsoleCopyPrompt.addEventListener("click", async () => {

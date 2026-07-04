@@ -23,6 +23,8 @@ Recommended usage:
 * Use anatomical left and right for equipment placement.
 * Avoid optional expansions unless they are part of the costume identity.
 * Prefer strict drift controls for turnaround-source images.
+* Describe how the clothing follows the existing body without changing anatomy, pose, stance, camera, or framing.
+* For formal clothing, explicitly state hem behavior and footwear visibility to avoid trains, high-low hems, and hidden or overexposed feet.
 
 <!-- ZET:END COMPILER_NOTES -->
 
@@ -38,14 +40,14 @@ Recommended usage:
 * Overall silhouette: `[short technical silhouette summary]`.
 * Top/upper garment: `[cut, color, material, collar/neckline, sleeve behavior]`.
 * Midsection/waist: `[waist, belt, sash, exposed/covered areas, layering]`.
-* Lower garment: `[pants/skirt/robe/leggings/etc.; length, opening, drape, silhouette]`.
+* Lower garment: `[pants/skirt/robe/leggings/etc.; length, opening, drape, silhouette, hem behavior, train/high-low/drag rules]`.
 * Legwear: `[leggings/socks/none; color and visibility]`.
-* Footwear: `[boots/shoes/etc.; preserve heel shape, sole shape, and ground contact rules]`.
-* Jewelry: `[necklace, earrings, rings, hair ornaments, etc.]`.
+* Footwear: `[boots/shoes/etc.; preserve heel shape, sole shape, ground contact rules, and visibility beneath/around garments]`.
+* Jewelry: `[necklace, earrings, bangles, rings, hair ornaments, etc.; prefer exact counts and forms where important]`.
 * Equipment: `[weapons, tools, pouches, containers, books, packs, etc.]`.
 * Materials: `[cloth, leather, metal, stone, wood, etc.]`.
 * Colors: `[dominant and accent colors]`.
-* Fit: `[tailored, loose, layered, practical, formal, etc.]`.
+* Fit: `[tailored, loose, layered, practical, formal, etc.; clothing follows the character's existing anatomy rather than changing the body]`.
 * Forbidden drift: no `[list costume-specific forbidden changes]`.
 
 <!-- ZET:END COSTUME_DESCRIPTION_FACTS -->
@@ -56,7 +58,7 @@ Recommended usage:
 
 * Front view should show `[front-visible costume anchors]`.
 * Front view anatomical side rule: the character's anatomical right appears on the viewer's left; the character's anatomical left appears on the viewer's right.
-* Front view garment behavior: `[what must remain visible from the front; what must not become a gown/cape/armor/etc.]`.
+* Front view garment behavior: `[what must remain visible from the front; hem and footwear behavior; what must not become a gown/cape/armor/etc.]`.
 
 <!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->
 
@@ -111,8 +113,8 @@ Recommended usage:
 <!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->
 
 * Use anatomical left and right.
-* Anatomical right: `[items on character's own right side]`.
-* Anatomical left: `[items on character's own left side]`.
+* Right side / right wrist / right hip: `[items on character's own right side]`.
+* Left side / left wrist / left hip: `[items on character's own left side]`.
 * Front-view reminder: anatomical right appears on the viewer's left; anatomical left appears on the viewer's right.
 * Primary weapon/tool: `[item and exact placement; or none]`.
 * Secondary weapon/tool: `[item and exact placement; or none]`.

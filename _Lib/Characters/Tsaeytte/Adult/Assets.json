@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "next_asset_id": 33,
+  "next_asset_id": 43,
   "assets": [
     {
       "asset_id": 1,
@@ -476,10 +476,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Character-Assembly_Front-Left-3-4_Front-Left-3-4_Assembled.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_18_RENDER_20260703_055618 (20260703_055618_18_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_18_RENDER_20260703_130756 (20260703_130756_18_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T06:16:25",
+      "updated_at": "2026-07-03T13:18:34",
       "reference_files": [
         {
           "role": "body_reference",
@@ -757,10 +757,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_26_RENDER_20260703_064841 (20260703_064841_26_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_26_RENDER_20260703_131909 (20260703_131909_26_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T07:35:51",
+      "updated_at": "2026-07-03T13:26:04",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -945,6 +945,330 @@
           "head_view": "Back"
         }
       ]
+    },
+    {
+      "asset_id": 33,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front",
+      "head_view": "Front",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front_Front_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_33_RENDER_20260703_171200 (20260703_171200_33_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:44",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front_Front_Assembled.png",
+          "source_asset_id": 17,
+          "body_view": "Front",
+          "head_view": "Front"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 34,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front-Left-3-4",
+      "head_view": "Front-Left-3-4",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_34_RENDER_20260703_172517 (20260703_172517_34_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:49",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front-Left-3-4_Front-Left-3-4_Assembled.png",
+          "source_asset_id": 18,
+          "body_view": "Front-Left-3-4",
+          "head_view": "Front-Left-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 35,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Left-Profile",
+      "head_view": "Left-Profile",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Left-Profile_Left-Profile_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_35_RENDER_20260703_172518 (20260703_172518_35_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:51",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Left-Profile_Left-Profile_Assembled.png",
+          "source_asset_id": 20,
+          "body_view": "Left-Profile",
+          "head_view": "Left-Profile"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 36,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back-Left-3-4",
+      "head_view": "Back-Left-3-4",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_36_RENDER_20260703_172519 (20260703_172519_36_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:53",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back-Left-3-4_Back-Left-3-4_Assembled.png",
+          "source_asset_id": 22,
+          "body_view": "Back-Left-3-4",
+          "head_view": "Back-Left-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 37,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back",
+      "head_view": "Back",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back_Back_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_37_RENDER_20260703_172519 (20260703_172519_37_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:54",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back_Back_Assembled.png",
+          "source_asset_id": 24,
+          "body_view": "Back",
+          "head_view": "Back"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 38,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back-Right-3-4",
+      "head_view": "Back-Right-3-4",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_38_RENDER_20260703_172520 (20260703_172520_38_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:55",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back-Right-3-4_Back-Right-3-4_Assembled.png",
+          "source_asset_id": 23,
+          "body_view": "Back-Right-3-4",
+          "head_view": "Back-Right-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 39,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Right-Profile",
+      "head_view": "Right-Profile",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Right-Profile_Right-Profile_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_39_RENDER_20260703_172520 (20260703_172520_39_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:56",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Right-Profile_Right-Profile_Assembled.png",
+          "source_asset_id": 21,
+          "body_view": "Right-Profile",
+          "head_view": "Right-Profile"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 40,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front-Right-3-4",
+      "head_view": "Front-Right-3-4",
+      "costume": "Formal Gown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Formal-Gown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_40_RENDER_20260703_172522 (20260703_172522_40_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:01:58",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front-Right-3-4_Front-Right-3-4_Assembled.png",
+          "source_asset_id": 19,
+          "body_view": "Front-Right-3-4",
+          "head_view": "Front-Right-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Formal_Gown.md"
+    },
+    {
+      "asset_id": 41,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Expression",
+      "body_view": "Front-Left-3-4",
+      "head_view": "Front-Left-3-4",
+      "costume": "Assembled",
+      "expression": "Amused",
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Expression_Amused.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_41_RENDER_20260703_182351 (20260703_182351_41_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T18:27:22",
+      "reference_files": [
+        {
+          "role": "identity_key",
+          "label": "Front-Left-3-4-Head_and_Shoulders",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\Assets\\Tsaeytte\\Adult\\IdentityKeys\\IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737.png",
+          "identity_key_id": "IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737",
+          "source_asset_id": 18,
+          "body_view": "Front-Left-3-4",
+          "head_view": "Front-Left-3-4",
+          "costume": "Assembled"
+        }
+      ],
+      "identity_key_id": "IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737",
+      "expression_definition_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Expressions\\Amused.md",
+      "costume_path": null
+    },
+    {
+      "asset_id": 42,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Expression",
+      "body_view": "Front-Left-3-4",
+      "head_view": "Front-Left-3-4",
+      "costume": "Assembled",
+      "expression": "Angry",
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Expression_Angry.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_42_RENDER_20260703_194333 (20260703_194333_42_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-03T19:45:24",
+      "reference_files": [
+        {
+          "role": "identity_key",
+          "label": "Front-Left-3-4-Head_and_Shoulders",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\Assets\\Tsaeytte\\Adult\\IdentityKeys\\IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737.png",
+          "identity_key_id": "IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737",
+          "source_asset_id": 18,
+          "body_view": "Front-Left-3-4",
+          "head_view": "Front-Left-3-4",
+          "costume": "Assembled"
+        }
+      ],
+      "identity_key_id": "IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737",
+      "expression_definition_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Expressions\\Angry.md",
+      "costume_path": null
     }
   ]
 }

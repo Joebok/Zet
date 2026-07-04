@@ -3,14 +3,19 @@ from datetime import datetime
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
+from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import AssetService, BatchRenderResetResult
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
+from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.config_service import ConfigService
+from zet.services.costume_service import CostumeCreateResult, CostumeService
+from zet.services.expression_service import ExpressionCreateResult, ExpressionService
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.path_service import PathService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
@@ -122,6 +127,10 @@ class ZetApp:
         housekeeping_service: HousekeepingService,
         path_service: PathService,
         turnaround_service: TurnaroundService,
+        identity_key_service: IdentityKeyService,
+        costume_service: CostumeService,
+        expression_service: ExpressionService,
+        character_onboarding_service: CharacterOnboardingService,
         config_path: str | Path = "config.toml",
     ):
         self.config = config
@@ -134,6 +143,10 @@ class ZetApp:
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
         self.turnaround_service = turnaround_service
+        self.identity_key_service = identity_key_service
+        self.costume_service = costume_service
+        self.expression_service = expression_service
+        self.character_onboarding_service = character_onboarding_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -149,6 +162,7 @@ class ZetApp:
         asset_repository = AssetRepository(path_service)
         pipeline_repository = PipelineRepository(path_service)
         turnaround_repository = TurnaroundRepository(path_service)
+        identity_key_repository = IdentityKeyRepository(path_service)
         state_machine = StateMachine()
         housekeeping_service = HousekeepingService(path_service)
         worker_service = WorkerService(asset_repository, pipeline_repository, path_service)
@@ -192,6 +206,14 @@ class ZetApp:
             turnaround_repository,
             path_service,
         )
+        identity_key_service = IdentityKeyService(
+            asset_repository,
+            identity_key_repository,
+            path_service,
+        )
+        costume_service = CostumeService(asset_repository, path_service)
+        expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
+        character_onboarding_service = CharacterOnboardingService(path_service)
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -203,6 +225,10 @@ class ZetApp:
             housekeeping_service,
             path_service,
             turnaround_service,
+            identity_key_service,
+            costume_service,
+            expression_service,
+            character_onboarding_service,
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
@@ -210,6 +236,30 @@ class ZetApp:
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return self.asset_repository.list_assets(character, phase)
+
+    def character_onboarding_options(self):
+        """Return options used by new character and phase onboarding."""
+        return self.character_onboarding_service.options()
+
+    def character_onboarding_status(self, character: str, phase: str):
+        """Return onboarding status for a character phase."""
+        return self.character_onboarding_service.status(character, phase)
+
+    def character_onboarding_prefill(self, character: str, source_phase: str = ""):
+        """Return metadata defaults for a new character or phase."""
+        return self.character_onboarding_service.prefill(character, source_phase)
+
+    def save_character_onboarding_draft(self, payload: dict):
+        """Create or update a draft character phase template."""
+        return self.character_onboarding_service.save_draft(payload)
+
+    def upload_character_template(self, character: str, phase: str, contents: str):
+        """Install and validate an uploaded character image template."""
+        return self.character_onboarding_service.upload_template(character, phase, contents)
+
+    def initialize_character_foundation(self, character: str, phase: str) -> None:
+        """Create foundation assets for a validated character phase."""
+        self.character_onboarding_service.initialize_foundation(character, phase)
 
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
@@ -305,6 +355,10 @@ class ZetApp:
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
 
+    def set_pipeline_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
+        """Enable or disable PROMPT_REVIEW for one character phase pipeline."""
+        self.pipeline_control_service.set_prompt_review_enabled(character, phase, pipeline_name, enabled)
+
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_fitment_context(character, phase, asset_id)
 
@@ -374,3 +428,80 @@ class ZetApp:
     def delete_partial_turnaround(self, character: str, phase: str, partial_turnaround_id: str) -> TurnaroundRow:
         """Delete an auxiliary partial turnaround sheet."""
         return self.turnaround_service.delete_partial_sheet(character, phase, partial_turnaround_id)
+
+    def list_identity_keys(self, character: str, phase: str):
+        """List saved identity keys for a character phase."""
+        return self.identity_key_service.list_identity_keys(character, phase)
+
+    def identity_key(self, character: str, phase: str, identity_key_id: str):
+        """Return one saved identity key."""
+        return self.identity_key_service.get_identity_key(character, phase, identity_key_id)
+
+    def preview_identity_key(
+        self,
+        character: str,
+        phase: str,
+        source_asset_id: int,
+        label: str,
+        crop_percent: float,
+        identity_key_id: str | None = None,
+    ) -> IdentityKeyPreview:
+        """Generate an identity key preview crop."""
+        return self.identity_key_service.preview_identity_key(
+            character,
+            phase,
+            source_asset_id,
+            label,
+            crop_percent,
+            identity_key_id,
+        )
+
+    def save_identity_key(
+        self,
+        character: str,
+        phase: str,
+        source_asset_id: int,
+        label: str,
+        crop_percent: float,
+        identity_key_id: str | None = None,
+    ):
+        """Save or update an identity key crop."""
+        return self.identity_key_service.save_identity_key(
+            character,
+            phase,
+            source_asset_id,
+            label,
+            crop_percent,
+            identity_key_id,
+        )
+
+    def delete_identity_key(self, character: str, phase: str, identity_key_id: str):
+        """Delete an identity key."""
+        return self.identity_key_service.delete_identity_key(character, phase, identity_key_id)
+
+    def list_costumes(self, character: str, phase: str):
+        """List costume templates for a character phase."""
+        return self.costume_service.list_costumes(character, phase)
+
+    def create_costume(self, character: str, phase: str, costume_name: str, markdown: str) -> CostumeCreateResult:
+        """Create a costume template and its Costume-Dressing assets."""
+        return self.costume_service.create_costume(character, phase, costume_name, markdown)
+
+    def list_expression_assets(self, character: str, phase: str):
+        """List Expression assets for a character phase."""
+        return self.expression_service.list_expression_assets(character, phase)
+
+    def list_expression_definitions(self, character: str, phase: str):
+        """List expression definitions for a character phase."""
+        return self.expression_service.list_expression_definitions(character, phase)
+
+    def create_expression(
+        self,
+        character: str,
+        phase: str,
+        label: str,
+        identity_key_id: str,
+        markdown: str,
+    ) -> ExpressionCreateResult:
+        """Create an expression definition and its Expression asset."""
+        return self.expression_service.create_expression(character, phase, label, identity_key_id, markdown)

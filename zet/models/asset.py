@@ -22,4 +22,7 @@ class Asset:
     error_message: Optional[str] = None
     updated_at: Optional[str] = None
     reference_files: list[dict] = field(default_factory=list)
+    identity_key_id: Optional[str] = None
+    expression_definition_path: Optional[str] = None
+    costume_path: Optional[str] = None
 

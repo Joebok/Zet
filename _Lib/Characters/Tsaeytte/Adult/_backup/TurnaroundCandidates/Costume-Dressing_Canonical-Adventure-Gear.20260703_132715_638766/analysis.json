@@ -1,0 +1,250 @@
+[
+  {
+    "name": "Costume-Dressing_Front_Front_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front_Front_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      140,
+      135,
+      133
+    ],
+    "bbox": [
+      251,
+      69,
+      771,
+      1535
+    ],
+    "character_width": 520,
+    "character_height": 1466,
+    "foot_y": 1535,
+    "mask_pixel_count": 432895,
+    "scale_factor": 0.9508867667121419,
+    "scaled_width": 974,
+    "scaled_height": 1460,
+    "scaled_bbox": [
+      239,
+      66,
+      733,
+      1460
+    ],
+    "scaled_foot_y": 1460
+  },
+  {
+    "name": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      145,
+      139,
+      137
+    ],
+    "bbox": [
+      293,
+      82,
+      748,
+      1468
+    ],
+    "character_width": 455,
+    "character_height": 1386,
+    "foot_y": 1468,
+    "mask_pixel_count": 385352,
+    "scale_factor": 1.0057720057720059,
+    "scaled_width": 1030,
+    "scaled_height": 1544,
+    "scaled_bbox": [
+      295,
+      82,
+      752,
+      1476
+    ],
+    "scaled_foot_y": 1476
+  },
+  {
+    "name": "Costume-Dressing_Left-Profile_Left-Profile_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Left-Profile_Left-Profile_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      142,
+      137,
+      136
+    ],
+    "bbox": [
+      312,
+      77,
+      772,
+      1528
+    ],
+    "character_width": 460,
+    "character_height": 1451,
+    "foot_y": 1528,
+    "mask_pixel_count": 347842,
+    "scale_factor": 0.9607167470709855,
+    "scaled_width": 984,
+    "scaled_height": 1475,
+    "scaled_bbox": [
+      300,
+      74,
+      742,
+      1468
+    ],
+    "scaled_foot_y": 1468
+  },
+  {
+    "name": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      146,
+      141,
+      140
+    ],
+    "bbox": [
+      0,
+      77,
+      752,
+      1458
+    ],
+    "character_width": 752,
+    "character_height": 1381,
+    "foot_y": 1458,
+    "mask_pixel_count": 390146,
+    "scale_factor": 1.0094134685010863,
+    "scaled_width": 1034,
+    "scaled_height": 1549,
+    "scaled_bbox": [
+      0,
+      78,
+      759,
+      1472
+    ],
+    "scaled_foot_y": 1472
+  },
+  {
+    "name": "Costume-Dressing_Back_Back_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Back_Back_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      141,
+      136,
+      135
+    ],
+    "bbox": [
+      306,
+      78,
+      706,
+      1457
+    ],
+    "character_width": 400,
+    "character_height": 1379,
+    "foot_y": 1457,
+    "mask_pixel_count": 373322,
+    "scale_factor": 1.0108774474256708,
+    "scaled_width": 1035,
+    "scaled_height": 1552,
+    "scaled_bbox": [
+      309,
+      79,
+      714,
+      1473
+    ],
+    "scaled_foot_y": 1473
+  },
+  {
+    "name": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      145,
+      139,
+      136
+    ],
+    "bbox": [
+      289,
+      86,
+      774,
+      1447
+    ],
+    "character_width": 485,
+    "character_height": 1361,
+    "foot_y": 1447,
+    "mask_pixel_count": 378081,
+    "scale_factor": 1.0242468772961058,
+    "scaled_width": 1049,
+    "scaled_height": 1572,
+    "scaled_bbox": [
+      296,
+      88,
+      793,
+      1482
+    ],
+    "scaled_foot_y": 1482
+  },
+  {
+    "name": "Costume-Dressing_Right-Profile_Right-Profile_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Right-Profile_Right-Profile_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      132,
+      128,
+      126
+    ],
+    "bbox": [
+      156,
+      58,
+      913,
+      1535
+    ],
+    "character_width": 757,
+    "character_height": 1477,
+    "foot_y": 1535,
+    "mask_pixel_count": 309870,
+    "scale_factor": 0.943805010155721,
+    "scaled_width": 966,
+    "scaled_height": 1449,
+    "scaled_bbox": [
+      147,
+      55,
+      862,
+      1449
+    ],
+    "scaled_foot_y": 1449
+  },
+  {
+    "name": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Canonical-Adventure-Gear",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Canonical-Adventure-Gear.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      145,
+      139,
+      138
+    ],
+    "bbox": [
+      282,
+      68,
+      708,
+      1469
+    ],
+    "character_width": 426,
+    "character_height": 1401,
+    "foot_y": 1469,
+    "mask_pixel_count": 391775,
+    "scale_factor": 0.9950035688793719,
+    "scaled_width": 1019,
+    "scaled_height": 1527,
+    "scaled_bbox": [
+      281,
+      68,
+      704,
+      1462
+    ],
+    "scaled_foot_y": 1462
+  }
+]

@@ -26,22 +26,87 @@
         Phase
         <select id="phase-select"></select>
       </label>
+      <button id="new-character" type="button">New Character</button>
+      <button id="new-phase" type="button">New Phase</button>
     </div>
   </header>
 
   <nav class="tabs" aria-label="Dashboard sections">
-    <button class="tab active" data-page="assets">Assets</button>
-    <button class="tab" data-page="manifest">Manifest</button>
-    <button class="tab" data-page="prompt-review">Prompt Review</button>
-    <button class="tab" data-page="render-console">Render Console</button>
-    <button class="tab" data-page="render-review">Image Review</button>
-    <button class="tab" data-page="turnarounds">Turnarounds</button>
-    <button class="tab" data-page="ai-controls">AI Controls</button>
-    <button class="tab" data-page="pipeline-controls">Pipeline Controls</button>
-    <button class="tab" data-page="template-editor">Template Editor</button>
+    <button class="tab onboarding-tab" data-page="onboarding">Onboarding</button>
+    <button class="tab active workflow-tab" data-page="assets">Assets</button>
+    <button class="tab workflow-tab" data-page="manifest">Manifest</button>
+    <button class="tab workflow-tab" data-page="prompt-review">Prompt Review</button>
+    <button class="tab workflow-tab" data-page="render-console">Render Console</button>
+    <button class="tab workflow-tab" data-page="render-review">Image Review</button>
+    <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
+    <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
+    <button class="tab workflow-tab" data-page="costumes">Costumes</button>
+    <button class="tab workflow-tab" data-page="expressions">Expressions</button>
+    <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
+    <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
+    <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
   </nav>
 
   <main>
+    <section id="onboarding-page" class="page">
+      <div class="page-title-row">
+        <h1>Onboarding</h1>
+        <div id="onboarding-status" class="status-text"></div>
+      </div>
+      <div id="onboarding-message" class="action-message" hidden></div>
+      <div class="onboarding-layout">
+        <section class="control-panel">
+          <h3>Interview</h3>
+          <label>
+            Character Name
+            <input id="onboarding-character" type="text">
+          </label>
+          <label>
+            Character Phase
+            <input id="onboarding-phase" type="text">
+          </label>
+          <label>
+            Species / Ancestry
+            <select id="onboarding-species"></select>
+          </label>
+          <label>
+            Gender Presentation
+            <select id="onboarding-gender"></select>
+          </label>
+          <label>
+            Canonical Art Style
+            <textarea id="onboarding-art-style" rows="4"></textarea>
+          </label>
+          <div class="button-row compact">
+            <button id="onboarding-save-draft" type="button">Save Draft</button>
+            <a id="onboarding-download-template" class="button-link" href="#" download hidden>Download Template</a>
+            <button id="onboarding-copy-gpt-prompt" type="button" disabled>Copy ChatGPT Prompt</button>
+          </div>
+          <section class="onboarding-helper">
+            <h3>ChatGPT Prompt</h3>
+            <textarea id="onboarding-gpt-prompt" rows="12" readonly></textarea>
+          </section>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="onboarding-title">Character Setup</h2>
+          </div>
+          <div class="onboarding-upload-row">
+            <label>
+              Completed Character_Image_Template.md
+              <input id="onboarding-template-file" type="file" accept=".md,text/markdown,text/plain">
+            </label>
+            <button id="onboarding-upload-template" type="button">Upload Template</button>
+          </div>
+          <dl id="onboarding-status-list" class="status-list"></dl>
+          <section>
+            <h3>Validation</h3>
+            <pre id="onboarding-validation"></pre>
+          </section>
+        </section>
+      </div>
+    </section>
+
     <section id="assets-page" class="page active">
       <div class="page-title-row">
         <h1>Assets</h1>
@@ -62,6 +127,7 @@
                 <option value="Head-Fitment">Head-Fitment</option>
                 <option value="Character-Assembly">Character-Assembly</option>
                 <option value="Costume-Dressing">Costume-Dressing</option>
+                <option value="Expression">Expression</option>
               </select>
             </label>
           </div>
@@ -71,7 +137,7 @@
                 <th>asset_id</th>
                 <th>pipeline</th>
                 <th>body_view</th>
-                <th>head_view</th>
+                <th>costume</th>
                 <th>asset_state</th>
                 <th>pipeline_stage</th>
                 <th>actor</th>
@@ -98,6 +164,7 @@
             <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
             <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
             <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
+            <button id="create-identity-from-asset" type="button" disabled>Identity Key</button>
           </div>
           <div id="asset-status-detail" class="asset-detail-view">
             <div class="detail-grid">
@@ -126,6 +193,136 @@
               <div id="asset-locked-path" class="status-text"></div>
             </section>
           </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="identity-keys-page" class="page">
+      <div class="page-title-row">
+        <h1>Identity Keys</h1>
+        <div id="identity-key-status" class="status-text"></div>
+      </div>
+      <div id="identity-key-message" class="action-message" hidden></div>
+      <div class="identity-layout">
+        <section class="control-panel">
+          <div class="button-row compact">
+            <button id="identity-key-show-list" type="button">List</button>
+          </div>
+          <table id="identity-key-table">
+            <thead>
+              <tr>
+                <th>label</th>
+                <th>view</th>
+                <th>image</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="identity-key-title">Select or create an Identity Key</h2>
+          </div>
+          <div class="identity-form-row">
+            <label>
+              Label
+              <input id="identity-key-label" type="text" placeholder="Upper Body">
+            </label>
+            <label>
+              Percent
+              <input id="identity-key-percent" type="number" min="1" max="100" step="1" value="100">
+            </label>
+            <button id="identity-key-create-preview" type="button" disabled>Create Identity Key</button>
+            <button id="identity-key-save" type="button" disabled>Save</button>
+          </div>
+          <div class="render-comparison identity-comparison">
+            <section class="render-comparison-panel">
+              <h3>Original</h3>
+              <div id="identity-key-original" class="render-image-viewer">No source image.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Crop</h3>
+              <div id="identity-key-preview" class="render-image-viewer">No crop preview.</div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="costumes-page" class="page">
+      <div class="page-title-row">
+        <h1>Costumes</h1>
+        <div id="costume-status" class="status-text"></div>
+      </div>
+      <div id="costume-message" class="action-message" hidden></div>
+      <div class="costume-layout">
+        <section class="control-panel">
+          <table id="costume-table">
+            <thead>
+              <tr>
+                <th>costume</th>
+                <th>assets</th>
+                <th>template</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions">
+          <h3>Add Costume</h3>
+          <label>
+            Costume Name
+            <input id="costume-name" type="text" placeholder="Formal">
+          </label>
+          <label>
+            Costume Markdown
+            <input id="costume-template-file" type="file" accept=".md,text/markdown,text/plain">
+          </label>
+          <button id="costume-create" type="button">Save Costume</button>
+        </aside>
+      </div>
+    </section>
+
+    <section id="expressions-page" class="page">
+      <div class="page-title-row">
+        <h1>Expressions</h1>
+        <div id="expression-status" class="status-text"></div>
+      </div>
+      <div id="expression-message" class="action-message" hidden></div>
+      <div class="costume-layout">
+        <section class="control-panel">
+          <table id="expression-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>expression</th>
+                <th>identity key</th>
+                <th>stage</th>
+                <th>state</th>
+                <th>output</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions">
+          <h3>Add Expression</h3>
+          <label>
+            Label
+            <input id="expression-label" type="text" placeholder="Soft Smile">
+          </label>
+          <label>
+            Identity Key
+            <select id="expression-identity-key"></select>
+          </label>
+          <label>
+            Definition Markdown
+            <input id="expression-definition-file" type="file" accept=".md,text/markdown,text/plain">
+          </label>
+          <button id="expression-create" type="button">Save Expression</button>
         </aside>
       </div>
     </section>
@@ -380,8 +577,8 @@
                 <th>task</th>
                 <th>status</th>
                 <th>locked</th>
-                <th>missing</th>
                 <th>action</th>
+                <th>missing</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -543,6 +740,14 @@
         </section>
         <section class="control-panel pipeline-wide">
           <h2>Character / Phase Pipeline Config</h2>
+          <div class="batch-controls">
+            <label>
+              Pipeline
+              <select id="prompt-review-pipeline"></select>
+            </label>
+            <label class="checkbox-row"><input id="prompt-review-enabled" type="checkbox"> Include PROMPT_REVIEW</label>
+            <button id="prompt-review-save" type="button">Save Prompt Review Stage</button>
+          </div>
           <table id="pipeline-stage-table">
             <thead>
               <tr>
@@ -592,6 +797,13 @@
               Clear condensed prompt and local test renders
             </label>
           </div>
+          <section class="source-editor-help">
+            <h3>Prompt Inserts</h3>
+            <p>Insert out-of-bounds prompt language with this block; it will render where you place it relative to nearby compiler section markers.</p>
+            <pre>{{PROMPT_INSERT}}
+Add prompt language here.
+{{/PROMPT_INSERT}}</pre>
+          </section>
           <dl id="source-editor-meta" class="editor-meta"></dl>
           <textarea id="source-editor-text" spellcheck="false"></textarea>
         </section>

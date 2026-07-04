@@ -109,8 +109,11 @@ class PromptReviewService:
         return path if path.exists() and path.is_file() else None
 
     def resolve_source_map_file(self, prompt_path: Path) -> Path | None:
-        path = prompt_path.parent / "Prompt_Source_Map.json"
-        return path if path.exists() and path.is_file() else None
+        for name in ("Prompt_Source_Map.json", "source_map.json"):
+            path = prompt_path.parent / name
+            if path.exists() and path.is_file():
+                return path
+        return None
 
     def _read_json_if_exists(self, path: Path) -> dict:
         if not path.exists() or not path.is_file():
