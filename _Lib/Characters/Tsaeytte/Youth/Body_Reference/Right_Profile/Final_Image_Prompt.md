@@ -1,8 +1,8 @@
 Create an original full-body character design sheet from text only. This is not an edit, not a transformation, and not based on any previous image. No input image exists or should be used.
 
-Depict Tsaeytte, an Youth elf female, in a neutral full-body standing pose from a FRONT view. This is a new standalone illustration intended as a technical character proportion sheet.
+Depict Tsaeytte, an Youth elf female, in a neutral full-body standing pose from a RIGHT_PROFILE view. This is a new standalone illustration intended as a technical character proportion sheet.
 
-Render the body from a direct front view, facing the viewer squarely.
+Render the body from a direct right profile view, showing the character's right side.
 
 Entire body visible from top of head to soles of feet.
 Feet fully visible.
@@ -36,10 +36,10 @@ Feet are placed directly under the hips, shoulder-width or slightly narrower.
 Left and right feet are parallel or nearly parallel.
 The feet must preserve the requested body view.
 
-For FRONT view:
-- Feet are side-by-side and symmetrical.
-- Knees, ankles, and toes align vertically beneath the hips.
-- No staggered foot placement.
+For RIGHT_PROFILE view:
+- Both bare feet remain flat on the ground.
+- One foot may partially overlap the other because of the view angle, but neither foot is lifted.
+- The body is not stepping forward.
 
 Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
 
@@ -114,9 +114,7 @@ Mannequin head negative rules:
 * Do not hide or omit the ears.
 * Do not render detailed facial identity, eyes, nose, mouth, hair, expression, makeup, or character-specific likeness.
 
-Front view body notes:
-
-* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Right profile body should keep a slighlyt hunched vertical line: slightly lowered chin, narrow torso depth, tense shoulder, slight natural spinal curve, slim leg line, and no exaggerated chest or hip projection.
 
 Body preservation rules:
 

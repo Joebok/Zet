@@ -45,6 +45,8 @@ const state = {
   expressionIdentityKeys: [],
 };
 
+const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
+
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
 const newCharacterButton = document.querySelector("#new-character");
@@ -387,20 +389,51 @@ function currentQuery() {
   return new URLSearchParams({ character: state.character, phase: state.phase });
 }
 
+function loadStoredContext() {
+  try {
+    const raw = window.localStorage.getItem(LAST_CONTEXT_STORAGE_KEY);
+    if (!raw) {
+      return { character: "", phase: "" };
+    }
+    const data = JSON.parse(raw);
+    return {
+      character: String(data?.character || ""),
+      phase: String(data?.phase || ""),
+    };
+  } catch {
+    return { character: "", phase: "" };
+  }
+}
+
+function saveStoredContext() {
+  try {
+    window.localStorage.setItem(
+      LAST_CONTEXT_STORAGE_KEY,
+      JSON.stringify({ character: state.character || "", phase: state.phase || "" }),
+    );
+  } catch {
+    // Ignore storage failures and keep the app usable.
+  }
+}
+
 async function loadContext() {
   const payload = await fetchJson("/api/context");
+  const stored = loadStoredContext();
   state.characters = payload.characters || [];
   state.phasesByCharacter = payload.phases_by_character || {};
   state.onboardingStatuses = payload.onboarding_statuses || {};
   state.onboardingOptions = payload.onboarding_options || { species_ancestry: [], gender_presentation: [] };
-  state.character = state.character && state.characters.includes(state.character) ? state.character : payload.default_character;
+  const preferredCharacter = state.character || stored.character;
+  state.character = preferredCharacter && state.characters.includes(preferredCharacter) ? preferredCharacter : payload.default_character;
   const phases = state.phasesByCharacter[state.character] || [];
-  state.phase = state.phase && phases.includes(state.phase) ? state.phase : payload.default_phase;
+  const preferredPhase = state.phase || stored.phase;
+  state.phase = preferredPhase && phases.includes(preferredPhase) ? preferredPhase : payload.default_phase;
   setSelectOptions(characterSelect, state.characters);
   characterSelect.value = state.character || "";
   setSelectOptions(onboardingSpecies, state.onboardingOptions.species_ancestry || []);
   setSelectOptions(onboardingGender, state.onboardingOptions.gender_presentation || []);
   updatePhaseSelect();
+  saveStoredContext();
   renderOnboarding();
 }
 
@@ -411,6 +444,7 @@ function updatePhaseSelect() {
     state.phase = phases[0] || null;
   }
   phaseSelect.value = state.phase || "";
+  saveStoredContext();
 }
 
 function selectedOnboardingStatus() {
@@ -2931,6 +2965,7 @@ async function uploadHeadshotReference() {
 characterSelect.addEventListener("change", async () => {
   state.character = characterSelect.value;
   state.phase = null;
+  saveStoredContext();
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
@@ -2977,6 +3012,7 @@ characterSelect.addEventListener("change", async () => {
 
 phaseSelect.addEventListener("change", async () => {
   state.phase = phaseSelect.value;
+  saveStoredContext();
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;

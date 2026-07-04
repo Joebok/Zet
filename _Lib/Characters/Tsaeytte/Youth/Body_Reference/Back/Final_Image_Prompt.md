@@ -1,8 +1,8 @@
 Create an original full-body character design sheet from text only. This is not an edit, not a transformation, and not based on any previous image. No input image exists or should be used.
 
-Depict Tsaeytte, an Youth elf female, in a neutral full-body standing pose from a FRONT view. This is a new standalone illustration intended as a technical character proportion sheet.
+Depict Tsaeytte, an Youth elf female, in a neutral full-body standing pose from a BACK view. This is a new standalone illustration intended as a technical character proportion sheet.
 
-Render the body from a direct front view, facing the viewer squarely.
+Render the body from a direct back view, facing away from the viewer squarely.
 
 Entire body visible from top of head to soles of feet.
 Feet fully visible.
@@ -36,7 +36,7 @@ Feet are placed directly under the hips, shoulder-width or slightly narrower.
 Left and right feet are parallel or nearly parallel.
 The feet must preserve the requested body view.
 
-For FRONT view:
+For BACK view:
 - Feet are side-by-side and symmetrical.
 - Knees, ankles, and toes align vertically beneath the hips.
 - No staggered foot placement.
@@ -114,9 +114,7 @@ Mannequin head negative rules:
 * Do not hide or omit the ears.
 * Do not render detailed facial identity, eyes, nose, mouth, hair, expression, makeup, or character-specific likeness.
 
-Front view body notes:
-
-* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Back view body should show straight balanced posture, tense shoulders, slim back, symmetrical arms, feet aligned under her frame.
 
 Body preservation rules:
 

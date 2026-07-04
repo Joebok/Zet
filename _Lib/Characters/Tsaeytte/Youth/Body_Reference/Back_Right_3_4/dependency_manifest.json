@@ -1,0 +1,17 @@
+{
+  "job_id": "Asset_7_Body-Reference_Back-Right-3-4",
+  "task": "body-reference",
+  "character": "Tsaeytte",
+  "phase": "Youth",
+  "view_token": "BACK_RIGHT_3_4",
+  "resources_allowed": false,
+  "resources": [],
+  "resource_policy": {
+    "allow_external_images": false,
+    "allow_cached_images": false,
+    "allow_job_declared_images": false
+  },
+  "notes": [
+    "Body-reference uses no external, cached, discovered, or prior-rendered image resources unless explicitly allowed by future task configuration."
+  ]
+}

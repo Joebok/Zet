@@ -51,24 +51,27 @@ def _gpt_helper_prompt_path(config_path: str | Path) -> Path:
     return PROJECT_ROOT / "Config" / "GPT_Helper_Prompts.json"
 
 
-def _read_gpt_helper_prompt_config(config_path: str | Path) -> dict[str, Any]:
-    """Read the GPT helper prompt config, returning a valid empty shape if missing."""
-    path = _gpt_helper_prompt_path(config_path)
+def _read_json_file(path: Path) -> dict[str, Any]:
+    """Read a JSON object file, returning an empty object on failure."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         data = {}
     if not isinstance(data, dict):
         data = {}
+    return data
+
+
+def _read_gpt_helper_prompt_config(path: Path) -> dict[str, Any]:
+    """Read a phase-local GPT helper prompt config, returning a valid empty shape if missing."""
+    data = _read_json_file(path)
     data.setdefault("schema_version", 1)
-    data.setdefault("defaults", {})
     data.setdefault("pipelines", {})
     return data
 
 
-def _write_gpt_helper_prompt_config(config_path: str | Path, data: dict[str, Any]) -> Path:
+def _write_gpt_helper_prompt_config(path: Path, data: dict[str, Any]) -> Path:
     """Write the GPT helper prompt config atomically."""
-    path = _gpt_helper_prompt_path(config_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.tmp")
     temp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -86,6 +89,54 @@ def _render_console_asset_for_task(zet_app: ZetApp, task):
         return None
 
 
+def _view_keys() -> list[str]:
+    """Return all configured normalized view keys."""
+    view_text_path = PROJECT_ROOT / "Config" / "Prompt_View_Text.json"
+    data = _read_json_file(view_text_path)
+    views = data.get("views", {})
+    if not isinstance(views, dict):
+        return []
+    return [str(key) for key in views.keys()]
+
+
+def _phase_gpt_helper_prompt_path(zet_app: ZetApp, task) -> Path | None:
+    """Resolve the per-character-phase GPT helper prompt config path for a render task."""
+    asset = _render_console_asset_for_task(zet_app, task)
+    if asset is None:
+        return None
+    return zet_app.path_service.gpt_helper_prompt_path(asset.character, asset.phase)
+
+
+def _seed_phase_gpt_helper_prompt_config(zet_app: ZetApp, path: Path, task) -> Path:
+    """Create a per-phase GPT helper prompt config from the legacy global config."""
+    asset = _render_console_asset_for_task(zet_app, task)
+    if asset is None:
+        raise ValueError("Cannot seed helper prompts because the render task is not tied to an asset.")
+    legacy = _read_json_file(_gpt_helper_prompt_path(zet_app.config_path))
+    legacy_defaults = legacy.get("defaults", {}) if isinstance(legacy.get("defaults"), dict) else {}
+    legacy_pipelines = legacy.get("pipelines", {}) if isinstance(legacy.get("pipelines"), dict) else {}
+    phase_pipelines: dict[str, dict[str, str]] = {}
+    view_keys = _view_keys()
+    for pipeline in zet_app.pipeline_repository.list_pipelines(asset.character, asset.phase):
+        legacy_pipeline = legacy_pipelines.get(pipeline.name, {}) if isinstance(legacy_pipelines.get(pipeline.name), dict) else {}
+        prompts: dict[str, str] = {}
+        for view in view_keys:
+            text = str(legacy_pipeline.get(view) or legacy_pipeline.get("__default") or legacy_defaults.get(view) or "").strip()
+            prompts[view] = text
+        phase_pipelines[pipeline.name] = prompts
+    return _write_gpt_helper_prompt_config(path, {"schema_version": 1, "pipelines": phase_pipelines})
+
+
+def _ensure_phase_gpt_helper_prompt_config(zet_app: ZetApp, task) -> Path:
+    """Return a ready per-phase GPT helper prompt config path, seeding it if needed."""
+    path = _phase_gpt_helper_prompt_path(zet_app, task)
+    if path is None:
+        raise ValueError("Cannot load helper prompts because the render task is not tied to an asset.")
+    if not path.exists():
+        _seed_phase_gpt_helper_prompt_config(zet_app, path, task)
+    return path
+
+
 def _gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task) -> dict[str, str]:
     """Return the short manual ChatGPT helper prompt for a render-console task."""
     asset = _render_console_asset_for_task(zet_app, task)
@@ -93,22 +144,16 @@ def _gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task) -> dict[s
         return {"text": "", "view": "", "source": ""}
 
     view = _view_key(asset.body_view)
-    data = _read_gpt_helper_prompt_config(config_path)
+    path = _ensure_phase_gpt_helper_prompt_config(zet_app, task)
+    data = _read_gpt_helper_prompt_config(path)
     pipelines = data.get("pipelines", {}) if isinstance(data, dict) else {}
-    defaults = data.get("defaults", {}) if isinstance(data, dict) else {}
     pipeline_prompts = pipelines.get(asset.pipeline, {}) if isinstance(pipelines, dict) else {}
     text = ""
     source = ""
     if isinstance(pipeline_prompts, dict):
         text = str(pipeline_prompts.get(view) or "").strip()
         source = f"pipeline:{asset.pipeline}" if text else ""
-        if not text:
-            text = str(pipeline_prompts.get("__default") or "").strip()
-            source = f"pipeline:{asset.pipeline}:__default" if text else ""
-    if not text and isinstance(defaults, dict):
-        text = str(defaults.get(view) or "").strip()
-        source = "defaults" if text else ""
-    return {"text": text, "view": view, "source": source, "pipeline": asset.pipeline}
+    return {"text": text, "view": view, "source": source, "pipeline": asset.pipeline, "config_path": str(path)}
 
 
 def _save_gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task, text: str) -> dict[str, str]:
@@ -120,7 +165,8 @@ def _save_gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task, text
     if not view:
         raise ValueError("Cannot save helper prompt because the asset has no view.")
 
-    data = _read_gpt_helper_prompt_config(config_path)
+    path = _ensure_phase_gpt_helper_prompt_config(zet_app, task)
+    data = _read_gpt_helper_prompt_config(path)
     pipelines = data.setdefault("pipelines", {})
     if not isinstance(pipelines, dict):
         pipelines = {}
@@ -134,11 +180,9 @@ def _save_gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task, text
     if cleaned:
         pipeline_prompts[view] = cleaned
     else:
-        pipeline_prompts.pop(view, None)
-    if not pipeline_prompts:
-        pipelines.pop(asset.pipeline, None)
+        pipeline_prompts[view] = ""
 
-    path = _write_gpt_helper_prompt_config(config_path, data)
+    path = _write_gpt_helper_prompt_config(path, data)
     prompt = _gpt_helper_prompt(zet_app, config_path, task)
     prompt["config_path"] = str(path)
     return prompt

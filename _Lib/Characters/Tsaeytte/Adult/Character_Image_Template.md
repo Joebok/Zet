@@ -160,7 +160,7 @@ Recommended usage:
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK -->
 
-* Back view body should show straight balanced posture, narrow shoulders, slim back, compact waist, symmetrical arms, feet aligned under her frame.
+* Back view body should show straight balanced posture, slim back, compact waist, shoulders slightly broader than the narrow waist, symmetrical arms, feet aligned under her frame.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK -->
 

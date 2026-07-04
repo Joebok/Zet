@@ -1017,6 +1017,20 @@ Clothing rules:
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_MASCULINE -->
 
+<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_YOUTH -->
+
+For body-reference, use simple neutral form-fitting clothing.
+
+Clothing rules:
+
+* neutral tan shorts.
+* neutral tan t-shirt.
+* Minimal detail.
+* no additional garments
+* Readable body silhouette.
+
+<!-- ZET:END TECHNICAL_MODESTY_LAYER_YOUTH -->
+
 ---
 
 # Scene / Narrative Rendering

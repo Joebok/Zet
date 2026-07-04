@@ -1,10 +1,10 @@
 # Compiled Sections
 
-Job ID: Asset_1_Body-Reference_Front
+Job ID: Asset_8_Body-Reference_Back
 Task: body-reference
 Character: Tsaeytte
 Phase: Youth
-View Token: FRONT
+View Token: BACK
 
 ## Included Required Sections
 
@@ -14,12 +14,12 @@ View Token: FRONT
 - BODY_REFERENCE_RENDERING_RULES
 - TECHNICAL_MODESTY_LAYER
 - NEUTRAL_POSE_STANCE
-- NEUTRAL_POSE_STANCE_VIEW_FRONT
+- NEUTRAL_POSE_STANCE_VIEW_BACK
 - NEGATIVE_GUIDANCE_GENERAL
 
 ## Included Optional Sections
 
-- BODY_DESCRIPTION_VIEW_FRONT
+- BODY_DESCRIPTION_VIEW_BACK
 - NEGATIVE_GUIDANCE_JOB_SPECIFIC
 
 ## Missing Optional Sections
@@ -109,7 +109,7 @@ The feet must preserve the requested body view.
 
 For {VIEW} view:
 
-# NEUTRAL_POSE_STANCE_VIEW_FRONT
+# NEUTRAL_POSE_STANCE_VIEW_BACK
 
 - Feet are side-by-side and symmetrical.
 - Knees, ankles, and toes align vertically beneath the hips.
@@ -135,11 +135,9 @@ Avoid:
 * Dramatic pose when a technical pose is requested.
 * Narrative acting when a neutral reference is requested.
 
-# BODY_DESCRIPTION_VIEW_FRONT
+# BODY_DESCRIPTION_VIEW_BACK
 
-Front view body notes:
-
-* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Back view body should show straight balanced posture, tense shoulders, slim back, symmetrical arms, feet aligned under her frame.
 
 # NEGATIVE_GUIDANCE_JOB_SPECIFIC
 

@@ -226,6 +226,11 @@ class CharacterOnboardingService:
                 shutil.copy2(source, pipelines_path)
         if pipelines_path.exists():
             self._normalize_foundation_pipelines(pipelines_path)
+        helper_prompt_path = self.path_service.gpt_helper_prompt_path(character, phase)
+        if not helper_prompt_path.exists() and source_phase:
+            source_helper_prompt_path = self.path_service.gpt_helper_prompt_path(character, source_phase)
+            if source_helper_prompt_path.exists():
+                shutil.copy2(source_helper_prompt_path, helper_prompt_path)
         identity_keys_path = phase_path / "IdentityKeys.json"
         if not identity_keys_path.exists():
             identity_keys_path.write_text('{\n  "schema_version": 1,\n  "identity_keys": []\n}\n', encoding="utf-8")

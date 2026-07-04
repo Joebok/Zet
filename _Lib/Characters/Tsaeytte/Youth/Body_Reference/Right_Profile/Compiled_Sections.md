@@ -1,10 +1,10 @@
 # Compiled Sections
 
-Job ID: Asset_1_Body-Reference_Front
+Job ID: Asset_5_Body-Reference_Right-Profile
 Task: body-reference
 Character: Tsaeytte
 Phase: Youth
-View Token: FRONT
+View Token: RIGHT_PROFILE
 
 ## Included Required Sections
 
@@ -14,12 +14,12 @@ View Token: FRONT
 - BODY_REFERENCE_RENDERING_RULES
 - TECHNICAL_MODESTY_LAYER
 - NEUTRAL_POSE_STANCE
-- NEUTRAL_POSE_STANCE_VIEW_FRONT
+- NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE
 - NEGATIVE_GUIDANCE_GENERAL
 
 ## Included Optional Sections
 
-- BODY_DESCRIPTION_VIEW_FRONT
+- BODY_DESCRIPTION_VIEW_RIGHT_PROFILE
 - NEGATIVE_GUIDANCE_JOB_SPECIFIC
 
 ## Missing Optional Sections
@@ -109,11 +109,11 @@ The feet must preserve the requested body view.
 
 For {VIEW} view:
 
-# NEUTRAL_POSE_STANCE_VIEW_FRONT
+# NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE
 
-- Feet are side-by-side and symmetrical.
-- Knees, ankles, and toes align vertically beneath the hips.
-- No staggered foot placement.
+- {FOOTWEAR_GROUNDING}
+- One foot may partially overlap the other because of the view angle, but neither foot is lifted.
+- The body is not stepping forward.
 
 Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
 
@@ -135,11 +135,9 @@ Avoid:
 * Dramatic pose when a technical pose is requested.
 * Narrative acting when a neutral reference is requested.
 
-# BODY_DESCRIPTION_VIEW_FRONT
+# BODY_DESCRIPTION_VIEW_RIGHT_PROFILE
 
-Front view body notes:
-
-* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Right profile body should keep a slighlyt hunched vertical line: slightly lowered chin, narrow torso depth, tense shoulder, slight natural spinal curve, slim leg line, and no exaggerated chest or hip projection.
 
 # NEGATIVE_GUIDANCE_JOB_SPECIFIC
 

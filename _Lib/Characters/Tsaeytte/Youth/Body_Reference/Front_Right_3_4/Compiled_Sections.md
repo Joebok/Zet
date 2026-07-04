@@ -1,10 +1,10 @@
 # Compiled Sections
 
-Job ID: Asset_1_Body-Reference_Front
+Job ID: Asset_3_Body-Reference_Front-Right-3-4
 Task: body-reference
 Character: Tsaeytte
 Phase: Youth
-View Token: FRONT
+View Token: FRONT_RIGHT_3_4
 
 ## Included Required Sections
 
@@ -14,12 +14,12 @@ View Token: FRONT
 - BODY_REFERENCE_RENDERING_RULES
 - TECHNICAL_MODESTY_LAYER
 - NEUTRAL_POSE_STANCE
-- NEUTRAL_POSE_STANCE_VIEW_FRONT
+- NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4
 - NEGATIVE_GUIDANCE_GENERAL
 
 ## Included Optional Sections
 
-- BODY_DESCRIPTION_VIEW_FRONT
+- BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4
 - NEGATIVE_GUIDANCE_JOB_SPECIFIC
 
 ## Missing Optional Sections
@@ -109,11 +109,12 @@ The feet must preserve the requested body view.
 
 For {VIEW} view:
 
-# NEUTRAL_POSE_STANCE_VIEW_FRONT
+# NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4
 
-- Feet are side-by-side and symmetrical.
-- Knees, ankles, and toes align vertically beneath the hips.
-- No staggered foot placement.
+- {FOOTWEAR_GROUNDING}
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
 
 Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
 
@@ -135,11 +136,9 @@ Avoid:
 * Dramatic pose when a technical pose is requested.
 * Narrative acting when a neutral reference is requested.
 
-# BODY_DESCRIPTION_VIEW_FRONT
+# BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4
 
-Front view body notes:
-
-* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Front-right 3/4 body should show torso depth without broadening her frame; the near shoulder and hip overlap naturally while preserving narrow waist and long slim legs.
 
 # NEGATIVE_GUIDANCE_JOB_SPECIFIC
 

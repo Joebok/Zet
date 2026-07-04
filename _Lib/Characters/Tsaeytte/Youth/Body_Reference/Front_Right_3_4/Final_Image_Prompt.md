@@ -1,8 +1,8 @@
 Create an original full-body character design sheet from text only. This is not an edit, not a transformation, and not based on any previous image. No input image exists or should be used.
 
-Depict Tsaeytte, an Youth elf female, in a neutral full-body standing pose from a FRONT view. This is a new standalone illustration intended as a technical character proportion sheet.
+Depict Tsaeytte, an Youth elf female, in a neutral full-body standing pose from a FRONT_RIGHT_3_4 view. This is a new standalone illustration intended as a technical character proportion sheet.
 
-Render the body from a direct front view, facing the viewer squarely.
+Render the body from a front-right three-quarter body view. The torso, neck, and mannequin head all face the same front-right three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.
 
 Entire body visible from top of head to soles of feet.
 Feet fully visible.
@@ -36,10 +36,11 @@ Feet are placed directly under the hips, shoulder-width or slightly narrower.
 Left and right feet are parallel or nearly parallel.
 The feet must preserve the requested body view.
 
-For FRONT view:
-- Feet are side-by-side and symmetrical.
-- Knees, ankles, and toes align vertically beneath the hips.
-- No staggered foot placement.
+For FRONT_RIGHT_3_4 view:
+- Both bare feet remain flat on the ground.
+- The near foot and far foot may be offset only enough to show depth.
+- Do not turn the stance into a walking pose.
+- Do not cross the feet or place one foot behind the other dramatically.
 
 Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
 
@@ -114,9 +115,7 @@ Mannequin head negative rules:
 * Do not hide or omit the ears.
 * Do not render detailed facial identity, eyes, nose, mouth, hair, expression, makeup, or character-specific likeness.
 
-Front view body notes:
-
-* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
+* Front-right 3/4 body should show torso depth without broadening her frame; the near shoulder and hip overlap naturally while preserving narrow waist and long slim legs.
 
 Body preservation rules:
 

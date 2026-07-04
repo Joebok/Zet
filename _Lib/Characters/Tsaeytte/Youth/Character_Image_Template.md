@@ -138,16 +138,19 @@ Back view notes:
 <!-- ZET:BEGIN BODY_DESCRIPTION_FACTS -->
 
 * Build: slender, youthful, graceful, lightly built.
-* Height impression: short-to-average for an elf; reference guide indicates about 5'4" / 162 cm.
-* Proportions: youthful high-elf proportions with a compact frame, slim limbs, narrow shoulders, and balanced head-to-body scale.
+* Height impression: short-to-average for an elf; reference guide indicates about 5'0" / 152 cm.
+* Proportions: youthful high-elf proportions with a compact frame, slim limbs,
 * Posture: upright but slightly reserved; shoulders relaxed; stance modest and contained.
-* Shoulder shape: narrow, gently sloped shoulders.
-* Torso shape: slim and lightly built, without exaggerated curves or heroic bulk.
-* Arm shape: slim arms with delicate hands; sleeves may obscure exact arm contour.
-* Hand shape: narrow youthful hands, suitable for holding books or student tools.
-* Hip/leg proportions: skirt obscures most lower-body contour; visible lower legs are slim.
+* Softly sloped shoulders, slightly broader than the waist, but still petite
+* Posture: slightly hunched, tends to look down.
+* Torso shape: slim and lightly built.
+* Arm shape: slim arms with delicate hands.
+* Hand shape: narrow youthful hands and delicate fingers
+* Narrow, youthful hips.
+* Hip/leg proportions: long slender legs, knees and ankles cleanly articulated
 * Foot stance: both booted feet grounded, close under the body, not in an action pose.
 * Movement baseline: quiet, careful, student-like movement rather than combat-ready motion.
+* Reads like a young woman before she becomes and adult.
 
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
@@ -157,74 +160,49 @@ Back view notes:
 
 Front view body notes:
 
-* Shoulders, waist, skirt width, boot placement, and stance should read as symmetrical and centered.
-* Arms may rest close to the body or hold books in a contained student pose.
-* Preserve the non-combatant youth-phase posture.
+* Front view body should read as petite and symmetrical, with wide softly sloped shoulders, visible centered torso line, long slim legs, and balanced feet beneath the body.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 body notes:
-
-* Tsaeytte's left side is more visible; the far side remains partially visible.
-* Maintain a straight, relaxed stance with no stepping, crossed feet, or weight-shift pose.
-* Clothing overlap should show the blouse volume and skirt depth without changing body proportions.
+* Front-left 3/4 body should show torso depth without broadening her frame; the near shoulder and hip overlap naturally while preserving narrow waist and long slim legs.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 body notes:
-
-* Tsaeytte's right side is more visible; the far side remains partially visible.
-* Maintain a straight, relaxed stance with no stepping, crossed feet, or weight-shift pose.
-* Clothing overlap should show the blouse volume and skirt depth without changing body proportions.
+* Front-right 3/4 body should show torso depth without broadening her frame; the near shoulder and hip overlap naturally while preserving narrow waist and long slim legs.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile body notes:
-
-* Show a slim upright profile with the torso, knees, and booted feet aligned under the body.
-* The skirt creates a long vertical silhouette from waist to lower calf.
+* Left profile body should keep a slighlyt hunched vertical line: slightly lowered chin, narrow torso depth, tense shoulder, slight natural spinal curve, slim leg line, and no exaggerated chest or hip projection.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile body notes:
-
-* Show a slim upright profile with the torso, knees, and booted feet aligned under the body.
-* The skirt creates a long vertical silhouette from waist to lower calf.
+* Right profile body should keep a slighlyt hunched vertical line: slightly lowered chin, narrow torso depth, tense shoulder, slight natural spinal curve, slim leg line, and no exaggerated chest or hip projection.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 body notes:
-
-* Back, left shoulder line, left hip side, and rear skirt volume should be visible.
-* Keep the neck, torso, knees, and feet facing the same back-left direction.
+* Back-left 3/4 body should show a narrow back, slightly hunched shoulders, one side of the hip line without making her body stocky.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 body notes:
-
-* Back, right shoulder line, right hip side, and rear skirt volume should be visible.
-* Keep the neck, torso, knees, and feet facing the same back-right direction.
+* Back-right 3/4 body should show a narrow back, slightly hunched shoulders, one side of the hip line without making her body stocky.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK -->
 
-Back view body notes:
-
-* Rear shoulders, spine line implied by blouse folds, skirt center, and boot backs should align vertically.
-* Hair and ribbon may overlap the upper back, but the posture should remain readable.
+* Back view body should show straight balanced posture, tense shoulders, slim back, symmetrical arms, feet aligned under her frame.
 
 <!-- ZET:END BODY_DESCRIPTION_VIEW_BACK -->
 
@@ -247,96 +225,67 @@ Back view body notes:
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
 
-* Face shape: soft youthful oval-to-heart shape with delicate high-elf features.
-* Jaw/chin: small, refined jaw and soft pointed chin.
-* Cheekbones: gentle, youthful cheek structure without harsh angularity.
-* Nose: small, refined, lightly defined nose.
-* Mouth: small, natural mouth with restrained expression by default.
-* Eye shape: large anime-influenced eyes with a soft almond shape.
-* Eye color: violet.
-* Eyebrows: dark, natural, gently arched brows.
-* Ears: long pointed high-elf ears, slim and sharply tapered, extending outward through the hair.
-* Neck: slim youthful neck, proportionate to the head and narrow shoulders.
+* Face shape: soft heart-shaped face with delicate elven structure.
+* Jaw/chin: small refined jaw and gentle pointed chin; not square or heavy.
+* Nose: small, refined, slightly upturned or delicate; avoid large or blunt noses.
+* Mouth: expressive medium-small mouth with a bright smile potential; lips natural, not overdone.
+* Eye shape: large anime-influenced almond eyes with wide-eyed alarmed look.
+* Eye color: vivid violet-purple.
+* Eyebrows: dark, fine, expressive brows that support curiosity, confidence, and mischief.
+* Ears: long pointed elf ears, angled outward and slightly upward; ear tips are an identity anchor.
+* Neck: slim graceful neck, proportionate to a petite elven frame.
 * Head-to-body proportion: youthful and slightly anime-influenced, but still balanced for a semi-realistic fantasy character.
+* Youthful face, not lean.
 
 <!-- ZET:END HEAD_DESCRIPTION_FACTS -->
 
-### Head Description — View Stubs
+### Head Description - View Stubs
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
 
-Front view head notes:
-
-* Both violet eyes are visible.
-* Both sides of the black bob frame the face.
-* Ear tips may show through or around the hair; do not hide both ears.
+* Front view head should show both large violet eyes, the heart-shaped face, small chin, delicate nose, and at least partial pointed ear visibility through or beyond the hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
-Front-left 3/4 head notes:
-
-* Tsaeytte's left cheek and left ear are more visible.
-* The far eye should remain visible unless naturally overlapped by hair.
-* Nose angle and chin should follow the same direction as the head and torso.
+* Front-left 3/4 head should show the left cheek and left ear strongly, with the far eye still visible; preserve the small nose, soft chin, and bright violet gaze.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
-Front-right 3/4 head notes:
-
-* Tsaeytte's right cheek and right ear are more visible.
-* The far eye should remain visible unless naturally overlapped by hair.
-* Nose angle and chin should follow the same direction as the head and torso.
+* Front-right 3/4 head should show the right cheek and right ear strongly, with the far eye still visible; preserve the small nose, soft chin, and bright violet gaze.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
-Left profile head notes:
-
-* Show one visible violet eye in profile or near-profile.
-* The left pointed ear should be clearly visible through the hair.
-* Nose, lips, chin, and neck form a delicate youthful profile.
+* Left profile should show the delicate nose-to-lips-to-chin line, one almond eye or eyelash edge, and a clearly pointed left ear extending from the hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
-Right profile head notes:
-
-* Show one visible violet eye in profile or near-profile.
-* The right pointed ear should be clearly visible through the hair.
-* Nose, lips, chin, and neck form a delicate youthful profile.
+* Right profile should show the delicate nose-to-lips-to-chin line, one almond eye or eyelash edge, and a clearly pointed right ear extending from the hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_RIGHT_PROFILE -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
-Back-left 3/4 head notes:
-
-* The back of the hair mass dominates, with only a partial cheek, jaw edge, or ear edge visible if angle permits.
-* The head must face the same back-left direction as the torso.
+* Back-left 3/4 head should show the rumpled bob mass, nape, left ear tip or outer rim, and a small hint of cheek or jaw if the rotation allows.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
-Back-right 3/4 head notes:
-
-* The back of the hair mass dominates, with only a partial cheek, jaw edge, or ear edge visible if angle permits.
-* The head must face the same back-right direction as the torso.
+* Back-right 3/4 head should show the rumpled bob mass, nape, right ear tip or outer rim, and a small hint of cheek or jaw if the rotation allows.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK -->
 
-Back view head notes:
-
-* Face is not visible.
-* Show the rounded back of the skull under short black hair, the nape, ribbon, and possible outward ear tips.
+* Back view head should show the compact rounded skull and rumpled bob silhouette at the nape; pointed ear tips may protrude at the sides if not covered by hair.
 
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK -->
 
@@ -346,7 +295,7 @@ Back view head notes:
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_PICARESQUE -->
 
-* Her face tends to read as watchful, thoughtful, and quietly curious.
+* Her face tends to read as cautious, worried but still curious.
 * Her expressions should preserve a youthful reserved quality even when more animated.
 
 <!-- ZET:END HEAD_DESCRIPTION_PICARESQUE -->
@@ -361,12 +310,12 @@ Back view head notes:
 
 * Hair color: black with soft painted highlights.
 * Hair length: short bob, ending around the jaw, nape, and upper neck.
-* Hair texture: thick, straight to lightly tousled; not curly.
+* Hair texture: thick, lightly tousled to rumpled; not curly.
 * Hair volume: full around the crown and sides, with layered locks.
 * Hairline: natural, partly obscured by bangs and face-framing strands.
 * Part/asymmetry: loose natural parting with slightly uneven face-framing locks.
 * Face-framing behavior: front locks frame both cheeks and may partially overlap the forehead and sides of the face.
-* Back silhouette: compact rounded bob at the back, tied with a woodland-green ribbon bow; ribbon tails hang behind.
+* Back silhouette: compact rumpled bob at the back, tied with a woodland-green ribbon bow; ribbon tails hang behind.
 * Forbidden drift: do not make the hair long, curly, brightly colored, braided as the main style, or styled as adult adventurer hair unless requested.
 
 <!-- ZET:END HAIR_DESCRIPTION_FACTS -->
@@ -440,7 +389,7 @@ Back-right 3/4 hair notes:
 
 Back view hair notes:
 
-* Show a compact rounded black bob ending at the nape and upper neck.
+* Show a compact rumpled bob ending at the nape and upper neck.
 * The woodland-green ribbon bow sits at the back of the hair with hanging tails.
 
 <!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK -->
@@ -464,7 +413,7 @@ Back view hair notes:
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->
 
-* Costume name: Youth student woodland outfit.
+* Costume name: Woodland outfit.
 * Top: plain leaf-green blouse with soft gathered fabric and simple front tie.
 * Sleeves: long loose sleeves gathered at the wrists.
 * Neckline: modest gathered neckline, close to the collarbone without being formal.
@@ -681,12 +630,10 @@ Back view equipment notes:
 
 <!-- ZET:BEGIN EXPRESSION_DESCRIPTION_FACTS -->
 
-* Neutral expression: reserved, attentive, and calm.
+* Neutral expression: worried, alert.
 * Default eye behavior: observant violet eyes, focused forward or toward the requested view direction.
-* Default mouth behavior: closed or lightly neutral; small restrained smile permitted when appropriate.
-* Brow behavior: relaxed or slightly thoughtful; avoid exaggerated intensity.
-* Allowed emotional range: curious, thoughtful, shy, quietly pleased, uncertain, focused, or gently worried.
-* Forbidden expression drift: avoid adult confidence, seductive expression, combat aggression, theatrical smirking, or exaggerated anime shock unless specifically requested.
+* Default mouth behavior: closed or lightly neutral.
+* Brow behavior: tend to be slightly raised with alertness; avoid exaggerated intensity.
 
 <!-- ZET:END EXPRESSION_DESCRIPTION_FACTS -->
 
@@ -742,11 +689,9 @@ Core identity anchors:
 * Youth-phase Tsaeytte: High Elf feminine youth, apparent age 17–18.
 * Soft youthful oval-to-heart face with delicate high-elf features.
 * Large violet anime-influenced eyes.
-* Short thick black bob with face-framing locks and woodland-green ribbon at the back.
+* Short thick rumpled black bob with face-framing locks and woodland-green ribbon at the back.
 * Long pointed high-elf ears, slim and tapered.
-* Slender youthful build, narrow shoulders, reserved student posture.
-* Plain leaf-green blouse and dark green wool skirt silhouette.
-* Student gear anchor: books, beginner spellbook, satchel, pouch, or basic study tools; no weapons.
+* Slender youthful build.
 
 The rendered character must be recognizably the same person across views, expressions, outfits, and rendering passes.
 
@@ -772,7 +717,7 @@ Face preservation rules:
 
 Hair preservation rules:
 
-* Preserve the short thick black bob ending around the jaw, nape, and upper neck.
+* Preserve the short thick rumpled black bob ending around the jaw, nape, and upper neck.
 * Preserve face-framing locks around both cheeks.
 * Preserve the woodland-green ribbon bow at the back for youth-phase hair when the view allows it.
 * Preserve straight to lightly tousled texture.
@@ -800,7 +745,7 @@ Ear preservation rules:
 Body preservation rules:
 
 * Preserve the slender youthful build.
-* Preserve the about 5'4" / 162 cm height impression where scale is relevant.
+* Preserve the about 5' / 152 cm height impression where scale is relevant.
 * Preserve narrow shoulders, slim limbs, and reserved posture.
 * Do not alter body type to match generic fantasy warrior, adult adventurer, glamour model, or heroic archetypes.
 
@@ -993,8 +938,8 @@ For body-reference, use simple neutral fitment clothing.
 
 Clothing rules:
 
-* neutral tan tube top.
-* neutral tan compression shorts.
+* neutral tan shorts.
+* neutral tan t-shirt.
 * Minimal detail.
 * no additional garments
 * Readable body silhouette.
@@ -1007,8 +952,8 @@ For body-reference, use simple neutral form-fitting clothing.
 
 Clothing rules:
 
-* neutral tan compression shorts.
-* No shirt.
+* neutral tan shorts.
+* neutral tan t-shirt.
 * Minimal detail.
 * no additional garments
 * Readable body silhouette.
