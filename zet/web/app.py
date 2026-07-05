@@ -320,6 +320,10 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["expression"] = _format_value(asset.expression)
     data["ai_state"] = _format_value(asset.ai_state)
     data["final_image_output"] = _format_value(asset.final_image_output)
+    if asset.costume_path:
+        data["costume_path"] = str(zet_app.path_service.resolve_path(asset.costume_path))
+    if asset.expression_definition_path:
+        data["expression_definition_path"] = str(zet_app.path_service.resolve_path(asset.expression_definition_path))
     data["updated_at_display"] = _format_timestamp_with_age(asset.updated_at)
     render_comment = zet_app.render_review_comment(asset.character, asset.phase, asset.asset_id)
     data["render_review_comment"] = render_comment

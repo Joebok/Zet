@@ -364,6 +364,11 @@ function downloadFileUrl(path) {
   return `/api/file?${params.toString()}`;
 }
 
+function basename(path) {
+  // Return the final filename segment from a Windows or POSIX path.
+  return String(path || "").split(/[\\/]/).filter(Boolean).pop() || "";
+}
+
 function showActionMessage(message, kind = "info") {
   actionMessage.textContent = message || "";
   actionMessage.className = `action-message ${kind}`;
@@ -1431,14 +1436,19 @@ function renderCostumeTable() {
     const countCell = document.createElement("td");
     countCell.textContent = costume.asset_count ?? 0;
     const pathCell = document.createElement("td");
-    pathCell.textContent = costume.path || "";
+    pathCell.textContent = basename(costume.path || "");
+    pathCell.title = costume.path || "";
     const actionCell = document.createElement("td");
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.textContent = "Open";
     openButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      openSourceEditorForSource(costume.source, showCostumeMessage);
+      if (costume.source?.source_path) {
+        openSourceEditorForSource(costume.source, showCostumeMessage);
+      } else {
+        showCostumeMessage("No costume template source is available for this row.", "error");
+      }
     });
     actionCell.append(openButton);
     row.append(nameCell, countCell, pathCell, actionCell);
@@ -1568,6 +1578,10 @@ function fillExpressionIdentityKeySelect() {
 }
 
 function expressionDefinitionForAsset(asset) {
+  // Prefer the backend-resolved governing source; legacy assets may still store _Lib-relative paths.
+  if (asset.governing_template_source?.source_path) {
+    return { source: asset.governing_template_source };
+  }
   return state.expressionDefinitions.find((item) => item.path === asset.expression_definition_path) || null;
 }
 
