@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "next_asset_id": 42,
+  "next_asset_id": 43,
   "assets": [
     {
       "asset_id": 1,
@@ -1319,6 +1319,29 @@
       "reference_files": [],
       "identity_key_id": "IK_17_Front-Headshot_20260704_091643",
       "expression_definition_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Expressions\\Embarrassed.md",
+      "costume_path": null
+    },
+    {
+      "asset_id": 42,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Expression",
+      "body_view": "Front",
+      "head_view": "Front",
+      "costume": null,
+      "expression": "Angry",
+      "asset_state": "NEW",
+      "pipeline_stage": "MANIFEST",
+      "actor": "PYTHON",
+      "ai_state": null,
+      "final_image_output": "Expression_Angry.png",
+      "last_ai_update": null,
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-05T06:46:33",
+      "reference_files": [],
+      "identity_key_id": "IK_17_Front-Headshot_20260704_091643",
+      "expression_definition_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Expressions\\Angry.md",
       "costume_path": null
     }
   ]
