@@ -12,6 +12,7 @@
       "sheet_type": "full",
       "parent_turnaround_id": null,
       "crop_percent": null,
+      "detection_tolerance": 50.0,
       "deletable": false,
       "status": "LOCKED",
       "source_asset_ids": [
@@ -28,7 +29,7 @@
       "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Adult\\Turnarounds\\Costume-Dressing_Canonical-Adventure-Gear.png",
       "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Canonical-Adventure-Gear\\Candidate\\analysis.json",
       "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Canonical-Adventure-Gear\\Candidate\\diagnostics",
-      "updated_at": "2026-07-03T16:18:15"
+      "updated_at": "2026-07-04T23:21:24"
     },
     {
       "turnaround_id": "Character-Assembly_Assembled",
@@ -128,8 +129,9 @@
       "sheet_type": "partial",
       "parent_turnaround_id": "Costume-Dressing_Canonical-Adventure-Gear",
       "crop_percent": 28.0,
+      "detection_tolerance": 50.0,
       "deletable": true,
-      "status": "LOCKED",
+      "status": "RENDER_REVIEW",
       "source_asset_ids": [
         25,
         26,
@@ -144,7 +146,7 @@
       "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Adult\\Turnarounds\\Costume-Dressing_Canonical-Adventure-Gear__partial__Upper-Body.png",
       "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Canonical-Adventure-Gear__partial__Upper-Body\\Candidate\\analysis.json",
       "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Canonical-Adventure-Gear__partial__Upper-Body\\Candidate\\diagnostics",
-      "updated_at": "2026-07-03T13:28:45"
+      "updated_at": "2026-07-04T23:22:03"
     },
     {
       "turnaround_id": "Costume-Dressing_Canonical-Adventure-Gear__partial__Half-Body",
@@ -157,8 +159,9 @@
       "sheet_type": "partial",
       "parent_turnaround_id": "Costume-Dressing_Canonical-Adventure-Gear",
       "crop_percent": 40.0,
+      "detection_tolerance": 50.0,
       "deletable": true,
-      "status": "LOCKED",
+      "status": "RENDER_REVIEW",
       "source_asset_ids": [
         25,
         26,
@@ -173,7 +176,7 @@
       "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Adult\\Turnarounds\\Costume-Dressing_Canonical-Adventure-Gear__partial__Half-Body.png",
       "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Canonical-Adventure-Gear__partial__Half-Body\\Candidate\\analysis.json",
       "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Canonical-Adventure-Gear__partial__Half-Body\\Candidate\\diagnostics",
-      "updated_at": "2026-07-03T13:28:21"
+      "updated_at": "2026-07-04T23:21:53"
     },
     {
       "turnaround_id": "Costume-Dressing_Formal-Gown",
@@ -203,6 +206,36 @@
       "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Formal-Gown\\Candidate\\analysis.json",
       "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Formal-Gown\\Candidate\\diagnostics",
       "updated_at": "2026-07-03T18:05:00"
+    },
+    {
+      "turnaround_id": "Costume-Dressing_Forest-Nightgown-worn",
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "source_pipeline": "Costume-Dressing",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "label": "Costume-Dressing / Forest Nightgown worn",
+      "sheet_type": "full",
+      "parent_turnaround_id": null,
+      "crop_percent": null,
+      "detection_tolerance": 6.0,
+      "deletable": false,
+      "status": "RENDER_REVIEW",
+      "source_asset_ids": [
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50
+      ],
+      "candidate_image_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Forest-Nightgown-worn\\Candidate\\Costume-Dressing_Forest-Nightgown-worn.png",
+      "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Adult\\Turnarounds\\Costume-Dressing_Forest-Nightgown-worn.png",
+      "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Forest-Nightgown-worn\\Candidate\\analysis.json",
+      "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Adult\\Turnaround\\Costume-Dressing_Forest-Nightgown-worn\\Candidate\\diagnostics",
+      "updated_at": "2026-07-04T23:23:25"
     }
   ]
 }

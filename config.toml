@@ -11,7 +11,7 @@ BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
-Enabled = true
+Enabled = false
 Model = "qwen3.5:4b-condenser"
 PromptFile = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
 
@@ -25,3 +25,7 @@ IntervalSeconds = 300
 
 [Render]
 Backend = "manual_chatgpt"
+
+[AIPromptReview]
+Model = "qwen3.5:9b"
+InstructionsFile = "Config/AI_Prompt_Review_Instructions.md"

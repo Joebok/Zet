@@ -13,6 +13,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
+from Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     extract_template_field,
@@ -309,13 +310,13 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "CHARACTER_PHASE": phase,
         "BODY_VIEW_TOKEN": body_view_token,
         "BODY_VIEW_LABEL": str(body_view_data["label"]),
-        "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+        "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
         "HEAD_VIEW_TOKEN": head_view_token,
         "HEAD_VIEW_LABEL": str(head_view_data["label"]),
         "HEAD_VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
         "VIEW_TOKEN": body_view_token,
         "VIEW_LABEL": str(body_view_data["label"]),
-        "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+        "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **template_metadata(character_template_path),
         **costume_metadata(costume_path),
@@ -340,6 +341,11 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=body_view_token,
         final_prompt_name=final_prompt_path.name,
+    )
+    references = auxiliary_references_for_texts(
+        project_root,
+        [prompt_text],
+        references,
     )
     final_prompt_path.write_text(prompt_text, encoding="utf-8")
     source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -370,6 +376,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
+        "reference_files": references,
     }
 
 

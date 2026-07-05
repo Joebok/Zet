@@ -72,9 +72,9 @@
       "sheet_type": "full",
       "parent_turnaround_id": null,
       "crop_percent": null,
-      "detection_tolerance": 20.0,
+      "detection_tolerance": 10.0,
       "deletable": false,
-      "status": "LOCKED",
+      "status": "RENDER_REVIEW",
       "source_asset_ids": [
         1,
         2,
@@ -89,7 +89,7 @@
       "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Youth\\Turnarounds\\Body-Reference.png",
       "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Body-Reference\\Candidate\\analysis.json",
       "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Body-Reference\\Candidate\\diagnostics",
-      "updated_at": "2026-07-04T08:28:49"
+      "updated_at": "2026-07-04T15:06:09"
     },
     {
       "turnaround_id": "Costume-Dressing_Woodland-outfit",
@@ -104,7 +104,7 @@
       "crop_percent": null,
       "detection_tolerance": 50.0,
       "deletable": false,
-      "status": "RENDER_REVIEW",
+      "status": "LOCKED",
       "source_asset_ids": [
         25,
         26,
@@ -119,7 +119,37 @@
       "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Youth\\Turnarounds\\Costume-Dressing_Woodland-outfit.png",
       "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Costume-Dressing_Woodland-outfit\\Candidate\\analysis.json",
       "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Costume-Dressing_Woodland-outfit\\Candidate\\diagnostics",
-      "updated_at": "2026-07-04T09:12:33"
+      "updated_at": "2026-07-05T06:43:49"
+    },
+    {
+      "turnaround_id": "Costume-Dressing_Forest-Nightgown",
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "source_pipeline": "Costume-Dressing",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "label": "Costume-Dressing / Forest Nightgown",
+      "sheet_type": "full",
+      "parent_turnaround_id": null,
+      "crop_percent": null,
+      "detection_tolerance": 20.0,
+      "deletable": false,
+      "status": "LOCKED",
+      "source_asset_ids": [
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "candidate_image_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Costume-Dressing_Forest-Nightgown\\Candidate\\Costume-Dressing_Forest-Nightgown.png",
+      "locked_image_path": "_Lib\\Assets\\Tsaeytte\\Youth\\Turnarounds\\Costume-Dressing_Forest-Nightgown.png",
+      "analysis_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Costume-Dressing_Forest-Nightgown\\Candidate\\analysis.json",
+      "diagnostics_path": "_Lib\\Pipelines\\Tsaeytte\\Youth\\Turnaround\\Costume-Dressing_Forest-Nightgown\\Candidate\\diagnostics",
+      "updated_at": "2026-07-05T06:43:46"
     }
   ]
 }

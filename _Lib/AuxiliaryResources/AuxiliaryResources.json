@@ -10,6 +10,126 @@
       "updated_at": "2026-07-04T08:55:21",
       "created_at": "2026-07-04T08:55:21",
       "notes": null
+    },
+    {
+      "resource_id": "valindia-vandemere-profile",
+      "category": "person",
+      "label": "Valindia Vandemere - profile",
+      "tag": "{{AUX:person:valindia-vandemere-profile}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\person\\valindia-vandemere-profile.png",
+      "updated_at": "2026-07-04T18:07:42",
+      "created_at": "2026-07-04T18:07:42",
+      "notes": null
+    },
+    {
+      "resource_id": "valindia-vandemere-headshot",
+      "category": "person",
+      "label": "Valindia Vandemere - headshot",
+      "tag": "{{AUX:person:valindia-vandemere-headshot}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\person\\valindia-vandemere-headshot.png",
+      "updated_at": "2026-07-04T18:10:36",
+      "created_at": "2026-07-04T18:08:36",
+      "notes": null
+    },
+    {
+      "resource_id": "the-spire-archway",
+      "category": "place",
+      "label": "The Spire - Archway",
+      "tag": "{{AUX:place:the-spire-archway}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\place\\the-spire-archway.png",
+      "updated_at": "2026-07-04T18:21:56",
+      "created_at": "2026-07-04T18:21:56",
+      "notes": null
+    },
+    {
+      "resource_id": "the-spire-lab",
+      "category": "place",
+      "label": "The Spire - Lab",
+      "tag": "{{AUX:place:the-spire-lab}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\place\\the-spire-lab.png",
+      "updated_at": "2026-07-04T18:32:53",
+      "created_at": "2026-07-04T18:32:53",
+      "notes": null
+    },
+    {
+      "resource_id": "thia-oakenshade-montage",
+      "category": "person",
+      "label": "Thia Oakenshade - montage",
+      "tag": "{{AUX:person:thia-oakenshade-montage}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\person\\thia-oakenshade-montage.png",
+      "updated_at": "2026-07-04T18:49:19",
+      "created_at": "2026-07-04T18:49:19",
+      "notes": null
+    },
+    {
+      "resource_id": "thalor-oakenshade-montage",
+      "category": "person",
+      "label": "Thalor Oakenshade - montage",
+      "tag": "{{AUX:person:thalor-oakenshade-montage}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\person\\thalor-oakenshade-montage.png",
+      "updated_at": "2026-07-04T19:03:22",
+      "created_at": "2026-07-04T19:03:22",
+      "notes": null
+    },
+    {
+      "resource_id": "family-dinner",
+      "category": "place",
+      "label": "Family Dinner",
+      "tag": "{{AUX:place:family-dinner}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\place\\family-dinner.png",
+      "updated_at": "2026-07-04T19:11:10",
+      "created_at": "2026-07-04T19:11:10",
+      "notes": null
+    },
+    {
+      "resource_id": "family-dinner-then",
+      "category": "place",
+      "label": "Family Dinner Then",
+      "tag": "{{AUX:place:family-dinner-then}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\place\\family-dinner-then.png",
+      "updated_at": "2026-07-04T19:21:13",
+      "created_at": "2026-07-04T19:21:13",
+      "notes": null
+    },
+    {
+      "resource_id": "freydis",
+      "category": "person",
+      "label": "Freydis",
+      "tag": "{{AUX:person:freydis}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\person\\freydis.jpg",
+      "updated_at": "2026-07-04T20:01:02",
+      "created_at": "2026-07-04T20:01:02",
+      "notes": null
+    },
+    {
+      "resource_id": "tsaeytte-dagger",
+      "category": "thing",
+      "label": "Tsaeytte-Dagger",
+      "tag": "{{AUX:thing:tsaeytte-dagger}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-dagger.png",
+      "updated_at": "2026-07-04T20:40:03",
+      "created_at": "2026-07-04T20:40:03",
+      "notes": null
+    },
+    {
+      "resource_id": "tsaeytte-left-hip",
+      "category": "thing",
+      "label": "Tsaeytte-Left-Hip",
+      "tag": "{{AUX:thing:tsaeytte-left-hip}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-left-hip.png",
+      "updated_at": "2026-07-04T20:40:45",
+      "created_at": "2026-07-04T20:40:45",
+      "notes": null
+    },
+    {
+      "resource_id": "high-low-skirt-back-reference",
+      "category": "thing",
+      "label": "High-Low Skirt Back Reference",
+      "tag": "{{AUX:thing:high-low-skirt-back-reference}}",
+      "image_path": "_Lib\\AuxiliaryResources\\Images\\thing\\high-low-skirt-back-reference.png",
+      "updated_at": "2026-07-04T23:07:44",
+      "created_at": "2026-07-04T23:07:44",
+      "notes": null
     }
   ]
 }

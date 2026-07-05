@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +15,13 @@ from zet.services.turnaround_service import TURNAROUND_VIEW_ORDER
 @dataclass(frozen=True)
 class CostumeCreateResult:
     """Describe a newly saved costume and its generated assets."""
+    costume: Costume
+    assets: list[Asset]
+
+
+@dataclass(frozen=True)
+class CostumeUpdateResult:
+    """Describe an updated costume and affected Costume-Dressing assets."""
     costume: Costume
     assets: list[Asset]
 
@@ -88,6 +95,13 @@ class CostumeService:
             return "\n".join(lines) + ("\n" if markdown.endswith("\n") else "")
         return f"{replacement}\n\n{markdown}"
 
+    def _default_costume_markdown(self) -> str:
+        """Return the shared costume template contents."""
+        template_path = self.path_service.shared_costume_template_path()
+        if not template_path.exists():
+            raise CostumeServiceError(f"Shared costume template is missing: {template_path}")
+        return template_path.read_text(encoding="utf-8")
+
     def list_costumes(self, character: str, phase: str) -> list[Costume]:
         """List costume templates for a character phase."""
         root = self.path_service.character_path(character, phase)
@@ -99,8 +113,6 @@ class CostumeService:
         costume_name = str(costume_name or "").strip()
         if not costume_name:
             raise CostumeServiceError("Costume name is required.")
-        if not str(markdown or "").strip():
-            raise CostumeServiceError("Costume markdown is required.")
         costume_slug = self.safe_costume_slug(costume_name)
         display_name = self.costume_name_from_slug(costume_slug)
         costume_path = self.path_service.costume_template_path(character, phase, display_name)
@@ -113,7 +125,8 @@ class CostumeService:
         ]
         if existing:
             raise CostumeServiceError(f"Costume-Dressing assets already exist for {display_name}.")
-        costume_path.write_text(self._sync_costume_name(markdown, display_name), encoding="utf-8")
+        source_markdown = str(markdown or "").strip() or self._default_costume_markdown()
+        costume_path.write_text(self._sync_costume_name(source_markdown, display_name), encoding="utf-8")
         assets = []
         for view in TURNAROUND_VIEW_ORDER:
             output_name = f"Costume-Dressing_{view}_{view}_{costume_slug.replace('_', '-')}.png"
@@ -138,4 +151,51 @@ class CostumeService:
         return CostumeCreateResult(
             costume=self._costume_from_path(character, phase, costume_path),
             assets=assets,
+        )
+
+    def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
+        """Rename a costume template and update related Costume-Dressing assets."""
+        cleaned_name = str(costume_name or "").strip()
+        if not cleaned_name:
+            raise CostumeServiceError("Costume name is required.")
+        existing = None
+        for costume in self.list_costumes(character, phase):
+            if costume.slug == costume_slug or costume.name == costume_slug:
+                existing = costume
+                break
+        if existing is None:
+            raise CostumeServiceError(f"Costume not found: {costume_slug}")
+
+        new_slug = self.safe_costume_slug(cleaned_name)
+        display_name = self.costume_name_from_slug(new_slug)
+        old_path = Path(existing.path)
+        new_path = self.path_service.costume_template_path(character, phase, display_name)
+        if old_path != new_path and new_path.exists():
+            raise CostumeServiceError(f"Costume template already exists: {new_path.name}")
+
+        contents = old_path.read_text(encoding="utf-8") if old_path.exists() else self._default_costume_markdown()
+        updated_contents = self._sync_costume_name(contents, display_name)
+        if old_path != new_path:
+            new_path.write_text(updated_contents, encoding="utf-8")
+            old_path.unlink(missing_ok=True)
+        else:
+            old_path.write_text(updated_contents, encoding="utf-8")
+
+        updated_assets = []
+        for asset in self.asset_repository.list_assets(character, phase):
+            if asset.pipeline != "Costume-Dressing":
+                continue
+            if asset.costume != existing.name and asset.costume_path != str(old_path):
+                continue
+            updated_asset = replace(asset)
+            updated_asset.costume = display_name
+            updated_asset.costume_path = str(new_path)
+            updated_asset.final_image_output = f"Costume-Dressing_{asset.body_view}_{asset.body_view}_{new_slug.replace('_', '-')}.png"
+            updated_asset.updated_at = self._timestamp()
+            self.asset_repository.save_asset(updated_asset)
+            updated_assets.append(updated_asset)
+
+        return CostumeUpdateResult(
+            costume=self._costume_from_path(character, phase, new_path),
+            assets=updated_assets,
         )

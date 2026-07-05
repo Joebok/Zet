@@ -13,6 +13,18 @@ class PathService:
         """Return the character phase folder."""
         return Path(self.config.base_character_path) / character / phase
 
+    def shared_character_path(self) -> Path:
+        """Return the shared character template folder."""
+        return Path(self.config.base_character_path) / "_Shared"
+
+    def shared_costume_template_path(self) -> Path:
+        """Return the shared costume markdown template path."""
+        return self.shared_character_path() / "Costume_Template.md"
+
+    def shared_expression_template_path(self) -> Path:
+        """Return the shared expression markdown template path."""
+        return self.shared_character_path() / "Expression_Template.md"
+
     def character_asset_path(self, character: str, phase: str) -> Path:
         """Return the character phase asset folder."""
         return Path(self.config.base_asset_path) / character / phase

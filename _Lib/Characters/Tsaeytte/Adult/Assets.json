@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "next_asset_id": 43,
+  "next_asset_id": 51,
   "assets": [
     {
       "asset_id": 1,
@@ -728,10 +728,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Front_Front_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_25_RENDER_20260703_065334 (20260703_065334_25_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_25_RENDER_20260704_222024 (20260704_222024_25_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T07:35:45",
+      "updated_at": "2026-07-04T22:37:31",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -740,8 +740,19 @@
           "source_asset_id": 17,
           "body_view": "Front",
           "head_view": "Front"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 26,
@@ -757,10 +768,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_26_RENDER_20260703_131909 (20260703_131909_26_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_26_RENDER_20260704_222024 (20260704_222024_26_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T13:26:04",
+      "updated_at": "2026-07-04T22:37:36",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -769,8 +780,19 @@
           "source_asset_id": 18,
           "body_view": "Front-Left-3-4",
           "head_view": "Front-Left-3-4"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 27,
@@ -786,10 +808,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_27_RENDER_20260703_065334 (20260703_065334_27_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_27_RENDER_20260704_222025 (20260704_222025_27_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T08:07:15",
+      "updated_at": "2026-07-04T22:45:08",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -798,8 +820,19 @@
           "source_asset_id": 19,
           "body_view": "Front-Right-3-4",
           "head_view": "Front-Right-3-4"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 28,
@@ -815,10 +848,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Left-Profile_Left-Profile_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_28_RENDER_20260703_065335 (20260703_065335_28_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_28_RENDER_20260704_222025 (20260704_222025_28_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T07:35:53",
+      "updated_at": "2026-07-04T22:26:35",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -827,8 +860,19 @@
           "source_asset_id": 20,
           "body_view": "Left-Profile",
           "head_view": "Left-Profile"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 29,
@@ -844,10 +888,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Right-Profile_Right-Profile_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_29_RENDER_20260703_064843 (20260703_064843_29_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_29_RENDER_20260704_222026 (20260704_222026_29_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T07:35:54",
+      "updated_at": "2026-07-04T22:37:43",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -856,8 +900,19 @@
           "source_asset_id": 21,
           "body_view": "Right-Profile",
           "head_view": "Right-Profile"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 30,
@@ -873,10 +928,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_30_RENDER_20260703_065336 (20260703_065336_30_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_30_RENDER_20260704_222026 (20260704_222026_30_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T07:35:57",
+      "updated_at": "2026-07-04T22:37:48",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -885,8 +940,19 @@
           "source_asset_id": 22,
           "body_view": "Back-Left-3-4",
           "head_view": "Back-Left-3-4"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 31,
@@ -902,10 +968,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_31_RENDER_20260703_065337 (20260703_065337_31_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_31_RENDER_20260704_222027 (20260704_222027_31_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T08:15:13",
+      "updated_at": "2026-07-04T22:40:44",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -914,8 +980,19 @@
           "source_asset_id": 23,
           "body_view": "Back-Right-3-4",
           "head_view": "Back-Right-3-4"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 32,
@@ -931,10 +1008,10 @@
       "actor": "HUMAN_AGENT",
       "ai_state": null,
       "final_image_output": "Costume-Dressing_Back_Back_Canonical-Adventure-Gear.png",
-      "last_ai_update": "AI answer harvested: Ask_Asset_32_RENDER_20260703_065337 (20260703_065337_32_RENDER)",
+      "last_ai_update": "AI answer harvested: Ask_Asset_32_RENDER_20260704_231745 (20260704_231745_32_RENDER)",
       "error_code": null,
       "error_message": null,
-      "updated_at": "2026-07-03T07:35:59",
+      "updated_at": "2026-07-04T23:19:50",
       "reference_files": [
         {
           "role": "character_assembly",
@@ -943,8 +1020,27 @@
           "source_asset_id": 24,
           "body_view": "Back",
           "head_view": "Back"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "high-low-skirt-back-reference",
+          "label": "High-Low Skirt Back Reference",
+          "tag": "{{AUX:thing:high-low-skirt-back-reference}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\high-low-skirt-back-reference.png"
+        },
+        {
+          "role": "auxiliary_resource",
+          "category": "thing",
+          "resource_id": "tsaeytte-adult-jewelry",
+          "label": "Tsaeytte-Adult-Jewelry",
+          "tag": "{{AUX:thing:tsaeytte-adult-jewelry}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet\\_Lib\\AuxiliaryResources\\Images\\thing\\tsaeytte-adult-jewelry.png"
         }
-      ]
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": null
     },
     {
       "asset_id": 33,
@@ -1269,6 +1365,262 @@
       "identity_key_id": "IK_18_Front-Left-3-4-Head-and-Shoulders_20260703_161737",
       "expression_definition_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Expressions\\Angry.md",
       "costume_path": null
+    },
+    {
+      "asset_id": 43,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front",
+      "head_view": "Front",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front_Front_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_43_RENDER_20260704_164421 (20260704_164421_43_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:42",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front_Front_Assembled.png",
+          "source_asset_id": 17,
+          "body_view": "Front",
+          "head_view": "Front"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 44,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front-Left-3-4",
+      "head_view": "Front-Left-3-4",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_44_RENDER_20260704_164709 (20260704_164709_44_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:42",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front-Left-3-4_Front-Left-3-4_Assembled.png",
+          "source_asset_id": 18,
+          "body_view": "Front-Left-3-4",
+          "head_view": "Front-Left-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 45,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Left-Profile",
+      "head_view": "Left-Profile",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Left-Profile_Left-Profile_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_45_RENDER_20260704_173007 (20260704_173007_45_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T18:03:04",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Left-Profile_Left-Profile_Assembled.png",
+          "source_asset_id": 20,
+          "body_view": "Left-Profile",
+          "head_view": "Left-Profile"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 46,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back-Left-3-4",
+      "head_view": "Back-Left-3-4",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_46_RENDER_20260704_173007 (20260704_173007_46_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:43",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back-Left-3-4_Back-Left-3-4_Assembled.png",
+          "source_asset_id": 22,
+          "body_view": "Back-Left-3-4",
+          "head_view": "Back-Left-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 47,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back",
+      "head_view": "Back",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back_Back_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_47_RENDER_20260704_173008 (20260704_173008_47_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:43",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back_Back_Assembled.png",
+          "source_asset_id": 24,
+          "body_view": "Back",
+          "head_view": "Back"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 48,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back-Right-3-4",
+      "head_view": "Back-Right-3-4",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_48_RENDER_20260704_173008 (20260704_173008_48_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:44",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Back-Right-3-4_Back-Right-3-4_Assembled.png",
+          "source_asset_id": 23,
+          "body_view": "Back-Right-3-4",
+          "head_view": "Back-Right-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 49,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Right-Profile",
+      "head_view": "Right-Profile",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Right-Profile_Right-Profile_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_49_RENDER_20260704_173008 (20260704_173008_49_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:44",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Right-Profile_Right-Profile_Assembled.png",
+          "source_asset_id": 21,
+          "body_view": "Right-Profile",
+          "head_view": "Right-Profile"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
+    },
+    {
+      "asset_id": 50,
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front-Right-3-4",
+      "head_view": "Front-Right-3-4",
+      "costume": "Forest Nightgown worn",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Forest-Nightgown-worn.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_50_RENDER_20260704_173009 (20260704_173009_50_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T17:42:44",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Character-Assembly_Front-Right-3-4_Front-Right-3-4_Assembled.png",
+          "source_asset_id": 19,
+          "body_view": "Front-Right-3-4",
+          "head_view": "Front-Right-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Adult\\Costume_Forest_Nightgown_worn.md"
     }
   ]
 }

@@ -14,8 +14,10 @@
 <body>
   <header class="app-header">
     <div class="brand">
-      <img src="/img/logo.png" alt="ZET logo">
-      <span>ZET</span>
+      <img src="/img/Zet.png" alt="Zet logo">
+    </div>
+    <div class="header-middle">
+      <img id="header-fitment-preview" alt="Locked front-left three-quarter head fitment" hidden>
     </div>
     <div class="context-controls">
       <label>
@@ -41,11 +43,18 @@
     <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
     <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
     <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Resources</button>
+    <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
     <button class="tab workflow-tab" data-page="costumes">Costumes</button>
     <button class="tab workflow-tab" data-page="expressions">Expressions</button>
-    <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
-    <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
     <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
+    <div class="toolbar-menu">
+      <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
+      <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+        <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
+        <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
+        <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
+      </div>
+    </div>
   </nav>
 
   <main>
@@ -120,6 +129,10 @@
               <input id="asset-filter-todo" type="checkbox">
               To Do Only
             </label>
+            <label class="checkbox-row">
+              <input id="asset-filter-hide-base" type="checkbox">
+              Hide Base Images
+            </label>
             <label>
               Pipeline
               <select id="asset-filter-pipeline">
@@ -166,6 +179,10 @@
             <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
             <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
             <button id="create-identity-from-asset" type="button" disabled>Identity Key</button>
+          </div>
+          <div class="button-row compact">
+            <button id="open-character-template" type="button" disabled>Character Template</button>
+            <button id="open-governing-template" type="button" disabled>Governing Template</button>
           </div>
           <div id="asset-status-detail" class="asset-detail-view">
             <div class="detail-grid">
@@ -268,6 +285,10 @@
                 <option value="thing">Thing</option>
               </select>
             </label>
+            <label>
+              Search Label
+              <input id="aux-resource-search" type="search" placeholder="contains...">
+            </label>
             <label class="checkbox-label">
               <input id="aux-resource-show-thumbnails" type="checkbox">
               Thumbnails
@@ -310,6 +331,57 @@
       </div>
     </section>
 
+    <section id="phase-comparison-page" class="page">
+      <div class="page-title-row">
+        <h1>Phase Comparison</h1>
+        <div id="phase-comparison-status" class="status-text"></div>
+      </div>
+      <div id="phase-comparison-message" class="action-message" hidden></div>
+      <section class="control-panel phase-comparison-controls">
+        <label>
+          Character
+          <select id="phase-comparison-character"></select>
+        </label>
+        <label>
+          Left Phase
+          <select id="phase-comparison-left-phase"></select>
+        </label>
+        <label>
+          Right Phase
+          <select id="phase-comparison-right-phase"></select>
+        </label>
+        <label>
+          Pipeline
+          <select id="phase-comparison-pipeline"></select>
+        </label>
+        <label id="phase-comparison-left-costume-wrap" hidden>
+          Left Costume
+          <select id="phase-comparison-left-costume"></select>
+        </label>
+        <label id="phase-comparison-right-costume-wrap" hidden>
+          Right Costume
+          <select id="phase-comparison-right-costume"></select>
+        </label>
+        <div class="button-row compact">
+          <button id="phase-comparison-prev" type="button">Previous</button>
+          <button id="phase-comparison-next" type="button">Next</button>
+        </div>
+      </section>
+      <div id="phase-comparison-meta" class="summary-bar"></div>
+      <div class="phase-comparison-layout">
+        <section class="render-comparison-panel">
+          <h3 id="phase-comparison-left-title">Left Phase</h3>
+          <div id="phase-comparison-left-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
+          <dl id="phase-comparison-left-meta" class="compact-details"></dl>
+        </section>
+        <section class="render-comparison-panel">
+          <h3 id="phase-comparison-right-title">Right Phase</h3>
+          <div id="phase-comparison-right-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
+          <dl id="phase-comparison-right-meta" class="compact-details"></dl>
+        </section>
+      </div>
+    </section>
+
     <section id="costumes-page" class="page">
       <div class="page-title-row">
         <h1>Costumes</h1>
@@ -330,17 +402,22 @@
             <tbody></tbody>
           </table>
         </section>
-        <aside class="review-actions">
-          <h3>Add Costume</h3>
+        <aside class="review-actions item-editor">
+          <button id="costume-add-new" type="button">Add New</button>
+          <h3 id="costume-form-title">Add Costume</h3>
           <label>
             Costume Name
             <input id="costume-name" type="text" placeholder="Formal">
           </label>
-          <label>
+          <label id="costume-template-file-wrap">
             Costume Markdown
             <input id="costume-template-file" type="file" accept=".md,text/markdown,text/plain">
           </label>
           <button id="costume-create" type="button">Save Costume</button>
+          <section id="costume-preview-section" class="item-preview-section" hidden>
+            <h3>Locked Turnaround</h3>
+            <div id="costume-preview" class="render-image-viewer small-preview">No locked turnaround.</div>
+          </section>
         </aside>
       </div>
     </section>
@@ -368,8 +445,9 @@
             <tbody></tbody>
           </table>
         </section>
-        <aside class="review-actions">
-          <h3>Add Expression</h3>
+        <aside class="review-actions item-editor">
+          <button id="expression-add-new" type="button">Add New</button>
+          <h3 id="expression-form-title">Add Expression</h3>
           <label>
             Label
             <input id="expression-label" type="text" placeholder="Soft Smile">
@@ -378,11 +456,15 @@
             Identity Key
             <select id="expression-identity-key"></select>
           </label>
-          <label>
+          <label id="expression-definition-file-wrap">
             Definition Markdown
             <input id="expression-definition-file" type="file" accept=".md,text/markdown,text/plain">
           </label>
           <button id="expression-create" type="button">Save Expression</button>
+          <section id="expression-preview-section" class="item-preview-section" hidden>
+            <h3>Locked Expression</h3>
+            <div id="expression-preview" class="render-image-viewer small-preview">No locked expression.</div>
+          </section>
         </aside>
       </div>
     </section>
@@ -711,6 +793,7 @@
             <button id="refresh-ai-controls">Refresh</button>
             <button id="activate-proxy-stop">Activate Stop</button>
             <button id="resume-proxy-stop">Resume</button>
+            <button id="dump-ai-queue">Dump Queue</button>
           </div>
           <label>
             Monitor note
@@ -789,6 +872,8 @@
             <label>Local render preset<input id="setting-local-render-preset" type="text"></label>
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
             <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
+            <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
+            <label>AI prompt review instructions<input id="setting-ai-prompt-review-file" type="text"></label>
             <label>
               Final render backend
               <select id="setting-render-backend">
@@ -811,8 +896,15 @@
               Pipeline
               <select id="prompt-review-pipeline"></select>
             </label>
-            <label class="checkbox-row"><input id="prompt-review-enabled" type="checkbox"> Include PROMPT_REVIEW</label>
-            <button id="prompt-review-save" type="button">Save Prompt Review Stage</button>
+            <label>
+              Prompt review
+              <select id="prompt-review-mode">
+                <option value="HUMAN">Human</option>
+                <option value="AI">AI</option>
+                <option value="OFF">Off</option>
+              </select>
+            </label>
+            <button id="prompt-review-save" type="button">Save Prompt Review Mode</button>
           </div>
           <table id="pipeline-stage-table">
             <thead>

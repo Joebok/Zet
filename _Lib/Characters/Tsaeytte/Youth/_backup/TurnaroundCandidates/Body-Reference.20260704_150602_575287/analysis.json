@@ -1,0 +1,250 @@
+[
+  {
+    "name": "Body-Reference_Front",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Front.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      149,
+      149,
+      149
+    ],
+    "bbox": [
+      522,
+      320,
+      679,
+      999
+    ],
+    "character_width": 157,
+    "character_height": 679,
+    "foot_y": 999,
+    "mask_pixel_count": 24820,
+    "scale_factor": 2.011782032400589,
+    "scaled_width": 2060,
+    "scaled_height": 3090,
+    "scaled_bbox": [
+      1050,
+      644,
+      1366,
+      2010
+    ],
+    "scaled_foot_y": 2010
+  },
+  {
+    "name": "Body-Reference_Front-Left-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Front-Left-3-4.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      142,
+      142,
+      142
+    ],
+    "bbox": [
+      325,
+      67,
+      652,
+      1457
+    ],
+    "character_width": 327,
+    "character_height": 1390,
+    "foot_y": 1457,
+    "mask_pixel_count": 119270,
+    "scale_factor": 0.9827338129496402,
+    "scaled_width": 1006,
+    "scaled_height": 1509,
+    "scaled_bbox": [
+      319,
+      66,
+      641,
+      1432
+    ],
+    "scaled_foot_y": 1432
+  },
+  {
+    "name": "Body-Reference_Left-Profile",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Left-Profile.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      143,
+      142,
+      142
+    ],
+    "bbox": [
+      388,
+      75,
+      601,
+      1444
+    ],
+    "character_width": 213,
+    "character_height": 1369,
+    "foot_y": 1444,
+    "mask_pixel_count": 90144,
+    "scale_factor": 0.997808619430241,
+    "scaled_width": 1022,
+    "scaled_height": 1533,
+    "scaled_bbox": [
+      387,
+      75,
+      600,
+      1441
+    ],
+    "scaled_foot_y": 1441
+  },
+  {
+    "name": "Body-Reference_Back-Left-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Back-Left-3-4.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      124,
+      123,
+      125
+    ],
+    "bbox": [
+      350,
+      38,
+      640,
+      1465
+    ],
+    "character_width": 290,
+    "character_height": 1427,
+    "foot_y": 1465,
+    "mask_pixel_count": 183434,
+    "scale_factor": 0.9572529782761037,
+    "scaled_width": 980,
+    "scaled_height": 1470,
+    "scaled_bbox": [
+      335,
+      36,
+      613,
+      1402
+    ],
+    "scaled_foot_y": 1402
+  },
+  {
+    "name": "Body-Reference_Back",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Back.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      149,
+      149,
+      148
+    ],
+    "bbox": [
+      438,
+      191,
+      677,
+      1431
+    ],
+    "character_width": 239,
+    "character_height": 1240,
+    "foot_y": 1431,
+    "mask_pixel_count": 67582,
+    "scale_factor": 1.1016129032258064,
+    "scaled_width": 1128,
+    "scaled_height": 1692,
+    "scaled_bbox": [
+      483,
+      210,
+      746,
+      1576
+    ],
+    "scaled_foot_y": 1576
+  },
+  {
+    "name": "Body-Reference_Back-Right-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Back-Right-3-4.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      142,
+      141,
+      141
+    ],
+    "bbox": [
+      380,
+      79,
+      661,
+      1431
+    ],
+    "character_width": 281,
+    "character_height": 1352,
+    "foot_y": 1431,
+    "mask_pixel_count": 126020,
+    "scale_factor": 1.0103550295857988,
+    "scaled_width": 1035,
+    "scaled_height": 1552,
+    "scaled_bbox": [
+      384,
+      80,
+      668,
+      1446
+    ],
+    "scaled_foot_y": 1446
+  },
+  {
+    "name": "Body-Reference_Right-Profile",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Right-Profile.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      142,
+      141,
+      141
+    ],
+    "bbox": [
+      439,
+      82,
+      623,
+      1444
+    ],
+    "character_width": 184,
+    "character_height": 1362,
+    "foot_y": 1444,
+    "mask_pixel_count": 99289,
+    "scale_factor": 1.0029368575624082,
+    "scaled_width": 1027,
+    "scaled_height": 1541,
+    "scaled_bbox": [
+      440,
+      82,
+      625,
+      1448
+    ],
+    "scaled_foot_y": 1448
+  },
+  {
+    "name": "Body-Reference_Front-Right-3-4",
+    "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Body-Reference_Front-Right-3-4.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      143,
+      142,
+      142
+    ],
+    "bbox": [
+      344,
+      76,
+      677,
+      1463
+    ],
+    "character_width": 333,
+    "character_height": 1387,
+    "foot_y": 1463,
+    "mask_pixel_count": 151640,
+    "scale_factor": 0.9848594087959625,
+    "scaled_width": 1008,
+    "scaled_height": 1513,
+    "scaled_bbox": [
+      339,
+      75,
+      667,
+      1441
+    ],
+    "scaled_foot_y": 1441
+  }
+]

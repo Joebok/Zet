@@ -15,11 +15,12 @@ from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.config_service import ConfigService
-from zet.services.costume_service import CostumeCreateResult, CostumeService
-from zet.services.expression_service import ExpressionCreateResult, ExpressionService
+from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
+from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.path_service import PathService
+from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
@@ -135,6 +136,7 @@ class ZetApp:
         expression_service: ExpressionService,
         character_onboarding_service: CharacterOnboardingService,
         auxiliary_resource_service: AuxiliaryResourceService,
+        phase_comparison_service: PhaseComparisonService,
         config_path: str | Path = "config.toml",
     ):
         self.config = config
@@ -152,6 +154,7 @@ class ZetApp:
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service
         self.auxiliary_resource_service = auxiliary_resource_service
+        self.phase_comparison_service = phase_comparison_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -221,6 +224,12 @@ class ZetApp:
         expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
         character_onboarding_service = CharacterOnboardingService(path_service)
         auxiliary_resource_service = AuxiliaryResourceService(auxiliary_resource_repository, path_service)
+        phase_comparison_service = PhaseComparisonService(
+            asset_repository,
+            pipeline_repository,
+            path_service,
+            Path(__file__).resolve().parents[1],
+        )
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -237,6 +246,7 @@ class ZetApp:
             expression_service,
             character_onboarding_service,
             auxiliary_resource_service,
+            phase_comparison_service,
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
@@ -248,6 +258,29 @@ class ZetApp:
     def list_auxiliary_resources(self, category: str) -> list[AuxiliaryResource]:
         """List global auxiliary resources by category."""
         return self.auxiliary_resource_service.list_resources(category)
+
+    def phase_comparison(
+        self,
+        character: str,
+        left_phase: str,
+        right_phase: str,
+        pipeline: str = "",
+        selected_index: int = 0,
+        selected_slot_key: str = "",
+        left_costume: str = "",
+        right_costume: str = "",
+    ) -> PhaseComparisonResult:
+        """Build a read-only comparison between two character phases."""
+        return self.phase_comparison_service.compare(
+            character,
+            left_phase,
+            right_phase,
+            pipeline,
+            selected_index,
+            selected_slot_key,
+            left_costume,
+            right_costume,
+        )
 
     def create_auxiliary_resource(
         self,
@@ -408,6 +441,10 @@ class ZetApp:
         """Archive harvested AI answer folders."""
         return self.ai_proxy_service.archive_harvested_answers()
 
+    def dump_pending_ai_queue(self):
+        """Clear pending AI queue ask and claimed task folders."""
+        return self.ai_proxy_service.dump_pending_queue()
+
     def list_monitor_responses(self):
         return self.ai_proxy_service.list_monitor_responses()
 
@@ -428,6 +465,10 @@ class ZetApp:
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
+
+    def set_pipeline_prompt_review_mode(self, character: str, phase: str, pipeline_name: str, mode: str) -> None:
+        """Set PROMPT_REVIEW mode for one character phase pipeline."""
+        self.pipeline_control_service.set_prompt_review_mode(character, phase, pipeline_name, mode)
 
     def set_pipeline_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
         """Enable or disable PROMPT_REVIEW for one character phase pipeline."""
@@ -583,6 +624,10 @@ class ZetApp:
         """Create a costume template and its Costume-Dressing assets."""
         return self.costume_service.create_costume(character, phase, costume_name, markdown)
 
+    def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
+        """Update a costume template and its Costume-Dressing assets."""
+        return self.costume_service.update_costume(character, phase, costume_slug, costume_name)
+
     def list_expression_assets(self, character: str, phase: str):
         """List Expression assets for a character phase."""
         return self.expression_service.list_expression_assets(character, phase)
@@ -601,3 +646,19 @@ class ZetApp:
     ) -> ExpressionCreateResult:
         """Create an expression definition and its Expression asset."""
         return self.expression_service.create_expression(character, phase, label, identity_key_id, markdown)
+
+    def update_expression(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        label: str,
+        identity_key_id: str,
+        regenerate: bool = False,
+    ) -> ExpressionUpdateResult:
+        """Update an expression definition and optionally reset it for regeneration."""
+        result = self.expression_service.update_expression(character, phase, asset_id, label, identity_key_id)
+        if regenerate:
+            regenerated = self.asset_service.regenerate(character, phase, asset_id)
+            return ExpressionUpdateResult(expression=result.expression, asset=regenerated)
+        return result

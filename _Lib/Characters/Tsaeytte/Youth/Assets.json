@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "next_asset_id": 33,
+  "next_asset_id": 42,
   "assets": [
     {
       "asset_id": 1,
@@ -1041,6 +1041,285 @@
       "identity_key_id": null,
       "expression_definition_path": null,
       "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Woodland_outfit.md"
+    },
+    {
+      "asset_id": 33,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front",
+      "head_view": "Front",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front_Front_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_33_RENDER_20260704_144818 (20260704_144818_33_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:09",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Front_Front_Assembled.png",
+          "source_asset_id": 17,
+          "body_view": "Front",
+          "head_view": "Front"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 34,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front-Left-3-4",
+      "head_view": "Front-Left-3-4",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_34_RENDER_20260704_145009 (20260704_145009_34_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:09",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Front-Left-3-4_Front-Left-3-4_Assembled.png",
+          "source_asset_id": 18,
+          "body_view": "Front-Left-3-4",
+          "head_view": "Front-Left-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 35,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Left-Profile",
+      "head_view": "Left-Profile",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Left-Profile_Left-Profile_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_35_RENDER_20260704_145010 (20260704_145010_35_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:10",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Left-Profile_Left-Profile_Assembled.png",
+          "source_asset_id": 20,
+          "body_view": "Left-Profile",
+          "head_view": "Left-Profile"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 36,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back-Left-3-4",
+      "head_view": "Back-Left-3-4",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_36_RENDER_20260704_145010 (20260704_145010_36_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:05:13",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Back-Left-3-4_Back-Left-3-4_Assembled.png",
+          "source_asset_id": 22,
+          "body_view": "Back-Left-3-4",
+          "head_view": "Back-Left-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 37,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back",
+      "head_view": "Back",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back_Back_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_37_RENDER_20260704_145010 (20260704_145010_37_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:10",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Back_Back_Assembled.png",
+          "source_asset_id": 24,
+          "body_view": "Back",
+          "head_view": "Back"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 38,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Back-Right-3-4",
+      "head_view": "Back-Right-3-4",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_38_RENDER_20260704_145011 (20260704_145011_38_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:11",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Back-Right-3-4_Back-Right-3-4_Assembled.png",
+          "source_asset_id": 23,
+          "body_view": "Back-Right-3-4",
+          "head_view": "Back-Right-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 39,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Right-Profile",
+      "head_view": "Right-Profile",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Right-Profile_Right-Profile_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_39_RENDER_20260704_145011 (20260704_145011_39_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:12",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Right-Profile_Right-Profile_Assembled.png",
+          "source_asset_id": 21,
+          "body_view": "Right-Profile",
+          "head_view": "Right-Profile"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 40,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Costume-Dressing",
+      "body_view": "Front-Right-3-4",
+      "head_view": "Front-Right-3-4",
+      "costume": "Forest Nightgown",
+      "expression": null,
+      "asset_state": "LOCKED",
+      "pipeline_stage": "LOCKED",
+      "actor": "HUMAN_AGENT",
+      "ai_state": null,
+      "final_image_output": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Forest-Nightgown.png",
+      "last_ai_update": "AI answer harvested: Ask_Asset_40_RENDER_20260704_145011 (20260704_145011_40_RENDER)",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-04T15:04:12",
+      "reference_files": [
+        {
+          "role": "character_assembly",
+          "label": "Locked assembled character image",
+          "path": "_Lib\\Assets\\Tsaeytte\\Youth\\Character-Assembly_Front-Right-3-4_Front-Right-3-4_Assembled.png",
+          "source_asset_id": 19,
+          "body_view": "Front-Right-3-4",
+          "head_view": "Front-Right-3-4"
+        }
+      ],
+      "identity_key_id": null,
+      "expression_definition_path": null,
+      "costume_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Costume_Forest_Nightgown.md"
+    },
+    {
+      "asset_id": 41,
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "pipeline": "Expression",
+      "body_view": "Front",
+      "head_view": "Front",
+      "costume": null,
+      "expression": "Embarrassed",
+      "asset_state": "NEW",
+      "pipeline_stage": "MANIFEST",
+      "actor": "PYTHON",
+      "ai_state": null,
+      "final_image_output": "Expression_Embarrassed.png",
+      "last_ai_update": null,
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-07-05T06:44:28",
+      "reference_files": [],
+      "identity_key_id": "IK_17_Front-Headshot_20260704_091643",
+      "expression_definition_path": "_Lib\\Characters\\Tsaeytte\\Youth\\Expressions\\Embarrassed.md",
+      "costume_path": null
     }
   ]
 }

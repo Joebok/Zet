@@ -20,6 +20,7 @@ The page should let the user:
 - choose one phase for the left side
 - choose one phase for the right side
 - choose one pipeline from a dropdown
+- if pipeline is "Costume-Dressing" then each phase can select one independently.
 - step through the locked assets for that pipeline
 - view the left and right locked images side by side
 

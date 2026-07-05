@@ -1,0 +1,250 @@
+[
+  {
+    "name": "Costume-Dressing_Front_Front_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front_Front_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      146,
+      140,
+      138
+    ],
+    "bbox": [
+      309,
+      66,
+      720,
+      1463
+    ],
+    "character_width": 411,
+    "character_height": 1397,
+    "foot_y": 1463,
+    "mask_pixel_count": 232630,
+    "scale_factor": 0.9949892627057981,
+    "scaled_width": 1019,
+    "scaled_height": 1527,
+    "scaled_bbox": [
+      307,
+      66,
+      716,
+      1456
+    ],
+    "scaled_foot_y": 1456
+  },
+  {
+    "name": "Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      148,
+      143,
+      140
+    ],
+    "bbox": [
+      297,
+      66,
+      666,
+      1429
+    ],
+    "character_width": 369,
+    "character_height": 1363,
+    "foot_y": 1429,
+    "mask_pixel_count": 153088,
+    "scale_factor": 1.0198092443140132,
+    "scaled_width": 1044,
+    "scaled_height": 1565,
+    "scaled_bbox": [
+      303,
+      67,
+      679,
+      1457
+    ],
+    "scaled_foot_y": 1457
+  },
+  {
+    "name": "Costume-Dressing_Left-Profile_Left-Profile_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Left-Profile_Left-Profile_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      140,
+      134,
+      133
+    ],
+    "bbox": [
+      331,
+      93,
+      641,
+      1130
+    ],
+    "character_width": 310,
+    "character_height": 1037,
+    "foot_y": 1130,
+    "mask_pixel_count": 92155,
+    "scale_factor": 1.3404050144648023,
+    "scaled_width": 1373,
+    "scaled_height": 2058,
+    "scaled_bbox": [
+      444,
+      125,
+      859,
+      1515
+    ],
+    "scaled_foot_y": 1515
+  },
+  {
+    "name": "Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Back-Left-3-4_Back-Left-3-4_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      134,
+      130,
+      130
+    ],
+    "bbox": [
+      297,
+      76,
+      684,
+      1466
+    ],
+    "character_width": 387,
+    "character_height": 1390,
+    "foot_y": 1466,
+    "mask_pixel_count": 228561,
+    "scale_factor": 1.0,
+    "scaled_width": 1024,
+    "scaled_height": 1535,
+    "scaled_bbox": [
+      297,
+      76,
+      684,
+      1466
+    ],
+    "scaled_foot_y": 1466
+  },
+  {
+    "name": "Costume-Dressing_Back_Back_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Back_Back_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      133,
+      127,
+      127
+    ],
+    "bbox": [
+      307,
+      69,
+      709,
+      1163
+    ],
+    "character_width": 402,
+    "character_height": 1094,
+    "foot_y": 1163,
+    "mask_pixel_count": 197277,
+    "scale_factor": 1.270566727605119,
+    "scaled_width": 1301,
+    "scaled_height": 1950,
+    "scaled_bbox": [
+      390,
+      88,
+      901,
+      1478
+    ],
+    "scaled_foot_y": 1478
+  },
+  {
+    "name": "Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Back-Right-3-4_Back-Right-3-4_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      133,
+      127,
+      126
+    ],
+    "bbox": [
+      346,
+      60,
+      699,
+      1482
+    ],
+    "character_width": 353,
+    "character_height": 1422,
+    "foot_y": 1482,
+    "mask_pixel_count": 202249,
+    "scale_factor": 0.9774964838255977,
+    "scaled_width": 1001,
+    "scaled_height": 1501,
+    "scaled_bbox": [
+      338,
+      59,
+      683,
+      1449
+    ],
+    "scaled_foot_y": 1449
+  },
+  {
+    "name": "Costume-Dressing_Right-Profile_Right-Profile_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Right-Profile_Right-Profile_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1536,
+    "background_rgb": [
+      153,
+      147,
+      146
+    ],
+    "bbox": [
+      342,
+      76,
+      642,
+      1467
+    ],
+    "character_width": 300,
+    "character_height": 1391,
+    "foot_y": 1467,
+    "mask_pixel_count": 150262,
+    "scale_factor": 0.9992810927390366,
+    "scaled_width": 1023,
+    "scaled_height": 1535,
+    "scaled_bbox": [
+      342,
+      76,
+      642,
+      1466
+    ],
+    "scaled_foot_y": 1466
+  },
+  {
+    "name": "Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Forest-Nightgown-worn",
+    "path": "_Lib\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Forest-Nightgown-worn.png",
+    "source_width": 1024,
+    "source_height": 1535,
+    "background_rgb": [
+      145,
+      141,
+      139
+    ],
+    "bbox": [
+      326,
+      69,
+      686,
+      1475
+    ],
+    "character_width": 360,
+    "character_height": 1406,
+    "foot_y": 1475,
+    "mask_pixel_count": 172904,
+    "scale_factor": 0.9886201991465149,
+    "scaled_width": 1012,
+    "scaled_height": 1518,
+    "scaled_bbox": [
+      322,
+      68,
+      678,
+      1458
+    ],
+    "scaled_foot_y": 1458
+  }
+]

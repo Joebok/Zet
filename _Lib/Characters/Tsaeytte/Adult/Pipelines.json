@@ -75,7 +75,6 @@
         "ADD_REF",
         "MANIFEST",
         "PROMPT",
-        "PROMPT_REVIEW",
         "RENDER",
         "RENDER_REVIEW"
       ],
@@ -83,7 +82,6 @@
         "ADD_REF": "PYTHON",
         "MANIFEST": "PYTHON",
         "PROMPT": "PYTHON",
-        "PROMPT_REVIEW": "HUMAN_AGENT",
         "RENDER": "AI_AGENT",
         "RENDER_REVIEW": "HUMAN_AGENT"
       },
@@ -91,7 +89,6 @@
         "ADD_REF": "zet.workers.costume_dressing_manifest_worker",
         "MANIFEST": "zet.workers.costume_dressing_manifest_worker",
         "PROMPT": "zet.workers.costume_dressing_prompt_worker",
-        "PROMPT_REVIEW": "zet.workers.noop_worker",
         "RENDER": "zet.workers.noop_worker",
         "RENDER_REVIEW": "zet.workers.noop_worker"
       }

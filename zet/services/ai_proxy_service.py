@@ -587,6 +587,37 @@ class AIProxyService:
         self._write_json_atomic(self.ai_proxy_path_service.stop_manifest_path(), payload)
         return payload
 
+    def dump_pending_queue(self) -> dict:
+        """Delete pending ask and claimed task folders without touching answers."""
+        self._ensure_queue_dirs()
+        removed: list[dict] = []
+
+        def remove_path(path: Path, queue_area: str, worker_id: str = "") -> None:
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            elif path.exists():
+                path.unlink(missing_ok=True)
+            removed.append({"queue_area": queue_area, "worker_id": worker_id, "name": path.name})
+
+        for ask_path in sorted(path for path in self.ai_proxy_path_service.ask_root().iterdir() if path.is_dir()):
+            remove_path(ask_path, "Ask")
+
+        claimed_root = self.ai_proxy_path_service.claimed_root()
+        if claimed_root.exists():
+            for worker_dir in sorted(path for path in claimed_root.iterdir() if path.is_dir()):
+                for task_path in sorted(path for path in worker_dir.iterdir() if path.is_dir()):
+                    remove_path(task_path, "Claimed", worker_dir.name)
+
+        claims_root = self.ai_proxy_path_service.claims_root()
+        if claims_root.exists():
+            for claim_path in sorted(path for path in claims_root.iterdir() if path.is_file()):
+                remove_path(claim_path, "Claims")
+
+        return {
+            "removed_count": len(removed),
+            "removed": removed,
+        }
+
     def archive_harvested_answers(self) -> dict:
         """Move harvested answer folders into a dated archive folder."""
         self._ensure_queue_dirs()

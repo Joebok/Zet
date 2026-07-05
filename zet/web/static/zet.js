@@ -2,6 +2,7 @@ const state = {
   characters: [],
   phasesByCharacter: {},
   onboardingStatuses: {},
+  headerPreviews: {},
   onboardingOptions: { species_ancestry: [], gender_presentation: [] },
   character: null,
   phase: null,
@@ -9,6 +10,7 @@ const state = {
   selectedAssetId: null,
   assetFilters: {
     todoOnly: false,
+    hideBaseImages: false,
     pipeline: "",
   },
   assetDetailMode: "status",
@@ -40,20 +42,38 @@ const state = {
   identityKeySourceAssetId: null,
   identityKeyPreview: null,
   costumes: [],
+  selectedCostumeSlug: null,
   expressionAssets: [],
   expressionDefinitions: [],
   expressionIdentityKeys: [],
+  selectedExpressionAssetId: null,
   auxiliaryResources: [],
   selectedAuxiliaryResourceId: null,
   auxiliaryResourceImageBlob: null,
+  phaseComparison: {
+    character: "",
+    leftPhase: "",
+    rightPhase: "",
+    pipeline: "",
+    leftCostume: "",
+    rightCostume: "",
+    selectedIndex: 0,
+    selectedSlotKey: "",
+    rows: [],
+  },
 };
 
 const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
+const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
 const newCharacterButton = document.querySelector("#new-character");
 const newPhaseButton = document.querySelector("#new-phase");
+const headerFitmentPreview = document.querySelector("#header-fitment-preview");
+const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
+const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
+const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const onboardingStatus = document.querySelector("#onboarding-status");
 const onboardingMessage = document.querySelector("#onboarding-message");
 const onboardingCharacter = document.querySelector("#onboarding-character");
@@ -71,6 +91,7 @@ const onboardingTitle = document.querySelector("#onboarding-title");
 const onboardingStatusList = document.querySelector("#onboarding-status-list");
 const onboardingValidation = document.querySelector("#onboarding-validation");
 const assetFilterTodo = document.querySelector("#asset-filter-todo");
+const assetFilterHideBase = document.querySelector("#asset-filter-hide-base");
 const assetFilterPipeline = document.querySelector("#asset-filter-pipeline");
 const assetTableBody = document.querySelector("#asset-table tbody");
 const assetStatus = document.querySelector("#asset-status");
@@ -90,6 +111,8 @@ const assetLockedDetail = document.querySelector("#asset-locked-detail");
 const assetLockedImage = document.querySelector("#asset-locked-image");
 const assetLockedPath = document.querySelector("#asset-locked-path");
 const createIdentityFromAssetButton = document.querySelector("#create-identity-from-asset");
+const openCharacterTemplateButton = document.querySelector("#open-character-template");
+const openGoverningTemplateButton = document.querySelector("#open-governing-template");
 const assetNoteDialog = document.querySelector("#asset-note-dialog");
 const assetNoteTitle = document.querySelector("#asset-note-title");
 const assetNoteText = document.querySelector("#asset-note-text");
@@ -143,6 +166,7 @@ const archiveHarvestedAiButton = document.querySelector("#archive-harvested-ai")
 const refreshAiControlsButton = document.querySelector("#refresh-ai-controls");
 const activateProxyStopButton = document.querySelector("#activate-proxy-stop");
 const resumeProxyStopButton = document.querySelector("#resume-proxy-stop");
+const dumpAiQueueButton = document.querySelector("#dump-ai-queue");
 const monitorInstruction = document.querySelector("#monitor-instruction");
 const sendMonitorTestButton = document.querySelector("#send-monitor-test");
 const processTableBody = document.querySelector("#process-table tbody");
@@ -166,12 +190,14 @@ const settingLocalRenderAuto = document.querySelector("#setting-local-render-aut
 const settingLocalRenderPreset = document.querySelector("#setting-local-render-preset");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
+const settingAiPromptReviewModel = document.querySelector("#setting-ai-prompt-review-model");
+const settingAiPromptReviewFile = document.querySelector("#setting-ai-prompt-review-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
 const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
 const promptReviewPipeline = document.querySelector("#prompt-review-pipeline");
-const promptReviewEnabled = document.querySelector("#prompt-review-enabled");
+const promptReviewMode = document.querySelector("#prompt-review-mode");
 const promptReviewSave = document.querySelector("#prompt-review-save");
 const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
 const batchIncludeLocked = document.querySelector("#batch-include-locked");
@@ -252,19 +278,30 @@ const identityKeyPreview = document.querySelector("#identity-key-preview");
 const costumeStatus = document.querySelector("#costume-status");
 const costumeMessage = document.querySelector("#costume-message");
 const costumeTableBody = document.querySelector("#costume-table tbody");
+const costumeAddNew = document.querySelector("#costume-add-new");
+const costumeFormTitle = document.querySelector("#costume-form-title");
 const costumeName = document.querySelector("#costume-name");
+const costumeTemplateFileWrap = document.querySelector("#costume-template-file-wrap");
 const costumeTemplateFile = document.querySelector("#costume-template-file");
 const costumeCreate = document.querySelector("#costume-create");
+const costumePreviewSection = document.querySelector("#costume-preview-section");
+const costumePreview = document.querySelector("#costume-preview");
 const expressionStatus = document.querySelector("#expression-status");
 const expressionMessage = document.querySelector("#expression-message");
 const expressionTableBody = document.querySelector("#expression-table tbody");
+const expressionAddNew = document.querySelector("#expression-add-new");
+const expressionFormTitle = document.querySelector("#expression-form-title");
 const expressionLabel = document.querySelector("#expression-label");
 const expressionIdentityKey = document.querySelector("#expression-identity-key");
+const expressionDefinitionFileWrap = document.querySelector("#expression-definition-file-wrap");
 const expressionDefinitionFile = document.querySelector("#expression-definition-file");
 const expressionCreate = document.querySelector("#expression-create");
+const expressionPreviewSection = document.querySelector("#expression-preview-section");
+const expressionPreview = document.querySelector("#expression-preview");
 const auxResourceStatus = document.querySelector("#aux-resource-status");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const auxResourceCategory = document.querySelector("#aux-resource-category");
+const auxResourceSearch = document.querySelector("#aux-resource-search");
 const auxResourceShowThumbnails = document.querySelector("#aux-resource-show-thumbnails");
 const auxResourceTable = document.querySelector("#aux-resource-table");
 const auxResourceTableBody = document.querySelector("#aux-resource-table tbody");
@@ -279,6 +316,25 @@ const auxResourceSave = document.querySelector("#aux-resource-save");
 const auxResourceClear = document.querySelector("#aux-resource-clear");
 const auxResourceTag = document.querySelector("#aux-resource-tag");
 const auxResourceCopyTag = document.querySelector("#aux-resource-copy-tag");
+const phaseComparisonStatus = document.querySelector("#phase-comparison-status");
+const phaseComparisonMessage = document.querySelector("#phase-comparison-message");
+const phaseComparisonCharacter = document.querySelector("#phase-comparison-character");
+const phaseComparisonLeftPhase = document.querySelector("#phase-comparison-left-phase");
+const phaseComparisonRightPhase = document.querySelector("#phase-comparison-right-phase");
+const phaseComparisonPipeline = document.querySelector("#phase-comparison-pipeline");
+const phaseComparisonLeftCostumeWrap = document.querySelector("#phase-comparison-left-costume-wrap");
+const phaseComparisonRightCostumeWrap = document.querySelector("#phase-comparison-right-costume-wrap");
+const phaseComparisonLeftCostume = document.querySelector("#phase-comparison-left-costume");
+const phaseComparisonRightCostume = document.querySelector("#phase-comparison-right-costume");
+const phaseComparisonPrev = document.querySelector("#phase-comparison-prev");
+const phaseComparisonNext = document.querySelector("#phase-comparison-next");
+const phaseComparisonMeta = document.querySelector("#phase-comparison-meta");
+const phaseComparisonLeftTitle = document.querySelector("#phase-comparison-left-title");
+const phaseComparisonRightTitle = document.querySelector("#phase-comparison-right-title");
+const phaseComparisonLeftImage = document.querySelector("#phase-comparison-left-image");
+const phaseComparisonRightImage = document.querySelector("#phase-comparison-right-image");
+const phaseComparisonLeftMeta = document.querySelector("#phase-comparison-left-meta");
+const phaseComparisonRightMeta = document.querySelector("#phase-comparison-right-meta");
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -386,6 +442,12 @@ function showAuxResourceMessage(message, kind = "info") {
   auxResourceMessage.hidden = !message;
 }
 
+function showPhaseComparisonMessage(message, kind = "info") {
+  phaseComparisonMessage.textContent = message || "";
+  phaseComparisonMessage.className = `action-message ${kind}`;
+  phaseComparisonMessage.hidden = !message;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -443,12 +505,23 @@ function saveStoredContext() {
   }
 }
 
+function loadStoredAssetFilters() {
+  // Keep the base-image visibility preference across browser sessions.
+  state.assetFilters.hideBaseImages = window.localStorage.getItem(HIDE_BASE_IMAGES_STORAGE_KEY) === "true";
+  assetFilterHideBase.checked = state.assetFilters.hideBaseImages;
+}
+
+function saveStoredAssetFilters() {
+  window.localStorage.setItem(HIDE_BASE_IMAGES_STORAGE_KEY, state.assetFilters.hideBaseImages ? "true" : "false");
+}
+
 async function loadContext() {
   const payload = await fetchJson("/api/context");
   const stored = loadStoredContext();
   state.characters = payload.characters || [];
   state.phasesByCharacter = payload.phases_by_character || {};
   state.onboardingStatuses = payload.onboarding_statuses || {};
+  state.headerPreviews = payload.header_previews || {};
   state.onboardingOptions = payload.onboarding_options || { species_ancestry: [], gender_presentation: [] };
   const preferredCharacter = state.character || stored.character;
   state.character = preferredCharacter && state.characters.includes(preferredCharacter) ? preferredCharacter : payload.default_character;
@@ -464,6 +537,25 @@ async function loadContext() {
   renderOnboarding();
 }
 
+function updateHeaderFitmentPreview() {
+  // Show the locked Front-Left-3-4 head-fitment image when this phase has one.
+  const preview = state.headerPreviews?.[state.character]?.[state.phase] || null;
+  if (preview?.image_path) {
+    const cacheKey = [
+      state.character || "",
+      state.phase || "",
+      preview.asset_id || "",
+      preview.updated_at || "",
+      Date.now().toString(),
+    ].join("|");
+    headerFitmentPreview.src = fileUrl(preview.image_path, cacheKey);
+    headerFitmentPreview.hidden = false;
+  } else {
+    headerFitmentPreview.hidden = true;
+    headerFitmentPreview.removeAttribute("src");
+  }
+}
+
 function updatePhaseSelect() {
   const phases = state.phasesByCharacter[state.character] || [];
   setSelectOptions(phaseSelect, phases);
@@ -472,6 +564,7 @@ function updatePhaseSelect() {
   }
   phaseSelect.value = state.phase || "";
   saveStoredContext();
+  updateHeaderFitmentPreview();
 }
 
 function selectedOnboardingStatus() {
@@ -717,11 +810,21 @@ function filteredAssets() {
     if (state.assetFilters.todoOnly && asset.asset_state === "LOCKED") {
       return false;
     }
+    if (state.assetFilters.hideBaseImages && isBaseImageAsset(asset)) {
+      return false;
+    }
     if (state.assetFilters.pipeline && asset.pipeline !== state.assetFilters.pipeline) {
       return false;
     }
     return true;
   });
+}
+
+function isBaseImageAsset(asset) {
+  return (
+    ["Body-Reference", "Head-Fitment", "Character-Assembly"].includes(asset?.pipeline || "") &&
+    asset?.asset_state === "LOCKED"
+  );
 }
 
 function visibleTodoAssets() {
@@ -793,7 +896,9 @@ function showAssetNote(asset) {
 
 function applyAssetFilters() {
   state.assetFilters.todoOnly = assetFilterTodo.checked;
+  state.assetFilters.hideBaseImages = assetFilterHideBase.checked;
   state.assetFilters.pipeline = assetFilterPipeline.value;
+  saveStoredAssetFilters();
   renderAssetTable();
   updateActionButtons(state.assetDetail);
 }
@@ -817,6 +922,8 @@ function clearDetail() {
   historyText.textContent = "";
   assetLockedImage.textContent = "No locked image.";
   assetLockedPath.textContent = "";
+  openCharacterTemplateButton.disabled = true;
+  openGoverningTemplateButton.disabled = true;
   updateAssetDetailMode();
   updateActionButtons(null);
 }
@@ -844,8 +951,15 @@ function renderDetail(detail) {
   stageText.textContent = detail.stage_text || "No stage marker found.";
   historyText.textContent = detail.history_text || "No history found.";
   renderAssetLockedImage(detail);
+  updateAssetTemplateButtons(detail);
   updateAssetDetailMode();
   updateActionButtons(detail);
+}
+
+function updateAssetTemplateButtons(detail) {
+  const asset = detail?.asset || {};
+  openCharacterTemplateButton.disabled = !asset.character_template_source?.source_path;
+  openGoverningTemplateButton.disabled = !asset.governing_template_source?.source_path;
 }
 
 function updateAssetDetailMode() {
@@ -989,7 +1103,7 @@ async function advanceVisibleAssets() {
 }
 
 function activatePage(page) {
-  if (page !== "onboarding" && page !== "auxiliary-resources" && !selectedPhaseReady()) {
+  if (page !== "onboarding" && page !== "auxiliary-resources" && page !== "phase-comparison" && !selectedPhaseReady()) {
     page = "onboarding";
   }
   for (const button of document.querySelectorAll(".tab")) {
@@ -1003,6 +1117,7 @@ function activatePage(page) {
   document.querySelector("#turnarounds-page").classList.toggle("active", page === "turnarounds");
   document.querySelector("#identity-keys-page").classList.toggle("active", page === "identity-keys");
   document.querySelector("#auxiliary-resources-page").classList.toggle("active", page === "auxiliary-resources");
+  document.querySelector("#phase-comparison-page").classList.toggle("active", page === "phase-comparison");
   document.querySelector("#costumes-page").classList.toggle("active", page === "costumes");
   document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
@@ -1013,7 +1128,7 @@ function activatePage(page) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "costumes", "expressions", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -1034,6 +1149,10 @@ function activatePage(page) {
   }
   if (page === "auxiliary-resources") {
     loadAuxiliaryResources();
+  }
+  if (page === "phase-comparison") {
+    initializePhaseComparisonControls();
+    loadPhaseComparison();
   }
   if (page === "costumes") {
     loadCostumes();
@@ -1061,8 +1180,33 @@ function setupTabs() {
       if (button.dataset.page === "identity-keys") {
         state.identityKeyMode = "list";
       }
+      closeToolbarSettingsMenu();
       activatePage(button.dataset.page);
     });
+  }
+}
+
+function toggleToolbarSettingsMenu() {
+  const isHidden = toolbarSettingsMenu.hidden;
+  toolbarSettingsMenu.hidden = !isHidden;
+  toolbarSettingsButton.setAttribute("aria-expanded", isHidden ? "true" : "false");
+}
+
+function closeToolbarSettingsMenu() {
+  toolbarSettingsMenu.hidden = true;
+  toolbarSettingsButton.setAttribute("aria-expanded", "false");
+}
+
+async function harvestAiFromToolbar() {
+  // Run the AI harvest action without navigating away from the current page.
+  closeToolbarSettingsMenu();
+  toolbarHarvestAi.disabled = true;
+  toolbarSettingsButton.textContent = "...";
+  try {
+    await runAiControlsAction("/api/ai-controls/harvest");
+  } finally {
+    toolbarHarvestAi.disabled = false;
+    toolbarSettingsButton.textContent = "⚙";
   }
 }
 
@@ -1268,7 +1412,11 @@ async function loadCostumes() {
   costumeStatus.textContent = "Loading costumes...";
   const payload = await fetchJson(`/api/costumes?${currentQuery().toString()}`);
   state.costumes = payload.costumes || [];
+  if (state.selectedCostumeSlug && !state.costumes.some((item) => item.slug === state.selectedCostumeSlug)) {
+    state.selectedCostumeSlug = null;
+  }
   renderCostumeTable();
+  renderCostumeEditor();
   costumeStatus.textContent = `${state.costumes.length} costume(s)`;
 }
 
@@ -1276,6 +1424,8 @@ function renderCostumeTable() {
   costumeTableBody.replaceChildren();
   for (const costume of state.costumes) {
     const row = document.createElement("tr");
+    row.dataset.costumeSlug = costume.slug;
+    row.classList.toggle("selected", costume.slug === state.selectedCostumeSlug);
     const nameCell = document.createElement("td");
     nameCell.textContent = costume.name || "";
     const countCell = document.createElement("td");
@@ -1286,37 +1436,102 @@ function renderCostumeTable() {
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.textContent = "Open";
-    openButton.addEventListener("click", () => openSourceEditorForSource(costume.source, showCostumeMessage));
+    openButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openSourceEditorForSource(costume.source, showCostumeMessage);
+    });
     actionCell.append(openButton);
     row.append(nameCell, countCell, pathCell, actionCell);
+    row.addEventListener("click", () => selectCostume(costume.slug));
     costumeTableBody.append(row);
   }
 }
 
-async function createCostume() {
+function selectedCostume() {
+  // Return the currently selected costume row, if any.
+  return state.costumes.find((costume) => costume.slug === state.selectedCostumeSlug) || null;
+}
+
+function clearCostumeForm() {
+  // Switch the costume editor to add-new mode.
+  state.selectedCostumeSlug = null;
+  costumeName.value = "";
+  costumeTemplateFile.value = "";
+  renderCostumeTable();
+  renderCostumeEditor();
+}
+
+function selectCostume(slug) {
+  // Fill the costume editor from a selected table row.
+  state.selectedCostumeSlug = slug;
+  const costume = selectedCostume();
+  costumeName.value = costume?.name || "";
+  costumeTemplateFile.value = "";
+  renderCostumeTable();
+  renderCostumeEditor();
+}
+
+function renderCostumeEditor() {
+  // Render the costume editor controls for add or update mode.
+  const costume = selectedCostume();
+  const isUpdate = Boolean(costume);
+  costumeFormTitle.textContent = isUpdate ? "Update Costume" : "Add Costume";
+  costumeCreate.textContent = isUpdate ? "Update Costume" : "Save Costume";
+  costumeTemplateFileWrap.hidden = isUpdate;
+  costumePreviewSection.hidden = !isUpdate;
+  if (isUpdate) {
+    renderReviewImage(
+      costumePreview,
+      costume.locked_preview_path,
+      costume.locked_preview_exists,
+      "No locked turnaround.",
+      "Locked costume turnaround",
+      costume.path || costume.name || "",
+    );
+  }
+}
+
+async function saveCostume() {
   const name = costumeName.value.trim();
-  const file = costumeTemplateFile.files?.[0];
-  if (!name || !file) {
-    showCostumeMessage("Costume name and markdown file are required.", "error");
+  const selected = selectedCostume();
+  if (!name) {
+    showCostumeMessage("Costume name is required.", "error");
     return;
   }
-  showCostumeMessage("Creating costume...");
+  showCostumeMessage(selected ? "Updating costume..." : "Creating costume...");
   costumeCreate.disabled = true;
   try {
-    const params = currentQuery();
-    params.set("costume_name", name);
-    const payload = await fetchJson(`/api/costumes?${params.toString()}`, {
-      method: "POST",
-      headers: { "Content-Type": "text/markdown; charset=utf-8" },
-      body: await file.text(),
-    });
+    let payload;
+    if (selected) {
+      payload = await fetchJson(`/api/costumes/${encodeURIComponent(selected.slug)}?${currentQuery().toString()}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+    } else {
+      const params = currentQuery();
+      params.set("costume_name", name);
+      const file = costumeTemplateFile.files?.[0];
+      payload = await fetchJson(`/api/costumes?${params.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        body: file ? await file.text() : "",
+      });
+    }
     state.costumes = payload.costumes || state.costumes;
     state.assets = payload.assets || state.assets;
+    state.selectedCostumeSlug = payload.costume?.slug || (selected ? selected.slug : null);
     renderCostumeTable();
+    renderCostumeEditor();
     renderAssetTable();
-    costumeName.value = "";
-    costumeTemplateFile.value = "";
-    showCostumeMessage(payload.message || "Costume created.");
+    if (!selected) {
+      costumeName.value = "";
+      costumeTemplateFile.value = "";
+      state.selectedCostumeSlug = null;
+      renderCostumeTable();
+      renderCostumeEditor();
+    }
+    showCostumeMessage(payload.message || (selected ? "Costume updated." : "Costume created."));
   } catch (error) {
     showCostumeMessage(error.message, "error");
   } finally {
@@ -1334,8 +1549,12 @@ async function loadExpressions() {
   state.expressionAssets = payload.expression_assets || [];
   state.expressionDefinitions = payload.expression_definitions || [];
   state.expressionIdentityKeys = payload.identity_keys || [];
+  if (state.selectedExpressionAssetId && !state.expressionAssets.some((item) => item.asset_id === state.selectedExpressionAssetId)) {
+    state.selectedExpressionAssetId = null;
+  }
   fillExpressionIdentityKeySelect();
   renderExpressionTable();
+  renderExpressionEditor();
   expressionStatus.textContent = `${state.expressionAssets.length} expression asset(s)`;
 }
 
@@ -1357,6 +1576,7 @@ function renderExpressionTable() {
   for (const asset of state.expressionAssets) {
     const row = document.createElement("tr");
     row.dataset.assetId = asset.asset_id;
+    row.classList.toggle("selected", asset.asset_id === state.selectedExpressionAssetId);
     const identityKey = state.expressionIdentityKeys.find((key) => key.identity_key_id === asset.identity_key_id);
     const values = [
       asset.asset_id,
@@ -1384,44 +1604,113 @@ function renderExpressionTable() {
     });
     actionCell.append(editButton);
     row.append(actionCell);
-    row.addEventListener("click", () => {
-      state.selectedAssetId = asset.asset_id;
-      activatePage("assets");
-      loadAssets(asset.asset_id);
-    });
+    row.addEventListener("click", () => selectExpression(asset.asset_id));
     expressionTableBody.append(row);
   }
 }
 
-async function createExpression() {
+function selectedExpressionAsset() {
+  // Return the currently selected expression asset, if any.
+  return state.expressionAssets.find((asset) => asset.asset_id === state.selectedExpressionAssetId) || null;
+}
+
+function clearExpressionForm() {
+  // Switch the expression editor to add-new mode.
+  state.selectedExpressionAssetId = null;
+  expressionLabel.value = "";
+  expressionIdentityKey.value = "";
+  expressionDefinitionFile.value = "";
+  renderExpressionTable();
+  renderExpressionEditor();
+}
+
+function selectExpression(assetId) {
+  // Fill the expression editor from a selected table row.
+  state.selectedExpressionAssetId = assetId;
+  const asset = selectedExpressionAsset();
+  expressionLabel.value = asset?.expression || "";
+  expressionIdentityKey.value = asset?.identity_key_id || "";
+  expressionDefinitionFile.value = "";
+  renderExpressionTable();
+  renderExpressionEditor();
+}
+
+function renderExpressionEditor() {
+  // Render the expression editor controls for add or update mode.
+  const asset = selectedExpressionAsset();
+  const isUpdate = Boolean(asset);
+  expressionFormTitle.textContent = isUpdate ? "Update Expression" : "Add Expression";
+  expressionCreate.textContent = isUpdate ? "Update Expression" : "Save Expression";
+  expressionDefinitionFileWrap.hidden = isUpdate;
+  expressionPreviewSection.hidden = !isUpdate;
+  if (isUpdate) {
+    renderReviewImage(
+      expressionPreview,
+      asset.locked_image_path,
+      asset.locked_image_exists,
+      "No locked expression.",
+      "Locked expression",
+      asset.updated_at || "",
+    );
+  }
+}
+
+async function saveExpression() {
   const label = expressionLabel.value.trim();
   const identityKeyId = expressionIdentityKey.value;
   const file = expressionDefinitionFile.files?.[0];
-  if (!label || !identityKeyId || !file) {
-    showExpressionMessage("Label, Identity Key, and markdown file are required.", "error");
+  const selected = selectedExpressionAsset();
+  if (!label || !identityKeyId) {
+    showExpressionMessage("Label and Identity Key are required.", "error");
     return;
   }
-  showExpressionMessage("Creating expression...");
+  let regenerate = false;
+  if (selected && selected.identity_key_id !== identityKeyId) {
+    regenerate = window.confirm("Identity Key changed. Reset this expression to regenerate from MANIFEST?");
+    if (selected.asset_state === "LOCKED" && !regenerate) {
+      const keepLocked = window.confirm("This expression is LOCKED. Keep the current locked image even though the Identity Key changed?");
+      if (!keepLocked) {
+        return;
+      }
+    }
+  }
+  showExpressionMessage(selected ? "Updating expression..." : "Creating expression...");
   expressionCreate.disabled = true;
   try {
-    const params = currentQuery();
-    params.set("label", label);
-    params.set("identity_key_id", identityKeyId);
-    const payload = await fetchJson(`/api/expressions?${params.toString()}`, {
-      method: "POST",
-      headers: { "Content-Type": "text/markdown; charset=utf-8" },
-      body: await file.text(),
-    });
+    let payload;
+    if (selected) {
+      payload = await fetchJson(`/api/expressions/${selected.asset_id}?${currentQuery().toString()}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, identity_key_id: identityKeyId, regenerate }),
+      });
+    } else {
+      const params = currentQuery();
+      params.set("label", label);
+      params.set("identity_key_id", identityKeyId);
+      payload = await fetchJson(`/api/expressions?${params.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        body: file ? await file.text() : "",
+      });
+    }
     state.expressionAssets = payload.expression_assets || state.expressionAssets;
     state.expressionDefinitions = payload.expression_definitions || state.expressionDefinitions;
     state.expressionIdentityKeys = payload.identity_keys || state.expressionIdentityKeys;
     state.assets = payload.assets || state.assets;
+    state.selectedExpressionAssetId = payload.asset?.asset_id || (selected ? selected.asset_id : null);
     fillExpressionIdentityKeySelect();
     renderExpressionTable();
+    renderExpressionEditor();
     renderAssetTable();
-    expressionLabel.value = "";
-    expressionDefinitionFile.value = "";
-    showExpressionMessage(payload.message || "Expression created.");
+    if (!selected) {
+      expressionLabel.value = "";
+      expressionDefinitionFile.value = "";
+      state.selectedExpressionAssetId = null;
+      renderExpressionTable();
+      renderExpressionEditor();
+    }
+    showExpressionMessage(payload.message || (selected ? "Expression updated." : "Expression created."));
   } catch (error) {
     showExpressionMessage(error.message, "error");
   } finally {
@@ -1470,8 +1759,8 @@ async function loadAuxiliaryResources() {
   try {
     const payload = await fetchJson(`/api/auxiliary-resources?${params.toString()}`);
     state.auxiliaryResources = payload.resources || [];
-    renderAuxiliaryResourceTable();
-    auxResourceStatus.textContent = `${state.auxiliaryResources.length} ${auxResourceCategory.value} resource(s)`;
+    const visibleCount = renderAuxiliaryResourceTable();
+    auxResourceStatus.textContent = `${visibleCount} of ${state.auxiliaryResources.length} ${auxResourceCategory.value} resource(s)`;
   } catch (error) {
     auxResourceStatus.textContent = "Load failed.";
     showAuxResourceMessage(error.message, "error");
@@ -1479,18 +1768,22 @@ async function loadAuxiliaryResources() {
 }
 
 function renderAuxiliaryResourceTable() {
+  const search = (auxResourceSearch.value || "").trim().toLowerCase();
+  const visibleResources = search
+    ? state.auxiliaryResources.filter((resource) => (resource.label || "").toLowerCase().includes(search))
+    : state.auxiliaryResources;
   auxResourceTableBody.replaceChildren();
   auxResourceTable.classList.toggle("aux-resource-table-no-thumbs", !auxResourceShowThumbnails.checked);
-  if (!state.auxiliaryResources.length) {
+  if (!visibleResources.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 4;
-    cell.textContent = "No resources.";
+    cell.textContent = state.auxiliaryResources.length ? "No resources match this search." : "No resources.";
     row.append(cell);
     auxResourceTableBody.append(row);
-    return;
+    return 0;
   }
-  for (const resource of state.auxiliaryResources) {
+  for (const resource of visibleResources) {
     const row = document.createElement("tr");
     row.dataset.resourceId = resource.resource_id;
     row.classList.toggle("selected", resource.resource_id === state.selectedAuxiliaryResourceId);
@@ -1520,6 +1813,13 @@ function renderAuxiliaryResourceTable() {
     row.addEventListener("click", () => selectAuxiliaryResource(resource.resource_id));
     auxResourceTableBody.append(row);
   }
+  return visibleResources.length;
+}
+
+function refreshAuxiliaryResourceTable() {
+  // Re-render the auxiliary resource table after local filter changes.
+  const visibleCount = renderAuxiliaryResourceTable();
+  auxResourceStatus.textContent = `${visibleCount} of ${state.auxiliaryResources.length} ${auxResourceCategory.value} resource(s)`;
 }
 
 function selectAuxiliaryResource(resourceId) {
@@ -1581,6 +1881,179 @@ async function saveAuxiliaryResource() {
   } finally {
     auxResourceSave.disabled = false;
   }
+}
+
+function initializePhaseComparisonControls() {
+  // Seed comparison controls from the current dashboard context when needed.
+  if (!state.phaseComparison.character) {
+    state.phaseComparison.character = state.character || state.characters[0] || "";
+  }
+  setSelectOptions(phaseComparisonCharacter, state.characters || []);
+  phaseComparisonCharacter.value = state.phaseComparison.character || "";
+  syncPhaseComparisonPhaseOptions();
+}
+
+function syncPhaseComparisonPhaseOptions() {
+  // Keep left and right phase dropdowns valid for the selected comparison character.
+  const character = phaseComparisonCharacter.value || state.phaseComparison.character || "";
+  const phases = state.phasesByCharacter[character] || [];
+  const fallbackLeft = state.phase && phases.includes(state.phase) ? state.phase : phases[0] || "";
+  const fallbackRight = phases.find((phase) => phase !== fallbackLeft) || fallbackLeft;
+  state.phaseComparison.character = character;
+  state.phaseComparison.leftPhase = phases.includes(state.phaseComparison.leftPhase)
+    ? state.phaseComparison.leftPhase
+    : fallbackLeft;
+  state.phaseComparison.rightPhase = phases.includes(state.phaseComparison.rightPhase)
+    ? state.phaseComparison.rightPhase
+    : fallbackRight;
+  setSelectOptions(phaseComparisonLeftPhase, phases);
+  setSelectOptions(phaseComparisonRightPhase, phases);
+  phaseComparisonLeftPhase.value = state.phaseComparison.leftPhase || "";
+  phaseComparisonRightPhase.value = state.phaseComparison.rightPhase || "";
+}
+
+async function loadPhaseComparison({ preserveSlot = true, resetIndex = false } = {}) {
+  const character = phaseComparisonCharacter.value || state.phaseComparison.character;
+  const leftPhase = phaseComparisonLeftPhase.value || state.phaseComparison.leftPhase;
+  const rightPhase = phaseComparisonRightPhase.value || state.phaseComparison.rightPhase;
+  if (!character || !leftPhase || !rightPhase) {
+    clearPhaseComparison("Choose a character and two phases.");
+    return;
+  }
+  phaseComparisonStatus.textContent = "Loading phase comparison...";
+  const params = new URLSearchParams({
+    character,
+    left_phase: leftPhase,
+    right_phase: rightPhase,
+    pipeline: phaseComparisonPipeline.value || state.phaseComparison.pipeline || "",
+    selected_index: String(resetIndex ? 0 : state.phaseComparison.selectedIndex || 0),
+    selected_slot_key: preserveSlot ? (state.phaseComparison.selectedSlotKey || "") : "",
+    left_costume: phaseComparisonLeftCostume.value || state.phaseComparison.leftCostume || "",
+    right_costume: phaseComparisonRightCostume.value || state.phaseComparison.rightCostume || "",
+  });
+  try {
+    const payload = await fetchJson(`/api/phase-comparison?${params.toString()}`);
+    renderPhaseComparison(payload);
+  } catch (error) {
+    clearPhaseComparison("Phase comparison failed.");
+    showPhaseComparisonMessage(error.message, "error");
+  }
+}
+
+function renderPhaseComparison(payload) {
+  state.phaseComparison.character = payload.character || "";
+  state.phaseComparison.leftPhase = payload.left_phase || "";
+  state.phaseComparison.rightPhase = payload.right_phase || "";
+  state.phaseComparison.pipeline = payload.pipeline || "";
+  state.phaseComparison.leftCostume = payload.selected_left_costume || "";
+  state.phaseComparison.rightCostume = payload.selected_right_costume || "";
+  state.phaseComparison.selectedIndex = payload.selected_index || 0;
+  state.phaseComparison.selectedSlotKey = payload.selected_row?.slot_key || "";
+  state.phaseComparison.rows = payload.rows || [];
+  phaseComparisonCharacter.value = state.phaseComparison.character;
+  syncPhaseComparisonPhaseOptions();
+  const currentPipeline = phaseComparisonPipeline.value;
+  setSelectOptions(phaseComparisonPipeline, payload.available_pipelines || []);
+  phaseComparisonPipeline.value = (payload.available_pipelines || []).includes(payload.pipeline)
+    ? payload.pipeline
+    : ((payload.available_pipelines || []).includes(currentPipeline) ? currentPipeline : "");
+  renderPhaseComparisonCostumeControls(payload);
+  phaseComparisonStatus.textContent = `${state.phaseComparison.rows.length} comparison slot(s)`;
+  phaseComparisonPrev.disabled = state.phaseComparison.rows.length <= 1;
+  phaseComparisonNext.disabled = state.phaseComparison.rows.length <= 1;
+  renderPhaseComparisonRow(payload.selected_row || null);
+  showPhaseComparisonMessage("");
+}
+
+function renderPhaseComparisonCostumeControls(payload) {
+  // Costume-Dressing compares independently selected costumes by shared view slots.
+  const showCostumes = payload.pipeline === "Costume-Dressing";
+  phaseComparisonLeftCostumeWrap.hidden = !showCostumes;
+  phaseComparisonRightCostumeWrap.hidden = !showCostumes;
+  if (!showCostumes) {
+    phaseComparisonLeftCostume.replaceChildren();
+    phaseComparisonRightCostume.replaceChildren();
+    return;
+  }
+  setSelectOptions(phaseComparisonLeftCostume, payload.left_costumes || []);
+  setSelectOptions(phaseComparisonRightCostume, payload.right_costumes || []);
+  phaseComparisonLeftCostume.value = payload.selected_left_costume || "";
+  phaseComparisonRightCostume.value = payload.selected_right_costume || "";
+}
+
+function clearPhaseComparison(message = "No comparison rows.") {
+  state.phaseComparison.rows = [];
+  state.phaseComparison.selectedIndex = 0;
+  state.phaseComparison.selectedSlotKey = "";
+  state.phaseComparison.leftCostume = "";
+  state.phaseComparison.rightCostume = "";
+  phaseComparisonStatus.textContent = message;
+  phaseComparisonMeta.textContent = "";
+  phaseComparisonPrev.disabled = true;
+  phaseComparisonNext.disabled = true;
+  phaseComparisonLeftCostumeWrap.hidden = true;
+  phaseComparisonRightCostumeWrap.hidden = true;
+  phaseComparisonLeftTitle.textContent = "Left Phase";
+  phaseComparisonRightTitle.textContent = "Right Phase";
+  renderPhaseComparisonSide(phaseComparisonLeftImage, phaseComparisonLeftMeta, null);
+  renderPhaseComparisonSide(phaseComparisonRightImage, phaseComparisonRightMeta, null);
+}
+
+function renderPhaseComparisonRow(row) {
+  if (!row) {
+    clearPhaseComparison();
+    return;
+  }
+  phaseComparisonMeta.textContent =
+    `${row.pipeline} | ${row.slot_label} | ${state.phaseComparison.selectedIndex + 1} of ${state.phaseComparison.rows.length}`;
+  phaseComparisonLeftTitle.textContent = row.left?.phase || "Left Phase";
+  phaseComparisonRightTitle.textContent = row.right?.phase || "Right Phase";
+  renderPhaseComparisonSide(phaseComparisonLeftImage, phaseComparisonLeftMeta, row.left);
+  renderPhaseComparisonSide(phaseComparisonRightImage, phaseComparisonRightMeta, row.right);
+}
+
+function renderPhaseComparisonSide(imageContainer, metaContainer, side) {
+  imageContainer.replaceChildren();
+  imageContainer.classList.toggle("missing-slot", !side?.image_exists);
+  if (side?.image_exists && side.image_path) {
+    const image = document.createElement("img");
+    image.alt = side.label || "Locked asset";
+    image.src = fileUrl(side.image_path, side.updated_at || Date.now().toString());
+    imageContainer.append(image);
+  } else {
+    imageContainer.textContent = side?.label || "No locked asset for this slot.";
+  }
+  renderPhaseComparisonMeta(metaContainer, side);
+}
+
+function renderPhaseComparisonMeta(container, side) {
+  container.replaceChildren();
+  const rows = [
+    ["Asset", side?.asset_id ? `Asset ${side.asset_id}` : "Missing"],
+    ["Body", side?.body_view || ""],
+    ["Head", side?.head_view || ""],
+    ["Costume", side?.costume || ""],
+    ["Expression", side?.expression || ""],
+  ];
+  for (const [label, value] of rows) {
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const description = document.createElement("dd");
+    description.textContent = value || "-";
+    container.append(term, description);
+  }
+}
+
+function movePhaseComparison(delta) {
+  // Move to the next or previous comparison slot, wrapping at both ends.
+  if (!state.phaseComparison.rows.length) {
+    return;
+  }
+  const length = state.phaseComparison.rows.length;
+  const nextIndex = (state.phaseComparison.selectedIndex + delta + length) % length;
+  state.phaseComparison.selectedIndex = nextIndex;
+  state.phaseComparison.selectedSlotKey = "";
+  loadPhaseComparison({ preserveSlot: false });
 }
 
 async function loadPromptReviewTasks(preferredAssetId = null) {
@@ -2678,6 +3151,14 @@ async function runAiControlsAction(url) {
   }
 }
 
+async function dumpAiQueue() {
+  // Require an explicit browser confirmation before deleting pending queue items.
+  if (!window.confirm("Dump all pending AI queue asks and claimed tasks? Answers and failed folders will be left alone.")) {
+    return;
+  }
+  await runAiControlsAction("/api/ai-controls/dump-queue");
+}
+
 async function loadPipelineControls() {
   if (!state.character || !state.phase) {
     pipelineControlsStatus.textContent = "No character/phase selected.";
@@ -2698,6 +3179,8 @@ function renderPipelineControls(payload) {
   settingLocalRenderPreset.value = automation.local_render_preset || "";
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
+  settingAiPromptReviewModel.value = automation.ai_prompt_review_model || "";
+  settingAiPromptReviewFile.value = automation.ai_prompt_review_instructions_file || "";
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
@@ -2717,8 +3200,8 @@ function renderPipelineControls(payload) {
 }
 
 function updatePromptReviewToggle() {
-  const enabledByPipeline = state.pipelineControls?.prompt_review_enabled || {};
-  promptReviewEnabled.checked = Boolean(enabledByPipeline[promptReviewPipeline.value]);
+  const modeByPipeline = state.pipelineControls?.prompt_review_modes || {};
+  promptReviewMode.value = modeByPipeline[promptReviewPipeline.value] || "OFF";
 }
 
 function automationPayloadFromForm() {
@@ -2730,6 +3213,8 @@ function automationPayloadFromForm() {
     local_render_preset: settingLocalRenderPreset.value,
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
+    ai_prompt_review_model: settingAiPromptReviewModel.value,
+    ai_prompt_review_instructions_file: settingAiPromptReviewFile.value,
     render_backend: settingRenderBackend.value,
   };
 }
@@ -2760,7 +3245,7 @@ async function savePromptReviewStage() {
     const payload = await fetchJson(`/api/pipeline-controls/prompt-review?${currentQuery().toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pipeline_name: pipelineName, enabled: promptReviewEnabled.checked }),
+      body: JSON.stringify({ pipeline_name: pipelineName, mode: promptReviewMode.value }),
     });
     renderPipelineControls(payload);
     showPipelineControlsMessage(payload.message || "Prompt review setting saved.");
@@ -2799,7 +3284,7 @@ async function runBatchRenderReset() {
 
 async function loadRenderConsoleTasks(preferredAskId = null) {
   renderConsoleStatus.textContent = "Loading render tasks...";
-  const payload = await fetchJson("/api/render-console/tasks");
+  const payload = await fetchJson(`/api/render-console/tasks?${currentQuery().toString()}`);
   state.renderConsoleTasks = payload.tasks || [];
   const askIds = new Set(state.renderConsoleTasks.map((task) => task.ask_id));
   state.selectedRenderConsoleAskId =
@@ -2837,7 +3322,7 @@ async function selectRenderConsoleTask(askId) {
   for (const row of renderConsoleTaskBody.querySelectorAll("tr")) {
     row.classList.toggle("selected", row.dataset.askId === state.selectedRenderConsoleAskId);
   }
-  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}`);
+  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`);
   renderRenderConsoleDetail(detail);
 }
 
@@ -2945,7 +3430,7 @@ async function saveRenderConsoleHelperPrompt() {
   renderConsoleSaveHelper.disabled = true;
   try {
     const payload = await fetchJson(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/gpt-helper-prompt`,
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/gpt-helper-prompt?${currentQuery().toString()}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2980,7 +3465,8 @@ async function saveRenderConsoleImage() {
   renderConsoleSaveImage.disabled = true;
   renderConsoleSaveStatus.textContent = "Saving image answer...";
   try {
-    const params = new URLSearchParams({ render_comment: renderConsoleAnswerComment.value || "" });
+    const params = currentQuery();
+    params.set("render_comment", renderConsoleAnswerComment.value || "");
     const response = await fetch(
       `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/answer-image?${params.toString()}`,
       {
@@ -3022,7 +3508,7 @@ async function failRenderConsoleTask() {
   renderConsoleFailTask.disabled = true;
   renderConsoleFailStatus.textContent = "Writing failed answer...";
   try {
-    const response = await fetch(`/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/fail`, {
+    const response = await fetch(`/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/fail?${currentQuery().toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: renderConsoleFailReason.value || "" }),
@@ -3217,12 +3703,15 @@ characterSelect.addEventListener("change", async () => {
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
+  state.selectedRenderConsoleAskId = null;
   state.selectedTurnaroundId = null;
   state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
   state.selectedIdentityKeyId = null;
   state.identityKeySourceAssetId = null;
   state.identityKeyMode = "list";
+  state.selectedCostumeSlug = null;
+  state.selectedExpressionAssetId = null;
   updatePhaseSelect();
   renderOnboarding();
   await loadAssets();
@@ -3240,6 +3729,10 @@ characterSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#identity-keys-page").classList.contains("active")) {
     await loadIdentityKeys();
+  }
+  if (document.querySelector("#phase-comparison-page").classList.contains("active")) {
+    initializePhaseComparisonControls();
+    await loadPhaseComparison();
   }
   if (document.querySelector("#costumes-page").classList.contains("active")) {
     await loadCostumes();
@@ -3261,15 +3754,19 @@ characterSelect.addEventListener("change", async () => {
 phaseSelect.addEventListener("change", async () => {
   state.phase = phaseSelect.value;
   saveStoredContext();
+  updateHeaderFitmentPreview();
   state.selectedAssetId = null;
   state.selectedPromptReviewAssetId = null;
   state.selectedRenderReviewAssetId = null;
+  state.selectedRenderConsoleAskId = null;
   state.selectedTurnaroundId = null;
   state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
   state.selectedIdentityKeyId = null;
   state.identityKeySourceAssetId = null;
   state.identityKeyMode = "list";
+  state.selectedCostumeSlug = null;
+  state.selectedExpressionAssetId = null;
   renderOnboarding();
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
@@ -3286,6 +3783,10 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#identity-keys-page").classList.contains("active")) {
     await loadIdentityKeys();
+  }
+  if (document.querySelector("#phase-comparison-page").classList.contains("active")) {
+    initializePhaseComparisonControls();
+    await loadPhaseComparison();
   }
   if (document.querySelector("#costumes-page").classList.contains("active")) {
     await loadCostumes();
@@ -3310,6 +3811,24 @@ for (const button of actionButtons) {
 
 newCharacterButton.addEventListener("click", startNewCharacter);
 newPhaseButton.addEventListener("click", startNewPhase);
+toolbarSettingsButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleToolbarSettingsMenu();
+});
+toolbarHarvestAi.addEventListener("click", (event) => {
+  event.stopPropagation();
+  harvestAiFromToolbar();
+});
+document.addEventListener("click", (event) => {
+  if (!toolbarSettingsMenu.hidden && !toolbarSettingsMenu.contains(event.target) && event.target !== toolbarSettingsButton) {
+    closeToolbarSettingsMenu();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeToolbarSettingsMenu();
+  }
+});
 onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
 onboardingCopyGptPrompt.addEventListener("click", () => copyText(onboardingGptPrompt.value, "ChatGPT prompt copied."));
 onboardingCharacter.addEventListener("input", () => updateOnboardingHelperPrompt());
@@ -3319,10 +3838,17 @@ onboardingGender.addEventListener("change", () => updateOnboardingHelperPrompt()
 onboardingArtStyle.addEventListener("input", () => updateOnboardingHelperPrompt());
 onboardingUploadTemplate.addEventListener("click", uploadOnboardingTemplate);
 assetFilterTodo.addEventListener("change", applyAssetFilters);
+assetFilterHideBase.addEventListener("change", applyAssetFilters);
 assetFilterPipeline.addEventListener("change", applyAssetFilters);
 assetDetailStatusMode.addEventListener("click", () => setAssetDetailMode("status"));
 assetDetailImageMode.addEventListener("click", () => setAssetDetailMode("locked"));
 createIdentityFromAssetButton.addEventListener("click", startIdentityKeyFromSelectedAsset);
+openCharacterTemplateButton.addEventListener("click", () => {
+  openSourceEditorForSource(state.assetDetail?.asset?.character_template_source, showActionMessage);
+});
+openGoverningTemplateButton.addEventListener("click", () => {
+  openSourceEditorForSource(state.assetDetail?.asset?.governing_template_source, showActionMessage);
+});
 identityKeyShowList.addEventListener("click", () => {
   state.identityKeyMode = "list";
   clearIdentityKeyUpdate();
@@ -3330,13 +3856,16 @@ identityKeyShowList.addEventListener("click", () => {
 });
 identityKeyCreatePreview.addEventListener("click", createIdentityKeyPreview);
 identityKeySave.addEventListener("click", saveIdentityKey);
-costumeCreate.addEventListener("click", createCostume);
-expressionCreate.addEventListener("click", createExpression);
+costumeAddNew.addEventListener("click", clearCostumeForm);
+costumeCreate.addEventListener("click", saveCostume);
+expressionAddNew.addEventListener("click", clearExpressionForm);
+expressionCreate.addEventListener("click", saveExpression);
 auxResourceCategory.addEventListener("change", () => {
   clearAuxiliaryResourceForm();
   loadAuxiliaryResources();
 });
-auxResourceShowThumbnails.addEventListener("change", renderAuxiliaryResourceTable);
+auxResourceSearch.addEventListener("input", refreshAuxiliaryResourceTable);
+auxResourceShowThumbnails.addEventListener("change", refreshAuxiliaryResourceTable);
 auxResourceAdd.addEventListener("click", clearAuxiliaryResourceForm);
 auxResourcePasteZone.addEventListener("paste", (event) => {
   const blob = imageBlobFromPasteEvent(event);
@@ -3363,6 +3892,56 @@ auxResourceFileInput.addEventListener("change", () => {
 auxResourceSave.addEventListener("click", saveAuxiliaryResource);
 auxResourceClear.addEventListener("click", clearAuxiliaryResourceForm);
 auxResourceCopyTag.addEventListener("click", () => copyText(auxResourceTag.textContent || "", "Resource tag copied."));
+phaseComparisonCharacter.addEventListener("change", () => {
+  state.phaseComparison.character = phaseComparisonCharacter.value;
+  state.phaseComparison.pipeline = "";
+  state.phaseComparison.selectedIndex = 0;
+  state.phaseComparison.selectedSlotKey = "";
+  syncPhaseComparisonPhaseOptions();
+  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
+});
+phaseComparisonLeftPhase.addEventListener("change", () => {
+  state.phaseComparison.leftPhase = phaseComparisonLeftPhase.value;
+  loadPhaseComparison({ preserveSlot: true });
+});
+phaseComparisonRightPhase.addEventListener("change", () => {
+  state.phaseComparison.rightPhase = phaseComparisonRightPhase.value;
+  loadPhaseComparison({ preserveSlot: true });
+});
+phaseComparisonPipeline.addEventListener("change", () => {
+  state.phaseComparison.pipeline = phaseComparisonPipeline.value;
+  state.phaseComparison.leftCostume = "";
+  state.phaseComparison.rightCostume = "";
+  state.phaseComparison.selectedIndex = 0;
+  state.phaseComparison.selectedSlotKey = "";
+  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
+});
+phaseComparisonLeftCostume.addEventListener("change", () => {
+  state.phaseComparison.leftCostume = phaseComparisonLeftCostume.value;
+  state.phaseComparison.selectedIndex = 0;
+  state.phaseComparison.selectedSlotKey = "";
+  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
+});
+phaseComparisonRightCostume.addEventListener("change", () => {
+  state.phaseComparison.rightCostume = phaseComparisonRightCostume.value;
+  state.phaseComparison.selectedIndex = 0;
+  state.phaseComparison.selectedSlotKey = "";
+  loadPhaseComparison({ preserveSlot: false, resetIndex: true });
+});
+phaseComparisonPrev.addEventListener("click", () => movePhaseComparison(-1));
+phaseComparisonNext.addEventListener("click", () => movePhaseComparison(1));
+for (const imageBox of [phaseComparisonLeftImage, phaseComparisonRightImage]) {
+  imageBox.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      movePhaseComparison(-1);
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      movePhaseComparison(1);
+    }
+  });
+}
 
 promptSearch.addEventListener("input", renderPromptText);
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt_text || "", "Prompt copied."));
@@ -3408,6 +3987,7 @@ harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-con
 archiveHarvestedAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/archive-harvested"));
 activateProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/stop"));
 resumeProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/resume"));
+dumpAiQueueButton.addEventListener("click", dumpAiQueue);
 sendMonitorTestButton.addEventListener("click", () => {
   const params = new URLSearchParams({ instruction: monitorInstruction.value || "" });
   runAiControlsAction(`/api/ai-controls/monitor-test?${params.toString()}`);
@@ -3487,6 +4067,7 @@ manifestNext.addEventListener("click", () => {
 
 async function main() {
   setupTabs();
+  loadStoredAssetFilters();
   try {
     await loadContext();
     await loadAssets();

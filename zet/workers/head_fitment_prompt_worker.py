@@ -67,4 +67,5 @@ def run(asset, context) -> WorkerResult:
         message=f"Compiled head-fitment prompt for Asset {asset.asset_id}.",
         output_files=output_files,
         advance_stage=True,
+        reference_files=result.get("reference_files"),
     )

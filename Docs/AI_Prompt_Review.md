@@ -117,3 +117,7 @@ SUMMARY: Prompt contains no unresolved placeholders, contradictory asset referen
 If the AI review returns Pass, advance the job just like a human review proces that accepts the promt.
 
 If the AI review return FAIL, then the pipeline should remain at PROMPT_REVIEW but the actor should be changed to Human. The AI summary should be somewhere easily found. 
+
+## Pipeline controls
+
+Having AI Prompt Review or Human Prompt review should be something that can be changed per pipeline on the Pipeline Controls page.

@@ -38,6 +38,28 @@ def _render_console_queue(config_path: str | Path) -> RenderConsoleQueue:
     return RenderConsoleQueue(ConfigService.load(config_path))
 
 
+def _render_console_tasks_for_context(queue: RenderConsoleQueue, character: str = "", phase: str = ""):
+    """Return manual render tasks filtered to the requested character and phase."""
+    tasks = queue.list_tasks()
+    if character:
+        tasks = [task for task in tasks if task.character == character]
+    if phase:
+        tasks = [task for task in tasks if task.phase == phase]
+    return tasks
+
+
+def _render_console_task_for_context(queue: RenderConsoleQueue, ask_id: str, character: str = "", phase: str = ""):
+    """Return one manual render task only when it belongs to the requested context."""
+    task = queue.get_task(ask_id)
+    if task is None:
+        return None
+    if character and task.character != character:
+        return None
+    if phase and task.phase != phase:
+        return None
+    return task
+
+
 def _view_key(value: Any) -> str:
     """Normalize an asset view value to a config lookup key."""
     return re.sub(r"[^A-Z0-9]+", "_", str(value or "").upper()).strip("_")
@@ -239,9 +261,60 @@ def _is_head_fitment_manifest_asset(asset) -> bool:
     return asset.pipeline == "Head-Fitment" and asset.pipeline_stage in {"MANIFEST", "ADD_REF"} and asset.actor == "PYTHON"
 
 
+def _header_preview_payload(zet_app: ZetApp, character: str, phase: str) -> dict[str, Any] | None:
+    """Return the locked front-left three-quarter head-fitment preview for a character phase."""
+    try:
+        assets = zet_app.list_assets(character, phase)
+    except Exception:
+        return None
+    for asset in assets:
+        if asset.pipeline != "Head-Fitment":
+            continue
+        if str(asset.body_view) != "Front-Left-3-4" or str(asset.head_view) != "Front-Left-3-4":
+            continue
+        if asset.asset_state != "LOCKED":
+            continue
+        locked_path = zet_app.path_service.locked_image_path(asset)
+        if locked_path.exists():
+            return {
+                "asset_id": asset.asset_id,
+                "image_path": str(locked_path),
+                "updated_at": asset.updated_at,
+            }
+    return None
+
+
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     """Serialize an asset for dashboard tables and detail panels."""
     data = asdict(asset)
+    character_template = zet_app.path_service.character_path(asset.character, asset.phase) / "Character_Image_Template.md"
+    data["character_template_source"] = {
+        "source_kind": "character_image_template",
+        "source_label": "Character Image Template",
+        "source_path": str(character_template),
+        "editable": True,
+    }
+    governing_source = data["character_template_source"]
+    if asset.pipeline == "Costume-Dressing":
+        costume_path = Path(asset.costume_path) if asset.costume_path else zet_app.path_service.costume_template_path(
+            asset.character,
+            asset.phase,
+            asset.costume or "Costume",
+        )
+        governing_source = {
+            "source_kind": "costume_template",
+            "source_label": asset.costume or "Costume Template",
+            "source_path": str(costume_path),
+            "editable": True,
+        }
+    elif asset.pipeline == "Expression" and asset.expression_definition_path:
+        governing_source = {
+            "source_kind": "expression_definition",
+            "source_label": asset.expression or "Expression Definition",
+            "source_path": asset.expression_definition_path,
+            "editable": True,
+        }
+    data["governing_template_source"] = governing_source
     data["head_view"] = _format_value(asset.head_view)
     data["costume"] = _format_value(asset.costume)
     data["expression"] = _format_value(asset.expression)
@@ -252,6 +325,13 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["render_review_comment"] = render_comment
     data["has_render_review_comment"] = bool(render_comment)
     data["review_image_ready"] = _review_image_ready(zet_app, asset)
+    try:
+        locked_image_path = zet_app.path_service.locked_image_path(asset)
+        data["locked_image_path"] = str(locked_image_path)
+        data["locked_image_exists"] = locked_image_path.exists()
+    except Exception:
+        data["locked_image_path"] = None
+        data["locked_image_exists"] = False
     if asset.pipeline_stage == "ADD_REF" and asset.error_code:
         data["pipeline_stage_display"] = f"ADD_REF ({asset.error_code})"
     elif data["review_image_ready"]:
@@ -271,9 +351,19 @@ def _identity_key_preview_payload(preview) -> dict[str, Any]:
     return asdict(preview)
 
 
-def _costume_payload(costume) -> dict[str, Any]:
+def _costume_payload(zet_app: ZetApp, character: str, phase: str, costume) -> dict[str, Any]:
     """Serialize a costume template for dashboard views."""
     data = asdict(costume)
+    locked_preview = None
+    try:
+        for row in zet_app.list_turnaround_rows(character, phase):
+            if row.source_pipeline == "Costume-Dressing" and row.costume == costume.name and row.locked_image_exists:
+                locked_preview = row
+                break
+    except Exception:
+        locked_preview = None
+    data["locked_preview_path"] = locked_preview.locked_image_path if locked_preview else None
+    data["locked_preview_exists"] = bool(locked_preview)
     data["source"] = {
         "source_kind": "costume_template",
         "source_label": costume.name,
@@ -447,6 +537,8 @@ def _automation_settings_from_payload(payload: dict[str, Any]) -> AutomationSett
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", False)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", 0)),
         render_backend=str(payload.get("render_backend", "")),
+        ai_prompt_review_model=str(payload.get("ai_prompt_review_model", "")),
+        ai_prompt_review_instructions_file=str(payload.get("ai_prompt_review_instructions_file", "")),
     )
 
 
@@ -457,6 +549,15 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
         name: any(row.pipeline == name and row.stage == "PROMPT_REVIEW" for row in snapshot.pipeline_rows)
         for name in pipeline_names
     }
+    prompt_review_modes = {}
+    for name in pipeline_names:
+        prompt_row = next((row for row in snapshot.pipeline_rows if row.pipeline == name and row.stage == "PROMPT_REVIEW"), None)
+        if prompt_row is None:
+            prompt_review_modes[name] = "OFF"
+        elif prompt_row.actor == "PYTHON" and prompt_row.worker == "zet.workers.ai_prompt_review_worker":
+            prompt_review_modes[name] = "AI"
+        else:
+            prompt_review_modes[name] = "HUMAN"
     return {
         "config_path": str(snapshot.config_path),
         "pipelines_path": str(snapshot.pipelines_path),
@@ -465,6 +566,7 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
         "project_config_rows": _jsonable(snapshot.project_config_rows),
         "pipeline_names": pipeline_names,
         "prompt_review_enabled": prompt_review_enabled,
+        "prompt_review_modes": prompt_review_modes,
     }
 
 
@@ -762,10 +864,18 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             }
             for character in characters
         }
+        header_previews = {
+            character: {
+                phase: _header_preview_payload(zet_app, character, phase)
+                for phase in phases_by_character.get(character, [])
+            }
+            for character in characters
+        }
         return {
             "characters": characters,
             "phases_by_character": phases_by_character,
             "onboarding_statuses": onboarding_statuses,
+            "header_previews": header_previews,
             "onboarding_options": _onboarding_options_payload(zet_app.character_onboarding_options()),
             "default_character": characters[0] if characters else None,
             "default_phase": phases_by_character.get(characters[0], [None])[0] if characters else None,
@@ -987,7 +1097,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         """List costume templates."""
         zet_app = _app(app.state.config_path)
         try:
-            return {"costumes": [_costume_payload(item) for item in zet_app.list_costumes(character, phase)]}
+            return {"costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)]}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1004,13 +1114,33 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             contents = (await request.body()).decode("utf-8")
             result = zet_app.create_costume(character, phase, costume_name, contents)
             return {
-                "costume": _costume_payload(result.costume),
-                "costumes": [_costume_payload(item) for item in zet_app.list_costumes(character, phase)],
+                "costume": _costume_payload(zet_app, character, phase, result.costume),
+                "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
                 "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
                 "message": f"Created {len(result.assets)} Costume-Dressing assets for {result.costume.name}.",
             }
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=400, detail="Costume template must be UTF-8 markdown.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/costumes/{costume_slug}")
+    def costume_update(
+        costume_slug: str,
+        character: str = Query(...),
+        phase: str = Query(...),
+        payload: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        """Update a costume template name and related Costume-Dressing assets."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.update_costume(character, phase, costume_slug, str(payload.get("name") or ""))
+            return {
+                "costume": _costume_payload(zet_app, character, phase, result.costume),
+                "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "message": f"Updated costume {result.costume.name}.",
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1069,6 +1199,45 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             }
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=400, detail="Expression definition must be UTF-8 markdown.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/expressions/{asset_id}")
+    def expression_update(
+        asset_id: int,
+        character: str = Query(...),
+        phase: str = Query(...),
+        payload: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        """Update an expression definition and optional regeneration state."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.update_expression(
+                character,
+                phase,
+                asset_id,
+                str(payload.get("label") or ""),
+                str(payload.get("identity_key_id") or ""),
+                bool(payload.get("regenerate")),
+            )
+            return {
+                "expression": _expression_definition_payload(result.expression),
+                "asset": _asset_payload(zet_app, result.asset),
+                "expression_assets": [
+                    _asset_payload(zet_app, asset)
+                    for asset in zet_app.list_expression_assets(character, phase)
+                ],
+                "expression_definitions": [
+                    _expression_definition_payload(item)
+                    for item in zet_app.list_expression_definitions(character, phase)
+                ],
+                "identity_keys": [
+                    _identity_key_payload(item)
+                    for item in zet_app.list_identity_keys(character, phase)
+                ],
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "message": f"Updated Expression asset for {result.expression.label}.",
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1300,6 +1469,34 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/phase-comparison")
+    def phase_comparison(
+        character: str = Query(...),
+        left_phase: str = Query(...),
+        right_phase: str = Query(...),
+        pipeline: str = Query(""),
+        selected_index: int = Query(0),
+        selected_slot_key: str = Query(""),
+        left_costume: str = Query(""),
+        right_costume: str = Query(""),
+    ) -> dict[str, Any]:
+        """Return read-only locked asset comparison rows for two phases."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.phase_comparison(
+                character,
+                left_phase,
+                right_phase,
+                pipeline,
+                selected_index,
+                selected_slot_key,
+                left_costume,
+                right_costume,
+            )
+            return _jsonable(result)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/turnarounds/{turnaround_id}")
     def turnaround_detail(turnaround_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         """Return detail for one turnaround sheet row."""
@@ -1512,6 +1709,19 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/ai-controls/dump-queue")
+    def ai_controls_dump_queue() -> dict[str, Any]:
+        """Delete pending ask and claimed queue items."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.dump_pending_ai_queue()
+            payload = _ai_controls_payload(zet_app)
+            payload["message"] = f"Dumped {result['removed_count']} pending queue item(s)."
+            payload["dump_result"] = result
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/ai-controls/monitor-test")
     def ai_controls_monitor_test(instruction: str = Query("", max_length=1000)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -1596,14 +1806,14 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         character: str = Query(...),
         phase: str = Query(...),
     ) -> dict[str, Any]:
-        """Enable or disable PROMPT_REVIEW for one pipeline."""
+        """Set PROMPT_REVIEW mode for one pipeline."""
         zet_app = _app(app.state.config_path)
         try:
             pipeline_name = str(payload.get("pipeline_name") or "").strip()
-            enabled = bool(payload.get("enabled"))
-            zet_app.set_pipeline_prompt_review_enabled(character, phase, pipeline_name, enabled)
+            mode = str(payload.get("mode") or ("HUMAN" if bool(payload.get("enabled")) else "OFF")).strip().upper()
+            zet_app.set_pipeline_prompt_review_mode(character, phase, pipeline_name, mode)
             response = _pipeline_controls_payload(zet_app, character, phase)
-            response["message"] = f"PROMPT_REVIEW {'enabled' if enabled else 'disabled'} for {pipeline_name}."
+            response["message"] = f"PROMPT_REVIEW set to {mode} for {pipeline_name}."
             return response
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1632,17 +1842,19 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/render-console/tasks")
-    def render_console_tasks() -> dict[str, Any]:
+    def render_console_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        """List manual render tasks for the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
         try:
-            return {"tasks": [task.to_dict() for task in queue.list_tasks()]}
+            return {"tasks": [task.to_dict() for task in _render_console_tasks_for_context(queue, character, phase)]}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/render-console/tasks/{ask_id}")
-    def render_console_task_detail(ask_id: str) -> dict[str, Any]:
+    def render_console_task_detail(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        """Return one manual render task for the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
-        task = queue.get_task(ask_id)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         zet_app = _app(app.state.config_path)
@@ -1654,10 +1866,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         }
 
     @app.post("/api/render-console/tasks/{ask_id}/gpt-helper-prompt")
-    async def render_console_save_gpt_helper_prompt(ask_id: str, request: Request) -> dict[str, Any]:
+    async def render_console_save_gpt_helper_prompt(
+        ask_id: str,
+        request: Request,
+        character: str = Query(""),
+        phase: str = Query(""),
+    ) -> dict[str, Any]:
         """Save the editable GPT helper prompt for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
-        task = queue.get_task(ask_id)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
@@ -1672,16 +1889,23 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/render-console/tasks/{ask_id}/answer-image")
-    async def render_console_answer_image(ask_id: str, request: Request, render_comment: str = Query("", max_length=10000)) -> dict[str, Any]:
+    async def render_console_answer_image(
+        ask_id: str,
+        request: Request,
+        render_comment: str = Query("", max_length=10000),
+        character: str = Query(""),
+        phase: str = Query(""),
+    ) -> dict[str, Any]:
+        """Write a successful render answer for a task in the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
-        task = queue.get_task(ask_id)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         image_bytes = await request.body()
         content_type = request.headers.get("content-type", "")
         try:
             answer_path = queue.write_answer_image(task, image_bytes, content_type, render_comment)
-            tasks = queue.list_tasks()
+            tasks = _render_console_tasks_for_context(queue, character, phase)
             return {
                 "status": "SUCCESS",
                 "answer_path": str(answer_path),
@@ -1691,16 +1915,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/render-console/tasks/{ask_id}/fail")
-    async def render_console_fail_task(ask_id: str, request: Request) -> dict[str, Any]:
+    async def render_console_fail_task(
+        ask_id: str,
+        request: Request,
+        character: str = Query(""),
+        phase: str = Query(""),
+    ) -> dict[str, Any]:
+        """Write a failed render answer for a task in the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
-        task = queue.get_task(ask_id)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         payload = await request.json()
         reason = str(payload.get("reason") or "")
         try:
             answer_path = queue.write_failed_answer(task, reason)
-            tasks = queue.list_tasks()
+            tasks = _render_console_tasks_for_context(queue, character, phase)
             return {
                 "status": "ERROR",
                 "answer_path": str(answer_path),

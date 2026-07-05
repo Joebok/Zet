@@ -13,6 +13,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
+from Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Compile_Character_Template import TemplateCompileError, load_template_sections, load_template_sections_with_sources, select_sections
 from Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 
@@ -58,32 +59,54 @@ def normalize_view(project_root: Path, raw_view: str) -> str:
 
 
 def load_view_data(project_root: Path, view_token: str) -> dict:
+    """Load one configured view record and attach its token."""
     data = load_json(project_root / "Config" / "Prompt_View_Text.json")
     views = data.get("views", data)
     view = views.get(view_token) if isinstance(views, dict) else None
     if not isinstance(view, dict):
         raise TemplateCompileError("UNKNOWN_VIEW", f"No view text configured for token: {view_token}")
-    return view
+    return {**view, "_view_token": view_token}
 
 
-def view_instruction(view_data: dict, role: str, task: str) -> str:
+def view_orientation_intro(view_data: dict) -> str:
+    """Return the shared anatomical side instruction for one view."""
+    token = str(view_data.get("_view_token") or "").strip().upper()
+    label = str(view_data.get("label") or token.lower().replace("_", " ")).strip()
+    viewpoint = re.sub(r"\s+view$", "", label, flags=re.IGNORECASE).strip() or label
+    lines = ["Use anatomical left and right."]
+    if token in {"FRONT_LEFT_3_4", "BACK_LEFT_3_4"}:
+        lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical left side.")
+    elif token in {"FRONT_RIGHT_3_4", "BACK_RIGHT_3_4"}:
+        lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical right side.")
+    return "\n".join(lines)
+
+
+def with_view_orientation_intro(instruction: str, view_data: dict, include_intro: bool) -> str:
+    """Prefix view instructions with anatomical side guidance when requested."""
+    if not include_intro:
+        return instruction
+    return f"{view_orientation_intro(view_data)}\n\n{instruction}"
+
+
+def view_instruction(view_data: dict, role: str, task: str, include_intro: bool = False) -> str:
+    """Return task-specific view instruction text with optional shared intro."""
     role_key = f"{role}_instructions"
     task_key = str(task or "").strip()
     role_instructions = view_data.get(role_key)
     if isinstance(role_instructions, dict):
         value = role_instructions.get(task_key)
         if isinstance(value, str) and value.strip():
-            return value
+            return with_view_orientation_intro(value, view_data, include_intro)
 
     task_instructions = view_data.get("instructions_by_task")
     if isinstance(task_instructions, dict):
         value = task_instructions.get(task_key)
         if isinstance(value, str) and value.strip():
-            return value
+            return with_view_orientation_intro(value, view_data, include_intro)
 
     value = view_data.get("instruction")
     if isinstance(value, str) and value.strip():
-        return value
+        return with_view_orientation_intro(value, view_data, include_intro)
 
     raise TemplateCompileError(
         "MISSING_VIEW_INSTRUCTION",
@@ -524,7 +547,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "CHARACTER_PHASE": phase,
         "VIEW_TOKEN": view_token,
         "VIEW_LABEL": str(view_data["label"]),
-        "VIEW_INSTRUCTION": view_instruction(view_data, "body", task),
+        "VIEW_INSTRUCTION": view_instruction(view_data, "body", task, include_intro=True),
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **template_metadata(template_path),
         **load_race_render_rules(project_root, template_path),
@@ -541,6 +564,11 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=view_token,
         final_prompt_name=final_prompt_path.name,
+    )
+    references = auxiliary_references_for_texts(
+        project_root,
+        [prompt_text],
+        [],
     )
     final_prompt_path.write_text(prompt_text, encoding="utf-8")
     source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -563,6 +591,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,
+        "reference_files": references,
     }
 
 

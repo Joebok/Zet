@@ -15,7 +15,7 @@ Create one standalone character expression image that preserves the selected Ide
 The Identity Key controls identity, crop, view angle, costume visibility, lighting, and style.
 It does not override the requested Expression Definition.
 
-Change the facial expression and only the minimum necessary supporting head, neck, or shoulder tension needed to make that expression believable.
+Change the facial expression and make minimal changes to head, neck, shoulder, and the rest of the Identity Key features to make that expression believable.
 Do not redesign the character, costume, hairstyle, pose category, age, species, or personality archetype.
 
 Use the Identity Key reference as the main visual authority for:
@@ -23,10 +23,11 @@ Use the Identity Key reference as the main visual authority for:
 - view angle and crop scale
 - hair silhouette
 - ear shape and visibility
-- visible neck, shoulders, torso, waist, and costume cues
+- visible neck, shoulders, torso, waist, lower body and costume cues
 - lighting and rendering style
 
-Do not render a full body. The output should not show more of the character than the Identity Key framing requires.
+The output should not show more of the character than the Identity Key framing requires.
+Do not show more of the character than the Identity Key crop range depicts. 
 Do not create an expression sheet.
 Do not create a multi-view sheet, layout page, labeled diagram, collage, or narrative scene.
 Do not stamp text into the image.
@@ -39,6 +40,7 @@ Match the Identity Key framing as closely as possible:
 - If the Identity Key shows head and shoulders, produce a head-and-shoulders expression image.
 - If the Identity Key shows bust or upper torso, produce a bust or upper-torso expression image.
 - If the Identity Key shows waist-up framing, produce a waist-up expression image.
+- If the Identity Key shows full-body framing, produce a full-body expression image.
 - Preserve approximately the same amount of visible hair, neck, shoulders, torso, and costume as the Identity Key.
 
 Do not zoom substantially closer than the Identity Key.
@@ -54,7 +56,7 @@ Preserve the same general visible range shown in the Identity Key:
 - face and ears
 - neck
 - shoulders
-- any upper costume, torso, or waist area visible in the Identity Key
+- any costume, torso, waist, or lower body area visible in the Identity Key
 
 Keep the camera distance, crop scale, and body extent close to the Identity Key.
 Preserve enough costume and silhouette information for the character to remain recognizable later as a reference image.
@@ -157,7 +159,7 @@ Angry-expression-specific avoidance:
 * Do not add battle damage, tears, blood, magical effects, weapons in action, enemies, fire, smoke, or scene elements.
 * Do not hide the eyes behind hair; the angry eye/brow shape must remain readable.
 
-Do not render: full body unless explicitly required, tiny face, face-only crop unless the Identity Key is also face-only, extreme close-up, narrative scene, action pose, dramatic head tilt, hairstyle redesign, hidden ears, wrong eye color, age drift, species drift, costume redesign, extra props, text labels, caption, diagram, expression sheet, collage, multi-view layout.
+Do not render: full body unless explicitly required by Identity Key framing, tiny face, face-only crop unless the Identity Key is also face-only, extreme close-up, narrative scene, action pose, dramatic head tilt, hairstyle redesign, hidden ears, wrong eye color, age drift, species drift, costume redesign, extra props, text labels, caption, diagram, expression sheet, collage, multi-view layout.
 
 FINAL OUTPUT SUMMARY
 

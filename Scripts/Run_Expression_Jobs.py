@@ -14,6 +14,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, select_sections
+from Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Run_Body_Reference_Jobs import (
     job_get,
     load_bundle,
@@ -311,6 +312,11 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         view_token="EXPRESSION",
         final_prompt_name=prompt_path.name,
     )
+    references = auxiliary_references_for_texts(
+        project_root,
+        [prompt_text],
+        references,
+    )
     prompt_path.write_text(prompt_text, encoding="utf-8")
     source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2) + "\n", encoding="utf-8")
     write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token="EXPRESSION", selection=selection)
@@ -327,6 +333,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "expected_output": expected_output,
         "status": str(bundle.get("next_status", "READY_FOR_PROMPT_REVIEW")),
         "next_actor": str(bundle.get("next_actor", "HUMAN_AGENT")),
+        "reference_files": references,
     }
 
 

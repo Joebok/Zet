@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +15,13 @@ from zet.services.path_service import PathService
 @dataclass(frozen=True)
 class ExpressionCreateResult:
     """Describe a newly saved expression definition and asset."""
+    expression: ExpressionDefinition
+    asset: Asset
+
+
+@dataclass(frozen=True)
+class ExpressionUpdateResult:
+    """Describe an updated expression definition and asset."""
     expression: ExpressionDefinition
     asset: Asset
 
@@ -66,6 +74,26 @@ class ExpressionService:
             asset_count=len(assets),
         )
 
+    def _default_expression_markdown(self) -> str:
+        """Return the shared expression template contents."""
+        template_path = self.path_service.shared_expression_template_path()
+        if not template_path.exists():
+            raise ExpressionServiceError(f"Shared expression template is missing: {template_path}")
+        return template_path.read_text(encoding="utf-8")
+
+    def _sync_expression_label(self, markdown: str, label: str, path: Path) -> str:
+        """Return markdown with basic expression metadata set to the dashboard values."""
+        text = str(markdown or "")
+        replacements = {
+            r"^\s*Expression label\s*:\s*.+?\s*$": f"Expression label: {label}.",
+            r"^\s*Expression definition\s*:\s*.+?\s*$": f"Expression definition: {path}.",
+        }
+        for pattern, replacement in replacements.items():
+            compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+            if compiled.search(text):
+                text = compiled.sub(lambda _match, value=replacement: value, text, count=1)
+        return text
+
     def list_expression_assets(self, character: str, phase: str) -> list[Asset]:
         """List Expression assets for a character phase."""
         return [
@@ -100,8 +128,6 @@ class ExpressionService:
             raise ExpressionServiceError("Expression label is required.")
         if not identity_key_id:
             raise ExpressionServiceError("Identity Key is required.")
-        if not str(markdown or "").strip():
-            raise ExpressionServiceError("Expression markdown is required.")
 
         identity_key = self.identity_key_repository.get_identity_key(character, phase, identity_key_id)
         root = self.path_service.expressions_path(character, phase)
@@ -120,7 +146,8 @@ class ExpressionService:
         if existing:
             raise ExpressionServiceError(f"Expression asset already exists for {display_label} with this Identity Key.")
 
-        definition_path.write_text(str(markdown).strip() + "\n", encoding="utf-8")
+        cleaned_markdown = str(markdown or "").strip() or self._default_expression_markdown()
+        definition_path.write_text(self._sync_expression_label(cleaned_markdown, display_label, definition_path).rstrip() + "\n", encoding="utf-8")
         output_name = f"Expression_{slug}.png"
         asset = Asset(
             asset_id=0,
@@ -144,4 +171,58 @@ class ExpressionService:
         return ExpressionCreateResult(
             expression=self._definition_from_path(character, phase, definition_path),
             asset=created,
+        )
+
+    def update_expression(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        label: str,
+        identity_key_id: str,
+    ) -> ExpressionUpdateResult:
+        """Update an expression label, definition path, and identity-key binding."""
+        cleaned_label = str(label or "").strip()
+        cleaned_key = str(identity_key_id or "").strip()
+        if not cleaned_label:
+            raise ExpressionServiceError("Expression label is required.")
+        if not cleaned_key:
+            raise ExpressionServiceError("Identity Key is required.")
+
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline != "Expression":
+            raise ExpressionServiceError(f"Asset {asset_id} is not an Expression asset.")
+        identity_key = self.identity_key_repository.get_identity_key(character, phase, cleaned_key)
+
+        root = self.path_service.expressions_path(character, phase)
+        root.mkdir(parents=True, exist_ok=True)
+        new_slug = self.safe_expression_slug(cleaned_label)
+        display_label = self.expression_label_from_slug(new_slug)
+        old_path = Path(asset.expression_definition_path) if asset.expression_definition_path else root / f"{self.safe_expression_slug(asset.expression or display_label)}.md"
+        new_path = root / f"{new_slug}.md"
+        if old_path != new_path and new_path.exists():
+            raise ExpressionServiceError(f"Expression definition already exists: {new_path.name}")
+
+        contents = old_path.read_text(encoding="utf-8") if old_path.exists() else self._default_expression_markdown()
+        updated_contents = self._sync_expression_label(contents, display_label, new_path)
+        if old_path != new_path:
+            new_path.write_text(updated_contents.rstrip() + "\n", encoding="utf-8")
+            old_path.unlink(missing_ok=True)
+        else:
+            old_path.write_text(updated_contents.rstrip() + "\n", encoding="utf-8")
+
+        updated_asset = replace(asset)
+        updated_asset.expression = display_label
+        updated_asset.identity_key_id = identity_key.identity_key_id
+        updated_asset.body_view = identity_key.source_body_view
+        updated_asset.head_view = identity_key.source_head_view
+        updated_asset.costume = identity_key.source_costume
+        updated_asset.expression_definition_path = str(new_path)
+        updated_asset.final_image_output = f"Expression_{new_slug}.png"
+        updated_asset.updated_at = self._timestamp()
+        self.asset_repository.save_asset(updated_asset)
+
+        return ExpressionUpdateResult(
+            expression=self._definition_from_path(character, phase, new_path),
+            asset=updated_asset,
         )
