@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from Compile_Character_Template import TemplateCompileError
+from Library_Paths import library_root, resolve_library_path
 
 
 AUX_TAG_RE = re.compile(r"\{\{AUX:(person|place|thing):([a-z0-9][a-z0-9-]*)\}\}")
@@ -13,7 +14,7 @@ AUX_TAG_RE = re.compile(r"\{\{AUX:(person|place|thing):([a-z0-9][a-z0-9-]*)\}\}"
 
 def auxiliary_inventory_path(project_root: Path) -> Path:
     """Return the global auxiliary resource inventory path."""
-    return project_root / "_Lib" / "AuxiliaryResources" / "AuxiliaryResources.json"
+    return library_root(project_root) / "AuxiliaryResources" / "AuxiliaryResources.json"
 
 
 def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str]]:
@@ -75,9 +76,7 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
         resource = lookup.get((category, resource_id))
         if resource is None:
             raise TemplateCompileError("MISSING_REFERENCE", f"Auxiliary resource tag not found: {tag}")
-        image_path = Path(str(resource.get("image_path") or ""))
-        if not image_path.is_absolute():
-            image_path = project_root / image_path
+        image_path = resolve_library_path(project_root, str(resource.get("image_path") or ""))
         if not image_path.exists() or not image_path.is_file():
             raise TemplateCompileError("MISSING_REFERENCE", f"Auxiliary resource image not found for {tag}: {image_path}")
         key = ("auxiliary_resource", category, resource_id, str(image_path))

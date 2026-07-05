@@ -99,8 +99,8 @@ class ReferenceService:
         if asset.pipeline_stage not in {"MANIFEST", "ADD_REF"} or asset.actor != "PYTHON":
             raise ReferenceServiceError("Head-fitment references can only be edited at MANIFEST or ADD_REF / PYTHON.")
 
-        body_path = Path(body_reference_path)
-        head_path = Path(headshot_path)
+        body_path = self.path_service.resolve_path(body_reference_path)
+        head_path = self.path_service.resolve_path(headshot_path)
         if not body_path.exists() or not body_path.is_file():
             raise ReferenceServiceError(f"Body reference image not found: {body_reference_path}")
         if not head_path.exists() or not head_path.is_file():

@@ -25,6 +25,22 @@ class PathService:
         """Return the shared expression markdown template path."""
         return self.shared_character_path() / "Expression_Template.md"
 
+    def library_path(self, *parts: str) -> Path:
+        """Return a path inside the configured library root."""
+        return Path(self.config.base_library_path).joinpath(*parts)
+
+    def resolve_path(self, path: str | Path) -> Path:
+        """Resolve absolute, project-relative, and legacy _Lib paths."""
+        raw_path = Path(path)
+        if raw_path.is_absolute():
+            return raw_path
+        parts = raw_path.parts
+        if parts and parts[0] == "_Lib":
+            return self.library_path(*parts[1:])
+        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "Stories"}:
+            return self.library_path(*parts)
+        return raw_path
+
     def character_asset_path(self, character: str, phase: str) -> Path:
         """Return the character phase asset folder."""
         return Path(self.config.base_asset_path) / character / phase

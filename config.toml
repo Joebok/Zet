@@ -1,13 +1,16 @@
 [BaseFolders]
-BaseCharacterPath = "_Lib/Characters/"
-BaseAssetPath = "_Lib/Assets/"
-BasePipelinePath = "_Lib/Pipelines/"
-BaseAIQueuePath = "_Lib/AI_Queue/"
+BaseLibraryPath = "."
+BaseCharacterPath = "Characters/"
+BaseAssetPath = "Assets/"
+BasePipelinePath = "Pipelines/"
+BaseAIQueuePath = "AI_Queue/"
 
 [BaseFoldersByPlatform.Windows]
+BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
 BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [BaseFoldersByPlatform.Darwin]
+BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]

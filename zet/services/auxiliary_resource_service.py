@@ -114,7 +114,7 @@ class AuxiliaryResourceService:
         cleaned_label = str(label or "").strip()
         if not cleaned_label:
             raise AuxiliaryResourceServiceError("Auxiliary resource label is required.")
-        image_path = Path(resource.image_path)
+        image_path = self.path_service.resolve_path(resource.image_path)
         if image_bytes is not None:
             image_path = self._write_image(resource.category, resource.resource_id, image_bytes, content_type)
         resource.label = cleaned_label

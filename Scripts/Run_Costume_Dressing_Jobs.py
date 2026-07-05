@@ -14,6 +14,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
 from Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Library_Paths import character_root, pipeline_root
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     extract_template_field,
@@ -49,7 +50,7 @@ def costume_path_for_job(project_root: Path, job: dict, character: str, phase: s
         return resolve_project_path(project_root, explicit)
     costume = job_get(job, "Costume", "costume") or "Canonical Adventure Gear"
     filename = f"Costume_{safe_name(costume).replace('-', '_')}.md"
-    return project_root / "_Lib" / "Characters" / character / phase / filename
+    return character_root(project_root) / character / phase / filename
 
 
 def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str, body_view_token: str, head_view_token: str) -> Path:
@@ -57,9 +58,7 @@ def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str
     if explicit:
         return resolve_project_path(project_root, explicit)
     return (
-        project_root
-        / "_Lib"
-        / "Pipelines"
+        pipeline_root(project_root)
         / character
         / phase
         / "Costume-Dressing"
@@ -268,7 +267,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    character_template_path = project_root / "_Lib" / "Characters" / character / phase / "Character_Image_Template.md"
+    character_template_path = character_root(project_root) / character / phase / "Character_Image_Template.md"
     costume_path = costume_path_for_job(project_root, job, character, phase)
     if not costume_path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")

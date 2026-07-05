@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
+from Library_Paths import library_root
 
 
 SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
@@ -172,14 +173,14 @@ def _project_root_for_template(template_path: Path) -> Path:
     """Find the project root for a prompt template path."""
     resolved = template_path.resolve()
     for parent in [resolved.parent, *resolved.parents]:
-        if (parent / "_Lib").exists() and (parent / "Config").exists():
+        if (parent / "Config").exists() and (parent / "config.toml").exists():
             return parent
     return resolved.parents[2]
 
 
 def _auxiliary_inventory_path(template_path: Path) -> Path:
     """Return the global auxiliary resource inventory path."""
-    return _project_root_for_template(template_path) / "_Lib" / "AuxiliaryResources" / "AuxiliaryResources.json"
+    return library_root(_project_root_for_template(template_path)) / "AuxiliaryResources" / "AuxiliaryResources.json"
 
 
 def _load_auxiliary_resources(template_path: Path) -> dict[tuple[str, str], dict]:

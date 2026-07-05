@@ -15,6 +15,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Compile_Character_Template import TemplateCompileError, load_template_sections, load_template_sections_with_sources, select_sections
+from Library_Paths import character_root, resolve_library_path
 from Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 
 
@@ -320,7 +321,7 @@ def load_body_reference_sections(project_root: Path, template_path: Path) -> dic
 
 
 def load_body_reference_section_data(project_root: Path, template_path: Path) -> tuple[dict[str, str], dict[str, dict]]:
-    shared_path = project_root / "_Lib" / "Characters" / "_Shared" / "Character_Template.md"
+    shared_path = character_root(project_root) / "_Shared" / "Character_Template.md"
     sections, sources = load_template_sections_with_sources(
         template_path,
         source_kind="character_template_section",
@@ -367,10 +368,8 @@ def job_get(job: dict, *keys: str) -> str:
 
 
 def resolve_project_path(project_root: Path, raw_path: str) -> Path:
-    path = Path(raw_path).expanduser()
-    if path.is_absolute():
-        return path
-    return project_root / path
+    """Resolve a job path with legacy library-path support."""
+    return resolve_library_path(project_root, raw_path)
 
 
 def require_job_field(job: dict, canonical: str, *keys: str) -> str:
@@ -384,14 +383,14 @@ def template_path_for_job(project_root: Path, job: dict, character: str, phase: 
     explicit = job_get(job, "Template Path", "template_path", "character_image_template")
     if explicit:
         return resolve_project_path(project_root, explicit)
-    return project_root / "_Lib" / "Characters" / character / phase / "Character_Image_Template.md"
+    return character_root(project_root) / character / phase / "Character_Image_Template.md"
 
 
 def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str, view_data: dict) -> Path:
     explicit = job_get(job, "Output Directory", "output_directory", "Folder", "folder")
     if explicit:
         return resolve_project_path(project_root, explicit)
-    return project_root / "_Lib" / "Characters" / character / phase / "Body_Reference" / str(view_data["folder_name"])
+    return character_root(project_root) / character / phase / "Body_Reference" / str(view_data["folder_name"])
 
 
 def expected_output_for_job(job: dict, view_data: dict) -> str:

@@ -158,5 +158,5 @@ class IdentityKeyService:
         """Delete an identity key image and metadata record."""
         identity_key = self.identity_key_repository.delete_identity_key(character, phase, identity_key_id)
         if identity_key.image_path:
-            Path(identity_key.image_path).unlink(missing_ok=True)
+            self.path_service.resolve_path(identity_key.image_path).unlink(missing_ok=True)
         return identity_key

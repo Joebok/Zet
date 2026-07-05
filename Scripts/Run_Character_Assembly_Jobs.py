@@ -14,6 +14,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, select_sections
 from Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Library_Paths import pipeline_root
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     job_get,
@@ -43,9 +44,7 @@ def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str
     if explicit:
         return resolve_project_path(project_root, explicit)
     return (
-        project_root
-        / "_Lib"
-        / "Pipelines"
+        pipeline_root(project_root)
         / character
         / phase
         / "Character-Assembly"

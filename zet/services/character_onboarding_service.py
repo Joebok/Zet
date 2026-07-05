@@ -311,7 +311,7 @@ class CharacterOnboardingService:
 
     def _render_template(self, payload: dict[str, Any], character: str, phase: str) -> str:
         """Render a draft template from the shared character template and interview answers."""
-        shared_path = self.project_root / "_Lib" / "Characters" / "_Shared" / "Character_Template.md"
+        shared_path = self.path_service.shared_character_path() / "Character_Template.md"
         if not shared_path.exists():
             raise CharacterOnboardingError(f"Shared character template not found: {shared_path}")
         text = shared_path.read_text(encoding="utf-8")

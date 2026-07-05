@@ -159,14 +159,22 @@ class TurnaroundService:
                 return sheet
         return None
 
+    def _stored_path(self, path_text: str | None) -> Path | None:
+        """Resolve a stored turnaround path through current library configuration."""
+        if not path_text:
+            return None
+        return self.path_service.resolve_path(path_text)
+
     def _auxiliary_rows(self, sheets: list[TurnaroundSheet], parent_turnaround_id: str) -> list[AuxiliaryTurnaroundRow]:
         """Build auxiliary sheet rows for one full turnaround group."""
         rows = []
         for sheet in sheets:
             if sheet.parent_turnaround_id != parent_turnaround_id or sheet.sheet_type != "partial":
                 continue
-            candidate_exists = bool(sheet.candidate_image_path and Path(sheet.candidate_image_path).exists())
-            locked_exists = bool(sheet.locked_image_path and Path(sheet.locked_image_path).exists())
+            candidate_path = self._stored_path(sheet.candidate_image_path)
+            locked_path = self._stored_path(sheet.locked_image_path)
+            candidate_exists = bool(candidate_path and candidate_path.exists())
+            locked_exists = bool(locked_path and locked_path.exists())
             rows.append(
                 AuxiliaryTurnaroundRow(
                     turnaround_id=sheet.turnaround_id,
@@ -175,9 +183,9 @@ class TurnaroundService:
                     crop_percent=float(sheet.crop_percent or 0),
                     detection_tolerance=self._sheet_detection_tolerance(sheet),
                     status=sheet.status,
-                    candidate_image_path=sheet.candidate_image_path,
+                    candidate_image_path=str(candidate_path) if candidate_path else sheet.candidate_image_path,
                     candidate_image_exists=candidate_exists,
-                    locked_image_path=sheet.locked_image_path,
+                    locked_image_path=str(locked_path) if locked_path else sheet.locked_image_path,
                     locked_image_exists=locked_exists,
                     analysis_path=sheet.analysis_path,
                     diagnostics_path=sheet.diagnostics_path,
@@ -201,10 +209,10 @@ class TurnaroundService:
         turnaround_id = self._turnaround_id(pipeline, costume, expression)
         missing_views = [view for view in TURNAROUND_VIEW_ORDER if view not in assets_by_view]
         source_asset_ids = [assets_by_view[view].asset_id for view in TURNAROUND_VIEW_ORDER if view in assets_by_view]
-        candidate_path = sheet.candidate_image_path if sheet else None
-        locked_path = sheet.locked_image_path if sheet else str(self.path_service.turnaround_locked_image_path(character, phase, turnaround_id))
-        candidate_exists = bool(candidate_path and Path(candidate_path).exists())
-        locked_exists = bool(locked_path and Path(locked_path).exists())
+        candidate_path = self._stored_path(sheet.candidate_image_path) if sheet else None
+        locked_path = self._stored_path(sheet.locked_image_path) if sheet else self.path_service.turnaround_locked_image_path(character, phase, turnaround_id)
+        candidate_exists = bool(candidate_path and candidate_path.exists())
+        locked_exists = bool(locked_path and locked_path.exists())
         if locked_exists or (sheet and sheet.status == "LOCKED"):
             status = "locked"
         elif sheet and sheet.status == "RENDER_REVIEW" and candidate_exists:
@@ -227,9 +235,9 @@ class TurnaroundService:
             locked_count=len(assets_by_view),
             missing_views=missing_views,
             source_asset_ids=source_asset_ids,
-            candidate_image_path=candidate_path,
+            candidate_image_path=str(candidate_path) if candidate_path else None,
             candidate_image_exists=candidate_exists,
-            locked_image_path=locked_path,
+            locked_image_path=str(locked_path) if locked_path else None,
             locked_image_exists=locked_exists,
             analysis_path=sheet.analysis_path if sheet else None,
             diagnostics_path=sheet.diagnostics_path if sheet else None,
@@ -466,18 +474,19 @@ class TurnaroundService:
         removed = self.turnaround_repository.delete_sheet(character, phase, partial_turnaround_id)
         for path_text in (removed.candidate_image_path, removed.locked_image_path, removed.analysis_path):
             if path_text:
-                Path(path_text).unlink(missing_ok=True)
+                self.path_service.resolve_path(path_text).unlink(missing_ok=True)
         if removed.diagnostics_path:
-            shutil.rmtree(removed.diagnostics_path, ignore_errors=True)
+            shutil.rmtree(self.path_service.resolve_path(removed.diagnostics_path), ignore_errors=True)
         shutil.rmtree(self.path_service.turnaround_work_path(character, phase, partial_turnaround_id), ignore_errors=True)
         return self.get_row(character, phase, removed.parent_turnaround_id)
 
     def promote_to_locked(self, character: str, phase: str, turnaround_id: str, replace_existing: bool = False) -> TurnaroundRow:
         """Promote a candidate turnaround sheet to the locked reference location."""
         sheet = self.turnaround_repository.get_sheet(character, phase, turnaround_id)
-        if not sheet.candidate_image_path or not Path(sheet.candidate_image_path).exists():
+        candidate_path = self._stored_path(sheet.candidate_image_path)
+        if not candidate_path or not candidate_path.exists():
             raise TurnaroundServiceError("Cannot promote: candidate turnaround image does not exist.")
-        locked_path = Path(sheet.locked_image_path or self.path_service.turnaround_locked_image_path(character, phase, turnaround_id))
+        locked_path = self._stored_path(sheet.locked_image_path) or self.path_service.turnaround_locked_image_path(character, phase, turnaround_id)
         if locked_path.exists() and not replace_existing:
             raise TurnaroundServiceError("A locked turnaround already exists. Confirm replacement before promoting.")
         locked_path.parent.mkdir(parents=True, exist_ok=True)
@@ -486,7 +495,7 @@ class TurnaroundService:
             backup_dir = self.path_service.character_backup_path(character, phase) / "Turnarounds"
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(locked_path, backup_dir / f"{locked_path.stem}.backup.{backup_suffix}{locked_path.suffix}")
-        shutil.copy2(sheet.candidate_image_path, locked_path)
+        shutil.copy2(candidate_path, locked_path)
         sheet.status = "LOCKED"
         sheet.locked_image_path = str(locked_path)
         sheet.updated_at = self._timestamp()

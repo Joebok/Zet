@@ -14,6 +14,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, select_sections
 from Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Library_Paths import pipeline_root, resolve_library_path
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     job_get,
@@ -41,9 +42,7 @@ def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str
     if explicit:
         return resolve_project_path(project_root, explicit)
     return (
-        project_root
-        / "_Lib"
-        / "Pipelines"
+        pipeline_root(project_root)
         / character
         / phase
         / "Head-Fitment"
@@ -64,11 +63,12 @@ def reference_by_role(reference_files: list[dict], role: str) -> dict:
     raise TemplateCompileError("MISSING_REFERENCE", f"Missing required reference slot: {role}")
 
 
-def validate_reference(reference: dict, role: str) -> Path:
+def validate_reference(reference: dict, role: str, project_root: Path = PROJECT_ROOT) -> Path:
+    """Validate and resolve a reference image path."""
     raw_path = str(reference.get("path") or "").strip()
     if not raw_path:
         raise TemplateCompileError("MISSING_REFERENCE", f"Reference slot {role} has no path.")
-    path = Path(raw_path)
+    path = resolve_library_path(project_root, raw_path)
     if not path.exists() or not path.is_file():
         raise TemplateCompileError("MISSING_REFERENCE", f"Reference image for {role} was not found: {path}")
     return path

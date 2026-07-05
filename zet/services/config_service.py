@@ -11,6 +11,7 @@ class ConfigServiceError(Exception):
 
 @dataclass(frozen=True)
 class Config:
+    base_library_path: str
     base_character_path: str
     base_asset_path: str
     base_pipeline_path: str
@@ -36,6 +37,17 @@ class ConfigService:
     def _normalize_path_value(value) -> str:
         text = str(value)
         return os.path.expandvars(os.path.expanduser(text))
+
+    @staticmethod
+    def _resolve_base_folder(base_path: str, value) -> str:
+        """Resolve a base folder value against the configured library root when relative."""
+        path_text = ConfigService._normalize_path_value(value)
+        if not base_path:
+            return path_text
+        path = Path(path_text)
+        if path.is_absolute():
+            return str(path)
+        return str(Path(base_path) / path)
 
     @staticmethod
     def _base_folders_for_platform(payload: dict) -> dict:
@@ -74,7 +86,6 @@ class ConfigService:
         return review if isinstance(review, dict) else {}
 
     @staticmethod
-    @staticmethod
     def load(config_path: str | Path) -> Config:
         path = Path(config_path)
         if not path.exists():
@@ -91,10 +102,12 @@ class ConfigService:
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
             ai_prompt_review = ConfigService._ai_prompt_review_config(payload)
+            library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
             return Config(
-                base_character_path=ConfigService._normalize_path_value(base_folders["BaseCharacterPath"]),
-                base_asset_path=ConfigService._normalize_path_value(base_folders["BaseAssetPath"]),
-                base_pipeline_path=ConfigService._normalize_path_value(base_folders["BasePipelinePath"]),
+                base_library_path=library_base,
+                base_character_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseCharacterPath"]),
+                base_asset_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseAssetPath"]),
+                base_pipeline_path=ConfigService._resolve_base_folder(library_base, base_folders["BasePipelinePath"]),
                 base_ai_queue_path=ConfigService._normalize_path_value(base_folders["BaseAIQueuePath"]),
                 prompt_condense_enabled=bool(prompt_condense.get("Enabled", False)),
                 prompt_condense_model=str(prompt_condense.get("Model", "llama3.2-vision:11b")),

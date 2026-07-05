@@ -168,7 +168,7 @@ class CostumeService:
 
         new_slug = self.safe_costume_slug(cleaned_name)
         display_name = self.costume_name_from_slug(new_slug)
-        old_path = Path(existing.path)
+        old_path = self.path_service.resolve_path(existing.path)
         new_path = self.path_service.costume_template_path(character, phase, display_name)
         if old_path != new_path and new_path.exists():
             raise CostumeServiceError(f"Costume template already exists: {new_path.name}")
@@ -185,7 +185,8 @@ class CostumeService:
         for asset in self.asset_repository.list_assets(character, phase):
             if asset.pipeline != "Costume-Dressing":
                 continue
-            if asset.costume != existing.name and asset.costume_path != str(old_path):
+            stored_costume_path = self.path_service.resolve_path(asset.costume_path) if asset.costume_path else Path()
+            if asset.costume != existing.name and stored_costume_path != old_path:
                 continue
             updated_asset = replace(asset)
             updated_asset.costume = display_name

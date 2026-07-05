@@ -296,7 +296,7 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     }
     governing_source = data["character_template_source"]
     if asset.pipeline == "Costume-Dressing":
-        costume_path = Path(asset.costume_path) if asset.costume_path else zet_app.path_service.costume_template_path(
+        costume_path = zet_app.path_service.resolve_path(asset.costume_path) if asset.costume_path else zet_app.path_service.costume_template_path(
             asset.character,
             asset.phase,
             asset.costume or "Costume",
@@ -311,7 +311,7 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
         governing_source = {
             "source_kind": "expression_definition",
             "source_label": asset.expression or "Expression Definition",
-            "source_path": asset.expression_definition_path,
+            "source_path": str(zet_app.path_service.resolve_path(asset.expression_definition_path)),
             "editable": True,
         }
     data["governing_template_source"] = governing_source
@@ -527,18 +527,24 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
     }
 
 
-def _automation_settings_from_payload(payload: dict[str, Any]) -> AutomationSettings:
+def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
+    """Build automation settings, preserving current values for omitted fields."""
+    defaults = defaults or AutomationSettings(False, "", "", False, "", False, 0, "", "", "")
     return AutomationSettings(
-        prompt_condense_enabled=bool(payload.get("prompt_condense_enabled", False)),
-        prompt_condense_model=str(payload.get("prompt_condense_model", "")),
-        prompt_condense_file=str(payload.get("prompt_condense_file", "")),
-        local_render_auto_queue_after_condense=bool(payload.get("local_render_auto_queue_after_condense", False)),
-        local_render_preset=str(payload.get("local_render_preset", "")),
-        ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", False)),
-        ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", 0)),
-        render_backend=str(payload.get("render_backend", "")),
-        ai_prompt_review_model=str(payload.get("ai_prompt_review_model", "")),
-        ai_prompt_review_instructions_file=str(payload.get("ai_prompt_review_instructions_file", "")),
+        prompt_condense_enabled=bool(payload.get("prompt_condense_enabled", defaults.prompt_condense_enabled)),
+        prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
+        prompt_condense_file=str(payload.get("prompt_condense_file", defaults.prompt_condense_file)),
+        local_render_auto_queue_after_condense=bool(
+            payload.get("local_render_auto_queue_after_condense", defaults.local_render_auto_queue_after_condense)
+        ),
+        local_render_preset=str(payload.get("local_render_preset", defaults.local_render_preset)),
+        ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
+        ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
+        render_backend=str(payload.get("render_backend", defaults.render_backend)),
+        ai_prompt_review_model=str(payload.get("ai_prompt_review_model", defaults.ai_prompt_review_model)),
+        ai_prompt_review_instructions_file=str(
+            payload.get("ai_prompt_review_instructions_file", defaults.ai_prompt_review_instructions_file)
+        ),
     )
 
 
@@ -666,16 +672,20 @@ def _record_source_edit(payload: dict[str, Any], result: dict[str, Any]) -> None
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def _resolve_editable_source_path(path: str) -> Path:
-    requested = Path(path)
+def _resolve_editable_source_path(zet_app: ZetApp, path: str) -> Path:
+    requested = zet_app.path_service.resolve_path(path)
     if not requested.is_absolute():
         requested = PROJECT_ROOT / requested
     resolved = requested.resolve()
     project_root = PROJECT_ROOT.resolve()
+    library_root = Path(zet_app.config.base_library_path).resolve()
     try:
-        resolved.relative_to(project_root)
+        if library_root and resolved.is_relative_to(library_root):
+            pass
+        else:
+            resolved.relative_to(project_root)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Source path must be inside the Zet project.") from exc
+        raise HTTPException(status_code=400, detail="Source path must be inside the Zet project or configured library.") from exc
     if not resolved.exists() or not resolved.is_file():
         raise HTTPException(status_code=404, detail=f"Source file not found: {path}")
     return resolved
@@ -735,9 +745,9 @@ def _extract_markdown_section(path: Path, section_name: str) -> tuple[str, int |
     raise HTTPException(status_code=404, detail=f"Section not found: {section_name}")
 
 
-def _edit_source_payload(source: dict[str, Any]) -> dict[str, Any]:
+def _edit_source_payload(zet_app: ZetApp, source: dict[str, Any]) -> dict[str, Any]:
     kind = str(source.get("source_kind") or "")
-    path = _resolve_editable_source_path(str(source.get("source_path") or ""))
+    path = _resolve_editable_source_path(zet_app, str(source.get("source_path") or ""))
     section = str(source.get("section_name") or "")
     json_pointer = str(source.get("json_pointer") or "")
     warning = ""
@@ -770,8 +780,8 @@ def _edit_source_payload(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _save_edit_source(payload: dict[str, Any]) -> dict[str, Any]:
-    path = _resolve_editable_source_path(str(payload.get("path") or ""))
+def _save_edit_source(zet_app: ZetApp, payload: dict[str, Any]) -> dict[str, Any]:
+    path = _resolve_editable_source_path(zet_app, str(payload.get("path") or ""))
     editor_type = str(payload.get("editor_type") or "")
     text = str(payload.get("text") or "")
     if editor_type == "markdown_section":
@@ -1244,7 +1254,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.get("/api/file")
     def local_file(path: str = Query(...), download: bool = Query(False)):
         """Serve a local file inline or as a browser download."""
-        requested = Path(path)
+        zet_app = _app(app.state.config_path)
+        requested = zet_app.path_service.resolve_path(path)
         if not requested.exists() or not requested.is_file():
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
         if download:
@@ -1254,9 +1265,10 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.post("/api/edit-source/load")
     def edit_source_load(source: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
+            zet_app = _app(app.state.config_path)
             if source.get("editable") is False:
                 raise HTTPException(status_code=400, detail="This source is not editable.")
-            return _edit_source_payload(source)
+            return _edit_source_payload(zet_app, source)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1265,7 +1277,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.post("/api/edit-source/save")
     def edit_source_save(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
-            return _save_edit_source(payload)
+            zet_app = _app(app.state.config_path)
+            return _save_edit_source(zet_app, payload)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1792,7 +1805,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            zet_app.save_automation_settings(_automation_settings_from_payload(payload))
+            zet_app.save_automation_settings(_automation_settings_from_payload(payload, zet_app.pipeline_control_service.automation_settings()))
             refreshed = _app(app.state.config_path)
             response = _pipeline_controls_payload(refreshed, character, phase)
             response["message"] = "Project automation settings saved."

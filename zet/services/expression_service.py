@@ -198,7 +198,7 @@ class ExpressionService:
         root.mkdir(parents=True, exist_ok=True)
         new_slug = self.safe_expression_slug(cleaned_label)
         display_label = self.expression_label_from_slug(new_slug)
-        old_path = Path(asset.expression_definition_path) if asset.expression_definition_path else root / f"{self.safe_expression_slug(asset.expression or display_label)}.md"
+        old_path = self.path_service.resolve_path(asset.expression_definition_path) if asset.expression_definition_path else root / f"{self.safe_expression_slug(asset.expression or display_label)}.md"
         new_path = root / f"{new_slug}.md"
         if old_path != new_path and new_path.exists():
             raise ExpressionServiceError(f"Expression definition already exists: {new_path.name}")
