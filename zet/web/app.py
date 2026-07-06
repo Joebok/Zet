@@ -42,9 +42,9 @@ def _render_console_tasks_for_context(queue: RenderConsoleQueue, character: str 
     """Return manual render tasks filtered to the requested character and phase."""
     tasks = queue.list_tasks()
     if character:
-        tasks = [task for task in tasks if task.character == character]
+        tasks = [task for task in tasks if not task.character or task.character == character]
     if phase:
-        tasks = [task for task in tasks if task.phase == phase]
+        tasks = [task for task in tasks if not task.phase or task.phase == phase]
     return tasks
 
 
@@ -53,9 +53,9 @@ def _render_console_task_for_context(queue: RenderConsoleQueue, ask_id: str, cha
     task = queue.get_task(ask_id)
     if task is None:
         return None
-    if character and task.character != character:
+    if character and task.character and task.character != character:
         return None
-    if phase and task.phase != phase:
+    if phase and task.phase and task.phase != phase:
         return None
     return task
 
@@ -387,6 +387,66 @@ def _expression_definition_payload(expression) -> dict[str, Any]:
         "editable": True,
     }
     return data
+
+
+def _story_record_payload(record) -> dict[str, Any]:
+    """Serialize one story record for dashboard views."""
+    return asdict(record)
+
+
+def _story_document_payload(document) -> dict[str, Any]:
+    """Serialize one story document for dashboard editing."""
+    return {
+        "story": _story_record_payload(document.record),
+        "text": document.text,
+        "validation_errors": list(document.validation_errors),
+    }
+
+
+def _scene_record_payload(record) -> dict[str, Any]:
+    """Serialize one scene record for dashboard views."""
+    return asdict(record)
+
+
+def _scene_document_payload(document) -> dict[str, Any]:
+    """Serialize one scene document for dashboard editing."""
+    image_path = document.story.folder_path and str(Path(document.story.folder_path) / f"{document.record.slug}.png")
+    return {
+        "story": _story_record_payload(document.story),
+        "scene": _scene_record_payload(document.record),
+        "text": document.text,
+        "validation_errors": list(document.validation_errors),
+        "image_path": image_path,
+        "image_exists": bool(image_path and Path(image_path).exists()),
+    }
+
+
+def _image_reference_payload(row) -> dict[str, Any]:
+    """Serialize one copyable scene image reference row."""
+    return asdict(row)
+
+
+def _story_render_task_payload(task) -> dict[str, Any]:
+    """Serialize one staged story render task."""
+    return {
+        "story_slug": task.story_slug,
+        "scene_slug": task.scene_slug,
+        "ask_id": task.ask_id,
+        "ask_path": task.ask_path,
+        "pipeline_path": task.pipeline_path,
+        "final_prompt_path": task.final_prompt_path,
+        "expected_output": task.expected_output,
+        "reference_files": _jsonable(task.reference_files),
+    }
+
+
+def _story_git_payload(result) -> dict[str, Any]:
+    """Serialize one story git operation result."""
+    return {
+        "output": result.output,
+        "has_story_changes": result.has_story_changes,
+        "conflict": result.conflict,
+    }
 
 
 def _onboarding_status_payload(status) -> dict[str, Any]:
@@ -1033,6 +1093,162 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "resource": _auxiliary_resource_payload(resource),
                 "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
                 "message": f"Updated auxiliary resource {resource.label}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories")
+    def stories() -> dict[str, Any]:
+        """List all stories in the shared stories library."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "stories": [_story_record_payload(item) for item in zet_app.list_stories()],
+                "has_story_changes": zet_app.story_git_has_changes(),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/git/status")
+    def story_git_status() -> dict[str, Any]:
+        """Fetch and return story git status."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return _story_git_payload(zet_app.story_git_status())
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/git/pull")
+    def story_git_pull() -> dict[str, Any]:
+        """Pull story library changes."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return _story_git_payload(zet_app.story_git_pull())
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/git/commit")
+    def story_git_commit() -> dict[str, Any]:
+        """Commit and push story changes."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return _story_git_payload(zet_app.story_git_commit())
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories")
+    def story_create(title: str = Query(...)) -> dict[str, Any]:
+        """Create a new story markdown file from the shared template."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.create_story(title)
+            return {
+                "stories": [_story_record_payload(item) for item in zet_app.list_stories()],
+                "document": _story_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Created story {document.record.title}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}")
+    def story_detail(story_slug: str) -> dict[str, Any]:
+        """Load one story markdown document."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"document": _story_document_payload(zet_app.load_story(story_slug))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.put("/api/stories/{story_slug}")
+    async def story_save(story_slug: str, request: Request) -> dict[str, Any]:
+        """Save one story markdown document."""
+        zet_app = _app(app.state.config_path)
+        try:
+            text = (await request.body()).decode("utf-8")
+            document = zet_app.save_story(story_slug, text)
+            return {
+                "stories": [_story_record_payload(item) for item in zet_app.list_stories()],
+                "document": _story_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Saved story {document.record.title}.",
+            }
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Story markdown must be UTF-8.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}/scenes")
+    def story_scenes(story_slug: str) -> dict[str, Any]:
+        """List scenes for one story folder."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes")
+    def scene_create(story_slug: str, scene_name: str = Query(...)) -> dict[str, Any]:
+        """Create a new scene markdown file for one story."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.create_scene(story_slug, scene_name)
+            return {
+                "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
+                "document": _scene_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Created scene {document.record.title}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}/scenes/{scene_slug}")
+    def scene_detail(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        """Load one story scene markdown document."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"document": _scene_document_payload(zet_app.load_scene(story_slug, scene_slug))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.put("/api/stories/{story_slug}/scenes/{scene_slug}")
+    async def scene_save(story_slug: str, scene_slug: str, request: Request) -> dict[str, Any]:
+        """Save one story scene markdown document."""
+        zet_app = _app(app.state.config_path)
+        try:
+            text = (await request.body()).decode("utf-8")
+            document = zet_app.save_scene(story_slug, scene_slug, text)
+            return {
+                "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
+                "document": _scene_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Saved scene {document.record.title}.",
+            }
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Scene markdown must be UTF-8.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/stage-render")
+    def scene_stage_render(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        """Compile and stage one story scene for the Render Console."""
+        zet_app = _app(app.state.config_path)
+        try:
+            task = zet_app.stage_scene_render(story_slug, scene_slug)
+            return {
+                "task": _story_render_task_payload(task),
+                "message": f"Staged scene {task.scene_slug} for Render Console.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/scene-image-picker")
+    def scene_image_picker(character: str = Query(""), text_filter: str = Query("")) -> dict[str, Any]:
+        """List copyable auxiliary and locked-asset image references for scene editing."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "rows": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows(character, text_filter)]
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

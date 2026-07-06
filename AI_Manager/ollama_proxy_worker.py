@@ -29,9 +29,11 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(os.environ.get("ZET_PROJECT_ROOT", "")).resolve() if os.environ.get("ZET_PROJECT_ROOT") else DEFAULT_PROJECT_ROOT
+for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
+    if str(import_path) not in sys.path:
+        sys.path.insert(0, str(import_path))
 
 from zet.services.config_service import ConfigService
 

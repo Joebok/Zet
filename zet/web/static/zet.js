@@ -47,6 +47,16 @@ const state = {
   expressionDefinitions: [],
   expressionIdentityKeys: [],
   selectedExpressionAssetId: null,
+  stories: [],
+  hasStoryChanges: false,
+  selectedStorySlug: null,
+  storyDetail: null,
+  scenes: [],
+  selectedSceneSlug: null,
+  sceneDetail: null,
+  sceneImageReferences: [],
+  scenePickerCharacter: "",
+  scenePickerSearch: "",
   auxiliaryResources: [],
   selectedAuxiliaryResourceId: null,
   auxiliaryResourceImageBlob: null,
@@ -54,7 +64,7 @@ const state = {
     character: "",
     leftPhase: "",
     rightPhase: "",
-    pipeline: "",
+    pipeline: "Character-Assembly",
     leftCostume: "",
     rightCostume: "",
     selectedIndex: 0,
@@ -298,6 +308,49 @@ const expressionDefinitionFile = document.querySelector("#expression-definition-
 const expressionCreate = document.querySelector("#expression-create");
 const expressionPreviewSection = document.querySelector("#expression-preview-section");
 const expressionPreview = document.querySelector("#expression-preview");
+const storyStatus = document.querySelector("#story-status");
+const storyMessage = document.querySelector("#story-message");
+const storyTableBody = document.querySelector("#story-table tbody");
+const storyEditorTitle = document.querySelector("#story-editor-title");
+const storySave = document.querySelector("#story-save");
+const storyNewTitle = document.querySelector("#story-new-title");
+const storyCreate = document.querySelector("#story-create");
+const storyValidation = document.querySelector("#story-validation");
+const storyText = document.querySelector("#story-text");
+const storyGitWarning = document.querySelector("#story-git-warning");
+const storyGitStatus = document.querySelector("#story-git-status");
+const storyGitPull = document.querySelector("#story-git-pull");
+const storyGitCommit = document.querySelector("#story-git-commit");
+const storyGitOutput = document.querySelector("#story-git-output");
+const sceneStatus = document.querySelector("#scene-status");
+const sceneMessage = document.querySelector("#scene-message");
+const sceneStorySelect = document.querySelector("#scene-story-select");
+const sceneNewName = document.querySelector("#scene-new-name");
+const sceneCreate = document.querySelector("#scene-create");
+const sceneTableBody = document.querySelector("#scene-table tbody");
+const sceneEditorTitle = document.querySelector("#scene-editor-title");
+const sceneSave = document.querySelector("#scene-save");
+const sceneStageRender = document.querySelector("#scene-stage-render");
+const sceneToggleImage = document.querySelector("#scene-toggle-image");
+const sceneValidation = document.querySelector("#scene-validation");
+const sceneImagePanel = document.querySelector("#scene-image-panel");
+const sceneImagePreview = document.querySelector("#scene-image-preview");
+const sceneText = document.querySelector("#scene-text");
+const scenePickerCharacter = document.querySelector("#scene-picker-character");
+const scenePickerSearch = document.querySelector("#scene-picker-search");
+const scenePickerRefresh = document.querySelector("#scene-picker-refresh");
+const scenePickerStatus = document.querySelector("#scene-picker-status");
+const scenePickerTableBody = document.querySelector("#scene-picker-table tbody");
+const fullscreenImageOverlay = document.createElement("div");
+fullscreenImageOverlay.className = "fullscreen-image-overlay";
+fullscreenImageOverlay.hidden = true;
+const fullscreenImage = document.createElement("img");
+fullscreenImage.alt = "";
+const fullscreenCropBox = document.createElement("div");
+fullscreenCropBox.className = "fullscreen-crop-box";
+fullscreenCropBox.hidden = true;
+fullscreenImageOverlay.append(fullscreenImage, fullscreenCropBox);
+document.body.append(fullscreenImageOverlay);
 const auxResourceStatus = document.querySelector("#aux-resource-status");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const auxResourceCategory = document.querySelector("#aux-resource-category");
@@ -312,6 +365,7 @@ const auxResourceLabel = document.querySelector("#aux-resource-label");
 const auxResourcePasteZone = document.querySelector("#aux-resource-paste-zone");
 const auxResourceFileInput = document.querySelector("#aux-resource-file-input");
 const auxResourceImagePreview = document.querySelector("#aux-resource-image-preview");
+auxResourceImagePreview.classList.add("fullscreen-image-trigger");
 const auxResourceSave = document.querySelector("#aux-resource-save");
 const auxResourceClear = document.querySelector("#aux-resource-clear");
 const auxResourceTag = document.querySelector("#aux-resource-tag");
@@ -441,6 +495,31 @@ function showExpressionMessage(message, kind = "info") {
   expressionMessage.hidden = !message;
 }
 
+function showStoryMessage(message, kind = "info") {
+  storyMessage.textContent = message || "";
+  storyMessage.className = `action-message ${kind}`;
+  storyMessage.hidden = !message;
+}
+
+function updateStoryGitWarning(hasChanges) {
+  state.hasStoryChanges = Boolean(hasChanges);
+  storyGitWarning.hidden = !state.hasStoryChanges;
+}
+
+function applyStoryGitPayload(payload) {
+  updateStoryGitWarning(payload.has_story_changes);
+  storyGitOutput.textContent = payload.output || "";
+  if (payload.conflict) {
+    alert("Git reported a conflict. Handle the conflicts with VS Code.");
+  }
+}
+
+function showSceneMessage(message, kind = "info") {
+  sceneMessage.textContent = message || "";
+  sceneMessage.className = `action-message ${kind}`;
+  sceneMessage.hidden = !message;
+}
+
 function showAuxResourceMessage(message, kind = "info") {
   auxResourceMessage.textContent = message || "";
   auxResourceMessage.className = `action-message ${kind}`;
@@ -471,6 +550,112 @@ function option(value, label = value) {
 
 function setSelectOptions(select, values) {
   select.replaceChildren(...values.map((value) => option(value)));
+}
+
+function setSelectOptionsWithLabels(select, items) {
+  select.replaceChildren(...items.map((item) => option(item.value, item.label)));
+}
+
+function closeFullscreenImage() {
+  resetFullscreenCrop();
+  fullscreenImageOverlay.hidden = true;
+  fullscreenImage.removeAttribute("src");
+  fullscreenImage.alt = "";
+}
+
+function openFullscreenImage(src, alt = "") {
+  if (!src) {
+    return;
+  }
+  fullscreenImage.src = src;
+  fullscreenImage.alt = alt;
+  resetFullscreenCrop();
+  fullscreenImageOverlay.hidden = false;
+}
+
+function enableFullscreenImage(image) {
+  if (!image) {
+    return;
+  }
+  image.classList.add("fullscreen-image-trigger");
+  image.addEventListener("click", () => openFullscreenImage(image.src, image.alt || image.title || "Image"));
+}
+
+let fullscreenCropStart = null;
+let fullscreenCropEnd = null;
+let fullscreenCropPointerId = null;
+
+function resetFullscreenCrop() {
+  fullscreenCropStart = null;
+  fullscreenCropEnd = null;
+  fullscreenCropPointerId = null;
+  fullscreenCropBox.hidden = true;
+  fullscreenCropBox.removeAttribute("style");
+}
+
+function fullscreenImagePoint(event) {
+  const rect = fullscreenImage.getBoundingClientRect();
+  return {
+    x: Math.min(Math.max(event.clientX, rect.left), rect.right),
+    y: Math.min(Math.max(event.clientY, rect.top), rect.bottom),
+  };
+}
+
+function updateFullscreenCropBox() {
+  if (!fullscreenCropStart || !fullscreenCropEnd) {
+    return;
+  }
+  const left = Math.min(fullscreenCropStart.x, fullscreenCropEnd.x);
+  const top = Math.min(fullscreenCropStart.y, fullscreenCropEnd.y);
+  const width = Math.abs(fullscreenCropEnd.x - fullscreenCropStart.x);
+  const height = Math.abs(fullscreenCropEnd.y - fullscreenCropStart.y);
+  fullscreenCropBox.hidden = width < 2 || height < 2;
+  fullscreenCropBox.style.left = `${left}px`;
+  fullscreenCropBox.style.top = `${top}px`;
+  fullscreenCropBox.style.width = `${width}px`;
+  fullscreenCropBox.style.height = `${height}px`;
+}
+
+function canvasBlob(canvas) {
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+async function copyFullscreenCrop() {
+  if (!fullscreenCropStart || !fullscreenCropEnd || !fullscreenImage.naturalWidth || !fullscreenImage.naturalHeight) {
+    return;
+  }
+  const imageRect = fullscreenImage.getBoundingClientRect();
+  const left = Math.min(fullscreenCropStart.x, fullscreenCropEnd.x);
+  const top = Math.min(fullscreenCropStart.y, fullscreenCropEnd.y);
+  const width = Math.abs(fullscreenCropEnd.x - fullscreenCropStart.x);
+  const height = Math.abs(fullscreenCropEnd.y - fullscreenCropStart.y);
+  if (width < 2 || height < 2) {
+    resetFullscreenCrop();
+    return;
+  }
+  const scaleX = fullscreenImage.naturalWidth / imageRect.width;
+  const scaleY = fullscreenImage.naturalHeight / imageRect.height;
+  const sourceX = Math.round((left - imageRect.left) * scaleX);
+  const sourceY = Math.round((top - imageRect.top) * scaleY);
+  const sourceWidth = Math.round(width * scaleX);
+  const sourceHeight = Math.round(height * scaleY);
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceWidth;
+  canvas.height = sourceHeight;
+  canvas.getContext("2d").drawImage(
+    fullscreenImage,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    sourceWidth,
+    sourceHeight,
+  );
+  const blob = await canvasBlob(canvas);
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  showAuxResourceMessage("Image snip copied.", "success");
 }
 
 function setSelectValueCaseInsensitive(select, value) {
@@ -535,6 +720,9 @@ async function loadContext() {
   state.phase = preferredPhase && phases.includes(preferredPhase) ? preferredPhase : payload.default_phase;
   setSelectOptions(characterSelect, state.characters);
   characterSelect.value = state.character || "";
+  setSelectOptionsWithLabels(scenePickerCharacter, [{ value: "", label: "All Characters" }, ...state.characters.map((item) => ({ value: item, label: item }))]);
+  scenePickerCharacter.value = state.scenePickerCharacter || "";
+  scenePickerSearch.value = state.scenePickerSearch || "";
   setSelectOptions(onboardingSpecies, state.onboardingOptions.species_ancestry || []);
   setSelectOptions(onboardingGender, state.onboardingOptions.gender_presentation || []);
   updatePhaseSelect();
@@ -644,7 +832,8 @@ function renderOnboarding() {
   const status = selectedOnboardingStatus();
   const ready = selectedPhaseReady();
   for (const button of document.querySelectorAll(".workflow-tab")) {
-    button.disabled = !ready;
+    const page = button.dataset.page || "";
+    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "pipeline-controls"].includes(page);
   }
   const onboardingTab = document.querySelector('.tab[data-page="onboarding"]');
   onboardingTab.hidden = ready;
@@ -993,6 +1182,7 @@ function renderAssetLockedImage(detail) {
   image.alt = "Locked asset";
   image.src = fileUrl(path, detail.asset?.updated_at || Date.now().toString());
   image.title = path;
+  enableFullscreenImage(image);
   assetLockedImage.append(image);
 }
 
@@ -1107,9 +1297,81 @@ async function advanceVisibleAssets() {
   }
 }
 
-function activatePage(page) {
-  if (page !== "onboarding" && page !== "auxiliary-resources" && page !== "phase-comparison" && !selectedPhaseReady()) {
+function activePageName() {
+  const activePage = document.querySelector("main > .page.active");
+  return activePage?.id?.replace(/-page$/, "") || "";
+}
+
+async function saveStoryBeforeNavigation() {
+  if (!state.selectedStorySlug || !state.storyDetail) {
+    return true;
+  }
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: storyText.value || "",
+    });
+    state.stories = payload.stories || state.stories;
+    updateStoryGitWarning(payload.has_story_changes);
+    state.storyDetail = payload.document || null;
+    state.selectedStorySlug = state.storyDetail?.story?.slug || state.selectedStorySlug;
+    renderStoryTable();
+    renderSceneStoryOptions();
+    renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
+    showStoryMessage(payload.message || "Story saved.");
+    return true;
+  } catch (error) {
+    showStoryMessage(error.message, "error");
+    return false;
+  }
+}
+
+async function saveSceneBeforeNavigation() {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !state.sceneDetail) {
+    return true;
+  }
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: sceneText.value || "",
+    });
+    state.scenes = payload.scenes || state.scenes;
+    updateStoryGitWarning(payload.has_story_changes);
+    state.sceneDetail = payload.document || null;
+    state.selectedSceneSlug = state.sceneDetail?.scene?.slug || state.selectedSceneSlug;
+    renderSceneTable();
+    renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
+    updateSceneImageToggle();
+    showSceneMessage(payload.message || "Scene saved.");
+    return true;
+  } catch (error) {
+    showSceneMessage(error.message, "error");
+    return false;
+  }
+}
+
+async function saveBeforePageNavigation(nextPage) {
+  const currentPage = activePageName();
+  if (currentPage === nextPage) {
+    return true;
+  }
+  if (currentPage === "stories") {
+    return saveStoryBeforeNavigation();
+  }
+  if (currentPage === "scenes") {
+    return saveSceneBeforeNavigation();
+  }
+  return true;
+}
+
+async function activatePage(page, options = {}) {
+  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
     page = "onboarding";
+  }
+  if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
+    return;
   }
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
@@ -1125,6 +1387,8 @@ function activatePage(page) {
   document.querySelector("#phase-comparison-page").classList.toggle("active", page === "phase-comparison");
   document.querySelector("#costumes-page").classList.toggle("active", page === "costumes");
   document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
+  document.querySelector("#stories-page").classList.toggle("active", page === "stories");
+  document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
@@ -1133,46 +1397,52 @@ function activatePage(page) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   if (page === "prompt-review") {
-    loadPromptReviewTasks();
+    await loadPromptReviewTasks();
   }
   if (page === "manifest") {
-    loadManifestTasks();
+    await loadManifestTasks();
   }
   if (page === "render-review") {
-    loadRenderReviewTasks();
+    await loadRenderReviewTasks();
   }
   if (page === "turnarounds") {
-    loadTurnarounds();
+    await loadTurnarounds();
   }
   if (page === "identity-keys") {
-    loadIdentityKeys();
+    await loadIdentityKeys();
   }
   if (page === "auxiliary-resources") {
-    loadAuxiliaryResources();
+    await loadAuxiliaryResources();
   }
   if (page === "phase-comparison") {
     initializePhaseComparisonControls();
-    loadPhaseComparison();
+    await loadPhaseComparison();
   }
   if (page === "costumes") {
-    loadCostumes();
+    await loadCostumes();
   }
   if (page === "expressions") {
-    loadExpressions();
+    await loadExpressions();
+  }
+  if (page === "stories") {
+    await loadStories();
+  }
+  if (page === "scenes") {
+    await loadScenesPage();
   }
   if (page === "ai-controls") {
-    loadAiControls();
+    await loadAiControls();
   }
   if (page === "pipeline-controls") {
-    loadPipelineControls();
+    await loadPipelineControls();
   }
   if (page === "render-console") {
-    loadRenderConsoleTasks();
+    await loadRenderConsoleTasks();
   }
   if (page === "onboarding") {
     renderOnboarding();
@@ -1181,12 +1451,12 @@ function activatePage(page) {
 
 function setupTabs() {
   for (const button of document.querySelectorAll(".tab")) {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       if (button.dataset.page === "identity-keys") {
         state.identityKeyMode = "list";
       }
       closeToolbarSettingsMenu();
-      activatePage(button.dataset.page);
+      await activatePage(button.dataset.page);
     });
   }
 }
@@ -1297,6 +1567,7 @@ function renderIdentityKeyUpdate(item) {
     "No source image.",
     "Identity Key source",
     item.updated_at || "",
+    false,
   );
   renderReviewImage(
     identityKeyPreview,
@@ -1732,6 +2003,486 @@ async function saveExpression() {
   }
 }
 
+async function loadStories(selectSlug = state.selectedStorySlug) {
+  // Load shared story documents for the Stories and Scenes pages.
+  storyStatus.textContent = "Loading stories...";
+  try {
+    const payload = await fetchJson("/api/stories");
+    state.stories = payload.stories || [];
+    updateStoryGitWarning(payload.has_story_changes);
+    if (selectSlug && state.stories.some((item) => item.slug === selectSlug)) {
+      state.selectedStorySlug = selectSlug;
+    } else if (!state.selectedStorySlug || !state.stories.some((item) => item.slug === state.selectedStorySlug)) {
+      state.selectedStorySlug = state.stories[0]?.slug || null;
+    }
+    renderStoryTable();
+    renderSceneStoryOptions();
+    storyStatus.textContent = `${state.stories.length} stor${state.stories.length === 1 ? "y" : "ies"}`;
+    if (document.querySelector("#stories-page").classList.contains("active") && state.selectedStorySlug) {
+      await loadStoryDetail(state.selectedStorySlug);
+    } else if (!state.selectedStorySlug) {
+      clearStoryEditor();
+    }
+  } catch (error) {
+    storyStatus.textContent = "Load failed.";
+    showStoryMessage(error.message, "error");
+  }
+}
+
+function renderStoryTable() {
+  // Render the shared stories list.
+  storyTableBody.replaceChildren();
+  for (const story of state.stories) {
+    const row = document.createElement("tr");
+    row.classList.toggle("selected", story.slug === state.selectedStorySlug);
+    row.addEventListener("click", () => selectStory(story.slug));
+    for (const value of [story.title, story.slug, basename(story.story_file_path || "")]) {
+      const cell = document.createElement("td");
+      cell.textContent = value || "";
+      row.append(cell);
+    }
+    storyTableBody.append(row);
+  }
+}
+
+function renderValidationBox(container, errors, emptyMessage) {
+  // Show validation warnings for story and scene markdown editors.
+  const items = Array.isArray(errors) ? errors.filter(Boolean) : [];
+  if (!items.length) {
+    container.hidden = false;
+    container.className = "action-message info";
+    container.textContent = emptyMessage;
+    return;
+  }
+  container.hidden = false;
+  container.className = "action-message warning";
+  container.innerHTML = items.map((item) => `<div>${escapeHtml(item)}</div>`).join("");
+}
+
+function clearStoryEditor() {
+  // Reset the story editor when nothing is selected.
+  state.storyDetail = null;
+  storyEditorTitle.textContent = "Select a story";
+  storyText.value = "";
+  storySave.disabled = true;
+  renderValidationBox(storyValidation, [], "Create or select a story to edit its markdown.");
+}
+
+async function loadStoryDetail(storySlug) {
+  // Load one story markdown document into the editor.
+  if (!storySlug) {
+    clearStoryEditor();
+    return;
+  }
+  storyEditorTitle.textContent = "Loading story...";
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}`);
+    state.storyDetail = payload.document || null;
+    state.selectedStorySlug = state.storyDetail?.story?.slug || storySlug;
+    renderStoryTable();
+    storyEditorTitle.textContent = state.storyDetail?.story?.title || "Story";
+    storyText.value = state.storyDetail?.text || "";
+    storySave.disabled = !state.storyDetail;
+    renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
+  } catch (error) {
+    clearStoryEditor();
+    showStoryMessage(error.message, "error");
+  }
+}
+
+async function selectStory(storySlug) {
+  // Select one story and refresh the current page context.
+  state.selectedStorySlug = storySlug;
+  renderStoryTable();
+  renderSceneStoryOptions();
+  if (document.querySelector("#stories-page").classList.contains("active")) {
+    await loadStoryDetail(storySlug);
+  }
+  if (document.querySelector("#scenes-page").classList.contains("active")) {
+    await loadScenesPage();
+  }
+}
+
+async function createStory() {
+  // Create a new story from the shared template.
+  const title = storyNewTitle.value.trim();
+  if (!title) {
+    showStoryMessage("Story title is required.", "error");
+    return;
+  }
+  storyCreate.disabled = true;
+  showStoryMessage("Creating story...");
+  try {
+    const payload = await fetchJson(`/api/stories?${new URLSearchParams({ title }).toString()}`, { method: "POST" });
+    state.stories = payload.stories || state.stories;
+    updateStoryGitWarning(payload.has_story_changes);
+    state.storyDetail = payload.document || null;
+    state.selectedStorySlug = state.storyDetail?.story?.slug || state.selectedStorySlug;
+    storyNewTitle.value = "";
+    renderStoryTable();
+    renderSceneStoryOptions();
+    if (state.storyDetail) {
+      storyEditorTitle.textContent = state.storyDetail.story.title || "Story";
+      storyText.value = state.storyDetail.text || "";
+      storySave.disabled = false;
+      renderValidationBox(storyValidation, state.storyDetail.validation_errors || [], "Story markdown is valid.");
+    }
+    showStoryMessage(payload.message || "Story created.");
+  } catch (error) {
+    showStoryMessage(error.message, "error");
+  } finally {
+    storyCreate.disabled = false;
+  }
+}
+
+async function saveStory() {
+  // Save the current story markdown document.
+  if (!state.selectedStorySlug) {
+    showStoryMessage("Select a story first.", "error");
+    return;
+  }
+  storySave.disabled = true;
+  showStoryMessage("Saving story...");
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: storyText.value || "",
+    });
+    state.stories = payload.stories || state.stories;
+    updateStoryGitWarning(payload.has_story_changes);
+    state.storyDetail = payload.document || null;
+    state.selectedStorySlug = state.storyDetail?.story?.slug || state.selectedStorySlug;
+    renderStoryTable();
+    renderSceneStoryOptions();
+    renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
+    showStoryMessage(payload.message || "Story saved.");
+  } catch (error) {
+    showStoryMessage(error.message, "error");
+  } finally {
+    storySave.disabled = false;
+  }
+}
+
+async function runStoryGitAction(action) {
+  // Run one story git action and report command output in the Stories page.
+  const buttons = [storyGitStatus, storyGitPull, storyGitCommit];
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  storyGitOutput.textContent = `Running git ${action}...`;
+  try {
+    const payload = await fetchJson(`/api/stories/git/${action}`, { method: "POST" });
+    applyStoryGitPayload(payload);
+  } catch (error) {
+    storyGitOutput.textContent = error.message;
+    showStoryMessage(error.message, "error");
+  } finally {
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
+function renderSceneStoryOptions() {
+  // Keep the scene page story selector aligned with the loaded story list.
+  const values = state.stories.map((story) => story.slug);
+  sceneStorySelect.replaceChildren(...values.map((value) => option(value, state.stories.find((story) => story.slug === value)?.title || value)));
+  if (state.selectedStorySlug && values.includes(state.selectedStorySlug)) {
+    sceneStorySelect.value = state.selectedStorySlug;
+  } else if (values.length) {
+    state.selectedStorySlug = values[0];
+    sceneStorySelect.value = values[0];
+  } else {
+    state.selectedStorySlug = null;
+  }
+}
+
+function clearSceneEditor() {
+  // Reset the scene editor when no story or scene is selected.
+  state.sceneDetail = null;
+  state.selectedSceneSlug = null;
+  state.scenes = [];
+  sceneTableBody.replaceChildren();
+  sceneEditorTitle.textContent = "Select a scene";
+  sceneText.value = "";
+  sceneSave.disabled = true;
+  sceneStageRender.disabled = true;
+  sceneToggleImage.disabled = true;
+  sceneImagePanel.hidden = true;
+  sceneImagePreview.removeAttribute("src");
+  renderValidationBox(sceneValidation, [], "Select a story, then create or open a scene.");
+}
+
+function updateSceneImageToggle() {
+  const imagePath = state.sceneDetail?.image_path || "";
+  const hasImage = Boolean(state.sceneDetail?.image_exists && imagePath);
+  sceneToggleImage.disabled = !hasImage;
+  if (!hasImage) {
+    sceneImagePanel.hidden = true;
+    sceneImagePreview.removeAttribute("src");
+  }
+}
+
+async function loadScenesPage() {
+  // Load the selected story, scene list, and image picker for the Scenes page.
+  if (!state.stories.length) {
+    await loadStories();
+  }
+  renderSceneStoryOptions();
+  if (!state.selectedStorySlug) {
+    clearSceneEditor();
+    await loadSceneImageReferences();
+    sceneStatus.textContent = "No story selected.";
+    return;
+  }
+  sceneStatus.textContent = "Loading scenes...";
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes`);
+    state.scenes = payload.scenes || [];
+    if (state.selectedSceneSlug && !state.scenes.some((item) => item.slug === state.selectedSceneSlug)) {
+      state.selectedSceneSlug = null;
+    }
+    if (!state.selectedSceneSlug && state.scenes.length) {
+      state.selectedSceneSlug = state.scenes[0].slug;
+    }
+    renderSceneTable();
+    sceneStatus.textContent = `${state.scenes.length} scene(s)`;
+    if (state.selectedSceneSlug) {
+      await loadSceneDetail(state.selectedStorySlug, state.selectedSceneSlug);
+    } else {
+      clearSceneEditor();
+      renderSceneTable();
+    }
+    await loadSceneImageReferences();
+  } catch (error) {
+    clearSceneEditor();
+    sceneStatus.textContent = "Load failed.";
+    showSceneMessage(error.message, "error");
+  }
+}
+
+function renderSceneTable() {
+  // Render the scene list for the selected story.
+  sceneTableBody.replaceChildren();
+  for (const scene of state.scenes) {
+    const row = document.createElement("tr");
+    row.classList.toggle("selected", scene.slug === state.selectedSceneSlug);
+    row.addEventListener("click", () => selectScene(scene.slug));
+    for (const value of [scene.title, basename(scene.path || "")]) {
+      const cell = document.createElement("td");
+      cell.textContent = value || "";
+      row.append(cell);
+    }
+    sceneTableBody.append(row);
+  }
+}
+
+async function loadSceneDetail(storySlug, sceneSlug) {
+  // Load one scene markdown document into the scene editor.
+  if (!storySlug || !sceneSlug) {
+    clearSceneEditor();
+    return;
+  }
+  sceneEditorTitle.textContent = "Loading scene...";
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}`);
+    state.sceneDetail = payload.document || null;
+    state.selectedSceneSlug = state.sceneDetail?.scene?.slug || sceneSlug;
+    renderSceneTable();
+    sceneEditorTitle.textContent = state.sceneDetail?.scene?.title || "Scene";
+    sceneText.value = state.sceneDetail?.text || "";
+    sceneSave.disabled = !state.sceneDetail;
+    sceneStageRender.disabled = !state.sceneDetail;
+    updateSceneImageToggle();
+    renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
+  } catch (error) {
+    clearSceneEditor();
+    showSceneMessage(error.message, "error");
+  }
+}
+
+async function selectScene(sceneSlug) {
+  // Select one scene within the currently selected story.
+  state.selectedSceneSlug = sceneSlug;
+  renderSceneTable();
+  await loadSceneDetail(state.selectedStorySlug, sceneSlug);
+}
+
+async function createScene() {
+  // Create a new scene markdown file in the selected story folder.
+  const sceneName = sceneNewName.value.trim();
+  if (!state.selectedStorySlug) {
+    showSceneMessage("Select or create a story first.", "error");
+    return;
+  }
+  if (!sceneName) {
+    showSceneMessage("Scene name is required.", "error");
+    return;
+  }
+  sceneCreate.disabled = true;
+  showSceneMessage("Creating scene...");
+  try {
+    const payload = await fetchJson(
+      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes?${new URLSearchParams({ scene_name: sceneName }).toString()}`,
+      { method: "POST" },
+    );
+    state.scenes = payload.scenes || state.scenes;
+    updateStoryGitWarning(payload.has_story_changes);
+    state.sceneDetail = payload.document || null;
+    state.selectedSceneSlug = state.sceneDetail?.scene?.slug || state.selectedSceneSlug;
+    sceneNewName.value = "";
+    renderSceneTable();
+    if (state.sceneDetail) {
+      sceneEditorTitle.textContent = state.sceneDetail.scene.title || "Scene";
+      sceneText.value = state.sceneDetail.text || "";
+      sceneSave.disabled = false;
+      sceneStageRender.disabled = false;
+      updateSceneImageToggle();
+      renderValidationBox(sceneValidation, state.sceneDetail.validation_errors || [], "Scene markdown is valid.");
+    }
+    showSceneMessage(payload.message || "Scene created.");
+  } catch (error) {
+    showSceneMessage(error.message, "error");
+  } finally {
+    sceneCreate.disabled = false;
+  }
+}
+
+async function saveScene() {
+  // Save the current scene markdown document.
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) {
+    showSceneMessage("Select a scene first.", "error");
+    return;
+  }
+  sceneSave.disabled = true;
+  showSceneMessage("Saving scene...");
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: sceneText.value || "",
+    });
+    state.scenes = payload.scenes || state.scenes;
+    updateStoryGitWarning(payload.has_story_changes);
+    state.sceneDetail = payload.document || null;
+    state.selectedSceneSlug = state.sceneDetail?.scene?.slug || state.selectedSceneSlug;
+    renderSceneTable();
+    renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
+    updateSceneImageToggle();
+    showSceneMessage(payload.message || "Scene saved.");
+  } catch (error) {
+    showSceneMessage(error.message, "error");
+  } finally {
+    sceneSave.disabled = false;
+  }
+}
+
+async function stageSceneRender() {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) {
+    showSceneMessage("Select a scene first.", "error");
+    return;
+  }
+  sceneStageRender.disabled = true;
+  sceneSave.disabled = true;
+  showSceneMessage("Saving and staging scene render...");
+  try {
+    const savePayload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      body: sceneText.value || "",
+    });
+    state.scenes = savePayload.scenes || state.scenes;
+    updateStoryGitWarning(savePayload.has_story_changes);
+    state.sceneDetail = savePayload.document || state.sceneDetail;
+    renderSceneTable();
+    renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
+    const payload = await fetchJson(
+      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/stage-render`,
+      { method: "POST" },
+    );
+    const askId = payload.task?.ask_id || null;
+    showSceneMessage(payload.message || "Scene render staged.");
+    await activatePage("render-console", { skipAutosave: true });
+    await loadRenderConsoleTasks(askId);
+  } catch (error) {
+    showSceneMessage(error.message, "error");
+  } finally {
+    sceneStageRender.disabled = false;
+    sceneSave.disabled = false;
+  }
+}
+
+function toggleSceneImage() {
+  const imagePath = state.sceneDetail?.image_path || "";
+  if (!state.sceneDetail?.image_exists || !imagePath) {
+    return;
+  }
+  if (sceneImagePanel.hidden) {
+    sceneImagePreview.src = fileUrl(imagePath, Date.now().toString());
+    sceneImagePanel.hidden = false;
+  } else {
+    sceneImagePanel.hidden = true;
+    sceneImagePreview.removeAttribute("src");
+  }
+}
+
+function openSceneImageFullscreen() {
+  if (!sceneImagePanel.hidden && sceneImagePreview.src) {
+    openFullscreenImage(sceneImagePreview.src, sceneImagePreview.alt || "Scene render");
+  }
+}
+
+async function loadSceneImageReferences() {
+  // Load copyable scene image tags from auxiliary resources and locked assets.
+  scenePickerStatus.textContent = "Loading references...";
+  const params = new URLSearchParams();
+  if (scenePickerCharacter.value) {
+    params.set("character", scenePickerCharacter.value);
+  }
+  if (scenePickerSearch.value.trim()) {
+    params.set("text_filter", scenePickerSearch.value.trim());
+  }
+  try {
+    const payload = await fetchJson(`/api/scene-image-picker?${params.toString()}`);
+    state.sceneImageReferences = payload.rows || [];
+    renderSceneImageReferenceTable();
+    scenePickerStatus.textContent = `${state.sceneImageReferences.length} reference(s)`;
+  } catch (error) {
+    scenePickerStatus.textContent = "Load failed.";
+    showSceneMessage(error.message, "error");
+  }
+}
+
+function renderSceneImageReferenceTable() {
+  // Render copyable scene image reference tags.
+  scenePickerTableBody.replaceChildren();
+  if (!state.sceneImageReferences.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.textContent = "No references found.";
+    row.append(cell);
+    scenePickerTableBody.append(row);
+    return;
+  }
+  for (const item of state.sceneImageReferences) {
+    const row = document.createElement("tr");
+    const tagCell = document.createElement("td");
+    tagCell.textContent = item.tag || "";
+    const labelCell = document.createElement("td");
+    labelCell.textContent = item.label || "";
+    const sourceCell = document.createElement("td");
+    sourceCell.textContent = [item.character, item.phase, item.pipeline].filter(Boolean).join(" | ") || item.kind || "";
+    row.append(tagCell, labelCell, sourceCell);
+    row.addEventListener("click", async () => {
+      await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
+      showSceneMessage(`Copied ${item.tag || "tag"}.`, "success");
+    });
+    scenePickerTableBody.append(row);
+  }
+}
+
 function updateAuxiliaryResourceCategoryDisplay() {
   // Keep the editor header matched to the currently filtered resource category.
   const selected = auxResourceCategory.options[auxResourceCategory.selectedIndex];
@@ -1902,6 +2653,9 @@ function initializePhaseComparisonControls() {
   if (!state.phaseComparison.character) {
     state.phaseComparison.character = state.character || state.characters[0] || "";
   }
+  if (!state.phaseComparison.pipeline) {
+    state.phaseComparison.pipeline = "Character-Assembly";
+  }
   setSelectOptions(phaseComparisonCharacter, state.characters || []);
   phaseComparisonCharacter.value = state.phaseComparison.character || "";
   syncPhaseComparisonPhaseOptions();
@@ -1939,7 +2693,7 @@ async function loadPhaseComparison({ preserveSlot = true, resetIndex = false } =
     character,
     left_phase: leftPhase,
     right_phase: rightPhase,
-    pipeline: phaseComparisonPipeline.value || state.phaseComparison.pipeline || "",
+    pipeline: phaseComparisonPipeline.value || state.phaseComparison.pipeline || "Character-Assembly",
     selected_index: String(resetIndex ? 0 : state.phaseComparison.selectedIndex || 0),
     selected_slot_key: preserveSlot ? (state.phaseComparison.selectedSlotKey || "") : "",
     left_costume: phaseComparisonLeftCostume.value || state.phaseComparison.leftCostume || "",
@@ -1970,7 +2724,7 @@ function renderPhaseComparison(payload) {
   setSelectOptions(phaseComparisonPipeline, payload.available_pipelines || []);
   phaseComparisonPipeline.value = (payload.available_pipelines || []).includes(payload.pipeline)
     ? payload.pipeline
-    : ((payload.available_pipelines || []).includes(currentPipeline) ? currentPipeline : "");
+    : ((payload.available_pipelines || []).includes(currentPipeline) ? currentPipeline : (((payload.available_pipelines || []).includes("Character-Assembly") ? "Character-Assembly" : "")));
   renderPhaseComparisonCostumeControls(payload);
   phaseComparisonStatus.textContent = `${state.phaseComparison.rows.length} comparison slot(s)`;
   phaseComparisonPrev.disabled = state.phaseComparison.rows.length <= 1;
@@ -2587,7 +3341,7 @@ async function saveRenderReviewComment() {
   }
 }
 
-function renderReviewImage(container, path, exists, emptyText, altText, cacheKey = "") {
+function renderReviewImage(container, path, exists, emptyText, altText, cacheKey = "", allowFullscreen = true) {
   container.replaceChildren();
   if (!exists || !path) {
     container.textContent = emptyText;
@@ -2597,6 +3351,9 @@ function renderReviewImage(container, path, exists, emptyText, altText, cacheKey
   image.alt = altText;
   image.src = fileUrl(path, cacheKey || Date.now().toString());
   image.title = path;
+  if (allowFullscreen) {
+    enableFullscreenImage(image);
+  }
   container.append(image);
 }
 
@@ -3369,15 +4126,18 @@ function renderRenderConsoleDetail(detail) {
   state.renderConsoleDetail = detail;
   clearRenderConsoleImageSelection();
   const task = detail.task;
-  renderConsoleTitle.textContent = `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
+  const storyLabel = detail.manifest?.story_slug && detail.manifest?.scene_slug
+    ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
+    : "";
+  renderConsoleTitle.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
   consoleAskId.textContent = task.ask_id;
-  consoleAssetLabel.textContent = `Asset ${task.asset_id ?? "unknown"} | ${task.character} / ${task.phase}`;
+  consoleAssetLabel.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.character} / ${task.phase}`;
   consolePipelineLabel.textContent = `${task.pipeline} | ${task.pipeline_stage}`;
   consoleExpectedOutput.textContent = task.expected_output || "";
   const helperText = detail.gpt_helper_prompt?.text || "";
   renderConsoleHelperText.value = helperText;
-  renderConsoleHelperPanel.hidden = false;
-  renderConsoleSaveHelper.disabled = false;
+  renderConsoleHelperPanel.hidden = !detail.gpt_helper_prompt?.source;
+  renderConsoleSaveHelper.disabled = !detail.gpt_helper_prompt?.source;
   renderConsoleCopyHelper.disabled = !helperText;
   renderConsolePrompt.value = detail.prompt || "";
   renderConsoleCopyPrompt.disabled = !detail.prompt;
@@ -3874,6 +4634,83 @@ costumeAddNew.addEventListener("click", clearCostumeForm);
 costumeCreate.addEventListener("click", saveCostume);
 expressionAddNew.addEventListener("click", clearExpressionForm);
 expressionCreate.addEventListener("click", saveExpression);
+storyCreate.addEventListener("click", createStory);
+storySave.addEventListener("click", saveStory);
+storyGitStatus.addEventListener("click", () => runStoryGitAction("status"));
+storyGitPull.addEventListener("click", () => runStoryGitAction("pull"));
+storyGitCommit.addEventListener("click", () => runStoryGitAction("commit"));
+sceneStorySelect.addEventListener("change", async () => {
+  state.selectedStorySlug = sceneStorySelect.value || null;
+  state.selectedSceneSlug = null;
+  await loadScenesPage();
+});
+sceneCreate.addEventListener("click", createScene);
+sceneSave.addEventListener("click", saveScene);
+sceneStageRender.addEventListener("click", stageSceneRender);
+sceneToggleImage.addEventListener("click", toggleSceneImage);
+sceneImagePreview.addEventListener("click", openSceneImageFullscreen);
+auxResourceImagePreview.addEventListener("click", () => {
+  if (!auxResourceImagePreview.hidden && auxResourceImagePreview.src) {
+    openFullscreenImage(auxResourceImagePreview.src, auxResourceImagePreview.alt || "Auxiliary resource preview");
+  }
+});
+fullscreenImageOverlay.addEventListener("click", (event) => {
+  if (event.button === 0) {
+    closeFullscreenImage();
+  }
+});
+fullscreenImageOverlay.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+});
+fullscreenImageOverlay.addEventListener("pointerdown", (event) => {
+  if (event.button !== 2 || fullscreenImageOverlay.hidden) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  fullscreenCropStart = fullscreenImagePoint(event);
+  fullscreenCropEnd = fullscreenCropStart;
+  fullscreenCropPointerId = event.pointerId;
+  fullscreenImageOverlay.setPointerCapture(event.pointerId);
+  updateFullscreenCropBox();
+});
+fullscreenImageOverlay.addEventListener("pointermove", (event) => {
+  if (fullscreenCropPointerId !== event.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  fullscreenCropEnd = fullscreenImagePoint(event);
+  updateFullscreenCropBox();
+});
+fullscreenImageOverlay.addEventListener("pointerup", async (event) => {
+  if (fullscreenCropPointerId !== event.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  fullscreenCropEnd = fullscreenImagePoint(event);
+  try {
+    await copyFullscreenCrop();
+  } catch (error) {
+    showAuxResourceMessage(`Unable to copy image snip: ${error.message}`, "error");
+  } finally {
+    resetFullscreenCrop();
+    fullscreenImageOverlay.releasePointerCapture(event.pointerId);
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !fullscreenImageOverlay.hidden) {
+    closeFullscreenImage();
+  }
+});
+scenePickerCharacter.addEventListener("change", () => {
+  state.scenePickerCharacter = scenePickerCharacter.value || "";
+  loadSceneImageReferences();
+});
+scenePickerSearch.addEventListener("input", () => {
+  state.scenePickerSearch = scenePickerSearch.value || "";
+  loadSceneImageReferences();
+});
+scenePickerRefresh.addEventListener("click", loadSceneImageReferences);
 auxResourceCategory.addEventListener("change", () => {
   clearAuxiliaryResourceForm();
   loadAuxiliaryResources();
@@ -3908,7 +4745,7 @@ auxResourceClear.addEventListener("click", clearAuxiliaryResourceForm);
 auxResourceCopyTag.addEventListener("click", () => copyText(auxResourceTag.textContent || "", "Resource tag copied."));
 phaseComparisonCharacter.addEventListener("change", () => {
   state.phaseComparison.character = phaseComparisonCharacter.value;
-  state.phaseComparison.pipeline = "";
+  state.phaseComparison.pipeline = "Character-Assembly";
   state.phaseComparison.selectedIndex = 0;
   state.phaseComparison.selectedSlotKey = "";
   syncPhaseComparisonPhaseOptions();

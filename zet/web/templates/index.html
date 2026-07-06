@@ -17,6 +17,7 @@
       <img src="/img/Zet.png" alt="Zet logo">
     </div>
     <div class="header-middle">
+      <span id="story-git-warning" class="story-git-warning" hidden>Uncommitted story changes</span>
       <img id="header-fitment-preview" alt="Locked front-left three-quarter head fitment" hidden>
     </div>
     <div class="context-controls">
@@ -46,6 +47,8 @@
     <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
     <button class="tab workflow-tab" data-page="costumes">Costumes</button>
     <button class="tab workflow-tab" data-page="expressions">Expressions</button>
+    <button class="tab workflow-tab" data-page="stories">Stories</button>
+    <button class="tab workflow-tab" data-page="scenes">Scenes</button>
     <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
     <div class="toolbar-menu">
       <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
@@ -338,30 +341,16 @@
       </div>
       <div id="phase-comparison-message" class="action-message" hidden></div>
       <section class="control-panel phase-comparison-controls">
-        <label>
-          Character
-          <select id="phase-comparison-character"></select>
-        </label>
-        <label>
-          Left Phase
-          <select id="phase-comparison-left-phase"></select>
-        </label>
-        <label>
-          Right Phase
-          <select id="phase-comparison-right-phase"></select>
-        </label>
-        <label>
-          Pipeline
-          <select id="phase-comparison-pipeline"></select>
-        </label>
-        <label id="phase-comparison-left-costume-wrap" hidden>
-          Left Costume
-          <select id="phase-comparison-left-costume"></select>
-        </label>
-        <label id="phase-comparison-right-costume-wrap" hidden>
-          Right Costume
-          <select id="phase-comparison-right-costume"></select>
-        </label>
+        <div class="phase-comparison-main-controls">
+          <label>
+            Character
+            <select id="phase-comparison-character"></select>
+          </label>
+          <label>
+            Pipeline
+            <select id="phase-comparison-pipeline"></select>
+          </label>
+        </div>
         <div class="button-row compact">
           <button id="phase-comparison-prev" type="button">Previous</button>
           <button id="phase-comparison-next" type="button">Next</button>
@@ -371,11 +360,31 @@
       <div class="phase-comparison-layout">
         <section class="render-comparison-panel">
           <h3 id="phase-comparison-left-title">Left Phase</h3>
+          <div class="phase-comparison-side-controls">
+            <label>
+              Left Phase
+              <select id="phase-comparison-left-phase"></select>
+            </label>
+            <label id="phase-comparison-left-costume-wrap" hidden>
+              Left Costume
+              <select id="phase-comparison-left-costume"></select>
+            </label>
+          </div>
           <div id="phase-comparison-left-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
           <dl id="phase-comparison-left-meta" class="compact-details"></dl>
         </section>
         <section class="render-comparison-panel">
           <h3 id="phase-comparison-right-title">Right Phase</h3>
+          <div class="phase-comparison-side-controls">
+            <label>
+              Right Phase
+              <select id="phase-comparison-right-phase"></select>
+            </label>
+            <label id="phase-comparison-right-costume-wrap" hidden>
+              Right Costume
+              <select id="phase-comparison-right-costume"></select>
+            </label>
+          </div>
           <div id="phase-comparison-right-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
           <dl id="phase-comparison-right-meta" class="compact-details"></dl>
         </section>
@@ -465,6 +474,121 @@
             <h3>Locked Expression</h3>
             <div id="expression-preview" class="render-image-viewer small-preview">No locked expression.</div>
           </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="stories-page" class="page">
+      <div class="page-title-row">
+        <h1>Stories</h1>
+        <div id="story-status" class="status-text"></div>
+      </div>
+      <div id="story-message" class="action-message" hidden></div>
+      <div class="costume-layout story-layout">
+        <section class="control-panel">
+          <table id="story-table">
+            <thead>
+              <tr>
+                <th>title</th>
+                <th>slug</th>
+                <th>story file</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="story-git-panel">
+            <div class="button-row compact">
+              <button id="story-git-status" type="button">Status</button>
+              <button id="story-git-pull" type="button">Pull</button>
+              <button id="story-git-commit" type="button">Commit</button>
+            </div>
+            <pre id="story-git-output" class="story-git-output"></pre>
+          </div>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="story-editor-title">Select a story</h2>
+            <button id="story-save" type="button" disabled>Save Story</button>
+          </div>
+          <div class="button-row compact story-create-row">
+            <label>
+              New Story Title
+              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
+            </label>
+            <button id="story-create" type="button">Add Story</button>
+          </div>
+          <div id="story-validation" class="action-message info" hidden></div>
+          <textarea id="story-text" spellcheck="false" placeholder="Select or create a story to edit its markdown."></textarea>
+        </section>
+      </div>
+    </section>
+
+    <section id="scenes-page" class="page">
+      <div class="page-title-row">
+        <h1>Scenes</h1>
+        <div id="scene-status" class="status-text"></div>
+      </div>
+      <div id="scene-message" class="action-message" hidden></div>
+      <div class="review-layout scene-layout">
+        <aside class="review-sidebar">
+          <label>
+            Story
+            <select id="scene-story-select"></select>
+          </label>
+          <div class="button-row compact">
+            <label>
+              New Scene Name
+              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
+            </label>
+            <button id="scene-create" type="button">Add Scene</button>
+          </div>
+          <table id="scene-table">
+            <thead>
+              <tr>
+                <th>scene</th>
+                <th>file</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="scene-editor-title">Select a scene</h2>
+            <div class="button-row compact">
+              <button id="scene-stage-render" type="button" disabled>Stage Render</button>
+              <button id="scene-save" type="button" disabled>Save Scene</button>
+              <button id="scene-toggle-image" type="button" disabled>Toggle Image</button>
+            </div>
+          </div>
+          <div id="scene-validation" class="action-message info" hidden></div>
+          <div id="scene-image-panel" class="scene-image-panel" hidden>
+            <img id="scene-image-preview" alt="Scene render">
+          </div>
+          <textarea id="scene-text" spellcheck="false" placeholder="Select or create a scene to edit its markdown."></textarea>
+        </section>
+        <aside class="review-actions scene-picker-panel">
+          <h3>Image References</h3>
+          <label>
+            Character Filter
+            <select id="scene-picker-character"></select>
+          </label>
+          <label>
+            Search
+            <input id="scene-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
+          </label>
+          <button id="scene-picker-refresh" type="button">Refresh References</button>
+          <div id="scene-picker-status" class="status-text"></div>
+          <table id="scene-picker-table">
+            <thead>
+              <tr>
+                <th>tag</th>
+                <th>label</th>
+                <th>source</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </aside>
       </div>
     </section>
@@ -732,12 +856,12 @@
           </div>
           <div class="render-comparison turnaround-comparison">
             <section class="render-comparison-panel">
-              <h3>Candidate</h3>
-              <div id="turnaround-candidate" class="render-image-viewer">No candidate image.</div>
-            </section>
-            <section class="render-comparison-panel">
               <h3>Locked</h3>
               <div id="turnaround-locked" class="render-image-viewer">No locked turnaround.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Candidate</h3>
+              <div id="turnaround-candidate" class="render-image-viewer">No candidate image.</div>
             </section>
           </div>
         </section>

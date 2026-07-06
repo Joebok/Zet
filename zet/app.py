@@ -25,6 +25,7 @@ from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.reference_service import ReferenceService
+from zet.services.story_service import ImageReferenceRow, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
@@ -137,6 +138,7 @@ class ZetApp:
         character_onboarding_service: CharacterOnboardingService,
         auxiliary_resource_service: AuxiliaryResourceService,
         phase_comparison_service: PhaseComparisonService,
+        story_service: StoryService,
         config_path: str | Path = "config.toml",
     ):
         self.config = config
@@ -155,6 +157,7 @@ class ZetApp:
         self.character_onboarding_service = character_onboarding_service
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
+        self.story_service = story_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -230,6 +233,7 @@ class ZetApp:
             path_service,
             Path(__file__).resolve().parents[1],
         )
+        story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository)
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -247,6 +251,7 @@ class ZetApp:
             character_onboarding_service,
             auxiliary_resource_service,
             phase_comparison_service,
+            story_service,
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
@@ -258,6 +263,66 @@ class ZetApp:
     def list_auxiliary_resources(self, category: str) -> list[AuxiliaryResource]:
         """List global auxiliary resources by category."""
         return self.auxiliary_resource_service.list_resources(category)
+
+    def list_stories(self) -> list[StoryRecord]:
+        """List story folders in the shared library."""
+        return self.story_service.list_stories()
+
+    def create_story(self, title: str) -> StoryDocument:
+        """Create a story folder and main story markdown file."""
+        return self.story_service.create_story(title)
+
+    def load_story(self, story_slug: str) -> StoryDocument:
+        """Load one story markdown document."""
+        return self.story_service.load_story(story_slug)
+
+    def save_story(self, story_slug: str, text: str) -> StoryDocument:
+        """Save one story markdown document."""
+        return self.story_service.save_story(story_slug, text)
+
+    def story_git_has_changes(self) -> bool:
+        """Return whether the Stories folder has uncommitted changes."""
+        return self.story_service.story_git_has_changes()
+
+    def story_git_status(self) -> StoryGitResult:
+        """Fetch and return story git status."""
+        return self.story_service.story_git_status()
+
+    def story_git_pull(self) -> StoryGitResult:
+        """Pull library changes and return story git output."""
+        return self.story_service.story_git_pull()
+
+    def story_git_commit(self) -> StoryGitResult:
+        """Commit and push story changes."""
+        return self.story_service.story_git_commit()
+
+    def list_scenes(self, story_slug: str) -> list[SceneRecord]:
+        """List scene markdown files for one story."""
+        return self.story_service.list_scenes(story_slug)
+
+    def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
+        """Create a new scene markdown file from template."""
+        return self.story_service.create_scene(story_slug, scene_name)
+
+    def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
+        """Load one scene markdown document."""
+        return self.story_service.load_scene(story_slug, scene_slug)
+
+    def save_scene(self, story_slug: str, scene_slug: str, text: str) -> SceneDocument:
+        """Save one scene markdown document."""
+        return self.story_service.save_scene(story_slug, scene_slug, text)
+
+    def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the expected rendered scene image path."""
+        return self.story_service.scene_image_path(story_slug, scene_slug)
+
+    def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
+        """Compile and stage one story scene for the Render Console."""
+        return self.story_service.stage_scene_render(story_slug, scene_slug)
+
+    def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
+        """List copyable image references for the scene editor."""
+        return self.story_service.image_reference_rows(character, text_filter)
 
     def phase_comparison(
         self,

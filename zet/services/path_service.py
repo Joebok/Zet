@@ -113,3 +113,32 @@ class PathService:
     def gpt_helper_prompt_path(self, character: str, phase: str) -> Path:
         """Return the GPT helper prompt config path for a character phase."""
         return self.character_path(character, phase) / "GPT_Helper_Prompts.json"
+
+    def stories_path(self) -> Path:
+        """Return the stories library root."""
+        return self.library_path("Stories")
+
+    def shared_story_template_path(self) -> Path:
+        """Return the shared story markdown template path."""
+        return self.stories_path() / "_Story_Template.md"
+
+    def shared_scene_template_path(self) -> Path:
+        """Return the shared scene markdown template path."""
+        return self.stories_path() / "_Scene_Template.md"
+
+    def story_folder_path(self, story_slug: str) -> Path:
+        """Return the folder path for one story slug."""
+        return self.stories_path() / str(story_slug or "").strip()
+
+    def story_file_path(self, story_slug: str) -> Path:
+        """Return the main markdown file path for one story slug."""
+        safe_slug = str(story_slug or "").strip()
+        return self.story_folder_path(safe_slug) / f"{safe_slug}.md"
+
+    def scene_file_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return one scene markdown path within a story folder."""
+        return self.story_folder_path(story_slug) / f"{str(scene_slug or '').strip()}.md"
+
+    def story_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the pipeline work folder for one story scene."""
+        return self.library_path("Pipelines", "Stories", story_slug, scene_slug)
