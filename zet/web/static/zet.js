@@ -81,6 +81,7 @@ const phaseSelect = document.querySelector("#phase-select");
 const newCharacterButton = document.querySelector("#new-character");
 const newPhaseButton = document.querySelector("#new-phase");
 const headerFitmentPreview = document.querySelector("#header-fitment-preview");
+const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
@@ -222,6 +223,9 @@ const sourceEditorRecompile = document.querySelector("#source-editor-recompile")
 const sourceEditorClearReviewAids = document.querySelector("#source-editor-clear-review-aids");
 const sourceEditorMeta = document.querySelector("#source-editor-meta");
 const sourceEditorText = document.querySelector("#source-editor-text");
+const todoDialog = document.querySelector("#todo-dialog");
+const todoForm = document.querySelector("#todo-form");
+const todoText = document.querySelector("#todo-text");
 const renderConsoleStatus = document.querySelector("#render-console-status");
 const renderConsoleTaskBody = document.querySelector("#render-console-task-table tbody");
 const renderConsolePrev = document.querySelector("#render-console-prev");
@@ -239,6 +243,10 @@ const renderConsoleHelperText = document.querySelector("#render-console-helper-t
 const renderConsoleSaveHelper = document.querySelector("#render-console-save-helper");
 const renderConsoleCopyHelper = document.querySelector("#render-console-copy-helper");
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
+const renderConsoleCondensePrompt = document.querySelector("#render-console-condense-prompt");
+const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
+const renderConsoleLocalStatus = document.querySelector("#render-console-local-status");
+const renderConsoleLocalTestRender = document.querySelector("#render-console-local-test-render");
 const renderConsolePasteZone = document.querySelector("#render-console-paste-zone");
 const renderConsoleFileInput = document.querySelector("#render-console-file-input");
 const renderConsoleImagePreview = document.querySelector("#render-console-image-preview");
@@ -1437,6 +1445,7 @@ async function activatePage(page, options = {}) {
   }
   if (page === "ai-controls") {
     await loadAiControls();
+    await loadPipelineControls();
   }
   if (page === "pipeline-controls") {
     await loadPipelineControls();
@@ -1470,6 +1479,23 @@ function toggleToolbarSettingsMenu() {
 function closeToolbarSettingsMenu() {
   toolbarSettingsMenu.hidden = true;
   toolbarSettingsButton.setAttribute("aria-expanded", "false");
+}
+
+async function openTodoDialog() {
+  closeToolbarSettingsMenu();
+  const payload = await fetchJson("/api/todo");
+  todoText.value = payload.text || "";
+  todoDialog.showModal();
+}
+
+async function saveTodo(event) {
+  event.preventDefault();
+  await fetchJson("/api/todo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: todoText.value }),
+  });
+  todoDialog.close();
 }
 
 async function harvestAiFromToolbar() {
@@ -3202,8 +3228,25 @@ function updatePromptReviewNavigation() {
   promptReviewNext.disabled = index < 0 || index >= state.promptReviewTasks.length - 1;
 }
 
+async function writeClipboardText(value) {
+  const text = value || "";
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.append(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
 async function copyText(value, label = "Copied.") {
-  await navigator.clipboard.writeText(value || "");
+  await writeClipboardText(value);
   showPromptMessage(label);
 }
 
@@ -3947,7 +3990,10 @@ function renderPipelineControls(payload) {
   settingPromptCondenseModel.value = automation.prompt_condense_model || "";
   settingPromptCondenseFile.value = automation.prompt_condense_file || "";
   settingLocalRenderAuto.checked = Boolean(automation.local_render_auto_queue_after_condense);
-  settingLocalRenderPreset.value = automation.local_render_preset || "";
+  if (automation.local_render_preset && !Array.from(settingLocalRenderPreset.options).some((option) => option.value === automation.local_render_preset)) {
+    settingLocalRenderPreset.add(new Option(automation.local_render_preset, automation.local_render_preset));
+  }
+  settingLocalRenderPreset.value = automation.local_render_preset || "body-reference-preview";
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptReviewModel.value = automation.ai_prompt_review_model || "";
@@ -3992,7 +4038,10 @@ function automationPayloadFromForm() {
 
 async function saveAutomationSettings(event) {
   event.preventDefault();
-  showPipelineControlsMessage("Saving...");
+  const showMessage = document.querySelector("#ai-controls-page").classList.contains("active")
+    ? showAiControlsMessage
+    : showPipelineControlsMessage;
+  showMessage("Saving...");
   try {
     const payload = await fetchJson(`/api/pipeline-controls/automation?${currentQuery().toString()}`, {
       method: "POST",
@@ -4000,9 +4049,9 @@ async function saveAutomationSettings(event) {
       body: JSON.stringify(automationPayloadFromForm()),
     });
     renderPipelineControls(payload);
-    showPipelineControlsMessage(payload.message || "Settings saved.");
+    showMessage(payload.message || "Settings saved.");
   } catch (error) {
-    showPipelineControlsMessage(error.message, "error");
+    showMessage(error.message, "error");
   }
 }
 
@@ -4110,6 +4159,10 @@ function clearRenderConsole() {
   renderConsoleSaveHelper.disabled = true;
   renderConsoleCopyHelper.disabled = true;
   renderConsolePrompt.value = "";
+  renderConsoleCondensePrompt.disabled = true;
+  renderConsoleLocalTest.disabled = true;
+  renderConsoleLocalStatus.textContent = "";
+  renderRenderConsoleLocalTestRender(null);
   renderConsoleImagePreview.hidden = true;
   renderConsoleImagePreview.removeAttribute("src");
   renderConsoleSaveImage.disabled = true;
@@ -4142,8 +4195,27 @@ function renderRenderConsoleDetail(detail) {
   renderConsolePrompt.value = detail.prompt || "";
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
+  const localPrompt = detail.local_prompt || {};
+  renderConsoleCondensePrompt.disabled = !localPrompt.supports_local_test_render;
+  renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
+  const condenseState = localPrompt.condense_status?.state || "";
+  renderConsoleLocalStatus.textContent = condenseState ? `Prompt condense: ${condenseState}` : "";
+  renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
   renderConsoleReferenceFiles(detail.manifest?.reference_files || []);
   updateRenderConsoleNavigation();
+}
+
+function renderRenderConsoleLocalTestRender(path) {
+  renderConsoleLocalTestRender.replaceChildren();
+  if (!path) {
+    renderConsoleLocalTestRender.textContent = "No local test render.";
+    return;
+  }
+  const image = document.createElement("img");
+  image.alt = "Latest local test render";
+  image.src = fileUrl(path, Date.now().toString());
+  image.title = path;
+  renderConsoleLocalTestRender.append(image);
 }
 
 function renderConsoleReferenceFiles(referenceFiles) {
@@ -4219,6 +4291,27 @@ async function saveRenderConsoleHelperPrompt() {
     showRenderConsoleMessage(error.message, "error");
   } finally {
     renderConsoleSaveHelper.disabled = false;
+  }
+}
+
+async function runRenderConsoleLocalAction(action) {
+  if (!state.selectedRenderConsoleAskId) {
+    return;
+  }
+  const isCondense = action === "prompt-condense";
+  renderConsoleLocalStatus.textContent = isCondense ? "Generating condensed prompt. Waiting..." : "Generating local test image...";
+  renderConsoleCondensePrompt.disabled = true;
+  renderConsoleLocalTest.disabled = true;
+  try {
+    const payload = await fetchJson(
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/${action}?${currentQuery().toString()}`,
+      { method: "POST" },
+    );
+    renderRenderConsoleDetail(payload);
+    showRenderConsoleMessage(payload.message || "Action complete.");
+  } catch (error) {
+    renderConsoleLocalStatus.textContent = error.message;
+    showRenderConsoleMessage(error.message, "error");
   }
 }
 
@@ -4585,6 +4678,7 @@ for (const button of actionButtons) {
 
 newCharacterButton.addEventListener("click", startNewCharacter);
 newPhaseButton.addEventListener("click", startNewPhase);
+toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleToolbarSettingsMenu();
@@ -4601,6 +4695,12 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeToolbarSettingsMenu();
+  }
+});
+todoForm.addEventListener("submit", saveTodo);
+todoDialog.addEventListener("click", (event) => {
+  if (event.target === todoDialog) {
+    todoDialog.close();
   }
 });
 onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
@@ -4833,7 +4933,10 @@ renderReviewNext.addEventListener("click", () => {
     selectRenderReviewAsset(state.renderReviewTasks[index + 1].asset_id);
   }
 });
-refreshAiControlsButton.addEventListener("click", loadAiControls);
+refreshAiControlsButton.addEventListener("click", async () => {
+  await loadAiControls();
+  await loadPipelineControls();
+});
 harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
 archiveHarvestedAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/archive-harvested"));
 activateProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/stop"));
@@ -4852,7 +4955,7 @@ promptReviewSave.addEventListener("click", savePromptReviewStage);
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsoleCopyPrompt.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(state.renderConsoleDetail?.prompt || "");
+  await writeClipboardText(state.renderConsoleDetail?.prompt || "");
   showRenderConsoleMessage("Prompt copied.");
 });
 renderConsoleSaveHelper.addEventListener("click", saveRenderConsoleHelperPrompt);
@@ -4860,9 +4963,11 @@ renderConsoleHelperText.addEventListener("input", () => {
   renderConsoleCopyHelper.disabled = !renderConsoleHelperText.value;
 });
 renderConsoleCopyHelper.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(renderConsoleHelperText.value || "");
+  await writeClipboardText(renderConsoleHelperText.value || "");
   showRenderConsoleMessage("GPT helper prompt copied.");
 });
+renderConsoleCondensePrompt.addEventListener("click", () => runRenderConsoleLocalAction("prompt-condense"));
+renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
 renderConsolePrev.addEventListener("click", () => {
   const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
   if (index > 0) {

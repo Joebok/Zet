@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -509,6 +510,42 @@ class StoryService:
         """Write JSON with stable formatting."""
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
+    def _clear_scene_render_queue_items(self, story_slug: str, scene_slug: str) -> None:
+        """Remove stale queued render work for one story scene."""
+        proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Ollama_Proxy"
+        ask_prefix = f"Ask_Story_{story_slug}_{scene_slug}_RENDER_"
+
+        def matches(path: Path) -> bool:
+            if path.name.startswith(ask_prefix):
+                return True
+            manifest_path = path / "ask_manifest.json"
+            if not manifest_path.exists():
+                return False
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except Exception:
+                return False
+            return manifest.get("story_slug") == story_slug and manifest.get("scene_slug") == scene_slug
+
+        for root in (proxy_root / "Ask", proxy_root / "Answer"):
+            if root.exists():
+                for path in root.iterdir():
+                    if path.is_dir() and matches(path):
+                        shutil.rmtree(path, ignore_errors=True)
+
+        for root in (proxy_root / "Claimed", proxy_root / "Failed"):
+            if root.exists():
+                for worker_dir in root.iterdir():
+                    if worker_dir.is_dir():
+                        for path in worker_dir.iterdir():
+                            if path.is_dir() and matches(path):
+                                shutil.rmtree(path, ignore_errors=True)
+
+        claims_root = proxy_root / "Claims"
+        if claims_root.exists():
+            for path in claims_root.glob(f"{ask_prefix}*.claim.json"):
+                path.unlink(missing_ok=True)
+
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile one story scene prompt and stage it for the Render Console."""
         safe_story_slug = self.safe_slug(story_slug)
@@ -553,6 +590,7 @@ class StoryService:
         )
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        self._clear_scene_render_queue_items(safe_story_slug, safe_scene_slug)
         ask_id = f"Ask_Story_{safe_story_slug}_{safe_scene_slug}_RENDER_{stamp}"
         ask_path = Path(self.path_service.config.base_ai_queue_path) / "Ollama_Proxy" / "Ask" / ask_id
         ask_path.mkdir(parents=True, exist_ok=False)

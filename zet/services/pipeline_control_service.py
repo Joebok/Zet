@@ -25,8 +25,8 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
-    ai_prompt_review_model: str
-    ai_prompt_review_instructions_file: str
+    ai_prompt_review_model: str = "qwen3.5:9b-instruct"
+    ai_prompt_review_instructions_file: str = "Config/AI_Prompt_Review_Instructions.md"
 
 
 @dataclass(frozen=True)

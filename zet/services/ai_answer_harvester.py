@@ -1,6 +1,7 @@
 import json
 import shutil
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from zet.models.ai_proxy import AIProxyAnswer, HarvestResult
@@ -56,6 +57,8 @@ class AIAnswerHarvester:
         data = self._read_json(manifest_path)
         try:
             asset_id = data.get("asset_id")
+            if asset_id == "":
+                asset_id = None
             asset_id = int(asset_id) if asset_id is not None else None
             return AIProxyAnswer(
                 ask_id=str(data["ask_id"]),
@@ -99,6 +102,15 @@ class AIAnswerHarvester:
             json.dumps(payload, indent=2) + "\n",
             encoding="utf-8",
         )
+
+    def _archive_harvested_answer(self, answer_path: Path) -> None:
+        archive_root = self.ai_proxy_path_service.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
+        archive_root.mkdir(parents=True, exist_ok=True)
+        dest_path = archive_root / answer_path.name
+        if dest_path.exists():
+            suffix = datetime.now().strftime("%H%M%S_%f")
+            dest_path = archive_root / f"{answer_path.name}.{suffix}"
+        shutil.move(str(answer_path), str(dest_path))
 
     def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
@@ -295,13 +307,13 @@ class AIAnswerHarvester:
 
         character = str(ask_manifest.get("character") or "")
         phase = str(ask_manifest.get("phase") or "")
+        if bool(ask_manifest.get("auxiliary", False)):
+            return self._apply_auxiliary_answer(answer_path, answer, ask_manifest)
+
         if not character or not phase:
             if str(ask_manifest.get("target_output_file") or "").strip():
                 return self._apply_target_output_answer(answer_path, answer, ask_manifest)
             raise AIAnswerHarvesterError(f"Answer folder {answer_path} is missing character or phase in ask_manifest.json")
-
-        if bool(ask_manifest.get("auxiliary", False)):
-            return self._apply_auxiliary_answer(answer_path, answer, ask_manifest)
 
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
         expected_attempt = self._expected_attempt(asset)
@@ -398,7 +410,11 @@ class AIAnswerHarvester:
         results: list[HarvestResult] = []
         for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
             try:
-                results.append(self.apply_answer_folder(answer_path))
+                result = self.apply_answer_folder(answer_path)
+                if result.status.startswith("ALREADY_"):
+                    self._archive_harvested_answer(answer_path)
+                    continue
+                results.append(result)
             except AIAnswerHarvesterError as exc:
                 result = HarvestResult(
                     answer_path=answer_path,

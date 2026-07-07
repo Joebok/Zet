@@ -172,7 +172,7 @@ class PromptReviewService:
         prompt_path: Path | None,
         condensed_prompt_path: Path | None,
     ) -> dict:
-        enabled = asset.pipeline == "Body-Reference" and bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
+        enabled = bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
         model = str(getattr(self.path_service.config, "prompt_condense_model", ""))
         queue_items = self._condense_queue_items(asset)
         latest_queue_item = queue_items[0] if queue_items else None
@@ -265,6 +265,8 @@ class PromptReviewService:
             final_prompt_path=context.render_prompt_path,
             job_output_dir=context.render_prompt_path.parent,
             prompt_review_path=context.prompt_review_path,
+            preset_name=str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview")),
+            reference_files=context.asset.reference_files or [],
         )
 
     def view_folder_for_asset(self, asset: Asset) -> str:

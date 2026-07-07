@@ -165,7 +165,7 @@ class AssetService:
         if next_actor == "AI_AGENT":
             self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
             return self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.pipeline_stage == "PROMPT" and next_stage == "PROMPT_REVIEW":
+        if asset.pipeline_stage == "PROMPT" and next_stage in {"PROMPT_REVIEW", "RENDER"}:
             self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id)
         return updated_asset
 

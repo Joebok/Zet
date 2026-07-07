@@ -51,6 +51,7 @@
     <button class="tab workflow-tab" data-page="scenes">Scenes</button>
     <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
     <div class="toolbar-menu">
+      <button id="toolbar-todo-button" class="toolbar-settings-button" type="button" title="To Do">☑</button>
       <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
       <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
@@ -683,7 +684,7 @@
           <div id="prompt-text" class="prompt-text"></div>
         </section>
         <aside class="review-actions">
-          <button id="generate-local-test">Generate Local Test Image</button>
+          <button id="generate-local-test" hidden>Generate Local Test Image</button>
           <div id="local-test-render" class="image-placeholder">No local test render.</div>
           <button id="prompt-approve" class="primary-action">Approve</button>
           <button id="prompt-fail">Fail</button>
@@ -807,6 +808,12 @@
           <textarea id="render-console-prompt" spellcheck="false"></textarea>
         </section>
         <aside class="review-actions render-console-actions">
+          <div class="button-row compact">
+            <button id="render-console-condense-prompt" type="button" disabled>Generate Image Prompt</button>
+            <button id="render-console-local-test" type="button" disabled>Generate Local Test Image</button>
+          </div>
+          <p id="render-console-local-status" class="status-text"></p>
+          <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
           <h2>Returned Image</h2>
           <div id="render-console-paste-zone" class="paste-zone" tabindex="0">
             <p>Click here, then press Ctrl+V to paste the rendered image.</p>
@@ -926,6 +933,34 @@
           <button id="send-monitor-test">Send Monitor Test</button>
         </section>
         <section class="control-panel">
+          <h2>Project Automation</h2>
+          <form id="automation-form" class="settings-form">
+            <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
+            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text"></label>
+            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text"></label>
+            <label><input id="setting-local-render-auto" type="checkbox"> Auto preview render after condense</label>
+            <label>
+              Image generation
+              <select id="setting-local-render-preset">
+                <option value="body-reference-preview">ComfyUI</option>
+                <option value="body-reference-preview-stable-matrix">Stable Matrix</option>
+              </select>
+            </label>
+            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
+            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
+            <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
+            <label>AI prompt review instructions<input id="setting-ai-prompt-review-file" type="text"></label>
+            <label>
+              Final render backend
+              <select id="setting-render-backend">
+                <option value="manual_chatgpt">manual_chatgpt</option>
+                <option value="local_image">local_image</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Save Project Settings</button>
+          </form>
+        </section>
+        <section class="control-panel">
           <h2>Processes</h2>
           <table id="process-table">
             <thead>
@@ -986,28 +1021,6 @@
       </div>
       <div id="pipeline-controls-message" class="action-message" hidden></div>
       <div class="pipeline-controls-grid">
-        <section class="control-panel">
-          <h2>Project Automation</h2>
-          <form id="automation-form" class="settings-form">
-            <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
-            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text"></label>
-            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text"></label>
-            <label><input id="setting-local-render-auto" type="checkbox"> Auto preview render after condense</label>
-            <label>Local render preset<input id="setting-local-render-preset" type="text"></label>
-            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
-            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
-            <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
-            <label>AI prompt review instructions<input id="setting-ai-prompt-review-file" type="text"></label>
-            <label>
-              Final render backend
-              <select id="setting-render-backend">
-                <option value="manual_chatgpt">manual_chatgpt</option>
-                <option value="local_image">local_image</option>
-              </select>
-            </label>
-            <button class="primary-action" type="submit">Save Project Settings</button>
-          </form>
-        </section>
         <section class="control-panel">
           <h2>Project Config</h2>
           <div id="pipeline-config-paths" class="summary-bar"></div>
@@ -1133,6 +1146,15 @@ Add prompt language here.
           <button>Close</button>
         </div>
         <textarea id="asset-note-text" readonly></textarea>
+      </form>
+    </dialog>
+    <dialog id="todo-dialog" class="todo-dialog">
+      <form id="todo-form" method="dialog">
+        <div class="review-header">
+          <h2>To Do</h2>
+          <button id="todo-save" type="submit">Save</button>
+        </div>
+        <textarea id="todo-text" spellcheck="false"></textarea>
       </form>
     </dialog>
   </main>

@@ -29,6 +29,7 @@ def render_image(
     job_output_dir: Path,
     prompt_review_path: Path | None = None,
     preset_name: str = "body-reference-preview",
+    reference_files: list[dict[str, Any]] | None = None,
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     backend = str(preset.get("backend") or "").strip().lower()
@@ -41,5 +42,16 @@ def render_image(
             job_output_dir=job_output_dir,
             prompt_review_path=prompt_review_path,
             preset_name=preset_name,
+        )
+    if backend == "stable_matrix":
+        from Local_Render_Adapters.stable_matrix_adapter import render_preview
+
+        return render_preview(
+            project_root=project_root,
+            final_prompt_path=final_prompt_path,
+            job_output_dir=job_output_dir,
+            prompt_review_path=prompt_review_path,
+            preset_name=preset_name,
+            reference_files=reference_files,
         )
     raise LocalRenderError(f"Unsupported local render backend for preset {preset_name}: {backend}")

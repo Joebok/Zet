@@ -168,6 +168,9 @@ button:disabled {
 }
 
 .toolbar-menu {
+  align-items: center;
+  display: flex;
+  gap: 4px;
   margin-left: auto;
   position: relative;
 }
@@ -1338,6 +1341,10 @@ dialog {
 .wide-dialog {
   max-width: 1180px;
   width: min(1180px, calc(100vw - 32px));
+}
+
+.todo-dialog textarea {
+  min-height: 60vh;
 }
 
 .prompt-diff-grid {

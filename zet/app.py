@@ -406,6 +406,21 @@ class ZetApp:
     def generate_local_test_render(self, character: str, phase: str, asset_id: int):
         return self.prompt_review_service.generate_local_test_render(character, phase, asset_id)
 
+    def stage_prompt_condense_ask(self, character: str, phase: str, asset_id: int, force: bool = False):
+        return self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id, force)
+
+    def stage_prompt_review_render_ask(self, character: str, phase: str, asset_id: int):
+        return self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(character, phase, asset_id)
+
+    def stage_render_task_prompt_condense_ask(
+        self,
+        manifest: dict,
+        prompt_path: Path,
+        target_output_dir: Path,
+        force: bool = False,
+    ):
+        return self.ai_proxy_service.stage_render_task_prompt_condense_ask_if_enabled(manifest, prompt_path, target_output_dir, force)
+
     def recompile_prompt_review(
         self,
         character: str,
@@ -530,6 +545,18 @@ class ZetApp:
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
+
+    def todo_text(self) -> str:
+        path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text("", encoding="utf-8")
+        return path.read_text(encoding="utf-8")
+
+    def save_todo_text(self, text: str) -> None:
+        path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
 
     def set_pipeline_prompt_review_mode(self, character: str, phase: str, pipeline_name: str, mode: str) -> None:
         """Set PROMPT_REVIEW mode for one character phase pipeline."""

@@ -10,5 +10,18 @@
     "batch_size": 1,
     "seed": "random",
     "output_subdir": "Local_Test_Renders"
+  },
+  "body-reference-preview-stable-matrix": {
+    "backend": "stable_matrix",
+    "server_url": "http://127.0.0.1:7860",
+    "width": 512,
+    "height": 512,
+    "steps": 25,
+    "cfg": 7.0,
+    "denoising_strength": 0.55,
+    "batch_size": 1,
+    "sampler_name": "Euler a",
+    "seed": "random",
+    "output_subdir": "Local_Test_Renders"
   }
 }

@@ -25,6 +25,7 @@ if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
 from zet.services.prompt_review_service import LocalRenderUnavailable
+from Local_Render_Adapters import render_image
 
 from Compile_Character_Template import MARKER_RE
 from Template_Section_Editor import save_template_sections
@@ -494,6 +495,56 @@ def _prompt_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
     }
 
 
+def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any]:
+    if task.asset_id is not None:
+        try:
+            context = zet_app.prompt_review_service.get_context(task.character, task.phase, task.asset_id)
+        except Exception:
+            context = None
+        if context is not None:
+            return {
+                "supports_local_test_render": bool(context.condense_status.get("enabled")),
+                "condensed_prompt_text": context.condensed_prompt_text or "",
+                "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
+                "condense_status": _jsonable(context.condense_status),
+            }
+
+    workspace = _render_console_task_workspace(task)
+    prompt_path = workspace / "Final_Image_Prompt.md"
+    condensed_path = workspace / "Condensed_Image_Prompt.md"
+    latest_render = _latest_render_console_local_test_render(workspace)
+    enabled = bool(getattr(zet_app.path_service.config, "prompt_condense_enabled", False))
+    condensed_current = condensed_path.exists() and prompt_path.exists() and condensed_path.stat().st_mtime >= prompt_path.stat().st_mtime
+    state = "READY" if condensed_current else "NOT_CREATED" if enabled else "DISABLED"
+    return {
+        "supports_local_test_render": enabled,
+        "condensed_prompt_text": condensed_path.read_text(encoding="utf-8") if condensed_path.exists() else "",
+        "latest_local_test_render": str(latest_render) if latest_render else None,
+        "condense_status": {
+            "enabled": enabled,
+            "state": state,
+            "condensed_exists": condensed_path.exists(),
+            "condensed_current": condensed_current,
+            "condensed_prompt_path": str(condensed_path) if condensed_path.exists() else None,
+        },
+    }
+
+
+def _render_console_task_workspace(task) -> Path:
+    pipeline_path = str(task.manifest.get("pipeline_path") or "").strip()
+    if pipeline_path:
+        return Path(pipeline_path)
+    return task.ask_path
+
+
+def _latest_render_console_local_test_render(workspace: Path) -> Path | None:
+    render_dir = workspace / "Local_Test_Renders"
+    if not render_dir.exists():
+        return None
+    images = sorted(render_dir.glob("test_*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
+    return images[0] if images else None
+
+
 def _render_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     payload = _asset_payload(zet_app, asset)
     try:
@@ -954,6 +1005,23 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             "default_character": characters[0] if characters else None,
             "default_phase": phases_by_character.get(characters[0], [None])[0] if characters else None,
         }
+
+    @app.get("/api/todo")
+    def todo() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"text": zet_app.todo_text()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/todo")
+    def save_todo(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            zet_app.save_todo_text(str(payload.get("text") or ""))
+            return {"message": "To Do saved."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/onboarding/prefill")
     def onboarding_prefill(character: str = Query(""), source_phase: str = Query("")) -> dict[str, Any]:
@@ -2096,6 +2164,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             "manifest": _jsonable(task.manifest),
             "prompt": queue.read_prompt(task),
             "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
+            "local_prompt": _render_console_local_prompt_payload(zet_app, task),
         }
 
     @app.post("/api/render-console/tasks/{ask_id}/gpt-helper-prompt")
@@ -2118,6 +2187,75 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "message": f"Saved GPT helper prompt for {prompt.get('pipeline')} / {prompt.get('view')}.",
                 "gpt_helper_prompt": prompt,
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-console/tasks/{ask_id}/prompt-condense")
+    def render_console_prompt_condense(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        """Stage prompt condense for a render-console task."""
+        queue = _render_console_queue(app.state.config_path)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            zet_app = _app(app.state.config_path)
+            if task.asset_id is not None:
+                ask_path = zet_app.stage_prompt_condense_ask(task.character, task.phase, task.asset_id, force=True)
+            else:
+                workspace = _render_console_task_workspace(task)
+                ask_path = zet_app.stage_render_task_prompt_condense_ask(
+                    task.manifest,
+                    workspace / (task.prompt_file or "Final_Image_Prompt.md"),
+                    workspace,
+                    force=True,
+                )
+            payload = {
+                "task": task.to_dict(),
+                "manifest": _jsonable(task.manifest),
+                "prompt": queue.read_prompt(task),
+                "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
+                "local_prompt": _render_console_local_prompt_payload(zet_app, task),
+            }
+            payload["message"] = f"Prompt condense queued: {ask_path}" if ask_path else "Prompt condense already queued or ready."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-console/tasks/{ask_id}/local-test-render")
+    def render_console_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        """Generate a local test render for a render-console task."""
+        queue = _render_console_queue(app.state.config_path)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            zet_app = _app(app.state.config_path)
+            if task.asset_id is not None:
+                result = zet_app.generate_local_test_render(task.character, task.phase, task.asset_id)
+            else:
+                workspace = _render_console_task_workspace(task)
+                condensed_prompt = workspace / "Condensed_Image_Prompt.md"
+                if not condensed_prompt.exists():
+                    raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
+                result = render_image(
+                    project_root=PROJECT_ROOT,
+                    final_prompt_path=condensed_prompt,
+                    job_output_dir=workspace,
+                    prompt_review_path=None,
+                    preset_name=str(getattr(zet_app.path_service.config, "local_render_preset", "body-reference-preview")),
+                    reference_files=task.manifest.get("reference_files") or [],
+                )
+            payload = {
+                "task": task.to_dict(),
+                "manifest": _jsonable(task.manifest),
+                "prompt": queue.read_prompt(task),
+                "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
+                "local_prompt": _render_console_local_prompt_payload(zet_app, task),
+            }
+            payload["message"] = f"Local test image generated: {result.image_path}"
+            return payload
+        except LocalRenderUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Local render backend unavailable.") from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2254,7 +2392,7 @@ app = create_app()
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Zet FastAPI web dashboard.")
     parser.add_argument("--config", default="config.toml")
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
     return parser
 

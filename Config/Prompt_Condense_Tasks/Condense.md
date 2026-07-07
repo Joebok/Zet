@@ -1,6 +1,6 @@
 # Zet Prompt Condense Task
 
-You are preparing a concise image-generation prompt for a local image generator such as ComfyUI.
+You are preparing a concise image-generation prompt for a local image generator such as ComfyUI or Stable Matrix.
 
 Condense the source prompt into short, direct visual instructions.
 
