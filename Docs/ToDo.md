@@ -7,3 +7,5 @@ Color-code buttons:
 Distinguish save ones, navigate ones, "redo" ones.
 
 .json inspector
+
+More control over local rendering parameters.
