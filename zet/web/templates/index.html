@@ -557,8 +557,8 @@
           <div class="review-header">
             <h2 id="scene-editor-title">Select a scene</h2>
             <div class="button-row compact">
-              <button id="scene-stage-render" type="button" disabled>Stage Render</button>
-              <button id="scene-save" type="button" disabled>Save Scene</button>
+              <button id="scene-stage-render" class="update-action" type="button" disabled>Stage Render</button>
+              <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
               <button id="scene-toggle-image" type="button" disabled>Toggle Image</button>
             </div>
           </div>
@@ -747,8 +747,8 @@
         </section>
         <aside class="review-actions">
           <button id="render-promote" class="primary-action">Promote to LOCKED</button>
-          <button id="render-fail-render">Fail to RENDER</button>
-          <button id="render-fail-regenerate">Fail to REGENERATE</button>
+          <button id="render-fail-render" class="danger-action">Fail to RENDER</button>
+          <button id="render-fail-regenerate" class="danger-action">Fail to REGENERATE</button>
           <section>
             <h3>Stage Marker</h3>
             <pre id="render-stage-text"></pre>
@@ -805,15 +805,9 @@
             </div>
             <textarea id="render-console-helper-text" spellcheck="false"></textarea>
           </div>
-          <textarea id="render-console-prompt" spellcheck="false"></textarea>
+          <textarea id="render-console-prompt" spellcheck="false" readonly></textarea>
         </section>
         <aside class="review-actions render-console-actions">
-          <div class="button-row compact">
-            <button id="render-console-condense-prompt" type="button" disabled>Generate Image Prompt</button>
-            <button id="render-console-local-test" type="button" disabled>Generate Local Test Image</button>
-          </div>
-          <p id="render-console-local-status" class="status-text"></p>
-          <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
           <h2>Returned Image</h2>
           <div id="render-console-paste-zone" class="paste-zone" tabindex="0">
             <p>Click here, then press Ctrl+V to paste the rendered image.</p>
@@ -830,8 +824,18 @@
           <div id="render-console-reference-files" class="reference-preview-list"></div>
           <h2>Fail Task</h2>
           <textarea id="render-console-fail-reason" placeholder="Reason for failure"></textarea>
-          <button id="render-console-fail-task">Fail Task</button>
+          <button id="render-console-fail-task" class="danger-action">Fail Task</button>
           <p id="render-console-fail-status" class="status-text"></p>
+          <section class="render-console-local-panel">
+            <h2>Local Image</h2>
+            <div class="button-row compact">
+              <button id="render-console-condense-prompt" type="button" disabled>Generate Image Prompt</button>
+              <button id="render-console-local-test" type="button" disabled>Generate Local Test Image</button>
+              <button id="render-console-clear-local-test" type="button" disabled>Clear</button>
+            </div>
+            <p id="render-console-local-status" class="status-text"></p>
+            <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
+          </section>
         </aside>
       </div>
     </section>
@@ -888,7 +892,7 @@
             Percent
             <input id="turnaround-partial-percent" type="number" min="1" max="100" step="1" value="45">
           </label>
-          <button id="turnaround-save-partial" type="button" disabled>Save Partial</button>
+          <button id="turnaround-save-partial" class="primary-action" type="button" disabled>Save Partial</button>
           <h3>Auxiliary Sheets</h3>
           <table id="turnaround-aux-table">
             <thead>
@@ -915,24 +919,24 @@
       </div>
       <div id="ai-controls-message" class="action-message" hidden></div>
       <div class="ai-controls-grid">
-        <section class="control-panel">
+        <section class="control-panel ai-actions-panel">
           <h2>Actions</h2>
           <div id="proxy-stop-state" class="summary-bar"></div>
           <div class="button-row two">
-            <button id="harvest-ai">Harvest AI Answers</button>
-            <button id="archive-harvested-ai">Clean Harvested Answers</button>
-            <button id="refresh-ai-controls">Refresh</button>
-            <button id="activate-proxy-stop">Activate Stop</button>
-            <button id="resume-proxy-stop">Resume</button>
-            <button id="dump-ai-queue">Dump Queue</button>
+            <button id="harvest-ai" class="update-action">Harvest AI Answers</button>
+            <button id="archive-harvested-ai" class="danger-action">Clean Harvested Answers</button>
+            <button id="refresh-ai-controls" class="navigation-action">Refresh</button>
+            <button id="activate-proxy-stop" class="danger-action">Activate Stop</button>
+            <button id="resume-proxy-stop" class="update-action">Resume</button>
+            <button id="dump-ai-queue" class="neutral-action">Dump Queue</button>
           </div>
           <label>
             Monitor note
             <input id="monitor-instruction" type="text" placeholder="Optional note for workers">
           </label>
-          <button id="send-monitor-test">Send Monitor Test</button>
+          <button id="send-monitor-test" class="update-action">Send Monitor Test</button>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-automation-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
             <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
@@ -960,7 +964,7 @@
             <button class="primary-action" type="submit">Save Project Settings</button>
           </form>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-processes-panel">
           <h2>Processes</h2>
           <table id="process-table">
             <thead>
@@ -997,17 +1001,17 @@
             </section>
           </div>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-render-console-panel">
           <h2>Render Console</h2>
-          <button id="open-render-console-tab">Open Render Console</button>
+          <button id="open-render-console-tab" class="navigation-action">Open Render Console</button>
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-monitor-tests-panel">
           <h2>Monitor Tests</h2>
           <table id="monitor-request-table"><tbody></tbody></table>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-monitor-responses-panel">
           <h2>Monitor Responses</h2>
           <table id="monitor-response-table"><tbody></tbody></table>
         </section>
@@ -1065,7 +1069,7 @@
               <select id="batch-render-pipeline"></select>
             </label>
             <label class="checkbox-row"><input id="batch-include-locked" type="checkbox"> Include locked assets</label>
-            <button id="batch-render-reset">Set Pipeline Assets Back To Render</button>
+            <button id="batch-render-reset" class="danger-action">Set Pipeline Assets Back To Render</button>
           </div>
           <table id="batch-render-result-table"><tbody></tbody></table>
         </section>
@@ -1086,7 +1090,7 @@
           </div>
           <div class="source-editor-toolbar">
             <button id="source-editor-save" class="primary-action" disabled>Save Source</button>
-            <button id="source-editor-recompile" disabled>Recompile Current Prompt</button>
+            <button id="source-editor-recompile" class="update-action" disabled>Recompile Current Prompt</button>
             <label class="checkbox-row source-editor-option">
               <input id="source-editor-clear-review-aids" type="checkbox" checked>
               Clear condensed prompt and local test renders

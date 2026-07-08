@@ -1,11 +1,14 @@
+# To Do items
 
-Rearrange AI Controls Page
+Move the local image generation box (with the generate buttons and the image output for local images) to the bottom of the column. And let the image output box size itself for the local image generated (so we see the full image scaled to fit). An have a "clear" button that can delete the local image.
 
-Scenes - Toggle Image - image doens't change when you select a new scene in the list on the left.
+Don't allow edits to the prompt in the Render Console
 
-Color-code buttons:
-Distinguish save ones, navigate ones, "redo" ones.
+# Defer for now
 
-.json inspector
+zine maker: see Docs\Zines.md
 
-More control over local rendering parameters.
+.json inspector:
+A page where I can select from a list of the key .json files and then view them in a table-like structure.
+
+Parameterize API settings used for local render.

@@ -76,6 +76,29 @@ Canonical Art Style: `[]`
             self.assertEqual(text.rstrip() + "\n", saved_text)
             self.assertTrue(document.validation_errors)
 
+    def test_save_scene_renames_file_from_scene_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            text = """Scene: `[02 Campfire]`
+
+<!-- ZET:BEGIN SCENE_NAME -->
+02 Campfire
+            <!-- ZET:END SCENE_NAME -->
+"""
+            (story_dir / "Old-Name.md").write_text(text, encoding="utf-8")
+            (story_dir / "Old-Name.png").write_bytes(b"image")
+
+            document = service.save_scene("FirstDay", "Old-Name", text)
+
+            self.assertEqual("02-Campfire", document.record.slug)
+            self.assertFalse((story_dir / "Old-Name.md").exists())
+            self.assertFalse((story_dir / "Old-Name.png").exists())
+            self.assertTrue((story_dir / "02-Campfire.md").exists())
+            self.assertEqual(b"image", (story_dir / "02-Campfire.png").read_bytes())
+
     def test_create_story_handles_story_heading_before_compiler_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

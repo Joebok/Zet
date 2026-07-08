@@ -245,6 +245,7 @@ const renderConsoleCopyHelper = document.querySelector("#render-console-copy-hel
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
 const renderConsoleCondensePrompt = document.querySelector("#render-console-condense-prompt");
 const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
+const renderConsoleClearLocalTest = document.querySelector("#render-console-clear-local-test");
 const renderConsoleLocalStatus = document.querySelector("#render-console-local-status");
 const renderConsoleLocalTestRender = document.querySelector("#render-console-local-test-render");
 const renderConsolePasteZone = document.querySelector("#render-console-paste-zone");
@@ -2247,6 +2248,8 @@ function updateSceneImageToggle() {
   if (!hasImage) {
     sceneImagePanel.hidden = true;
     sceneImagePreview.removeAttribute("src");
+  } else if (!sceneImagePanel.hidden) {
+    sceneImagePreview.src = fileUrl(imagePath, Date.now().toString());
   }
 }
 
@@ -4161,6 +4164,7 @@ function clearRenderConsole() {
   renderConsolePrompt.value = "";
   renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
+  renderConsoleClearLocalTest.disabled = true;
   renderConsoleLocalStatus.textContent = "";
   renderRenderConsoleLocalTestRender(null);
   renderConsoleImagePreview.hidden = true;
@@ -4198,6 +4202,7 @@ function renderRenderConsoleDetail(detail) {
   const localPrompt = detail.local_prompt || {};
   renderConsoleCondensePrompt.disabled = !localPrompt.supports_local_test_render;
   renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
+  renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
   const condenseState = localPrompt.condense_status?.state || "";
   renderConsoleLocalStatus.textContent = condenseState ? `Prompt condense: ${condenseState}` : "";
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
@@ -4209,6 +4214,7 @@ function renderRenderConsoleLocalTestRender(path) {
   renderConsoleLocalTestRender.replaceChildren();
   if (!path) {
     renderConsoleLocalTestRender.textContent = "No local test render.";
+    renderConsoleClearLocalTest.disabled = true;
     return;
   }
   const image = document.createElement("img");
@@ -4216,6 +4222,7 @@ function renderRenderConsoleLocalTestRender(path) {
   image.src = fileUrl(path, Date.now().toString());
   image.title = path;
   renderConsoleLocalTestRender.append(image);
+  renderConsoleClearLocalTest.disabled = false;
 }
 
 function renderConsoleReferenceFiles(referenceFiles) {
@@ -4302,6 +4309,7 @@ async function runRenderConsoleLocalAction(action) {
   renderConsoleLocalStatus.textContent = isCondense ? "Generating condensed prompt. Waiting..." : "Generating local test image...";
   renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
+  renderConsoleClearLocalTest.disabled = true;
   try {
     const payload = await fetchJson(
       `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/${action}?${currentQuery().toString()}`,
@@ -4309,6 +4317,27 @@ async function runRenderConsoleLocalAction(action) {
     );
     renderRenderConsoleDetail(payload);
     showRenderConsoleMessage(payload.message || "Action complete.");
+  } catch (error) {
+    renderConsoleLocalStatus.textContent = error.message;
+    showRenderConsoleMessage(error.message, "error");
+  }
+}
+
+async function clearRenderConsoleLocalTest() {
+  if (!state.selectedRenderConsoleAskId) {
+    return;
+  }
+  renderConsoleLocalStatus.textContent = "Clearing local test image...";
+  renderConsoleCondensePrompt.disabled = true;
+  renderConsoleLocalTest.disabled = true;
+  renderConsoleClearLocalTest.disabled = true;
+  try {
+    const payload = await fetchJson(
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render?${currentQuery().toString()}`,
+      { method: "DELETE" },
+    );
+    renderRenderConsoleDetail(payload);
+    showRenderConsoleMessage(payload.message || "Local test image cleared.");
   } catch (error) {
     renderConsoleLocalStatus.textContent = error.message;
     showRenderConsoleMessage(error.message, "error");
@@ -4968,6 +4997,7 @@ renderConsoleCopyHelper.addEventListener("click", async () => {
 });
 renderConsoleCondensePrompt.addEventListener("click", () => runRenderConsoleLocalAction("prompt-condense"));
 renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
+renderConsoleClearLocalTest.addEventListener("click", clearRenderConsoleLocalTest);
 renderConsolePrev.addEventListener("click", () => {
   const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
   if (index > 0) {

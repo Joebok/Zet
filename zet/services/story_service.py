@@ -405,10 +405,21 @@ class StoryService:
                 path=str(self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)),
             )
             return SceneDocument(story=self._story_record(safe_story_slug), record=record, text=str(text or ""), validation_errors=errors)
+        scene_name = self._extract_bounded_section(text, "SCENE_NAME") or self._extract_scene_line(text)
+        saved_scene_slug = self.safe_slug(scene_name)
         path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
+        saved_path = self.path_service.scene_file_path(safe_story_slug, saved_scene_slug)
+        if saved_scene_slug != safe_scene_slug and saved_path.exists():
+            raise StoryServiceError(f"Scene file already exists: {saved_path.name}")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
-        return self.load_scene(safe_story_slug, safe_scene_slug)
+        if saved_scene_slug != safe_scene_slug and path.exists():
+            path.rename(saved_path)
+            image_path = self.scene_image_path(safe_story_slug, safe_scene_slug)
+            saved_image_path = self.scene_image_path(safe_story_slug, saved_scene_slug)
+            if image_path.exists() and not saved_image_path.exists():
+                image_path.rename(saved_image_path)
+        saved_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
+        return self.load_scene(safe_story_slug, saved_scene_slug)
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""

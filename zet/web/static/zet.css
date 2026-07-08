@@ -4,9 +4,20 @@
   --line: #d7dce3;
   --text: #17202a;
   --muted: #667085;
-  --accent: #2563eb;
-  --accent-soft: #e8f0ff;
+  --accent: #093a46;
+  --accent-soft: #dcecef;
+  --nav: #48385b;
+  --nav-soft: #eee9f3;
+  --save: #0f6b57;
+  --save-soft: #e2f2ec;
+  --update: #2563eb;
+  --update-soft: #e8f0ff;
+  --new: #7a4b13;
+  --new-soft: #f7ead8;
+  --neutral: #526071;
+  --neutral-soft: #edf1f5;
   --danger: #b42318;
+  --danger-soft: #fef3f2;
 }
 
 * {
@@ -122,7 +133,9 @@ textarea {
 }
 
 button {
-  background: #fff;
+  background: var(--neutral-soft);
+  border-color: #b8c1cc;
+  color: #263241;
   cursor: pointer;
   padding: 5px 10px;
 }
@@ -140,6 +153,8 @@ button {
 }
 
 button:disabled {
+  background: #eef0f3;
+  border-color: var(--line);
   color: #98a2b3;
   cursor: not-allowed;
 }
@@ -162,8 +177,8 @@ button:disabled {
 }
 
 .tab.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--nav);
+  border-color: var(--nav);
   color: #fff;
 }
 
@@ -468,8 +483,82 @@ tbody tr.selected {
 }
 
 .primary-action {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--save);
+  border-color: var(--save);
+  color: #fff;
+}
+
+button.navigation-action,
+button.tab,
+button[id$="-prev"],
+button[id$="-next"],
+button[id^="open-"],
+button[id^="source-open-"],
+button[id^="view-"] {
+  background: var(--nav-soft);
+  border-color: #b9a9c8;
+  color: var(--nav);
+}
+
+button.primary-action,
+.button-link.primary-action,
+button[id*="save"],
+button[id*="Save"] {
+  background: var(--save);
+  border-color: var(--save);
+  color: #fff;
+}
+
+button.update-action,
+button[id*="refresh"],
+button[id*="Refresh"],
+button[id*="stage"],
+button[id*="promote"],
+button[id*="approve"],
+button[id*="copy"],
+button[id*="generate"],
+button[id*="retry"],
+button[id*="advance"],
+button[id*="recompile"],
+button[id*="upload"] {
+  background: var(--update);
+  border-color: var(--update);
+  color: #fff;
+}
+
+button[id*="add"],
+button[id*="create"],
+button[id*="new"] {
+  background: var(--new);
+  border-color: var(--new);
+  color: #fff;
+}
+
+button.neutral-action {
+  background: var(--neutral);
+  border-color: var(--neutral);
+  color: #fff;
+}
+
+button.danger-action,
+button[id*="fail"],
+button[id*="Fail"],
+button[id*="delete"],
+button[id*="Delete"],
+button[id*="clear"],
+button[id*="Clear"],
+button[id*="cancel"],
+button[id*="Cancel"],
+button[id*="regenerate"],
+button[id*="Regenerate"] {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+button.tab.active {
+  background: var(--nav);
+  border-color: var(--nav);
   color: #fff;
 }
 
@@ -1206,6 +1295,11 @@ tr.auxiliary-row td:last-child {
   min-height: 420px;
 }
 
+#render-console-prompt[readonly] {
+  background: #f9fafb;
+  cursor: default;
+}
+
 .paste-zone {
   align-items: center;
   background: #f8fafc;
@@ -1243,6 +1337,22 @@ tr.auxiliary-row td:last-child {
   margin-top: 6px;
 }
 
+.render-console-local-panel {
+  align-self: end;
+  margin-top: auto;
+}
+
+#render-console-local-test-render {
+  min-height: 0;
+  overflow: auto;
+}
+
+#render-console-local-test-render img {
+  max-height: 70vh;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 #render-console-fail-reason {
   min-height: 90px;
 }
@@ -1260,6 +1370,41 @@ tr.auxiliary-row td:last-child {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(320px, 0.8fr) minmax(520px, 1.2fr);
+}
+
+.ai-controls-grid .queue-panel {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.ai-actions-panel {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.ai-automation-panel {
+  grid-column: 2;
+  grid-row: 2 / span 5;
+}
+
+.ai-processes-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.ai-render-console-panel {
+  grid-column: 1;
+  grid-row: 4;
+}
+
+.ai-monitor-tests-panel {
+  grid-column: 1;
+  grid-row: 5;
+}
+
+.ai-monitor-responses-panel {
+  grid-column: 1;
+  grid-row: 6;
 }
 
 .control-panel {
