@@ -1,0 +1,2 @@
+
+I would trust **5.4-Mini** with that. For Milestone 2, I would still probably use 5.4-Mini if you give it very explicit skeletons. For Milestone 3 and beyond, where state transitions and side effects start mattering, I would move to the stronger model unless you split each task into very small, checklist-style Codex jobs.

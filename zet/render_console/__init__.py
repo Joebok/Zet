@@ -1,0 +1,1 @@
+"""Manual render console package."""

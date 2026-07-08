@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "checklists": {
+    "body_reference_prompt_review_v1": {
+      "required_phrases": [
+        "full-body technical body-reference",
+        "plain smooth neutral light gray studio background",
+        "Even studio lighting",
+        "Entire body visible",
+        "tank top and shorts"
+      ],
+      "forbidden_phrases": [
+        "picaresque",
+        "seductive",
+        "flirtatious",
+        "dramatic scene",
+        "battle",
+        "spellcasting"
+      ],
+      "required_sections": [
+        "GENERAL_DESCRIPTION_FACTS",
+        "BODY_DESCRIPTION_FACTS",
+        "IDENTITY_PRESERVATION_BODY",
+        "TECHNICAL_MODESTY_LAYER"
+      ],
+      "forbidden_section_patterns": [
+        "*_PICARESQUE",
+        "COSTUME_DESCRIPTION_*",
+        "EQUIPMENT_DESCRIPTION_*",
+        "SCENE_RENDERING_*",
+        "EXPRESSION_DESCRIPTION_*"
+      ],
+      "fail_on_unresolved_placeholders": true,
+      "fail_on_zet_markers": true
+    }
+  }
+}

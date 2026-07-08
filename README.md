@@ -1,3 +1,190 @@
-# This is Zet
+# Zet - Character Image Creation Pipeline
 
-Zet is a workflow pipeline designed to facilitate an image generating pipeline to minimize drift and maximize identity fidelity.
+Zet is a Python-based pipeline for creating character images, managing assets, and assembling scenes using AI workflows. It integrates with Stable Diffusion models via ComfyUI proxies to automate the generation of consistent character renders across multiple phases (body reference, head fitment, costume dressing, expressions).
+
+## Features
+
+- **Character Onboarding**: Create new characters from onboarding options
+- **Multi-phase Rendering Pipeline**: Body Reference → Head Fitment → Costume Dressing → Expressions
+- **Prompt Review System**: AI-powered prompt validation and refinement using Qwen models
+- **Asset Management**: Organized storage for character assets, costumes, expressions, references
+- **Auto-Harvest**: Automatically process queued jobs from external sources (Dropbox sync)
+- **Render Console Queue**: Manage rendering tasks with priority queuing
+- **ComfyUI Integration**: Proxy workers bridge ComfyUI workflows to the pipeline
+
+## System Requirements
+
+### Operating Systems
+- Windows 10/11 or macOS (Darwin)
+- Python 3.8+
+
+### Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+**Core packages:**
+- `fastapi` - Web API server for dashboard and management endpoints
+- `numpy`, `pillow` - Image processing utilities
+- `uvicorn` - ASGI web server for running the FastAPI app
+- `opencv-python` - Computer vision operations (pose detection, image analysis)
+
+### Optional: ComfyUI Integration
+To use full rendering capabilities with Stable Diffusion workflows:
+1. Install [ComfyUI](https://github.com/comfyanonymous/comfyui) separately
+2. Configure proxy workers in `AI_Manager/local_image_proxy_worker.py` or other specialized proxies (Ollama, etc.)
+
+## Quick Start
+
+### 1. Initial Setup
+
+```bash
+# Create library folder for output assets
+mkdir Zet_Library
+
+# Run the web dashboard to manage characters and scenes
+python -m zet.app
+```
+
+### 2. Configuration
+
+Edit `config.toml` to set up paths:
+
+```toml
+[BaseFoldersByPlatform.Windows]
+BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
+BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
+
+[PromptCondense]
+Enabled = false  # Set to true for automatic prompt condensation with Qwen model
+Model = "qwen3.5:4b-condenser"
+```
+
+### 3. Running the Pipeline
+
+**Option A - Interactive Dashboard:**
+```bash
+run_zet_web.bat    ; Windows batch script to start web app
+python -m zet.app   ; Direct Python execution
+```
+
+**Option B - Automated Processing:**
+```powershell
+# Harvest queued jobs from AI_Queue folder
+.\run_auto_harvest.bat
+
+# Run specific render stages (requires ComfyUI running)
+.\Scripts\Run_Body_Reference_Jobs.py
+.\Scripts\Run_Character_Assembly_Jobs.py
+.\Scripts\Run_Costume_Dressing_Jobs.py
+```
+
+### 4. Adding a New Character
+
+1. Place character config in `Characters/` folder with:
+   - Base image references
+   - Costume definitions (`Costumes.json`)
+   - Expression templates
+2. Use dashboard or run:
+   ```powershell
+   .\AI_Manager\run_proxy_worker.bat    ; Start ComfyUI proxy if using rendering
+   python -m zet.app                    ; Then start the pipeline app
+   ```
+
+## Project Structure
+
+```
+Zet/
+├── Config/                      # Prompt templates, review checklists, render presets
+│   ├── AI_Prompt_Review_Instructions.md
+│   ├── Character_Onboarding_Options.json
+│   ├── Local_Render_Workflows/  # ComfyUI workflow JSONs (.json)
+│   └── ...
+├── Scripts/                     # Standalone Python scripts for pipeline stages
+│   ├── Run_Body_Reference_Jobs.py
+│   ├── Compile_Character_Template.py
+│   └── Validate_Render_Output.py
+├── zet/                         # Main application code
+│   ├── models/                  # Data models (Asset, Costume, Expression)
+│   ├── services/                # Business logic for each pipeline stage
+│   ├── repositories/            # Database/file storage accessors
+│   └── app.py                   # FastAPI web server entry point
+├── Tests/                       # Unit tests for core functionality
+├── AI_Manager/                  # Proxy workers (ComfyUI, Ollama, local image)
+├── Logs/                        # Pipeline execution logs
+├── Source_Edits.jsonl          # Versioned prompt/source edits history
+└── config.toml                 # Configuration file
+```
+
+## API Endpoints
+
+The FastAPI server exposes these endpoints (when running `python -m zet.app`):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/characters/{name}` | GET, POST, DELETE | Character CRUD operations |
+| `/api/assets/search?q=...` | GET | Search assets by character/phase/tags |
+| `/api/prompts/review` | POST | Submit prompts for AI review |
+| `/api/render/console/status` | GET | Render queue status |
+
+## Help & Troubleshooting
+
+### Common Issues
+
+**"No module named 'zet'" error:**
+```bash
+python -m pip install -e .    ; Or ensure current directory is project root
+```
+
+**ComfyUI proxy not connecting:**
+- Ensure ComfyUI server is running on default port 8188
+- Check `AI_Manager/comfyui_proxy_worker.py` for connection settings
+
+**Prompt review model errors (Qwen):**
+- Verify Ollama or local LLM is accessible at configured endpoint
+- See `Config/AI_Prompt_Review_Instructions.md` for prompt templates
+
+### Logs Location
+
+Pipeline logs are written to the `Logs/` directory. Check recent entries when debugging rendering failures.
+
+## Authors
+
+Contributors and maintainers (add your name here):
+- Joe - Project maintainer, pipeline architecture
+
+## Version History
+
+* 1.0 (2026)
+    * Initial release with character onboarding, multi-phase rendering pipeline
+    * ComfyUI proxy integration for Stable Diffusion workflows
+    * AI prompt review system using Qwen models
+    * Auto-harvest from Dropbox queue folder
+
+## License
+
+This project is licensed under the MIT License - see LICENSE.md (if exists) or use standard open-source terms.
+
+## Acknowledgments
+
+- [ComfyUI](https://github.com/comfyanonymous/comfyui) for the underlying image generation workflows
+- [Qwen models](https://ollama.com/library/qwen) via Ollama for prompt review and condensation
+- Stable Diffusion community for base model support (SD1.5, SDXL)
+
+## Additional Resources
+
+- **Dashboard UI**: See `Docs/Dashboard_Functionality_and_UI_Direction.md` for feature roadmap
+- **Scenes & Stories**: Implementation details in `Docs/Scenes and Stories Implementation Plan.md`
+- **Data Schema**: Object model decisions documented in `Zet_Data_Schema_Object_Model_Decisions.md`
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+*For more information, see [AGENTS.md](./AGENTS.md) for automation workflows and subagent capabilities.*

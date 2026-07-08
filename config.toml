@@ -1,0 +1,34 @@
+[BaseFolders]
+BaseLibraryPath = "."
+BaseCharacterPath = "Characters/"
+BaseAssetPath = "Assets/"
+BasePipelinePath = "Pipelines/"
+BaseAIQueuePath = "AI_Queue/"
+
+[BaseFoldersByPlatform.Windows]
+BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
+BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
+
+[BaseFoldersByPlatform.Darwin]
+BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"
+BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
+
+[PromptCondense]
+Enabled = true
+Model = "qwen2.5vl:3b"
+PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
+
+[LocalRender]
+AutoQueueAfterCondense = false
+Preset = "body-reference-preview-stable-matrix"
+
+[AIHarvest]
+AutoEnabled = true
+IntervalSeconds = 60
+
+[Render]
+Backend = "manual_chatgpt"
+
+[AIPromptReview]
+Model = "qwen2.5vl:3b"
+InstructionsFile = "Config/AI_Prompt_Review_Instructions.md"

@@ -1,0 +1,106 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 907104388196591,
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "DreamShaper_8_pruned.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "full body technical reference image, direct front view, facing viewer squarely, entire body visible head to feet, feet fully visible, no cropping, standing upright pose, arms at side, relaxed shoulders, lifted chest, mobile head, plain neutral studio background, even lighting. adult high-elf sorceress Tsaeytte, young adult age phase, petite lithe graceful build, compact elven frame, narrow-to-moderate softly sloped shoulders, slim waist, balanced hips, long tapered legs, slender arms with delicate wrists, small elegant hands with long fingers, large expressive violet eyes. chin-length inward-hooking black bob hair, visible pointed elf ears, painterly semi-realistic fantasy illustration style with anime-influenced facial proportions. wearing plain opaque matte neutral tank top and shorts for technical fitment reference, simple garment edges, minimal detail.",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "cropped image, close-up, bust shot, waist-up framing, thigh-up framing, missing feet, cut-off feet, portrait composition, wrong view angle, turned torso, looking away from viewer, dramatic pose, action pose, fashion pose, pin-up pose, seductive pose, narrative scene, emotional acting, facial expression, spell effects, props, weapons, armor, cape, long gown, modern clothing, ornate costume redesign, jewelry, decorative accessories. generic replacement face, wrong age phase, human ears, rounded ears, hidden ears, short hair, long hair, curly hair, bulky warrior build, stocky body, heavy thighs, exaggerated pin-up proportions, childlike waif, broad shoulders, muscular legs, thick arms, exaggerated musculature, dramatic lighting, uneven lighting",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "18": {
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  }
+}

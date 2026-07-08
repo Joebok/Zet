@@ -1,0 +1,1164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zet</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/img/favicon_io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/img/favicon_io/site.webmanifest">
+  <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
+  <link rel="stylesheet" href="/static/zet.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="/img/Zet.png" alt="Zet logo">
+    </div>
+    <div class="header-middle">
+      <span id="story-git-warning" class="story-git-warning" hidden>Uncommitted story changes</span>
+      <img id="header-fitment-preview" alt="Locked front-left three-quarter head fitment" hidden>
+    </div>
+    <div class="context-controls">
+      <label>
+        Character
+        <select id="character-select"></select>
+      </label>
+      <label>
+        Phase
+        <select id="phase-select"></select>
+      </label>
+      <button id="new-character" type="button">New Character</button>
+      <button id="new-phase" type="button">New Phase</button>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Dashboard sections">
+    <button class="tab onboarding-tab" data-page="onboarding">Onboarding</button>
+    <button class="tab active workflow-tab" data-page="assets">Assets</button>
+    <button class="tab workflow-tab" data-page="manifest">Manifest</button>
+    <button class="tab workflow-tab" data-page="prompt-review">Prompt Review</button>
+    <button class="tab workflow-tab" data-page="render-console">Render Console</button>
+    <button class="tab workflow-tab" data-page="render-review">Image Review</button>
+    <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
+    <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
+    <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Resources</button>
+    <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
+    <button class="tab workflow-tab" data-page="costumes">Costumes</button>
+    <button class="tab workflow-tab" data-page="expressions">Expressions</button>
+    <button class="tab workflow-tab" data-page="stories">Stories</button>
+    <button class="tab workflow-tab" data-page="scenes">Scenes</button>
+    <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
+    <div class="toolbar-menu">
+      <button id="toolbar-todo-button" class="toolbar-settings-button" type="button" title="To Do">☑</button>
+      <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
+      <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+        <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
+        <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
+        <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section id="onboarding-page" class="page">
+      <div class="page-title-row">
+        <h1>Onboarding</h1>
+        <div id="onboarding-status" class="status-text"></div>
+      </div>
+      <div id="onboarding-message" class="action-message" hidden></div>
+      <div class="onboarding-layout">
+        <section class="control-panel">
+          <h3>Interview</h3>
+          <label>
+            Character Name
+            <input id="onboarding-character" type="text">
+          </label>
+          <label>
+            Character Phase
+            <input id="onboarding-phase" type="text">
+          </label>
+          <label>
+            Species / Ancestry
+            <select id="onboarding-species"></select>
+          </label>
+          <label>
+            Gender Presentation
+            <select id="onboarding-gender"></select>
+          </label>
+          <label>
+            Canonical Art Style
+            <textarea id="onboarding-art-style" rows="4"></textarea>
+          </label>
+          <div class="button-row compact">
+            <button id="onboarding-save-draft" type="button">Save Draft</button>
+            <a id="onboarding-download-template" class="button-link" href="#" download hidden>Download Template</a>
+            <button id="onboarding-copy-gpt-prompt" type="button" disabled>Copy ChatGPT Prompt</button>
+          </div>
+          <section class="onboarding-helper">
+            <h3>ChatGPT Prompt</h3>
+            <textarea id="onboarding-gpt-prompt" rows="12" readonly></textarea>
+          </section>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="onboarding-title">Character Setup</h2>
+          </div>
+          <div class="onboarding-upload-row">
+            <label>
+              Completed Character_Image_Template.md
+              <input id="onboarding-template-file" type="file" accept=".md,text/markdown,text/plain">
+            </label>
+            <button id="onboarding-upload-template" type="button">Upload Template</button>
+          </div>
+          <dl id="onboarding-status-list" class="status-list"></dl>
+          <section>
+            <h3>Validation</h3>
+            <pre id="onboarding-validation"></pre>
+          </section>
+        </section>
+      </div>
+    </section>
+
+    <section id="assets-page" class="page active">
+      <div class="page-title-row">
+        <h1>Assets</h1>
+        <div id="asset-status" class="status-text"></div>
+      </div>
+      <div class="asset-layout">
+        <section class="asset-table-panel">
+          <div class="asset-filters">
+            <label class="checkbox-row">
+              <input id="asset-filter-todo" type="checkbox">
+              To Do Only
+            </label>
+            <label class="checkbox-row">
+              <input id="asset-filter-hide-base" type="checkbox">
+              Hide Base Images
+            </label>
+            <label>
+              Pipeline
+              <select id="asset-filter-pipeline">
+                <option value="">All</option>
+                <option value="Body-Reference">Body-Reference</option>
+                <option value="Head-Fitment">Head-Fitment</option>
+                <option value="Character-Assembly">Character-Assembly</option>
+                <option value="Costume-Dressing">Costume-Dressing</option>
+                <option value="Expression">Expression</option>
+              </select>
+            </label>
+          </div>
+          <table id="asset-table">
+            <thead>
+              <tr>
+                <th>asset_id</th>
+                <th>pipeline</th>
+                <th>body_view</th>
+                <th>costume</th>
+                <th>asset_state</th>
+                <th>pipeline_stage</th>
+                <th>actor</th>
+                <th>ai_state</th>
+                <th>note</th>
+                <th>updated_at</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="asset-detail-panel">
+          <h2 id="detail-title">Select an asset</h2>
+          <div id="detail-summary" class="summary-bar"></div>
+          <div id="action-message" class="action-message" hidden></div>
+          <div class="asset-detail-toggle" role="group" aria-label="Asset detail display">
+            <button id="asset-detail-status-mode" class="selected" type="button">Status</button>
+            <button id="asset-detail-image-mode" type="button">Locked Image</button>
+          </div>
+          <div class="button-row">
+            <button id="run-current-worker" data-action="run-current-worker" disabled>Advance</button>
+            <button id="regenerate" data-action="regenerate" disabled>Regenerate</button>
+            <button id="retouch" data-action="retouch" disabled>Retouch</button>
+            <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
+            <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
+            <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
+            <button id="create-identity-from-asset" type="button" disabled>Identity Key</button>
+          </div>
+          <div class="button-row compact">
+            <button id="open-character-template" type="button" disabled>Character Template</button>
+            <button id="open-governing-template" type="button" disabled>Governing Template</button>
+          </div>
+          <div id="asset-status-detail" class="asset-detail-view">
+            <div class="detail-grid">
+              <section>
+                <h3>Asset</h3>
+                <pre id="asset-json"></pre>
+              </section>
+              <section>
+                <h3>Paths</h3>
+                <dl id="path-list"></dl>
+              </section>
+              <section>
+                <h3>Stage Marker</h3>
+                <pre id="stage-text"></pre>
+              </section>
+              <section>
+                <h3>History</h3>
+                <pre id="history-text"></pre>
+              </section>
+            </div>
+          </div>
+          <div id="asset-locked-detail" class="asset-detail-view" hidden>
+            <section>
+              <h3>Locked Asset</h3>
+              <div id="asset-locked-image" class="asset-locked-image-viewer">No locked image.</div>
+              <div id="asset-locked-path" class="status-text"></div>
+            </section>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="identity-keys-page" class="page">
+      <div class="page-title-row">
+        <h1>Identity Keys</h1>
+        <div id="identity-key-status" class="status-text"></div>
+      </div>
+      <div id="identity-key-message" class="action-message" hidden></div>
+      <div class="identity-layout">
+        <section class="control-panel">
+          <div class="button-row compact">
+            <button id="identity-key-show-list" type="button">List</button>
+          </div>
+          <table id="identity-key-table">
+            <thead>
+              <tr>
+                <th>label</th>
+                <th>view</th>
+                <th>image</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="identity-key-title">Select or create an Identity Key</h2>
+          </div>
+          <div class="identity-form-row">
+            <label>
+              Label
+              <input id="identity-key-label" type="text" placeholder="Upper Body">
+            </label>
+            <label>
+              Percent
+              <input id="identity-key-percent" type="number" min="1" max="100" step="1" value="100">
+            </label>
+            <button id="identity-key-create-preview" type="button" disabled>Create Identity Key</button>
+            <button id="identity-key-save" type="button" disabled>Save</button>
+          </div>
+          <div class="render-comparison identity-comparison">
+            <section class="render-comparison-panel">
+              <h3>Original</h3>
+              <div id="identity-key-original" class="render-image-viewer">No source image.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Crop</h3>
+              <div id="identity-key-preview" class="render-image-viewer">No crop preview.</div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="auxiliary-resources-page" class="page">
+      <div class="page-title-row">
+        <h1>Auxiliary Resources</h1>
+        <div id="aux-resource-status" class="status-text"></div>
+      </div>
+      <div id="aux-resource-message" class="action-message" hidden></div>
+      <div class="aux-resource-layout">
+        <section class="control-panel">
+          <div class="button-row compact">
+            <label>
+              Category
+              <select id="aux-resource-category">
+                <option value="person">Person</option>
+                <option value="place">Place</option>
+                <option value="thing">Thing</option>
+              </select>
+            </label>
+            <label>
+              Search Label
+              <input id="aux-resource-search" type="search" placeholder="contains...">
+            </label>
+            <label class="checkbox-label">
+              <input id="aux-resource-show-thumbnails" type="checkbox">
+              Thumbnails
+            </label>
+          </div>
+          <table id="aux-resource-table">
+            <thead>
+              <tr>
+                <th class="aux-thumbnail-col">image</th>
+                <th>label</th>
+                <th>tag</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions aux-resource-editor">
+          <button id="aux-resource-add" type="button">Add Resource</button>
+          <h3 id="aux-resource-form-title">Add Resource</h3>
+          <p class="category-context">
+            Category: <strong id="aux-resource-form-category">Person</strong>
+          </p>
+          <label>
+            Label
+            <input id="aux-resource-label" type="text" placeholder="Old wizard">
+          </label>
+          <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
+            <p>Click here, then press Ctrl+V to paste an image.</p>
+            <p class="status-text">Drag/drop and file picker also work.</p>
+            <input id="aux-resource-file-input" type="file" accept="image/*">
+          </div>
+          <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
+          <button id="aux-resource-save" type="button">Save Resource</button>
+          <button id="aux-resource-clear" type="button">Clear</button>
+          <h3>Selected Tag</h3>
+          <code id="aux-resource-tag" class="copyable-tag"></code>
+          <button id="aux-resource-copy-tag" type="button" disabled>Copy Tag</button>
+        </aside>
+      </div>
+    </section>
+
+    <section id="phase-comparison-page" class="page">
+      <div class="page-title-row">
+        <h1>Phase Comparison</h1>
+        <div id="phase-comparison-status" class="status-text"></div>
+      </div>
+      <div id="phase-comparison-message" class="action-message" hidden></div>
+      <section class="control-panel phase-comparison-controls">
+        <div class="phase-comparison-main-controls">
+          <label>
+            Character
+            <select id="phase-comparison-character"></select>
+          </label>
+          <label>
+            Pipeline
+            <select id="phase-comparison-pipeline"></select>
+          </label>
+        </div>
+        <div class="button-row compact">
+          <button id="phase-comparison-prev" type="button">Previous</button>
+          <button id="phase-comparison-next" type="button">Next</button>
+        </div>
+      </section>
+      <div id="phase-comparison-meta" class="summary-bar"></div>
+      <div class="phase-comparison-layout">
+        <section class="render-comparison-panel">
+          <h3 id="phase-comparison-left-title">Left Phase</h3>
+          <div class="phase-comparison-side-controls">
+            <label>
+              Left Phase
+              <select id="phase-comparison-left-phase"></select>
+            </label>
+            <label id="phase-comparison-left-costume-wrap" hidden>
+              Left Costume
+              <select id="phase-comparison-left-costume"></select>
+            </label>
+          </div>
+          <div id="phase-comparison-left-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
+          <dl id="phase-comparison-left-meta" class="compact-details"></dl>
+        </section>
+        <section class="render-comparison-panel">
+          <h3 id="phase-comparison-right-title">Right Phase</h3>
+          <div class="phase-comparison-side-controls">
+            <label>
+              Right Phase
+              <select id="phase-comparison-right-phase"></select>
+            </label>
+            <label id="phase-comparison-right-costume-wrap" hidden>
+              Right Costume
+              <select id="phase-comparison-right-costume"></select>
+            </label>
+          </div>
+          <div id="phase-comparison-right-image" class="render-image-viewer" tabindex="0">No locked asset for this slot.</div>
+          <dl id="phase-comparison-right-meta" class="compact-details"></dl>
+        </section>
+      </div>
+    </section>
+
+    <section id="costumes-page" class="page">
+      <div class="page-title-row">
+        <h1>Costumes</h1>
+        <div id="costume-status" class="status-text"></div>
+      </div>
+      <div id="costume-message" class="action-message" hidden></div>
+      <div class="costume-layout">
+        <section class="control-panel">
+          <table id="costume-table">
+            <thead>
+              <tr>
+                <th>costume</th>
+                <th>assets</th>
+                <th>template</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions item-editor">
+          <button id="costume-add-new" type="button">Add New</button>
+          <h3 id="costume-form-title">Add Costume</h3>
+          <label>
+            Costume Name
+            <input id="costume-name" type="text" placeholder="Formal">
+          </label>
+          <label id="costume-template-file-wrap">
+            Costume Markdown
+            <input id="costume-template-file" type="file" accept=".md,text/markdown,text/plain">
+          </label>
+          <button id="costume-create" type="button">Save Costume</button>
+          <section id="costume-preview-section" class="item-preview-section" hidden>
+            <h3>Locked Turnaround</h3>
+            <div id="costume-preview" class="render-image-viewer small-preview">No locked turnaround.</div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="expressions-page" class="page">
+      <div class="page-title-row">
+        <h1>Expressions</h1>
+        <div id="expression-status" class="status-text"></div>
+      </div>
+      <div id="expression-message" class="action-message" hidden></div>
+      <div class="costume-layout">
+        <section class="control-panel">
+          <table id="expression-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>expression</th>
+                <th>identity key</th>
+                <th>stage</th>
+                <th>state</th>
+                <th>output</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions item-editor">
+          <button id="expression-add-new" type="button">Add New</button>
+          <h3 id="expression-form-title">Add Expression</h3>
+          <label>
+            Label
+            <input id="expression-label" type="text" placeholder="Soft Smile">
+          </label>
+          <label>
+            Identity Key
+            <select id="expression-identity-key"></select>
+          </label>
+          <label id="expression-definition-file-wrap">
+            Definition Markdown
+            <input id="expression-definition-file" type="file" accept=".md,text/markdown,text/plain">
+          </label>
+          <button id="expression-create" type="button">Save Expression</button>
+          <section id="expression-preview-section" class="item-preview-section" hidden>
+            <h3>Locked Expression</h3>
+            <div id="expression-preview" class="render-image-viewer small-preview">No locked expression.</div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="stories-page" class="page">
+      <div class="page-title-row">
+        <h1>Stories</h1>
+        <div id="story-status" class="status-text"></div>
+      </div>
+      <div id="story-message" class="action-message" hidden></div>
+      <div class="costume-layout story-layout">
+        <section class="control-panel">
+          <table id="story-table">
+            <thead>
+              <tr>
+                <th>title</th>
+                <th>slug</th>
+                <th>story file</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="story-git-panel">
+            <div class="button-row compact">
+              <button id="story-git-status" type="button">Status</button>
+              <button id="story-git-pull" type="button">Pull</button>
+              <button id="story-git-commit" type="button">Commit</button>
+            </div>
+            <pre id="story-git-output" class="story-git-output"></pre>
+          </div>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="story-editor-title">Select a story</h2>
+            <button id="story-save" type="button" disabled>Save Story</button>
+          </div>
+          <div class="button-row compact story-create-row">
+            <label>
+              New Story Title
+              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
+            </label>
+            <button id="story-create" type="button">Add Story</button>
+          </div>
+          <div id="story-validation" class="action-message info" hidden></div>
+          <textarea id="story-text" spellcheck="false" placeholder="Select or create a story to edit its markdown."></textarea>
+        </section>
+      </div>
+    </section>
+
+    <section id="scenes-page" class="page">
+      <div class="page-title-row">
+        <h1>Scenes</h1>
+        <div id="scene-status" class="status-text"></div>
+      </div>
+      <div id="scene-message" class="action-message" hidden></div>
+      <div class="review-layout scene-layout">
+        <aside class="review-sidebar">
+          <label>
+            Story
+            <select id="scene-story-select"></select>
+          </label>
+          <div class="button-row compact">
+            <label>
+              New Scene Name
+              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
+            </label>
+            <button id="scene-create" type="button">Add Scene</button>
+          </div>
+          <table id="scene-table">
+            <thead>
+              <tr>
+                <th>scene</th>
+                <th>file</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="scene-editor-title">Select a scene</h2>
+            <div class="button-row compact">
+              <button id="scene-stage-render" type="button" disabled>Stage Render</button>
+              <button id="scene-save" type="button" disabled>Save Scene</button>
+              <button id="scene-toggle-image" type="button" disabled>Toggle Image</button>
+            </div>
+          </div>
+          <div id="scene-validation" class="action-message info" hidden></div>
+          <div id="scene-image-panel" class="scene-image-panel" hidden>
+            <img id="scene-image-preview" alt="Scene render">
+          </div>
+          <textarea id="scene-text" spellcheck="false" placeholder="Select or create a scene to edit its markdown."></textarea>
+        </section>
+        <aside class="review-actions scene-picker-panel">
+          <h3>Image References</h3>
+          <label>
+            Character Filter
+            <select id="scene-picker-character"></select>
+          </label>
+          <label>
+            Search
+            <input id="scene-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
+          </label>
+          <button id="scene-picker-refresh" type="button">Refresh References</button>
+          <div id="scene-picker-status" class="status-text"></div>
+          <table id="scene-picker-table">
+            <thead>
+              <tr>
+                <th>tag</th>
+                <th>label</th>
+                <th>source</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+      </div>
+    </section>
+
+    <section id="manifest-page" class="page">
+      <div class="page-title-row">
+        <h1>Manifest</h1>
+        <div id="manifest-status" class="status-text"></div>
+      </div>
+      <div class="review-layout manifest-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="manifest-prev">Previous</button>
+            <button id="manifest-next">Next</button>
+          </div>
+          <table id="manifest-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>body</th>
+                <th>head</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="manifest-title">Select a manifest task</h2>
+            <button id="save-manifest-references" class="primary-action">Save References</button>
+          </div>
+          <div id="manifest-message" class="action-message" hidden></div>
+          <div class="manifest-picker-grid">
+            <section>
+              <h3>Body Reference</h3>
+              <select id="body-reference-select"></select>
+              <div id="body-reference-preview" class="image-placeholder">No body reference selected.</div>
+            </section>
+            <section>
+              <h3>Headshot</h3>
+              <select id="headshot-reference-select"></select>
+              <input id="headshot-upload" type="file" accept="image/*">
+              <div id="headshot-reference-preview" class="image-placeholder">No headshot selected.</div>
+            </section>
+          </div>
+        </section>
+        <aside class="review-actions">
+          <h3>Saved Reference Slots</h3>
+          <pre id="manifest-reference-json"></pre>
+        </aside>
+      </div>
+    </section>
+
+    <section id="prompt-review-page" class="page">
+      <div class="page-title-row">
+        <h1>Prompt Review</h1>
+        <div id="prompt-review-status" class="status-text"></div>
+      </div>
+      <div class="review-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="prompt-review-prev">Previous</button>
+            <button id="prompt-review-next">Next</button>
+          </div>
+          <table id="prompt-review-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>view</th>
+                <th>condense</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="prompt-review-title">Select a prompt</h2>
+            <div class="button-row compact">
+              <button id="copy-prompt">Copy Prompt</button>
+              <button id="view-condensed">View Condensed</button>
+            </div>
+          </div>
+          <div id="prompt-review-message" class="action-message" hidden></div>
+          <div class="prompt-tools">
+            <label>
+              Search
+              <input id="prompt-search" type="search" placeholder="Search prompt text">
+            </label>
+            <span id="prompt-path" class="status-text"></span>
+          </div>
+          <div id="prompt-text" class="prompt-text"></div>
+        </section>
+        <aside class="review-actions">
+          <button id="generate-local-test" hidden>Generate Local Test Image</button>
+          <div id="local-test-render" class="image-placeholder">No local test render.</div>
+          <button id="prompt-approve" class="primary-action">Approve</button>
+          <button id="prompt-fail">Fail</button>
+          <section class="source-inspector">
+            <h3>Source Inspector</h3>
+            <div id="source-inspector-empty" class="status-text">Select a source badge.</div>
+            <dl id="source-inspector-detail" hidden></dl>
+            <pre id="source-inspector-text" hidden></pre>
+            <button id="source-open-editor" disabled>Open Editor</button>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="render-review-page" class="page">
+      <div class="page-title-row">
+        <h1>Render Review</h1>
+        <div id="render-review-status" class="status-text"></div>
+      </div>
+      <div class="review-layout render-review-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="render-review-prev">Previous</button>
+            <button id="render-review-next">Next</button>
+          </div>
+          <table id="render-review-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>view</th>
+                <th>image</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="render-review-title">Select a render</h2>
+            <span id="render-review-path" class="status-text"></span>
+          </div>
+          <div id="render-review-message" class="action-message" hidden></div>
+          <section class="review-comment-panel">
+            <div class="helper-panel-header">
+              <label>Image Review Comment</label>
+              <button id="render-comment-save" type="button">Save Comment</button>
+            </div>
+            <textarea id="render-review-comment" spellcheck="false" placeholder="Notes about this render candidate"></textarea>
+          </section>
+          <div class="render-comparison">
+            <section class="render-comparison-panel">
+              <h3>Candidate</h3>
+              <div id="candidate-render" class="render-image-viewer">No candidate image.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Locked</h3>
+              <div id="locked-render" class="render-image-viewer">No locked image.</div>
+            </section>
+          </div>
+        </section>
+        <aside class="review-actions">
+          <button id="render-promote" class="primary-action">Promote to LOCKED</button>
+          <button id="render-fail-render">Fail to RENDER</button>
+          <button id="render-fail-regenerate">Fail to REGENERATE</button>
+          <section>
+            <h3>Stage Marker</h3>
+            <pre id="render-stage-text"></pre>
+          </section>
+          <section>
+            <h3>History</h3>
+            <pre id="render-history-text"></pre>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="render-console-page" class="page">
+      <div class="page-title-row">
+        <h1>Render Console</h1>
+        <div id="render-console-status" class="status-text"></div>
+      </div>
+      <div class="render-console-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="render-console-prev">Previous</button>
+            <button id="render-console-next">Next</button>
+          </div>
+          <button id="render-console-refresh">Refresh</button>
+          <table id="render-console-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>ask</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="render-console-title">Select a render task</h2>
+            <button id="render-console-copy-prompt">Copy Prompt</button>
+          </div>
+          <div id="render-console-message" class="action-message" hidden></div>
+          <div class="details-grid compact-details">
+            <div><label>Ask</label><p id="console-ask-id"></p></div>
+            <div><label>Asset</label><p id="console-asset-label"></p></div>
+            <div><label>Pipeline</label><p id="console-pipeline-label"></p></div>
+            <div><label>Expected Output</label><p id="console-expected-output"></p></div>
+          </div>
+          <div id="render-console-helper-panel" class="helper-panel" hidden>
+            <div class="helper-panel-header">
+              <label>GPT Helper Prompt</label>
+              <div class="button-row compact">
+                <button id="render-console-save-helper" type="button">Save Helper</button>
+                <button id="render-console-copy-helper" type="button">Copy Helper</button>
+              </div>
+            </div>
+            <textarea id="render-console-helper-text" spellcheck="false"></textarea>
+          </div>
+          <textarea id="render-console-prompt" spellcheck="false"></textarea>
+        </section>
+        <aside class="review-actions render-console-actions">
+          <div class="button-row compact">
+            <button id="render-console-condense-prompt" type="button" disabled>Generate Image Prompt</button>
+            <button id="render-console-local-test" type="button" disabled>Generate Local Test Image</button>
+          </div>
+          <p id="render-console-local-status" class="status-text"></p>
+          <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
+          <h2>Returned Image</h2>
+          <div id="render-console-paste-zone" class="paste-zone" tabindex="0">
+            <p>Click here, then press Ctrl+V to paste the rendered image.</p>
+            <p class="status-text">Drag/drop and file picker also work.</p>
+            <input id="render-console-file-input" type="file" accept="image/*">
+          </div>
+          <img id="render-console-image-preview" class="image-preview" alt="Pasted render preview" hidden>
+          <label>
+            Image Answer Comment
+            <textarea id="render-console-answer-comment" placeholder="Optional note saved with this image answer"></textarea>
+          </label>
+          <button id="render-console-save-image" class="primary-action" disabled>Save Image Answer</button>
+          <p id="render-console-save-status" class="status-text"></p>
+          <div id="render-console-reference-files" class="reference-preview-list"></div>
+          <h2>Fail Task</h2>
+          <textarea id="render-console-fail-reason" placeholder="Reason for failure"></textarea>
+          <button id="render-console-fail-task">Fail Task</button>
+          <p id="render-console-fail-status" class="status-text"></p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="turnarounds-page" class="page">
+      <div class="page-title-row">
+        <h1>Turnarounds</h1>
+        <div id="turnaround-status" class="status-text"></div>
+      </div>
+      <div id="turnaround-message" class="action-message" hidden></div>
+      <div class="turnaround-layout">
+        <section class="control-panel">
+          <table id="turnaround-table">
+            <thead>
+              <tr>
+                <th>task</th>
+                <th>status</th>
+                <th>locked</th>
+                <th>action</th>
+                <th>missing</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="turnaround-title">Select a turnaround</h2>
+          </div>
+          <div class="render-comparison turnaround-comparison">
+            <section class="render-comparison-panel">
+              <h3>Locked</h3>
+              <div id="turnaround-locked" class="render-image-viewer">No locked turnaround.</div>
+            </section>
+            <section class="render-comparison-panel">
+              <h3>Candidate</h3>
+              <div id="turnaround-candidate" class="render-image-viewer">No candidate image.</div>
+            </section>
+          </div>
+        </section>
+        <aside class="review-actions">
+          <h3>Detection</h3>
+          <label>
+            Tolerance
+            <input id="turnaround-detection-tolerance" type="number" min="1" max="200" step="5" value="50">
+          </label>
+          <hr class="section-divider">
+          <h3>Partial Sheet</h3>
+          <label>
+            Label
+            <input id="turnaround-partial-label" type="text" placeholder="Head and upper chest">
+          </label>
+          <label>
+            Percent
+            <input id="turnaround-partial-percent" type="number" min="1" max="100" step="1" value="45">
+          </label>
+          <button id="turnaround-save-partial" type="button" disabled>Save Partial</button>
+          <h3>Auxiliary Sheets</h3>
+          <table id="turnaround-aux-table">
+            <thead>
+              <tr>
+                <th>label</th>
+                <th>%</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <h3>Source Assets</h3>
+          <pre id="turnaround-source-assets"></pre>
+          <h3>Paths</h3>
+          <dl id="turnaround-paths"></dl>
+        </aside>
+      </div>
+    </section>
+
+    <section id="ai-controls-page" class="page">
+      <div class="page-title-row">
+        <h1>AI Controls</h1>
+        <div id="ai-controls-status" class="status-text"></div>
+      </div>
+      <div id="ai-controls-message" class="action-message" hidden></div>
+      <div class="ai-controls-grid">
+        <section class="control-panel">
+          <h2>Actions</h2>
+          <div id="proxy-stop-state" class="summary-bar"></div>
+          <div class="button-row two">
+            <button id="harvest-ai">Harvest AI Answers</button>
+            <button id="archive-harvested-ai">Clean Harvested Answers</button>
+            <button id="refresh-ai-controls">Refresh</button>
+            <button id="activate-proxy-stop">Activate Stop</button>
+            <button id="resume-proxy-stop">Resume</button>
+            <button id="dump-ai-queue">Dump Queue</button>
+          </div>
+          <label>
+            Monitor note
+            <input id="monitor-instruction" type="text" placeholder="Optional note for workers">
+          </label>
+          <button id="send-monitor-test">Send Monitor Test</button>
+        </section>
+        <section class="control-panel">
+          <h2>Project Automation</h2>
+          <form id="automation-form" class="settings-form">
+            <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
+            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text"></label>
+            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text"></label>
+            <label><input id="setting-local-render-auto" type="checkbox"> Auto preview render after condense</label>
+            <label>
+              Image generation
+              <select id="setting-local-render-preset">
+                <option value="body-reference-preview">ComfyUI</option>
+                <option value="body-reference-preview-stable-matrix">Stable Matrix</option>
+              </select>
+            </label>
+            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
+            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
+            <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
+            <label>AI prompt review instructions<input id="setting-ai-prompt-review-file" type="text"></label>
+            <label>
+              Final render backend
+              <select id="setting-render-backend">
+                <option value="manual_chatgpt">manual_chatgpt</option>
+                <option value="local_image">local_image</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Save Project Settings</button>
+          </form>
+        </section>
+        <section class="control-panel">
+          <h2>Processes</h2>
+          <table id="process-table">
+            <thead>
+              <tr>
+                <th>process</th>
+                <th>running</th>
+                <th>duplicates</th>
+                <th>pids</th>
+                <th>actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="control-panel queue-panel">
+          <h2>Queue</h2>
+          <div id="queue-counts" class="summary-bar"></div>
+          <div class="queue-tables">
+            <section>
+              <h3>Ask</h3>
+              <table id="queue-ask-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Claimed</h3>
+              <table id="queue-claimed-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Answer</h3>
+              <table id="queue-answer-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Failed</h3>
+              <table id="queue-failed-table"><tbody></tbody></table>
+            </section>
+          </div>
+        </section>
+        <section class="control-panel">
+          <h2>Render Console</h2>
+          <button id="open-render-console-tab">Open Render Console</button>
+          <div id="manual-render-count" class="summary-bar"></div>
+          <table id="manual-render-table"><tbody></tbody></table>
+        </section>
+        <section class="control-panel">
+          <h2>Monitor Tests</h2>
+          <table id="monitor-request-table"><tbody></tbody></table>
+        </section>
+        <section class="control-panel">
+          <h2>Monitor Responses</h2>
+          <table id="monitor-response-table"><tbody></tbody></table>
+        </section>
+      </div>
+    </section>
+
+    <section id="pipeline-controls-page" class="page">
+      <div class="page-title-row">
+        <h1>Pipeline Controls</h1>
+        <div id="pipeline-controls-status" class="status-text"></div>
+      </div>
+      <div id="pipeline-controls-message" class="action-message" hidden></div>
+      <div class="pipeline-controls-grid">
+        <section class="control-panel">
+          <h2>Project Config</h2>
+          <div id="pipeline-config-paths" class="summary-bar"></div>
+          <table id="project-config-table"><tbody></tbody></table>
+        </section>
+        <section class="control-panel pipeline-wide">
+          <h2>Character / Phase Pipeline Config</h2>
+          <div class="batch-controls">
+            <label>
+              Pipeline
+              <select id="prompt-review-pipeline"></select>
+            </label>
+            <label>
+              Prompt review
+              <select id="prompt-review-mode">
+                <option value="HUMAN">Human</option>
+                <option value="AI">AI</option>
+                <option value="OFF">Off</option>
+              </select>
+            </label>
+            <button id="prompt-review-save" type="button">Save Prompt Review Mode</button>
+          </div>
+          <table id="pipeline-stage-table">
+            <thead>
+              <tr>
+                <th>pipeline</th>
+                <th>step</th>
+                <th>stage</th>
+                <th>actor</th>
+                <th>worker</th>
+                <th>assets</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="control-panel pipeline-wide">
+          <h2>Batch Render Reset</h2>
+          <div class="batch-controls">
+            <label>
+              Pipeline
+              <select id="batch-render-pipeline"></select>
+            </label>
+            <label class="checkbox-row"><input id="batch-include-locked" type="checkbox"> Include locked assets</label>
+            <button id="batch-render-reset">Set Pipeline Assets Back To Render</button>
+          </div>
+          <table id="batch-render-result-table"><tbody></tbody></table>
+        </section>
+      </div>
+    </section>
+
+    <section id="template-editor-page" class="page">
+      <div class="page-title-row">
+        <h1>Source Editor</h1>
+        <div id="source-editor-status" class="status-text"></div>
+      </div>
+      <div id="source-editor-message" class="action-message" hidden></div>
+      <div id="source-editor-warning" class="action-message error" hidden></div>
+      <div class="source-editor-layout">
+        <section class="review-main">
+          <div class="review-header">
+            <h2 id="source-editor-title">Select a source from Prompt Review</h2>
+          </div>
+          <div class="source-editor-toolbar">
+            <button id="source-editor-save" class="primary-action" disabled>Save Source</button>
+            <button id="source-editor-recompile" disabled>Recompile Current Prompt</button>
+            <label class="checkbox-row source-editor-option">
+              <input id="source-editor-clear-review-aids" type="checkbox" checked>
+              Clear condensed prompt and local test renders
+            </label>
+          </div>
+          <section class="source-editor-help">
+            <h3>Prompt Inserts</h3>
+            <p>Insert out-of-bounds prompt language with this block; it will render where you place it relative to nearby compiler section markers.</p>
+            <pre>{{PROMPT_INSERT}}
+Add prompt language here.
+{{/PROMPT_INSERT}}</pre>
+          </section>
+          <dl id="source-editor-meta" class="editor-meta"></dl>
+          <textarea id="source-editor-text" spellcheck="false"></textarea>
+        </section>
+      </div>
+    </section>
+
+    <section id="placeholder-page" class="page">
+      <h1 id="placeholder-title">Coming Soon</h1>
+      <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
+    </section>
+
+    <dialog id="condensed-dialog">
+      <form method="dialog">
+        <h2>Condensed Prompt</h2>
+        <textarea id="condensed-text" readonly></textarea>
+        <div class="button-row compact">
+          <button id="copy-condensed" type="button">Copy</button>
+          <button>Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="prompt-diff-dialog" class="wide-dialog">
+      <form method="dialog">
+        <div class="review-header">
+          <h2>Prompt Recompile Diff</h2>
+          <button>Close</button>
+        </div>
+        <div id="prompt-diff-summary" class="summary-bar"></div>
+        <div class="prompt-diff-grid">
+          <section>
+            <h3>Before</h3>
+            <div id="prompt-diff-old" class="prompt-diff-pane"></div>
+          </section>
+          <section>
+            <h3>After</h3>
+            <div id="prompt-diff-new" class="prompt-diff-pane"></div>
+          </section>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="asset-note-dialog">
+      <form method="dialog">
+        <div class="review-header">
+          <h2 id="asset-note-title">Asset Note</h2>
+          <button>Close</button>
+        </div>
+        <textarea id="asset-note-text" readonly></textarea>
+      </form>
+    </dialog>
+    <dialog id="todo-dialog" class="todo-dialog">
+      <form id="todo-form" method="dialog">
+        <div class="review-header">
+          <h2>To Do</h2>
+          <button id="todo-save" type="submit">Save</button>
+        </div>
+        <textarea id="todo-text" spellcheck="false"></textarea>
+      </form>
+    </dialog>
+  </main>
+
+  <script src="/static/zet.js"></script>
+</body>
+</html>
