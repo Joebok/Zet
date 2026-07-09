@@ -14,42 +14,39 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct front view, facing the viewer squarely.",
-        "character-assembly": "Preserve the Character Head as a direct front-view head source, facing the viewer squarely.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct front-view head source, facing the viewer squarely."
+        "character-assembly": "Preserve the Character Head as a direct front-view head source, facing the viewer squarely."
       }
     },
     "FRONT_LEFT_3_4": {
       "label": "front-left three-quarter view",
       "folder_name": "Front_Left_3_4",
       "output_name_fragment": "Front-Left-3-4",
-      "instruction": "Render the character from a front-left three-quarter body view. The torso, neck, and mannequin head all face the same front-left three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
+      "instruction": "Render the character from a front-left three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-left three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
       "body_instructions": {
-        "body-reference": "Render the body from a front-left three-quarter body view. The torso, neck, and mannequin head all face the same front-left three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
-        "head-fitment": "Use the Reference Body as a front-left three-quarter neck-fitment source. The torso and neck establish the same front-left three-quarter direction for docking.",
-        "character-assembly": "Preserve the Reference Body as a front-left three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction.",
-        "costume-dressing": "Preserve the Assembled Character source as a front-left three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction."
+        "body-reference": "Render the body from a front-left three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-left three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
+        "head-fitment": "Use the Reference Body as a front-left three-quarter neck-fitment source. The Reference Body controls camera angle, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, and neck docking angle. Fit the head-and-neck module to that same front-left three-quarter orientation; do not create a viewer-facing head, profile head, twisted neck, or independently turned gaze.",
+        "character-assembly": "Preserve the Reference Body as a front-left three-quarter full-body source. The Reference Body controls camera angle, full-body framing, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, hip direction, knee direction, and foot direction. Fit the Character Head onto that same front-left three-quarter orientation; do not rotate, mirror, reinterpret, or turn the head toward the viewer independently.",
+        "costume-dressing": "Preserve the Assembled Character source as a front-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked front-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-fitment": "Render the Character Head and fitted neck from a front-left three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a front-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a front-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "head-fitment": "Render the Character Head and fitted neck from a front-left three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share that same front-left three-quarter orientation. Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct front or profile view.",
+        "character-assembly": "Use the Character Head for identity only, then align it to the Reference Body's front-left three-quarter head orientation. The final face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis must share the Reference Body direction. Do not preserve a source head pose that conflicts with the Reference Body."
       }
     },
     "FRONT_RIGHT_3_4": {
       "label": "front-right three-quarter view",
       "folder_name": "Front_Right_3_4",
       "output_name_fragment": "Front-Right-3-4",
-      "instruction": "Render the character from a front-right three-quarter body view. The torso, neck, and mannequin head all face the same front-right three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
+      "instruction": "Render the character from a front-right three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-right three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
       "body_instructions": {
-        "body-reference": "Render the body from a front-right three-quarter body view. The torso, neck, and mannequin head all face the same front-right three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
-        "head-fitment": "Use the Reference Body as a front-right three-quarter neck-fitment source. The torso and neck establish the same front-right three-quarter direction for docking.",
-        "character-assembly": "Preserve the Reference Body as a front-right three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction.",
-        "costume-dressing": "Preserve the Assembled Character source as a front-right three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction."
+        "body-reference": "Render the body from a front-right three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-right three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
+        "head-fitment": "Use the Reference Body as a front-right three-quarter neck-fitment source. The Reference Body controls camera angle, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, and neck docking angle. Fit the head-and-neck module to that same front-right three-quarter orientation; do not create a viewer-facing head, profile head, twisted neck, or independently turned gaze.",
+        "character-assembly": "Preserve the Reference Body as a front-right three-quarter full-body source. The Reference Body controls camera angle, full-body framing, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, hip direction, knee direction, and foot direction. Fit the Character Head onto that same front-right three-quarter orientation; do not rotate, mirror, reinterpret, or turn the head toward the viewer independently.",
+        "costume-dressing": "Preserve the Assembled Character source as a front-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked front-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-fitment": "Render the Character Head and fitted neck from a front-right three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a front-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a front-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "head-fitment": "Render the Character Head and fitted neck from a front-right three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share that same front-right three-quarter orientation. Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct front or profile view.",
+        "character-assembly": "Use the Character Head for identity only, then align it to the Reference Body's front-right three-quarter head orientation. The final face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis must share the Reference Body direction. Do not preserve a source head pose that conflicts with the Reference Body."
       }
     },
     "LEFT_PROFILE": {
@@ -65,8 +62,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct left profile view, showing the character's left side.",
-        "character-assembly": "Preserve the Character Head as a direct left-profile source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct left-profile source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a direct left-profile source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "RIGHT_PROFILE": {
@@ -82,42 +78,39 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct right profile view, showing the character's right side.",
-        "character-assembly": "Preserve the Character Head as a direct right-profile source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct right-profile source. Do not rotate, mirror, or reinterpret the head direction."
+        "character-assembly": "Preserve the Character Head as a direct right-profile source. Do not rotate, mirror, or reinterpret the head direction."
       }
     },
     "BACK_LEFT_3_4": {
       "label": "back-left three-quarter view",
       "folder_name": "Back_Left_3_4",
       "output_name_fragment": "Back-Left-3-4",
-      "instruction": "Render the character from a back-left three-quarter body view. The torso, neck, and mannequin head all face the same back-left three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
+      "instruction": "Render the character from a back-left three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-left three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
       "body_instructions": {
-        "body-reference": "Render the body from a back-left three-quarter body view. The torso, neck, and mannequin head all face the same back-left three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
-        "head-fitment": "Use the Reference Body as a back-left three-quarter neck-fitment source. The torso and neck establish the same back-left three-quarter direction for docking.",
-        "character-assembly": "Preserve the Reference Body as a back-left three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction.",
-        "costume-dressing": "Preserve the Assembled Character source as a back-left three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction."
+        "body-reference": "Render the body from a back-left three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-left three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
+        "head-fitment": "Use the Reference Body as a back-left three-quarter neck-fitment source. The Reference Body controls camera angle, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, and neck docking angle. Fit the head-and-neck module to that same back-left three-quarter orientation; do not create a viewer-facing head, profile head, twisted neck, or independently turned gaze.",
+        "character-assembly": "Preserve the Reference Body as a back-left three-quarter full-body source. The Reference Body controls camera angle, full-body framing, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, hip direction, knee direction, and foot direction. Fit the Character Head onto that same back-left three-quarter orientation; do not rotate, mirror, reinterpret, or turn the head toward the viewer independently.",
+        "costume-dressing": "Preserve the Assembled Character source as a back-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-fitment": "Render the Character Head and fitted neck from a back-left three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a back-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a back-left three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "head-fitment": "Render the Character Head and fitted neck from a back-left three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share that same back-left three-quarter orientation. Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct back or profile view.",
+        "character-assembly": "Use the Character Head for identity only, then align it to the Reference Body's back-left three-quarter head orientation. The final face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis must share the Reference Body direction. Do not preserve a source head pose that conflicts with the Reference Body."
       }
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
       "folder_name": "Back_Right_3_4",
       "output_name_fragment": "Back-Right-3-4",
-      "instruction": "Render the character from a back-right three-quarter body view. The torso, neck, and mannequin head all face the same back-right three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
+      "instruction": "Render the character from a back-right three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-right three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
       "body_instructions": {
-        "body-reference": "Render the body from a back-right three-quarter body view. The torso, neck, and mannequin head all face the same back-right three-quarter direction. The head is not independently turned toward the viewer and is not looking away from the body direction.",
-        "head-fitment": "Use the Reference Body as a back-right three-quarter neck-fitment source. The torso and neck establish the same back-right three-quarter direction for docking.",
-        "character-assembly": "Preserve the Reference Body as a back-right three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction.",
-        "costume-dressing": "Preserve the Assembled Character source as a back-right three-quarter full-body source. Do not rotate, mirror, or reinterpret the body direction."
+        "body-reference": "Render the body from a back-right three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-right three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
+        "head-fitment": "Use the Reference Body as a back-right three-quarter neck-fitment source. The Reference Body controls camera angle, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, and neck docking angle. Fit the head-and-neck module to that same back-right three-quarter orientation; do not create a viewer-facing head, profile head, twisted neck, or independently turned gaze.",
+        "character-assembly": "Preserve the Reference Body as a back-right three-quarter full-body source. The Reference Body controls camera angle, full-body framing, torso direction, shoulder direction, neck base position, mannequin head orientation, face direction, hip direction, knee direction, and foot direction. Fit the Character Head onto that same back-right three-quarter orientation; do not rotate, mirror, reinterpret, or turn the head toward the viewer independently.",
+        "costume-dressing": "Preserve the Assembled Character source as a back-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-fitment": "Render the Character Head and fitted neck from a back-right three-quarter view. Do not turn it toward the viewer or away from the requested head direction.",
-        "character-assembly": "Preserve the Character Head as a back-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction.",
-        "costume-dressing": "Preserve the Assembled Character head as a back-right three-quarter source. Do not rotate, mirror, or reinterpret the head direction."
+        "head-fitment": "Render the Character Head and fitted neck from a back-right three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share that same back-right three-quarter orientation. Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct back or profile view.",
+        "character-assembly": "Use the Character Head for identity only, then align it to the Reference Body's back-right three-quarter head orientation. The final face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis must share the Reference Body direction. Do not preserve a source head pose that conflicts with the Reference Body."
       }
     },
     "BACK": {
@@ -133,8 +126,7 @@
       },
       "head_instructions": {
         "head-fitment": "Render the Character Head and fitted neck from a direct back view, facing away from the viewer squarely.",
-        "character-assembly": "Preserve the Character Head as a direct back-view source, facing away from the viewer squarely.",
-        "costume-dressing": "Preserve the Assembled Character head as a direct back-view source, facing away from the viewer squarely."
+        "character-assembly": "Preserve the Character Head as a direct back-view source, facing away from the viewer squarely."
       }
     }
   }

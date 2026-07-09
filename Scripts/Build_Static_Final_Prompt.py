@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 
 from Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
+from Library_Paths import library_root
 
 
 SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
@@ -12,6 +14,7 @@ RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
 COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{SECTION:[A-Z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^}]+(?:}[^}]*)?\}\}")
 SINGLE_BRACE_TOKEN_RE = re.compile(r"(?<!\{)\{([A-Z0-9_]+)\}(?!\})")
+AUXILIARY_RESOURCE_RE = re.compile(r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}")
 
 
 def _line_count(text: str) -> int:
@@ -166,6 +169,67 @@ def _raise_unresolved_single_brace_token(rendered: str) -> None:
         )
 
 
+def _project_root_for_template(template_path: Path) -> Path:
+    """Find the project root for a prompt template path."""
+    resolved = template_path.resolve()
+    for parent in [resolved.parent, *resolved.parents]:
+        if (parent / "Config").exists() and (parent / "config.toml").exists():
+            return parent
+    return resolved.parents[2]
+
+
+def _auxiliary_inventory_path(template_path: Path) -> Path:
+    """Return the global auxiliary resource inventory path."""
+    return library_root(_project_root_for_template(template_path)) / "AuxiliaryResources" / "AuxiliaryResources.json"
+
+
+def _load_auxiliary_resources(template_path: Path) -> dict[tuple[str, str], dict]:
+    """Load global auxiliary resources keyed by category and id."""
+    path = _auxiliary_inventory_path(template_path)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    records = payload.get("resources", []) if isinstance(payload, dict) else []
+    if not isinstance(records, list):
+        return {}
+    resources = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        category = str(record.get("category") or "").strip().lower()
+        resource_id = str(record.get("resource_id") or "").strip()
+        if category and resource_id:
+            resources[(category, resource_id)] = record
+    return resources
+
+
+def _auxiliary_resource_text(resource: dict) -> str:
+    """Render an auxiliary resource record into prompt-readable text."""
+    category = str(resource.get("category") or "")
+    resource_id = str(resource.get("resource_id") or "")
+    label = str(resource.get("label") or resource_id)
+    image_path = str(resource.get("image_path") or "")
+    return f"Auxiliary reference ({category}/{resource_id}): {label}. Image file: {image_path}."
+
+
+def _replace_auxiliary_resource_tags(text: str, template_path: Path, resources: dict[tuple[str, str], dict] | None = None) -> str:
+    """Replace auxiliary resource tags with prompt-readable text."""
+    resource_index = resources if resources is not None else _load_auxiliary_resources(template_path)
+
+    def replace(match: re.Match) -> str:
+        category = match.group(1)
+        resource_id = match.group(2)
+        resource = resource_index.get((category, resource_id))
+        if resource is None:
+            raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {match.group(0)}")
+        return _auxiliary_resource_text(resource)
+
+    return AUXILIARY_RESOURCE_RE.sub(replace, text)
+
+
 def render_static_prompt(
     template_text: str,
     metadata: dict[str, str],
@@ -207,8 +271,12 @@ def render_static_prompt(
     rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip() + "\n"
 
     _raise_unresolved_single_brace_token(rendered)
-    if ANY_PLACEHOLDER_RE.search(rendered):
-        raise TemplateCompileError("UNRESOLVED_PLACEHOLDER", "Final prompt contains unresolved placeholders.")
+    match = ANY_PLACEHOLDER_RE.search(rendered)
+    if match:
+        raise TemplateCompileError(
+            "UNRESOLVED_PLACEHOLDER",
+            f"Final prompt contains unresolved placeholder: {match.group(0)}",
+        )
     if "<!-- ZET:" in rendered:
         raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers.")
     return rendered
@@ -237,9 +305,10 @@ def render_static_prompt_with_source_map(
         single_brace_values,
     )
     required_set = {resolve_section_name(name, view_token) for name in required_section_names}
-    token_re = re.compile(r"\{\{SECTION:[A-Z0-9_{}]+\}\}|\{\{[A-Za-z0-9_{}]+\}\}")
+    token_re = re.compile(r"\{\{AUX:[a-z]+:[a-z0-9-]+\}\}|\{\{SECTION:[A-Z0-9_{}]+\}\}|\{\{[A-Za-z0-9_{}]+\}\}")
     pieces: list[dict] = []
     cursor = 0
+    auxiliary_resources = _load_auxiliary_resources(template_path)
 
     def section_source(name: str) -> dict:
         return selection.section_sources.get(
@@ -266,7 +335,22 @@ def render_static_prompt_with_source_map(
             if name in required_set and not text.strip():
                 raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
             text = _replace_single_brace_tokens(text, single_brace_values)
+            text = _replace_auxiliary_resource_tags(text, template_path, auxiliary_resources)
             source = section_source(name)
+        elif inner.startswith("AUX:"):
+            _, category, resource_id = inner.split(":", 2)
+            resource = auxiliary_resources.get((category, resource_id))
+            if resource is None:
+                raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {placeholder}")
+            text = _auxiliary_resource_text(resource)
+            source = {
+                "source_kind": "auxiliary_resource",
+                "source_path": str(_auxiliary_inventory_path(template_path)),
+                "source_label": f"Auxiliary resource: {resource.get('label') or resource_id}",
+                "resource_id": resource_id,
+                "category": category,
+                "editable": True,
+            }
         else:
             name = resolve_section_name(inner, view_token)
             metadata_key = inner if inner in metadata else inner.upper()
@@ -286,6 +370,7 @@ def render_static_prompt_with_source_map(
                 if name in required_set and not text.strip():
                     raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
                 text = _replace_single_brace_tokens(text, single_brace_values)
+                text = _replace_auxiliary_resource_tags(text, template_path, auxiliary_resources)
                 source = section_source(name)
         pieces.append(_source_fragment(text, source, placeholder=placeholder))
         cursor = match.end()
@@ -295,8 +380,12 @@ def render_static_prompt_with_source_map(
 
     rendered, fragments = _render_lines_with_sources(pieces)
     _raise_unresolved_single_brace_token(rendered)
-    if ANY_PLACEHOLDER_RE.search(rendered):
-        raise TemplateCompileError("UNRESOLVED_PLACEHOLDER", "Final prompt contains unresolved placeholders.")
+    match = ANY_PLACEHOLDER_RE.search(rendered)
+    if match:
+        raise TemplateCompileError(
+            "UNRESOLVED_PLACEHOLDER",
+            f"Final prompt contains unresolved placeholder: {match.group(0)}",
+        )
     if "<!-- ZET:" in rendered:
         raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers.")
 

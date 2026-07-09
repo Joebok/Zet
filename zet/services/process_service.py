@@ -14,6 +14,7 @@ class ProcessInfo:
     pid: int
     name: str
     command_line: str
+    parent_pid: int | None = None
 
 
 @dataclass(frozen=True)
@@ -82,7 +83,7 @@ class ProcessService:
         command = (
             "$items = Get-CimInstance Win32_Process | "
             "Where-Object { $_.CommandLine -ne $null -and $_.Name -like 'python*' } | "
-            "Select-Object ProcessId,Name,CommandLine; "
+            "Select-Object ProcessId,Name,CommandLine,ParentProcessId; "
             "@($items) | ConvertTo-Json -Depth 3"
         )
         result = subprocess.run(
@@ -104,11 +105,21 @@ class ProcessService:
                         pid=int(item.get("ProcessId")),
                         name=str(item.get("Name") or ""),
                         command_line=str(item.get("CommandLine") or ""),
+                        parent_pid=int(item.get("ParentProcessId")) if item.get("ParentProcessId") is not None else None,
                     )
                 )
             except Exception:
                 continue
-        return processes
+        python_core_parent_pids = {
+            process.parent_pid
+            for process in processes
+            if process.name.lower() == "python.exe" and process.parent_pid is not None
+        }
+        return [
+            process
+            for process in processes
+            if not (process.name.lower() == "python3.exe" and process.pid in python_core_parent_pids)
+        ]
 
     def _list_posix_processes(self) -> list[ProcessInfo]:
         result = subprocess.run(
@@ -168,14 +179,21 @@ class ProcessService:
         if spec.command is None or spec.cwd is None:
             raise ValueError(f"{spec.label} has no configured start command.")
         spec.cwd.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env["ZET_PROJECT_ROOT"] = str(self.project_root)
+        python_paths = [str(self.project_root), str(self.project_root / "Scripts")]
+        if env.get("PYTHONPATH"):
+            python_paths.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(python_paths)
         if platform.system() == "Windows":
             subprocess.Popen(
                 ["cmd.exe", "/k", "call", spec.command],
                 cwd=str(spec.cwd),
+                env=env,
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
             )
         else:
-            subprocess.Popen(spec.command, cwd=str(spec.cwd), shell=True)
+            subprocess.Popen(spec.command, cwd=str(spec.cwd), env=env, shell=True)
 
     def stop(self, process_id: str) -> int:
         spec = self._spec_by_id(process_id)

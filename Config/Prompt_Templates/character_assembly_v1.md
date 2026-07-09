@@ -62,6 +62,10 @@ This image will be used later as the base for costume fitting.
 Preserve the Reference Body clothing exactly:
 {{SECTION:TECHNICAL_MODESTY_LAYER}}
 
+BACKGROUND TREATMENT
+
+{{BACKGROUND_TREATMENT}}
+
 Do not create or infer the character’s costume; preserve the Reference Body’s simple tan fitment clothing exactly, because this is a generic pose-and-fitment base for later costume work.
 Do not replace the fitment clothing with the character’s adventuring costume.
 Do not add skirts, leggings, boots, belts, pouches, weapons, props, jewelry, armor, robes, or decorative costume elements.
@@ -211,6 +215,28 @@ Only preserve:
 - ear shape
 - facial proportions
 - expression
+
+THREE-QUARTER ORIENTATION LOCK
+
+If the requested view is a three-quarter view, the Reference Body controls the complete orientation chain:
+- camera angle
+- torso direction
+- shoulder direction
+- neck base position
+- head orientation
+- face direction
+- gaze direction
+- hip direction
+- knee direction
+- foot direction
+
+The final Character Head, neck, shoulders, torso, hips, knees, and feet must all face the same requested three-quarter direction.
+Do not turn the head toward the viewer.
+Do not let the eyes look toward the viewer.
+Do not twist the neck.
+Do not mirror the head.
+Do not rotate the body.
+Do not change the camera angle.
 
 Good output:
 - One complete full-body character image.

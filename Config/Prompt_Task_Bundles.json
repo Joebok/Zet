@@ -149,7 +149,6 @@
         "IDENTITY_PRESERVATION_FACE",
         "IDENTITY_PRESERVATION_HAIR",
         "IDENTITY_PRESERVATION_EARS",
-        "IDENTITY_PRESERVATION_BODY",
         "IDENTITY_PRESERVATION_COSTUME",
         "NEGATIVE_GUIDANCE_GENERAL"
       ],
@@ -163,6 +162,45 @@
       "resources": {
         "required_reference_roles": [
           "character_assembly"
+        ]
+      },
+      "output_files": {
+        "compiled_sections": "Compiled_Sections.md",
+        "final_prompt": "Final_Image_Prompt.md",
+        "dependency_manifest": "dependency_manifest.json",
+        "prompt_review": "Prompt_Review.md",
+        "image_review": "Image_Review.md"
+      },
+      "next_status": "READY_FOR_PROMPT_REVIEW",
+      "next_actor": "HUMAN_AGENT"
+    },
+    "expression": {
+      "description": "Static standalone expression prompt using a selected Identity Key and one expression definition markdown file.",
+      "prompt_builder": "static",
+      "required_sections": [
+        "EXPRESSION_DESCRIPTION_FACTS",
+        "IDENTITY_PRESERVATION_CORE",
+        "IDENTITY_PRESERVATION_FACE",
+        "IDENTITY_PRESERVATION_HAIR",
+        "IDENTITY_PRESERVATION_EARS",
+        "IDENTITY_PRESERVATION_COSTUME",
+        "NEGATIVE_GUIDANCE_GENERAL"
+      ],
+      "optional_sections": [
+        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+      ],
+      "forbidden_sections": [
+        "*_PICARESQUE",
+        "BODY_DESCRIPTION_VIEW_*",
+        "SCENE_RENDERING_*"
+      ],
+      "static_prompt_template": "expression_v1",
+      "resources": {
+        "required_reference_roles": [
+          "identity_key"
+        ],
+        "required_markdown_fields": [
+          "expression_definition"
         ]
       },
       "output_files": {

@@ -1,0 +1,39 @@
+/* CSS HEX */
+
+.save {
+  background-color: var(--dark-teal);
+  color: white;;
+  box-shadow: 0px 4px 6px var(--shadow-grey);
+}
+
+.navigate{
+  background-color: var(--dusty-grape);
+  color: white;;
+  box-shadow: 0px 4px 6px var(--shadow-grey);
+}
+
+.navigate-selected{
+  background-color: var(--dusty-grape-dark);
+  color: white;;
+  box-shadow: 0px 4px 6px var(--shadow-grey);
+}
+
+.update {
+  background-color: var(--vintage-grape);
+  color: white;;
+  box-shadow: 0px 4px 6px var(--shadow-grey);
+}
+
+.delete {
+  background-color: var(--blush-rose);
+  color: white;;
+  box-shadow: 0px 4px 6px var(--shadow-grey);
+}
+
+--dark-teal: #093a46ff;
+--shadow-grey: #1f2231ff;
+--dusty-grape: #696ca0ff;
+--dusty-grape-dark: #50527Cff;
+--vintage-grape: #48385bff;
+--toasted-almond: #d18b58ff;
+--blush-rose: #E64C81ff;

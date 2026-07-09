@@ -1,2 +1,5 @@
 fastapi
+numpy
+pillow
 uvicorn
+opencv-python

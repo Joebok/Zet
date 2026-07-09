@@ -264,6 +264,7 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
             job_output_dir=folder,
             prompt_review_path=None,
             preset_name=preset_name,
+            reference_files=ask_manifest.get("reference_files") or [],
         )
         shutil.copy2(result.image_path, folder / expected_output)
         write_json(

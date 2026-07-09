@@ -29,8 +29,16 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(os.environ.get("ZET_PROJECT_ROOT", "")).resolve() if os.environ.get("ZET_PROJECT_ROOT") else DEFAULT_PROJECT_ROOT
+for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
+    if str(import_path) not in sys.path:
+        sys.path.insert(0, str(import_path))
+
+from zet.services.config_service import ConfigService
+
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_PROXY_ROOT = "_Lib/AI_Queue/Ollama_Proxy"
+DEFAULT_PROXY_ROOT = ""
 WORKER_VERSION = "7D.5"
 
 
@@ -40,6 +48,12 @@ class TransientOllamaConnectionError(RuntimeError):
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def default_proxy_root() -> Path:
+    """Return the configured Ollama proxy root."""
+    config = ConfigService.load(PROJECT_ROOT / "config.toml")
+    return Path(config.base_ai_queue_path) / "Ollama_Proxy"
 
 
 def log(message: str, *, error: bool = False) -> None:
@@ -638,7 +652,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-jobs", type=int, default=None, help="Process at most N asks and exit")
     args = parser.parse_args(argv)
 
-    proxy_root = normalize_proxy_root(Path(args.proxy_root).expanduser()).resolve()
+    proxy_root_arg = Path(args.proxy_root).expanduser() if args.proxy_root else default_proxy_root()
+    proxy_root = normalize_proxy_root(proxy_root_arg).resolve()
     dirs = ensure_dirs(proxy_root, args.worker_id)
     processed = 0
     log(f"Worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")

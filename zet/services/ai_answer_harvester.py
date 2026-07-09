@@ -1,6 +1,7 @@
 import json
 import shutil
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from zet.models.ai_proxy import AIProxyAnswer, HarvestResult
@@ -55,9 +56,13 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"Missing answer_manifest.json in {answer_path}")
         data = self._read_json(manifest_path)
         try:
+            asset_id = data.get("asset_id")
+            if asset_id == "":
+                asset_id = None
+            asset_id = int(asset_id) if asset_id is not None else None
             return AIProxyAnswer(
                 ask_id=str(data["ask_id"]),
-                asset_id=int(data["asset_id"]),
+                asset_id=asset_id,
                 ollama_attempt_id=str(data["ollama_attempt_id"]),
                 worker_id=str(data["worker_id"]),
                 status=str(data["status"]),
@@ -97,6 +102,15 @@ class AIAnswerHarvester:
             json.dumps(payload, indent=2) + "\n",
             encoding="utf-8",
         )
+
+    def _archive_harvested_answer(self, answer_path: Path) -> None:
+        archive_root = self.ai_proxy_path_service.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
+        archive_root.mkdir(parents=True, exist_ok=True)
+        dest_path = archive_root / answer_path.name
+        if dest_path.exists():
+            suffix = datetime.now().strftime("%H%M%S_%f")
+            dest_path = archive_root / f"{answer_path.name}.{suffix}"
+        shutil.move(str(answer_path), str(dest_path))
 
     def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
@@ -217,6 +231,40 @@ class AIAnswerHarvester:
                 self._write_harvest_manifest(answer_path, result)
         return result
 
+    def _apply_target_output_answer(self, answer_path: Path, answer: AIProxyAnswer, ask_manifest: dict) -> HarvestResult:
+        """Apply a non-asset answer to its declared target output file."""
+        task_type = str(ask_manifest.get("task_type") or "target")
+        if answer.status != "SUCCESS":
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status=f"{task_type.upper()}_{answer.status}",
+                message=f"Target output task {task_type} completed with status {answer.status}: {answer.error_message or ''}".strip(),
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
+
+        response_path = answer_path / answer.expected_output
+        if not response_path.exists():
+            raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
+        target_output_file = str(ask_manifest.get("target_output_file") or "").strip()
+        if not target_output_file:
+            raise AIAnswerHarvesterError(f"Target output answer {answer_path} is missing target_output_file.")
+        target_path = Path(target_output_file)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(response_path, target_path)
+
+        result = HarvestResult(
+            answer_path=answer_path,
+            ask_id=answer.ask_id,
+            asset_id=answer.asset_id,
+            status=f"{task_type.upper()}_APPLIED",
+            message=f"Applied target output task {task_type} output to {target_path}.",
+        )
+        self._write_harvest_manifest(answer_path, result)
+        return result
+
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         if self._harvest_manifest_path(answer_path).exists():
             payload = self._read_json(self._harvest_manifest_path(answer_path))
@@ -259,11 +307,13 @@ class AIAnswerHarvester:
 
         character = str(ask_manifest.get("character") or "")
         phase = str(ask_manifest.get("phase") or "")
-        if not character or not phase:
-            raise AIAnswerHarvesterError(f"Answer folder {answer_path} is missing character or phase in ask_manifest.json")
-
         if bool(ask_manifest.get("auxiliary", False)):
             return self._apply_auxiliary_answer(answer_path, answer, ask_manifest)
+
+        if not character or not phase:
+            if str(ask_manifest.get("target_output_file") or "").strip():
+                return self._apply_target_output_answer(answer_path, answer, ask_manifest)
+            raise AIAnswerHarvesterError(f"Answer folder {answer_path} is missing character or phase in ask_manifest.json")
 
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
         expected_attempt = self._expected_attempt(asset)
@@ -360,7 +410,11 @@ class AIAnswerHarvester:
         results: list[HarvestResult] = []
         for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
             try:
-                results.append(self.apply_answer_folder(answer_path))
+                result = self.apply_answer_folder(answer_path)
+                if result.status.startswith("ALREADY_"):
+                    self._archive_harvested_answer(answer_path)
+                    continue
+                results.append(result)
             except AIAnswerHarvesterError as exc:
                 result = HarvestResult(
                     answer_path=answer_path,

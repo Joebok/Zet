@@ -142,6 +142,13 @@ Head view instruction:
 Reference Body view instruction:
 {{BODY_VIEW_INSTRUCTION}}
 
+THREE-QUARTER ORIENTATION LOCK
+
+If the requested view is a three-quarter view, treat the Character Head and fitted neck as one rigid head-and-neck module.
+The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share the same requested three-quarter orientation.
+The Reference Body controls the neck docking angle; the Character Head controls identity only.
+Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct front, direct back, or profile view.
+
 Good output:
 - The image only has the Character Head and fitted character neck.
 - The Character Head matches the headshot source image except for small neck adjustment for smooth fitment.

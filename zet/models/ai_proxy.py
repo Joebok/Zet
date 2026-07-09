@@ -42,7 +42,7 @@ class AIProxyPaths:
 @dataclass
 class AIProxyAnswer:
     ask_id: str
-    asset_id: int
+    asset_id: Optional[int]
     ollama_attempt_id: str
     worker_id: str
     status: str

@@ -13,12 +13,16 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
+from Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Library_Paths import character_root, pipeline_root
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     extract_template_field,
     job_get,
     load_bundle,
     load_body_reference_section_data,
+    background_treatment_source_map,
+    load_background_treatment,
     load_view_data,
     metadata_source_map,
     normalize_view,
@@ -46,7 +50,7 @@ def costume_path_for_job(project_root: Path, job: dict, character: str, phase: s
         return resolve_project_path(project_root, explicit)
     costume = job_get(job, "Costume", "costume") or "Canonical Adventure Gear"
     filename = f"Costume_{safe_name(costume).replace('-', '_')}.md"
-    return project_root / "_Lib" / "Characters" / character / phase / filename
+    return character_root(project_root) / character / phase / filename
 
 
 def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str, body_view_token: str, head_view_token: str) -> Path:
@@ -54,9 +58,7 @@ def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str
     if explicit:
         return resolve_project_path(project_root, explicit)
     return (
-        project_root
-        / "_Lib"
-        / "Pipelines"
+        pipeline_root(project_root)
         / character
         / phase
         / "Costume-Dressing"
@@ -265,7 +267,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    character_template_path = project_root / "_Lib" / "Characters" / character / phase / "Character_Image_Template.md"
+    character_template_path = character_root(project_root) / character / phase / "Character_Image_Template.md"
     costume_path = costume_path_for_job(project_root, job, character, phase)
     if not costume_path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")
@@ -307,18 +309,20 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "CHARACTER_PHASE": phase,
         "BODY_VIEW_TOKEN": body_view_token,
         "BODY_VIEW_LABEL": str(body_view_data["label"]),
-        "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+        "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
         "HEAD_VIEW_TOKEN": head_view_token,
         "HEAD_VIEW_LABEL": str(head_view_data["label"]),
         "HEAD_VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
         "VIEW_TOKEN": body_view_token,
         "VIEW_LABEL": str(body_view_data["label"]),
-        "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+        "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
+        "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **template_metadata(character_template_path),
         **costume_metadata(costume_path),
     }
     metadata_sources = {
         **metadata_source_map(project_root, character_template_path, body_view_token, task, "body"),
+        **background_treatment_source_map(project_root),
         **costume_metadata_sources(costume_path),
         "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
         "BODY_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Body view label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},
@@ -336,6 +340,11 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=body_view_token,
         final_prompt_name=final_prompt_path.name,
+    )
+    references = auxiliary_references_for_texts(
+        project_root,
+        [prompt_text],
+        references,
     )
     final_prompt_path.write_text(prompt_text, encoding="utf-8")
     source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -366,6 +375,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
+        "reference_files": references,
     }
 
 

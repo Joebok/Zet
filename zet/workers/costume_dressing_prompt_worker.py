@@ -13,6 +13,7 @@ from Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 
 
 def run(asset, context) -> WorkerResult:
+    """Compile a Costume-Dressing prompt for the current asset."""
     if asset.pipeline != "Costume-Dressing":
         return WorkerResult(
             success=False,
@@ -23,6 +24,7 @@ def run(asset, context) -> WorkerResult:
         )
 
     costume_name = asset.costume or "Canonical Adventure Gear"
+    costume_path = asset.costume_path or str(context.character_path / f"Costume_{costume_name.replace(' ', '_')}.md")
     job = {
         "Job": f"Asset_{asset.asset_id}_{asset.pipeline}_{asset.body_view}_{asset.head_view or '_'}_{costume_name}",
         "Task": "costume-dressing",
@@ -34,7 +36,7 @@ def run(asset, context) -> WorkerResult:
         "Expected Output": asset.final_image_output or "",
         "Output Directory": str(context.pipeline_path),
         "Template Path": str(context.character_path / "Character_Image_Template.md"),
-        "Costume Path": str(context.character_path / "Costume_Canonical_Adventure_Gear.md"),
+        "Costume Path": costume_path,
         "Reference Files": asset.reference_files or [],
     }
 
@@ -71,4 +73,5 @@ def run(asset, context) -> WorkerResult:
         message=f"Compiled costume-dressing prompt for Asset {asset.asset_id}.",
         output_files=output_files,
         advance_stage=True,
+        reference_files=result.get("reference_files"),
     )

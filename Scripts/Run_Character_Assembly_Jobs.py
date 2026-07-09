@@ -13,11 +13,15 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 
 from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Compile_Character_Template import TemplateCompileError, select_sections
+from Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Library_Paths import pipeline_root
 from Run_Body_Reference_Jobs import (
     expected_output_for_job,
     job_get,
     load_bundle,
     load_body_reference_section_data,
+    background_treatment_source_map,
+    load_background_treatment,
     load_view_data,
     metadata_source_map,
     normalize_view,
@@ -40,9 +44,7 @@ def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str
     if explicit:
         return resolve_project_path(project_root, explicit)
     return (
-        project_root
-        / "_Lib"
-        / "Pipelines"
+        pipeline_root(project_root)
         / character
         / phase
         / "Character-Assembly"
@@ -166,17 +168,19 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
             "CHARACTER_PHASE": phase,
             "BODY_VIEW_TOKEN": body_view_token,
             "BODY_VIEW_LABEL": str(body_view_data["label"]),
-            "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+            "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
             "HEAD_VIEW_TOKEN": head_view_token,
             "HEAD_VIEW_LABEL": str(head_view_data["label"]),
             "HEAD_VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
             "VIEW_TOKEN": body_view_token,
             "VIEW_LABEL": str(body_view_data["label"]),
-            "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+            "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
+            "BACKGROUND_TREATMENT": load_background_treatment(project_root),
             **template_metadata(template_path),
         }
     metadata_sources = {
         **metadata_source_map(project_root, template_path, body_view_token, task, "body"),
+        **background_treatment_source_map(project_root),
         "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
         "BODY_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Body view label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},
         "BODY_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "character-assembly body view instruction", "json_pointer": f"/views/{body_view_token}/body_instructions/{task}", "editable": True},
@@ -193,6 +197,11 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=body_view_token,
         final_prompt_name=final_prompt_path.name,
+    )
+    references = auxiliary_references_for_texts(
+        project_root,
+        [prompt_text],
+        references,
     )
     final_prompt_path.write_text(prompt_text, encoding="utf-8")
     source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -219,6 +228,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
+        "reference_files": references,
     }
 
 

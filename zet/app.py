@@ -2,20 +2,32 @@ from pathlib import Path
 from datetime import datetime
 
 from zet.models.asset import Asset
+from zet.models.auxiliary_resource import AuxiliaryResource
+from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.asset_repository import AssetRepository
+from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.pipeline_repository import PipelineRepository
+from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import AssetService, BatchRenderResetResult
+from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
+from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.config_service import ConfigService
+from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
+from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.path_service import PathService
+from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.reference_service import ReferenceService
+from zet.services.story_service import ImageReferenceRow, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.state_machine import StateMachine
+from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
 
 
@@ -119,6 +131,14 @@ class ZetApp:
         reference_service: ReferenceService,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
+        turnaround_service: TurnaroundService,
+        identity_key_service: IdentityKeyService,
+        costume_service: CostumeService,
+        expression_service: ExpressionService,
+        character_onboarding_service: CharacterOnboardingService,
+        auxiliary_resource_service: AuxiliaryResourceService,
+        phase_comparison_service: PhaseComparisonService,
+        story_service: StoryService,
         config_path: str | Path = "config.toml",
     ):
         self.config = config
@@ -130,6 +150,14 @@ class ZetApp:
         self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
+        self.turnaround_service = turnaround_service
+        self.identity_key_service = identity_key_service
+        self.costume_service = costume_service
+        self.expression_service = expression_service
+        self.character_onboarding_service = character_onboarding_service
+        self.auxiliary_resource_service = auxiliary_resource_service
+        self.phase_comparison_service = phase_comparison_service
+        self.story_service = story_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -143,7 +171,10 @@ class ZetApp:
         config = ConfigService.load(config_path)
         path_service = PathService(config)
         asset_repository = AssetRepository(path_service)
+        auxiliary_resource_repository = AuxiliaryResourceRepository(path_service)
         pipeline_repository = PipelineRepository(path_service)
+        turnaround_repository = TurnaroundRepository(path_service)
+        identity_key_repository = IdentityKeyRepository(path_service)
         state_machine = StateMachine()
         housekeeping_service = HousekeepingService(path_service)
         worker_service = WorkerService(asset_repository, pipeline_repository, path_service)
@@ -181,6 +212,28 @@ class ZetApp:
             path_service,
         )
         reference_service = ReferenceService(asset_repository, path_service)
+        turnaround_service = TurnaroundService(
+            asset_repository,
+            pipeline_repository,
+            turnaround_repository,
+            path_service,
+        )
+        identity_key_service = IdentityKeyService(
+            asset_repository,
+            identity_key_repository,
+            path_service,
+        )
+        costume_service = CostumeService(asset_repository, path_service)
+        expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
+        character_onboarding_service = CharacterOnboardingService(path_service)
+        auxiliary_resource_service = AuxiliaryResourceService(auxiliary_resource_repository, path_service)
+        phase_comparison_service = PhaseComparisonService(
+            asset_repository,
+            pipeline_repository,
+            path_service,
+            Path(__file__).resolve().parents[1],
+        )
+        story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository)
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
@@ -191,6 +244,14 @@ class ZetApp:
             reference_service,
             housekeeping_service,
             path_service,
+            turnaround_service,
+            identity_key_service,
+            costume_service,
+            expression_service,
+            character_onboarding_service,
+            auxiliary_resource_service,
+            phase_comparison_service,
+            story_service,
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
@@ -198,6 +259,137 @@ class ZetApp:
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return self.asset_repository.list_assets(character, phase)
+
+    def list_auxiliary_resources(self, category: str) -> list[AuxiliaryResource]:
+        """List global auxiliary resources by category."""
+        return self.auxiliary_resource_service.list_resources(category)
+
+    def list_stories(self) -> list[StoryRecord]:
+        """List story folders in the shared library."""
+        return self.story_service.list_stories()
+
+    def create_story(self, title: str) -> StoryDocument:
+        """Create a story folder and main story markdown file."""
+        return self.story_service.create_story(title)
+
+    def load_story(self, story_slug: str) -> StoryDocument:
+        """Load one story markdown document."""
+        return self.story_service.load_story(story_slug)
+
+    def save_story(self, story_slug: str, text: str) -> StoryDocument:
+        """Save one story markdown document."""
+        return self.story_service.save_story(story_slug, text)
+
+    def story_git_has_changes(self) -> bool:
+        """Return whether the Stories folder has uncommitted changes."""
+        return self.story_service.story_git_has_changes()
+
+    def story_git_status(self) -> StoryGitResult:
+        """Fetch and return story git status."""
+        return self.story_service.story_git_status()
+
+    def story_git_pull(self) -> StoryGitResult:
+        """Pull library changes and return story git output."""
+        return self.story_service.story_git_pull()
+
+    def story_git_commit(self) -> StoryGitResult:
+        """Commit and push story changes."""
+        return self.story_service.story_git_commit()
+
+    def list_scenes(self, story_slug: str) -> list[SceneRecord]:
+        """List scene markdown files for one story."""
+        return self.story_service.list_scenes(story_slug)
+
+    def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
+        """Create a new scene markdown file from template."""
+        return self.story_service.create_scene(story_slug, scene_name)
+
+    def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
+        """Load one scene markdown document."""
+        return self.story_service.load_scene(story_slug, scene_slug)
+
+    def save_scene(self, story_slug: str, scene_slug: str, text: str) -> SceneDocument:
+        """Save one scene markdown document."""
+        return self.story_service.save_scene(story_slug, scene_slug, text)
+
+    def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the expected rendered scene image path."""
+        return self.story_service.scene_image_path(story_slug, scene_slug)
+
+    def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
+        """Compile and stage one story scene for the Render Console."""
+        return self.story_service.stage_scene_render(story_slug, scene_slug)
+
+    def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
+        """List copyable image references for the scene editor."""
+        return self.story_service.image_reference_rows(character, text_filter)
+
+    def phase_comparison(
+        self,
+        character: str,
+        left_phase: str,
+        right_phase: str,
+        pipeline: str = "",
+        selected_index: int = 0,
+        selected_slot_key: str = "",
+        left_costume: str = "",
+        right_costume: str = "",
+    ) -> PhaseComparisonResult:
+        """Build a read-only comparison between two character phases."""
+        return self.phase_comparison_service.compare(
+            character,
+            left_phase,
+            right_phase,
+            pipeline,
+            selected_index,
+            selected_slot_key,
+            left_costume,
+            right_costume,
+        )
+
+    def create_auxiliary_resource(
+        self,
+        category: str,
+        label: str,
+        image_bytes: bytes,
+        content_type: str,
+    ) -> AuxiliaryResource:
+        """Create a global auxiliary resource."""
+        return self.auxiliary_resource_service.create_resource(category, label, image_bytes, content_type)
+
+    def update_auxiliary_resource(
+        self,
+        resource_id: str,
+        label: str,
+        image_bytes: bytes | None = None,
+        content_type: str = "",
+    ) -> AuxiliaryResource:
+        """Update a global auxiliary resource."""
+        return self.auxiliary_resource_service.update_resource(resource_id, label, image_bytes, content_type)
+
+    def character_onboarding_options(self):
+        """Return options used by new character and phase onboarding."""
+        return self.character_onboarding_service.options()
+
+    def character_onboarding_status(self, character: str, phase: str):
+        """Return onboarding status for a character phase."""
+        return self.character_onboarding_service.status(character, phase)
+
+    def character_onboarding_prefill(self, character: str, source_phase: str = ""):
+        """Return metadata defaults for a new character or phase."""
+        return self.character_onboarding_service.prefill(character, source_phase)
+
+    def save_character_onboarding_draft(self, payload: dict):
+        """Create or update a draft character phase template."""
+        return self.character_onboarding_service.save_draft(payload)
+
+    def upload_character_template(self, character: str, phase: str, contents: str):
+        """Install and validate an uploaded character image template."""
+        return self.character_onboarding_service.upload_template(character, phase, contents)
+
+    def initialize_character_foundation(self, character: str, phase: str) -> None:
+        """Create foundation assets for a validated character phase."""
+        self.character_onboarding_service.initialize_foundation(character, phase)
 
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
@@ -214,6 +406,21 @@ class ZetApp:
     def generate_local_test_render(self, character: str, phase: str, asset_id: int):
         return self.prompt_review_service.generate_local_test_render(character, phase, asset_id)
 
+    def stage_prompt_condense_ask(self, character: str, phase: str, asset_id: int, force: bool = False):
+        return self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id, force)
+
+    def stage_prompt_review_render_ask(self, character: str, phase: str, asset_id: int):
+        return self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(character, phase, asset_id)
+
+    def stage_render_task_prompt_condense_ask(
+        self,
+        manifest: dict,
+        prompt_path: Path,
+        target_output_dir: Path,
+        force: bool = False,
+    ):
+        return self.ai_proxy_service.stage_render_task_prompt_condense_ask_if_enabled(manifest, prompt_path, target_output_dir, force)
+
     def recompile_prompt_review(
         self,
         character: str,
@@ -228,6 +435,48 @@ class ZetApp:
 
     def run_available_workers(self, character: str, phase: str):
         return self.asset_service.run_available_workers(character, phase)
+
+    def advance_assets(self, character: str, phase: str, asset_ids: list[int]) -> list[dict]:
+        """Advance each requested non-locked asset as far as its current worker allows."""
+        results = []
+        for asset_id in asset_ids:
+            try:
+                asset = self.asset_repository.get_asset(character, phase, int(asset_id))
+                if asset.asset_state == "LOCKED" or asset.pipeline_stage == "LOCKED":
+                    results.append(
+                        {
+                            "asset_id": asset.asset_id,
+                            "status": "SKIPPED",
+                            "message": "Asset is locked.",
+                            "before_stage": asset.pipeline_stage,
+                            "after_stage": asset.pipeline_stage,
+                        }
+                    )
+                    continue
+                before_stage = asset.pipeline_stage
+                before_actor = asset.actor
+                result = self.asset_service.run_current_worker_chain(character, phase, asset.asset_id)
+                results.append(
+                    {
+                        "asset_id": result.asset.asset_id,
+                        "status": "ADVANCED" if result.worker_count else "SKIPPED",
+                        "message": " | ".join(result.messages) or "No worker ran.",
+                        "worker_count": result.worker_count,
+                        "before_stage": before_stage,
+                        "before_actor": before_actor,
+                        "after_stage": result.asset.pipeline_stage,
+                        "after_actor": result.asset.actor,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "asset_id": int(asset_id),
+                        "status": "ERROR",
+                        "message": str(exc),
+                    }
+                )
+        return results
 
     def reset_pipeline_assets_to_render(
         self,
@@ -272,6 +521,10 @@ class ZetApp:
         """Archive harvested AI answer folders."""
         return self.ai_proxy_service.archive_harvested_answers()
 
+    def dump_pending_ai_queue(self):
+        """Clear pending AI queue ask and claimed task folders."""
+        return self.ai_proxy_service.dump_pending_queue()
+
     def list_monitor_responses(self):
         return self.ai_proxy_service.list_monitor_responses()
 
@@ -292,6 +545,26 @@ class ZetApp:
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
+
+    def todo_text(self) -> str:
+        path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text("", encoding="utf-8")
+        return path.read_text(encoding="utf-8")
+
+    def save_todo_text(self, text: str) -> None:
+        path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def set_pipeline_prompt_review_mode(self, character: str, phase: str, pipeline_name: str, mode: str) -> None:
+        """Set PROMPT_REVIEW mode for one character phase pipeline."""
+        self.pipeline_control_service.set_prompt_review_mode(character, phase, pipeline_name, mode)
+
+    def set_pipeline_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
+        """Enable or disable PROMPT_REVIEW for one character phase pipeline."""
+        self.pipeline_control_service.set_prompt_review_enabled(character, phase, pipeline_name, enabled)
 
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_fitment_context(character, phase, asset_id)
@@ -314,3 +587,170 @@ class ZetApp:
 
     def upload_headshot_reference(self, character: str, phase: str, filename: str, contents: bytes) -> Path:
         return self.reference_service.upload_headshot(character, phase, filename, contents)
+
+    def list_turnaround_rows(self, character: str, phase: str) -> list[TurnaroundRow]:
+        """List dashboard rows for turnaround sheet generation."""
+        return self.turnaround_service.list_rows(character, phase)
+
+    def turnaround_row(self, character: str, phase: str, turnaround_id: str) -> TurnaroundRow:
+        """Return one dashboard row for a turnaround sheet."""
+        return self.turnaround_service.get_row(character, phase, turnaround_id)
+
+    def generate_turnaround(
+        self,
+        character: str,
+        phase: str,
+        turnaround_id: str,
+        detection_tolerance: float | None = None,
+    ) -> TurnaroundRow:
+        """Generate a candidate turnaround sheet for review."""
+        return self.turnaround_service.generate_candidate(character, phase, turnaround_id, detection_tolerance)
+
+    def promote_turnaround_to_locked(
+        self,
+        character: str,
+        phase: str,
+        turnaround_id: str,
+        replace_existing: bool = False,
+    ) -> TurnaroundRow:
+        """Promote a reviewed turnaround candidate to the locked reference image."""
+        return self.turnaround_service.promote_to_locked(character, phase, turnaround_id, replace_existing)
+
+    def save_partial_turnaround(
+        self,
+        character: str,
+        phase: str,
+        parent_turnaround_id: str,
+        label: str,
+        crop_percent: float,
+        detection_tolerance: float | None = None,
+    ) -> TurnaroundRow:
+        """Create or update a partial turnaround sheet under a full turnaround."""
+        return self.turnaround_service.upsert_partial_sheet(
+            character,
+            phase,
+            parent_turnaround_id,
+            label,
+            crop_percent,
+            detection_tolerance,
+        )
+
+    def update_partial_turnaround(
+        self,
+        character: str,
+        phase: str,
+        partial_turnaround_id: str,
+        label: str,
+        crop_percent: float,
+        detection_tolerance: float | None = None,
+    ) -> TurnaroundRow:
+        """Update and regenerate an existing partial turnaround sheet."""
+        return self.turnaround_service.update_partial_sheet(
+            character,
+            phase,
+            partial_turnaround_id,
+            label,
+            crop_percent,
+            detection_tolerance,
+        )
+
+    def delete_partial_turnaround(self, character: str, phase: str, partial_turnaround_id: str) -> TurnaroundRow:
+        """Delete an auxiliary partial turnaround sheet."""
+        return self.turnaround_service.delete_partial_sheet(character, phase, partial_turnaround_id)
+
+    def list_identity_keys(self, character: str, phase: str):
+        """List saved identity keys for a character phase."""
+        return self.identity_key_service.list_identity_keys(character, phase)
+
+    def identity_key(self, character: str, phase: str, identity_key_id: str):
+        """Return one saved identity key."""
+        return self.identity_key_service.get_identity_key(character, phase, identity_key_id)
+
+    def preview_identity_key(
+        self,
+        character: str,
+        phase: str,
+        source_asset_id: int,
+        label: str,
+        crop_percent: float,
+        identity_key_id: str | None = None,
+    ) -> IdentityKeyPreview:
+        """Generate an identity key preview crop."""
+        return self.identity_key_service.preview_identity_key(
+            character,
+            phase,
+            source_asset_id,
+            label,
+            crop_percent,
+            identity_key_id,
+        )
+
+    def save_identity_key(
+        self,
+        character: str,
+        phase: str,
+        source_asset_id: int,
+        label: str,
+        crop_percent: float,
+        identity_key_id: str | None = None,
+    ):
+        """Save or update an identity key crop."""
+        return self.identity_key_service.save_identity_key(
+            character,
+            phase,
+            source_asset_id,
+            label,
+            crop_percent,
+            identity_key_id,
+        )
+
+    def delete_identity_key(self, character: str, phase: str, identity_key_id: str):
+        """Delete an identity key."""
+        return self.identity_key_service.delete_identity_key(character, phase, identity_key_id)
+
+    def list_costumes(self, character: str, phase: str):
+        """List costume templates for a character phase."""
+        return self.costume_service.list_costumes(character, phase)
+
+    def create_costume(self, character: str, phase: str, costume_name: str, markdown: str) -> CostumeCreateResult:
+        """Create a costume template and its Costume-Dressing assets."""
+        return self.costume_service.create_costume(character, phase, costume_name, markdown)
+
+    def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
+        """Update a costume template and its Costume-Dressing assets."""
+        return self.costume_service.update_costume(character, phase, costume_slug, costume_name)
+
+    def list_expression_assets(self, character: str, phase: str):
+        """List Expression assets for a character phase."""
+        return self.expression_service.list_expression_assets(character, phase)
+
+    def list_expression_definitions(self, character: str, phase: str):
+        """List expression definitions for a character phase."""
+        return self.expression_service.list_expression_definitions(character, phase)
+
+    def create_expression(
+        self,
+        character: str,
+        phase: str,
+        label: str,
+        identity_key_id: str,
+        markdown: str,
+    ) -> ExpressionCreateResult:
+        """Create an expression definition and its Expression asset."""
+        return self.expression_service.create_expression(character, phase, label, identity_key_id, markdown)
+
+    def update_expression(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        label: str,
+        identity_key_id: str,
+        regenerate: bool = False,
+    ) -> ExpressionUpdateResult:
+        """Update an expression definition and optionally reset it for regeneration."""
+        result = self.expression_service.update_expression(character, phase, asset_id, label, identity_key_id)
+        if regenerate:
+            regenerated = self.asset_service.regenerate(character, phase, asset_id)
+            return ExpressionUpdateResult(expression=result.expression, asset=regenerated)
+        return result

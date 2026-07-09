@@ -165,7 +165,7 @@ class AssetService:
         if next_actor == "AI_AGENT":
             self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
             return self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.pipeline_stage == "PROMPT" and next_stage == "PROMPT_REVIEW":
+        if asset.pipeline_stage == "PROMPT" and next_stage in {"PROMPT_REVIEW", "RENDER"}:
             self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id)
         return updated_asset
 
@@ -477,6 +477,11 @@ class AssetService:
 
         if result.success:
             refreshed_asset = self.asset_repository.get_asset(character, phase, asset_id)
+            if result.reference_files is not None:
+                refreshed_asset = replace(refreshed_asset)
+                refreshed_asset.reference_files = result.reference_files
+                refreshed_asset.updated_at = self._timestamp()
+                self.asset_repository.save_asset(refreshed_asset)
             if result.advance_stage:
                 if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "ADD_REF":
                     pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
@@ -522,6 +527,20 @@ class AssetService:
             self.asset_repository.save_asset(waiting_asset)
             self.housekeeping_service.prepare_stage(waiting_asset)
             return waiting_asset
+
+        if (result.error_code or "") == "PROMPT_REVIEW_NEEDS_HUMAN":
+            human_asset = replace(asset)
+            human_asset.asset_state = "IN_PROGRESS"
+            human_asset.pipeline_stage = "PROMPT_REVIEW"
+            human_asset.actor = "HUMAN_AGENT"
+            human_asset.ai_state = None
+            human_asset.error_code = result.error_code
+            human_asset.error_message = result.error_message or result.message
+            human_asset.updated_at = self._timestamp()
+
+            self.asset_repository.save_asset(human_asset)
+            self.housekeeping_service.prepare_stage(human_asset)
+            return human_asset
 
         failed_asset = replace(asset)
         failed_asset.asset_state = "BLOCKED"
