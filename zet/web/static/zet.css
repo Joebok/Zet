@@ -1113,7 +1113,7 @@ tr.auxiliary-row td:last-child {
 .render-console-layout {
   display: grid;
   gap: 12px;
-  grid-template-columns: 260px minmax(460px, 1fr) minmax(440px, 0.5fr);
+  grid-template-columns: 260px minmax(460px, 1fr) minmax(520px, 0.5fr);
 }
 
 .render-console-actions {

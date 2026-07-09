@@ -4221,6 +4221,7 @@ function renderRenderConsoleLocalTestRender(path) {
   image.alt = "Latest local test render";
   image.src = fileUrl(path, Date.now().toString());
   image.title = path;
+  enableFullscreenImage(image);
   renderConsoleLocalTestRender.append(image);
   renderConsoleClearLocalTest.disabled = false;
 }

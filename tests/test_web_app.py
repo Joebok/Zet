@@ -739,6 +739,31 @@ Backend = "manual_chatgpt"
             self.assertEqual(manifest["status"], "SUCCESS")
             self.assertEqual(manifest["render_comment"], "First render has strong silhouette.")
 
+    def test_render_console_clear_and_fail_remove_all_local_test_renders(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            ask_path = self._write_manual_render_ask(root)
+            render_dir = ask_path / "Local_Test_Renders"
+            render_dir.mkdir()
+            (render_dir / "test_1.png").write_bytes(b"image")
+            (render_dir / "test_1.json").write_text("{}", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            cleared = client.delete("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render")
+            self.assertEqual(cleared.status_code, 200)
+            self.assertFalse(render_dir.exists())
+
+            render_dir.mkdir()
+            (render_dir / "test_2.png").write_bytes(b"image")
+            (render_dir / "test_2.json").write_text("{}", encoding="utf-8")
+            failed = client.post(
+                "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/fail",
+                json={"reason": "Test failure"},
+            )
+            self.assertEqual(failed.status_code, 200)
+            self.assertFalse(render_dir.exists())
+
     def test_harvest_continues_after_malformed_answer_folder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

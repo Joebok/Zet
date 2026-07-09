@@ -16,10 +16,7 @@ from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, Lo
 
 
 DEFAULT_NEGATIVE_PROMPT = (
-    "low quality, worst quality, blurry, cropped, text, watermark, signature, "
-    "bad anatomy, bad hands, extra fingers, missing fingers, extra limbs, "
-    "deformed, disfigured, distorted proportions, sexualized, revealing clothing, "
-    "dramatic lighting, narrative background, props, weapons"
+    "EasyNegative, plastic texture, glossy"
 )
 
 NEGATIVE_SECTION_MARKER = "Negative constraints:"

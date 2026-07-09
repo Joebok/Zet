@@ -212,6 +212,11 @@ class PromptReviewService:
         images = sorted(render_dir.glob("test_*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
         return images[0] if images else None
 
+    def clear_local_test_renders(self, workspace: Path) -> None:
+        render_dir = workspace / "Local_Test_Renders"
+        if render_dir.exists() and render_dir.is_dir():
+            shutil.rmtree(render_dir)
+
     def approve(self, character: str, phase: str, asset_id: int) -> Asset:
         return self.asset_service.approve_prompt_review(character, phase, asset_id)
 
@@ -267,7 +272,19 @@ class PromptReviewService:
             prompt_review_path=context.prompt_review_path,
             preset_name=str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview")),
             reference_files=context.asset.reference_files or [],
+            governing_template_path=self.governing_template_path(context.asset),
         )
+
+    def governing_template_path(self, asset: Asset) -> Path:
+        if asset.pipeline == "Costume-Dressing":
+            return self.path_service.resolve_path(asset.costume_path) if asset.costume_path else self.path_service.costume_template_path(
+                asset.character,
+                asset.phase,
+                asset.costume or "Costume",
+            )
+        if asset.pipeline == "Expression" and asset.expression_definition_path:
+            return self.path_service.resolve_path(asset.expression_definition_path)
+        return self.path_service.character_path(asset.character, asset.phase) / "Character_Image_Template.md"
 
     def view_folder_for_asset(self, asset: Asset) -> str:
         views = self.load_view_options()

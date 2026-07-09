@@ -17,6 +17,35 @@ class AIAnswerHarvesterError(Exception):
     pass
 
 
+REQUIRED_CONDENSE_NEGATIVE_PROMPT = (
+    "low quality, blurry, bad anatomy, bad hands, extra fingers, missing fingers, "
+    "extra limbs, malformed limbs, distorted face, wrong view, cropped, out of frame, text, watermark"
+)
+
+
+def ensure_condensed_negative_prompt(prompt_text: str) -> str:
+    required = [part.strip() for part in REQUIRED_CONDENSE_NEGATIVE_PROMPT.split(",")]
+    lines = prompt_text.splitlines()
+    negative_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().lower().startswith(("negative:", "negative_prompt:"))
+        ),
+        None,
+    )
+    if negative_index is None:
+        suffix = "\n" if prompt_text.endswith("\n") or not prompt_text else "\n\n"
+        return f"{prompt_text}{suffix}Negative: {REQUIRED_CONDENSE_NEGATIVE_PROMPT}\n"
+
+    existing = lines[negative_index].split(":", 1)[1].strip()
+    existing_lower = existing.lower()
+    missing = [term for term in required if term.lower() not in existing_lower]
+    if missing:
+        lines[negative_index] = f"{lines[negative_index]}, {', '.join(missing)}"
+    return "\n".join(lines) + ("\n" if prompt_text.endswith("\n") else "")
+
+
 class AIAnswerHarvester:
     def __init__(
         self,
@@ -186,14 +215,21 @@ class AIAnswerHarvester:
         target_output_dir = Path(target_output_dir_text)
         target_output_file = str(ask_manifest.get("target_output_file") or answer.expected_output)
         target_output_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(response_path, target_output_dir / target_output_file)
+        target_path = target_output_dir / target_output_file
+        if task_type == "prompt_condense":
+            target_path.write_text(
+                ensure_condensed_negative_prompt(response_path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+        else:
+            shutil.copy2(response_path, target_path)
 
         result = HarvestResult(
             answer_path=answer_path,
             ask_id=answer.ask_id,
             asset_id=answer.asset_id,
             status=f"{task_type.upper()}_APPLIED",
-            message=f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}.",
+            message=f"Applied auxiliary task {task_type} output to {target_path}.",
         )
         self._write_harvest_manifest(answer_path, result)
         if task_type == "prompt_condense" and self.ai_proxy_service is not None:

@@ -233,7 +233,7 @@ class ZetApp:
             path_service,
             Path(__file__).resolve().parents[1],
         )
-        story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository)
+        story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository, identity_key_repository)
         ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,

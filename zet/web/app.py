@@ -2244,6 +2244,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     prompt_review_path=None,
                     preset_name=str(getattr(zet_app.path_service.config, "local_render_preset", "body-reference-preview")),
                     reference_files=task.manifest.get("reference_files") or [],
+                    governing_template_path=Path(task.manifest["governing_template_path"]) if task.manifest.get("governing_template_path") else None,
                 )
             payload = {
                 "task": task.to_dict(),
@@ -2261,20 +2262,14 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
 
     @app.delete("/api/render-console/tasks/{ask_id}/local-test-render")
     def render_console_clear_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
-        """Delete the latest local test render for a render-console task."""
+        """Delete all local test renders for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
         task = _render_console_task_for_context(queue, ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
             zet_app = _app(app.state.config_path)
-            if task.asset_id is not None:
-                context = zet_app.prompt_review_service.get_context(task.character, task.phase, task.asset_id)
-                latest_render = context.latest_local_test_render
-            else:
-                latest_render = _latest_render_console_local_test_render(_render_console_task_workspace(task))
-            if latest_render and latest_render.exists():
-                latest_render.unlink()
+            zet_app.prompt_review_service.clear_local_test_renders(_render_console_task_workspace(task))
             return {
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),
@@ -2327,6 +2322,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         payload = await request.json()
         reason = str(payload.get("reason") or "")
         try:
+            zet_app = _app(app.state.config_path)
+            zet_app.prompt_review_service.clear_local_test_renders(_render_console_task_workspace(task))
             answer_path = queue.write_failed_answer(task, reason)
             tasks = _render_console_tasks_for_context(queue, character, phase)
             return {

@@ -1,8 +1,33 @@
 # To Do items
 
-Move the local image generation box (with the generate buttons and the image output for local images) to the bottom of the column. And let the image output box size itself for the local image generated (so we see the full image scaled to fit). An have a "clear" button that can delete the local image.
+Set up these as defaults, make sure all are configurable from template:
 
-Don't allow edits to the prompt in the Render Console
+checkpoint: sd\perfectdeliberate_v90.safetensors
+seed: -1
+sampler_name: "DPM++ 2M"
+scheduler: "Karras"
+steps: 32
+
+Hires, fix
+Latent
+Hires steps 32
+Denoiseing Strength .06
+Upscaled by 2
+
+Width: 512
+Height: 768
+Batch count 1
+batch size 1
+CFG Scale 7
+
+steps: 25
+cfg_scale: 7.0
+
+Figure out how to make sure local images aren't being rendered at the same time ollama calls are being made.
+
+Setting up HTTPS://
+
+Secret Saves/Secret Stories
 
 # Defer for now
 
@@ -10,5 +35,3 @@ zine maker: see Docs\Zines.md
 
 .json inspector:
 A page where I can select from a list of the key .json files and then view them in a table-like structure.
-
-Parameterize API settings used for local render.

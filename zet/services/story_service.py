@@ -10,8 +10,10 @@ from pathlib import Path
 
 from zet.models.asset import Asset
 from zet.models.auxiliary_resource import AuxiliaryResource
+from zet.models.identity_key import IdentityKey
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
+from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.path_service import PathService
 
 
@@ -99,11 +101,13 @@ class StoryService:
         path_service: PathService,
         asset_repository: AssetRepository,
         auxiliary_resource_repository: AuxiliaryResourceRepository,
+        identity_key_repository: IdentityKeyRepository | None = None,
     ):
         """Create a story service with filesystem and repository access."""
         self.path_service = path_service
         self.asset_repository = asset_repository
         self.auxiliary_resource_repository = auxiliary_resource_repository
+        self.identity_key_repository = identity_key_repository
 
     def safe_slug(self, value: str) -> str:
         """Return a filename-safe slug for stories and scenes."""
@@ -501,11 +505,29 @@ class StoryService:
             "source_asset_id": asset.asset_id,
         }
 
+    def _resolve_identity_reference(self, tag: str, character: str, phase: str, identity_key_id: str) -> dict:
+        """Resolve one identity key image reference tag."""
+        if self.identity_key_repository is None:
+            raise StoryServiceError(f"Identity Key repository is not configured: {tag}")
+        identity_key = self.identity_key_repository.get_identity_key(character, phase, identity_key_id)
+        path = self.path_service.resolve_path(identity_key.image_path)
+        if not path.exists():
+            raise StoryServiceError(f"Identity Key image not found: {path}")
+        return {
+            "role": "story_reference",
+            "label": identity_key.label,
+            "tag": tag,
+            "path": str(path),
+            "kind": "identity-key",
+            "identity_key_id": identity_key.identity_key_id,
+            "source_asset_id": identity_key.source_asset_id,
+        }
+
     def _resolve_scene_references(self, scene_text: str) -> list[dict]:
         """Resolve image reference tags used by a scene."""
         references = []
         seen = set()
-        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)\}\}"
+        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
         for match in re.finditer(pattern, scene_text or ""):
             tag = match.group(0)
             if tag in seen:
@@ -513,8 +535,10 @@ class StoryService:
             seen.add(tag)
             if match.group(1):
                 references.append(self._resolve_aux_reference(tag, match.group(1), match.group(2)))
-            else:
+            elif match.group(3):
                 references.append(self._resolve_asset_reference(tag, match.group(3), match.group(4), match.group(5)))
+            else:
+                references.append(self._resolve_identity_reference(tag, match.group(6), match.group(7), match.group(8)))
         return references
 
     def _write_json(self, path: Path, payload: dict) -> None:
@@ -628,6 +652,7 @@ class StoryService:
             "target_output_file": str(self.path_service.story_folder_path(safe_story_slug) / expected_output),
             "pipeline_path": str(pipeline_path),
             "reference_files": references,
+            "governing_template_path": str(scene_path),
         }
         self._write_json(ask_path / "ask_manifest.json", manifest)
         (ask_path / "Final_Image_Prompt.md").write_text(prompt, encoding="utf-8")
@@ -658,6 +683,8 @@ class StoryService:
             for phase_dir in sorted(item for item in (base_character_root / character).iterdir() if item.is_dir() and not item.name.startswith("_")):
                 for asset in self._locked_assets(character, phase_dir.name):
                     rows.append(self._asset_reference_row(asset))
+                for identity_key in self._identity_keys(character, phase_dir.name):
+                    rows.append(self._identity_reference_row(identity_key))
         rows = [row for row in rows if self._matches_filter(row, normalized_filter)]
         return sorted(rows, key=lambda row: (row.character.lower(), row.phase.lower(), row.kind.lower(), row.label.lower()))
 
@@ -690,6 +717,15 @@ class StoryService:
             return []
         return [asset for asset in assets if asset.asset_state == "LOCKED" and asset.pipeline_stage == "LOCKED"]
 
+    def _identity_keys(self, character: str, phase: str) -> list[IdentityKey]:
+        """List identity keys for one character phase."""
+        if self.identity_key_repository is None:
+            return []
+        try:
+            return self.identity_key_repository.list_identity_keys(character, phase)
+        except Exception:
+            return []
+
     def _asset_reference_row(self, asset: Asset) -> ImageReferenceRow:
         """Return one picker row for a locked asset."""
         label_parts = [asset.pipeline, asset.body_view]
@@ -707,6 +743,20 @@ class StoryService:
             phase=asset.phase,
             kind="locked-asset",
             pipeline=asset.pipeline,
+            image_path=str(image_path),
+            thumbnail_path=str(image_path),
+        )
+
+    def _identity_reference_row(self, identity_key: IdentityKey) -> ImageReferenceRow:
+        """Return one picker row for an identity key."""
+        image_path = self.path_service.resolve_path(identity_key.image_path)
+        return ImageReferenceRow(
+            tag=f"{{{{IDENTITY:{identity_key.character}:{identity_key.phase}:{identity_key.identity_key_id}}}}}",
+            label=identity_key.label,
+            character=identity_key.character,
+            phase=identity_key.phase,
+            kind="identity-key",
+            pipeline="Identity Key",
             image_path=str(image_path),
             thumbnail_path=str(image_path),
         )

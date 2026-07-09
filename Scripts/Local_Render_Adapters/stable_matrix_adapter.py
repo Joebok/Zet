@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import base64
+from io import BytesIO
 import json
 import mimetypes
 from pathlib import Path
@@ -12,6 +13,19 @@ from urllib.request import Request, urlopen
 
 from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
 from Local_Render_Adapters.comfyui_adapter import DEFAULT_NEGATIVE_PROMPT, split_positive_negative_prompt
+from PIL import Image
+
+LOCAL_IMAGE_GEN_OVERRIDE_KEYS = {
+    "prompt",
+    "negative_prompt",
+    "denoising_strength",
+    "steps",
+    "cfg_scale",
+    "seed",
+    "s_noise",
+    "sd_model_checkpoint",
+    "restore_faces",
+}
 
 
 def load_presets(project_root: Path) -> dict[str, Any]:
@@ -86,16 +100,68 @@ def _reference_path(reference: dict[str, Any], project_root: Path) -> Path | Non
     return resolved if resolved.is_absolute() else project_root / resolved
 
 
-def encode_reference_images(reference_files: list[dict[str, Any]] | None, project_root: Path) -> list[str]:
+def _render_size_for_references(reference_files: list[dict[str, Any]] | None, project_root: Path, default_width: int, default_height: int) -> tuple[int, int]:
+    for reference in reference_files or []:
+        path = _reference_path(reference, project_root)
+        if path is None or not path.exists() or not path.is_file():
+            continue
+        with Image.open(path) as image:
+            if image.width <= 0 or image.height <= 0:
+                continue
+            if image.width <= image.height:
+                return 512, int(round(512 * image.height / image.width))
+            return int(round(512 * image.width / image.height)), 512
+    return default_width, default_height
+
+
+def _reference_image_bytes(path: Path, max_width: int, max_height: int) -> tuple[str, bytes]:
+    with Image.open(path) as image:
+        if image.width <= max_width and image.height <= max_height:
+            mime = mimetypes.guess_type(path.name)[0] or "image/png"
+            return mime, path.read_bytes()
+        image.thumbnail((max_width, max_height))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return "image/png", buffer.getvalue()
+
+
+def encode_reference_images(
+    reference_files: list[dict[str, Any]] | None,
+    project_root: Path,
+    max_width: int,
+    max_height: int,
+) -> list[str]:
     images: list[str] = []
     for reference in reference_files or []:
         path = _reference_path(reference, project_root)
         if path is None or not path.exists() or not path.is_file():
             continue
-        mime = mimetypes.guess_type(path.name)[0] or "image/png"
-        encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+        mime, image_bytes = _reference_image_bytes(path, max_width, max_height)
+        encoded = base64.b64encode(image_bytes).decode("utf-8")
         images.append(f"data:{mime};base64,{encoded}")
     return images
+
+
+def load_local_image_gen_overrides(path: Path | None) -> dict[str, str]:
+    if path is None or not path.exists() or not path.is_file():
+        return {}
+    marker = "LOCAL_IMAGE_GEN_OVERRIDES"
+    in_section = False
+    overrides: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if f"ZET:BEGIN {marker}" in line:
+            in_section = True
+            continue
+        if f"ZET:END {marker}" in line:
+            break
+        if not in_section or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in LOCAL_IMAGE_GEN_OVERRIDE_KEYS and value:
+            overrides[key] = value
+    return overrides
 
 
 def render_preview(
@@ -106,6 +172,7 @@ def render_preview(
     prompt_review_path: Path | None = None,
     preset_name: str = "body-reference-preview-stable-matrix",
     reference_files: list[dict[str, Any]] | None = None,
+    governing_template_path: Path | None = None,
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     server_url = str(preset.get("server_url", "http://127.0.0.1:7860"))
@@ -115,14 +182,20 @@ def render_preview(
     if str(seed).lower() == "random":
         seed = -1
 
-    init_images = encode_reference_images(reference_files, project_root)
+    width, height = _render_size_for_references(
+        reference_files,
+        project_root,
+        int(preset.get("width", 512)),
+        int(preset.get("height", 512)),
+    )
+    init_images = encode_reference_images(reference_files, project_root, width, height)
     payload = {
         "prompt": positive_prompt,
         "negative_prompt": negative_prompt or DEFAULT_NEGATIVE_PROMPT,
         "init_images": init_images,
         "denoising_strength": float(preset.get("denoising_strength", 0.55)),
-        "width": int(preset.get("width", 512)),
-        "height": int(preset.get("height", 512)),
+        "width": width,
+        "height": height,
         "steps": int(preset.get("steps", 25)),
         "cfg_scale": float(preset.get("cfg", 7.0)),
         "seed": int(seed),
@@ -134,8 +207,8 @@ def render_preview(
         "n_iter": 1,
         "restore_faces": bool(preset.get("restore_faces", False)),
         "tiling": bool(preset.get("tiling", False)),
-        "do_not_save_samples": bool(preset.get("do_not_save_samples", False)),
-        "do_not_save_grid": bool(preset.get("do_not_save_grid", False)),
+        "do_not_save_samples": bool(preset.get("do_not_save_samples", True)),
+        "do_not_save_grid": bool(preset.get("do_not_save_grid", True)),
         "eta": float(preset.get("eta", 0)),
         "s_churn": float(preset.get("s_churn", 0)),
         "s_tmax": float(preset.get("s_tmax", 0)),
@@ -144,6 +217,22 @@ def render_preview(
         "override_settings": preset.get("override_settings", {"sd_model_checkpoint": "sd/novaAnimeXL_ilV190.safetensors"}),
         "override_settings_restore_after_call": bool(preset.get("override_settings_restore_after_call", True)),
     }
+    overrides = load_local_image_gen_overrides(governing_template_path)
+    if "prompt" in overrides:
+        payload["prompt"] = overrides["prompt"]
+    if "negative_prompt" in overrides:
+        payload["negative_prompt"] = overrides["negative_prompt"]
+    for key in ("denoising_strength", "cfg_scale", "s_noise"):
+        if key in overrides:
+            payload[key] = float(overrides[key])
+    for key in ("steps", "seed"):
+        if key in overrides:
+            payload[key] = int(overrides[key])
+    if "restore_faces" in overrides:
+        payload["restore_faces"] = overrides["restore_faces"].lower() in {"1", "true", "yes", "on"}
+    if "sd_model_checkpoint" in overrides:
+        payload["override_settings"] = dict(payload["override_settings"])
+        payload["override_settings"]["sd_model_checkpoint"] = overrides["sd_model_checkpoint"]
     sampler = str(preset.get("sampler_name") or "").strip()
     if sampler:
         payload["sampler_name"] = sampler
