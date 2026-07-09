@@ -6,7 +6,7 @@ configured local render backend.
 The queue contract is backend-neutral:
 - ask_manifest.json worker_type = "local_image_render"
 - ask_manifest.json render_preset selects a preset from Config/Local_Render_Presets.json
-- the preset's backend field selects ComfyUI or a future adapter
+- the preset's backend field selects the render adapter
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ for import_path in (
 from Local_Render_Adapters import LocalRenderUnavailable, render_image
 
 WORKER_VERSION = "1.0"
-SUPPORTED_WORKER_TYPES = {"local_image_render", "comfyui_render"}
+SUPPORTED_WORKER_TYPES = {"local_image_render"}
 
 
 def now_iso() -> str:

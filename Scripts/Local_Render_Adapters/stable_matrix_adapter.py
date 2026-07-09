@@ -11,8 +11,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
-from Local_Render_Adapters.comfyui_adapter import DEFAULT_NEGATIVE_PROMPT, split_positive_negative_prompt
+from Local_Render_Adapters.common import DEFAULT_NEGATIVE_PROMPT, LocalRenderError, LocalRenderResult, LocalRenderUnavailable, split_positive_negative_prompt
 from PIL import Image
 
 LOCAL_IMAGE_GEN_OVERRIDE_KEYS = {
@@ -24,6 +23,14 @@ LOCAL_IMAGE_GEN_OVERRIDE_KEYS = {
     "seed",
     "s_noise",
     "sd_model_checkpoint",
+    "sampler_name",
+    "scheduler",
+    "enable_hr",
+    "hr_upscaler",
+    "hr_second_pass_steps",
+    "hr_scale",
+    "width",
+    "height",
     "restore_faces",
 }
 
@@ -170,7 +177,7 @@ def render_preview(
     final_prompt_path: Path,
     job_output_dir: Path,
     prompt_review_path: Path | None = None,
-    preset_name: str = "body-reference-preview-stable-matrix",
+    preset_name: str = "body-reference-preview",
     reference_files: list[dict[str, Any]] | None = None,
     governing_template_path: Path | None = None,
 ) -> LocalRenderResult:
@@ -181,24 +188,31 @@ def render_preview(
     seed = preset.get("seed", "random")
     if str(seed).lower() == "random":
         seed = -1
+    overrides = load_local_image_gen_overrides(governing_template_path)
 
     width, height = _render_size_for_references(
         reference_files,
         project_root,
-        int(preset.get("width", 512)),
-        int(preset.get("height", 512)),
+        int(overrides.get("width", preset.get("width", 512))),
+        int(overrides.get("height", preset.get("height", 768))),
     )
     init_images = encode_reference_images(reference_files, project_root, width, height)
     payload = {
         "prompt": positive_prompt,
         "negative_prompt": negative_prompt or DEFAULT_NEGATIVE_PROMPT,
         "init_images": init_images,
-        "denoising_strength": float(preset.get("denoising_strength", 0.55)),
+        "denoising_strength": float(preset.get("denoising_strength", 0.06)),
         "width": width,
         "height": height,
-        "steps": int(preset.get("steps", 25)),
+        "steps": int(preset.get("steps", 32)),
         "cfg_scale": float(preset.get("cfg", 7.0)),
         "seed": int(seed),
+        "sampler_name": str(preset.get("sampler_name", "DPM++ 2M")),
+        "scheduler": str(preset.get("scheduler", "Karras")),
+        "enable_hr": bool(preset.get("enable_hr", True)),
+        "hr_upscaler": str(preset.get("hr_upscaler", "Latent")),
+        "hr_second_pass_steps": int(preset.get("hr_second_pass_steps", 32)),
+        "hr_scale": float(preset.get("hr_scale", 2.0)),
         "subseed": int(preset.get("subseed", -1)),
         "subseed_strength": float(preset.get("subseed_strength", 0)),
         "seed_resize_from_h": int(preset.get("seed_resize_from_h", -1)),
@@ -214,29 +228,28 @@ def render_preview(
         "s_tmax": float(preset.get("s_tmax", 0)),
         "s_tmin": float(preset.get("s_tmin", 0)),
         "s_noise": float(preset.get("s_noise", 1)),
-        "override_settings": preset.get("override_settings", {"sd_model_checkpoint": "sd/novaAnimeXL_ilV190.safetensors"}),
+        "override_settings": preset.get("override_settings", {"sd_model_checkpoint": r"sd\perfectdeliberate_v90.safetensors"}),
         "override_settings_restore_after_call": bool(preset.get("override_settings_restore_after_call", True)),
     }
-    overrides = load_local_image_gen_overrides(governing_template_path)
     if "prompt" in overrides:
         payload["prompt"] = overrides["prompt"]
     if "negative_prompt" in overrides:
         payload["negative_prompt"] = overrides["negative_prompt"]
-    for key in ("denoising_strength", "cfg_scale", "s_noise"):
+    for key in ("denoising_strength", "cfg_scale", "s_noise", "hr_scale"):
         if key in overrides:
             payload[key] = float(overrides[key])
-    for key in ("steps", "seed"):
+    for key in ("steps", "seed", "hr_second_pass_steps", "width", "height"):
         if key in overrides:
             payload[key] = int(overrides[key])
-    if "restore_faces" in overrides:
-        payload["restore_faces"] = overrides["restore_faces"].lower() in {"1", "true", "yes", "on"}
+    for key in ("restore_faces", "enable_hr"):
+        if key in overrides:
+            payload[key] = overrides[key].lower() in {"1", "true", "yes", "on"}
+    for key in ("sampler_name", "scheduler", "hr_upscaler"):
+        if key in overrides:
+            payload[key] = overrides[key]
     if "sd_model_checkpoint" in overrides:
         payload["override_settings"] = dict(payload["override_settings"])
         payload["override_settings"]["sd_model_checkpoint"] = overrides["sd_model_checkpoint"]
-    sampler = str(preset.get("sampler_name") or "").strip()
-    if sampler:
-        payload["sampler_name"] = sampler
-
     api_path = "/sdapi/v1/img2img" if init_images else "/sdapi/v1/txt2img"
     response = _post_json(server_url, api_path, payload)
     image_bytes = _first_image_bytes(response)

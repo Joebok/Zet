@@ -5,7 +5,7 @@ Unified Zet filesystem proxy worker.
 This worker claims one supported ask at a time and dispatches it to the
 appropriate local handler:
 - ollama_generate -> Ollama text generation
-- local_image_render / comfyui_render -> local image rendering
+- local_image_render -> local image rendering
 """
 from __future__ import annotations
 

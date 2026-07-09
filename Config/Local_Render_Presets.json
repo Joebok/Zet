@@ -1,17 +1,5 @@
 {
   "body-reference-preview": {
-    "backend": "comfyui",
-    "server_url": "http://127.0.0.1:8188",
-    "workflow_file": "Config/Local_Render_Workflows/body_reference_preview_comfyui-api.json",
-    "width": 512,
-    "height": 768,
-    "steps": 24,
-    "cfg": 7.0,
-    "batch_size": 1,
-    "seed": "random",
-    "output_subdir": "Local_Test_Renders"
-  },
-  "body-reference-preview-stable-matrix": {
     "backend": "stable_matrix",
     "server_url": "http://127.0.0.1:7860",
     "width": 512,

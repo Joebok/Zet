@@ -161,7 +161,7 @@ class AIAnswerHarvester:
             shutil.copy2(comment_source_path, comment_dest_path)
         else:
             comment_dest_path.unlink(missing_ok=True)
-        for metadata_name in ("LOCAL_RENDER_METADATA.json", "COMFYUI_RENDER_METADATA.json"):
+        for metadata_name in ("LOCAL_RENDER_METADATA.json",):
             metadata_path = answer_path / metadata_name
             if metadata_path.exists():
                 shutil.copy2(metadata_path, pipeline_path / metadata_path.name)

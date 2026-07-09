@@ -216,7 +216,6 @@ class AssetService:
         for path in (
             self.path_service.candidate_image_path(asset),
             self.path_service.pipeline_path(asset) / "LOCAL_RENDER_METADATA.json",
-            self.path_service.pipeline_path(asset) / "COMFYUI_RENDER_METADATA.json",
             self.render_review_comment_path(asset),
         ):
             path.unlink(missing_ok=True)

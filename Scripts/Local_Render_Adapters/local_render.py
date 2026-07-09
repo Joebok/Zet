@@ -34,16 +34,6 @@ def render_image(
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     backend = str(preset.get("backend") or "").strip().lower()
-    if backend == "comfyui":
-        from Local_Render_Adapters.comfyui_adapter import render_preview
-
-        return render_preview(
-            project_root=project_root,
-            final_prompt_path=final_prompt_path,
-            job_output_dir=job_output_dir,
-            prompt_review_path=prompt_review_path,
-            preset_name=preset_name,
-        )
     if backend == "stable_matrix":
         from Local_Render_Adapters.stable_matrix_adapter import render_preview
 
