@@ -5,7 +5,7 @@ import unittest
 from zet.services.config_service import Config
 from zet.models.identity_key import IdentityKey
 from zet.services.path_service import PathService
-from zet.services.story_service import StoryService
+from zet.services.story_service import StoryGitResult, StoryService
 
 
 class FakeAuxiliaryResource:
@@ -121,6 +121,38 @@ Canonical Art Style: `[]`
             self.assertFalse((story_dir / "Old-Name.png").exists())
             self.assertTrue((story_dir / "02-Campfire.md").exists())
             self.assertEqual(b"image", (story_dir / "02-Campfire.png").read_bytes())
+
+    def test_delete_story_commits_then_removes_story_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            (story_dir / "FirstDay.md").write_text("story", encoding="utf-8")
+            service = self._service(root)
+            commits = []
+            service.story_git_commit = lambda: commits.append(True) or StoryGitResult("", False)
+
+            service.delete_story("FirstDay")
+
+            self.assertEqual([True], commits)
+            self.assertFalse(story_dir.exists())
+
+    def test_delete_scene_commits_then_removes_markdown_and_png(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            (story_dir / "At-the-Arch.md").write_text("scene", encoding="utf-8")
+            (story_dir / "At-the-Arch.png").write_bytes(b"image")
+            service = self._service(root)
+            commits = []
+            service.story_git_commit = lambda: commits.append(True) or StoryGitResult("", False)
+
+            service.delete_scene("FirstDay", "At-the-Arch")
+
+            self.assertEqual([True], commits)
+            self.assertFalse((story_dir / "At-the-Arch.md").exists())
+            self.assertFalse((story_dir / "At-the-Arch.png").exists())
 
     def test_create_story_handles_story_heading_before_compiler_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

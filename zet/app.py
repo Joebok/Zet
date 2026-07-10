@@ -280,6 +280,10 @@ class ZetApp:
         """Save one story markdown document."""
         return self.story_service.save_story(story_slug, text)
 
+    def delete_story(self, story_slug: str) -> StoryGitResult:
+        """Commit and delete one story folder."""
+        return self.story_service.delete_story(story_slug)
+
     def story_git_has_changes(self) -> bool:
         """Return whether the Stories folder has uncommitted changes."""
         return self.story_service.story_git_has_changes()
@@ -311,6 +315,10 @@ class ZetApp:
     def save_scene(self, story_slug: str, scene_slug: str, text: str) -> SceneDocument:
         """Save one scene markdown document."""
         return self.story_service.save_scene(story_slug, scene_slug, text)
+
+    def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
+        """Commit and delete one scene markdown and image."""
+        return self.story_service.delete_scene(story_slug, scene_slug)
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""
@@ -420,6 +428,12 @@ class ZetApp:
         force: bool = False,
     ):
         return self.ai_proxy_service.stage_render_task_prompt_condense_ask_if_enabled(manifest, prompt_path, target_output_dir, force)
+
+    def stage_render_task_local_render_ask(self, manifest: dict, prompt_path: Path, target_output_dir: Path):
+        return self.ai_proxy_service.stage_render_task_local_render_ask(manifest, prompt_path, target_output_dir)
+
+    def render_task_local_render_api_params(self, manifest: dict, prompt_path: Path, target_output_dir: Path):
+        return self.ai_proxy_service.render_task_local_render_api_params(manifest, prompt_path, target_output_dir)
 
     def recompile_prompt_review(
         self,

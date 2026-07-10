@@ -324,6 +324,7 @@ def call_ollama_once(
         "model": model,
         "prompt": prompt,
         "stream": False,
+        "keep_alive": 0,
         "options": {"temperature": temperature},
     }
     if num_ctx:

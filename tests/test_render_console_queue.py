@@ -3,7 +3,9 @@ import json
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
+from AI_Manager import local_image_proxy_worker
 from zet.render_console.queue import RenderConsoleQueue
 from zet.app import ZetApp
 from zet.services.config_service import Config
@@ -159,6 +161,55 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
             self.assertEqual("RENDER_APPLIED", results[0].status)
             self.assertEqual(b"story image", target_path.read_bytes())
+
+    def test_stage_render_task_local_render_ask_targets_local_test_renders(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                f"""
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            prompt_path = workspace / "Condensed_Image_Prompt.md"
+            prompt_path.write_text("condensed prompt\n", encoding="utf-8")
+            app = ZetApp.from_config(config_path)
+
+            ask_path = app.stage_render_task_local_render_ask(
+                {"ask_id": "Ask_Story_Test", "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}]},
+                prompt_path,
+                workspace,
+            )
+
+            manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("local_image_render", manifest["worker_type"])
+            self.assertEqual("local_test_render", manifest["task_type"])
+            self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
+            self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), manifest["target_output_dir"])
+            self.assertEqual("condensed prompt\n", (ask_path / "Condensed_Image_Prompt.md").read_text(encoding="utf-8"))
+
+    def test_local_image_worker_omits_unsupported_render_kwargs(self) -> None:
+        def render_image(*, project_root, final_prompt_path, job_output_dir, prompt_review_path=None, preset_name=""):
+            return None
+
+        with patch.object(local_image_proxy_worker, "render_image", render_image):
+            kwargs = local_image_proxy_worker.render_image_kwargs(
+                {"reference_files": [{"path": "ref.png"}], "governing_template_path": "template.md"},
+                Path("prompt.md"),
+                Path("job"),
+                "preset",
+            )
+
+        self.assertNotIn("reference_files", kwargs)
+        self.assertNotIn("governing_template_path", kwargs)
 
     def test_harvester_archives_already_harvested_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

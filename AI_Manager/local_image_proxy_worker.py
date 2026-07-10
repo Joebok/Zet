@@ -11,6 +11,7 @@ The queue contract is backend-neutral:
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import shutil
@@ -34,6 +35,11 @@ for import_path in (
 ):
     if str(import_path) not in sys.path:
         sys.path.insert(0, str(import_path))
+for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
+    import_text = str(import_path)
+    while import_text in sys.path:
+        sys.path.remove(import_text)
+    sys.path.insert(0, import_text)
 
 from Local_Render_Adapters import LocalRenderUnavailable, render_image
 
@@ -205,6 +211,22 @@ def answer_manifest_base(ask_manifest: dict, worker_id: str, expected_output: st
     }
 
 
+def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, preset_name: str) -> dict:
+    kwargs = {
+        "project_root": PROJECT_ROOT,
+        "final_prompt_path": prompt_path,
+        "job_output_dir": folder,
+        "prompt_review_path": None,
+        "preset_name": preset_name,
+    }
+    parameters = inspect.signature(render_image).parameters
+    if "reference_files" in parameters:
+        kwargs["reference_files"] = ask_manifest.get("reference_files") or []
+    if "governing_template_path" in parameters and ask_manifest.get("governing_template_path"):
+        kwargs["governing_template_path"] = Path(ask_manifest["governing_template_path"])
+    return kwargs
+
+
 def process_monitor_tests(dirs: dict[str, Path], worker_id: str) -> int:
     responses_written = 0
     host = socket.gethostname()
@@ -258,14 +280,7 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
         if not prompt_path.exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
 
-        result = render_image(
-            project_root=PROJECT_ROOT,
-            final_prompt_path=prompt_path,
-            job_output_dir=folder,
-            prompt_review_path=None,
-            preset_name=preset_name,
-            reference_files=ask_manifest.get("reference_files") or [],
-        )
+        result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
         shutil.copy2(result.image_path, folder / expected_output)
         write_json(
             folder / "LOCAL_RENDER_METADATA.json",

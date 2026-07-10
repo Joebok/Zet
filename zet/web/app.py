@@ -25,7 +25,6 @@ if str(SCRIPTS_PATH) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_PATH))
 
 from zet.services.prompt_review_service import LocalRenderUnavailable
-from Local_Render_Adapters import render_image
 
 from Compile_Character_Template import MARKER_RE
 from Template_Section_Editor import save_template_sections
@@ -506,6 +505,7 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
                 "supports_local_test_render": bool(context.condense_status.get("enabled")),
                 "condensed_prompt_text": context.condensed_prompt_text or "",
                 "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
+                "local_render_status": _render_console_local_render_status(zet_app, task),
                 "condense_status": _jsonable(context.condense_status),
             }
 
@@ -520,6 +520,7 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
         "supports_local_test_render": enabled,
         "condensed_prompt_text": condensed_path.read_text(encoding="utf-8") if condensed_path.exists() else "",
         "latest_local_test_render": str(latest_render) if latest_render else None,
+        "local_render_status": _render_console_local_render_status(zet_app, task),
         "condense_status": {
             "enabled": enabled,
             "state": state,
@@ -528,6 +529,18 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
             "condensed_prompt_path": str(condensed_path) if condensed_path.exists() else None,
         },
     }
+
+
+def _render_console_local_render_status(zet_app: ZetApp, task) -> dict[str, Any]:
+    source_ask_id = task.manifest.get("ask_id")
+    items = []
+    for state, entries in zet_app.queue_snapshot().items():
+        for entry in entries:
+            if entry.get("task_type") == "local_test_render" and entry.get("source_ask_id") == source_ask_id:
+                item = dict(entry)
+                item["state"] = state.upper()
+                items.append(item)
+    return {"state": items[0]["state"], "latest_queue_item": items[0], "queue_items": items} if items else {"state": ""}
 
 
 def _render_console_task_workspace(task) -> Path:
@@ -644,7 +657,7 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
 
 def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
     """Build automation settings, preserving current values for omitted fields."""
-    defaults = defaults or AutomationSettings(False, "", "", False, "", False, 0, "", "", "")
+    defaults = defaults or AutomationSettings(False, "", "", False, "", "", "", False, 0, "", "", "")
     return AutomationSettings(
         prompt_condense_enabled=bool(payload.get("prompt_condense_enabled", defaults.prompt_condense_enabled)),
         prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
@@ -653,6 +666,12 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
             payload.get("local_render_auto_queue_after_condense", defaults.local_render_auto_queue_after_condense)
         ),
         local_render_preset=str(payload.get("local_render_preset", defaults.local_render_preset)),
+        local_render_positive_prompt_globals=str(
+            payload.get("local_render_positive_prompt_globals", defaults.local_render_positive_prompt_globals)
+        ),
+        local_render_negative_prompt_globals=str(
+            payload.get("local_render_negative_prompt_globals", defaults.local_render_negative_prompt_globals)
+        ),
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
         render_backend=str(payload.get("render_backend", defaults.render_backend)),
@@ -1246,6 +1265,21 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.delete("/api/stories/{story_slug}")
+    def story_delete(story_slug: str) -> dict[str, Any]:
+        """Commit and delete one story folder."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.delete_story(story_slug)
+            return {
+                "stories": [_story_record_payload(item) for item in zet_app.list_stories()],
+                "git": _story_git_payload(result),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Deleted story {story_slug}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/stories/{story_slug}/scenes")
     def story_scenes(story_slug: str) -> dict[str, Any]:
         """List scenes for one story folder."""
@@ -1294,6 +1328,21 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             }
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=400, detail="Scene markdown must be UTF-8.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/stories/{story_slug}/scenes/{scene_slug}")
+    def scene_delete(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        """Commit and delete one story scene markdown file and image."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.delete_scene(story_slug, scene_slug)
+            return {
+                "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
+                "git": _story_git_payload(result),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Deleted scene {scene_slug}.",
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2231,21 +2280,16 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             zet_app = _app(app.state.config_path)
             if task.asset_id is not None:
-                result = zet_app.generate_local_test_render(task.character, task.phase, task.asset_id)
+                context = zet_app.prompt_review_service.get_context(task.character, task.phase, task.asset_id)
+                if context.condensed_prompt_path is None:
+                    raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
+                ask_path = zet_app.stage_render_task_local_render_ask(task.manifest, context.condensed_prompt_path, context.condensed_prompt_path.parent)
             else:
                 workspace = _render_console_task_workspace(task)
                 condensed_prompt = workspace / "Condensed_Image_Prompt.md"
                 if not condensed_prompt.exists():
                     raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
-                result = render_image(
-                    project_root=PROJECT_ROOT,
-                    final_prompt_path=condensed_prompt,
-                    job_output_dir=workspace,
-                    prompt_review_path=None,
-                    preset_name=str(getattr(zet_app.path_service.config, "local_render_preset", "body-reference-preview")),
-                    reference_files=task.manifest.get("reference_files") or [],
-                    governing_template_path=Path(task.manifest["governing_template_path"]) if task.manifest.get("governing_template_path") else None,
-                )
+                ask_path = zet_app.stage_render_task_local_render_ask(task.manifest, condensed_prompt, workspace)
             payload = {
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),
@@ -2253,10 +2297,32 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
                 "local_prompt": _render_console_local_prompt_payload(zet_app, task),
             }
-            payload["message"] = f"Local test image generated: {result.image_path}"
+            payload["message"] = f"Local test render queued: {ask_path}" if ask_path else "Local test render already queued."
             return payload
         except LocalRenderUnavailable as exc:
             raise HTTPException(status_code=503, detail="Local render backend unavailable.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-console/tasks/{ask_id}/local-test-render/api-params")
+    def render_console_local_test_render_api_params(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        """Return local test render API parameters for a render-console task."""
+        queue = _render_console_queue(app.state.config_path)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            zet_app = _app(app.state.config_path)
+            if task.asset_id is not None:
+                context = zet_app.prompt_review_service.get_context(task.character, task.phase, task.asset_id)
+                if context.condensed_prompt_path is None:
+                    raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
+                return zet_app.render_task_local_render_api_params(task.manifest, context.condensed_prompt_path, context.condensed_prompt_path.parent)
+            workspace = _render_console_task_workspace(task)
+            condensed_prompt = workspace / "Condensed_Image_Prompt.md"
+            if not condensed_prompt.exists():
+                raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
+            return zet_app.render_task_local_render_api_params(task.manifest, condensed_prompt, workspace)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

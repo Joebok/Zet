@@ -21,6 +21,8 @@ class Config:
     prompt_condense_file: str = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
     local_render_auto_queue_after_condense: bool = False
     local_render_preset: str = "body-reference-preview"
+    local_render_positive_prompt_globals: str = ""
+    local_render_negative_prompt_globals: str = ""
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
@@ -116,6 +118,8 @@ class ConfigService:
                 ),
                 local_render_auto_queue_after_condense=bool(local_render.get("AutoQueueAfterCondense", False)),
                 local_render_preset=str(local_render.get("Preset", "body-reference-preview")),
+                local_render_positive_prompt_globals=str(local_render.get("PositivePromptGlobals", "")),
+                local_render_negative_prompt_globals=str(local_render.get("NegativePromptGlobals", "")),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),

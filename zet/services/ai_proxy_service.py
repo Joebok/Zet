@@ -576,6 +576,57 @@ class AIProxyService:
         )
         return ask_path
 
+    def render_task_local_render_api_params(self, manifest: dict, prompt_path: Path, target_output_dir: Path) -> dict:
+        stamp = self._timestamp_compact()
+        target_output_file = f"test_{stamp}.png"
+        ask_id = f"Ask_Render_Task_{manifest.get('ask_id') or 'LOCAL'}_LOCAL_RENDER_{stamp}"
+        ask_manifest = {
+            "version": 1,
+            "ask_id": ask_id,
+            "asset_id": manifest.get("asset_id"),
+            "character": manifest.get("character") or "",
+            "phase": manifest.get("phase") or "",
+            "pipeline": manifest.get("pipeline") or "",
+            "pipeline_stage": manifest.get("pipeline_stage") or "",
+            "ollama_attempt_id": f"{stamp}_{manifest.get('asset_id') or 'render_task'}_LOCAL_RENDER",
+            "worker_type": "local_image_render",
+            "ollama_model": "",
+            "prompt_file": prompt_path.name,
+            "expected_output": target_output_file,
+            "candidate_output_file": None,
+            "task_type": "local_test_render",
+            "auxiliary": True,
+            "source_ask_id": manifest.get("ask_id"),
+            "source_prompt_file": prompt_path.name,
+            "target_output_dir": str((target_output_dir / "Local_Test_Renders").resolve()),
+            "target_output_file": target_output_file,
+            "render_preset": self._local_render_preset(),
+            "reference_files": manifest.get("reference_files") or [],
+        }
+        if manifest.get("governing_template_path"):
+            ask_manifest["governing_template_path"] = manifest.get("governing_template_path")
+        return ask_manifest
+
+    def stage_render_task_local_render_ask(self, manifest: dict, prompt_path: Path, target_output_dir: Path) -> Path:
+        self._ensure_queue_dirs()
+        for root in [self.ai_proxy_path_service.ask_root(), self.ai_proxy_path_service.answer_root()]:
+            if not root.exists():
+                continue
+            for path in root.iterdir():
+                if not path.is_dir():
+                    continue
+                queued = self._read_json_if_exists(path / "ask_manifest.json")
+                if queued.get("task_type") == "local_test_render" and queued.get("source_ask_id") == manifest.get("ask_id"):
+                    if not (path / "harvest_manifest.json").exists():
+                        return path
+
+        ask_manifest = self.render_task_local_render_api_params(manifest, prompt_path, target_output_dir)
+        ask_path = self.ai_proxy_path_service.ask_path(ask_manifest["ask_id"])
+        ask_path.mkdir(parents=True, exist_ok=False)
+        self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
+        self._write_text_atomic(ask_path / prompt_path.name, prompt_path.read_text(encoding="utf-8"))
+        return ask_path
+
     def stage_prompt_review_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
         if not self._local_render_auto_queue_after_condense_enabled():
             return None
@@ -808,6 +859,7 @@ class AIProxyService:
                     "pipeline_stage": payload.get("pipeline_stage"),
                     "worker_type": payload.get("worker_type"),
                     "task_type": payload.get("task_type"),
+                    "source_ask_id": payload.get("source_ask_id"),
                     "ollama_attempt_id": payload.get("ollama_attempt_id"),
                 }
             )
@@ -824,12 +876,14 @@ class AIProxyService:
                         "pipeline_stage": payload.get("pipeline_stage"),
                         "worker_type": payload.get("worker_type"),
                         "task_type": payload.get("task_type"),
+                        "source_ask_id": payload.get("source_ask_id"),
                         "ollama_attempt_id": payload.get("ollama_attempt_id"),
                     }
                 )
 
         for answer_path in sorted(path for path in self.ai_proxy_path_service.answer_root().iterdir() if path.is_dir()):
             payload = self._read_json_if_exists(answer_path / "answer_manifest.json")
+            ask_payload = self._read_json_if_exists(answer_path / "ask_manifest.json")
             harvest_payload = self._read_json_if_exists(answer_path / "harvest_manifest.json")
             if harvest_payload:
                 continue
@@ -839,6 +893,8 @@ class AIProxyService:
                     "asset_id": payload.get("asset_id"),
                     "status": payload.get("status"),
                     "worker_id": payload.get("worker_id"),
+                    "task_type": ask_payload.get("task_type"),
+                    "source_ask_id": ask_payload.get("source_ask_id"),
                     "ollama_attempt_id": payload.get("ollama_attempt_id"),
                 }
             )

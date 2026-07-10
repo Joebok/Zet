@@ -342,6 +342,18 @@ class StoryService:
         story_file_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
         return self.load_story(safe_slug)
 
+    def delete_story(self, story_slug: str) -> StoryGitResult:
+        """Commit the current story state, then delete one story folder."""
+        safe_slug = self.safe_slug(story_slug)
+        folder_path = self.path_service.story_folder_path(safe_slug)
+        if not folder_path.exists() or not folder_path.is_dir():
+            raise StoryServiceError(f"Story folder not found: {folder_path}")
+        commit = self.story_git_commit()
+        if commit.conflict or commit.has_story_changes:
+            raise StoryServiceError(f"Story delete aborted; commit current story changes first.\n\n{commit.output}")
+        shutil.rmtree(folder_path)
+        return commit
+
     def list_scenes(self, story_slug: str) -> list[SceneRecord]:
         """List all scene markdown files for one story."""
         safe_slug = self.safe_slug(story_slug)
@@ -424,6 +436,22 @@ class StoryService:
                 image_path.rename(saved_image_path)
         saved_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
         return self.load_scene(safe_story_slug, saved_scene_slug)
+
+    def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
+        """Commit the current story state, then delete one scene markdown and image."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        scene_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
+        image_path = self.scene_image_path(safe_story_slug, safe_scene_slug)
+        if not scene_path.exists():
+            raise StoryServiceError(f"Scene file not found: {scene_path}")
+        commit = self.story_git_commit()
+        if commit.conflict or commit.has_story_changes:
+            raise StoryServiceError(f"Scene delete aborted; commit current story changes first.\n\n{commit.output}")
+        scene_path.unlink()
+        if image_path.exists():
+            image_path.unlink()
+        return commit
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""

@@ -171,6 +171,7 @@ const renderReviewComment = document.querySelector("#render-review-comment");
 const renderCommentSave = document.querySelector("#render-comment-save");
 const aiControlsStatus = document.querySelector("#ai-controls-status");
 const aiControlsMessage = document.querySelector("#ai-controls-message");
+const localImageConfigMessage = document.querySelector("#local-image-config-message");
 const proxyStopState = document.querySelector("#proxy-stop-state");
 const harvestAiButton = document.querySelector("#harvest-ai");
 const archiveHarvestedAiButton = document.querySelector("#archive-harvested-ai");
@@ -199,6 +200,8 @@ const settingPromptCondenseModel = document.querySelector("#setting-prompt-conde
 const settingPromptCondenseFile = document.querySelector("#setting-prompt-condense-file");
 const settingLocalRenderAuto = document.querySelector("#setting-local-render-auto");
 const settingLocalRenderPreset = document.querySelector("#setting-local-render-preset");
+const settingLocalRenderPositiveGlobals = document.querySelector("#setting-local-render-positive-globals");
+const settingLocalRenderNegativeGlobals = document.querySelector("#setting-local-render-negative-globals");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptReviewModel = document.querySelector("#setting-ai-prompt-review-model");
@@ -245,6 +248,7 @@ const renderConsoleCopyHelper = document.querySelector("#render-console-copy-hel
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
 const renderConsoleCondensePrompt = document.querySelector("#render-console-condense-prompt");
 const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
+const renderConsoleCopyLocalApiParams = document.querySelector("#render-console-copy-local-api-params");
 const renderConsoleClearLocalTest = document.querySelector("#render-console-clear-local-test");
 const renderConsoleLocalStatus = document.querySelector("#render-console-local-status");
 const renderConsoleLocalTestRender = document.querySelector("#render-console-local-test-render");
@@ -322,6 +326,7 @@ const storyMessage = document.querySelector("#story-message");
 const storyTableBody = document.querySelector("#story-table tbody");
 const storyEditorTitle = document.querySelector("#story-editor-title");
 const storySave = document.querySelector("#story-save");
+const storyDelete = document.querySelector("#story-delete");
 const storyNewTitle = document.querySelector("#story-new-title");
 const storyCreate = document.querySelector("#story-create");
 const storyValidation = document.querySelector("#story-validation");
@@ -340,6 +345,7 @@ const sceneTableBody = document.querySelector("#scene-table tbody");
 const sceneEditorTitle = document.querySelector("#scene-editor-title");
 const sceneSave = document.querySelector("#scene-save");
 const sceneStageRender = document.querySelector("#scene-stage-render");
+const sceneDelete = document.querySelector("#scene-delete");
 const sceneToggleImage = document.querySelector("#scene-toggle-image");
 const sceneValidation = document.querySelector("#scene-validation");
 const sceneImagePanel = document.querySelector("#scene-image-panel");
@@ -454,6 +460,12 @@ function showAiControlsMessage(message, kind = "info") {
   aiControlsMessage.textContent = message || "";
   aiControlsMessage.className = `action-message ${kind}`;
   aiControlsMessage.hidden = !message;
+}
+
+function showLocalImageConfigMessage(message, kind = "info") {
+  localImageConfigMessage.textContent = message || "";
+  localImageConfigMessage.className = `action-message ${kind}`;
+  localImageConfigMessage.hidden = !message;
 }
 
 function showPipelineControlsMessage(message, kind = "info") {
@@ -842,7 +854,7 @@ function renderOnboarding() {
   const ready = selectedPhaseReady();
   for (const button of document.querySelectorAll(".workflow-tab")) {
     const page = button.dataset.page || "";
-    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "pipeline-controls"].includes(page);
+    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "local-image-config", "pipeline-controls"].includes(page);
   }
   const onboardingTab = document.querySelector('.tab[data-page="onboarding"]');
   onboardingTab.hidden = ready;
@@ -1376,7 +1388,7 @@ async function saveBeforePageNavigation(nextPage) {
 }
 
 async function activatePage(page, options = {}) {
-  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
+  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "local-image-config", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
@@ -1399,6 +1411,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#stories-page").classList.toggle("active", page === "stories");
   document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
+  document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
@@ -1406,7 +1419,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "render-console", "ai-controls", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "render-console", "ai-controls", "local-image-config", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -1449,6 +1462,9 @@ async function activatePage(page, options = {}) {
     await loadPipelineControls();
   }
   if (page === "pipeline-controls") {
+    await loadPipelineControls();
+  }
+  if (page === "local-image-config") {
     await loadPipelineControls();
   }
   if (page === "render-console") {
@@ -2092,6 +2108,7 @@ function clearStoryEditor() {
   storyEditorTitle.textContent = "Select a story";
   storyText.value = "";
   storySave.disabled = true;
+  storyDelete.disabled = true;
   renderValidationBox(storyValidation, [], "Create or select a story to edit its markdown.");
 }
 
@@ -2110,6 +2127,7 @@ async function loadStoryDetail(storySlug) {
     storyEditorTitle.textContent = state.storyDetail?.story?.title || "Story";
     storyText.value = state.storyDetail?.text || "";
     storySave.disabled = !state.storyDetail;
+    storyDelete.disabled = !state.storyDetail;
     renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
   } catch (error) {
     clearStoryEditor();
@@ -2152,6 +2170,7 @@ async function createStory() {
       storyEditorTitle.textContent = state.storyDetail.story.title || "Story";
       storyText.value = state.storyDetail.text || "";
       storySave.disabled = false;
+      storyDelete.disabled = false;
       renderValidationBox(storyValidation, state.storyDetail.validation_errors || [], "Story markdown is valid.");
     }
     showStoryMessage(payload.message || "Story created.");
@@ -2188,6 +2207,37 @@ async function saveStory() {
     showStoryMessage(error.message, "error");
   } finally {
     storySave.disabled = false;
+  }
+}
+
+async function deleteStory() {
+  // Confirm, commit current story files, then delete the selected story folder.
+  if (!state.selectedStorySlug || !confirm(`Delete story ${state.selectedStorySlug} and all of its scenes?`)) {
+    return;
+  }
+  storyDelete.disabled = true;
+  storySave.disabled = true;
+  showStoryMessage("Deleting story...");
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}`, { method: "DELETE" });
+    state.stories = payload.stories || [];
+    state.storyDetail = null;
+    state.selectedStorySlug = state.stories[0]?.slug || null;
+    state.selectedSceneSlug = null;
+    state.scenes = [];
+    updateStoryGitWarning(payload.has_story_changes);
+    renderStoryTable();
+    renderSceneStoryOptions();
+    clearStoryEditor();
+    if (storyGitOutput && payload.git) {
+      applyStoryGitPayload(payload.git);
+    }
+    showStoryMessage(payload.message || "Story deleted.");
+  } catch (error) {
+    showStoryMessage(error.message, "error");
+  } finally {
+    storySave.disabled = !state.storyDetail;
+    storyDelete.disabled = !state.storyDetail;
   }
 }
 
@@ -2235,6 +2285,7 @@ function clearSceneEditor() {
   sceneText.value = "";
   sceneSave.disabled = true;
   sceneStageRender.disabled = true;
+  sceneDelete.disabled = true;
   sceneToggleImage.disabled = true;
   sceneImagePanel.hidden = true;
   sceneImagePreview.removeAttribute("src");
@@ -2323,6 +2374,7 @@ async function loadSceneDetail(storySlug, sceneSlug) {
     sceneText.value = state.sceneDetail?.text || "";
     sceneSave.disabled = !state.sceneDetail;
     sceneStageRender.disabled = !state.sceneDetail;
+    sceneDelete.disabled = !state.sceneDetail;
     updateSceneImageToggle();
     renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
   } catch (error) {
@@ -2367,6 +2419,7 @@ async function createScene() {
       sceneText.value = state.sceneDetail.text || "";
       sceneSave.disabled = false;
       sceneStageRender.disabled = false;
+      sceneDelete.disabled = false;
       updateSceneImageToggle();
       renderValidationBox(sceneValidation, state.sceneDetail.validation_errors || [], "Scene markdown is valid.");
     }
@@ -2404,6 +2457,43 @@ async function saveScene() {
     showSceneMessage(error.message, "error");
   } finally {
     sceneSave.disabled = false;
+  }
+}
+
+async function deleteScene() {
+  // Confirm, commit current story files, then delete the selected scene markdown and image.
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !confirm(`Delete scene ${state.selectedSceneSlug}?`)) {
+    return;
+  }
+  sceneDelete.disabled = true;
+  sceneSave.disabled = true;
+  sceneStageRender.disabled = true;
+  showSceneMessage("Deleting scene...");
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
+      method: "DELETE",
+    });
+    state.scenes = payload.scenes || [];
+    state.selectedSceneSlug = state.scenes[0]?.slug || null;
+    state.sceneDetail = null;
+    updateStoryGitWarning(payload.has_story_changes);
+    renderSceneTable();
+    if (payload.git) {
+      applyStoryGitPayload(payload.git);
+    }
+    if (state.selectedSceneSlug) {
+      await loadSceneDetail(state.selectedStorySlug, state.selectedSceneSlug);
+    } else {
+      clearSceneEditor();
+      renderSceneTable();
+    }
+    showSceneMessage(payload.message || "Scene deleted.");
+  } catch (error) {
+    showSceneMessage(error.message, "error");
+  } finally {
+    sceneSave.disabled = !state.sceneDetail;
+    sceneStageRender.disabled = !state.sceneDetail;
+    sceneDelete.disabled = !state.sceneDetail;
   }
 }
 
@@ -3997,6 +4087,8 @@ function renderPipelineControls(payload) {
     settingLocalRenderPreset.add(new Option(automation.local_render_preset, automation.local_render_preset));
   }
   settingLocalRenderPreset.value = automation.local_render_preset || "body-reference-preview";
+  settingLocalRenderPositiveGlobals.value = automation.local_render_positive_prompt_globals || "";
+  settingLocalRenderNegativeGlobals.value = automation.local_render_negative_prompt_globals || "";
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptReviewModel.value = automation.ai_prompt_review_model || "";
@@ -4031,6 +4123,8 @@ function automationPayloadFromForm() {
     prompt_condense_file: settingPromptCondenseFile.value,
     local_render_auto_queue_after_condense: settingLocalRenderAuto.checked,
     local_render_preset: settingLocalRenderPreset.value,
+    local_render_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
+    local_render_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_review_model: settingAiPromptReviewModel.value,
@@ -4041,9 +4135,11 @@ function automationPayloadFromForm() {
 
 async function saveAutomationSettings(event) {
   event.preventDefault();
-  const showMessage = document.querySelector("#ai-controls-page").classList.contains("active")
-    ? showAiControlsMessage
-    : showPipelineControlsMessage;
+  const showMessage = document.querySelector("#pipeline-controls-page").classList.contains("active")
+    ? showPipelineControlsMessage
+    : document.querySelector("#local-image-config-page").classList.contains("active")
+      ? showLocalImageConfigMessage
+      : showAiControlsMessage;
   showMessage("Saving...");
   try {
     const payload = await fetchJson(`/api/pipeline-controls/automation?${currentQuery().toString()}`, {
@@ -4164,6 +4260,7 @@ function clearRenderConsole() {
   renderConsolePrompt.value = "";
   renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
+  renderConsoleCopyLocalApiParams.disabled = true;
   renderConsoleClearLocalTest.disabled = true;
   renderConsoleLocalStatus.textContent = "";
   renderRenderConsoleLocalTestRender(null);
@@ -4202,9 +4299,13 @@ function renderRenderConsoleDetail(detail) {
   const localPrompt = detail.local_prompt || {};
   renderConsoleCondensePrompt.disabled = !localPrompt.supports_local_test_render;
   renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
+  renderConsoleCopyLocalApiParams.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
   renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
   const condenseState = localPrompt.condense_status?.state || "";
-  renderConsoleLocalStatus.textContent = condenseState ? `Prompt condense: ${condenseState}` : "";
+  const localRenderState = localPrompt.local_render_status?.state || "";
+  renderConsoleLocalStatus.textContent = [condenseState ? `Prompt condense: ${condenseState}` : "", localRenderState ? `Local render: ${localRenderState}` : ""]
+    .filter(Boolean)
+    .join(" | ");
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
   renderConsoleReferenceFiles(detail.manifest?.reference_files || []);
   updateRenderConsoleNavigation();
@@ -4307,7 +4408,7 @@ async function runRenderConsoleLocalAction(action) {
     return;
   }
   const isCondense = action === "prompt-condense";
-  renderConsoleLocalStatus.textContent = isCondense ? "Generating condensed prompt. Waiting..." : "Generating local test image...";
+  renderConsoleLocalStatus.textContent = isCondense ? "Generating condensed prompt. Waiting..." : "Queueing local test image...";
   renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
   renderConsoleClearLocalTest.disabled = true;
@@ -4342,6 +4443,24 @@ async function clearRenderConsoleLocalTest() {
   } catch (error) {
     renderConsoleLocalStatus.textContent = error.message;
     showRenderConsoleMessage(error.message, "error");
+  }
+}
+
+async function copyRenderConsoleLocalApiParams() {
+  if (!state.selectedRenderConsoleAskId) {
+    return;
+  }
+  renderConsoleCopyLocalApiParams.disabled = true;
+  try {
+    const payload = await fetchJson(
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render/api-params?${currentQuery().toString()}`,
+    );
+    await writeClipboardText(JSON.stringify(payload, null, 2));
+    showRenderConsoleMessage("Local image API parameters copied.");
+  } catch (error) {
+    showRenderConsoleMessage(error.message, "error");
+  } finally {
+    renderConsoleCopyLocalApiParams.disabled = false;
   }
 }
 
@@ -4766,6 +4885,7 @@ expressionAddNew.addEventListener("click", clearExpressionForm);
 expressionCreate.addEventListener("click", saveExpression);
 storyCreate.addEventListener("click", createStory);
 storySave.addEventListener("click", saveStory);
+storyDelete.addEventListener("click", deleteStory);
 storyGitStatus.addEventListener("click", () => runStoryGitAction("status"));
 storyGitPull.addEventListener("click", () => runStoryGitAction("pull"));
 storyGitCommit.addEventListener("click", () => runStoryGitAction("commit"));
@@ -4776,6 +4896,7 @@ sceneStorySelect.addEventListener("change", async () => {
 });
 sceneCreate.addEventListener("click", createScene);
 sceneSave.addEventListener("click", saveScene);
+sceneDelete.addEventListener("click", deleteScene);
 sceneStageRender.addEventListener("click", stageSceneRender);
 sceneToggleImage.addEventListener("click", toggleSceneImage);
 sceneImagePreview.addEventListener("click", openSceneImageFullscreen);
@@ -4998,6 +5119,7 @@ renderConsoleCopyHelper.addEventListener("click", async () => {
 });
 renderConsoleCondensePrompt.addEventListener("click", () => runRenderConsoleLocalAction("prompt-condense"));
 renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
+renderConsoleCopyLocalApiParams.addEventListener("click", copyRenderConsoleLocalApiParams);
 renderConsoleClearLocalTest.addEventListener("click", clearRenderConsoleLocalTest);
 renderConsolePrev.addEventListener("click", () => {
   const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);

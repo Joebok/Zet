@@ -55,6 +55,7 @@
       <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
       <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
+        <button class="tab workflow-tab" data-page="local-image-config">Local Image Config</button>
         <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
         <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
       </div>
@@ -509,7 +510,10 @@
         <section class="review-main">
           <div class="review-header">
             <h2 id="story-editor-title">Select a story</h2>
-            <button id="story-save" type="button" disabled>Save Story</button>
+            <div class="button-row compact">
+              <button id="story-delete" type="button" disabled>Delete Story</button>
+              <button id="story-save" type="button" disabled>Save Story</button>
+            </div>
           </div>
           <div class="button-row compact story-create-row">
             <label>
@@ -559,6 +563,7 @@
             <div class="button-row compact">
               <button id="scene-stage-render" class="update-action" type="button" disabled>Stage Render</button>
               <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
+              <button id="scene-delete" type="button" disabled>Delete Scene</button>
               <button id="scene-toggle-image" type="button" disabled>Toggle Image</button>
             </div>
           </div>
@@ -829,8 +834,9 @@
           <section class="render-console-local-panel">
             <h2>Local Image</h2>
             <div class="button-row compact">
-              <button id="render-console-condense-prompt" type="button" disabled>Generate Image Prompt</button>
-              <button id="render-console-local-test" type="button" disabled>Generate Local Test Image</button>
+              <button id="render-console-condense-prompt" type="button" disabled>Gen Image Prompt</button>
+              <button id="render-console-local-test" type="button" disabled>Gen Local Image</button>
+              <button id="render-console-copy-local-api-params" type="button" title="Copy render API parameters" disabled>⧉</button>
               <button id="render-console-clear-local-test" type="button" disabled>Clear</button>
             </div>
             <p id="render-console-local-status" class="status-text"></p>
@@ -939,16 +945,6 @@
         <section class="control-panel ai-automation-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
-            <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
-            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text"></label>
-            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text"></label>
-            <label><input id="setting-local-render-auto" type="checkbox"> Auto preview render after condense</label>
-            <label>
-              Image generation
-              <select id="setting-local-render-preset">
-                <option value="body-reference-preview">Stable Matrix</option>
-              </select>
-            </label>
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
             <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
             <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
@@ -1013,6 +1009,34 @@
         <section class="control-panel ai-monitor-responses-panel">
           <h2>Monitor Responses</h2>
           <table id="monitor-response-table"><tbody></tbody></table>
+        </section>
+      </div>
+    </section>
+
+    <section id="local-image-config-page" class="page">
+      <div class="page-title-row">
+        <h1>Local Image Config</h1>
+        <div id="local-image-config-status" class="status-text"></div>
+      </div>
+      <div id="local-image-config-message" class="action-message" hidden></div>
+      <div class="ai-controls-grid">
+        <section class="control-panel ai-automation-panel">
+          <h2>Image Generation</h2>
+          <div class="settings-form">
+            <label><input id="setting-prompt-condense-enabled" type="checkbox" form="automation-form"> Prompt condense enabled</label>
+            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text" form="automation-form"></label>
+            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text" form="automation-form"></label>
+            <label><input id="setting-local-render-auto" type="checkbox" form="automation-form"> Auto preview render after condense</label>
+            <label>
+              Image generation
+              <select id="setting-local-render-preset" form="automation-form">
+                <option value="body-reference-preview">Stable Matrix</option>
+              </select>
+            </label>
+            <label>Positive prompt Globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
+            <label>Negative prompt Global<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
+            <button class="primary-action" type="submit" form="automation-form">Save Project Settings</button>
+          </div>
         </section>
       </div>
     </section>

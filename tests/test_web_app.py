@@ -655,6 +655,8 @@ Backend = "manual_chatgpt"
                     "prompt_condense_file": "Config/Prompt_Condense_Tasks/body_reference_condense.md",
                     "local_render_auto_queue_after_condense": True,
                     "local_render_preset": "body-reference-preview",
+                    "local_render_positive_prompt_globals": "masterpiece",
+                    "local_render_negative_prompt_globals": "blurry",
                     "ai_harvest_auto_enabled": True,
                     "ai_harvest_interval_seconds": 600,
                     "render_backend": "manual_chatgpt",
@@ -662,6 +664,7 @@ Backend = "manual_chatgpt"
             )
             self.assertEqual(saved.status_code, 200)
             self.assertTrue(saved.json()["automation"]["prompt_condense_enabled"])
+            self.assertEqual(saved.json()["automation"]["local_render_positive_prompt_globals"], "masterpiece")
             self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
             self.assertIn("[PromptCondense]", config_path.read_text(encoding="utf-8"))
 
@@ -719,7 +722,6 @@ Backend = "manual_chatgpt"
                 helper_config["pipelines"]["Body-Reference"]["FRONT"],
                 "Keep this front view absolutely square to the viewer.",
             )
-
             saved = client.post(
                 "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
                 params={"render_comment": "First render has strong silhouette."},
@@ -738,6 +740,24 @@ Backend = "manual_chatgpt"
             manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "SUCCESS")
             self.assertEqual(manifest["render_comment"], "First render has strong silhouette.")
+
+    def test_render_console_local_test_render_api_params(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            self._write_manual_render_ask(root)
+            (root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front" / "Condensed_Image_Prompt.md").write_text(
+                "condensed prompt\n",
+                encoding="utf-8",
+            )
+            client = TestClient(create_app(config_path))
+
+            response = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render/api-params")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["worker_type"], "local_image_render")
+            self.assertEqual(response.json()["task_type"], "local_test_render")
+            self.assertEqual(response.json()["source_ask_id"], "Ask_Asset_1_RENDER_TEST")
 
     def test_render_console_clear_and_fail_remove_all_local_test_renders(self):
         with tempfile.TemporaryDirectory() as temp_dir:

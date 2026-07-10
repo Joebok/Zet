@@ -22,6 +22,8 @@ class AutomationSettings:
     prompt_condense_file: str
     local_render_auto_queue_after_condense: bool
     local_render_preset: str
+    local_render_positive_prompt_globals: str
+    local_render_negative_prompt_globals: str
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
@@ -103,6 +105,8 @@ class PipelineControlService:
             prompt_condense_file=str(self.config.prompt_condense_file),
             local_render_auto_queue_after_condense=bool(self.config.local_render_auto_queue_after_condense),
             local_render_preset=str(self.config.local_render_preset),
+            local_render_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
+            local_render_negative_prompt_globals=str(self.config.local_render_negative_prompt_globals),
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
@@ -121,6 +125,16 @@ class PipelineControlService:
                 "Value": self.config.local_render_auto_queue_after_condense,
             },
             {"Scope": "Project config", "Setting": "LocalRender.Preset", "Value": self.config.local_render_preset},
+            {
+                "Scope": "Project config",
+                "Setting": "LocalRender.PositivePromptGlobals",
+                "Value": self.config.local_render_positive_prompt_globals,
+            },
+            {
+                "Scope": "Project config",
+                "Setting": "LocalRender.NegativePromptGlobals",
+                "Value": self.config.local_render_negative_prompt_globals,
+            },
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
@@ -141,6 +155,8 @@ class PipelineControlService:
             ("PromptCondense", "PromptFile"): settings.prompt_condense_file,
             ("LocalRender", "AutoQueueAfterCondense"): settings.local_render_auto_queue_after_condense,
             ("LocalRender", "Preset"): settings.local_render_preset,
+            ("LocalRender", "PositivePromptGlobals"): settings.local_render_positive_prompt_globals,
+            ("LocalRender", "NegativePromptGlobals"): settings.local_render_negative_prompt_globals,
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,

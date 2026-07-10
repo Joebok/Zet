@@ -7,11 +7,12 @@ from io import BytesIO
 import json
 import mimetypes
 from pathlib import Path
+import tomllib
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from Local_Render_Adapters.common import DEFAULT_NEGATIVE_PROMPT, LocalRenderError, LocalRenderResult, LocalRenderUnavailable, split_positive_negative_prompt
+from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable, split_positive_negative_prompt
 from PIL import Image
 
 LOCAL_IMAGE_GEN_OVERRIDE_KEYS = {
@@ -29,8 +30,7 @@ LOCAL_IMAGE_GEN_OVERRIDE_KEYS = {
     "hr_upscaler",
     "hr_second_pass_steps",
     "hr_scale",
-    "width",
-    "height",
+    "orientation",
     "restore_faces",
 }
 
@@ -95,8 +95,31 @@ def split_labeled_prompt(prompt_text: str) -> tuple[str, str]:
         elif current == "negative" and stripped:
             negative = f"{negative} {stripped}".strip()
     if positive:
-        return positive, negative or DEFAULT_NEGATIVE_PROMPT
+        return positive, negative
     return split_positive_negative_prompt(prompt_text)
+
+
+def _load_local_render_globals(project_root: Path) -> tuple[str, str]:
+    path = project_root / "config.toml"
+    if not path.exists():
+        return "", ""
+    local_render = tomllib.loads(path.read_text(encoding="utf-8")).get("LocalRender", {})
+    if not isinstance(local_render, dict):
+        return "", ""
+    return str(local_render.get("PositivePromptGlobals", "")), str(local_render.get("NegativePromptGlobals", ""))
+
+
+def _terms(text: str) -> list[str]:
+    return [part.strip() for part in text.replace("\n", ",").split(",") if part.strip()]
+
+
+def ensure_prompt_terms(prompt: str, minimum_terms: str) -> str:
+    parts = [prompt.strip()]
+    lower_prompt = prompt.lower()
+    for term in _terms(minimum_terms):
+        if term.lower() not in lower_prompt:
+            parts.append(term)
+    return ", ".join(part for part in parts if part)
 
 
 def _reference_path(reference: dict[str, Any], project_root: Path) -> Path | None:
@@ -149,6 +172,15 @@ def encode_reference_images(
     return images
 
 
+def _render_size_for_orientation(orientation: str) -> tuple[int, int]:
+    value = str(orientation or "portrait").strip().lower()
+    if value == "landscape":
+        return 768, 512
+    if value == "square":
+        return 512, 512
+    return 512, 768
+
+
 def load_local_image_gen_overrides(path: Path | None) -> dict[str, str]:
     if path is None or not path.exists() or not path.is_file():
         return {}
@@ -190,17 +222,10 @@ def render_preview(
         seed = -1
     overrides = load_local_image_gen_overrides(governing_template_path)
 
-    width, height = _render_size_for_references(
-        reference_files,
-        project_root,
-        int(overrides.get("width", preset.get("width", 512))),
-        int(overrides.get("height", preset.get("height", 768))),
-    )
-    init_images = encode_reference_images(reference_files, project_root, width, height)
+    width, height = _render_size_for_orientation(overrides.get("orientation", "portrait"))
     payload = {
         "prompt": positive_prompt,
-        "negative_prompt": negative_prompt or DEFAULT_NEGATIVE_PROMPT,
-        "init_images": init_images,
+        "negative_prompt": negative_prompt,
         "denoising_strength": float(preset.get("denoising_strength", 0.06)),
         "width": width,
         "height": height,
@@ -213,6 +238,7 @@ def render_preview(
         "hr_upscaler": str(preset.get("hr_upscaler", "Latent")),
         "hr_second_pass_steps": int(preset.get("hr_second_pass_steps", 32)),
         "hr_scale": float(preset.get("hr_scale", 2.0)),
+        "hr_additional_modules": ["Use same choices"],
         "subseed": int(preset.get("subseed", -1)),
         "subseed_strength": float(preset.get("subseed_strength", 0)),
         "seed_resize_from_h": int(preset.get("seed_resize_from_h", -1)),
@@ -223,11 +249,6 @@ def render_preview(
         "tiling": bool(preset.get("tiling", False)),
         "do_not_save_samples": bool(preset.get("do_not_save_samples", True)),
         "do_not_save_grid": bool(preset.get("do_not_save_grid", True)),
-        "eta": float(preset.get("eta", 0)),
-        "s_churn": float(preset.get("s_churn", 0)),
-        "s_tmax": float(preset.get("s_tmax", 0)),
-        "s_tmin": float(preset.get("s_tmin", 0)),
-        "s_noise": float(preset.get("s_noise", 1)),
         "override_settings": preset.get("override_settings", {"sd_model_checkpoint": r"sd\perfectdeliberate_v90.safetensors"}),
         "override_settings_restore_after_call": bool(preset.get("override_settings_restore_after_call", True)),
     }
@@ -235,10 +256,13 @@ def render_preview(
         payload["prompt"] = overrides["prompt"]
     if "negative_prompt" in overrides:
         payload["negative_prompt"] = overrides["negative_prompt"]
+    positive_globals, negative_globals = _load_local_render_globals(project_root)
+    payload["prompt"] = ensure_prompt_terms(str(payload["prompt"]), positive_globals)
+    payload["negative_prompt"] = ensure_prompt_terms(str(payload["negative_prompt"]), negative_globals)
     for key in ("denoising_strength", "cfg_scale", "s_noise", "hr_scale"):
         if key in overrides:
             payload[key] = float(overrides[key])
-    for key in ("steps", "seed", "hr_second_pass_steps", "width", "height"):
+    for key in ("steps", "seed", "hr_second_pass_steps"):
         if key in overrides:
             payload[key] = int(overrides[key])
     for key in ("restore_faces", "enable_hr"):
@@ -250,7 +274,17 @@ def render_preview(
     if "sd_model_checkpoint" in overrides:
         payload["override_settings"] = dict(payload["override_settings"])
         payload["override_settings"]["sd_model_checkpoint"] = overrides["sd_model_checkpoint"]
-    api_path = "/sdapi/v1/img2img" if init_images else "/sdapi/v1/txt2img"
+    api_path = "/sdapi/v1/txt2img"
+    api_call_path = final_prompt_path.parent / "Stable_Matrix_API_Call.json"
+    api_call = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "preset": preset_name,
+        "backend": "stable_matrix",
+        "server_url": server_url,
+        "api_path": api_path,
+        "payload": payload,
+    }
+    api_call_path.write_text(json.dumps(api_call, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     response = _post_json(server_url, api_path, payload)
     image_bytes = _first_image_bytes(response)
 
@@ -269,7 +303,6 @@ def render_preview(
         "local_image": str(image_path),
         "settings": payload,
         "api_path": api_path,
-        "reference_count": len(init_images),
         "info": response.get("info"),
     }
     metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

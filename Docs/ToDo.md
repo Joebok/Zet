@@ -1,10 +1,8 @@
 # To Do items
 
-Figure out how to make sure local images aren't being rendered at the same time ollama calls are being made.
+Rearrande Local Image Config page
 
-Setting up HTTPS://
-
-Secret Saves/Secret Stories
+New Feature: Local Scene Render
 
 # Defer for now
 
@@ -12,3 +10,5 @@ zine maker: see Docs\Zines.md
 
 .json inspector:
 A page where I can select from a list of the key .json files and then view them in a table-like structure.
+
+Setting up HTTPS://
