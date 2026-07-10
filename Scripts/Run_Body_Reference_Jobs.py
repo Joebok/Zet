@@ -12,9 +12,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 from Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Compile_Character_Template import TemplateCompileError, load_template_sections, load_template_sections_with_sources, select_sections
+from Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
 from Library_Paths import character_root, resolve_library_path
 from Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 
@@ -424,7 +424,7 @@ def write_dependency_manifest(path: Path, job_id: str, character: str, phase: st
             "Body-reference uses no external, cached, discovered, or prior-rendered image resources unless explicitly allowed by future task configuration."
         ],
     }
-    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_json_file(path, manifest)
 
 
 def write_prompt_review(path: Path, metadata: dict[str, str], prompt_path: Path, findings: list[str]) -> None:
@@ -524,14 +524,20 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     if selection.forbidden_matches:
         raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    files = output_files(bundle)
-    final_prompt_path = output_dir / files.get("final_prompt", "Final_Image_Prompt.md")
-    compiled_sections_path = output_dir / files.get("compiled_sections", "Compiled_Sections.md")
-    source_map_path = output_dir / files.get("source_map", "Prompt_Source_Map.json")
-    manifest_path = output_dir / files.get("dependency_manifest", "dependency_manifest.json")
-    prompt_review_path = output_dir / files.get("prompt_review", "Prompt_Review.md")
-    image_review_path = output_dir / files.get("image_review", "Image_Review.md")
+    paths = bundle_output_paths(output_dir, output_files(bundle), {
+        "final_prompt": "Final_Image_Prompt.md",
+        "compiled_sections": "Compiled_Sections.md",
+        "source_map": "Prompt_Source_Map.json",
+        "dependency_manifest": "dependency_manifest.json",
+        "prompt_review": "Prompt_Review.md",
+        "image_review": "Image_Review.md",
+    })
+    final_prompt_path = paths["final_prompt"]
+    compiled_sections_path = paths["compiled_sections"]
+    source_map_path = paths["source_map"]
+    manifest_path = paths["dependency_manifest"]
+    prompt_review_path = paths["prompt_review"]
+    image_review_path = paths["image_review"]
 
     metadata = {
         "job_id": job_id,
@@ -540,7 +546,6 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "phase": phase,
         "view_token": view_token,
     }
-    template_file = prompt_template_path(project_root, str(bundle.get("static_prompt_template", "")))
     metadata_values = {
         "CHARACTER_NAME": character,
         "CHARACTER_PHASE": phase,
@@ -551,10 +556,14 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         **template_metadata(template_path),
         **load_race_render_rules(project_root, template_path),
     }
-    prompt_text, source_map = render_static_prompt_with_source_map(
-        template_file.read_text(encoding="utf-8"),
-        template_path=template_file,
-        metadata=metadata_values,
+    prompt_text = render_static_prompt_artifacts(
+        project_root=project_root,
+        bundle=bundle,
+        final_prompt_path=final_prompt_path,
+        source_map_path=source_map_path,
+        compiled_sections_path=compiled_sections_path,
+        metadata=metadata,
+        metadata_values=metadata_values,
         metadata_sources={
             **metadata_source_map(project_root, template_path, view_token, task, "body"),
             **background_treatment_source_map(project_root),
@@ -562,16 +571,12 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         selection=selection,
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=view_token,
-        final_prompt_name=final_prompt_path.name,
     )
     references = auxiliary_references_for_texts(
         project_root,
         [prompt_text],
         [],
     )
-    final_prompt_path.write_text(prompt_text, encoding="utf-8")
-    source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token=view_token, selection=selection)
     write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle)
 
     checklist = load_checklist(project_root, str(bundle.get("review_checklist", "")))
@@ -673,7 +678,7 @@ def run_job_list(job_list_path: Path, only_job: str | None = None, dry_run: bool
             update_job_error(job, exc)
     if not dry_run:
         job_list_path.parent.mkdir(parents=True, exist_ok=True)
-        job_list_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        write_json_file(job_list_path, data)
     return count
 
 
