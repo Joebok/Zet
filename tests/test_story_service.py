@@ -2,6 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from zet.models.asset import Asset
 from zet.services.config_service import Config
 from zet.models.identity_key import IdentityKey
 from zet.services.path_service import PathService
@@ -48,8 +49,25 @@ class FakeIdentityKeyRepository:
         raise KeyError(identity_key_id)
 
 
+class FakeAssetRepository:
+    def __init__(self, assets=None):
+        self.assets = assets or []
+
+    def list_assets(self, character: str, phase: str):
+        return [
+            asset for asset in self.assets
+            if asset.character == character and asset.phase == phase
+        ]
+
+    def get_asset(self, character: str, phase: str, asset_id: int):
+        for asset in self.list_assets(character, phase):
+            if asset.asset_id == asset_id:
+                return asset
+        raise KeyError(asset_id)
+
+
 class StoryServiceTests(unittest.TestCase):
-    def _service(self, root: Path, auxiliary_resource_repository=None, identity_key_repository=None) -> StoryService:
+    def _service(self, root: Path, auxiliary_resource_repository=None, identity_key_repository=None, asset_repository=None) -> StoryService:
         config = Config(
             base_library_path=str(root),
             base_character_path=str(root / "Characters"),
@@ -59,7 +77,7 @@ class StoryServiceTests(unittest.TestCase):
         )
         return StoryService(
             PathService(config),
-            None,
+            asset_repository or FakeAssetRepository(),
             auxiliary_resource_repository or FakeAuxiliaryResourceRepository(),
             identity_key_repository,
         )
@@ -336,6 +354,103 @@ Morning light.
             self.assertEqual(str(image_path), task.reference_files[0]["path"])
             self.assertEqual(1, len(rows))
             self.assertEqual("{{IDENTITY:Tsaeytte:YoungAdult:IK_front}}", rows[0].tag)
+
+    def test_image_reference_rows_uses_descriptive_asset_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "Assets" / "Tsaeytte" / "Youth" / "woodland.png"
+            image_path.parent.mkdir(parents=True)
+            image_path.write_bytes(b"image")
+            (root / "Characters" / "Tsaeytte" / "Youth").mkdir(parents=True)
+            asset = Asset(
+                29,
+                "Tsaeytte",
+                "Youth",
+                "Costume-Dressing",
+                "Back",
+                costume="Woodland outfit",
+                asset_state="LOCKED",
+                pipeline_stage="LOCKED",
+                final_image_output="woodland.png",
+            )
+            service = self._service(root, asset_repository=FakeAssetRepository([asset]))
+
+            rows = service.image_reference_rows(text_filter="Woodland outfit")
+
+            self.assertEqual(1, len(rows))
+            self.assertEqual("{{ASSET:Tsaeytte:Youth:29:Costume | Back | Woodland outfit}}", rows[0].tag)
+
+    def test_stage_scene_render_resolves_old_and_descriptive_asset_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            image_path = root / "Assets" / "Tsaeytte" / "Youth" / "woodland.png"
+            image_path.parent.mkdir(parents=True)
+            image_path.write_bytes(b"image")
+            asset = Asset(
+                29,
+                "Tsaeytte",
+                "Youth",
+                "Costume-Dressing",
+                "Back",
+                costume="Woodland outfit",
+                asset_state="LOCKED",
+                pipeline_stage="LOCKED",
+                final_image_output="woodland.png",
+            )
+            (story_dir / "FirstDay.md").write_text(
+                """Title: `[FirstDay]`
+Canonical Art Style: `[ink wash]`
+
+<!-- ZET:BEGIN STORY_TITLE -->
+FirstDay
+<!-- ZET:END STORY_TITLE -->
+
+<!-- ZET:BEGIN CANONICAL_ART_STYLE -->
+ink wash
+<!-- ZET:END CANONICAL_ART_STYLE -->
+
+<!-- ZET:BEGIN STORY_PREMISE -->
+Premise.
+<!-- ZET:END STORY_PREMISE -->
+
+<!-- ZET:BEGIN STORY_VISUAL_CONTINUITY -->
+Continuity.
+<!-- ZET:END STORY_VISUAL_CONTINUITY -->
+""",
+                encoding="utf-8",
+            )
+            service = self._service(root, asset_repository=FakeAssetRepository([asset]))
+            for tag in [
+                "{{ASSET:Tsaeytte:Youth:29}}",
+                "{{ASSET:Tsaeytte:Youth:29:Costume | Back | Woodland outfit}}",
+            ]:
+                (story_dir / "At-the-Arch.md").write_text(
+                    f"""<!-- ZET:BEGIN SCENE_NAME -->
+At the Arch
+<!-- ZET:END SCENE_NAME -->
+
+<!-- ZET:BEGIN SCENE_DESCRIPTION -->
+Two students meet.
+<!-- ZET:END SCENE_DESCRIPTION -->
+
+<!-- ZET:BEGIN SCENE_IMAGE_REFERENCES -->
+{tag}
+<!-- ZET:END SCENE_IMAGE_REFERENCES -->
+
+<!-- ZET:BEGIN SCENE_RENDERING_NOTES -->
+Morning light.
+<!-- ZET:END SCENE_RENDERING_NOTES -->
+""",
+                    encoding="utf-8",
+                )
+
+                task = service.stage_scene_render("FirstDay", "At-the-Arch")
+
+                self.assertEqual(1, len(task.reference_files))
+                self.assertEqual(str(image_path), task.reference_files[0]["path"])
+                self.assertEqual(tag, task.reference_files[0]["tag"])
 
 
 if __name__ == "__main__":

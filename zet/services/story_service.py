@@ -555,7 +555,7 @@ class StoryService:
         """Resolve image reference tags used by a scene."""
         references = []
         seen = set()
-        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
+        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
         for match in re.finditer(pattern, scene_text or ""):
             tag = match.group(0)
             if tag in seen:
@@ -764,8 +764,13 @@ class StoryService:
         if asset.expression:
             label_parts.append(asset.expression)
         image_path = self.path_service.locked_image_path(asset)
+        tag_parts = [self._asset_reference_pipeline_code(asset.pipeline), asset.body_view]
+        if asset.pipeline == "Costume-Dressing" and asset.costume:
+            tag_parts.append(asset.costume)
+        if asset.pipeline == "Expression" and asset.expression:
+            tag_parts.append(asset.expression)
         return ImageReferenceRow(
-            tag=f"{{{{ASSET:{asset.character}:{asset.phase}:{asset.asset_id}}}}}",
+            tag=f"{{{{ASSET:{asset.character}:{asset.phase}:{asset.asset_id}:{' | '.join(part for part in tag_parts if part)}}}}}",
             label=" | ".join(part for part in label_parts if part),
             character=asset.character,
             phase=asset.phase,
@@ -774,6 +779,16 @@ class StoryService:
             image_path=str(image_path),
             thumbnail_path=str(image_path),
         )
+
+    def _asset_reference_pipeline_code(self, pipeline: str) -> str:
+        """Return the short pipeline label used in scene reference tags."""
+        return {
+            "Body-Reference": "Body",
+            "Head-Fitment": "Head",
+            "Character-Assembly": "Character",
+            "Costume-Dressing": "Costume",
+            "Expression": "Expression",
+        }.get(pipeline, pipeline)
 
     def _identity_reference_row(self, identity_key: IdentityKey) -> ImageReferenceRow:
         """Return one picker row for an identity key."""

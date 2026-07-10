@@ -1,8 +1,8 @@
 # To Do items
 
-Rearrande Local Image Config page
+Rearrange Local Image Config page
 
-New Feature: Local Scene Render
+Scene Maker
 
 # Defer for now
 
