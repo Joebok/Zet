@@ -2,7 +2,9 @@
 
 Rearrange Local Image Config page
 
-Scene Maker
+Scene Builder autosave moves the focus.
+
+NPCs
 
 # Defer for now
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -54,6 +55,22 @@ class SceneDocument:
 
 
 @dataclass(frozen=True)
+class SceneBuilderDocument:
+    """Describe one editable Scene Builder JSON document."""
+    story: StoryRecord
+    scene: SceneRecord
+    data: dict
+    json_path: str
+    md_path: str
+    png_path: str
+    json_exists: bool
+    png_exists: bool
+    validation_warnings: list[str]
+    blocked: bool = False
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class ImageReferenceRow:
     """Describe one copyable image reference for scene editing."""
     tag: str
@@ -95,6 +112,7 @@ class StoryService:
     """Manage story folders, scene markdown files, and scene image references."""
 
     STORY_SCENE_TEMPLATE_NAME = "story_scene_v1.md"
+    SCENE_BUILDER_MARKDOWN_TEMPLATE_NAME = "scene_builder_markdown_v1.md"
 
     def __init__(
         self,
@@ -434,6 +452,10 @@ class StoryService:
             saved_image_path = self.scene_image_path(safe_story_slug, saved_scene_slug)
             if image_path.exists() and not saved_image_path.exists():
                 image_path.rename(saved_image_path)
+            builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
+            saved_builder_path = self.scene_builder_json_path(safe_story_slug, saved_scene_slug)
+            if builder_path.exists() and not saved_builder_path.exists():
+                builder_path.rename(saved_builder_path)
         saved_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
         return self.load_scene(safe_story_slug, saved_scene_slug)
 
@@ -443,6 +465,7 @@ class StoryService:
         safe_scene_slug = self.safe_slug(scene_slug)
         scene_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
         image_path = self.scene_image_path(safe_story_slug, safe_scene_slug)
+        builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
         if not scene_path.exists():
             raise StoryServiceError(f"Scene file not found: {scene_path}")
         commit = self.story_git_commit()
@@ -451,6 +474,8 @@ class StoryService:
         scene_path.unlink()
         if image_path.exists():
             image_path.unlink()
+        if builder_path.exists():
+            builder_path.unlink()
         return commit
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
@@ -458,6 +483,488 @@ class StoryService:
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         return self.path_service.story_folder_path(safe_story_slug) / f"{safe_scene_slug}.png"
+
+    def scene_builder_json_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the Scene Builder JSON path for one story scene."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        return self.path_service.scene_file_path(safe_story_slug, safe_scene_slug).with_suffix(".json")
+
+    def get_scene_builder_json_path(self, scene_path: Path) -> Path:
+        """Return the Scene Builder JSON path matching a scene markdown or image path."""
+        return Path(scene_path).with_suffix(".json")
+
+    def _project_config_path(self, *parts: str) -> Path:
+        return Path(__file__).resolve().parents[2] / "Config" / Path(*parts)
+
+    def scene_builder_options(self) -> dict:
+        """Return Scene Builder dropdown and validation option lists."""
+        path = self._project_config_path("Scene_Builder_Options.json")
+        if not path.exists():
+            raise StoryServiceError(f"Scene Builder options not found: {path}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _scene_builder_markdown_template_path(self) -> Path:
+        path = self._project_config_path("Prompt_Templates", self.SCENE_BUILDER_MARKDOWN_TEMPLATE_NAME)
+        if not path.exists():
+            raise StoryServiceError(f"Scene Builder markdown template not found: {path}")
+        return path
+
+    def _library_relative_path(self, path: Path) -> str:
+        try:
+            return str(path.resolve().relative_to(Path(self.path_service.config.base_library_path).resolve())).replace("\\", "/")
+        except ValueError:
+            return str(path)
+
+    def _scene_builder_paths(self, story_slug: str, scene_slug: str) -> tuple[Path, Path, Path]:
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        return (
+            self.path_service.scene_file_path(safe_story_slug, safe_scene_slug),
+            self.scene_image_path(safe_story_slug, safe_scene_slug),
+            self.scene_builder_json_path(safe_story_slug, safe_scene_slug),
+        )
+
+    def create_default_scene_builder_data(self, story_slug: str, scene_slug: str) -> dict:
+        """Create default Scene Builder data for one existing scene."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        scene_doc = self.load_scene(safe_story_slug, safe_scene_slug)
+        scene_path, image_path, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        return {
+            "schema_version": 1,
+            "scene": {
+                "name": scene_doc.record.title,
+                "slug": safe_scene_slug,
+                "associated_md_path": self._library_relative_path(scene_path),
+                "associated_png_path": self._library_relative_path(image_path),
+                "notes": "",
+            },
+            "canvas": {
+                "orientation": "landscape",
+                "aspect_ratio": "16:9",
+                "width": None,
+                "height": None,
+            },
+            "composition": {
+                "template": "custom",
+                "grid": {
+                    "columns": 3,
+                    "rows": 2,
+                },
+                "primary_focal_point": "",
+                "composition_notes": "",
+            },
+            "camera": {
+                "shot_type": "wide shot",
+                "camera_height": "eye-level",
+                "camera_angle": "straight-on",
+                "viewer_position": "front",
+                "lens_feel": "normal",
+                "focus_priority": "whole group",
+                "notes": "",
+            },
+            "characters": [],
+            "placements": [],
+            "environment": {
+                "location": "",
+                "foreground_props": [],
+                "background_anchors": [],
+                "lighting": "",
+                "mood": "",
+                "weather_or_atmosphere": "",
+                "important_exclusions": [],
+            },
+            "depth_lanes": {
+                "foreground": [],
+                "midground": [],
+                "background": [],
+            },
+            "interactions": [],
+            "generation_outputs": {
+                "scene_brief": "",
+                "positive_prompt": "",
+                "negative_prompt": "",
+                "validation_warnings": [],
+            },
+            "metadata": {
+                "created_at": stamp,
+                "updated_at": stamp,
+                "created_by": "Zet Scene Builder",
+            },
+        }
+
+    def _merge_scene_builder_defaults(self, default: dict, current: dict) -> dict:
+        """Merge loaded Scene Builder data over defaults while preserving unknown fields."""
+        merged = copy.deepcopy(default)
+        for key, value in (current or {}).items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._merge_scene_builder_defaults(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    def _normalize_scene_builder_data(self, story_slug: str, scene_slug: str, data: dict) -> dict:
+        """Apply defaults and derived scene paths to Scene Builder data."""
+        if not isinstance(data, dict):
+            raise StoryServiceError("Scene Builder JSON must be an object.")
+        schema_version = data.get("schema_version", 1)
+        if schema_version != 1:
+            raise StoryServiceError(f"Unsupported Scene Builder schema_version: {schema_version}")
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        default = self.create_default_scene_builder_data(safe_story_slug, safe_scene_slug)
+        normalized = self._merge_scene_builder_defaults(default, data)
+        scene_path, image_path, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        normalized["schema_version"] = 1
+        normalized.setdefault("scene", {})
+        normalized["scene"]["slug"] = safe_scene_slug
+        normalized["scene"]["associated_md_path"] = self._library_relative_path(scene_path)
+        normalized["scene"]["associated_png_path"] = self._library_relative_path(image_path)
+        if not str(normalized["scene"].get("name") or "").strip():
+            normalized["scene"]["name"] = default["scene"]["name"]
+        normalized["placements"] = self._normalized_placements(normalized)
+        normalized["environment"]["background_anchors"] = self._normalized_background_anchors(normalized)
+        normalized["depth_lanes"] = self._build_depth_lanes(normalized)
+        return normalized
+
+    def load_scene_builder_data(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
+        """Load Scene Builder data or return defaults when JSON does not exist."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        scene_doc = self.load_scene(safe_story_slug, safe_scene_slug)
+        scene_path, image_path, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        try:
+            if json_path.exists():
+                raw = json.loads(json_path.read_text(encoding="utf-8"))
+                data = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, raw)
+            else:
+                data = self.create_default_scene_builder_data(safe_story_slug, safe_scene_slug)
+        except json.JSONDecodeError as exc:
+            return SceneBuilderDocument(
+                story=scene_doc.story,
+                scene=scene_doc.record,
+                data={},
+                json_path=str(json_path),
+                md_path=str(scene_path),
+                png_path=str(image_path),
+                json_exists=json_path.exists(),
+                png_exists=image_path.exists(),
+                validation_warnings=[],
+                blocked=True,
+                error=f"Malformed Scene Builder JSON: {exc}",
+            )
+        warnings = self.validate_scene_builder_data(data)
+        data.setdefault("generation_outputs", {})["validation_warnings"] = warnings
+        return SceneBuilderDocument(
+            story=scene_doc.story,
+            scene=scene_doc.record,
+            data=data,
+            json_path=str(json_path),
+            md_path=str(scene_path),
+            png_path=str(image_path),
+            json_exists=json_path.exists(),
+            png_exists=image_path.exists(),
+            validation_warnings=warnings,
+        )
+
+    def save_scene_builder_data(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
+        """Save Scene Builder JSON atomically."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        _, _, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        normalized = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, data)
+        normalized = self.generate_scene_builder_outputs(safe_story_slug, safe_scene_slug, normalized)
+        now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        normalized.setdefault("metadata", {})
+        normalized["metadata"].setdefault("created_at", now)
+        normalized["metadata"]["updated_at"] = now
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = json_path.with_name(f".{json_path.name}.tmp")
+        temp_path.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        temp_path.replace(json_path)
+        return self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
+
+    def generate_scene_builder_outputs(self, story_slug: str, scene_slug: str, data: dict) -> dict:
+        """Return Scene Builder data with generated brief, prompts, and warnings."""
+        normalized = self._normalize_scene_builder_data(story_slug, scene_slug, data)
+        outputs = normalized.setdefault("generation_outputs", {})
+        outputs["scene_brief"] = self.generate_scene_brief(normalized)
+        outputs["positive_prompt"] = self.generate_positive_prompt(story_slug, scene_slug, normalized)
+        outputs["negative_prompt"] = outputs.get("negative_prompt") or self.generate_negative_prompt(normalized)
+        outputs["validation_warnings"] = self.validate_scene_builder_data(normalized)
+        return normalized
+
+    def _cell_name(self, rows: int, columns: int, row: int, column: int) -> str:
+        row_names = {2: ["upper", "lower"], 3: ["upper", "center", "lower"]}.get(rows)
+        column_names = {3: ["left", "center", "right"]}.get(columns)
+        if row_names and column_names and 1 <= row <= rows and 1 <= column <= columns:
+            if row_names[row - 1] == "center" and column_names[column - 1] == "center":
+                return "center"
+            return f"{row_names[row - 1]}-{column_names[column - 1]}"
+        return f"row {row} column {column}"
+
+    def _grid_size(self, data: dict) -> tuple[int, int]:
+        grid = data.get("composition", {}).get("grid", {})
+        rows = int(grid.get("rows") or 2)
+        columns = int(grid.get("columns") or 3)
+        return max(rows, 1), max(columns, 1)
+
+    def _normalized_placements(self, data: dict) -> list[dict]:
+        rows, columns = self._grid_size(data)
+        placements = []
+        for index, placement in enumerate(data.get("placements") or [], start=1):
+            if not isinstance(placement, dict):
+                continue
+            item = copy.deepcopy(placement)
+            item.setdefault("id", f"placement_{index:03d}")
+            item.setdefault("type", "character")
+            item.setdefault("label", item.get("character_id") or item["id"])
+            cell = item.setdefault("screen_cell", {})
+            row = int(cell.get("row") or 1)
+            column = int(cell.get("column") or 1)
+            cell["row"] = row
+            cell["column"] = column
+            cell["name"] = self._cell_name(rows, columns, row, column)
+            item.setdefault("position_within_cell", "center")
+            item.setdefault("depth", "midground")
+            item.setdefault("size_prominence", "medium")
+            placements.append(item)
+        return placements
+
+    def _normalized_background_anchors(self, data: dict) -> list[dict]:
+        rows, columns = self._grid_size(data)
+        anchors = []
+        for index, anchor in enumerate(data.get("environment", {}).get("background_anchors") or [], start=1):
+            if not isinstance(anchor, dict):
+                continue
+            item = copy.deepcopy(anchor)
+            item.setdefault("id", f"anchor_{index:03d}")
+            item.setdefault("label", item["id"])
+            item.setdefault("depth", "background")
+            cell = item.setdefault("screen_cell", {})
+            row = int(cell.get("row") or 1)
+            column = int(cell.get("column") or 1)
+            cell["row"] = row
+            cell["column"] = column
+            cell["name"] = self._cell_name(rows, columns, row, column)
+            anchors.append(item)
+        return anchors
+
+    def _build_depth_lanes(self, data: dict) -> dict:
+        lanes = {"foreground": [], "midground": [], "background": []}
+        for placement in data.get("placements") or []:
+            depth = str(placement.get("depth") or "midground")
+            key = "background" if "background" in depth else depth if depth in lanes else "midground"
+            lanes[key].append(placement.get("label") or placement.get("character_id") or placement.get("id"))
+        for anchor in data.get("environment", {}).get("background_anchors") or []:
+            key = "background" if "background" in str(anchor.get("depth") or "") else "midground"
+            lanes[key].append(anchor.get("label") or anchor.get("id"))
+        for prop in data.get("environment", {}).get("foreground_props") or []:
+            lanes["foreground"].append(str(prop))
+        return lanes
+
+    def _character_lookup(self, data: dict) -> dict[str, dict]:
+        return {
+            str(character.get("id") or ""): character
+            for character in data.get("characters") or []
+            if isinstance(character, dict) and str(character.get("id") or "")
+        }
+
+    def validate_scene_builder_data(self, data: dict) -> list[str]:
+        """Return non-blocking Scene Builder validation warnings."""
+        warnings: list[str] = []
+        scene = data.get("scene", {})
+        composition = data.get("composition", {})
+        environment = data.get("environment", {})
+        camera = data.get("camera", {})
+        characters = self._character_lookup(data)
+        rows, columns = self._grid_size(data)
+        if not str(scene.get("name") or "").strip():
+            warnings.append("No scene name specified.")
+        if not str(scene.get("associated_md_path") or "").strip():
+            warnings.append("No associated markdown path.")
+        if not characters:
+            warnings.append("No characters defined.")
+        if not data.get("placements"):
+            warnings.append("No placements defined.")
+        named_primary_cells: dict[tuple[int, int], list[str]] = {}
+        important_count = 0
+        for placement in data.get("placements") or []:
+            character_id = str(placement.get("character_id") or "")
+            character = characters.get(character_id)
+            cell = placement.get("screen_cell") or {}
+            row = int(cell.get("row") or 0)
+            column = int(cell.get("column") or 0)
+            if placement.get("type", "character") == "character" and character_id and character_id not in characters:
+                warnings.append(f"Placement {placement.get('id') or placement.get('label')} references missing character {character_id}.")
+            if row < 1 or row > rows or column < 1 or column > columns:
+                warnings.append(f"Placement {placement.get('label') or placement.get('id')} is outside grid bounds.")
+            if character and character.get("importance") in {"primary", "secondary"}:
+                important_count += 1
+            if character and character.get("importance") == "primary":
+                if placement.get("depth") in {"background", "distant background"}:
+                    warnings.append(f"Primary character {character_id} is placed in {placement.get('depth')}.")
+                if character_id and not character_id.lower().startswith(("background ", "crowd", "guards", "monsters", "shadowy ")):
+                    named_primary_cells.setdefault((row, column), []).append(character_id)
+            if placement.get("expression") and placement.get("size_prominence") in {"small", "distant"}:
+                warnings.append(f"Expression on {placement.get('label') or character_id} may be unreadable at {placement.get('size_prominence')} size.")
+            if "behind" in str(camera.get("viewer_position") or "").lower() and "viewer" in str(placement.get("gaze_target") or "").lower():
+                warnings.append(f"Camera is behind while {placement.get('label') or character_id} looks at viewer.")
+        for cell, names in named_primary_cells.items():
+            if len(names) > 1:
+                warnings.append(f"Multiple named primary characters share {self._cell_name(rows, columns, cell[0], cell[1])}.")
+        if rows * columns <= 6 and important_count > 4:
+            warnings.append("Too many primary/secondary characters for a small canvas.")
+        valid_targets = set(characters) | {str(anchor.get("label") or "") for anchor in environment.get("background_anchors") or []}
+        for interaction in data.get("interactions") or []:
+            subject = str(interaction.get("subject") or "")
+            target = str(interaction.get("target") or "")
+            if subject and subject not in valid_targets:
+                warnings.append(f"Interaction references missing subject {subject}.")
+            if target and target not in valid_targets:
+                warnings.append(f"Interaction references missing target {target}.")
+        if not str(environment.get("lighting") or "").strip():
+            warnings.append("No lighting specified.")
+        if not str(composition.get("primary_focal_point") or "").strip():
+            warnings.append("No focal point specified.")
+        if not str(environment.get("location") or "").strip():
+            warnings.append("No environment/location specified.")
+        return warnings
+
+    def _placement_phrase(self, placement: dict) -> str:
+        label = placement.get("label") or placement.get("character_id") or "item"
+        cell = placement.get("screen_cell") or {}
+        intro = f"In the {cell.get('name') or 'scene'} {placement.get('depth') or 'midground'}, {label}"
+        details = []
+        for key in ("pose", "body_facing", "head_facing", "gaze_target", "expression", "interaction_target"):
+            value = str(placement.get(key) or "").strip()
+            if value:
+                label_key = key.replace("_", " ")
+                details.append(f"{label_key} {value}")
+        if details:
+            return f"{intro} " + ", ".join(details) + "."
+        return f"{intro} is placed {placement.get('position_within_cell') or 'center'} in the cell."
+
+    def generate_scene_brief(self, data: dict) -> str:
+        """Generate a concise human-readable scene brief."""
+        rows, columns = self._grid_size(data)
+        canvas = data.get("canvas", {})
+        camera = data.get("camera", {})
+        environment = data.get("environment", {})
+        parts = [
+            f"{str(canvas.get('orientation') or 'landscape').capitalize()} {camera.get('shot_type') or 'wide shot'} of {environment.get('location') or 'the scene'} using a {columns}-column by {rows}-row composition."
+        ]
+        parts.extend(self._placement_phrase(placement) for placement in data.get("placements") or [])
+        for anchor in environment.get("background_anchors") or []:
+            cell = anchor.get("screen_cell") or {}
+            description = anchor.get("description") or anchor.get("label") or "background anchor"
+            parts.append(f"{description} occupies the {cell.get('name') or 'background'} {anchor.get('depth') or 'background'}.")
+        if environment.get("lighting") or environment.get("mood"):
+            parts.append(" ".join(str(value) for value in [environment.get("lighting"), environment.get("mood")] if value).strip() + ".")
+        return " ".join(part for part in parts if part).strip()
+
+    def generate_positive_prompt(self, story_slug: str, scene_slug: str, data: dict) -> str:
+        """Generate a positive image prompt from Scene Builder data."""
+        story_text = self.path_service.story_file_path(self.safe_slug(story_slug)).read_text(encoding="utf-8")
+        art_style = self._extract_bounded_section(story_text, "CANONICAL_ART_STYLE") or self._extract_first_metadata_field(story_text, "Canonical Art Style")
+        pieces = [art_style.strip(), self.generate_scene_brief(data)]
+        environment = data.get("environment", {})
+        interactions = []
+        for interaction in data.get("interactions") or []:
+            subject = interaction.get("subject")
+            relationship = interaction.get("relationship")
+            target = interaction.get("target")
+            note = interaction.get("note")
+            if subject and relationship and target:
+                interactions.append(" ".join(str(value) for value in [subject, relationship, target, note] if value))
+        if interactions:
+            pieces.append("Interactions: " + "; ".join(interactions) + ".")
+        if environment.get("foreground_props"):
+            pieces.append("Foreground props: " + ", ".join(map(str, environment.get("foreground_props") or [])) + ".")
+        if environment.get("weather_or_atmosphere"):
+            pieces.append(str(environment.get("weather_or_atmosphere")))
+        pieces.append("Clear spatial staging, readable silhouettes, coherent character placement, no cropped primary characters.")
+        return " ".join(piece for piece in pieces if piece).strip()
+
+    def generate_negative_prompt(self, data: dict) -> str:
+        """Generate a practical negative prompt."""
+        exclusions = data.get("environment", {}).get("important_exclusions") or []
+        base = [
+            "confused layout",
+            "merged characters",
+            "duplicated characters",
+            "extra limbs",
+            "wrong character placement",
+            "cropped primary character",
+            "obscured faces",
+            "unreadable poses",
+            "inconsistent gaze direction",
+            "incorrect facing direction",
+            "cluttered composition",
+            "oversized speech bubbles",
+            "text artifacts",
+            "malformed hands",
+            "distorted anatomy",
+        ]
+        return ", ".join([*base, *[str(item) for item in exclusions if str(item).strip()]])
+
+    def _markdown_list(self, items: list[str]) -> str:
+        return "\n".join(f"- {item}" for item in items if str(item).strip()) or "- None"
+
+    def _scene_builder_markdown(self, data: dict) -> str:
+        template = self._scene_builder_markdown_template_path().read_text(encoding="utf-8")
+        rows, columns = self._grid_size(data)
+        canvas = data.get("canvas", {})
+        camera = data.get("camera", {})
+        environment = data.get("environment", {})
+        replacements = {
+            "SCENE_NAME": data.get("scene", {}).get("name") or data.get("scene", {}).get("slug") or "Untitled",
+            "SCENE_BRIEF": data.get("generation_outputs", {}).get("scene_brief") or self.generate_scene_brief(data),
+            "POSITIVE_PROMPT": data.get("generation_outputs", {}).get("positive_prompt") or "",
+            "NEGATIVE_PROMPT": data.get("generation_outputs", {}).get("negative_prompt") or "",
+            "CANVAS_ORIENTATION": canvas.get("orientation") or "",
+            "CANVAS_ASPECT_RATIO": canvas.get("aspect_ratio") or "",
+            "GRID_SUMMARY": f"{columns} columns by {rows} rows",
+            "CAMERA_SHOT_TYPE": camera.get("shot_type") or "",
+            "CAMERA_HEIGHT": camera.get("camera_height") or "",
+            "CAMERA_ANGLE": camera.get("camera_angle") or "",
+            "VIEWER_POSITION": camera.get("viewer_position") or "",
+            "CHARACTER_PLACEMENTS": self._markdown_list([self._placement_phrase(item).rstrip(".") for item in data.get("placements") or []]),
+            "ENVIRONMENT_SUMMARY": self._markdown_list([
+                f"Location: {environment.get('location') or ''}",
+                f"Lighting: {environment.get('lighting') or ''}",
+                f"Mood: {environment.get('mood') or ''}",
+                f"Background anchors: {', '.join(anchor.get('label') or '' for anchor in environment.get('background_anchors') or [])}",
+                f"Foreground props: {', '.join(map(str, environment.get('foreground_props') or []))}",
+            ]),
+            "INTERACTIONS_SUMMARY": self._markdown_list([
+                " ".join(str(interaction.get(key) or "") for key in ("subject", "relationship", "target", "note")).strip()
+                for interaction in data.get("interactions") or []
+            ]),
+            "VALIDATION_WARNINGS": self._markdown_list(data.get("generation_outputs", {}).get("validation_warnings") or []),
+        }
+        for key, value in replacements.items():
+            template = template.replace(f"{{{{{key}}}}}", str(value))
+        return template.rstrip()
+
+    def export_scene_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
+        """Update only the Scene Builder-managed section in the scene markdown file."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        saved = self.save_scene_builder_data(safe_story_slug, safe_scene_slug, data)
+        scene_path, _, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        text = scene_path.read_text(encoding="utf-8")
+        block = self._scene_builder_markdown(saved.data)
+        managed = f"<!-- ZET:BEGIN SCENE_BUILDER -->\n{block}\n<!-- ZET:END SCENE_BUILDER -->"
+        pattern = re.compile(r"<!-- ZET:BEGIN SCENE_BUILDER -->.*?<!-- ZET:END SCENE_BUILDER -->", re.DOTALL)
+        if pattern.search(text):
+            text = pattern.sub(managed, text, count=1)
+        else:
+            text = text.rstrip() + "\n\n" + managed
+        scene_path.write_text(text.rstrip() + "\n", encoding="utf-8")
+        return self.load_scene(safe_story_slug, safe_scene_slug)
 
     def _story_scene_sections(self, story_text: str, scene_text: str) -> dict[str, str]:
         """Return story and scene compiler sections for prompt rendering."""

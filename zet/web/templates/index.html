@@ -561,10 +561,11 @@
           <div class="review-header">
             <h2 id="scene-editor-title">Select a scene</h2>
             <div class="button-row compact">
-              <button id="scene-stage-render" class="update-action" type="button" disabled>Stage Render</button>
-              <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
-              <button id="scene-delete" type="button" disabled>Delete Scene</button>
-              <button id="scene-toggle-image" type="button" disabled>Toggle Image</button>
+              <button id="scene-stage-render" class="update-action" type="button" disabled>Render</button>
+              <button id="scene-builder-open" type="button" disabled>Builder</button>
+              <button id="scene-save" class="primary-action" type="button" disabled>Scene</button>
+              <button id="scene-delete" type="button" disabled>Delete</button>
+              <button id="scene-toggle-image" type="button" disabled>Images</button>
             </div>
           </div>
           <div id="scene-validation" class="action-message info" hidden></div>
@@ -597,6 +598,15 @@
           </table>
         </aside>
       </div>
+    </section>
+
+    <section id="scene-builder-page" class="page">
+      <div class="page-title-row">
+        <h1>Scene Builder</h1>
+        <div id="scene-builder-status" class="status-text"></div>
+      </div>
+      <div id="scene-builder-message" class="action-message" hidden></div>
+      <div id="scene-builder-panel" class="scene-builder-panel"></div>
     </section>
 
     <section id="manifest-page" class="page">

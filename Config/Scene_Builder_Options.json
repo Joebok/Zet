@@ -1,0 +1,161 @@
+{
+  "orientation": [
+    "portrait",
+    "landscape",
+    "square",
+    "comic panel",
+    "custom"
+  ],
+  "aspect_ratio": [
+    "1:1",
+    "4:5",
+    "3:4",
+    "16:9",
+    "2:3",
+    "custom"
+  ],
+  "composition_template": [
+    "custom",
+    "single subject",
+    "two character conversation",
+    "group lineup",
+    "confrontation",
+    "foreground subject with background threat",
+    "teacher addressing students",
+    "over-the-shoulder",
+    "action scene",
+    "establishing shot",
+    "comic dialogue panel"
+  ],
+  "importance": [
+    "primary",
+    "secondary",
+    "background",
+    "extra"
+  ],
+  "position_within_cell": [
+    "center",
+    "left",
+    "right",
+    "upper",
+    "lower",
+    "upper-left",
+    "upper-right",
+    "lower-left",
+    "lower-right"
+  ],
+  "depth": [
+    "foreground",
+    "midground",
+    "background",
+    "distant background"
+  ],
+  "size_prominence": [
+    "dominant",
+    "large",
+    "medium",
+    "small",
+    "distant"
+  ],
+  "facing": [
+    "toward viewer",
+    "toward left",
+    "toward right",
+    "toward center",
+    "away from viewer",
+    "toward another character",
+    "custom"
+  ],
+  "gaze": [
+    "same as body direction",
+    "looking at viewer",
+    "looking at another character",
+    "looking at object",
+    "looking offscreen",
+    "custom"
+  ],
+  "expression": [
+    "neutral",
+    "curious",
+    "alert",
+    "wary",
+    "amused",
+    "confident",
+    "focused",
+    "angry",
+    "frustrated",
+    "vulnerable",
+    "determined",
+    "custom"
+  ],
+  "pose": [
+    "standing casually",
+    "arms crossed",
+    "one hand raised in warning",
+    "crouched with one hand braced on the floor",
+    "kneeling beside an injured ally",
+    "turning back over shoulder",
+    "holding staff defensively",
+    "mid-leap",
+    "reaching toward a glowing object",
+    "speaking with one hand gesturing"
+  ],
+  "shot_type": [
+    "close-up",
+    "medium shot",
+    "full-body shot",
+    "wide shot",
+    "establishing shot",
+    "comic panel shot"
+  ],
+  "camera_height": [
+    "low",
+    "eye-level",
+    "high",
+    "overhead"
+  ],
+  "camera_angle": [
+    "straight-on",
+    "slight upward angle",
+    "slight downward angle",
+    "dramatic diagonal",
+    "over-the-shoulder",
+    "custom"
+  ],
+  "viewer_position": [
+    "front",
+    "front-left",
+    "front-right",
+    "side",
+    "behind character",
+    "custom"
+  ],
+  "lens_feel": [
+    "normal",
+    "wide",
+    "compressed / telephoto"
+  ],
+  "focus_priority": [
+    "one primary character",
+    "two main characters",
+    "whole group",
+    "environment",
+    "specific object"
+  ],
+  "relationship": [
+    "looking at",
+    "speaking to",
+    "reaching toward",
+    "attacking",
+    "protecting",
+    "standing beside",
+    "reacting to",
+    "illuminated by",
+    "blocking",
+    "following",
+    "chasing",
+    "pointing at",
+    "holding",
+    "custom"
+  ]
+}

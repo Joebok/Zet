@@ -131,14 +131,140 @@ Canonical Art Style: `[]`
 """
             (story_dir / "Old-Name.md").write_text(text, encoding="utf-8")
             (story_dir / "Old-Name.png").write_bytes(b"image")
+            (story_dir / "Old-Name.json").write_text('{"schema_version": 1}', encoding="utf-8")
 
             document = service.save_scene("FirstDay", "Old-Name", text)
 
             self.assertEqual("02-Campfire", document.record.slug)
             self.assertFalse((story_dir / "Old-Name.md").exists())
             self.assertFalse((story_dir / "Old-Name.png").exists())
+            self.assertFalse((story_dir / "Old-Name.json").exists())
             self.assertTrue((story_dir / "02-Campfire.md").exists())
             self.assertEqual(b"image", (story_dir / "02-Campfire.png").read_bytes())
+            self.assertTrue((story_dir / "02-Campfire.json").exists())
+
+    def test_scene_builder_path_mapping_uses_scene_basename(self) -> None:
+        service = self._service(Path("unused"))
+
+        self.assertEqual(Path("Scenes/Test_Scene.json"), service.get_scene_builder_json_path(Path("Scenes/Test_Scene.md")))
+        self.assertEqual(Path("Scenes/Test_Scene.json"), service.get_scene_builder_json_path(Path("Scenes/Test_Scene.png")))
+
+    def test_scene_builder_save_and_reload_generates_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text(
+                """Title: `[First Day]`
+Canonical Art Style: `[Painterly fantasy]`
+
+<!-- ZET:BEGIN STORY_TITLE -->
+First Day
+<!-- ZET:END STORY_TITLE -->
+
+<!-- ZET:BEGIN CANONICAL_ART_STYLE -->
+Painterly fantasy
+<!-- ZET:END CANONICAL_ART_STYLE -->
+""",
+                encoding="utf-8",
+            )
+            (story_dir / "At-the-Arch.md").write_text(
+                """Scene: `[At the Arch]`
+
+<!-- ZET:BEGIN SCENE_NAME -->
+At the Arch
+<!-- ZET:END SCENE_NAME -->
+""",
+                encoding="utf-8",
+            )
+
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["characters"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "importance": "primary"}]
+            data["placements"] = [{
+                "id": "placement_001",
+                "type": "character",
+                "character_id": "Tsaeytte",
+                "label": "Tsaeytte",
+                "screen_cell": {"row": 2, "column": 1},
+                "depth": "foreground",
+                "size_prominence": "large",
+                "pose": "crouched",
+            }]
+            data["environment"]["location"] = "magic academy hall"
+            data["environment"]["lighting"] = "cool blue light"
+            data["composition"]["primary_focal_point"] = "Tsaeytte"
+
+            document = service.save_scene_builder_data("FirstDay", "At-the-Arch", data)
+
+            self.assertTrue((story_dir / "At-the-Arch.json").exists())
+            self.assertEqual(1, document.data["schema_version"])
+            self.assertEqual("lower-left", document.data["placements"][0]["screen_cell"]["name"])
+            self.assertIn("lower-left foreground", document.data["generation_outputs"]["scene_brief"])
+            self.assertIn("Painterly fantasy", document.data["generation_outputs"]["positive_prompt"])
+            self.assertTrue(document.data["metadata"]["created_at"])
+            self.assertTrue(document.data["metadata"]["updated_at"])
+
+            reloaded = service.load_scene_builder_data("FirstDay", "At-the-Arch")
+            self.assertEqual("Tsaeytte", reloaded.data["placements"][0]["character_id"])
+
+    def test_scene_builder_validation_and_markdown_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text(
+                """Title: `[First Day]`
+Canonical Art Style: `[Painterly fantasy]`
+
+<!-- ZET:BEGIN STORY_TITLE -->
+First Day
+<!-- ZET:END STORY_TITLE -->
+
+<!-- ZET:BEGIN CANONICAL_ART_STYLE -->
+Painterly fantasy
+<!-- ZET:END CANONICAL_ART_STYLE -->
+""",
+                encoding="utf-8",
+            )
+            scene_path = story_dir / "At-the-Arch.md"
+            scene_path.write_text(
+                """Scene: `[At the Arch]`
+
+<!-- ZET:BEGIN SCENE_NAME -->
+At the Arch
+<!-- ZET:END SCENE_NAME -->
+
+Keep this manual note.
+""",
+                encoding="utf-8",
+            )
+
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["characters"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "importance": "primary"}]
+            data["placements"] = [{
+                "id": "placement_001",
+                "type": "character",
+                "character_id": "Missing",
+                "label": "Missing",
+                "screen_cell": {"row": 99, "column": 1},
+                "depth": "distant background",
+                "size_prominence": "distant",
+                "expression": "alert",
+            }]
+            data["interactions"] = [{"subject": "Tsaeytte", "relationship": "looking at", "target": "Teacher", "note": ""}]
+
+            warnings = service.validate_scene_builder_data(service._normalize_scene_builder_data("FirstDay", "At-the-Arch", data))
+
+            self.assertTrue(any("missing character Missing" in warning for warning in warnings))
+            self.assertTrue(any("outside grid bounds" in warning for warning in warnings))
+            self.assertTrue(any("No lighting specified" in warning for warning in warnings))
+            service.export_scene_markdown("FirstDay", "At-the-Arch", data)
+            text = scene_path.read_text(encoding="utf-8")
+            self.assertIn("Keep this manual note.", text)
+            self.assertIn("<!-- ZET:BEGIN SCENE_BUILDER -->", text)
+            self.assertIn("## Positive Image Prompt", text)
 
     def test_delete_story_commits_then_removes_story_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -162,6 +288,7 @@ Canonical Art Style: `[]`
             story_dir.mkdir(parents=True)
             (story_dir / "At-the-Arch.md").write_text("scene", encoding="utf-8")
             (story_dir / "At-the-Arch.png").write_bytes(b"image")
+            (story_dir / "At-the-Arch.json").write_text('{"schema_version": 1}', encoding="utf-8")
             service = self._service(root)
             commits = []
             service.story_git_commit = lambda: commits.append(True) or StoryGitResult("", False)
@@ -171,6 +298,7 @@ Canonical Art Style: `[]`
             self.assertEqual([True], commits)
             self.assertFalse((story_dir / "At-the-Arch.md").exists())
             self.assertFalse((story_dir / "At-the-Arch.png").exists())
+            self.assertFalse((story_dir / "At-the-Arch.json").exists())
 
     def test_create_story_handles_story_heading_before_compiler_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

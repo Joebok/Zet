@@ -421,6 +421,23 @@ def _scene_document_payload(document) -> dict[str, Any]:
     }
 
 
+def _scene_builder_document_payload(document) -> dict[str, Any]:
+    """Serialize one Scene Builder document for dashboard editing."""
+    return {
+        "story": _story_record_payload(document.story),
+        "scene": _scene_record_payload(document.scene),
+        "data": _jsonable(document.data),
+        "json_path": document.json_path,
+        "md_path": document.md_path,
+        "png_path": document.png_path,
+        "json_exists": document.json_exists,
+        "png_exists": document.png_exists,
+        "validation_warnings": list(document.validation_warnings),
+        "blocked": document.blocked,
+        "error": document.error,
+    }
+
+
 def _image_reference_payload(row) -> dict[str, Any]:
     """Serialize one copyable scene image reference row."""
     return asdict(row)
@@ -1320,6 +1337,58 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return {"document": _scene_document_payload(zet_app.load_scene(story_slug, scene_slug))}
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/builder")
+    def scene_builder_detail(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        """Load Scene Builder JSON for one story scene."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "document": _scene_builder_document_payload(zet_app.load_scene_builder(story_slug, scene_slug)),
+                "options": zet_app.scene_builder_options(),
+                "references": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows()],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/stories/{story_slug}/scenes/{scene_slug}/builder")
+    def scene_builder_save(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Save Scene Builder JSON for one story scene."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.save_scene_builder(story_slug, scene_slug, data)
+            return {
+                "document": _scene_builder_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Saved Scene Builder data for {document.scene.title}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/generate")
+    def scene_builder_generate(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Generate Scene Builder outputs without saving JSON."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"data": _jsonable(zet_app.generate_scene_builder(story_slug, scene_slug, data))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/export-markdown")
+    def scene_builder_export_markdown(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Export Scene Builder-managed markdown into one story scene."""
+        zet_app = _app(app.state.config_path)
+        try:
+            scene_document = zet_app.export_scene_builder_markdown(story_slug, scene_slug, data)
+            builder_document = zet_app.load_scene_builder(story_slug, scene_slug)
+            return {
+                "document": _scene_document_payload(scene_document),
+                "builder": _scene_builder_document_payload(builder_document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Exported Scene Builder sections for {scene_document.record.title}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.put("/api/stories/{story_slug}/scenes/{scene_slug}")
     async def scene_save(story_slug: str, scene_slug: str, request: Request) -> dict[str, Any]:

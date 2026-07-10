@@ -25,7 +25,7 @@ from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.reference_service import ReferenceService
-from zet.services.story_service import ImageReferenceRow, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
+from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
@@ -323,6 +323,26 @@ class ZetApp:
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""
         return self.story_service.scene_image_path(story_slug, scene_slug)
+
+    def load_scene_builder(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
+        """Load Scene Builder JSON for one story scene."""
+        return self.story_service.load_scene_builder_data(story_slug, scene_slug)
+
+    def save_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
+        """Save Scene Builder JSON for one story scene."""
+        return self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
+
+    def generate_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> dict:
+        """Generate Scene Builder outputs without saving."""
+        return self.story_service.generate_scene_builder_outputs(story_slug, scene_slug, data)
+
+    def export_scene_builder_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
+        """Export Scene Builder-managed markdown into the scene file."""
+        return self.story_service.export_scene_markdown(story_slug, scene_slug, data)
+
+    def scene_builder_options(self) -> dict:
+        """Return Scene Builder option lists."""
+        return self.story_service.scene_builder_options()
 
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""

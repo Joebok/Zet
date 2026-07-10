@@ -1100,7 +1100,7 @@ Do not implement these unless they are already trivial in the project:
 * 3D staging
 * automatic image segmentation
 * regional masks
-* ComfyUI workflow generation
+* Local Image Generation workflow generation
 * drag-and-drop if simple click selection is faster
 * AI-generated layout suggestions
 * automatic character identity lookup from the full character library
@@ -1118,9 +1118,40 @@ The likely v2 additions are:
 * saved pose snippets
 * reusable composition templates
 * regional prompt export
-* ComfyUI area-conditioning export
+* Local Image Generation area-conditioning export
 * automatic character lookup from existing Zet character assets
 * direct comparison between scene JSON and rendered `.png`
 * iteration history for revised prompts
 
 Design the v1 model so these can be added later without replacing the data structure.
+
+# Questions
+* Where should users open the Scene Builder from: a scene file detail page, project dashboard action, or dedicated route?
+
+A button on the Scenes page. Sorten existing button labels as follows:
+Stage Render -> Render, Save Scene -> Scene, Delete Scene -> Delete, Toggle Image -> Images
+Add "Builder" button between Render and Save that opens the Scene Builder for that Scene.
+
+* Should JSON save be explicit only, autosave, or both?
+
+Both
+
+* When exporting Markdown, should Zet replace the entire `.md` file or update only Scene Builder-managed sections?
+
+Just the Scene Builder-managed sections.
+
+* What is the canonical source for project art style, if one exists?
+
+It is in the Story file that the scene is in, in the <!-- ZET:BEGIN CANONICAL_ART_STYLE --> section.
+
+* Should v1 character entry be manual only, or should it read from existing character/asset data when available?
+
+Should allow selection from existing characters and allow manual entry for NPC characters necessary for scene.
+
+* Should associated paths be stored relative to the project root or exactly as selected by the user?
+
+User should not set any paths - the file structure of the asset library, stories, and scenes is established. The scene they launch the scene builder from has information that can be passed to the scene builder that determines the path. There should be existing helpers that do this or can be modified as necessary. The scene .json file should be in the Story folder in the library, any general lists of dropdown items or validation lists or general templates should be in the Config folder of the zet project.
+
+* Should malformed or unsupported Scene Builder JSON open in a recoverable editor state, or block editing until fixed?
+
+Blocked
