@@ -144,6 +144,7 @@ An arch.
                 encoding="utf-8",
             )
             (answer_path / "At-the-Arch.png").write_bytes(b"story image")
+            (answer_path / "Stable_Matrix_API_Call.json").write_text('{"prompt": "story"}\n', encoding="utf-8")
             config_path = root / "config.toml"
             config_path.write_text(
                 f"""
@@ -161,6 +162,10 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
             self.assertEqual("RENDER_APPLIED", results[0].status)
             self.assertEqual(b"story image", target_path.read_bytes())
+            self.assertEqual(
+                '{"prompt": "story"}',
+                (target_path.parent / "Stable_Matrix_API_Call.json").read_text(encoding="utf-8").strip(),
+            )
 
     def test_stage_render_task_local_render_ask_targets_local_test_renders(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -195,6 +200,33 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
             self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), manifest["target_output_dir"])
             self.assertEqual("condensed prompt\n", (ask_path / "Condensed_Image_Prompt.md").read_text(encoding="utf-8"))
+            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / ask_path.name
+            answer_path.mkdir(parents=True)
+            (answer_path / "ask_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (answer_path / "answer_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "ask_id": manifest["ask_id"],
+                        "asset_id": None,
+                        "ollama_attempt_id": manifest["ollama_attempt_id"],
+                        "worker_id": "local",
+                        "status": "SUCCESS",
+                        "expected_output": manifest["expected_output"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (answer_path / manifest["expected_output"]).write_bytes(b"local image")
+            (answer_path / "Stable_Matrix_API_Call.json").write_text('{"prompt": "local"}\n', encoding="utf-8")
+
+            results = app.harvest_ai_answers()
+
+            self.assertEqual("LOCAL_TEST_RENDER_APPLIED", results[0].status)
+            self.assertEqual(b"local image", (workspace / "Local_Test_Renders" / manifest["expected_output"]).read_bytes())
+            self.assertEqual(
+                '{"prompt": "local"}',
+                (workspace / "Local_Test_Renders" / "Stable_Matrix_API_Call.json").read_text(encoding="utf-8").strip(),
+            )
 
     def test_local_image_worker_omits_unsupported_render_kwargs(self) -> None:
         def render_image(*, project_root, final_prompt_path, job_output_dir, prompt_review_path=None, preset_name=""):

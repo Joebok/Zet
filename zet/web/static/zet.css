@@ -1340,6 +1340,26 @@ tr.auxiliary-row td:last-child {
 .render-console-local-panel {
   align-self: end;
   margin-top: auto;
+  position: relative;
+}
+
+.render-console-api-popover {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: 62px;
+  width: min(640px, 100%);
+  z-index: 20;
+}
+
+.render-console-api-popover textarea {
+  font-family: Consolas, "Courier New", monospace;
+  min-height: 260px;
+  resize: vertical;
 }
 
 #render-console-local-test-render {

@@ -505,6 +505,9 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
                 "supports_local_test_render": bool(context.condense_status.get("enabled")),
                 "condensed_prompt_text": context.condensed_prompt_text or "",
                 "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
+                "local_api_call_exists": _render_console_local_api_call_path(context.condensed_prompt_path.parent).exists()
+                if context.condensed_prompt_path
+                else False,
                 "local_render_status": _render_console_local_render_status(zet_app, task),
                 "condense_status": _jsonable(context.condense_status),
             }
@@ -520,6 +523,7 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
         "supports_local_test_render": enabled,
         "condensed_prompt_text": condensed_path.read_text(encoding="utf-8") if condensed_path.exists() else "",
         "latest_local_test_render": str(latest_render) if latest_render else None,
+        "local_api_call_exists": _render_console_local_api_call_path(workspace).exists(),
         "local_render_status": _render_console_local_render_status(zet_app, task),
         "condense_status": {
             "enabled": enabled,
@@ -556,6 +560,10 @@ def _latest_render_console_local_test_render(workspace: Path) -> Path | None:
         return None
     images = sorted(render_dir.glob("test_*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
     return images[0] if images else None
+
+
+def _render_console_local_api_call_path(workspace: Path) -> Path:
+    return workspace / "Local_Test_Renders" / "Stable_Matrix_API_Call.json"
 
 
 def _render_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
@@ -2306,23 +2314,24 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
 
     @app.get("/api/render-console/tasks/{ask_id}/local-test-render/api-params")
     def render_console_local_test_render_api_params(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
-        """Return local test render API parameters for a render-console task."""
+        """Return harvested local test render API parameters for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
         task = _render_console_task_for_context(queue, ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
-            zet_app = _app(app.state.config_path)
             if task.asset_id is not None:
+                zet_app = _app(app.state.config_path)
                 context = zet_app.prompt_review_service.get_context(task.character, task.phase, task.asset_id)
                 if context.condensed_prompt_path is None:
                     raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
-                return zet_app.render_task_local_render_api_params(task.manifest, context.condensed_prompt_path, context.condensed_prompt_path.parent)
-            workspace = _render_console_task_workspace(task)
-            condensed_prompt = workspace / "Condensed_Image_Prompt.md"
-            if not condensed_prompt.exists():
-                raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
-            return zet_app.render_task_local_render_api_params(task.manifest, condensed_prompt, workspace)
+                workspace = context.condensed_prompt_path.parent
+            else:
+                workspace = _render_console_task_workspace(task)
+            api_call_path = _render_console_local_api_call_path(workspace)
+            if not api_call_path.exists():
+                raise FileNotFoundError(f"No harvested Stable_Matrix_API_Call.json was found for task {ask_id}.")
+            return {"path": str(api_call_path), "text": api_call_path.read_text(encoding="utf-8")}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

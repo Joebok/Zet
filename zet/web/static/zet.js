@@ -249,6 +249,9 @@ const renderConsolePrompt = document.querySelector("#render-console-prompt");
 const renderConsoleCondensePrompt = document.querySelector("#render-console-condense-prompt");
 const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
 const renderConsoleCopyLocalApiParams = document.querySelector("#render-console-copy-local-api-params");
+const renderConsoleLocalApiPopover = document.querySelector("#render-console-local-api-popover");
+const renderConsoleLocalApiText = document.querySelector("#render-console-local-api-text");
+const renderConsoleLocalApiCopy = document.querySelector("#render-console-local-api-copy");
 const renderConsoleClearLocalTest = document.querySelector("#render-console-clear-local-test");
 const renderConsoleLocalStatus = document.querySelector("#render-console-local-status");
 const renderConsoleLocalTestRender = document.querySelector("#render-console-local-test-render");
@@ -4261,6 +4264,8 @@ function clearRenderConsole() {
   renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
   renderConsoleCopyLocalApiParams.disabled = true;
+  renderConsoleLocalApiPopover.hidden = true;
+  renderConsoleLocalApiText.value = "";
   renderConsoleClearLocalTest.disabled = true;
   renderConsoleLocalStatus.textContent = "";
   renderRenderConsoleLocalTestRender(null);
@@ -4299,7 +4304,7 @@ function renderRenderConsoleDetail(detail) {
   const localPrompt = detail.local_prompt || {};
   renderConsoleCondensePrompt.disabled = !localPrompt.supports_local_test_render;
   renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
-  renderConsoleCopyLocalApiParams.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
+  renderConsoleCopyLocalApiParams.disabled = !localPrompt.local_api_call_exists;
   renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
   const condenseState = localPrompt.condense_status?.state || "";
   const localRenderState = localPrompt.local_render_status?.state || "";
@@ -4455,13 +4460,19 @@ async function copyRenderConsoleLocalApiParams() {
     const payload = await fetchJson(
       `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render/api-params?${currentQuery().toString()}`,
     );
-    await writeClipboardText(JSON.stringify(payload, null, 2));
-    showRenderConsoleMessage("Local image API parameters copied.");
+    renderConsoleLocalApiText.value = payload.text || "";
+    renderConsoleLocalApiPopover.hidden = false;
+    showRenderConsoleMessage(`Loaded ${payload.path || "Stable_Matrix_API_Call.json"}.`);
   } catch (error) {
     showRenderConsoleMessage(error.message, "error");
   } finally {
     renderConsoleCopyLocalApiParams.disabled = false;
   }
+}
+
+async function copyDisplayedRenderConsoleLocalApiParams() {
+  await writeClipboardText(renderConsoleLocalApiText.value || "");
+  showRenderConsoleMessage("Local image API parameters copied.");
 }
 
 function imageBlobFromPasteEvent(event) {
@@ -5120,6 +5131,16 @@ renderConsoleCopyHelper.addEventListener("click", async () => {
 renderConsoleCondensePrompt.addEventListener("click", () => runRenderConsoleLocalAction("prompt-condense"));
 renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
 renderConsoleCopyLocalApiParams.addEventListener("click", copyRenderConsoleLocalApiParams);
+renderConsoleLocalApiCopy.addEventListener("click", copyDisplayedRenderConsoleLocalApiParams);
+document.addEventListener("click", (event) => {
+  if (
+    !renderConsoleLocalApiPopover.hidden
+    && !renderConsoleLocalApiPopover.contains(event.target)
+    && event.target !== renderConsoleCopyLocalApiParams
+  ) {
+    renderConsoleLocalApiPopover.hidden = true;
+  }
+});
 renderConsoleClearLocalTest.addEventListener("click", clearRenderConsoleLocalTest);
 renderConsolePrev.addEventListener("click", () => {
   const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);

@@ -750,14 +750,16 @@ Backend = "manual_chatgpt"
                 "condensed prompt\n",
                 encoding="utf-8",
             )
+            local_render_dir = root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front" / "Local_Test_Renders"
+            local_render_dir.mkdir()
+            (local_render_dir / "Stable_Matrix_API_Call.json").write_text('{"prompt": "rendered"}\n', encoding="utf-8")
             client = TestClient(create_app(config_path))
 
             response = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render/api-params")
 
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["worker_type"], "local_image_render")
-            self.assertEqual(response.json()["task_type"], "local_test_render")
-            self.assertEqual(response.json()["source_ask_id"], "Ask_Asset_1_RENDER_TEST")
+            self.assertEqual(response.json()["text"], '{"prompt": "rendered"}\n')
+            self.assertEqual(response.json()["path"], str(local_render_dir / "Stable_Matrix_API_Call.json"))
 
     def test_render_console_clear_and_fail_remove_all_local_test_renders(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -768,6 +770,7 @@ Backend = "manual_chatgpt"
             render_dir.mkdir()
             (render_dir / "test_1.png").write_bytes(b"image")
             (render_dir / "test_1.json").write_text("{}", encoding="utf-8")
+            (render_dir / "Stable_Matrix_API_Call.json").write_text("{}", encoding="utf-8")
             client = TestClient(create_app(config_path))
 
             cleared = client.delete("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render")

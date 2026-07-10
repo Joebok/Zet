@@ -223,6 +223,9 @@ class AIAnswerHarvester:
             )
         else:
             shutil.copy2(response_path, target_path)
+            api_call_path = answer_path / "Stable_Matrix_API_Call.json"
+            if api_call_path.exists():
+                shutil.copy2(api_call_path, target_output_dir / "Stable_Matrix_API_Call.json")
 
         result = HarvestResult(
             answer_path=answer_path,
@@ -290,7 +293,6 @@ class AIAnswerHarvester:
         target_path = Path(target_output_file)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(response_path, target_path)
-
         result = HarvestResult(
             answer_path=answer_path,
             ask_id=answer.ask_id,
