@@ -607,6 +607,34 @@
       </div>
       <div id="scene-builder-message" class="action-message" hidden></div>
       <div id="scene-builder-panel" class="scene-builder-panel"></div>
+      <div id="builder-image-picker-modal" class="image-picker-modal" hidden>
+        <div class="image-picker-dialog">
+          <div class="review-header">
+            <h2>Image References</h2>
+            <button id="builder-image-picker-close" type="button">Close</button>
+          </div>
+          <label>
+            Character Filter
+            <select id="builder-image-picker-character"></select>
+          </label>
+          <label>
+            Search
+            <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
+          </label>
+          <button id="builder-image-picker-refresh" type="button">Refresh References</button>
+          <div id="builder-image-picker-status" class="status-text"></div>
+          <table id="builder-image-picker-table">
+            <thead>
+              <tr>
+                <th>tag</th>
+                <th>label</th>
+                <th>source</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section id="manifest-page" class="page">

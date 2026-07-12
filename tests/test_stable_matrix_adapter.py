@@ -53,7 +53,7 @@ class StableMatrixAdapterTests(unittest.TestCase):
             template = root / "template.md"
             template.write_text(
                 "<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->\n"
-                "orientation: landscape\n"
+                'orientation = "landscape"\n'
                 "<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->\n",
                 encoding="utf-8",
             )
@@ -107,13 +107,12 @@ class StableMatrixAdapterTests(unittest.TestCase):
             path = Path(temp_dir) / "template.md"
             path.write_text(
                 "<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->\n"
-                "prompt: exact prompt\n"
-                "negative_prompt: exact negative\n"
-                "steps:\n"
-                "cfg_scale: 8.5\n"
-                "orientation: square\n"
-                "sd_model_checkpoint: sd/model.safetensors\n"
-                "restore_faces: true\n"
+                'prompt = "exact prompt"\n'
+                'negative_prompt = "exact negative"\n'
+                'cfg_scale = 8.5\n'
+                'orientation = "square"\n'
+                'sd_model_checkpoint = "sd/model.safetensors"\n'
+                'restore_faces = true\n'
                 "<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->\n",
                 encoding="utf-8",
             )
@@ -122,11 +121,29 @@ class StableMatrixAdapterTests(unittest.TestCase):
                 {
                     "prompt": "exact prompt",
                     "negative_prompt": "exact negative",
-                    "cfg_scale": "8.5",
+                    "cfg_scale": 8.5,
                     "orientation": "square",
                     "sd_model_checkpoint": "sd/model.safetensors",
-                    "restore_faces": "true",
+                    "restore_faces": True,
                 },
+                load_local_image_gen_overrides(path),
+            )
+
+    def test_load_local_image_gen_overrides_accepts_legacy_colon_block(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "template.md"
+            path.write_text(
+                "<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->\n"
+                "prompt:\n"
+                "negative_prompt:denoising_strength:\n"
+                "enable_hr: false\n"
+                "orientation: landscape\n"
+                "<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                {"enable_hr": False, "orientation": "landscape"},
                 load_local_image_gen_overrides(path),
             )
 
@@ -146,8 +163,8 @@ class StableMatrixAdapterTests(unittest.TestCase):
             template = root / "template.md"
             template.write_text(
                 "<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->\n"
-                "prompt: exact prompt\n"
-                "negative_prompt: exact negative\n"
+                'prompt = "exact prompt"\n'
+                'negative_prompt = "exact negative"\n'
                 "<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->\n",
                 encoding="utf-8",
             )
@@ -168,6 +185,26 @@ class StableMatrixAdapterTests(unittest.TestCase):
             payload = post_json.call_args.args[2]
             self.assertEqual("exact prompt, masterpiece", payload["prompt"])
             self.assertEqual("exact negative, blurry", payload["negative_prompt"])
+
+    def test_scene_preset_aspect_ratio_controls_payload_size(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            prompt = root / "prompt.md"
+            prompt.write_text("Positive prompt", encoding="utf-8")
+            image = BytesIO()
+            Image.new("RGB", (1, 1), "white").save(image, format="PNG")
+
+            with (
+                patch("Local_Render_Adapters.stable_matrix_adapter.load_preset", return_value={"backend": "stable_matrix", "aspect_ratio": "16:9"}),
+                patch(
+                    "Local_Render_Adapters.stable_matrix_adapter._post_json",
+                    return_value={"images": [__import__("base64").b64encode(image.getvalue()).decode()]},
+                ) as post_json,
+            ):
+                render_preview(project_root=root, final_prompt_path=prompt, job_output_dir=root, preset_name="scene-preview-sd15")
+
+            payload = post_json.call_args.args[2]
+            self.assertEqual((910, 512), (payload["width"], payload["height"]))
 
 
 if __name__ == "__main__":

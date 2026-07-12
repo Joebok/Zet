@@ -62,10 +62,11 @@ const state = {
   sceneBuilderReferences: [],
   sceneBuilderOpen: false,
   selectedBuilderPlacementId: null,
-  selectedBuilderCharacterId: null,
+  selectedBuilderElementId: null,
   selectedBuilderCell: { row: 1, column: 1 },
-  sceneBuilderAutosaveTimer: null,
   sceneBuilderRendering: false,
+  builderImagePickerReferences: [],
+  builderImagePickerSearch: "",
   auxiliaryResources: [],
   selectedAuxiliaryResourceId: null,
   auxiliaryResourceImageBlob: null,
@@ -366,6 +367,13 @@ const sceneImagePreview = document.querySelector("#scene-image-preview");
 const sceneBuilderStatus = document.querySelector("#scene-builder-status");
 const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
+const builderImagePickerModal = document.querySelector("#builder-image-picker-modal");
+const builderImagePickerClose = document.querySelector("#builder-image-picker-close");
+const builderImagePickerCharacter = document.querySelector("#builder-image-picker-character");
+const builderImagePickerSearch = document.querySelector("#builder-image-picker-search");
+const builderImagePickerRefresh = document.querySelector("#builder-image-picker-refresh");
+const builderImagePickerStatus = document.querySelector("#builder-image-picker-status");
+const builderImagePickerTableBody = document.querySelector("#builder-image-picker-table tbody");
 const sceneText = document.querySelector("#scene-text");
 const scenePickerCharacter = document.querySelector("#scene-picker-character");
 const scenePickerSearch = document.querySelector("#scene-picker-search");
@@ -809,6 +817,7 @@ async function loadContext() {
   setSelectOptions(characterSelect, state.characters);
   characterSelect.value = state.character || "";
   setSelectOptionsWithLabels(scenePickerCharacter, [{ value: "", label: "All Characters" }, ...state.characters.map((item) => ({ value: item, label: item }))]);
+  setSelectOptionsWithLabels(builderImagePickerCharacter, [{ value: "", label: "All Characters" }, ...state.characters.map((item) => ({ value: item, label: item }))]);
   scenePickerCharacter.value = state.scenePickerCharacter || "";
   scenePickerSearch.value = state.scenePickerSearch || "";
   setSelectOptions(onboardingSpecies, state.onboardingOptions.species_ancestry || []);
@@ -2636,14 +2645,10 @@ function openSceneImageFullscreen() {
 }
 
 function closeSceneBuilder() {
-  if (state.sceneBuilderAutosaveTimer) {
-    clearTimeout(state.sceneBuilderAutosaveTimer);
-    state.sceneBuilderAutosaveTimer = null;
-  }
   state.sceneBuilderOpen = false;
   state.sceneBuilder = null;
   state.selectedBuilderPlacementId = null;
-  state.selectedBuilderCharacterId = null;
+  state.selectedBuilderElementId = null;
   sceneBuilderPanel.replaceChildren();
   sceneBuilderStatus.textContent = "";
   showSceneBuilderMessage("");
@@ -2668,7 +2673,7 @@ function builderCellName(rows, columns, row, column) {
 }
 
 function builderGridSize() {
-  const grid = state.sceneBuilder?.composition?.grid || {};
+  const grid = state.sceneBuilder?.setup?.composition?.grid || {};
   return {
     rows: Math.max(Number(grid.rows || 2), 1),
     columns: Math.max(Number(grid.columns || 3), 1),
@@ -2679,18 +2684,15 @@ function builderSelectedPlacement() {
   return (state.sceneBuilder?.placements || []).find((item) => item.id === state.selectedBuilderPlacementId) || null;
 }
 
-function builderCharacterOptions(selected = "") {
-  const characters = state.sceneBuilder?.characters || [];
-  return characters.map((character) => {
-    const value = character.id || "";
-    return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(character.display_name || value)}</option>`;
-  }).join("");
+function builderSelectedElement() {
+  return (state.sceneBuilder?.scene_elements || []).find((item) => item.id === state.selectedBuilderElementId) || null;
 }
 
-function builderReferenceOptions() {
-  return (state.sceneBuilderReferences || []).map((row) => {
-    const label = [row.character, row.phase, row.label || row.tag].filter(Boolean).join(" | ");
-    return `<option value="${escapeHtml(row.tag || "")}">${escapeHtml(label || row.tag || "")}</option>`;
+function builderElementOptions(selected = "") {
+  const elements = state.sceneBuilder?.scene_elements || [];
+  return `<option value=""></option>` + elements.map((element) => {
+    const value = element.id || "";
+    return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(element.display_name || value)}</option>`;
   }).join("");
 }
 
@@ -2698,21 +2700,25 @@ function builderSyncControls() {
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
   }
-  for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-character]")) {
-    const character = state.sceneBuilder.characters[Number(control.dataset.builderCharacter)];
-    if (character) {
-      character[control.dataset.builderCharacterField] = control.value;
-    }
-  }
-  for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-anchor]")) {
-    const anchor = state.sceneBuilder.environment.background_anchors[Number(control.dataset.builderAnchor)];
-    if (anchor) {
-      const field = control.dataset.builderAnchorField;
-      if (field === "row" || field === "column") {
-        anchor.screen_cell = anchor.screen_cell || {};
-        anchor.screen_cell[field] = Number(control.value || 1);
+  const element = builderSelectedElement();
+  if (element) {
+    for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-element-field]")) {
+      const field = control.dataset.builderElementField;
+      if (field === "id" && control.value && control.value !== element.id) {
+        const oldId = element.id;
+        element.id = control.value;
+        state.selectedBuilderElementId = control.value;
+        for (const placement of state.sceneBuilder.placements || []) {
+          if (placement.scene_element_id === oldId) placement.scene_element_id = control.value;
+          if (placement.gaze_target_element_id === oldId) placement.gaze_target_element_id = control.value;
+          if (placement.interaction_target_element_id === oldId) placement.interaction_target_element_id = control.value;
+        }
+        for (const interaction of state.sceneBuilder.interactions || []) {
+          if (interaction.subject_element_id === oldId) interaction.subject_element_id = control.value;
+          if (interaction.target_element_id === oldId) interaction.target_element_id = control.value;
+        }
       } else {
-        anchor[field] = control.value;
+        element[field] = control.value;
       }
     }
   }
@@ -2722,13 +2728,9 @@ function builderSyncControls() {
       interaction[control.dataset.builderInteractionField] = control.value;
     }
   }
-  const props = sceneBuilderPanel.querySelector("#builder-foreground-props");
-  if (props) {
-    state.sceneBuilder.environment.foreground_props = props.value.split(",").map((item) => item.trim()).filter(Boolean);
-  }
   const exclusions = sceneBuilderPanel.querySelector("#builder-important-exclusions");
   if (exclusions) {
-    state.sceneBuilder.environment.important_exclusions = exclusions.value.split(",").map((item) => item.trim()).filter(Boolean);
+    state.sceneBuilder.setup.environment.important_exclusions = exclusions.value.split(",").map((item) => item.trim()).filter(Boolean);
   }
   const placement = builderSelectedPlacement();
   if (placement) {
@@ -2737,21 +2739,14 @@ function builderSyncControls() {
       if (field === "row" || field === "column") {
         placement.screen_cell = placement.screen_cell || {};
         placement.screen_cell[field] = Number(control.value || 1);
+      } else if (field === "screen_cell.name") {
+        placement.screen_cell = placement.screen_cell || {};
+        placement.screen_cell.name = control.value;
       } else {
         placement[field] = control.type === "number" ? Number(control.value || 0) : control.value;
       }
     }
   }
-}
-
-function builderScheduleAutosave() {
-  if (!state.sceneBuilderOpen || state.sceneBuilderRendering || !state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
-    return;
-  }
-  if (state.sceneBuilderAutosaveTimer) {
-    clearTimeout(state.sceneBuilderAutosaveTimer);
-  }
-  state.sceneBuilderAutosaveTimer = setTimeout(() => saveSceneBuilder(true), 1200);
 }
 
 function builderApplyChange() {
@@ -2760,150 +2755,160 @@ function builderApplyChange() {
   }
   builderSyncControls();
   renderSceneBuilder();
-  builderScheduleAutosave();
 }
 
-function builderAddManualCharacter() {
-  const index = (state.sceneBuilder.characters || []).length + 1;
-  const id = `NPC-${index}`;
-  state.sceneBuilder.characters.push({
-    id,
-    display_name: id,
-    asset_tag: "",
-    role: "npc",
-    importance: "secondary",
-    identity_prompt: "",
-    default_costume: "",
-    notes: "",
-  });
-  state.selectedBuilderCharacterId = id;
-  renderSceneBuilder();
-  builderScheduleAutosave();
+function builderPlacementForElement(elementId) {
+  return (state.sceneBuilder?.placements || []).find((item) => item.scene_element_id === elementId) || null;
 }
 
-function builderAddReferenceCharacter() {
-  const select = sceneBuilderPanel.querySelector("#builder-reference-select");
-  const tag = select?.value || "";
-  const row = (state.sceneBuilderReferences || []).find((item) => item.tag === tag);
-  if (!row) {
-    return;
-  }
-  const id = row.character || row.label || `character-${state.sceneBuilder.characters.length + 1}`;
-  if (!state.sceneBuilder.characters.some((character) => character.id === id)) {
-    state.sceneBuilder.characters.push({
-      id,
-      display_name: row.character || row.label || id,
-      asset_tag: row.tag || "",
-      role: "character",
-      importance: "primary",
-      identity_prompt: "",
-      default_costume: "",
-      notes: row.label || "",
-    });
-  }
-  state.selectedBuilderCharacterId = id;
-  renderSceneBuilder();
-  builderScheduleAutosave();
-}
-
-function builderRemoveCharacter(index) {
-  const character = state.sceneBuilder.characters[index];
-  state.sceneBuilder.characters.splice(index, 1);
-  if (character?.id === state.selectedBuilderCharacterId) {
-    state.selectedBuilderCharacterId = state.sceneBuilder.characters[0]?.id || null;
-  }
-  renderSceneBuilder();
-  builderScheduleAutosave();
-}
-
-function builderPlaceSelectedCharacter() {
-  const characterId = state.selectedBuilderCharacterId || state.sceneBuilder.characters[0]?.id;
-  const character = state.sceneBuilder.characters.find((item) => item.id === characterId);
-  if (!character) {
-    showSceneBuilderMessage("Add or select a character first.", "error");
-    return;
-  }
-  const id = `placement_${Date.now()}`;
+function builderCreatePlacementForElement(element) {
   const cell = state.selectedBuilderCell || { row: 1, column: 1 };
-  state.sceneBuilder.placements.push({
-    id,
-    type: "character",
-    character_id: character.id,
-    label: character.display_name || character.id,
-    screen_cell: { row: cell.row, column: cell.column, name: "" },
+  const { rows, columns } = builderGridSize();
+  return {
+    id: `placement_${Date.now()}`,
+    scene_element_id: element.id,
+    screen_cell: { row: cell.row, column: cell.column, name: builderCellName(rows, columns, cell.row, cell.column) },
     position_within_cell: "center",
-    depth: "midground",
+    depth: element.element_type === "Anchor" ? "background" : "midground",
     size_prominence: "medium",
     pose: "",
     body_facing: "toward center",
     head_facing: "",
-    gaze_target: "",
+    gaze_target_element_id: "",
+    gaze_target_description: "",
     expression: "",
-    interaction_target: "",
+    interaction_target_element_id: "",
     occlusion: "none",
+    placement_notes: "",
+  };
+}
+
+function builderAddElement() {
+  const index = (state.sceneBuilder.scene_elements || []).length + 1;
+  const id = index === 1 ? "new_element" : `new_element_${index}`;
+  const element = {
+    id,
+    display_name: "New Element",
+    element_type: "Character",
+    image_tag: "",
+    identity_prompt: "",
+    default_visual_description: "",
+    role: "",
+    importance: "secondary",
     notes: "",
-  });
-  state.selectedBuilderPlacementId = id;
+  };
+  state.sceneBuilder.scene_elements.push(element);
+  state.sceneBuilder.placements.push(builderCreatePlacementForElement(element));
+  state.selectedBuilderElementId = id;
+  state.selectedBuilderPlacementId = builderPlacementForElement(id)?.id || null;
   renderSceneBuilder();
-  builderScheduleAutosave();
+}
+
+function builderRemoveSelectedElement() {
+  const element = builderSelectedElement();
+  if (!element) {
+    return;
+  }
+  const hasLinks = (state.sceneBuilder.placements || []).some((item) => item.scene_element_id === element.id)
+    || (state.sceneBuilder.interactions || []).some((item) => item.subject_element_id === element.id || item.target_element_id === element.id);
+  if (hasLinks && !window.confirm("Delete this element and its linked placements/interactions?")) {
+    return;
+  }
+  state.sceneBuilder.scene_elements = (state.sceneBuilder.scene_elements || []).filter((item) => item.id !== element.id);
+  state.sceneBuilder.placements = (state.sceneBuilder.placements || []).filter((item) => item.scene_element_id !== element.id);
+  state.sceneBuilder.interactions = (state.sceneBuilder.interactions || []).filter((item) => item.subject_element_id !== element.id && item.target_element_id !== element.id);
+  state.selectedBuilderElementId = state.sceneBuilder.scene_elements[0]?.id || null;
+  state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+  renderSceneBuilder();
+}
+
+function builderPlaceSelectedElement() {
+  const element = builderSelectedElement() || state.sceneBuilder.scene_elements?.[0];
+  if (!element) {
+    showSceneBuilderMessage("Add or select a scene element first.", "error");
+    return;
+  }
+  const cell = state.selectedBuilderCell || { row: 1, column: 1 };
+  let placement = builderPlacementForElement(element.id);
+  if (!placement) {
+    placement = builderCreatePlacementForElement(element);
+    state.sceneBuilder.placements.push(placement);
+  }
+  placement.screen_cell = {
+    ...(placement.screen_cell || {}),
+    row: cell.row,
+    column: cell.column,
+    name: builderCellName(builderGridSize().rows, builderGridSize().columns, cell.row, cell.column),
+  };
+  state.selectedBuilderElementId = element.id;
+  state.selectedBuilderPlacementId = placement.id;
+  renderSceneBuilder();
 }
 
 function builderAddAnchor() {
-  const id = `anchor_${Date.now()}`;
-  const cell = state.selectedBuilderCell || { row: 1, column: 1 };
-  state.sceneBuilder.environment.background_anchors.push({
-    id,
-    label: "background anchor",
-    screen_cell: { row: cell.row, column: cell.column, name: "" },
-    depth: "background",
-    description: "",
-  });
-  renderSceneBuilder();
-  builderScheduleAutosave();
+  builderAddElement();
+  const element = builderSelectedElement();
+  if (element) {
+    element.element_type = "Anchor";
+    element.display_name = "New Anchor";
+    element.importance = "background";
+  }
+  builderPlaceSelectedElement();
 }
 
 function builderAddInteraction() {
-  state.sceneBuilder.interactions.push({ subject: "", relationship: "looking at", target: "", note: "" });
+  state.sceneBuilder.interactions.push({ subject_element_id: "", relationship: "looking at", target_element_id: "", note: "" });
   renderSceneBuilder();
-  builderScheduleAutosave();
 }
 
-function builderRemovePlacement() {
-  const index = state.sceneBuilder.placements.findIndex((item) => item.id === state.selectedBuilderPlacementId);
-  if (index >= 0) {
-    state.sceneBuilder.placements.splice(index, 1);
-    state.selectedBuilderPlacementId = state.sceneBuilder.placements[0]?.id || null;
-    renderSceneBuilder();
-    builderScheduleAutosave();
-  }
-}
-
-function builderRenderCharacters() {
-  const rows = (state.sceneBuilder.characters || []).map((character, index) => `
-    <tr class="${character.id === state.selectedBuilderCharacterId ? "selected" : ""}" data-builder-select-character="${escapeHtml(character.id || "")}">
-      <td><input value="${escapeHtml(character.id || "")}" data-builder-character="${index}" data-builder-character-field="id"></td>
-      <td><input value="${escapeHtml(character.display_name || "")}" data-builder-character="${index}" data-builder-character-field="display_name"></td>
-      <td><select data-builder-character="${index}" data-builder-character-field="importance">${builderOptionHtml("importance", character.importance || "secondary")}</select></td>
-      <td><input value="${escapeHtml(character.asset_tag || "")}" data-builder-character="${index}" data-builder-character-field="asset_tag"></td>
-      <td><button type="button" data-builder-remove-character="${index}">Delete</button></td>
-    </tr>
-  `).join("");
+function builderRenderElements() {
+  const rows = (state.sceneBuilder.scene_elements || []).map((element) => {
+    const placed = (state.sceneBuilder.placements || []).some((placement) => placement.scene_element_id === element.id);
+    const tag = element.image_tag ? "tag" : "";
+    return `
+      <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}">
+        <span>${escapeHtml(element.display_name || element.id || "")}</span>
+        <small>${escapeHtml(element.element_type || "")} / ${escapeHtml(element.importance || "")}${placed ? " / placed" : ""}${tag ? " / tag" : ""}</small>
+      </button>
+    `;
+  }).join("");
   return `
     <div class="scene-builder-card">
-      <h4>Characters</h4>
+      <h4>Scene Elements</h4>
       <div class="button-row compact">
-        <select id="builder-reference-select">${builderReferenceOptions()}</select>
-        <button type="button" data-builder-action="add-reference-character">Add Ref</button>
-        <button type="button" data-builder-action="add-manual-character">Add Manual</button>
-        <button type="button" data-builder-action="place-character">Place</button>
+        <button type="button" data-builder-action="add-element">Add Element</button>
+        <button type="button" data-builder-action="delete-element">Delete Selected</button>
       </div>
-      <table class="scene-builder-table"><thead><tr><th>id</th><th>name</th><th>importance</th><th>asset tag</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="scene-builder-element-list">${rows || "<p>No elements have been added yet.</p>"}</div>
+    </div>
+  `;
+}
+
+function builderRenderElementEditor() {
+  const element = builderSelectedElement();
+  if (!element) {
+    return `<div class="scene-builder-card"><h4>Selected Element</h4><p>Select or add a scene element.</p></div>`;
+  }
+  return `
+    <div class="scene-builder-card">
+      <h4>Selected Element</h4>
+      <div class="scene-builder-fields">
+        <label>Display name<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
+        <label>Type<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Anchor"${element.element_type === "Anchor" ? " selected" : ""}>Anchor</option></select></label>
+        <label>Importance<select data-builder-element-field="importance">${builderOptionHtml("importance", element.importance || "secondary")}</select></label>
+        <label class="full">Image tag<span class="inline-field"><input value="${escapeHtml(element.image_tag || "")}" data-builder-element-field="image_tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label>
+        <label class="full">Identity prompt<textarea data-builder-element-field="identity_prompt">${escapeHtml(element.identity_prompt || "")}</textarea></label>
+        <label class="full">Default visual description<textarea data-builder-element-field="default_visual_description">${escapeHtml(element.default_visual_description || "")}</textarea></label>
+        <label>Role<input value="${escapeHtml(element.role || "")}" data-builder-element-field="role"></label>
+        <label class="full">Notes<textarea data-builder-element-field="notes">${escapeHtml(element.notes || "")}</textarea></label>
+      </div>
     </div>
   `;
 }
 
 function builderRenderGrid() {
   const { rows, columns } = builderGridSize();
+  const elements = Object.fromEntries((state.sceneBuilder.scene_elements || []).map((element) => [element.id, element]));
   const cells = [];
   for (let row = 1; row <= rows; row += 1) {
     for (let column = 1; column <= columns; column += 1) {
@@ -2913,13 +2918,8 @@ function builderRenderGrid() {
       for (const placement of state.sceneBuilder.placements || []) {
         const cell = placement.screen_cell || {};
         if (Number(cell.row) === row && Number(cell.column) === column) {
-          tokens.push(`<button type="button" class="scene-builder-token ${placement.id === state.selectedBuilderPlacementId ? "selected" : ""}" data-builder-select-placement="${escapeHtml(placement.id)}">${escapeHtml(placement.label || placement.character_id || placement.id)} (${escapeHtml(placement.depth || "")})</button>`);
-        }
-      }
-      for (const anchor of state.sceneBuilder.environment?.background_anchors || []) {
-        const cell = anchor.screen_cell || {};
-        if (Number(cell.row) === row && Number(cell.column) === column) {
-          tokens.push(`<span class="scene-builder-token">${escapeHtml(anchor.label || anchor.id)} (${escapeHtml(anchor.depth || "background")})</span>`);
+          const element = elements[placement.scene_element_id] || {};
+          tokens.push(`<button type="button" class="scene-builder-token ${placement.id === state.selectedBuilderPlacementId ? "selected" : ""}" data-builder-select-placement="${escapeHtml(placement.id)}">${escapeHtml(element.display_name || placement.scene_element_id || placement.id)} [${escapeHtml(element.element_type || "?")}] ${escapeHtml(placement.depth || "")}</button>`);
         }
       }
       cells.push(`<div class="scene-builder-cell ${selected ? "selected" : ""}" role="button" tabindex="0" data-builder-cell-row="${row}" data-builder-cell-column="${column}">
@@ -2934,59 +2934,51 @@ function builderRenderGrid() {
 function builderRenderPlacementEditor() {
   const placement = builderSelectedPlacement();
   if (!placement) {
-    return `<div class="scene-builder-card"><h4>Selected Item</h4><p>Select or place a character.</p></div>`;
+    return `<div class="scene-builder-card"><h4>Selected Placement</h4><p>Select or add a scene element.</p></div>`;
   }
   const cell = placement.screen_cell || {};
+  const element = builderSelectedElement();
+  const showActing = !element || ["Character", "Monster"].includes(element.element_type || "Character");
   return `
     <div class="scene-builder-card">
       <h4>Selected Placement</h4>
       <div class="scene-builder-fields">
-        <label>Type<select data-builder-placement-field="type"><option value="character"${placement.type === "character" ? " selected" : ""}>character</option><option value="prop"${placement.type === "prop" ? " selected" : ""}>prop</option><option value="background_anchor"${placement.type === "background_anchor" ? " selected" : ""}>background_anchor</option></select></label>
-        <label>Character<select data-builder-placement-field="character_id">${builderCharacterOptions(placement.character_id || "")}</select></label>
-        <label>Label<input value="${escapeHtml(placement.label || "")}" data-builder-placement-field="label"></label>
         <label>Row<input type="number" min="1" value="${escapeHtml(cell.row || 1)}" data-builder-placement-field="row"></label>
         <label>Column<input type="number" min="1" value="${escapeHtml(cell.column || 1)}" data-builder-placement-field="column"></label>
+        <label class="full">Cell name<input value="${escapeHtml(cell.name || "")}" data-builder-placement-field="screen_cell.name"></label>
         <label>Position<select data-builder-placement-field="position_within_cell">${builderOptionHtml("position_within_cell", placement.position_within_cell || "center")}</select></label>
         <label>Depth<select data-builder-placement-field="depth">${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
         <label>Size<select data-builder-placement-field="size_prominence">${builderOptionHtml("size_prominence", placement.size_prominence || "medium")}</select></label>
-        <label class="full">Pose<input list="builder-pose-list" value="${escapeHtml(placement.pose || "")}" data-builder-placement-field="pose"></label>
-        <label>Body facing<select data-builder-placement-field="body_facing">${builderOptionHtml("facing", placement.body_facing || "")}</select></label>
-        <label>Head facing<input value="${escapeHtml(placement.head_facing || "")}" data-builder-placement-field="head_facing"></label>
-        <label>Gaze<input list="builder-gaze-list" value="${escapeHtml(placement.gaze_target || "")}" data-builder-placement-field="gaze_target"></label>
-        <label>Expression<input list="builder-expression-list" value="${escapeHtml(placement.expression || "")}" data-builder-placement-field="expression"></label>
-        <label>Interaction target<input value="${escapeHtml(placement.interaction_target || "")}" data-builder-placement-field="interaction_target"></label>
+        ${showActing ? `
+          <label class="full">Pose<input list="builder-pose-list" value="${escapeHtml(placement.pose || "")}" data-builder-placement-field="pose"></label>
+          <label>Body facing<select data-builder-placement-field="body_facing">${builderOptionHtml("facing", placement.body_facing || "")}</select></label>
+          <label>Head facing<input value="${escapeHtml(placement.head_facing || "")}" data-builder-placement-field="head_facing"></label>
+          <label>Gaze target<select data-builder-placement-field="gaze_target_element_id">${builderElementOptions(placement.gaze_target_element_id || "")}</select></label>
+          <label class="full">Gaze description<input list="builder-gaze-list" value="${escapeHtml(placement.gaze_target_description || "")}" data-builder-placement-field="gaze_target_description"></label>
+          <label>Expression<input list="builder-expression-list" value="${escapeHtml(placement.expression || "")}" data-builder-placement-field="expression"></label>
+          <label>Interaction target<select data-builder-placement-field="interaction_target_element_id">${builderElementOptions(placement.interaction_target_element_id || "")}</select></label>
+        ` : ""}
         <label>Occlusion<input value="${escapeHtml(placement.occlusion || "")}" data-builder-placement-field="occlusion"></label>
-        <label class="full">Notes<textarea data-builder-placement-field="notes">${escapeHtml(placement.notes || "")}</textarea></label>
+        <label class="full">Notes<textarea data-builder-placement-field="placement_notes">${escapeHtml(placement.placement_notes || "")}</textarea></label>
       </div>
-      <button type="button" data-builder-action="remove-placement">Remove Placement</button>
     </div>
   `;
 }
 
 function builderRenderEnvironment() {
-  const environment = state.sceneBuilder.environment || {};
-  const anchors = (environment.background_anchors || []).map((anchor, index) => {
-    const cell = anchor.screen_cell || {};
-    return `<tr>
-      <td><input value="${escapeHtml(anchor.label || "")}" data-builder-anchor="${index}" data-builder-anchor-field="label"></td>
-      <td><input type="number" min="1" value="${escapeHtml(cell.row || 1)}" data-builder-anchor="${index}" data-builder-anchor-field="row"></td>
-      <td><input type="number" min="1" value="${escapeHtml(cell.column || 1)}" data-builder-anchor="${index}" data-builder-anchor-field="column"></td>
-      <td><input value="${escapeHtml(anchor.description || "")}" data-builder-anchor="${index}" data-builder-anchor-field="description"></td>
-    </tr>`;
-  }).join("");
+  const environment = state.sceneBuilder.setup?.environment || {};
   return `
     <div class="scene-builder-card">
       <h4>Environment</h4>
       <div class="scene-builder-fields">
-        ${builderField("environment.location", "Location", "", true)}
-        ${builderField("environment.lighting", "Lighting")}
-        ${builderField("environment.mood", "Mood")}
-        ${builderField("environment.weather_or_atmosphere", "Weather/Atmosphere", "", true)}
-        <label class="full">Foreground props<input id="builder-foreground-props" value="${escapeHtml((environment.foreground_props || []).join(", "))}"></label>
+        ${builderField("setup.environment.location", "Location", "", true)}
+        ${builderField("setup.environment.lighting", "Lighting")}
+        ${builderField("setup.environment.mood", "Mood")}
+        ${builderField("setup.environment.weather_or_atmosphere", "Weather/Atmosphere", "", true)}
         <label class="full">Important exclusions<input id="builder-important-exclusions" value="${escapeHtml((environment.important_exclusions || []).join(", "))}"></label>
+        ${builderField("setup.environment.general_foreground_notes", "General foreground notes", "", true, "textarea")}
+        ${builderField("setup.environment.general_background_notes", "General background notes", "", true, "textarea")}
       </div>
-      <div class="button-row compact"><button type="button" data-builder-action="add-anchor">Add Anchor In Selected Cell</button></div>
-      <table class="scene-builder-table"><thead><tr><th>anchor</th><th>row</th><th>col</th><th>description</th></tr></thead><tbody>${anchors}</tbody></table>
     </div>
   `;
 }
@@ -2994,9 +2986,9 @@ function builderRenderEnvironment() {
 function builderRenderInteractions() {
   const interactions = (state.sceneBuilder.interactions || []).map((interaction, index) => `
     <tr>
-      <td><input value="${escapeHtml(interaction.subject || "")}" data-builder-interaction="${index}" data-builder-interaction-field="subject"></td>
+      <td><select data-builder-interaction="${index}" data-builder-interaction-field="subject_element_id">${builderElementOptions(interaction.subject_element_id || "")}</select></td>
       <td><select data-builder-interaction="${index}" data-builder-interaction-field="relationship">${builderOptionHtml("relationship", interaction.relationship || "")}</select></td>
-      <td><input value="${escapeHtml(interaction.target || "")}" data-builder-interaction="${index}" data-builder-interaction-field="target"></td>
+      <td><select data-builder-interaction="${index}" data-builder-interaction-field="target_element_id">${builderElementOptions(interaction.target_element_id || "")}</select></td>
       <td><input value="${escapeHtml(interaction.note || "")}" data-builder-interaction="${index}" data-builder-interaction-field="note"></td>
     </tr>
   `).join("");
@@ -3056,28 +3048,37 @@ function renderSceneBuilder() {
         <h3>Setup</h3>
         <div class="scene-builder-fields">
           ${builderField("scene.name", "Scene name", "", true)}
+          ${builderField("scene.associated_md_path", "Associated .md path", "", true)}
+          ${builderField("scene.associated_png_path", "Associated .png path", "", true)}
           ${builderField("scene.notes", "Notes", "", true, "textarea")}
-          ${builderField("canvas.orientation", "Orientation", "orientation")}
-          ${builderField("canvas.aspect_ratio", "Aspect ratio", "aspect_ratio")}
-          ${builderField("composition.template", "Template", "composition_template")}
-          ${builderField("composition.grid.rows", "Rows", "", false, "number")}
-          ${builderField("composition.grid.columns", "Columns", "", false, "number")}
-          ${builderField("composition.primary_focal_point", "Focal point", "", true)}
-          ${builderField("composition.composition_notes", "Composition notes", "", true, "textarea")}
-          ${builderField("camera.shot_type", "Shot", "shot_type")}
-          ${builderField("camera.camera_height", "Height", "camera_height")}
-          ${builderField("camera.camera_angle", "Angle", "camera_angle")}
-          ${builderField("camera.viewer_position", "Viewer", "viewer_position")}
-          ${builderField("camera.lens_feel", "Lens", "lens_feel")}
-          ${builderField("camera.focus_priority", "Focus", "focus_priority")}
-          ${builderField("camera.notes", "Camera notes", "", true, "textarea")}
         </div>
-        ${builderRenderCharacters()}
+        <h3>Composition</h3>
+        <div class="scene-builder-fields">
+          ${builderField("setup.canvas.orientation", "Orientation", "orientation")}
+          ${builderField("setup.canvas.aspect_ratio", "Aspect ratio", "aspect_ratio")}
+          ${builderField("setup.composition.grid.rows", "Rows", "", false, "number")}
+          ${builderField("setup.composition.grid.columns", "Columns", "", false, "number")}
+          ${builderField("setup.composition.template", "Template", "composition_template")}
+          ${builderField("setup.composition.primary_focal_point", "Focal point", "", true)}
+          ${builderField("setup.composition.composition_notes", "Composition notes", "", true, "textarea")}
+        </div>
+        <h3>Camera</h3>
+        <div class="scene-builder-fields">
+          ${builderField("setup.camera.shot_type", "Shot", "shot_type")}
+          ${builderField("setup.camera.camera_height", "Height", "camera_height")}
+          ${builderField("setup.camera.camera_angle", "Angle", "camera_angle")}
+          ${builderField("setup.camera.viewer_position", "Viewer", "viewer_position")}
+          ${builderField("setup.camera.lens_feel", "Lens", "lens_feel")}
+          ${builderField("setup.camera.focus_priority", "Focus", "focus_priority")}
+          ${builderField("setup.camera.notes", "Camera notes", "", true, "textarea")}
+        </div>
+        <h3>Environment</h3>
+        ${builderRenderEnvironment()}
       </section>
       <section class="scene-builder-section">
-        <h3>Layout</h3>
+        <h3>Grid Preview</h3>
         <div class="button-row compact">
-          <button type="button" data-builder-action="place-character">Place Character</button>
+          <button type="button" data-builder-action="place-element">Place Element</button>
           <button type="button" data-builder-action="add-anchor">Add Anchor</button>
         </div>
         ${builderRenderGrid()}
@@ -3087,10 +3088,11 @@ function renderSceneBuilder() {
           <p><strong>Midground:</strong> ${(lanes.midground || []).map(escapeHtml).join(", ") || "None"}</p>
           <p><strong>Background:</strong> ${(lanes.background || []).map(escapeHtml).join(", ") || "None"}</p>
         </div>
-        ${builderRenderEnvironment()}
+        ${builderRenderPlacementEditor()}
       </section>
       <section class="scene-builder-section">
-        ${builderRenderPlacementEditor()}
+        ${builderRenderElements()}
+        ${builderRenderElementEditor()}
         ${builderRenderInteractions()}
         ${builderRenderOutputs()}
       </section>
@@ -3118,11 +3120,11 @@ async function openSceneBuilder() {
     state.sceneBuilderOptions = payload.options || {};
     state.sceneBuilderReferences = payload.references || [];
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
-    state.selectedBuilderCharacterId = state.sceneBuilder.characters?.[0]?.id || null;
+    state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.selectedBuilderCell = { row: 1, column: 1 };
     state.sceneBuilderOpen = true;
     renderSceneBuilder();
-    showSceneBuilderMessage("Scene Builder loaded.", "success");
+    showSceneBuilderMessage(state.sceneBuilder._migrated_from_schema_version ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file." : "Scene Builder loaded.", "success");
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   } finally {
@@ -3152,7 +3154,9 @@ async function saveSceneBuilder(autosave = false) {
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
-    showSceneBuilderMessage(autosave ? "Scene Builder autosaved." : payload.message || "Scene Builder saved.", "success");
+    if (!autosave) {
+      showSceneBuilderMessage(payload.message || "Scene Builder saved.", "success");
+    }
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
@@ -3171,7 +3175,6 @@ async function generateSceneBuilder() {
     });
     state.sceneBuilder = payload.data || state.sceneBuilder;
     renderSceneBuilder();
-    builderScheduleAutosave();
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
@@ -3205,11 +3208,10 @@ sceneBuilderPanel.addEventListener("input", () => {
     return;
   }
   builderSyncControls();
-  builderScheduleAutosave();
 });
 sceneBuilderPanel.addEventListener("change", builderApplyChange);
 sceneBuilderPanel.addEventListener("click", (event) => {
-  const target = event.target.closest("[data-builder-action], [data-builder-cell-row], [data-builder-select-placement], [data-builder-select-character], [data-builder-remove-character]");
+  const target = event.target.closest("[data-builder-action], [data-builder-cell-row], [data-builder-select-placement], [data-builder-select-element]");
   if (!target) {
     return;
   }
@@ -3217,64 +3219,68 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   event.stopPropagation();
   if (target.dataset.builderCellRow) {
     state.selectedBuilderCell = { row: Number(target.dataset.builderCellRow), column: Number(target.dataset.builderCellColumn) };
-    renderSceneBuilder();
+    if (state.selectedBuilderElementId) {
+      builderPlaceSelectedElement();
+    } else {
+      renderSceneBuilder();
+    }
   } else if (target.dataset.builderSelectPlacement) {
     state.selectedBuilderPlacementId = target.dataset.builderSelectPlacement;
+    const placement = builderSelectedPlacement();
+    state.selectedBuilderElementId = placement?.scene_element_id || state.selectedBuilderElementId;
     renderSceneBuilder();
-  } else if (target.dataset.builderSelectCharacter) {
-    state.selectedBuilderCharacterId = target.dataset.builderSelectCharacter;
+  } else if (target.dataset.builderSelectElement) {
+    state.selectedBuilderElementId = target.dataset.builderSelectElement;
+    state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || state.selectedBuilderPlacementId;
     renderSceneBuilder();
-  } else if (target.dataset.builderRemoveCharacter) {
-    builderRemoveCharacter(Number(target.dataset.builderRemoveCharacter));
   } else {
     const action = target.dataset.builderAction;
     if (action === "return-scenes") returnToScenesFromBuilder();
-    if (action === "add-manual-character") builderAddManualCharacter();
-    if (action === "add-reference-character") builderAddReferenceCharacter();
-    if (action === "place-character") builderPlaceSelectedCharacter();
+    if (action === "add-element") builderAddElement();
+    if (action === "place-element") builderPlaceSelectedElement();
+    if (action === "delete-element") builderRemoveSelectedElement();
+    if (action === "pick-image-tag") openBuilderImagePicker();
     if (action === "add-anchor") builderAddAnchor();
     if (action === "add-interaction") builderAddInteraction();
-    if (action === "remove-placement") builderRemovePlacement();
     if (action === "save") saveSceneBuilder(false);
     if (action === "generate") generateSceneBuilder();
     if (action === "export") exportSceneBuilderMarkdown();
   }
 });
 
-async function loadSceneImageReferences() {
-  // Load copyable scene image tags from auxiliary resources and locked assets.
-  scenePickerStatus.textContent = "Loading references...";
+async function loadImagePickerReferences(picker) {
+  picker.status.textContent = "Loading references...";
   const params = new URLSearchParams();
-  if (scenePickerCharacter.value) {
-    params.set("character", scenePickerCharacter.value);
+  if (picker.character.value) {
+    params.set("character", picker.character.value);
   }
-  if (scenePickerSearch.value.trim()) {
-    params.set("text_filter", scenePickerSearch.value.trim());
+  if (picker.search.value.trim()) {
+    params.set("text_filter", picker.search.value.trim());
   }
   try {
     const payload = await fetchJson(`/api/scene-image-picker?${params.toString()}`);
-    state.sceneImageReferences = payload.rows || [];
-    renderSceneImageReferenceTable();
-    scenePickerStatus.textContent = `${state.sceneImageReferences.length} reference(s)`;
+    picker.setRows(payload.rows || []);
+    renderImagePickerTable(picker);
+    picker.status.textContent = `${picker.rows().length} reference(s)`;
   } catch (error) {
-    scenePickerStatus.textContent = "Load failed.";
-    showSceneMessage(error.message, "error");
+    picker.status.textContent = "Load failed.";
+    picker.onError(error);
   }
 }
 
-function renderSceneImageReferenceTable() {
-  // Render copyable scene image reference tags.
-  scenePickerTableBody.replaceChildren();
-  if (!state.sceneImageReferences.length) {
+function renderImagePickerTable(picker) {
+  picker.tableBody.replaceChildren();
+  const rows = picker.rows();
+  if (!rows.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 3;
     cell.textContent = "No references found.";
     row.append(cell);
-    scenePickerTableBody.append(row);
+    picker.tableBody.append(row);
     return;
   }
-  for (const item of state.sceneImageReferences) {
+  for (const item of rows) {
     const row = document.createElement("tr");
     const tagCell = document.createElement("td");
     tagCell.textContent = item.tag || "";
@@ -3283,12 +3289,60 @@ function renderSceneImageReferenceTable() {
     const sourceCell = document.createElement("td");
     sourceCell.textContent = [item.character, item.phase, item.pipeline].filter(Boolean).join(" | ") || item.kind || "";
     row.append(tagCell, labelCell, sourceCell);
-    row.addEventListener("click", async () => {
-      await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
-      showSceneMessage(`Copied ${item.tag || "tag"}.`, "success");
-    });
-    scenePickerTableBody.append(row);
+    row.addEventListener("click", () => picker.onSelect(item));
+    picker.tableBody.append(row);
   }
+}
+
+const sceneImagePicker = {
+  character: scenePickerCharacter,
+  search: scenePickerSearch,
+  status: scenePickerStatus,
+  tableBody: scenePickerTableBody,
+  rows: () => state.sceneImageReferences,
+  setRows: (rows) => { state.sceneImageReferences = rows; },
+  onSelect: async (item) => {
+    await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
+    showSceneMessage(`Copied ${item.tag || "tag"}.`, "success");
+  },
+  onError: (error) => showSceneMessage(error.message, "error"),
+};
+
+const builderImagePicker = {
+  character: builderImagePickerCharacter,
+  search: builderImagePickerSearch,
+  status: builderImagePickerStatus,
+  tableBody: builderImagePickerTableBody,
+  rows: () => state.builderImagePickerReferences,
+  setRows: (rows) => { state.builderImagePickerReferences = rows; },
+  onSelect: async (item) => {
+    const element = builderSelectedElement();
+    if (!element) {
+      return;
+    }
+    await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
+    element.image_tag = item.tag || "";
+    builderImagePickerModal.hidden = true;
+    renderSceneBuilder();
+    showSceneBuilderMessage(`Selected ${item.tag || "image tag"}.`, "success");
+  },
+  onError: (error) => showSceneBuilderMessage(error.message, "error"),
+};
+
+async function loadSceneImageReferences() {
+  await loadImagePickerReferences(sceneImagePicker);
+}
+
+function openBuilderImagePicker() {
+  builderSyncControls();
+  const element = builderSelectedElement();
+  if (!element) {
+    return;
+  }
+  builderImagePickerSearch.value = element.display_name || "";
+  state.builderImagePickerSearch = builderImagePickerSearch.value;
+  builderImagePickerModal.hidden = false;
+  loadImagePickerReferences(builderImagePicker);
 }
 
 function updateAuxiliaryResourceCategoryDisplay() {
@@ -5660,6 +5714,15 @@ scenePickerSearch.addEventListener("input", () => {
   loadSceneImageReferences();
 });
 scenePickerRefresh.addEventListener("click", loadSceneImageReferences);
+builderImagePickerCharacter.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerSearch.addEventListener("input", () => {
+  state.builderImagePickerSearch = builderImagePickerSearch.value || "";
+  loadImagePickerReferences(builderImagePicker);
+});
+builderImagePickerRefresh.addEventListener("click", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerClose.addEventListener("click", () => {
+  builderImagePickerModal.hidden = true;
+});
 auxResourceCategory.addEventListener("change", () => {
   clearAuxiliaryResourceForm();
   loadAuxiliaryResources();

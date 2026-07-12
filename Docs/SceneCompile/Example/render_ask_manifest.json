@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "ask_id": "Ask_Story_FirstDay_Chapter-04-A-Lending-Hand_RENDER_20260711_154344_447788",
+  "asset_id": null,
+  "character": "",
+  "phase": "",
+  "pipeline": "Story",
+  "pipeline_stage": "RENDER",
+  "story_slug": "FirstDay",
+  "scene_slug": "Chapter-04-A-Lending-Hand",
+  "ollama_attempt_id": "20260711_154344_447788_FirstDay_Chapter-04-A-Lending-Hand_RENDER",
+  "worker_type": "manual_chatgpt_render",
+  "ollama_model": "",
+  "prompt_file": "Final_Image_Prompt.md",
+  "expected_output": "Chapter-04-A-Lending-Hand.png",
+  "candidate_output_file": "Chapter-04-A-Lending-Hand.png",
+  "task_type": "render",
+  "render_preset": "chatgpt-manual",
+  "manual": true,
+  "target_output_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\Chapter-04-A-Lending-Hand.png",
+  "pipeline_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Pipelines\\Stories\\FirstDay\\Chapter-04-A-Lending-Hand",
+  "reference_files": [
+    {
+      "role": "story_reference",
+      "label": "Tsaeytte Youth Costume-Dressing Left-Profile",
+      "tag": "{{ASSET:Tsaeytte:Youth:27:Costume | Left-Profile | Woodland outfit}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Left-Profile_Left-Profile_Woodland-outfit.png",
+      "kind": "asset",
+      "source_asset_id": 27
+    },
+    {
+      "role": "story_reference",
+      "label": "Valindia Vandemere - profile",
+      "tag": "{{AUX:person:valindia-vandemere-profile}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\person\\valindia-vandemere-profile.png",
+      "kind": "aux:person"
+    },
+    {
+      "role": "story_reference",
+      "label": "The Spire - Archway",
+      "tag": "{{AUX:place:the-spire-archway}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\place\\the-spire-archway.png",
+      "kind": "aux:place"
+    }
+  ],
+  "governing_template_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\Chapter-04-A-Lending-Hand.md"
+}

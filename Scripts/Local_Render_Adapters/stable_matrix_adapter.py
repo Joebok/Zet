@@ -7,6 +7,7 @@ from io import BytesIO
 import json
 import mimetypes
 from pathlib import Path
+import re
 import tomllib
 from typing import Any
 from urllib.error import URLError
@@ -31,6 +32,9 @@ LOCAL_IMAGE_GEN_OVERRIDE_KEYS = {
     "hr_second_pass_steps",
     "hr_scale",
     "orientation",
+    "aspect_ratio",
+    "width",
+    "height",
     "restore_faces",
 }
 
@@ -181,25 +185,79 @@ def _render_size_for_orientation(orientation: str) -> tuple[int, int]:
     return 512, 768
 
 
-def load_local_image_gen_overrides(path: Path | None) -> dict[str, str]:
+def _render_size_for_aspect_ratio(aspect_ratio: str, short_side: int = 512) -> tuple[int, int] | None:
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*", str(aspect_ratio or ""))
+    if not match:
+        return None
+    width_ratio = float(match.group(1))
+    height_ratio = float(match.group(2))
+    if width_ratio <= 0 or height_ratio <= 0:
+        return None
+    if width_ratio >= height_ratio:
+        return int(round(short_side * width_ratio / height_ratio)), short_side
+    return short_side, int(round(short_side * height_ratio / width_ratio))
+
+
+def _coerce_override_value(key: str, value: Any) -> Any:
+    if value is None or value == "":
+        return None
+    if key in {"denoising_strength", "cfg_scale", "s_noise", "hr_scale"}:
+        return float(value)
+    if key in {"steps", "seed", "hr_second_pass_steps", "width", "height"}:
+        return int(value)
+    if key in {"restore_faces", "enable_hr"}:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    return str(value)
+
+
+def _legacy_override_lines_to_toml(lines: list[str]) -> str:
+    converted: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("[") or "=" in stripped or ":" not in stripped:
+            converted.append(line)
+            continue
+        key, value = stripped.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if key not in LOCAL_IMAGE_GEN_OVERRIDE_KEYS or not value:
+            continue
+        if value.endswith(":") and value[:-1] in LOCAL_IMAGE_GEN_OVERRIDE_KEYS:
+            continue
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", value) or value.lower() in {"true", "false"}:
+            converted.append(f"{key} = {value}")
+        else:
+            converted.append(f"{key} = {json.dumps(value)}")
+    return "\n".join(converted)
+
+
+def load_local_image_gen_overrides(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists() or not path.is_file():
         return {}
     marker = "LOCAL_IMAGE_GEN_OVERRIDES"
     in_section = False
-    overrides: dict[str, str] = {}
+    lines: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if f"ZET:BEGIN {marker}" in line:
             in_section = True
             continue
         if f"ZET:END {marker}" in line:
             break
-        if not in_section or ":" not in line:
+        if not in_section:
             continue
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-        if key in LOCAL_IMAGE_GEN_OVERRIDE_KEYS and value:
-            overrides[key] = value
+        lines.append(line)
+    if not lines:
+        return {}
+    parsed = tomllib.loads(_legacy_override_lines_to_toml(lines))
+    overrides: dict[str, Any] = {}
+    for key, value in parsed.items():
+        if key not in LOCAL_IMAGE_GEN_OVERRIDE_KEYS:
+            continue
+        coerced = _coerce_override_value(key, value)
+        if coerced is not None:
+            overrides[key] = coerced
     return overrides
 
 
@@ -222,7 +280,16 @@ def render_preview(
         seed = -1
     overrides = load_local_image_gen_overrides(governing_template_path)
 
-    width, height = _render_size_for_orientation(overrides.get("orientation", "portrait"))
+    aspect_ratio = overrides.get("aspect_ratio") or preset.get("aspect_ratio")
+    size = _render_size_for_aspect_ratio(str(aspect_ratio)) if aspect_ratio else None
+    if size:
+        width, height = size
+    elif "width" in overrides and "height" in overrides:
+        width, height = int(overrides["width"]), int(overrides["height"])
+    elif preset.get("width") and preset.get("height"):
+        width, height = int(preset["width"]), int(preset["height"])
+    else:
+        width, height = _render_size_for_orientation(str(overrides.get("orientation", preset.get("orientation", "portrait"))))
     payload = {
         "prompt": positive_prompt,
         "negative_prompt": negative_prompt,
@@ -261,13 +328,13 @@ def render_preview(
     payload["negative_prompt"] = ensure_prompt_terms(str(payload["negative_prompt"]), negative_globals)
     for key in ("denoising_strength", "cfg_scale", "s_noise", "hr_scale"):
         if key in overrides:
-            payload[key] = float(overrides[key])
+            payload[key] = overrides[key]
     for key in ("steps", "seed", "hr_second_pass_steps"):
         if key in overrides:
-            payload[key] = int(overrides[key])
+            payload[key] = overrides[key]
     for key in ("restore_faces", "enable_hr"):
         if key in overrides:
-            payload[key] = overrides[key].lower() in {"1", "true", "yes", "on"}
+            payload[key] = overrides[key]
     for key in ("sampler_name", "scheduler", "hr_upscaler"):
         if key in overrides:
             payload[key] = overrides[key]

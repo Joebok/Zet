@@ -1,0 +1,28 @@
+{
+  "story_slug": "FirstDay",
+  "scene_slug": "Chapter-04-A-Lending-Hand",
+  "reference_files": [
+    {
+      "role": "story_reference",
+      "label": "Tsaeytte Youth Costume-Dressing Left-Profile",
+      "tag": "{{ASSET:Tsaeytte:Youth:27:Costume | Left-Profile | Woodland outfit}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Left-Profile_Left-Profile_Woodland-outfit.png",
+      "kind": "asset",
+      "source_asset_id": 27
+    },
+    {
+      "role": "story_reference",
+      "label": "Valindia Vandemere - profile",
+      "tag": "{{AUX:person:valindia-vandemere-profile}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\person\\valindia-vandemere-profile.png",
+      "kind": "aux:person"
+    },
+    {
+      "role": "story_reference",
+      "label": "The Spire - Archway",
+      "tag": "{{AUX:place:the-spire-archway}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\place\\the-spire-archway.png",
+      "kind": "aux:place"
+    }
+  ]
+}

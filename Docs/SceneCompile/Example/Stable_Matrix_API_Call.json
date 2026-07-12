@@ -1,0 +1,40 @@
+{
+  "created_at": "2026-07-11T15:43:44",
+  "preset": "body-reference-preview",
+  "backend": "stable_matrix",
+  "server_url": "http://127.0.0.1:7860",
+  "api_path": "/sdapi/v1/txt2img",
+  "payload": {
+    "prompt": "First Day at the Spire\n\nCanonical Art Style:\nCanonical Art Style: Painterly semi-realistic, anime-influenced facial proportions, etc.\n\nDialog panel rules\n\nDialogue appears inside compact rectangular parchment dialogue panels with softly rounded corners. The panels are only slightly larger than the text they contain, leaving small, even margins on all sides. They are never oversized or excessively padded.\n\nPanel backgrounds are warm ivory parchment rather than pure white, with a subtle paper texture and a thin dark bronze border.\n\nEach dialogue panel has a short, unobtrusive triangular pointer aimed toward the speaking character's mouth.\n\nDialogue panels are integrated naturally into the composition and never obscure important characters, faces, or important scene details.\n\nSize each dialogue panel to fit its dialogue closely. Do not create large floating caption boxes or excessive empty space inside the panel.\n\nLettering uses a clean, modern comic-style sans-serif. Medium weight. Crisp edges. High legibility. Sentence case. Normal capitalization. Appropriate for a graphic novel rather than a children's picture book.\n\nWrap dialogue naturally into two or three balanced lines when practical. Avoid overly long single lines and avoid awkward one-word final lines.\n\nDialogue panels should complement the artwork and feel like part of the illustrated page rather than an afterthought.\n\nStory Premise:\nTsaeytte's first day attending the Spire of Celestial Wisdom to study magic.She starts out optimistic and joyful but quickly realizes that the world is a lot bigger and meaner than she had encountered growing up in the little town of Elvenwood.\n\nStory Visual Continuity:\nVisual Continuity:\n\n* Preserve the story's canonical art style across all scene images.\n* Preserve recurring characters, costumes, props, and locations when referenced by scene tags.\n* Keep scene images consistent with the story premise unless a scene explicitly calls for a contrast.\n\nThe Scene:\nTsaeytte is on the right side of center of the image. She is kneeling, her right arm is holding two books, her left arm is reaching to pick up another book that is to the left. There is another book on the pathway, opened and upside down. Tsaeytte is looking up at Valindia who is standing nearby, holding out a book to Tsaeytte. Valinia is standing with her weight on her left leg, her right leg is bent at the knee, her right boot heel raised. Her right hand is on her hip, her left hand is holding the book. Her left arm is bent at the elbow. Her head is tipped down to face Tsaeytte fully. The book being held is not quite close enough for Tsaeytte to grab. They are staring at each other. Tsaeytte has a tear on her cheek. Valindia is empathetic.\n\n[Use:\nDialogue panel:\n- Speaker: Tsaeytte\n- Text: \"Potential is Nothing without Disciplene\"\n]\n\nCharacter layout (left to right): Valinida → book on the pathway → Tsaeytte.\n\nMotion: Valindia is standing still holding a book out to Tsaeytte. Tsaeytte is stationary but picking up the other books.\n\nGaze: Tsaeytte and Valindia are looking directly at each other.\n\nReference Images:\n{{ASSET:Tsaeytte:Youth:27:Costume | Left-Profile | Woodland outfit}}\n{{AUX:person:valindia-vandemere-profile}}\n{{AUX:place:the-spire-archway}}\n\nRendering Notes:\n* Camera/framing: Portrait 4:5 aspect ratio.\n* Lighting: Mid-morning diffuse sunlight, shadows falling right to left.\n* Environment:\n* Character priority:\n* Prop priority:\n* Avoid:\n\nCreate one finished narrative scene image from this prompt. Do not stamp text, captions, labels, compiler markers, filenames, or reference tags into the image., (masterpiece, best quality, highres, high resolution:1.2), 8k, ultra-detailed, sharp focus",
+    "negative_prompt": "denoising_strength:, bad anatomy, bad hands, bad proportions, poorly drawn face, poorly drawn hands, missing fingers, extra digit, mutated, disfigured, blurry, grainy, out of frame, out of shot, watermark, text, signature",
+    "denoising_strength": 0.55,
+    "width": 768,
+    "height": 512,
+    "steps": 25,
+    "cfg_scale": 7.0,
+    "seed": -1,
+    "sampler_name": "DPM++ 2M",
+    "scheduler": "Karras",
+    "enable_hr": false,
+    "hr_upscaler": "Latent",
+    "hr_second_pass_steps": 32,
+    "hr_scale": 2.0,
+    "hr_additional_modules": [
+      "Use same choices"
+    ],
+    "subseed": -1,
+    "subseed_strength": 0.0,
+    "seed_resize_from_h": -1,
+    "seed_resize_from_w": -1,
+    "batch_size": 1,
+    "n_iter": 1,
+    "restore_faces": false,
+    "tiling": false,
+    "do_not_save_samples": true,
+    "do_not_save_grid": true,
+    "override_settings": {
+      "sd_model_checkpoint": "sd\\perfectdeliberate_v90.safetensors"
+    },
+    "override_settings_restore_after_call": true
+  }
+}

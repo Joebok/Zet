@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -6,7 +7,7 @@ from zet.models.asset import Asset
 from zet.services.config_service import Config
 from zet.models.identity_key import IdentityKey
 from zet.services.path_service import PathService
-from zet.services.story_service import StoryGitResult, StoryService
+from zet.services.story_service import StoryGitResult, StoryService, StoryServiceError
 
 
 class FakeAuxiliaryResource:
@@ -180,25 +181,23 @@ At the Arch
             )
 
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
-            data["characters"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "importance": "primary"}]
+            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary"}]
             data["placements"] = [{
                 "id": "placement_001",
-                "type": "character",
-                "character_id": "Tsaeytte",
-                "label": "Tsaeytte",
+                "scene_element_id": "Tsaeytte",
                 "screen_cell": {"row": 2, "column": 1},
                 "depth": "foreground",
                 "size_prominence": "large",
                 "pose": "crouched",
             }]
-            data["environment"]["location"] = "magic academy hall"
-            data["environment"]["lighting"] = "cool blue light"
-            data["composition"]["primary_focal_point"] = "Tsaeytte"
+            data["setup"]["environment"]["location"] = "magic academy hall"
+            data["setup"]["environment"]["lighting"] = "cool blue light"
+            data["setup"]["composition"]["primary_focal_point"] = "Tsaeytte"
 
             document = service.save_scene_builder_data("FirstDay", "At-the-Arch", data)
 
             self.assertTrue((story_dir / "At-the-Arch.json").exists())
-            self.assertEqual(1, document.data["schema_version"])
+            self.assertEqual(2, document.data["schema_version"])
             self.assertEqual("lower-left", document.data["placements"][0]["screen_cell"]["name"])
             self.assertIn("lower-left foreground", document.data["generation_outputs"]["scene_brief"])
             self.assertIn("Painterly fantasy", document.data["generation_outputs"]["positive_prompt"])
@@ -206,7 +205,69 @@ At the Arch
             self.assertTrue(document.data["metadata"]["updated_at"])
 
             reloaded = service.load_scene_builder_data("FirstDay", "At-the-Arch")
-            self.assertEqual("Tsaeytte", reloaded.data["placements"][0]["character_id"])
+            self.assertEqual("Tsaeytte", reloaded.data["placements"][0]["scene_element_id"])
+
+    def test_scene_builder_load_migrates_v1_character(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.json").write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "characters": [{
+                        "id": "Tsaeytte",
+                        "display_name": "Tsaeytte",
+                        "asset_tag": "{{ASSET:Tsaeytte:Adult:31}}",
+                        "role": "protagonist",
+                        "importance": "primary",
+                        "identity_prompt": "",
+                        "default_costume": "adult adventuring outfit",
+                        "notes": "",
+                    }],
+                    "placements": [{
+                        "id": "placement_001",
+                        "character_id": "Tsaeytte",
+                        "screen_cell": {"row": 2, "column": 1, "name": "lower-left"},
+                        "depth": "foreground",
+                        "pose": "crouched",
+                        "gaze_target": "Teacher",
+                        "notes": "test note",
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            document = service.load_scene_builder_data("FirstDay", "At-the-Arch")
+
+            self.assertEqual(2, document.data["schema_version"])
+            self.assertEqual("Tsaeytte", document.data["scene_elements"][0]["id"])
+            self.assertEqual("Character", document.data["scene_elements"][0]["element_type"])
+            self.assertNotIn("asset_tag", document.data["scene_elements"][0])
+            self.assertEqual("adult adventuring outfit", document.data["scene_elements"][0]["default_visual_description"])
+            self.assertEqual("Tsaeytte", document.data["placements"][0]["scene_element_id"])
+            self.assertIn("test note", document.data["placements"][0]["placement_notes"])
+
+    def test_scene_builder_normalize_creates_paired_placement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["scene_elements"] = [{"id": "Door", "display_name": "Door", "element_type": "Anchor", "importance": "background"}]
+            data["placements"] = []
+
+            normalized = service._normalize_scene_builder_data("FirstDay", "At-the-Arch", data)
+
+            self.assertEqual(1, len(normalized["placements"]))
+            self.assertEqual("Door", normalized["placements"][0]["scene_element_id"])
+            self.assertEqual("background", normalized["placements"][0]["depth"])
 
     def test_scene_builder_validation_and_markdown_export(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -242,22 +303,20 @@ Keep this manual note.
             )
 
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
-            data["characters"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "importance": "primary"}]
+            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary"}]
             data["placements"] = [{
                 "id": "placement_001",
-                "type": "character",
-                "character_id": "Missing",
-                "label": "Missing",
+                "scene_element_id": "Tsaeytte",
                 "screen_cell": {"row": 99, "column": 1},
                 "depth": "distant background",
                 "size_prominence": "distant",
                 "expression": "alert",
             }]
-            data["interactions"] = [{"subject": "Tsaeytte", "relationship": "looking at", "target": "Teacher", "note": ""}]
+            data["interactions"] = [{"subject_element_id": "Tsaeytte", "relationship": "looking at", "target_element_id": "Teacher", "note": ""}]
 
             warnings = service.validate_scene_builder_data(service._normalize_scene_builder_data("FirstDay", "At-the-Arch", data))
 
-            self.assertTrue(any("missing character Missing" in warning for warning in warnings))
+            self.assertTrue(any("missing target Teacher" in warning for warning in warnings))
             self.assertTrue(any("outside grid bounds" in warning for warning in warnings))
             self.assertTrue(any("No lighting specified" in warning for warning in warnings))
             service.export_scene_markdown("FirstDay", "At-the-Arch", data)
@@ -579,6 +638,122 @@ Morning light.
                 self.assertEqual(1, len(task.reference_files))
                 self.assertEqual(str(image_path), task.reference_files[0]["path"])
                 self.assertEqual(tag, task.reference_files[0]["tag"])
+
+    def test_stage_scene_render_with_builder_writes_v2_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            (story_dir / "FirstDay.md").write_text(
+                """Title: `[FirstDay]`
+Canonical Art Style: `[ink wash]`
+
+<!-- ZET:BEGIN STORY_TITLE -->
+FirstDay
+<!-- ZET:END STORY_TITLE -->
+
+<!-- ZET:BEGIN CANONICAL_ART_STYLE -->
+ink wash
+<!-- ZET:END CANONICAL_ART_STYLE -->
+""",
+                encoding="utf-8",
+            )
+            (story_dir / "At-the-Arch.md").write_text(
+                """<!-- ZET:BEGIN SCENE_NAME -->
+At the Arch
+<!-- ZET:END SCENE_NAME -->
+
+<!-- ZET:BEGIN SCENE_DESCRIPTION -->
+Two students meet at the arch.
+<!-- ZET:END SCENE_DESCRIPTION -->
+
+<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->
+prompt:
+negative_prompt:denoising_strength:
+enable_hr: false
+orientation: landscape
+<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->
+""",
+                encoding="utf-8",
+            )
+            (story_dir / "At-the-Arch.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "setup": {
+                            "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
+                            "composition": {"grid": {"columns": 3, "rows": 1}, "primary_focal_point": "the book exchange"},
+                            "camera": {"shot_type": "wide shot", "camera_height": "eye-level", "camera_angle": "straight-on"},
+                            "environment": {"location": "academy archway", "lighting": "morning light", "mood": "tense"},
+                        },
+                        "scene_elements": [
+                            {"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary", "default_visual_description": "petite elf student"},
+                            {"id": "val", "display_name": "Valindia", "element_type": "Character", "importance": "primary", "default_visual_description": "elegant elf student"},
+                        ],
+                        "placements": [
+                            {"scene_element_id": "val", "screen_cell": {"column": 1}, "depth": "foreground", "pose": "standing", "gaze_target_element_id": "tsa"},
+                            {"scene_element_id": "tsa", "screen_cell": {"column": 3}, "depth": "foreground", "pose": "kneeling", "gaze_target_element_id": "val"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            service = self._service(root)
+
+            task = service.stage_scene_render("FirstDay", "At-the-Arch")
+
+            pipeline = Path(task.pipeline_path)
+            self.assertTrue((pipeline / "Scene_Render_IR.json").exists())
+            self.assertTrue((pipeline / "Scene_Render_Validation.json").exists())
+            self.assertTrue((pipeline / "Local_Render_Brief.json").exists())
+            self.assertTrue((pipeline / "Local_Render_Prompt.md").exists())
+            prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
+            self.assertIn("# Render Task", prompt)
+            self.assertIn("Left-to-right order: Valindia -> Tsaeytte.", prompt)
+            local_prompt = (pipeline / "Local_Render_Prompt.md").read_text(encoding="utf-8")
+            self.assertIn("prompt:", local_prompt)
+            self.assertIn("negative:", local_prompt)
+            source_map = json.loads((pipeline / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+            self.assertEqual("scene_render_v2", source_map["compiler"])
+
+    def test_stage_scene_render_blocks_invalid_builder_gaze(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            (story_dir / "FirstDay.md").write_text(
+                """Title: `[FirstDay]`
+Canonical Art Style: `[ink wash]`
+
+<!-- ZET:BEGIN STORY_TITLE -->
+FirstDay
+<!-- ZET:END STORY_TITLE -->
+
+<!-- ZET:BEGIN CANONICAL_ART_STYLE -->
+ink wash
+<!-- ZET:END CANONICAL_ART_STYLE -->
+""",
+                encoding="utf-8",
+            )
+            (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}},
+                        "scene_elements": [{"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary"}],
+                        "placements": [{"scene_element_id": "tsa", "screen_cell": {"column": 1}, "gaze_target_element_id": "missing"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            service = self._service(root)
+
+            with self.assertRaises(StoryServiceError):
+                service.stage_scene_render("FirstDay", "At-the-Arch")
+
+            validation = json.loads((root / "Pipelines" / "Stories" / "FirstDay" / "At-the-Arch" / "Scene_Render_Validation.json").read_text(encoding="utf-8"))
+            self.assertEqual("invalid_gaze_target", validation["errors"][0]["code"])
 
 
 if __name__ == "__main__":

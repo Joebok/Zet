@@ -1,0 +1,16 @@
+{
+  "story_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\FirstDay.md",
+  "scene_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\Chapter-04-A-Lending-Hand.md",
+  "template_file": "C:\\Users\\Joe\\Projects\\Zet\\Config\\Prompt_Templates\\story_scene_v1.md",
+  "final_prompt": "C:\\Users\\Joe\\Projects\\Zet_Library\\Pipelines\\Stories\\FirstDay\\Chapter-04-A-Lending-Hand\\Final_Image_Prompt.md",
+  "sections": [
+    "CANONICAL_ART_STYLE",
+    "SCENE_DESCRIPTION",
+    "SCENE_IMAGE_REFERENCES",
+    "SCENE_NAME",
+    "SCENE_RENDERING_NOTES",
+    "STORY_PREMISE",
+    "STORY_TITLE",
+    "STORY_VISUAL_CONTINUITY"
+  ]
+}

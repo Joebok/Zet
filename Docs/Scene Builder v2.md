@@ -92,7 +92,6 @@ Use this structure as the target schema.
       "id": "Tsaeytte",
       "display_name": "Tsaeytte",
       "element_type": "Character",
-      "asset_tag": "{{ASSET:Tsaeytte:Adult:31}}",
       "image_tag": "",
       "identity_prompt": "",
       "default_visual_description": "",
@@ -186,13 +185,14 @@ Do not nest placements inside `scene_elements`.
 
 Use top-level `placements` linked by `scene_element_id`.
 
+Current UI behavior uses a 1:1 relationship: every `scene_element` has exactly one placement, created automatically with the element and deleted with the element. The IDs and link fields are implementation details and do not need to be exposed in the UI.
+
 Reason:
 
 * long-term cleaner for editing
 * easier to list all placements on the grid
-* easier to support multiple placements of the same element
 * easier to support future drag/drop, z-order, grouping, regional prompting, and ComfyUI export
-* avoids duplicating element identity data when one element appears more than once
+* avoids duplicating element identity data in placement editing
 
 A scene element defines what something is.
 
@@ -323,7 +323,6 @@ v2:
   "id": "Tsaeytte",
   "display_name": "Tsaeytte",
   "element_type": "Character",
-  "asset_tag": "{{ASSET:Tsaeytte:Adult:31}}",
   "image_tag": "",
   "identity_prompt": "",
   "default_visual_description": "",
@@ -338,7 +337,7 @@ Migration details:
 ```text
 v1.character.id -> v2.scene_element.id
 v1.character.display_name -> v2.scene_element.display_name
-v1.character.asset_tag -> v2.scene_element.asset_tag
+v1.character.asset_tag -> discard; use image_tag for image references in v2
 v1.character.identity_prompt -> v2.scene_element.identity_prompt
 v1.character.default_costume -> append or map to v2.scene_element.default_visual_description
 v1.character.role -> v2.scene_element.role
@@ -371,7 +370,6 @@ If the prop is only text, create:
   "id": "prop_slug",
   "display_name": "Readable Prop Name",
   "element_type": "Prop",
-  "asset_tag": "",
   "image_tag": "",
   "identity_prompt": "",
   "default_visual_description": "original prop text",
@@ -381,7 +379,7 @@ If the prop is only text, create:
 }
 ```
 
-Then create a placement if enough information exists. If no placement exists, leave it unplaced and let validation warn.
+Then create its paired placement. If no placement information exists, create a default placement for the element.
 
 ## Background Anchors
 
@@ -480,7 +478,6 @@ If v1 placement references a character that does not exist, create a placeholder
   "id": "missing_reference_slug",
   "display_name": "Original Label",
   "element_type": "Character",
-  "asset_tag": "",
   "image_tag": "",
   "identity_prompt": "",
   "default_visual_description": "",
@@ -735,7 +732,7 @@ Update markdown export to include:
 
 ### Scene Elements
 
-| ID | Display Name | Type | Importance | Role | Asset/Image Tag |
+| ID | Display Name | Type | Importance | Role | Image Tag |
 |---|---|---|---|---|---|
 
 ### Placements
@@ -850,14 +847,7 @@ Minimum acceptable behavior:
 
 1. User selects a scene element in the right column.
 2. User clicks a grid cell.
-3. App creates or updates a placement for that element in the selected cell.
-
-If the element already has a placement, either:
-
-* move the existing placement to the clicked cell, or
-* ask whether to move existing placement or create another placement.
-
-For v1/v2 proof-of-concept, moving the existing placement is acceptable unless there is an explicit “Add Additional Placement” button.
+3. App moves that element's paired placement to the selected cell.
 
 ## Right Column: Scene Element List and Editor
 
@@ -872,16 +862,13 @@ Each row/card should show:
 * display name
 * element type
 * importance
-* whether it has a placement
-* optional asset/image indicator
+* optional image indicator
 
 Controls:
 
 * Add Element
 * Delete Selected Element
 * Duplicate Element, optional
-* Add Placement for Selected Element
-* Delete Selected Placement, if applicable
 
 Add Element should ask for or create defaults:
 
@@ -890,7 +877,6 @@ Add Element should ask for or create defaults:
   "id": "new_element",
   "display_name": "New Element",
   "element_type": "Character",
-  "asset_tag": "",
   "image_tag": "",
   "identity_prompt": "",
   "default_visual_description": "",
@@ -912,10 +898,8 @@ Recommended behavior:
 
 Fields:
 
-* id
 * display name
 * element type
-* asset tag
 * image tag
 * identity prompt
 * default visual description
@@ -945,7 +929,6 @@ extra
 
 Fields:
 
-* placement id
 * screen cell row
 * screen cell column
 * screen cell name
@@ -964,11 +947,9 @@ Fields:
 
 The placement editor should only be active if the selected element has a selected placement.
 
-If selected element has no placement, show:
+The UI should not expose `scene_element.id`, `placement.id`, or `placement.scene_element_id`. Selecting an element selects its paired placement. Selecting a placed item in the grid selects both the placement and the related scene element.
 
-```text
-This element has no placement yet. Select a grid cell or click Add Placement.
-```
+If selected element has no placement because of older data, create the missing paired placement during load/normalization.
 
 For Props and Anchors, hide or de-emphasize character-specific fields if easy:
 
@@ -1075,9 +1056,9 @@ Verify:
 1. Left column shows Setup, Composition, Camera, Environment.
 2. Middle column shows grid preview.
 3. Right column shows Scene Element list.
-4. Add Element creates a `scene_elements` entry.
+4. Add Element creates a `scene_elements` entry and its paired placement.
 5. Selecting an element shows properties.
-6. Clicking a grid cell creates or updates a placement linked by `scene_element_id`.
+6. Clicking a grid cell moves the selected element's paired placement.
 7. Placement appears in grid preview.
 8. Save and reload preserves element and placement.
 9. Delete selected element removes linked placement after confirmation.
@@ -1092,8 +1073,7 @@ Verify warnings for:
 * placement linked to missing element id
 * interaction linked to missing element id
 * no scene elements
-* no placements
-* primary Character or Monster unplaced
+* scene element missing its paired placement before normalization
 * primary Character or Monster in distant background
 * Prop with expression does not crash generation
 * Anchor with no pose does not produce awkward prompt wording
@@ -1106,7 +1086,7 @@ The update is complete when:
 2. Existing v1 scenes can be loaded and migrated.
 3. `characters`, `foreground_props`, and `background_anchors` are no longer required by current code.
 4. `scene_elements` supports Character, Monster, Prop, and Anchor.
-5. `placements` are top-level and link to scene elements by `scene_element_id`.
+5. `placements` are top-level, link to scene elements by `scene_element_id`, and are maintained 1:1 with `scene_elements`.
 6. Environment fields live under `setup.environment`.
 7. The updated 3-column UI is functional.
 8. Grid preview displays placements from the top-level `placements` list.
