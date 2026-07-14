@@ -713,6 +713,7 @@ orientation: landscape
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
             self.assertIn("# Render Task", prompt)
             self.assertIn("Left-to-right order: Valindia -> Tsaeytte.", prompt)
+            self.assertNotIn("cell ", prompt)
             local_prompt = (pipeline / "Local_Render_Prompt.md").read_text(encoding="utf-8")
             self.assertIn("prompt:", local_prompt)
             self.assertIn("negative:", local_prompt)

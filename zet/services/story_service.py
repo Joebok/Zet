@@ -187,12 +187,14 @@ class StoryService:
                 return {}
             resource = self.auxiliary_resource_repository.get_resource(resource_id)
             template = self.path_service.resolve_path(resource.template_path)
-            return {
+            sections = {
                 "identity_preservation_core": self._source_section(template, "IDENTITY_PRESERVATION_SCENE"),
-                "identity_preservation_costume": self._source_section(template, "IDENTITY_PRESERVATION_COSTUME_SCENE"),
                 "identity_source": self._library_relative_path(template),
-                "costume_source": self._library_relative_path(template),
             }
+            if resource_type == "Person":
+                sections["identity_preservation_costume"] = self._source_section(template, "IDENTITY_PRESERVATION_COSTUME_SCENE")
+                sections["costume_source"] = self._library_relative_path(template)
+            return sections
         return {}
 
     def _resolve_scene_element_sources(self, data: dict) -> dict:

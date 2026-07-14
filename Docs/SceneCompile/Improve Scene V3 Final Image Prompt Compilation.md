@@ -246,8 +246,10 @@ Scene rendering should resolve source sections as follows:
 
 * Character elements read `IDENTITY_PRESERVATION_SCENE` from `Character_Image_Template.md`.
 * Character elements with a costume read `IDENTITY_PRESERVATION_COSTUME_SCENE` from the selected costume template.
-* Auxiliary Person, Place, and Object resources may provide scene preservation through the same scene-specific bounded section mechanism.
+* Auxiliary Person, Place, and Object resources may provide scene identity preservation through `IDENTITY_PRESERVATION_SCENE`.
+* Ignore `IDENTITY_PRESERVATION_COSTUME_SCENE` for Place and Object resources; costumes apply only to person/character elements.
 * Non-scene render pipelines continue using their existing preservation section names.
+* Require the new scene section names only. Do not support `SCENE_IDENTITY_PRESERVATION`, `SCENE_IDENTITY_PRESERVATION_CORE`, or `SCENE_IDENTITY_PRESERVATION_COSTUME` as fallback aliases.
 
 Recommended precedence:
 
@@ -842,19 +844,8 @@ Do not modify dialogue ellipses.
 * Do not migrate existing scene files.
 * Do not remove existing detailed identity or costume data.
 * Restrict `IDENTITY_PRESERVATION_SCENE` and `IDENTITY_PRESERVATION_COSTUME_SCENE` usage to scene rendering.
+* Require scene templates to use the new section names; do not add compatibility aliases for older scene section names.
 * Do not alter local-render prompts unless they share the same faulty formatting helpers.
 * Prefer shared formatting and name-resolution helpers so final-image and local-render compilers cannot diverge accidentally.
 * Use diff-based changes rather than rewriting unrelated compiler modules.
 * Add or update tests before considering the task complete.
-
----
-
-## Questions
-
-* Should scene rendering support old section names such as `SCENE_IDENTITY_PRESERVATION`, `SCENE_IDENTITY_PRESERVATION_CORE`, and `SCENE_IDENTITY_PRESERVATION_COSTUME` as temporary fallback aliases, or should templates be required to use only the new names?
-
-Only new names. I believe I have already updated all the relevant templates in the library.
-
-* For auxiliary Place/Object resources, should `IDENTITY_PRESERVATION_COSTUME_SCENE` be ignored unless the resource type is Person/Character-like?
-
-Correct - costumes only apply to person/character elements, not objects and places.
