@@ -532,23 +532,23 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
 
     workspace = _render_console_task_workspace(task)
     prompt_path = workspace / "Final_Image_Prompt.md"
+    local_prompt_path = _render_console_scene_local_prompt_path(workspace)
     condensed_path = workspace / "Condensed_Image_Prompt.md"
     latest_render = _latest_render_console_local_test_render(workspace)
-    enabled = bool(getattr(zet_app.path_service.config, "prompt_condense_enabled", False))
+    enabled = local_prompt_path.exists()
     condensed_current = condensed_path.exists() and prompt_path.exists() and condensed_path.stat().st_mtime >= prompt_path.stat().st_mtime
-    state = "READY" if condensed_current else "NOT_CREATED" if enabled else "DISABLED"
     return {
         "supports_local_test_render": enabled,
-        "condensed_prompt_text": condensed_path.read_text(encoding="utf-8") if condensed_path.exists() else "",
+        "condensed_prompt_text": local_prompt_path.read_text(encoding="utf-8") if local_prompt_path.exists() else "",
         "latest_local_test_render": str(latest_render) if latest_render else None,
         "local_api_call_exists": _render_console_local_api_call_path(workspace).exists(),
         "local_render_status": _render_console_local_render_status(zet_app, task),
         "condense_status": {
             "enabled": enabled,
-            "state": state,
-            "condensed_exists": condensed_path.exists(),
+            "state": "READY" if enabled else "DISABLED",
+            "condensed_exists": local_prompt_path.exists(),
             "condensed_current": condensed_current,
-            "condensed_prompt_path": str(condensed_path) if condensed_path.exists() else None,
+            "condensed_prompt_path": str(local_prompt_path) if local_prompt_path.exists() else None,
         },
     }
 
@@ -570,6 +570,27 @@ def _render_console_task_workspace(task) -> Path:
     if pipeline_path:
         return Path(pipeline_path)
     return task.ask_path
+
+
+def _render_console_scene_local_prompt_path(workspace: Path) -> Path:
+    forge_path = workspace / "Local_Render_Forge_Couple_Prompt.md"
+    if forge_path.exists():
+        return forge_path
+    return workspace / "Local_Render_Prompt.md"
+
+
+def _render_console_scene_aspect_ratio(workspace: Path) -> str:
+    for path in (workspace / "Scene_Render_IR.json", workspace / "Scene_Render_Builder.json"):
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        canvas = data.get("canvas") if path.name == "Scene_Render_IR.json" else data.get("setup", {}).get("canvas")
+        if isinstance(canvas, dict) and str(canvas.get("aspect_ratio") or "").strip():
+            return str(canvas.get("aspect_ratio"))
+    return ""
 
 
 def _latest_render_console_local_test_render(workspace: Path) -> Path | None:
@@ -2358,37 +2379,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/render-console/tasks/{ask_id}/prompt-condense")
-    def render_console_prompt_condense(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
-        """Stage prompt condense for a render-console task."""
-        queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
-        if task is None:
-            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
-        try:
-            zet_app = _app(app.state.config_path)
-            if task.asset_id is not None:
-                ask_path = zet_app.stage_prompt_condense_ask(task.character, task.phase, task.asset_id, force=True)
-            else:
-                workspace = _render_console_task_workspace(task)
-                ask_path = zet_app.stage_render_task_prompt_condense_ask(
-                    task.manifest,
-                    workspace / (task.prompt_file or "Final_Image_Prompt.md"),
-                    workspace,
-                    force=True,
-                )
-            payload = {
-                "task": task.to_dict(),
-                "manifest": _jsonable(task.manifest),
-                "prompt": queue.read_prompt(task),
-                "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
-                "local_prompt": _render_console_local_prompt_payload(zet_app, task),
-            }
-            payload["message"] = f"Prompt condense queued: {ask_path}" if ask_path else "Prompt condense already queued or ready."
-            return payload
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/render-console/tasks/{ask_id}/local-test-render")
     def render_console_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Generate a local test render for a render-console task."""
@@ -2405,10 +2395,14 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 ask_path = zet_app.stage_render_task_local_render_ask(task.manifest, context.condensed_prompt_path, context.condensed_prompt_path.parent)
             else:
                 workspace = _render_console_task_workspace(task)
-                condensed_prompt = workspace / "Condensed_Image_Prompt.md"
-                if not condensed_prompt.exists():
-                    raise FileNotFoundError(f"No condensed prompt was found for task {ask_id}.")
-                ask_path = zet_app.stage_render_task_local_render_ask(task.manifest, condensed_prompt, workspace)
+                local_prompt = _render_console_scene_local_prompt_path(workspace)
+                if not local_prompt.exists():
+                    raise FileNotFoundError(f"No local render prompt was found for task {ask_id}.")
+                manifest = dict(task.manifest)
+                aspect_ratio = _render_console_scene_aspect_ratio(workspace)
+                if aspect_ratio:
+                    manifest["aspect_ratio"] = aspect_ratio
+                ask_path = zet_app.stage_render_task_local_render_ask(manifest, local_prompt, workspace)
             payload = {
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),

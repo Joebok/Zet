@@ -189,7 +189,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             app = ZetApp.from_config(config_path)
 
             ask_path = app.stage_render_task_local_render_ask(
-                {"ask_id": "Ask_Story_Test", "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}]},
+                {"ask_id": "Ask_Story_Test", "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}], "aspect_ratio": "16:9"},
                 prompt_path,
                 workspace,
             )
@@ -198,6 +198,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual("local_image_render", manifest["worker_type"])
             self.assertEqual("local_test_render", manifest["task_type"])
             self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
+            self.assertEqual("16:9", manifest["aspect_ratio"])
             self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), manifest["target_output_dir"])
             self.assertEqual("condensed prompt\n", (ask_path / "Condensed_Image_Prompt.md").read_text(encoding="utf-8"))
             answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / ask_path.name

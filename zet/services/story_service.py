@@ -16,7 +16,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
-from zet.services.scene_render_compiler import compile_scene_render, compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_prompt_text
+from zet.services.scene_render_compiler import compile_scene_render, compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_forge_couple_prompt_text, local_render_prompt_text
 from zet.services.path_service import PathService
 
 
@@ -1543,6 +1543,7 @@ class StoryService:
         scene_builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
         references_source = ""
         scene_builder_data: dict | None = None
+        scene_aspect_ratio = ""
         if scene_builder_path.exists():
             scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
             references_source += "\n" + json.dumps(scene_builder_data)
@@ -1558,6 +1559,7 @@ class StoryService:
             ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references, "element_sources": resolved_sources})
             ir["source"]["scene_json_path"] = str(scene_builder_path)
             ir["source"]["story_settings_path"] = str(story_settings_path)
+            scene_aspect_ratio = str((ir.get("canvas") or {}).get("aspect_ratio") or "")
             prompt = final_image_prompt_text(ir)
             brief = local_render_brief(ir)
             self._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
@@ -1565,6 +1567,10 @@ class StoryService:
             self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
             self._write_json(pipeline_path / "Local_Render_Brief.json", brief)
             (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
+            artifacts = ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"]
+            if getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
+                (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
+                artifacts.append("Local_Render_Forge_Couple_Prompt.md")
             self._write_json(
                 pipeline_path / "Prompt_Source_Map.json",
                 {
@@ -1572,7 +1578,7 @@ class StoryService:
                     "scene_builder_file": str(scene_builder_path),
                     "final_prompt": str(final_prompt_path),
                     "compiler": "scene_render_v3",
-                    "artifacts": ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"],
+                    "artifacts": artifacts,
                 },
             )
         else:
@@ -1638,6 +1644,7 @@ class StoryService:
             "pipeline_path": str(pipeline_path),
             "reference_files": references,
             "governing_template_path": str(scene_path),
+            "aspect_ratio": scene_aspect_ratio,
         }
         self._write_json(ask_path / "ask_manifest.json", manifest)
         (ask_path / "Final_Image_Prompt.md").write_text(prompt, encoding="utf-8")

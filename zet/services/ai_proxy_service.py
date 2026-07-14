@@ -603,6 +603,8 @@ class AIProxyService:
             "render_preset": self._local_render_preset(),
             "reference_files": manifest.get("reference_files") or [],
         }
+        if manifest.get("aspect_ratio"):
+            ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
         if manifest.get("governing_template_path"):
             ask_manifest["governing_template_path"] = manifest.get("governing_template_path")
         return ask_manifest

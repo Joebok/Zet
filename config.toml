@@ -14,7 +14,7 @@ BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
-Enabled = true
+Enabled = false
 Model = "qwen2.5vl:3b"
 PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 
@@ -22,8 +22,8 @@ PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 AutoQueueAfterCondense = false
 Preset = "body-reference-preview"
 
-PositivePromptGlobals = "(masterpiece, best quality, highres, high resolution:1.2), 8k, ultra-detailed, sharp focus"
-NegativePromptGlobals = "bad anatomy, bad hands, bad proportions, poorly drawn face, poorly drawn hands, missing fingers, extra digit, mutated, disfigured, blurry, grainy, out of frame, out of shot, watermark, text, signature"
+PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
+NegativePromptGlobals = "EasyNegative"
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 60

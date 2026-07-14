@@ -204,6 +204,147 @@ def _dialogue_tones(ir: dict[str, Any]) -> dict[str, str]:
     return tones
 
 
+def _placement_element_id(placement: dict[str, Any]) -> str:
+    return _clean(placement.get("scene_element_id"))
+
+
+def _placement_cell(placement: dict[str, Any]) -> dict[str, Any]:
+    return placement.get("screen_cell", {}) if isinstance(placement.get("screen_cell"), dict) else {}
+
+
+def _placement_column(placement: dict[str, Any]) -> int:
+    return int(_placement_cell(placement).get("column") or 0)
+
+
+def _placement_row(placement: dict[str, Any]) -> int:
+    return int(_placement_cell(placement).get("row") or 1)
+
+
+def _is_visible_subject(element: dict[str, Any], placement: dict[str, Any]) -> bool:
+    return placement.get("must_be_visible") is True and _clean(element.get("element_type")) in {"Character", "Monster"}
+
+
+def _resource_subject_type(element: dict[str, Any]) -> str:
+    text = " ".join(_lines([
+        element.get("scene_visual_override"),
+        element.get("fallback_visual_description"),
+        element.get("display_name"),
+        element.get("resource_type"),
+        element.get("element_type"),
+    ])).lower()
+    if "half-elf" in text or "half elf" in text:
+        return "half-elf woman"
+    if "elf" in text:
+        return "elf woman"
+    if "woman" in text or "female" in text:
+        return "woman"
+    resource_type = _clean(element.get("resource_type")) or _clean(element.get("element_type"))
+    return humanize_identifier(resource_type).lower() or "subject"
+
+
+def _subject_count_phrase(subjects: list[tuple[dict[str, Any], dict[str, Any]]]) -> str:
+    if not subjects:
+        return "no visible people"
+    count_word = {1: "one", 2: "two", 3: "three", 4: "four"}.get(len(subjects), str(len(subjects)))
+    types = [_resource_subject_type(element) for element, _placement in subjects]
+    normalized = ["elf woman" if item == "half-elf woman" else item for item in types]
+    if len(set(normalized)) == 1:
+        plural = normalized[0].replace("woman", "women")
+        return f"exactly {count_word} adult {plural}"
+    return f"exactly {count_word} visible subjects"
+
+
+def _descriptor_source(element: dict[str, Any]) -> str:
+    sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
+    return " ".join(_lines([
+        element.get("local_render_visual_override"),
+        element.get("scene_visual_override"),
+        sections.get("identity_preservation_core"),
+        sections.get("identity_preservation_costume"),
+        element.get("fallback_visual_description"),
+    ]))
+
+
+def build_local_visual_descriptor(element: dict[str, Any]) -> str:
+    """Return a short checkpoint-readable visual descriptor."""
+    source = clean_prompt_sentence(_descriptor_source(element))
+    generic = _resource_subject_type(element)
+    if not source:
+        return f"adult {generic}" if "adult" not in generic else generic
+    name_terms = _lines([element.get("id"), element.get("display_name"), element.get("character"), element.get("aux_resource_id")])
+    for term in name_terms:
+        source = re.sub(re.escape(term), "", source, flags=re.IGNORECASE)
+    source = re.sub(r"\b(preserve|reference|canonical|identity|exact|must|forbidden|drift|matching)\b[^,.]*(?:,|\.|$)", "", source, flags=re.IGNORECASE)
+    sentences = re.split(r"[.;]\s*", source)
+    keep = []
+    keywords = re.compile(r"\b(elf|woman|adult|petite|tall|short|slender|stocky|hair|bob|black|teal|crimson|red|gold|academy|adventur|outfit|dress|robe|armor|coat|hat|staff|sword)\b", re.IGNORECASE)
+    for sentence in sentences:
+        sentence = clean_prompt_sentence(sentence)
+        if sentence and keywords.search(sentence):
+            keep.append(sentence)
+    text = ", ".join(keep[:3]) if keep else source
+    terms = [term.strip(" ,") for term in re.split(r",|\band\b", text) if term.strip(" ,")]
+    descriptor = ", ".join(dict.fromkeys(terms[:8]))
+    if generic and generic not in descriptor.lower():
+        descriptor = f"adult {generic}, {descriptor}" if "adult" not in generic else f"{generic}, {descriptor}"
+    return clean_prompt_sentence(descriptor)
+
+
+def _anchor_visual_descriptor(element: dict[str, Any]) -> str:
+    source = clean_prompt_sentence(_descriptor_source(element))
+    for term in _lines([element.get("id"), element.get("display_name"), element.get("aux_resource_id")]):
+        source = re.sub(re.escape(term), "", source, flags=re.IGNORECASE)
+    if source:
+        return source
+    return "major background architecture"
+
+
+def _screen_facing(ir: dict[str, Any], placement: dict[str, Any]) -> tuple[str, str]:
+    pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
+    target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
+    if not target_id:
+        return "", ""
+    target = next((item for item in ir.get("placements", []) if _placement_element_id(item) == target_id), {})
+    target_column = _placement_column(target)
+    subject_column = _placement_column(placement)
+    if target_column and subject_column and target_column > subject_column:
+        return "facing screen-right", "looking toward the subject opposite"
+    if target_column and subject_column and target_column < subject_column:
+        return "facing screen-left", "looking toward the subject opposite"
+    return "", ""
+
+
+def _broad_pose(placement: dict[str, Any]) -> str:
+    pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
+    parts = _lines([
+        pose.get("summary") if pose else placement.get("pose"),
+        pose.get("left_arm_action"),
+        pose.get("right_arm_action"),
+        pose.get("left_hand_detail"),
+        pose.get("right_hand_detail"),
+    ])
+    text = ", ".join(parts)
+    replacements = {
+        "left hand raised": "one hand raised",
+        "right hand raised": "one hand raised",
+    }
+    for old, new in replacements.items():
+        text = re.sub(old, new, text, flags=re.IGNORECASE)
+    return clean_prompt_sentence(text)
+
+
+def _region_name(column: int, columns: int) -> str:
+    if columns == 3:
+        return {1: "left", 2: "center", 3: "right"}.get(column, "")
+    if columns == 2:
+        return {1: "left", 2: "right"}.get(column, "")
+    return f"column {column}" if column else ""
+
+
+def _prompt_join(parts: list[str]) -> str:
+    return ", ".join(dict.fromkeys(item for item in (clean_prompt_sentence(part) for part in parts) if item))
+
+
 def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_id: dict[str, dict[str, Any]], tones: dict[str, str]) -> str:
     element_id = _clean(placement.get("scene_element_id"))
     element = _element(ir, element_id)
@@ -431,30 +572,154 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
     canvas = ir.get("canvas", {})
     elements_by_id = _elements_by_id(ir)
     tones = _dialogue_tones(ir)
-    positive = [
-        _clean(ir.get("style", {}).get("art_style")),
+    composition = ir.get("composition", {})
+    grid = composition.get("grid", {}) if isinstance(composition.get("grid"), dict) else {}
+    columns = int(grid.get("columns") or 1)
+    rows = int(grid.get("rows") or 1)
+    placements = sorted(ir.get("placements", []), key=_placement_sort_key)
+    subjects = [(elements_by_id.get(_placement_element_id(item), {}), item) for item in placements]
+    subjects = [(element, placement) for element, placement in subjects if _is_visible_subject(element, placement)]
+    subject_phrase = _subject_count_phrase(subjects)
+    anchor_parts = []
+    for placement in placements:
+        element = elements_by_id.get(_placement_element_id(placement), {})
+        if _clean(element.get("element_type")) not in {"Place", "Anchor"} and _clean(element.get("resource_type")) != "Place":
+            continue
+        region = _semantic_region(ir, placement)
+        descriptor = _anchor_visual_descriptor(element)
+        notes = clean_prompt_sentence(placement.get("placement_notes"))
+        anchor_parts.append(_prompt_join([descriptor, f"{region} scenery", notes]))
+    center_foreground_open = columns == 3 and not any(
+        _placement_column(placement) == 2 and _clean(placement.get("depth")) == "foreground"
+        for placement in placements
+    )
+    global_parts = [
+        clean_prompt_sentence(ir.get("camera", {}).get("shot_type")) or "wide shot",
         f"{_clean(canvas.get('orientation')) or 'landscape'} {_clean(canvas.get('aspect_ratio')) or '16:9'}",
-        _clean(ir.get("camera", {}).get("shot_type")),
-        _clean(ir.get("environment", {}).get("location")),
-        _clean(ir.get("composition", {}).get("primary_focal_point")),
+        subject_phrase,
+        "full bodies visible" if subjects else "",
+        clean_prompt_sentence(composition.get("overall_composition")) or "separated confrontation composition",
+        *anchor_parts,
+        "open empty space in the center foreground" if center_foreground_open else "",
+        clean_prompt_sentence(ir.get("environment", {}).get("weather_or_atmosphere")),
     ]
-    positive.extend(_placement_line(ir, placement, elements_by_id, tones) for placement in ir.get("placements", []))
-    negative = list(dict.fromkeys([term for term in ir.get("avoid", []) if "dialogue" not in term] + ["text", "letters", "caption", "speech bubble", "watermark"]))
+    regions = []
+    column_lines: dict[int, list[str]] = {column: [] for column in range(1, columns + 1)}
+    for placement in placements:
+        element_id = _placement_element_id(placement)
+        element = elements_by_id.get(element_id, {})
+        column = _placement_column(placement)
+        row = _placement_row(placement)
+        region = _region_name(column, columns)
+        if not region:
+            continue
+        is_scenery = _clean(element.get("element_type")) in {"Place", "Anchor"} or _clean(element.get("resource_type")) == "Place"
+        if not _is_visible_subject(element, placement) and not is_scenery:
+            continue
+        prompt_parts = [subject_phrase]
+        if _is_visible_subject(element, placement):
+            descriptor = build_local_visual_descriptor(element)
+            facing, gaze = _screen_facing(ir, placement)
+            expression = clean_prompt_sentence((placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}).get("expression") or placement.get("expression") or tones.get(element_id))
+            side = "far left" if column == 1 and columns >= 3 else "far right" if column == columns and columns >= 3 else region
+            label = "left woman" if column == 1 else "right woman" if column == columns else "center subject"
+            prompt_parts.extend([
+                f"{label} positioned on the {side}",
+                descriptor,
+                _broad_pose(placement),
+                expression,
+                facing,
+                gaze,
+            ])
+        elif is_scenery:
+            prompt_parts.extend([_anchor_visual_descriptor(element), f"{region} {_clean(placement.get('depth')) or 'background'} scenery", clean_prompt_sentence(placement.get("placement_notes"))])
+        if column == 2 and center_foreground_open:
+            prompt_parts.append("center foreground remains open and empty")
+        prompt = _prompt_join(prompt_parts)
+        column_lines.setdefault(column, []).append(prompt)
+        regions.append({
+            "region": region,
+            "row": row,
+            "column": column,
+            "x_range": [round((column - 1) / columns, 4), round(column / columns, 4)],
+            "y_range": [round((row - 1) / rows, 4), round(row / rows, 4)],
+            "depths": list(dict.fromkeys([_clean(placement.get("depth"))] if _clean(placement.get("depth")) else [])),
+            "element_ids": [element_id],
+            "prompt": prompt,
+        })
+    plain_prompt = _prompt_join(global_parts + [region["prompt"] for region in regions])
+    negative = list(dict.fromkeys([
+        "extra people",
+        "third person",
+        "crowd",
+        "duplicate character",
+        "same character twice",
+        "merged characters",
+        "fused bodies",
+        "overlapping characters",
+        "characters touching",
+        "both characters on the same side",
+        "person in the center foreground",
+        "centered foreground character",
+        "cropped body",
+        "cropped feet",
+        "back turned toward the other character",
+        "looking at viewer",
+        "extra limbs",
+        "malformed hands",
+        "text",
+        "letters",
+        "caption",
+        "speech bubble",
+        "watermark",
+    ]))
+    prompt_lines = [_prompt_join(global_parts)]
+    prompt_lines.extend(_prompt_join(column_lines.get(column, [])) for column in range(1, columns + 1))
+    prompt_lines = [line for line in prompt_lines if line]
     return {
-        "purpose": "composition preview only",
+        "schema_version": 2,
+        "purpose": "composition_preview",
         "include_dialogue": False,
-        "protected_facts": {
-            "canvas": f"{_clean(canvas.get('orientation')) or 'landscape'} {_clean(canvas.get('aspect_ratio')) or '16:9'}",
-            "left_to_right_order": ir.get("composition", {}).get("left_to_right_order", []),
-            "location": ir.get("environment", {}).get("location", ""),
+        "subject_count": len(subjects),
+        "canvas": canvas,
+        "global_prompt": prompt_lines[0] if prompt_lines else "",
+        "regions": regions,
+        "plain_txt2img": {
+            "prompt": plain_prompt,
+            "negative_prompt": ", ".join(negative),
         },
-        "positive_facts": [item for item in positive if item],
-        "negative_facts": negative,
+        "forge_couple_basic": {
+            "direction": "Horizontal",
+            "background": "First Line",
+            "background_weight": 0.5,
+            "separator": "\n",
+            "prompt_lines": prompt_lines,
+        },
     }
 
 
 def local_render_prompt_text(brief: dict[str, Any]) -> str:
-    return f"prompt: {', '.join(brief.get('positive_facts') or [])}\nnegative: {', '.join(brief.get('negative_facts') or [])}\n"
+    plain = brief.get("plain_txt2img", {}) if isinstance(brief.get("plain_txt2img"), dict) else {}
+    return f"prompt: {plain.get('prompt', '')}\nnegative: {plain.get('negative_prompt', '')}\n"
+
+
+def local_render_forge_couple_prompt_text(brief: dict[str, Any]) -> str:
+    forge = brief.get("forge_couple_basic", {}) if isinstance(brief.get("forge_couple_basic"), dict) else {}
+    plain = brief.get("plain_txt2img", {}) if isinstance(brief.get("plain_txt2img"), dict) else {}
+    lines = [
+        "mode: Basic",
+        f"direction: {forge.get('direction', 'Horizontal')}",
+        f"background: {forge.get('background', 'First Line')}",
+        f"background_weight: {forge.get('background_weight', 0.5)}",
+        "separator: newline",
+        "",
+        "prompt:",
+        *[line for line in forge.get("prompt_lines", []) if line],
+        "",
+        "negative:",
+        str(plain.get("negative_prompt", "")),
+    ]
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_final_image_prompt(ir: dict[str, Any], output_path: Path) -> None:
@@ -470,6 +735,11 @@ def write_local_render_brief(ir: dict[str, Any], output_path: Path) -> None:
 def write_local_render_prompt(local_brief: dict[str, Any], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(local_render_prompt_text(local_brief), encoding="utf-8")
+
+
+def write_local_render_forge_couple_prompt(local_brief: dict[str, Any], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(local_render_forge_couple_prompt_text(local_brief), encoding="utf-8")
 
 
 def compile_scene_render(

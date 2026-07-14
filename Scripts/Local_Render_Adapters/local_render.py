@@ -31,6 +31,7 @@ def render_image(
     preset_name: str = "body-reference-preview",
     reference_files: list[dict[str, Any]] | None = None,
     governing_template_path: Path | None = None,
+    aspect_ratio: str = "",
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     backend = str(preset.get("backend") or "").strip().lower()
@@ -45,5 +46,6 @@ def render_image(
             preset_name=preset_name,
             reference_files=reference_files,
             governing_template_path=governing_template_path,
+            aspect_ratio=aspect_ratio,
         )
     raise LocalRenderError(f"Unsupported local render backend for preset {preset_name}: {backend}")

@@ -42,6 +42,7 @@ Backend = "manual_chatgpt"
             self.assertTrue(config.ai_harvest_auto_enabled)
             self.assertEqual(config.ai_harvest_interval_seconds, 300)
             self.assertEqual(config.render_backend, "manual_chatgpt")
+            self.assertEqual(config.local_render_layout_backend, "forge_couple_basic")
 
 
 if __name__ == "__main__":

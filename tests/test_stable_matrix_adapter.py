@@ -204,7 +204,27 @@ class StableMatrixAdapterTests(unittest.TestCase):
                 render_preview(project_root=root, final_prompt_path=prompt, job_output_dir=root, preset_name="scene-preview-sd15")
 
             payload = post_json.call_args.args[2]
-            self.assertEqual((910, 512), (payload["width"], payload["height"]))
+            self.assertEqual((896, 512), (payload["width"], payload["height"]))
+
+    def test_scene_aspect_ratio_argument_overrides_preset_size(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            prompt = root / "prompt.md"
+            prompt.write_text("Positive prompt", encoding="utf-8")
+            image = BytesIO()
+            Image.new("RGB", (1, 1), "white").save(image, format="PNG")
+
+            with (
+                patch("Local_Render_Adapters.stable_matrix_adapter.load_preset", return_value={"backend": "stable_matrix", "aspect_ratio": "4:5"}),
+                patch(
+                    "Local_Render_Adapters.stable_matrix_adapter._post_json",
+                    return_value={"images": [__import__("base64").b64encode(image.getvalue()).decode()]},
+                ) as post_json,
+            ):
+                render_preview(project_root=root, final_prompt_path=prompt, job_output_dir=root, aspect_ratio="16:9")
+
+            payload = post_json.call_args.args[2]
+            self.assertEqual((896, 512), (payload["width"], payload["height"]))
 
 
 if __name__ == "__main__":

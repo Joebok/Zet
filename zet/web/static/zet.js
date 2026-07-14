@@ -260,7 +260,6 @@ const renderConsoleHelperText = document.querySelector("#render-console-helper-t
 const renderConsoleSaveHelper = document.querySelector("#render-console-save-helper");
 const renderConsoleCopyHelper = document.querySelector("#render-console-copy-helper");
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
-const renderConsoleCondensePrompt = document.querySelector("#render-console-condense-prompt");
 const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
 const renderConsoleCopyLocalApiParams = document.querySelector("#render-console-copy-local-api-params");
 const renderConsoleLocalApiPopover = document.querySelector("#render-console-local-api-popover");
@@ -5456,7 +5455,6 @@ function clearRenderConsole() {
   renderConsoleSaveHelper.disabled = true;
   renderConsoleCopyHelper.disabled = true;
   renderConsolePrompt.value = "";
-  renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
   renderConsoleCopyLocalApiParams.disabled = true;
   renderConsoleLocalApiPopover.hidden = true;
@@ -5497,13 +5495,11 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
   const localPrompt = detail.local_prompt || {};
-  renderConsoleCondensePrompt.disabled = !localPrompt.supports_local_test_render;
-  renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render || !localPrompt.condensed_prompt_text;
+  renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render;
   renderConsoleCopyLocalApiParams.disabled = !localPrompt.local_api_call_exists;
   renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
-  const condenseState = localPrompt.condense_status?.state || "";
   const localRenderState = localPrompt.local_render_status?.state || "";
-  renderConsoleLocalStatus.textContent = [condenseState ? `Prompt condense: ${condenseState}` : "", localRenderState ? `Local render: ${localRenderState}` : ""]
+  renderConsoleLocalStatus.textContent = [localPrompt.supports_local_test_render ? "Local prompt: READY" : "Local prompt: DISABLED", localRenderState ? `Local render: ${localRenderState}` : ""]
     .filter(Boolean)
     .join(" | ");
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
@@ -5607,9 +5603,7 @@ async function runRenderConsoleLocalAction(action) {
   if (!state.selectedRenderConsoleAskId) {
     return;
   }
-  const isCondense = action === "prompt-condense";
-  renderConsoleLocalStatus.textContent = isCondense ? "Generating condensed prompt. Waiting..." : "Queueing local test image...";
-  renderConsoleCondensePrompt.disabled = true;
+  renderConsoleLocalStatus.textContent = "Queueing local test image...";
   renderConsoleLocalTest.disabled = true;
   renderConsoleClearLocalTest.disabled = true;
   try {
@@ -5630,7 +5624,6 @@ async function clearRenderConsoleLocalTest() {
     return;
   }
   renderConsoleLocalStatus.textContent = "Clearing local test image...";
-  renderConsoleCondensePrompt.disabled = true;
   renderConsoleLocalTest.disabled = true;
   renderConsoleClearLocalTest.disabled = true;
   try {
@@ -6397,7 +6390,6 @@ renderConsoleCopyHelper.addEventListener("click", async () => {
   await writeClipboardText(renderConsoleHelperText.value || "");
   showRenderConsoleMessage("GPT helper prompt copied.");
 });
-renderConsoleCondensePrompt.addEventListener("click", () => runRenderConsoleLocalAction("prompt-condense"));
 renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
 renderConsoleCopyLocalApiParams.addEventListener("click", copyRenderConsoleLocalApiParams);
 renderConsoleLocalApiCopy.addEventListener("click", copyDisplayedRenderConsoleLocalApiParams);

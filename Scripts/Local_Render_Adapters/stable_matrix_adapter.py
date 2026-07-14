@@ -194,8 +194,8 @@ def _render_size_for_aspect_ratio(aspect_ratio: str, short_side: int = 512) -> t
     if width_ratio <= 0 or height_ratio <= 0:
         return None
     if width_ratio >= height_ratio:
-        return int(round(short_side * width_ratio / height_ratio)), short_side
-    return short_side, int(round(short_side * height_ratio / width_ratio))
+        return int(round((short_side * width_ratio / height_ratio) / 64) * 64), short_side
+    return short_side, int(round((short_side * height_ratio / width_ratio) / 64) * 64)
 
 
 def _coerce_override_value(key: str, value: Any) -> Any:
@@ -270,6 +270,7 @@ def render_preview(
     preset_name: str = "body-reference-preview",
     reference_files: list[dict[str, Any]] | None = None,
     governing_template_path: Path | None = None,
+    aspect_ratio: str = "",
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     server_url = str(preset.get("server_url", "http://127.0.0.1:7860"))
@@ -280,8 +281,8 @@ def render_preview(
         seed = -1
     overrides = load_local_image_gen_overrides(governing_template_path)
 
-    aspect_ratio = overrides.get("aspect_ratio") or preset.get("aspect_ratio")
-    size = _render_size_for_aspect_ratio(str(aspect_ratio)) if aspect_ratio else None
+    selected_aspect_ratio = aspect_ratio or overrides.get("aspect_ratio") or preset.get("aspect_ratio")
+    size = _render_size_for_aspect_ratio(str(selected_aspect_ratio)) if selected_aspect_ratio else None
     if size:
         width, height = size
     elif "width" in overrides and "height" in overrides:
