@@ -1162,18 +1162,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
 
     @app.post("/api/auxiliary-resources")
     async def auxiliary_resource_create(
-        request: Request,
         category: str = Query(...),
         label: str = Query(...),
     ) -> dict[str, Any]:
-        """Create a global auxiliary resource from uploaded image bytes."""
+        """Create a global auxiliary resource folder."""
         zet_app = _app(app.state.config_path)
         try:
             resource = zet_app.create_auxiliary_resource(
                 category,
                 label,
-                await request.body(),
-                request.headers.get("content-type", ""),
             )
             return {
                 "resource": _auxiliary_resource_payload(resource),
@@ -1186,20 +1183,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.put("/api/auxiliary-resources/{resource_id}")
     async def auxiliary_resource_update(
         resource_id: str,
-        request: Request,
         category: str = Query(...),
         label: str = Query(...),
-        replace_image: bool = Query(False),
     ) -> dict[str, Any]:
-        """Update a global auxiliary resource and optionally replace its image."""
+        """Update a global auxiliary resource folder metadata."""
         zet_app = _app(app.state.config_path)
         try:
-            image_bytes = await request.body() if replace_image else None
             resource = zet_app.update_auxiliary_resource(
                 resource_id,
                 label,
-                image_bytes,
-                request.headers.get("content-type", ""),
             )
             return {
                 "resource": _auxiliary_resource_payload(resource),
@@ -1290,6 +1282,32 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/auxiliary-resources/{resource_id}/images")
+    async def auxiliary_resource_image_save(
+        resource_id: str,
+        request: Request,
+        category: str = Query(...),
+        image_label: str = Query(...),
+        original_image_id: str = Query(""),
+    ) -> dict[str, Any]:
+        """Save or update one auxiliary resource image."""
+        zet_app = _app(app.state.config_path)
+        try:
+            resource = zet_app.save_auxiliary_resource_image(
+                resource_id,
+                image_label,
+                await request.body(),
+                request.headers.get("content-type", ""),
+                original_image_id,
+            )
+            return {
+                "resource": _auxiliary_resource_payload(resource),
+                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
+                "message": f"Saved auxiliary image {image_label}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.delete("/api/stories/{story_slug}")
     def story_delete(story_slug: str) -> dict[str, Any]:
         """Commit and delete one story folder."""
@@ -1311,6 +1329,28 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         try:
             return {"scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}/settings")
+    def story_settings_detail(story_slug: str) -> dict[str, Any]:
+        """Load one story settings JSON document."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"data": _jsonable(zet_app.load_story_settings(story_slug))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/stories/{story_slug}/settings")
+    def story_settings_save(story_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Save one story settings JSON document."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "data": _jsonable(zet_app.save_story_settings(story_slug, data)),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": "Saved story settings.",
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

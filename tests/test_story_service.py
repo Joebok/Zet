@@ -303,7 +303,7 @@ Keep this manual note.
             )
 
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
-            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary"}]
+            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte Display", "element_type": "Character", "importance": "primary"}]
             data["placements"] = [{
                 "id": "placement_001",
                 "scene_element_id": "Tsaeytte",
@@ -318,6 +318,8 @@ Keep this manual note.
 
             self.assertTrue(any("missing target Teacher" in warning for warning in warnings))
             self.assertTrue(any("outside grid bounds" in warning for warning in warnings))
+            self.assertTrue(any("Placement Tsaeytte Display is outside grid bounds" in warning for warning in warnings))
+            self.assertFalse(any("Placement placement_001" in warning for warning in warnings))
             self.assertTrue(any("No lighting specified" in warning for warning in warnings))
             service.export_scene_markdown("FirstDay", "At-the-Arch", data)
             text = scene_path.read_text(encoding="utf-8")

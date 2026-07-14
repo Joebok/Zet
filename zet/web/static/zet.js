@@ -69,6 +69,7 @@ const state = {
   builderImagePickerSearch: "",
   auxiliaryResources: [],
   selectedAuxiliaryResourceId: null,
+  selectedAuxiliaryImageId: null,
   auxiliaryResourceImageBlob: null,
   phaseComparison: {
     character: "",
@@ -340,10 +341,13 @@ const storyTableBody = document.querySelector("#story-table tbody");
 const storyEditorTitle = document.querySelector("#story-editor-title");
 const storySave = document.querySelector("#story-save");
 const storyDelete = document.querySelector("#story-delete");
+const storySettingsLoad = document.querySelector("#story-settings-load");
+const storySettingsSave = document.querySelector("#story-settings-save");
 const storyNewTitle = document.querySelector("#story-new-title");
 const storyCreate = document.querySelector("#story-create");
 const storyValidation = document.querySelector("#story-validation");
 const storyText = document.querySelector("#story-text");
+const storySettingsJson = document.querySelector("#story-settings-json");
 const storyGitWarning = document.querySelector("#story-git-warning");
 const storyGitStatus = document.querySelector("#story-git-status");
 const storyGitPull = document.querySelector("#story-git-pull");
@@ -407,6 +411,10 @@ const auxResourceImagePreview = document.querySelector("#aux-resource-image-prev
 auxResourceImagePreview.classList.add("fullscreen-image-trigger");
 const auxResourceSave = document.querySelector("#aux-resource-save");
 const auxResourceClear = document.querySelector("#aux-resource-clear");
+const auxResourceImageList = document.querySelector("#aux-resource-image-list");
+const auxResourceNewImage = document.querySelector("#aux-resource-new-image");
+const auxResourceImageLabel = document.querySelector("#aux-resource-image-label");
+const auxResourceSaveImage = document.querySelector("#aux-resource-save-image");
 const auxResourceTag = document.querySelector("#aux-resource-tag");
 const auxResourceCopyTag = document.querySelector("#aux-resource-copy-tag");
 const phaseComparisonStatus = document.querySelector("#phase-comparison-status");
@@ -640,16 +648,106 @@ function builderOptionHtml(name, selected = "") {
   return builderOptions(name).map((value) => `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
 }
 
+const SCENE_BUILDER_HELP = {
+  "scene.name": "Human-readable scene title.",
+  "scene.story_settings_path": "Path to the companion .story.json file containing story-wide art style, dialogue style, and compiler defaults.",
+  "scene.associated_png_path": "Path where the rendered image for this scene should be stored or found.",
+  "scene.story_beat": "One short sentence describing what emotionally or narratively happens in this scene.",
+  "scene.author_notes": "Private author notes. These are not automatically included in prompts unless explicitly compiled.",
+  "setup.canvas.orientation": "Image orientation: landscape, portrait, square, comic panel, or custom.",
+  "setup.canvas.aspect_ratio": "Target image shape such as 16:9, 4:5, 1:1, or custom.",
+  "setup.composition.template": "Reusable composition pattern, such as two character interaction, confrontation, establishing shot, or action scene.",
+  "setup.composition.grid.rows": "Number of planning rows in the invisible layout grid.",
+  "setup.composition.grid.columns": "Number of planning columns in the invisible layout grid.",
+  "setup.composition.primary_focal_point": "The main thing the viewer should notice first.",
+  "setup.composition.composition_notes": "Extra layout guidance that does not fit into a single field.",
+  "setup.camera.shot_type": "Camera framing: close-up, medium shot, full-body shot, wide shot, establishing shot, etc.",
+  "setup.camera.camera_height": "Camera height relative to subjects: low, eye-level, high, overhead.",
+  "setup.camera.camera_angle": "Camera angle: straight-on, slight upward angle, slight downward angle, over-the-shoulder, etc.",
+  "setup.camera.viewer_position": "Where the viewer/camera is positioned relative to the scene.",
+  "setup.camera.lens_feel": "Broad lens impression: normal, wide, compressed/telephoto.",
+  "setup.camera.focus_priority": "What the composition should prioritize: one character, two main characters, whole group, environment, or specific object.",
+  "setup.camera.notes": "Extra camera or framing notes.",
+  "setup.environment.location": "Where the scene takes place. Keep this visual and concrete.",
+  "setup.environment.lighting": "Lighting direction, quality, and color.",
+  "setup.environment.mood": "Emotional atmosphere conveyed by the image.",
+  "setup.environment.weather_or_atmosphere": "Weather, haze, smoke, dust, fresh air, magical glow, or similar environmental conditions.",
+  "setup.environment.important_exclusions": "Scene-level things that must not appear.",
+  "setup.environment.general_foreground_notes": "Foreground details that support the scene without needing individual elements.",
+  "setup.environment.general_background_notes": "Background details that support the scene without needing individual elements.",
+  "setup.style.art_style_override": "Scene-specific style override. Leave blank unless this scene intentionally differs from the story style.",
+  "setup.style.dialogue_style_id": "ID of the story dialogue style used by this scene.",
+  "setup.style.visual_continuity_override": "Scene-specific continuity note. Leave blank unless this scene intentionally contrasts with the story defaults.",
+  "scene_elements[].display_name": "Human-readable label shown in the UI and generated prompts.",
+  "scene_elements[].element_type": "Type of visible thing: Character, Monster, Prop, or Anchor.",
+  "scene_elements[].importance": "How important this element is visually: primary, secondary, background, or extra.",
+  "scene_elements[].reference_images[].tag": "Resolvable image reference tag used by Zet, such as {{ASSET:...}} or {{AUX:...}}.",
+  "scene_elements[].scene_visual_override": "Scene-specific visual override. Use only for temporary scene-specific changes.",
+  "scene_elements[].fallback_visual_description": "Short local visual description used only if no canonical source or reference is available.",
+  "scene_elements[].source_refs.identity_source": "Path to canonical identity file for a recurring character or identity-sensitive element.",
+  "scene_elements[].source_refs.costume_source": "Path to selected costume file for this scene.",
+  "scene_elements[].role": "Narrative or visual role in this scene, such as protagonist, threat, location anchor, offered object, or background feature.",
+  "scene_elements[].notes": "Private notes for this element in this scene.",
+  "placements[].screen_cell.row": "Planning grid row. Row 1 is the top row.",
+  "placements[].screen_cell.column": "Planning grid column. Column 1 is the leftmost column.",
+  "placements[].screen_cell.name": "Human-readable cell name, such as left, center, right, upper-left, or lower-center.",
+  "placements[].position_within_cell": "Position inside the grid cell: center, left, right, upper, lower, upper-left, etc.",
+  "placements[].depth": "Depth layer: foreground, midground, background, or distant background.",
+  "placements[].must_be_visible": "Whether this element must remain visibly readable in the final image.",
+  "placements[].visible_body_requirements": "Specific parts that must be visible, such as face, hands, boots, wings, book, or weapon.",
+  "placements[].pose.summary": "Concise pose summary.",
+  "placements[].pose.body_view": "Body orientation relative to camera, such as front, front-left 3/4, left profile, back-left 3/4, back.",
+  "placements[].pose.head_view": "Head orientation relative to camera or another element.",
+  "placements[].pose.gaze_target_element_id": "Element ID that this element is looking at.",
+  "placements[].pose.gaze_description": "Plain-language gaze instruction if the target ID alone is not enough.",
+  "placements[].pose.expression": "Facial expression or visible emotional state.",
+  "placements[].pose.left_hand_detail": "What the anatomical left hand is holding, touching, reaching for, or doing.",
+  "placements[].pose.right_hand_detail": "What the anatomical right hand is holding, touching, reaching for, or doing.",
+  "placements[].occlusion.occlusion_level": "How much this element is hidden by another element: none, partial, mostly hidden, behind foreground characters.",
+  "placements[].placement_notes": "Private notes about this placement.",
+  "interactions[].subject_element_id": "Element initiating or owning the interaction.",
+  "interactions[].action": "Action relationship, such as offers, attacks, protects, reaches toward, blocks, watches, or mutual eye contact.",
+  "interactions[].target_element_id": "Element receiving or targeted by the interaction.",
+  "interactions[].notes": "Private interaction notes.",
+  "dialogue[].speaker_element_id": "Element ID of the speaker.",
+  "dialogue[].text": "Exact dialogue text to render. Keep punctuation final.",
+  "dialogue[].tone": "How the line should feel emotionally.",
+  "dialogue[].target_element_id": "Who the dialogue is addressed to, if anyone.",
+  "dialogue[].include_in_final_image_prompt": "Whether this dialogue should be included in the final image prompt.",
+  "dialogue[].include_in_local_render": "Whether local preview renders should include this dialogue. Usually false.",
+  "dialogue[].panel_style_id": "Dialogue style ID from the story settings file.",
+  "dialogue[].preferred_screen_region": "Where the dialogue panel should go if possible.",
+  "dialogue[].pointer_target": "Where the dialogue pointer should aim, usually the speaker's mouth.",
+  "dialogue[].max_lines": "Maximum preferred number of wrapped text lines.",
+  "dialogue[].must_not_cover": "Faces, hands, props, or focal areas the panel must not cover.",
+  "dialogue[].notes": "Private dialogue notes.",
+  "render_settings.final_image_prompt.output_path": "Where to write the final image prompt markdown.",
+  "render_settings.local_render_brief.output_path": "Where to write the local render brief.",
+  "render_settings.local_render_prompt.output_path": "Where to write the local render prompt.",
+  "render_settings.scene_render_ir.output_path": "Where to write the normalized scene render IR for debugging.",
+};
+
+function builderHelpPath(path) {
+  return String(path || "").replace(/\.\d+(?=\.|$)/g, "[]");
+}
+
+function builderCaption(label, path) {
+  const helpPath = builderHelpPath(path);
+  const help = SCENE_BUILDER_HELP[helpPath];
+  const button = help ? `<button type="button" class="field-help-button" data-builder-help="${escapeHtml(helpPath)}" title="${escapeHtml(help)}">?</button>` : "";
+  return `<span class="field-caption"><span>${escapeHtml(label)}</span>${button}</span>`;
+}
+
 function builderField(path, label, optionsName = "", full = false, type = "text") {
   const value = getPathValue(state.sceneBuilder, path) ?? "";
   const className = full ? ' class="full"' : "";
   if (optionsName) {
-    return `<label${className}>${escapeHtml(label)}<select data-builder-field="${escapeHtml(path)}">${builderOptionHtml(optionsName, value)}</select></label>`;
+    return `<label${className}>${builderCaption(label, path)}<select data-builder-field="${escapeHtml(path)}">${builderOptionHtml(optionsName, value)}</select></label>`;
   }
   if (type === "textarea") {
-    return `<label${className}>${escapeHtml(label)}<textarea data-builder-field="${escapeHtml(path)}">${escapeHtml(value)}</textarea></label>`;
+    return `<label${className}>${builderCaption(label, path)}<textarea data-builder-field="${escapeHtml(path)}">${escapeHtml(value)}</textarea></label>`;
   }
-  return `<label${className}>${escapeHtml(label)}<input type="${type}" value="${escapeHtml(value)}" data-builder-field="${escapeHtml(path)}"></label>`;
+  return `<label${className}>${builderCaption(label, path)}<input type="${type}" value="${escapeHtml(value)}" data-builder-field="${escapeHtml(path)}"></label>`;
 }
 
 function closeFullscreenImage() {
@@ -2190,8 +2288,13 @@ function clearStoryEditor() {
   state.storyDetail = null;
   storyEditorTitle.textContent = "Select a story";
   storyText.value = "";
+  storySettingsJson.value = "";
+  storySettingsJson.hidden = true;
+  storyText.hidden = false;
   storySave.disabled = true;
   storyDelete.disabled = true;
+  storySettingsLoad.disabled = true;
+  storySettingsSave.disabled = true;
   renderValidationBox(storyValidation, [], "Create or select a story to edit its markdown.");
 }
 
@@ -2209,8 +2312,12 @@ async function loadStoryDetail(storySlug) {
     renderStoryTable();
     storyEditorTitle.textContent = state.storyDetail?.story?.title || "Story";
     storyText.value = state.storyDetail?.text || "";
+    storySettingsJson.hidden = true;
+    storyText.hidden = false;
     storySave.disabled = !state.storyDetail;
     storyDelete.disabled = !state.storyDetail;
+    storySettingsLoad.disabled = !state.storyDetail;
+    storySettingsSave.disabled = true;
     renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
   } catch (error) {
     clearStoryEditor();
@@ -2254,6 +2361,8 @@ async function createStory() {
       storyText.value = state.storyDetail.text || "";
       storySave.disabled = false;
       storyDelete.disabled = false;
+      storySettingsLoad.disabled = false;
+      storySettingsSave.disabled = true;
       renderValidationBox(storyValidation, state.storyDetail.validation_errors || [], "Story markdown is valid.");
     }
     showStoryMessage(payload.message || "Story created.");
@@ -2290,6 +2399,43 @@ async function saveStory() {
     showStoryMessage(error.message, "error");
   } finally {
     storySave.disabled = false;
+  }
+}
+
+async function loadStorySettings() {
+  if (!state.selectedStorySlug) {
+    showStoryMessage("Select a story first.", "error");
+    return;
+  }
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/settings`);
+    storySettingsJson.value = JSON.stringify(payload.data || {}, null, 2);
+    storyText.hidden = true;
+    storySettingsJson.hidden = false;
+    storySettingsSave.disabled = false;
+    showStoryMessage("Story settings loaded.");
+  } catch (error) {
+    showStoryMessage(error.message, "error");
+  }
+}
+
+async function saveStorySettings() {
+  if (!state.selectedStorySlug) {
+    showStoryMessage("Select a story first.", "error");
+    return;
+  }
+  try {
+    const data = JSON.parse(storySettingsJson.value || "{}");
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    storySettingsJson.value = JSON.stringify(payload.data || data, null, 2);
+    updateStoryGitWarning(payload.has_story_changes);
+    showStoryMessage(payload.message || "Story settings saved.", "success");
+  } catch (error) {
+    showStoryMessage(error.message, "error");
   }
 }
 
@@ -2595,18 +2741,8 @@ async function stageSceneRender() {
   sceneStageRender.disabled = true;
   sceneSave.disabled = true;
   sceneBuilderOpen.disabled = true;
-  showSceneMessage("Saving and staging scene render...");
+  showSceneMessage("Staging scene render...");
   try {
-    const savePayload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/markdown; charset=utf-8" },
-      body: sceneText.value || "",
-    });
-    state.scenes = savePayload.scenes || state.scenes;
-    updateStoryGitWarning(savePayload.has_story_changes);
-    state.sceneDetail = savePayload.document || state.sceneDetail;
-    renderSceneTable();
-    renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
     const payload = await fetchJson(
       `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/stage-render`,
       { method: "POST" },
@@ -2696,6 +2832,11 @@ function builderElementOptions(selected = "") {
   }).join("");
 }
 
+function builderElementLabel(elementId) {
+  const element = (state.sceneBuilder?.scene_elements || []).find((item) => item.id === elementId);
+  return element?.display_name || elementId || "";
+}
+
 function builderSyncControls() {
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
@@ -2718,7 +2859,11 @@ function builderSyncControls() {
           if (interaction.target_element_id === oldId) interaction.target_element_id = control.value;
         }
       } else {
-        element[field] = control.value;
+        if (field.includes(".")) {
+          setPathValue(element, field, control.value);
+        } else {
+          element[field] = control.value;
+        }
       }
     }
   }
@@ -2726,6 +2871,21 @@ function builderSyncControls() {
     const interaction = state.sceneBuilder.interactions[Number(control.dataset.builderInteraction)];
     if (interaction) {
       interaction[control.dataset.builderInteractionField] = control.value;
+    }
+  }
+  for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-dialogue]")) {
+    const dialogue = state.sceneBuilder.dialogue[Number(control.dataset.builderDialogue)];
+    if (dialogue) {
+      const field = control.dataset.builderDialogueField;
+      if (field === "include_in_final_image_prompt" || field === "include_in_local_render") {
+        dialogue[field] = control.value === "true";
+      } else if (field === "max_lines") {
+        dialogue[field] = Number(control.value || 0);
+      } else if (field === "must_not_cover") {
+        dialogue[field] = control.value.split(",").map((item) => item.trim()).filter(Boolean);
+      } else {
+        dialogue[field] = control.value;
+      }
     }
   }
   const exclusions = sceneBuilderPanel.querySelector("#builder-important-exclusions");
@@ -2742,6 +2902,12 @@ function builderSyncControls() {
       } else if (field === "screen_cell.name") {
         placement.screen_cell = placement.screen_cell || {};
         placement.screen_cell.name = control.value;
+      } else if (field === "must_be_visible") {
+        placement.must_be_visible = control.value === "true";
+      } else if (field === "visible_body_requirements") {
+        placement.visible_body_requirements = control.value.split(",").map((item) => item.trim()).filter(Boolean);
+      } else if (field.includes(".")) {
+        setPathValue(placement, field, control.type === "number" ? Number(control.value || 0) : control.value);
       } else {
         placement[field] = control.type === "number" ? Number(control.value || 0) : control.value;
       }
@@ -2770,15 +2936,14 @@ function builderCreatePlacementForElement(element) {
     screen_cell: { row: cell.row, column: cell.column, name: builderCellName(rows, columns, cell.row, cell.column) },
     position_within_cell: "center",
     depth: element.element_type === "Anchor" ? "background" : "midground",
-    size_prominence: "medium",
-    pose: "",
-    body_facing: "toward center",
-    head_facing: "",
-    gaze_target_element_id: "",
-    gaze_target_description: "",
-    expression: "",
-    interaction_target_element_id: "",
-    occlusion: "none",
+    z_order: 10,
+    frame_coverage: "",
+    distance_from_camera: "",
+    visual_scale: "",
+    must_be_visible: true,
+    visible_body_requirements: [],
+    pose: { summary: "", temporary_condition: "", body_view: "", head_view: "", action_direction_screen: "", gaze_target_element_id: "", gaze_description: "", expression: "", left_arm_action: "", right_arm_action: "", left_hand_detail: "", right_hand_detail: "", leg_foot_detail: "", balance_weight_detail: "" },
+    occlusion: { occlusion_level: "none", must_not_occlude: [], notes: "" },
     placement_notes: "",
   };
 }
@@ -2790,9 +2955,10 @@ function builderAddElement() {
     id,
     display_name: "New Element",
     element_type: "Character",
-    image_tag: "",
-    identity_prompt: "",
-    default_visual_description: "",
+    source_refs: { identity_source: "", costume_source: "", location_source: "", monster_source: "", prop_source: "" },
+    reference_images: [],
+    scene_visual_override: "",
+    fallback_visual_description: "",
     role: "",
     importance: "secondary",
     notes: "",
@@ -2818,6 +2984,35 @@ function builderRemoveSelectedElement() {
   state.sceneBuilder.placements = (state.sceneBuilder.placements || []).filter((item) => item.scene_element_id !== element.id);
   state.sceneBuilder.interactions = (state.sceneBuilder.interactions || []).filter((item) => item.subject_element_id !== element.id && item.target_element_id !== element.id);
   state.selectedBuilderElementId = state.sceneBuilder.scene_elements[0]?.id || null;
+  state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+  renderSceneBuilder();
+}
+
+function builderDuplicateSelectedElement() {
+  const element = builderSelectedElement();
+  if (!element) return;
+  const copy = JSON.parse(JSON.stringify(element));
+  copy.id = `${element.id || "element"}_copy_${Date.now()}`;
+  copy.display_name = `${element.display_name || element.id || "Element"} Copy`;
+  state.sceneBuilder.scene_elements.push(copy);
+  state.selectedBuilderElementId = copy.id;
+  state.selectedBuilderPlacementId = null;
+  renderSceneBuilder();
+}
+
+function builderAddPlacement() {
+  const element = builderSelectedElement();
+  if (!element) return;
+  const placement = builderCreatePlacementForElement(element);
+  state.sceneBuilder.placements.push(placement);
+  state.selectedBuilderPlacementId = placement.id;
+  renderSceneBuilder();
+}
+
+function builderDeletePlacement() {
+  const placement = builderSelectedPlacement();
+  if (!placement) return;
+  state.sceneBuilder.placements = (state.sceneBuilder.placements || []).filter((item) => item.id !== placement.id);
   state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
   renderSceneBuilder();
 }
@@ -2861,14 +3056,40 @@ function builderAddInteraction() {
   renderSceneBuilder();
 }
 
+function builderAddDialogue() {
+  state.sceneBuilder.dialogue = state.sceneBuilder.dialogue || [];
+  const selectedElement = builderSelectedElement();
+  state.sceneBuilder.dialogue.push({
+    id: `dialogue_${Date.now()}`,
+    speaker_element_id: selectedElement?.id || "",
+    text: "",
+    tone: "",
+    target_element_id: "",
+    include_in_final_image_prompt: true,
+    include_in_local_render: false,
+    panel_style_id: state.sceneBuilder.setup?.style?.dialogue_style_id || "compact_parchment",
+    preferred_screen_region: "",
+    pointer_target: "speaker mouth",
+    max_lines: 3,
+    must_not_cover: ["faces", "hands", "important props"],
+    notes: "",
+  });
+  renderSceneBuilder();
+}
+
+function builderDeleteDialogue(index) {
+  state.sceneBuilder.dialogue = (state.sceneBuilder.dialogue || []).filter((_, itemIndex) => itemIndex !== index);
+  renderSceneBuilder();
+}
+
 function builderRenderElements() {
   const rows = (state.sceneBuilder.scene_elements || []).map((element) => {
     const placed = (state.sceneBuilder.placements || []).some((placement) => placement.scene_element_id === element.id);
-    const tag = element.image_tag ? "tag" : "";
+    const placementCount = (state.sceneBuilder.placements || []).filter((placement) => placement.scene_element_id === element.id).length;
     return `
       <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}">
         <span>${escapeHtml(element.display_name || element.id || "")}</span>
-        <small>${escapeHtml(element.element_type || "")} / ${escapeHtml(element.importance || "")}${placed ? " / placed" : ""}${tag ? " / tag" : ""}</small>
+        <small>${escapeHtml(element.element_type || "")} | ${escapeHtml(element.importance || "")} | ${placementCount} placement(s)</small>
       </button>
     `;
   }).join("");
@@ -2878,6 +3099,9 @@ function builderRenderElements() {
       <div class="button-row compact">
         <button type="button" data-builder-action="add-element">Add Element</button>
         <button type="button" data-builder-action="delete-element">Delete Selected</button>
+        <button type="button" data-builder-action="duplicate-element">Duplicate</button>
+        <button type="button" data-builder-action="add-placement">Add Placement</button>
+        <button type="button" data-builder-action="delete-placement">Delete Placement</button>
       </div>
       <div class="scene-builder-element-list">${rows || "<p>No elements have been added yet.</p>"}</div>
     </div>
@@ -2893,14 +3117,16 @@ function builderRenderElementEditor() {
     <div class="scene-builder-card">
       <h4>Selected Element</h4>
       <div class="scene-builder-fields">
-        <label>Display name<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
-        <label>Type<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Anchor"${element.element_type === "Anchor" ? " selected" : ""}>Anchor</option></select></label>
-        <label>Importance<select data-builder-element-field="importance">${builderOptionHtml("importance", element.importance || "secondary")}</select></label>
-        <label class="full">Image tag<span class="inline-field"><input value="${escapeHtml(element.image_tag || "")}" data-builder-element-field="image_tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label>
-        <label class="full">Identity prompt<textarea data-builder-element-field="identity_prompt">${escapeHtml(element.identity_prompt || "")}</textarea></label>
-        <label class="full">Default visual description<textarea data-builder-element-field="default_visual_description">${escapeHtml(element.default_visual_description || "")}</textarea></label>
-        <label>Role<input value="${escapeHtml(element.role || "")}" data-builder-element-field="role"></label>
-        <label class="full">Notes<textarea data-builder-element-field="notes">${escapeHtml(element.notes || "")}</textarea></label>
+        <label>${builderCaption("Display name", "scene_elements[].display_name")}<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
+        <label>${builderCaption("Type", "scene_elements[].element_type")}<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Anchor"${element.element_type === "Anchor" ? " selected" : ""}>Anchor</option></select></label>
+        <label>${builderCaption("Importance", "scene_elements[].importance")}<select data-builder-element-field="importance">${builderOptionHtml("importance", element.importance || "secondary")}</select></label>
+        <label class="full">${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(element.reference_images?.[0]?.tag || "")}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label>
+        <label class="full">${builderCaption("Scene visual override", "scene_elements[].scene_visual_override")}<textarea data-builder-element-field="scene_visual_override">${escapeHtml(element.scene_visual_override || "")}</textarea></label>
+        <label class="full">${builderCaption("Fallback visual description", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
+        <label class="full">${builderCaption("Identity source", "scene_elements[].source_refs.identity_source")}<input value="${escapeHtml(element.source_refs?.identity_source || "")}" data-builder-element-field="source_refs.identity_source"></label>
+        <label class="full">${builderCaption("Costume/source", "scene_elements[].source_refs.costume_source")}<input value="${escapeHtml(element.source_refs?.costume_source || element.source_refs?.location_source || element.source_refs?.prop_source || "")}" data-builder-element-field="source_refs.costume_source"></label>
+        <label>${builderCaption("Role", "scene_elements[].role")}<input value="${escapeHtml(element.role || "")}" data-builder-element-field="role"></label>
+        <label class="full">${builderCaption("Notes", "scene_elements[].notes")}<textarea data-builder-element-field="notes">${escapeHtml(element.notes || "")}</textarea></label>
       </div>
     </div>
   `;
@@ -2943,24 +3169,60 @@ function builderRenderPlacementEditor() {
     <div class="scene-builder-card">
       <h4>Selected Placement</h4>
       <div class="scene-builder-fields">
-        <label>Row<input type="number" min="1" value="${escapeHtml(cell.row || 1)}" data-builder-placement-field="row"></label>
-        <label>Column<input type="number" min="1" value="${escapeHtml(cell.column || 1)}" data-builder-placement-field="column"></label>
-        <label class="full">Cell name<input value="${escapeHtml(cell.name || "")}" data-builder-placement-field="screen_cell.name"></label>
-        <label>Position<select data-builder-placement-field="position_within_cell">${builderOptionHtml("position_within_cell", placement.position_within_cell || "center")}</select></label>
-        <label>Depth<select data-builder-placement-field="depth">${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
-        <label>Size<select data-builder-placement-field="size_prominence">${builderOptionHtml("size_prominence", placement.size_prominence || "medium")}</select></label>
+        <label>${builderCaption("Row", "placements[].screen_cell.row")}<input type="number" min="1" value="${escapeHtml(cell.row || 1)}" data-builder-placement-field="row"></label>
+        <label>${builderCaption("Column", "placements[].screen_cell.column")}<input type="number" min="1" value="${escapeHtml(cell.column || 1)}" data-builder-placement-field="column"></label>
+        <label class="full">${builderCaption("Cell name", "placements[].screen_cell.name")}<input value="${escapeHtml(cell.name || "")}" data-builder-placement-field="screen_cell.name"></label>
+        <label>${builderCaption("Position", "placements[].position_within_cell")}<select data-builder-placement-field="position_within_cell">${builderOptionHtml("position_within_cell", placement.position_within_cell || "center")}</select></label>
+        <label>${builderCaption("Depth", "placements[].depth")}<select data-builder-placement-field="depth">${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
+        <label>${builderCaption("Must be visible", "placements[].must_be_visible")}<select data-builder-placement-field="must_be_visible"><option value="true"${placement.must_be_visible !== false ? " selected" : ""}>true</option><option value="false"${placement.must_be_visible === false ? " selected" : ""}>false</option></select></label>
+        <label class="full">${builderCaption("Visible requirements", "placements[].visible_body_requirements")}<input value="${escapeHtml((placement.visible_body_requirements || []).join(", "))}" data-builder-placement-field="visible_body_requirements"></label>
         ${showActing ? `
-          <label class="full">Pose<input list="builder-pose-list" value="${escapeHtml(placement.pose || "")}" data-builder-placement-field="pose"></label>
-          <label>Body facing<select data-builder-placement-field="body_facing">${builderOptionHtml("facing", placement.body_facing || "")}</select></label>
-          <label>Head facing<input value="${escapeHtml(placement.head_facing || "")}" data-builder-placement-field="head_facing"></label>
-          <label>Gaze target<select data-builder-placement-field="gaze_target_element_id">${builderElementOptions(placement.gaze_target_element_id || "")}</select></label>
-          <label class="full">Gaze description<input list="builder-gaze-list" value="${escapeHtml(placement.gaze_target_description || "")}" data-builder-placement-field="gaze_target_description"></label>
-          <label>Expression<input list="builder-expression-list" value="${escapeHtml(placement.expression || "")}" data-builder-placement-field="expression"></label>
-          <label>Interaction target<select data-builder-placement-field="interaction_target_element_id">${builderElementOptions(placement.interaction_target_element_id || "")}</select></label>
+          <label class="full">${builderCaption("Pose", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"></label>
+          <label>${builderCaption("Body view", "placements[].pose.body_view")}<input value="${escapeHtml(placement.pose?.body_view || "")}" data-builder-placement-field="pose.body_view"></label>
+          <label>${builderCaption("Head view", "placements[].pose.head_view")}<input value="${escapeHtml(placement.pose?.head_view || "")}" data-builder-placement-field="pose.head_view"></label>
+          <label>${builderCaption("Gaze target", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id">${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>
+          <label class="full">${builderCaption("Gaze description", "placements[].pose.gaze_description")}<input list="builder-gaze-list" value="${escapeHtml(placement.pose?.gaze_description || "")}" data-builder-placement-field="pose.gaze_description"></label>
+          <label>${builderCaption("Expression", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"></label>
+          <label>${builderCaption("Left hand", "placements[].pose.left_hand_detail")}<input value="${escapeHtml(placement.pose?.left_hand_detail || "")}" data-builder-placement-field="pose.left_hand_detail"></label>
+          <label>${builderCaption("Right hand", "placements[].pose.right_hand_detail")}<input value="${escapeHtml(placement.pose?.right_hand_detail || "")}" data-builder-placement-field="pose.right_hand_detail"></label>
         ` : ""}
-        <label>Occlusion<input value="${escapeHtml(placement.occlusion || "")}" data-builder-placement-field="occlusion"></label>
-        <label class="full">Notes<textarea data-builder-placement-field="placement_notes">${escapeHtml(placement.placement_notes || "")}</textarea></label>
+        <label>${builderCaption("Occlusion", "placements[].occlusion.occlusion_level")}<input value="${escapeHtml(placement.occlusion?.occlusion_level || "")}" data-builder-placement-field="occlusion.occlusion_level"></label>
+        <label class="full">${builderCaption("Notes", "placements[].placement_notes")}<textarea data-builder-placement-field="placement_notes">${escapeHtml(placement.placement_notes || "")}</textarea></label>
       </div>
+    </div>
+  `;
+}
+
+function builderRenderDialogueEditor() {
+  const rows = (state.sceneBuilder.dialogue || []).map((dialogue, index) => `
+    <div class="scene-builder-dialogue-entry">
+      <div class="review-header">
+        <h4>Dialogue ${index + 1}</h4>
+        <button type="button" data-builder-action="delete-dialogue" data-builder-dialogue-index="${index}">Delete</button>
+      </div>
+      <div class="scene-builder-fields">
+        <label>${builderCaption("Speaker", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderElementOptions(dialogue.speaker_element_id || "")}</select></label>
+        <label>${builderCaption("Target", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderElementOptions(dialogue.target_element_id || "")}</select></label>
+        <label class="full">${builderCaption("Text", "dialogue[].text")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="text">${escapeHtml(dialogue.text || "")}</textarea></label>
+        <label>${builderCaption("Tone", "dialogue[].tone")}<input value="${escapeHtml(dialogue.tone || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="tone"></label>
+        <label>${builderCaption("Panel style", "dialogue[].panel_style_id")}<input value="${escapeHtml(dialogue.panel_style_id || state.sceneBuilder.setup?.style?.dialogue_style_id || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="panel_style_id"></label>
+        <label>${builderCaption("Final prompt", "dialogue[].include_in_final_image_prompt")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="include_in_final_image_prompt"><option value="true"${dialogue.include_in_final_image_prompt !== false ? " selected" : ""}>true</option><option value="false"${dialogue.include_in_final_image_prompt === false ? " selected" : ""}>false</option></select></label>
+        <label>${builderCaption("Local render", "dialogue[].include_in_local_render")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="include_in_local_render"><option value="false"${dialogue.include_in_local_render !== true ? " selected" : ""}>false</option><option value="true"${dialogue.include_in_local_render === true ? " selected" : ""}>true</option></select></label>
+        <label>${builderCaption("Preferred region", "dialogue[].preferred_screen_region")}<input value="${escapeHtml(dialogue.preferred_screen_region || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="preferred_screen_region"></label>
+        <label>${builderCaption("Pointer target", "dialogue[].pointer_target")}<input value="${escapeHtml(dialogue.pointer_target || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="pointer_target"></label>
+        <label>${builderCaption("Max lines", "dialogue[].max_lines")}<input type="number" min="1" value="${escapeHtml(dialogue.max_lines || 3)}" data-builder-dialogue="${index}" data-builder-dialogue-field="max_lines"></label>
+        <label class="full">${builderCaption("Must not cover", "dialogue[].must_not_cover")}<input value="${escapeHtml((dialogue.must_not_cover || []).join(", "))}" data-builder-dialogue="${index}" data-builder-dialogue-field="must_not_cover"></label>
+        <label class="full">${builderCaption("Notes", "dialogue[].notes")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="notes">${escapeHtml(dialogue.notes || "")}</textarea></label>
+      </div>
+    </div>
+  `).join("");
+  return `
+    <div class="scene-builder-card">
+      <div class="review-header">
+        <h4>Dialogue</h4>
+        <button type="button" data-builder-action="add-dialogue">Add Dialogue</button>
+      </div>
+      ${rows || "<p>No dialogue entries.</p>"}
     </div>
   `;
 }
@@ -2975,7 +3237,7 @@ function builderRenderEnvironment() {
         ${builderField("setup.environment.lighting", "Lighting")}
         ${builderField("setup.environment.mood", "Mood")}
         ${builderField("setup.environment.weather_or_atmosphere", "Weather/Atmosphere", "", true)}
-        <label class="full">Important exclusions<input id="builder-important-exclusions" value="${escapeHtml((environment.important_exclusions || []).join(", "))}"></label>
+        <label class="full">${builderCaption("Important exclusions", "setup.environment.important_exclusions")}<input id="builder-important-exclusions" value="${escapeHtml((environment.important_exclusions || []).join(", "))}"></label>
         ${builderField("setup.environment.general_foreground_notes", "General foreground notes", "", true, "textarea")}
         ${builderField("setup.environment.general_background_notes", "General background notes", "", true, "textarea")}
       </div>
@@ -2996,25 +3258,23 @@ function builderRenderInteractions() {
     <div class="scene-builder-card">
       <h4>Interactions</h4>
       <button type="button" data-builder-action="add-interaction">Add Interaction</button>
-      <table class="scene-builder-table"><thead><tr><th>subject</th><th>relationship</th><th>target</th><th>note</th></tr></thead><tbody>${interactions}</tbody></table>
+      <table class="scene-builder-table"><thead><tr><th>${builderCaption("subject", "interactions[].subject_element_id")}</th><th>${builderCaption("relationship", "interactions[].action")}</th><th>${builderCaption("target", "interactions[].target_element_id")}</th><th>${builderCaption("note", "interactions[].notes")}</th></tr></thead><tbody>${interactions}</tbody></table>
     </div>
   `;
 }
 
 function builderRenderOutputs() {
-  const outputs = state.sceneBuilder.generation_outputs || {};
-  const warnings = outputs.validation_warnings || [];
+  const warnings = state.sceneBuilder._validation_warnings || [];
   return `
     <div class="scene-builder-card">
-      <h4>Generate</h4>
+      <h4>Render Settings / Validation</h4>
       <div class="button-row compact">
-        <button type="button" data-builder-action="generate">Generate</button>
         <button type="button" data-builder-action="save">Save JSON</button>
-        <button type="button" data-builder-action="export">Export Markdown</button>
       </div>
-      <label class="full">Scene Brief<textarea class="scene-builder-output" data-builder-field="generation_outputs.scene_brief">${escapeHtml(outputs.scene_brief || "")}</textarea></label>
-      <label class="full">Positive Prompt<textarea class="scene-builder-output" data-builder-field="generation_outputs.positive_prompt">${escapeHtml(outputs.positive_prompt || "")}</textarea></label>
-      <label class="full">Negative Prompt<textarea class="scene-builder-output" data-builder-field="generation_outputs.negative_prompt">${escapeHtml(outputs.negative_prompt || "")}</textarea></label>
+      ${builderField("render_settings.final_image_prompt.output_path", "Final prompt path", "", true)}
+      ${builderField("render_settings.scene_render_ir.output_path", "Scene IR path", "", true)}
+      ${builderField("render_settings.local_render_brief.output_path", "Local brief path", "", true)}
+      ${builderField("render_settings.local_render_prompt.output_path", "Local prompt path", "", true)}
       <div><strong>Validation Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("") || "<li>None</li>"}</ul></div>
       <label class="full">JSON Preview<textarea class="scene-builder-output" readonly>${escapeHtml(JSON.stringify(state.sceneBuilder, null, 2))}</textarea></label>
     </div>
@@ -3039,8 +3299,8 @@ function renderSceneBuilder() {
     ${builderRenderDatalists()}
     <div class="scene-builder-toolbar">
       <strong>Scene Builder</strong>
-      <span>${escapeHtml(basename(state.sceneBuilder?.scene?.associated_md_path || ""))}</span>
-      <span>JSON: ${escapeHtml(basename(state.sceneBuilder?.scene?.associated_md_path || "").replace(/\.md$/i, ".json"))}</span>
+      <span>${escapeHtml(state.sceneBuilder?.scene?.name || "")}</span>
+      <span>${escapeHtml(state.sceneBuilder?.scene?.slug || "")}.scene.json</span>
       <button type="button" data-builder-action="return-scenes">Back to Scene</button>
     </div>
     <div class="scene-builder-grid">
@@ -3048,9 +3308,10 @@ function renderSceneBuilder() {
         <h3>Setup</h3>
         <div class="scene-builder-fields">
           ${builderField("scene.name", "Scene name", "", true)}
-          ${builderField("scene.associated_md_path", "Associated .md path", "", true)}
+          ${builderField("scene.story_settings_path", "Story settings path", "", true)}
           ${builderField("scene.associated_png_path", "Associated .png path", "", true)}
-          ${builderField("scene.notes", "Notes", "", true, "textarea")}
+          ${builderField("scene.story_beat", "Story beat", "", true, "textarea")}
+          ${builderField("scene.author_notes", "Notes", "", true, "textarea")}
         </div>
         <h3>Composition</h3>
         <div class="scene-builder-fields">
@@ -3074,6 +3335,12 @@ function renderSceneBuilder() {
         </div>
         <h3>Environment</h3>
         ${builderRenderEnvironment()}
+        <h3>Style</h3>
+        <div class="scene-builder-fields">
+          ${builderField("setup.style.art_style_override", "Art style override", "", true, "textarea")}
+          ${builderField("setup.style.dialogue_style_id", "Dialogue style ID")}
+          ${builderField("setup.style.visual_continuity_override", "Continuity override", "", true, "textarea")}
+        </div>
       </section>
       <section class="scene-builder-section">
         <h3>Grid Preview</h3>
@@ -3084,11 +3351,12 @@ function renderSceneBuilder() {
         ${builderRenderGrid()}
         <div class="scene-builder-card">
           <h4>Depth Lanes</h4>
-          <p><strong>Foreground:</strong> ${(lanes.foreground || []).map(escapeHtml).join(", ") || "None"}</p>
-          <p><strong>Midground:</strong> ${(lanes.midground || []).map(escapeHtml).join(", ") || "None"}</p>
-          <p><strong>Background:</strong> ${(lanes.background || []).map(escapeHtml).join(", ") || "None"}</p>
+          <p><strong>Foreground:</strong> ${(lanes.foreground || []).map((id) => escapeHtml(builderElementLabel(id))).join(", ") || "None"}</p>
+          <p><strong>Midground:</strong> ${(lanes.midground || []).map((id) => escapeHtml(builderElementLabel(id))).join(", ") || "None"}</p>
+          <p><strong>Background:</strong> ${(lanes.background || []).map((id) => escapeHtml(builderElementLabel(id))).join(", ") || "None"}</p>
         </div>
         ${builderRenderPlacementEditor()}
+        ${builderRenderDialogueEditor()}
       </section>
       <section class="scene-builder-section">
         ${builderRenderElements()}
@@ -3211,6 +3479,14 @@ sceneBuilderPanel.addEventListener("input", () => {
 });
 sceneBuilderPanel.addEventListener("change", builderApplyChange);
 sceneBuilderPanel.addEventListener("click", (event) => {
+  const helpTarget = event.target.closest("[data-builder-help]");
+  if (helpTarget) {
+    event.preventDefault();
+    event.stopPropagation();
+    const path = helpTarget.dataset.builderHelp || "";
+    window.alert(SCENE_BUILDER_HELP[path] || "No help text is available for this field.");
+    return;
+  }
   const target = event.target.closest("[data-builder-action], [data-builder-cell-row], [data-builder-select-placement], [data-builder-select-element]");
   if (!target) {
     return;
@@ -3237,13 +3513,17 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     const action = target.dataset.builderAction;
     if (action === "return-scenes") returnToScenesFromBuilder();
     if (action === "add-element") builderAddElement();
+    if (action === "duplicate-element") builderDuplicateSelectedElement();
+    if (action === "add-placement") builderAddPlacement();
+    if (action === "delete-placement") builderDeletePlacement();
     if (action === "place-element") builderPlaceSelectedElement();
     if (action === "delete-element") builderRemoveSelectedElement();
     if (action === "pick-image-tag") openBuilderImagePicker();
     if (action === "add-anchor") builderAddAnchor();
     if (action === "add-interaction") builderAddInteraction();
+    if (action === "add-dialogue") builderAddDialogue();
+    if (action === "delete-dialogue") builderDeleteDialogue(Number(target.dataset.builderDialogueIndex));
     if (action === "save") saveSceneBuilder(false);
-    if (action === "generate") generateSceneBuilder();
     if (action === "export") exportSceneBuilderMarkdown();
   }
 });
@@ -3321,7 +3601,9 @@ const builderImagePicker = {
       return;
     }
     await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
-    element.image_tag = item.tag || "";
+    element.reference_images = element.reference_images || [];
+    element.reference_images[0] = element.reference_images[0] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
+    element.reference_images[0].tag = item.tag || "";
     builderImagePickerModal.hidden = true;
     renderSceneBuilder();
     showSceneBuilderMessage(`Selected ${item.tag || "image tag"}.`, "success");
@@ -3353,16 +3635,21 @@ function updateAuxiliaryResourceCategoryDisplay() {
 
 function clearAuxiliaryResourceForm() {
   state.selectedAuxiliaryResourceId = null;
+  state.selectedAuxiliaryImageId = null;
   state.auxiliaryResourceImageBlob = null;
   updateAuxiliaryResourceCategoryDisplay();
   auxResourceFormTitle.textContent = "Add Resource";
   auxResourceLabel.value = "";
+  auxResourceImageLabel.value = "";
   auxResourceTag.textContent = "";
   auxResourceCopyTag.disabled = true;
   auxResourceImagePreview.hidden = true;
   auxResourceImagePreview.removeAttribute("src");
   auxResourceSave.textContent = "Save Resource";
+  auxResourceSaveImage.textContent = "Save Image";
+  auxResourceSaveImage.disabled = true;
   auxResourceFileInput.value = "";
+  renderAuxiliaryResourceImages(null);
   for (const row of auxResourceTableBody.querySelectorAll("tr")) {
     row.classList.remove("selected");
   }
@@ -3376,6 +3663,7 @@ function setAuxiliaryResourceImageSelection(blob) {
   state.auxiliaryResourceImageBlob = blob;
   auxResourceImagePreview.src = URL.createObjectURL(blob);
   auxResourceImagePreview.hidden = false;
+  auxResourceSaveImage.disabled = !state.selectedAuxiliaryResourceId;
   showAuxResourceMessage(`Ready to save ${Math.round(blob.size / 1024)} KB image.`);
 }
 
@@ -3414,29 +3702,11 @@ function renderAuxiliaryResourceTable() {
     const row = document.createElement("tr");
     row.dataset.resourceId = resource.resource_id;
     row.classList.toggle("selected", resource.resource_id === state.selectedAuxiliaryResourceId);
-    const imageCell = document.createElement("td");
-    imageCell.className = "aux-thumbnail-cell";
-    if (resource.image_path) {
-      const image = document.createElement("img");
-      image.className = "aux-resource-thumb";
-      image.alt = resource.label || resource.resource_id;
-      image.src = fileUrl(resource.image_path, resource.updated_at || "");
-      imageCell.append(image);
-    }
     const labelCell = document.createElement("td");
     labelCell.textContent = resource.label || "";
-    const tagCell = document.createElement("td");
-    tagCell.textContent = resource.tag || "";
-    const actionCell = document.createElement("td");
-    const copyButton = document.createElement("button");
-    copyButton.type = "button";
-    copyButton.textContent = "Copy";
-    copyButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      copyText(resource.tag || "", "Resource tag copied.");
-    });
-    actionCell.append(copyButton);
-    row.append(imageCell, labelCell, tagCell, actionCell);
+    const folderCell = document.createElement("td");
+    folderCell.textContent = resource.resource_id || "";
+    row.append(labelCell, folderCell);
     row.addEventListener("click", () => selectAuxiliaryResource(resource.resource_id));
     auxResourceTableBody.append(row);
   }
@@ -3455,16 +3725,90 @@ function selectAuxiliaryResource(resourceId) {
     return;
   }
   state.selectedAuxiliaryResourceId = resource.resource_id;
+  state.selectedAuxiliaryImageId = null;
   state.auxiliaryResourceImageBlob = null;
   updateAuxiliaryResourceCategoryDisplay();
   auxResourceFormTitle.textContent = "Update Resource";
   auxResourceLabel.value = resource.label || "";
-  auxResourceTag.textContent = resource.tag || "";
-  auxResourceCopyTag.disabled = !resource.tag;
   auxResourceSave.textContent = "Update Resource";
-  auxResourceImagePreview.src = fileUrl(resource.image_path, resource.updated_at || "");
-  auxResourceImagePreview.hidden = !resource.image_path;
+  auxResourceImageLabel.value = "";
+  auxResourceTag.textContent = "";
+  auxResourceCopyTag.disabled = true;
+  auxResourceImagePreview.hidden = true;
+  auxResourceImagePreview.removeAttribute("src");
+  auxResourceSaveImage.textContent = "Save Image";
+  auxResourceSaveImage.disabled = false;
+  auxResourceFileInput.value = "";
+  renderAuxiliaryResourceImages(resource);
   renderAuxiliaryResourceTable();
+}
+
+function renderAuxiliaryResourceImages(resource) {
+  auxResourceImageList.replaceChildren();
+  const images = resource?.images || [];
+  if (!images.length) {
+    auxResourceImageList.textContent = "No images.";
+    return;
+  }
+  for (const imageRecord of images) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "aux-resource-image-row";
+    button.classList.toggle("selected", imageRecord.image_id === state.selectedAuxiliaryImageId);
+    const thumb = document.createElement("img");
+    thumb.className = "aux-resource-thumb";
+    thumb.alt = imageRecord.label || imageRecord.image_id || "";
+    thumb.src = fileUrl(imageRecord.image_path, imageRecord.updated_at || "");
+    const label = document.createElement("span");
+    label.textContent = imageRecord.label || imageRecord.image_id || "";
+    const copy = document.createElement("span");
+    copy.textContent = "Select";
+    button.append(thumb, label, copy);
+    button.addEventListener("click", () => selectAuxiliaryResourceImage(imageRecord.image_id));
+    auxResourceImageList.append(button);
+  }
+}
+
+function selectedAuxiliaryResource() {
+  return state.auxiliaryResources.find((item) => item.resource_id === state.selectedAuxiliaryResourceId) || null;
+}
+
+function selectedAuxiliaryImage() {
+  const resource = selectedAuxiliaryResource();
+  return (resource?.images || []).find((item) => item.image_id === state.selectedAuxiliaryImageId) || null;
+}
+
+function selectAuxiliaryResourceImage(imageId) {
+  const resource = selectedAuxiliaryResource();
+  const imageRecord = (resource?.images || []).find((item) => item.image_id === imageId);
+  if (!resource || !imageRecord) {
+    return;
+  }
+  state.selectedAuxiliaryImageId = imageRecord.image_id;
+  state.auxiliaryResourceImageBlob = null;
+  auxResourceImageLabel.value = imageRecord.label || "";
+  auxResourceTag.textContent = imageRecord.tag || "";
+  auxResourceCopyTag.disabled = !imageRecord.tag;
+  auxResourceSaveImage.textContent = "Update Image";
+  auxResourceSaveImage.disabled = false;
+  auxResourceImagePreview.src = fileUrl(imageRecord.image_path, imageRecord.updated_at || "");
+  auxResourceImagePreview.hidden = !imageRecord.image_path;
+  auxResourceFileInput.value = "";
+  renderAuxiliaryResourceImages(resource);
+}
+
+function newAuxiliaryResourceImage() {
+  state.selectedAuxiliaryImageId = null;
+  state.auxiliaryResourceImageBlob = null;
+  auxResourceImageLabel.value = "";
+  auxResourceTag.textContent = "";
+  auxResourceCopyTag.disabled = true;
+  auxResourceSaveImage.textContent = "Save Image";
+  auxResourceSaveImage.disabled = !state.selectedAuxiliaryResourceId;
+  auxResourceImagePreview.hidden = true;
+  auxResourceImagePreview.removeAttribute("src");
+  auxResourceFileInput.value = "";
+  renderAuxiliaryResourceImages(selectedAuxiliaryResource());
 }
 
 async function saveAuxiliaryResource() {
@@ -3474,28 +3818,18 @@ async function saveAuxiliaryResource() {
     return;
   }
   const isUpdate = Boolean(state.selectedAuxiliaryResourceId);
-  if (!isUpdate && !state.auxiliaryResourceImageBlob) {
-    showAuxResourceMessage("Image is required.", "error");
-    return;
-  }
   const params = new URLSearchParams({
     category: auxResourceCategory.value || "person",
     label,
   });
-  if (isUpdate && state.auxiliaryResourceImageBlob) {
-    params.set("replace_image", "true");
-  }
   auxResourceSave.disabled = true;
   showAuxResourceMessage(isUpdate ? "Updating resource..." : "Creating resource...");
   try {
     const url = isUpdate
       ? `/api/auxiliary-resources/${encodeURIComponent(state.selectedAuxiliaryResourceId)}?${params.toString()}`
       : `/api/auxiliary-resources?${params.toString()}`;
-    const blob = state.auxiliaryResourceImageBlob || new Blob([]);
     const payload = await fetchJson(url, {
       method: isUpdate ? "PUT" : "POST",
-      headers: { "Content-Type": blob.type || "image/png" },
-      body: blob,
     });
     state.auxiliaryResources = payload.resources || state.auxiliaryResources;
     state.selectedAuxiliaryResourceId = payload.resource?.resource_id || state.selectedAuxiliaryResourceId;
@@ -5191,6 +5525,53 @@ async function clearRenderConsoleLocalTest() {
   }
 }
 
+async function saveAuxiliaryResourceImage() {
+  const resource = selectedAuxiliaryResource();
+  const imageLabel = auxResourceImageLabel.value.trim();
+  if (!resource) {
+    showAuxResourceMessage("Select or save a resource first.", "error");
+    return;
+  }
+  if (!imageLabel) {
+    showAuxResourceMessage("Image name is required.", "error");
+    return;
+  }
+  if (!state.selectedAuxiliaryImageId && !state.auxiliaryResourceImageBlob) {
+    showAuxResourceMessage("Image is required.", "error");
+    return;
+  }
+  const params = new URLSearchParams({
+    category: auxResourceCategory.value || "person",
+    image_label: imageLabel,
+    original_image_id: state.selectedAuxiliaryImageId || "",
+  });
+  const blob = state.auxiliaryResourceImageBlob || new Blob([]);
+  auxResourceSaveImage.disabled = true;
+  showAuxResourceMessage(state.selectedAuxiliaryImageId ? "Updating image..." : "Saving image...");
+  try {
+    const payload = await fetchJson(`/api/auxiliary-resources/${encodeURIComponent(resource.resource_id)}/images?${params.toString()}`, {
+      method: "PUT",
+      headers: { "Content-Type": blob.type || "application/octet-stream" },
+      body: blob,
+    });
+    state.auxiliaryResources = payload.resources || state.auxiliaryResources;
+    state.selectedAuxiliaryResourceId = payload.resource?.resource_id || resource.resource_id;
+    const saved = payload.resource?.images?.find((item) => item.label === imageLabel) || payload.resource?.images?.[0];
+    const savedImageId = saved?.image_id || state.selectedAuxiliaryImageId;
+    state.auxiliaryResourceImageBlob = null;
+    renderAuxiliaryResourceTable();
+    selectAuxiliaryResource(state.selectedAuxiliaryResourceId);
+    if (savedImageId) {
+      selectAuxiliaryResourceImage(savedImageId);
+    }
+    showAuxResourceMessage(payload.message || "Image saved.");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  } finally {
+    auxResourceSaveImage.disabled = !state.selectedAuxiliaryResourceId;
+  }
+}
+
 async function copyRenderConsoleLocalApiParams() {
   if (!state.selectedRenderConsoleAskId) {
     return;
@@ -5636,6 +6017,8 @@ expressionAddNew.addEventListener("click", clearExpressionForm);
 expressionCreate.addEventListener("click", saveExpression);
 storyCreate.addEventListener("click", createStory);
 storySave.addEventListener("click", saveStory);
+storySettingsLoad.addEventListener("click", loadStorySettings);
+storySettingsSave.addEventListener("click", saveStorySettings);
 storyDelete.addEventListener("click", deleteStory);
 storyGitStatus.addEventListener("click", () => runStoryGitAction("status"));
 storyGitPull.addEventListener("click", () => runStoryGitAction("pull"));
@@ -5753,6 +6136,8 @@ auxResourceFileInput.addEventListener("change", () => {
   setAuxiliaryResourceImageSelection(auxResourceFileInput.files?.[0]);
 });
 auxResourceSave.addEventListener("click", saveAuxiliaryResource);
+auxResourceNewImage.addEventListener("click", newAuxiliaryResourceImage);
+auxResourceSaveImage.addEventListener("click", saveAuxiliaryResourceImage);
 auxResourceClear.addEventListener("click", clearAuxiliaryResourceForm);
 auxResourceCopyTag.addEventListener("click", () => copyText(auxResourceTag.textContent || "", "Resource tag copied."));
 phaseComparisonCharacter.addEventListener("change", () => {

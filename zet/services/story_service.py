@@ -15,7 +15,7 @@ from zet.models.identity_key import IdentityKey
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
-from zet.services.scene_render_compiler import compile_scene_render
+from zet.services.scene_render_compiler import compile_scene_render, compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_prompt_text
 from zet.services.path_service import PathService
 
 
@@ -293,6 +293,21 @@ class StoryService:
             path=str(path),
         )
 
+    def _scene_json_record(self, story_slug: str, path: Path) -> SceneRecord:
+        """Build a scene record from one Scene Builder V3 JSON path."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+        scene = data.get("scene", {}) if isinstance(data, dict) else {}
+        slug = str(scene.get("slug") or path.name.removesuffix(".scene.json"))
+        return SceneRecord(
+            story_slug=story_slug,
+            slug=slug,
+            title=str(scene.get("name") or self._scene_title_from_slug(slug)),
+            path=str(path),
+        )
+
     def _extract_scene_line(self, text: str) -> str:
         """Return the scene line value from a scene template."""
         return self._extract_first_metadata_field(text, "Scene")
@@ -321,8 +336,12 @@ class StoryService:
         if not story_file_path.exists():
             template = self._require_template(self.path_service.shared_story_template_path(), "Story")
             template = self._replace_metadata_field(template, "Title", cleaned_title)
-            template = self._replace_bounded_section(template, "STORY_TITLE", cleaned_title)
+            if self._extract_bounded_section(template, "STORY_TITLE"):
+                template = self._replace_bounded_section(template, "STORY_TITLE", cleaned_title)
             story_file_path.write_text(template.rstrip() + "\n", encoding="utf-8")
+        story_settings_path = self.get_story_settings_path_from_story_md(story_file_path)
+        if not story_settings_path.exists():
+            self.save_story_settings(story_settings_path, self.create_default_story_settings(story_file_path))
         return self.load_story(story_slug)
 
     def load_story(self, story_slug: str) -> StoryDocument:
@@ -336,21 +355,11 @@ class StoryService:
         return StoryDocument(record=record, text=text, validation_errors=self.validate_story_text(text))
 
     def validate_story_text(self, text: str) -> list[str]:
-        """Validate required story metadata and compiler sections."""
+        """Validate human story markdown."""
         errors: list[str] = []
         title = self._extract_first_metadata_field(text, "Title")
-        art_style = self._extract_first_metadata_field(text, "Canonical Art Style")
-        placeholder_art_styles = {
-            "canonical art style",
-            "painterly semi-realistic, anime-influenced facial proportions, etc.",
-        }
         if not title or title.lower() == "story title":
             errors.append("Title must be filled in.")
-        if not art_style or art_style.lower() in placeholder_art_styles:
-            errors.append("Canonical Art Style must be filled in.")
-        for section_name in ("STORY_TITLE", "CANONICAL_ART_STYLE"):
-            if not self._extract_bounded_section(text, section_name):
-                errors.append(f"Compiler section {section_name} must be present and filled in.")
         return errors
 
     def save_story(self, story_slug: str, text: str) -> StoryDocument:
@@ -381,10 +390,17 @@ class StoryService:
             return []
         story_file_name = f"{safe_slug}.md"
         records = []
+        seen_slugs = set()
         for path in sorted(item for item in folder_path.iterdir() if item.is_file() and item.suffix.lower() == ".md"):
             if path.name.startswith("_") or path.name == story_file_name:
                 continue
-            records.append(self._scene_record(safe_slug, path))
+            record = self._scene_record(safe_slug, path)
+            records.append(record)
+            seen_slugs.add(record.slug)
+        for path in sorted(folder_path.glob("*.scene.json")):
+            record = self._scene_json_record(safe_slug, path)
+            if record.slug not in seen_slugs:
+                records.append(record)
         return records
 
     def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
@@ -403,6 +419,9 @@ class StoryService:
             template = self._replace_bounded_section(template, "SCENE_NAME", cleaned_name)
             template = re.sub(r"(?im)^Scene:\s*.+?$", f"Scene: `[{cleaned_name}]`", template, count=1)
             scene_path.write_text(template.rstrip() + "\n", encoding="utf-8")
+        scene_json_path = self.scene_builder_json_path(safe_story_slug, scene_slug)
+        if not scene_json_path.exists():
+            self.save_scene_v3(scene_json_path, self.create_default_scene_builder_data(safe_story_slug, scene_slug))
         return self.load_scene(safe_story_slug, scene_slug)
 
     def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
@@ -411,6 +430,10 @@ class StoryService:
         safe_scene_slug = self.safe_slug(scene_slug)
         path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
         if not path.exists():
+            json_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
+            if json_path.exists():
+                story = self._story_record(safe_story_slug)
+                return SceneDocument(story=story, record=self._scene_json_record(safe_story_slug, json_path), text="", validation_errors=[])
             return self.create_scene(safe_story_slug, self._scene_title_from_slug(safe_scene_slug))
         text = path.read_text(encoding="utf-8")
         record = self._scene_record(safe_story_slug, path)
@@ -457,6 +480,9 @@ class StoryService:
             saved_builder_path = self.scene_builder_json_path(safe_story_slug, saved_scene_slug)
             if builder_path.exists() and not saved_builder_path.exists():
                 builder_path.rename(saved_builder_path)
+            legacy_builder_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug).with_suffix(".json")
+            if legacy_builder_path.exists():
+                legacy_builder_path.unlink()
         saved_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
         return self.load_scene(safe_story_slug, saved_scene_slug)
 
@@ -467,6 +493,7 @@ class StoryService:
         scene_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
         image_path = self.scene_image_path(safe_story_slug, safe_scene_slug)
         builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
+        legacy_builder_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug).with_suffix(".json")
         if not scene_path.exists():
             raise StoryServiceError(f"Scene file not found: {scene_path}")
         commit = self.story_git_commit()
@@ -477,6 +504,8 @@ class StoryService:
             image_path.unlink()
         if builder_path.exists():
             builder_path.unlink()
+        if legacy_builder_path.exists():
+            legacy_builder_path.unlink()
         return commit
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
@@ -486,14 +515,100 @@ class StoryService:
         return self.path_service.story_folder_path(safe_story_slug) / f"{safe_scene_slug}.png"
 
     def scene_builder_json_path(self, story_slug: str, scene_slug: str) -> Path:
-        """Return the Scene Builder JSON path for one story scene."""
+        """Return the canonical Scene Builder V3 JSON path for one story scene."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
-        return self.path_service.scene_file_path(safe_story_slug, safe_scene_slug).with_suffix(".json")
+        return self.get_scene_json_path_from_scene_slug(self.path_service.story_folder_path(safe_story_slug), safe_scene_slug)
 
     def get_scene_builder_json_path(self, scene_path: Path) -> Path:
         """Return the Scene Builder JSON path matching a scene markdown or image path."""
-        return Path(scene_path).with_suffix(".json")
+        path = Path(scene_path)
+        return path.with_name(f"{path.stem}.scene.json")
+
+    def get_story_settings_path_from_story_md(self, story_md_path: Path) -> Path:
+        return Path(story_md_path).with_suffix(".story.json")
+
+    def get_scene_json_path_from_scene_slug(self, scene_dir: Path, scene_slug: str) -> Path:
+        return Path(scene_dir) / f"{self.safe_slug(scene_slug)}.scene.json"
+
+    def create_default_story_settings(self, story_md_path: Path | None = None) -> dict:
+        stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        slug = story_md_path.stem if story_md_path else ""
+        title = self._story_title_from_slug(slug)
+        return {
+            "schema_version": 1,
+            "file_kind": "story_settings",
+            "story": {
+                "id": self.normalize_scene_element_id(slug).lower(),
+                "title": title,
+                "slug": slug,
+                "human_markdown_path": self._library_relative_path(story_md_path) if story_md_path else "",
+                "premise": "",
+                "notes": "",
+            },
+            "style_defaults": {
+                "canonical_art_style": {
+                    "id": "default_story_style",
+                    "short_label": "Painterly semi-realistic fantasy illustration",
+                    "full_prompt_text": "Painterly semi-realistic fantasy illustration with anime-influenced facial proportions, large expressive eyes, refined linework, and warm storybook-fantasy color handling.",
+                    "negative_style_notes": "",
+                },
+                "visual_continuity": {
+                    "rules": [
+                        "Preserve the story's canonical art style across all scene images.",
+                        "Preserve recurring characters, costumes, props, and locations when referenced by scene tags.",
+                    ],
+                    "notes": "",
+                },
+                "default_avoid": ["inconsistent character identity", "wrong costume", "modern objects", "unreadable faces", "merged characters", "extra limbs", "malformed hands"],
+            },
+            "dialogue_styles": [
+                {
+                    "id": "compact_parchment",
+                    "display_name": "Compact parchment dialogue panel",
+                    "enabled_by_default": True,
+                    "panel_prompt": "Compact rectangular parchment dialogue panel with softly rounded corners, warm ivory parchment background, subtle paper texture, and a thin dark bronze border.",
+                    "pointer_prompt": "Short unobtrusive triangular pointer aimed toward the speaker's mouth.",
+                    "lettering_prompt": "Clean modern comic-style sans-serif lettering, medium weight, crisp edges, high legibility.",
+                    "layout_rules": ["Panel should be only slightly larger than the text.", "Do not obscure important faces, hands, props, or focal areas."],
+                    "avoid": ["oversized speech panel", "hard-to-read text", "panel covering faces"],
+                    "notes": "",
+                }
+            ],
+            "compiler_profiles": {
+                "final_image_prompt": {
+                    "include_story_premise": False,
+                    "include_visual_continuity": True,
+                    "include_dialogue_when_scene_has_dialogue": True,
+                    "include_reference_assignments": True,
+                    "include_final_verification": True,
+                    "notes": "",
+                },
+                "local_render": {
+                    "purpose": "composition preview only",
+                    "include_dialogue": False,
+                    "include_reference_tags": False,
+                    "negative_text_terms": ["text", "letters", "caption", "speech bubble", "watermark"],
+                    "notes": "",
+                },
+            },
+            "scene_index": [],
+            "metadata": {"created_at": stamp, "updated_at": stamp, "created_by": "Zet Story Settings"},
+        }
+
+    def load_story_settings(self, path: Path) -> dict:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+
+    def save_story_settings(self, path: Path, data: dict) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    def load_scene_v3(self, path: Path) -> dict:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+
+    def save_scene_v3(self, path: Path, data: dict) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     def _project_config_path(self, *parts: str) -> Path:
         return Path(__file__).resolve().parents[2] / "Config" / Path(*parts)
@@ -517,6 +632,12 @@ class StoryService:
         except ValueError:
             return str(path)
 
+    def _library_absolute_path(self, path_text: str) -> Path:
+        path = Path(path_text)
+        if path.is_absolute():
+            return path
+        return Path(self.path_service.config.base_library_path) / path
+
     def _scene_builder_paths(self, story_slug: str, scene_slug: str) -> tuple[Path, Path, Path]:
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
@@ -527,20 +648,26 @@ class StoryService:
         )
 
     def create_default_scene_builder_data(self, story_slug: str, scene_slug: str) -> dict:
-        """Create default Scene Builder data for one existing scene."""
+        """Create default Scene Builder V3 data for one existing scene."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         scene_doc = self.load_scene(safe_story_slug, safe_scene_slug)
         scene_path, image_path, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        story_settings_path = self.get_story_settings_path_from_story_md(self.path_service.story_file_path(safe_story_slug))
+        build_dir = self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
         stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         return {
-            "schema_version": 2,
+            "schema_version": 3,
+            "file_kind": "scene",
             "scene": {
+                "id": self.normalize_scene_element_id(safe_scene_slug).lower(),
                 "name": scene_doc.record.title,
                 "slug": safe_scene_slug,
-                "associated_md_path": self._library_relative_path(scene_path),
+                "sequence": None,
+                "story_settings_path": self._library_relative_path(story_settings_path),
                 "associated_png_path": self._library_relative_path(image_path),
-                "notes": "",
+                "story_beat": "",
+                "author_notes": "",
             },
             "setup": {
                 "canvas": {
@@ -553,9 +680,11 @@ class StoryService:
                     "template": "custom",
                     "grid": {
                         "columns": 3,
-                        "rows": 2,
+                        "rows": 1,
+                        "draw_grid": False,
                     },
                     "primary_focal_point": "",
+                    "left_to_right_order": [],
                     "composition_notes": "",
                 },
                 "camera": {
@@ -576,20 +705,25 @@ class StoryService:
                     "general_background_notes": "",
                     "general_foreground_notes": "",
                 },
+                "style": {
+                    "inherit_story_art_style": True,
+                    "art_style_override": "",
+                    "dialogue_style_id": "compact_parchment",
+                    "visual_continuity_override": "",
+                },
             },
             "scene_elements": [],
             "placements": [],
-            "depth_lanes": {
-                "foreground": [],
-                "midground": [],
-                "background": [],
-            },
+            "props_and_states": [],
             "interactions": [],
-            "generation_outputs": {
-                "scene_brief": "",
-                "positive_prompt": "",
-                "negative_prompt": "",
-                "validation_warnings": [],
+            "dialogue": [],
+            "reference_assignments": [],
+            "avoid": {"scene_specific": [], "notes": ""},
+            "render_settings": {
+                "final_image_prompt": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Final_Image_Prompt.md")},
+                "local_render_brief": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Local_Render_Brief.json")},
+                "local_render_prompt": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Local_Render_Prompt.md")},
+                "scene_render_ir": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Scene_Render_IR.json")},
             },
             "metadata": {
                 "created_at": stamp,
@@ -599,32 +733,39 @@ class StoryService:
         }
 
     def create_default_scene_builder_data_v2(self, scene_md_path: Path | None = None) -> dict:
-        """Create a standalone v2 Scene Builder document."""
+        """Create a standalone V3 Scene Builder document."""
         scene_slug = scene_md_path.stem if scene_md_path else ""
         stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        data = {
-            "schema_version": 2,
+        return {
+            "schema_version": 3,
+            "file_kind": "scene",
             "scene": {
-                "name": scene_slug.replace("_", " "),
-                "slug": scene_slug,
-                "associated_md_path": str(scene_md_path or ""),
+                "id": self.normalize_scene_element_id(scene_slug or "Untitled").lower(),
+                "name": (scene_slug or "Untitled").replace("_", " "),
+                "slug": scene_slug or "Untitled",
+                "sequence": None,
+                "story_settings_path": "",
                 "associated_png_path": str(scene_md_path.with_suffix(".png")) if scene_md_path else "",
-                "notes": "",
+                "story_beat": "",
+                "author_notes": "",
             },
             "setup": {
                 "canvas": {"orientation": "landscape", "aspect_ratio": "16:9", "width": None, "height": None},
-                "composition": {"template": "custom", "grid": {"columns": 3, "rows": 2}, "primary_focal_point": "", "composition_notes": ""},
+                "composition": {"template": "custom", "grid": {"columns": 3, "rows": 1, "draw_grid": False}, "primary_focal_point": "", "left_to_right_order": [], "composition_notes": ""},
                 "camera": {"shot_type": "wide shot", "camera_height": "eye-level", "camera_angle": "straight-on", "viewer_position": "front", "lens_feel": "normal", "focus_priority": "whole group", "notes": ""},
                 "environment": {"location": "", "lighting": "", "mood": "", "weather_or_atmosphere": "", "important_exclusions": [], "general_background_notes": "", "general_foreground_notes": ""},
+                "style": {"inherit_story_art_style": True, "art_style_override": "", "dialogue_style_id": "compact_parchment", "visual_continuity_override": ""},
             },
             "scene_elements": [],
             "placements": [],
-            "depth_lanes": {"foreground": [], "midground": [], "background": []},
+            "props_and_states": [],
             "interactions": [],
-            "generation_outputs": {"scene_brief": "", "positive_prompt": "", "negative_prompt": "", "validation_warnings": []},
+            "dialogue": [],
+            "reference_assignments": [],
+            "avoid": {"scene_specific": [], "notes": ""},
+            "render_settings": {},
             "metadata": {"created_at": stamp, "updated_at": stamp, "created_by": "Zet Scene Builder"},
         }
-        return data
 
     def _merge_scene_builder_defaults(self, default: dict, current: dict) -> dict:
         """Merge loaded Scene Builder data over defaults while preserving unknown fields."""
@@ -640,24 +781,29 @@ class StoryService:
         """Apply defaults and derived scene paths to Scene Builder data."""
         if not isinstance(data, dict):
             raise StoryServiceError("Scene Builder JSON must be an object.")
-        data = self.migrate_scene_builder_data(data)
-        schema_version = data.get("schema_version", 2)
-        if schema_version != 2:
+        schema_version = data.get("schema_version", 3)
+        if schema_version != 3:
             raise StoryServiceError(f"Unsupported Scene Builder schema_version: {schema_version}")
+        if data.get("file_kind") not in (None, "scene"):
+            raise StoryServiceError(f"Unsupported Scene Builder file_kind: {data.get('file_kind')}")
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         default = self.create_default_scene_builder_data(safe_story_slug, safe_scene_slug)
         normalized = self._merge_scene_builder_defaults(default, data)
         scene_path, image_path, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
-        normalized["schema_version"] = 2
+        normalized["schema_version"] = 3
+        normalized["file_kind"] = "scene"
         normalized.setdefault("scene", {})
+        normalized["scene"]["id"] = normalized["scene"].get("id") or self.normalize_scene_element_id(safe_scene_slug).lower()
         normalized["scene"]["slug"] = safe_scene_slug
-        normalized["scene"]["associated_md_path"] = self._library_relative_path(scene_path)
+        normalized["scene"]["story_settings_path"] = self._library_relative_path(self.get_story_settings_path_from_story_md(self.path_service.story_file_path(safe_story_slug)))
         normalized["scene"]["associated_png_path"] = self._library_relative_path(image_path)
         if not str(normalized["scene"].get("name") or "").strip():
             normalized["scene"]["name"] = default["scene"]["name"]
         normalized["scene_elements"] = self._normalized_scene_elements(normalized)
         normalized["placements"] = self._normalized_placements(normalized)
+        normalized.pop("generation_outputs", None)
+        normalized.pop("_validation_warnings", None)
         normalized["depth_lanes"] = self.rebuild_depth_lanes_from_placements(normalized)
         return normalized
 
@@ -665,8 +811,9 @@ class StoryService:
         """Load Scene Builder data or return defaults when JSON does not exist."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
-        scene_doc = self.load_scene(safe_story_slug, safe_scene_slug)
         scene_path, image_path, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        story_record = self._story_record(safe_story_slug)
+        scene_record = self._scene_record(safe_story_slug, scene_path) if scene_path.exists() else self._scene_json_record(safe_story_slug, json_path)
         try:
             if json_path.exists():
                 raw = json.loads(json_path.read_text(encoding="utf-8"))
@@ -675,8 +822,8 @@ class StoryService:
                 data = self.create_default_scene_builder_data(safe_story_slug, safe_scene_slug)
         except json.JSONDecodeError as exc:
             return SceneBuilderDocument(
-                story=scene_doc.story,
-                scene=scene_doc.record,
+                story=story_record,
+                scene=scene_record,
                 data={},
                 json_path=str(json_path),
                 md_path=str(scene_path),
@@ -688,10 +835,10 @@ class StoryService:
                 error=f"Malformed Scene Builder JSON: {exc}",
             )
         warnings = self.validate_scene_builder_data(data)
-        data.setdefault("generation_outputs", {})["validation_warnings"] = warnings
+        data["_validation_warnings"] = warnings
         return SceneBuilderDocument(
-            story=scene_doc.story,
-            scene=scene_doc.record,
+            story=story_record,
+            scene=scene_record,
             data=data,
             json_path=str(json_path),
             md_path=str(scene_path),
@@ -707,7 +854,6 @@ class StoryService:
         safe_scene_slug = self.safe_slug(scene_slug)
         _, _, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
         normalized = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, data)
-        normalized = self.generate_scene_builder_outputs(safe_story_slug, safe_scene_slug, normalized)
         now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         normalized.setdefault("metadata", {})
         normalized["metadata"].setdefault("created_at", now)
@@ -719,13 +865,9 @@ class StoryService:
         return self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
 
     def generate_scene_builder_outputs(self, story_slug: str, scene_slug: str, data: dict) -> dict:
-        """Return Scene Builder data with generated brief, prompts, and warnings."""
+        """Return Scene Builder data with validation only; prompt text is written as artifacts."""
         normalized = self._normalize_scene_builder_data(story_slug, scene_slug, data)
-        outputs = normalized.setdefault("generation_outputs", {})
-        outputs["scene_brief"] = self.generate_scene_brief(normalized)
-        outputs["positive_prompt"] = self.generate_positive_prompt(story_slug, scene_slug, normalized)
-        outputs["negative_prompt"] = outputs.get("negative_prompt") or self.generate_negative_prompt(normalized)
-        outputs["validation_warnings"] = self.validate_scene_builder_data(normalized)
+        normalized["_validation_warnings"] = self.validate_scene_builder_data(normalized)
         return normalized
 
     def _cell_name(self, rows: int, columns: int, row: int, column: int) -> str:
@@ -751,10 +893,6 @@ class StoryService:
         value = re.sub(r"[^A-Za-z0-9]+", "_", str(display_name or "").strip()).strip("_")
         return value or "scene_element"
 
-    def is_v1_scene_builder_data(self, data: dict) -> bool:
-        """Return true if data appears to be schema v1 or old layout."""
-        return data.get("schema_version") in (None, 1) or any(key in data for key in ("characters", "canvas", "composition", "camera", "environment", "foreground_props", "background_anchors"))
-
     def find_scene_element_id(self, data: dict, text: str) -> str | None:
         """Match by id or display_name."""
         needle = str(text or "").strip().lower()
@@ -765,130 +903,6 @@ class StoryService:
                 return str(element.get("id") or "")
         return None
 
-    def _scene_element_from_v1(self, item: dict | str, element_type: str, index: int) -> dict:
-        source = item if isinstance(item, dict) else {"display_name": str(item), "default_visual_description": str(item)}
-        display_name = source.get("display_name") or source.get("label") or source.get("name") or source.get("id") or f"{element_type} {index}"
-        element_id = source.get("id") or self.normalize_scene_element_id(str(display_name))
-        description = source.get("default_visual_description") or source.get("default_costume") or source.get("description") or (str(item) if not isinstance(item, dict) else "")
-        return {
-            "id": str(element_id),
-            "display_name": str(display_name),
-            "element_type": element_type,
-            "image_tag": source.get("image_tag", ""),
-            "identity_prompt": source.get("identity_prompt", ""),
-            "default_visual_description": description,
-            "role": source.get("role") or ("foreground prop" if element_type == "Prop" else "background anchor" if element_type == "Anchor" else ""),
-            "importance": source.get("importance") or ("background" if element_type == "Anchor" else "secondary"),
-            "notes": source.get("notes", ""),
-        }
-
-    def _v2_placement_from_v1(self, placement: dict, element_id: str, index: int, default_depth: str = "midground") -> dict:
-        item = copy.deepcopy(placement)
-        gaze = item.get("gaze_target", "")
-        interaction = item.get("interaction_target", "")
-        return {
-            "id": str(item.get("id") or f"placement_{index:03d}"),
-            "scene_element_id": element_id,
-            "screen_cell": item.get("screen_cell") or {},
-            "position_within_cell": item.get("position_within_cell", "center"),
-            "depth": item.get("depth", default_depth),
-            "size_prominence": item.get("size_prominence", "medium"),
-            "pose": item.get("pose", ""),
-            "body_facing": item.get("body_facing", ""),
-            "head_facing": item.get("head_facing", ""),
-            "gaze_target_element_id": "",
-            "gaze_target_description": gaze,
-            "expression": item.get("expression", ""),
-            "interaction_target_element_id": interaction,
-            "occlusion": item.get("occlusion", "none"),
-            "placement_notes": item.get("placement_notes") or item.get("notes", ""),
-        }
-
-    def migrate_scene_builder_data(self, data: dict) -> dict:
-        """Return schema_version 2 data. Do not mutate caller data if avoidable."""
-        if not self.is_v1_scene_builder_data(data):
-            return copy.deepcopy(data)
-        old = copy.deepcopy(data)
-        migrated = {
-            "schema_version": 2,
-            "scene": old.get("scene", {}),
-            "setup": {
-                "canvas": old.get("canvas", {}),
-                "composition": old.get("composition", {}),
-                "camera": old.get("camera", {}),
-                "environment": old.get("environment", {}),
-            },
-            "scene_elements": [],
-            "placements": [],
-            "depth_lanes": {"foreground": [], "midground": [], "background": []},
-            "interactions": [],
-            "generation_outputs": old.get("generation_outputs", {}),
-            "metadata": old.get("metadata", {}),
-            "_migrated_from_schema_version": old.get("schema_version", 1),
-        }
-        env = migrated["setup"]["environment"]
-        env.setdefault("general_background_notes", "")
-        env.setdefault("general_foreground_notes", "")
-        for key in ("characters", "foreground_props", "background_anchors", "canvas", "composition", "camera", "environment"):
-            old.pop(key, None)
-        old.pop("schema_version", None)
-        old.pop("placements", None)
-        old.pop("interactions", None)
-        old.pop("depth_lanes", None)
-        old.pop("generation_outputs", None)
-        old.pop("metadata", None)
-        migrated.update(old)
-        for index, character in enumerate(data.get("characters") or [], start=1):
-            migrated["scene_elements"].append(self._scene_element_from_v1(character, "Character", index))
-        for index, prop in enumerate(data.get("foreground_props") or data.get("environment", {}).get("foreground_props") or [], start=1):
-            element = self._scene_element_from_v1(prop, "Prop", index)
-            migrated["scene_elements"].append(element)
-            if isinstance(prop, dict) and prop.get("screen_cell"):
-                migrated["placements"].append(self._v2_placement_from_v1(prop, element["id"], len(migrated["placements"]) + 1, "foreground"))
-        anchors = list(data.get("background_anchors") or []) + list(data.get("environment", {}).get("background_anchors") or [])
-        for index, anchor in enumerate(anchors, start=1):
-            element = self._scene_element_from_v1(anchor, "Anchor", index)
-            migrated["scene_elements"].append(element)
-            if isinstance(anchor, dict) and anchor.get("screen_cell"):
-                migrated["placements"].append(self._v2_placement_from_v1(anchor, element["id"], len(migrated["placements"]) + 1, "background"))
-        for index, placement in enumerate(data.get("placements") or [], start=1):
-            if not isinstance(placement, dict):
-                continue
-            element_id = placement.get("scene_element_id") or placement.get("character_id") or placement.get("label") or placement.get("id")
-            if element_id and not self.find_scene_element_id(migrated, str(element_id)):
-                migrated["scene_elements"].append({
-                    "id": self.normalize_scene_element_id(str(element_id)),
-                    "display_name": str(placement.get("label") or element_id),
-                    "element_type": "Character",
-                    "image_tag": "",
-                    "identity_prompt": "",
-                    "default_visual_description": "",
-                    "role": "",
-                    "importance": "secondary",
-                    "notes": "Created during v1 to v2 migration because a placement referenced this missing element.",
-                })
-                element_id = migrated["scene_elements"][-1]["id"]
-            resolved_id = self.find_scene_element_id(migrated, str(element_id)) or str(element_id or "")
-            migrated["placements"].append(self._v2_placement_from_v1(placement, resolved_id, index))
-        for placement in migrated["placements"]:
-            placement["gaze_target_element_id"] = self.find_scene_element_id(migrated, placement.get("gaze_target_description", "")) or ""
-            placement["interaction_target_element_id"] = self.find_scene_element_id(migrated, placement.get("interaction_target_element_id", "")) or ""
-        for interaction in data.get("interactions") or []:
-            if not isinstance(interaction, dict):
-                continue
-            subject = interaction.get("subject_element_id") or interaction.get("subject") or ""
-            target = interaction.get("target_element_id") or interaction.get("target") or ""
-            migrated["interactions"].append({
-                "subject_element_id": self.find_scene_element_id(migrated, str(subject)) or "",
-                "subject_description": "" if self.find_scene_element_id(migrated, str(subject)) else subject,
-                "relationship": interaction.get("relationship", ""),
-                "target_element_id": self.find_scene_element_id(migrated, str(target)) or "",
-                "target_description": "" if self.find_scene_element_id(migrated, str(target)) else target,
-                "note": interaction.get("note", ""),
-            })
-        migrated["depth_lanes"] = self.rebuild_depth_lanes_from_placements(migrated)
-        return migrated
-
     def _normalized_scene_elements(self, data: dict) -> list[dict]:
         elements = []
         for index, element in enumerate(data.get("scene_elements") or [], start=1):
@@ -898,10 +912,16 @@ class StoryService:
             item.setdefault("id", self.normalize_scene_element_id(item.get("display_name") or f"scene element {index}"))
             item.setdefault("display_name", item["id"])
             item.setdefault("element_type", "Character")
-            item.setdefault("image_tag", "")
             item.pop("asset_tag", None)
-            item.setdefault("identity_prompt", "")
-            item.setdefault("default_visual_description", "")
+            item.setdefault("source_refs", {"identity_source": "", "costume_source": "", "location_source": "", "monster_source": "", "prop_source": ""})
+            item.setdefault("reference_images", [])
+            if item.get("image_tag") and not item["reference_images"]:
+                item["reference_images"].append({"tag": item.pop("image_tag"), "roles": ["visual reference"], "ignore": ["source pose", "source background", "source framing"], "notes": ""})
+            item.pop("identity_prompt", None)
+            if item.get("default_visual_description") and not item.get("fallback_visual_description"):
+                item["fallback_visual_description"] = item.pop("default_visual_description")
+            item.setdefault("scene_visual_override", "")
+            item.setdefault("fallback_visual_description", "")
             item.setdefault("role", "")
             item.setdefault("importance", "secondary")
             item.setdefault("notes", "")
@@ -925,15 +945,31 @@ class StoryService:
             cell["name"] = self._cell_name(rows, columns, row, column)
             item.setdefault("position_within_cell", "center")
             item.setdefault("depth", "midground")
-            item.setdefault("size_prominence", "medium")
-            item.setdefault("pose", "")
-            item.setdefault("body_facing", "")
-            item.setdefault("head_facing", "")
-            item.setdefault("gaze_target_element_id", "")
-            item.setdefault("gaze_target_description", "")
-            item.setdefault("expression", "")
-            item.setdefault("interaction_target_element_id", "")
-            item.setdefault("occlusion", "none")
+            item.setdefault("z_order", 10)
+            item.setdefault("frame_coverage", "")
+            item.setdefault("distance_from_camera", "")
+            item.setdefault("visual_scale", "")
+            item.setdefault("must_be_visible", True)
+            item.setdefault("visible_body_requirements", [])
+            if not isinstance(item.get("pose"), dict):
+                item["pose"] = {
+                    "summary": item.pop("pose", ""),
+                    "temporary_condition": "",
+                    "body_view": item.pop("body_facing", ""),
+                    "head_view": item.pop("head_facing", ""),
+                    "action_direction_screen": "",
+                    "gaze_target_element_id": item.pop("gaze_target_element_id", ""),
+                    "gaze_description": item.pop("gaze_target_description", ""),
+                    "expression": item.pop("expression", ""),
+                    "left_arm_action": "",
+                    "right_arm_action": "",
+                    "left_hand_detail": "",
+                    "right_hand_detail": "",
+                    "leg_foot_detail": "",
+                    "balance_weight_detail": "",
+                }
+            if not isinstance(item.get("occlusion"), dict):
+                item["occlusion"] = {"occlusion_level": item.get("occlusion") or "none", "must_not_occlude": [], "notes": ""}
             item.setdefault("placement_notes", "")
             placements.append(item)
         return self._paired_scene_element_placements(data, placements, rows, columns)
@@ -947,15 +983,14 @@ class StoryService:
             "screen_cell": {"row": 1, "column": 1, "name": self._cell_name(rows, columns, 1, 1)},
             "position_within_cell": "center",
             "depth": "background" if element_type == "Anchor" else "midground",
-            "size_prominence": "medium",
-            "pose": "",
-            "body_facing": "",
-            "head_facing": "",
-            "gaze_target_element_id": "",
-            "gaze_target_description": "",
-            "expression": "",
-            "interaction_target_element_id": "",
-            "occlusion": "none",
+            "z_order": 10,
+            "frame_coverage": "",
+            "distance_from_camera": "",
+            "visual_scale": "",
+            "must_be_visible": True,
+            "visible_body_requirements": [],
+            "pose": {"summary": "", "temporary_condition": "", "body_view": "", "head_view": "", "action_direction_screen": "", "gaze_target_element_id": "", "gaze_description": "", "expression": "", "left_arm_action": "", "right_arm_action": "", "left_hand_detail": "", "right_hand_detail": "", "leg_foot_detail": "", "balance_weight_detail": ""},
+            "occlusion": {"occlusion_level": "none", "must_not_occlude": [], "notes": ""},
             "placement_notes": "",
         }
 
@@ -1004,10 +1039,20 @@ class StoryService:
         camera = self._setup(data, "camera")
         elements = self._scene_element_lookup(data)
         rows, columns = self._grid_size(data)
+        if data.get("schema_version") != 3:
+            warnings.append("Invalid schema_version; Scene Builder V3 requires 3.")
+        if data.get("file_kind") != "scene":
+            warnings.append("Invalid file_kind; Scene Builder V3 requires scene.")
+        if not str(scene.get("id") or "").strip():
+            warnings.append("No scene id specified.")
         if not str(scene.get("name") or "").strip():
             warnings.append("No scene name specified.")
-        if not str(scene.get("associated_md_path") or "").strip():
-            warnings.append("No associated markdown path.")
+        if not str(scene.get("story_settings_path") or "").strip():
+            warnings.append("No story settings path.")
+        else:
+            settings_path = Path(self.path_service.config.base_library_path) / str(scene.get("story_settings_path"))
+            if not settings_path.exists():
+                warnings.append(f"Story settings path does not exist: {scene.get('story_settings_path')}.")
         if not elements:
             warnings.append("No scene elements defined.")
         if not data.get("placements"):
@@ -1027,29 +1072,45 @@ class StoryService:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid element_type {element_type}.")
             if element.get("importance") not in {"primary", "secondary", "background", "extra"}:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid importance {element.get('importance')}.")
+            source_refs = element.get("source_refs") if isinstance(element.get("source_refs"), dict) else {}
+            has_source = any(str(value or "").strip() for value in source_refs.values())
+            has_reference = bool(element.get("reference_images"))
+            if element_type in {"Character", "Monster"} and not has_source and not str(element.get("fallback_visual_description") or "").strip():
+                warnings.append(f"{element_type} {element_id} has no source reference or fallback visual description.")
+            if element_type == "Anchor" and not source_refs.get("location_source") and not has_reference and not str(element.get("fallback_visual_description") or "").strip():
+                warnings.append(f"Anchor {element_id} has no location source, reference image, or fallback visual description.")
         for placement in data.get("placements") or []:
             element_id = str(placement.get("scene_element_id") or "")
             element = elements.get(element_id)
+            placement_label = (element or {}).get("display_name") or element_id or placement.get("id")
             cell = placement.get("screen_cell") or {}
             row = int(cell.get("row") or 0)
             column = int(cell.get("column") or 0)
             if element_id and element_id not in elements:
-                warnings.append(f"Placement {placement.get('id')} references missing scene element {element_id}.")
+                warnings.append(f"Placement {placement_label} references missing scene element {element_id}.")
             if row < 1 or row > rows or column < 1 or column > columns:
-                warnings.append(f"Placement {placement.get('id') or element_id} is outside grid bounds.")
+                warnings.append(f"Placement {placement_label} is outside grid bounds.")
             if element and element.get("element_type") in {"Character", "Monster"} and element.get("importance") in {"primary", "secondary"}:
                 important_count += 1
             if element and element.get("element_type") in {"Character", "Monster"} and element.get("importance") == "primary":
                 if placement.get("depth") in {"background", "distant background"}:
                     warnings.append(f"Primary {element.get('element_type')} {element_id} is placed in {placement.get('depth')}.")
                 named_primary_cells.setdefault((row, column), []).append(element_id)
-            if placement.get("expression") and placement.get("size_prominence") in {"small", "distant"}:
-                warnings.append(f"Expression on {element_id or placement.get('id')} may be unreadable at {placement.get('size_prominence')} size.")
-            if placement.get("gaze_target_element_id") and placement.get("gaze_target_element_id") not in elements:
-                warnings.append(f"Placement {placement.get('id')} gaze target references missing element {placement.get('gaze_target_element_id')}.")
-            if placement.get("interaction_target_element_id") and placement.get("interaction_target_element_id") not in elements:
-                warnings.append(f"Placement {placement.get('id')} interaction target references missing element {placement.get('interaction_target_element_id')}.")
-            if "behind" in str(camera.get("viewer_position") or "").lower() and "viewer" in str(placement.get("gaze_target_description") or "").lower():
+            pose = placement.get("pose") if isinstance(placement.get("pose"), dict) else {}
+            if element and element.get("element_type") in {"Prop", "Anchor"} and str(pose.get("expression") or "").strip():
+                warnings.append(f"{element.get('element_type')} {element_id} has an expression; this is allowed but unusual.")
+            if element and element.get("importance") == "primary" and element.get("element_type") in {"Character", "Monster"}:
+                if not str(pose.get("body_view") or "").strip():
+                    warnings.append(f"Primary {element.get('element_type')} {element_id} has no body view.")
+                if not str(pose.get("head_view") or "").strip():
+                    warnings.append(f"Primary {element.get('element_type')} {element_id} has no head view.")
+                if not str(pose.get("gaze_target_element_id") or pose.get("gaze_description") or "").strip():
+                    warnings.append(f"Primary {element.get('element_type')} {element_id} has no gaze.")
+            if placement.get("must_be_visible") and not placement.get("visible_body_requirements"):
+                warnings.append(f"Placement {placement_label} is must_be_visible but has no visibility requirements.")
+            if pose.get("gaze_target_element_id") and pose.get("gaze_target_element_id") not in elements:
+                warnings.append(f"Placement {placement_label} gaze target references missing element {pose.get('gaze_target_element_id')}.")
+            if "behind" in str(camera.get("viewer_position") or "").lower() and "viewer" in str(pose.get("gaze_description") or "").lower():
                 warnings.append(f"Camera is behind while {element_id or placement.get('id')} looks at viewer.")
         for cell, names in named_primary_cells.items():
             if len(names) > 1:
@@ -1058,11 +1119,34 @@ class StoryService:
             warnings.append("Too many primary/secondary Character/Monster elements for a small canvas.")
         for interaction in data.get("interactions") or []:
             subject = str(interaction.get("subject_element_id") or "")
+            prop = str(interaction.get("prop_id") or "")
             target = str(interaction.get("target_element_id") or "")
             if subject and subject not in elements:
                 warnings.append(f"Interaction references missing subject {subject}.")
             if target and target not in elements:
                 warnings.append(f"Interaction references missing target {target}.")
+            if prop and prop not in {item.get("id") for item in data.get("props_and_states") or []} and prop not in elements:
+                warnings.append(f"Interaction references missing prop {prop}.")
+        for item in data.get("dialogue") or []:
+            speaker = str(item.get("speaker_element_id") or "")
+            if speaker and speaker not in elements:
+                warnings.append(f"Dialogue references missing speaker {speaker}.")
+            if not str(item.get("text") or "").strip():
+                warnings.append(f"Dialogue {item.get('id') or ''} has blank text.")
+            if item.get("include_in_final_image_prompt", True) and not str(item.get("panel_style_id") or "").strip():
+                warnings.append(f"Dialogue {item.get('id') or ''} has no panel style.")
+            if not str(item.get("pointer_target") or "").strip():
+                warnings.append(f"Dialogue {item.get('id') or ''} has no pointer target.")
+            if not item.get("must_not_cover"):
+                warnings.append(f"Dialogue {item.get('id') or ''} has empty must_not_cover.")
+        for item in data.get("reference_assignments") or []:
+            applies_to = str(item.get("applies_to_element_id") or "")
+            if applies_to and applies_to not in elements:
+                warnings.append(f"Reference assignment applies to missing element {applies_to}.")
+            if not item.get("roles"):
+                warnings.append(f"Reference assignment {item.get('id') or item.get('tag') or ''} has no roles.")
+            if not item.get("ignore"):
+                warnings.append(f"Reference assignment {item.get('id') or item.get('tag') or ''} has no ignore list.")
         placed = {placement.get("scene_element_id") for placement in data.get("placements") or []}
         for element_id, element in elements.items():
             if element.get("importance") == "primary" and element.get("element_type") in {"Character", "Monster"} and element_id not in placed:
@@ -1272,17 +1356,20 @@ class StoryService:
             raise StoryServiceError(f"Story scene prompt template not found: {path}")
         return path
 
-    def _resolve_aux_reference(self, tag: str, category: str, resource_id: str) -> dict:
+    def _resolve_aux_reference(self, tag: str, category: str, resource_id: str, image_id: str) -> dict:
         """Resolve one auxiliary image reference tag."""
         resource = self.auxiliary_resource_repository.get_resource(resource_id)
         if resource.category != category:
             raise StoryServiceError(f"Auxiliary resource category mismatch for {tag}.")
-        path = self.path_service.resolve_path(resource.image_path)
+        image = next((item for item in resource.images if item.get("image_id") == image_id), None)
+        if not image:
+            raise StoryServiceError(f"Auxiliary image not found for {tag}.")
+        path = self.path_service.resolve_path(str(image.get("image_path") or ""))
         if not path.exists():
             raise StoryServiceError(f"Auxiliary image not found: {path}")
         return {
             "role": "story_reference",
-            "label": resource.label,
+            "label": f"{resource.label} - {image.get('label') or image_id}",
             "tag": tag,
             "path": str(path),
             "kind": f"aux:{category}",
@@ -1333,18 +1420,18 @@ class StoryService:
         """Resolve image reference tags used by a scene."""
         references = []
         seen = set()
-        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
+        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
         for match in re.finditer(pattern, scene_text or ""):
             tag = match.group(0)
             if tag in seen:
                 continue
             seen.add(tag)
             if match.group(1):
-                references.append(self._resolve_aux_reference(tag, match.group(1), match.group(2)))
-            elif match.group(3):
-                references.append(self._resolve_asset_reference(tag, match.group(3), match.group(4), match.group(5)))
+                references.append(self._resolve_aux_reference(tag, match.group(1), match.group(2), match.group(3)))
+            elif match.group(4):
+                references.append(self._resolve_asset_reference(tag, match.group(4), match.group(5), match.group(6)))
             else:
-                references.append(self._resolve_identity_reference(tag, match.group(6), match.group(7), match.group(8)))
+                references.append(self._resolve_identity_reference(tag, match.group(7), match.group(8), match.group(9)))
         return references
 
     def _write_json(self, path: Path, payload: dict) -> None:
@@ -1393,59 +1480,55 @@ class StoryService:
         safe_scene_slug = self.safe_slug(scene_slug)
         story_path = self.path_service.story_file_path(safe_story_slug)
         scene_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
-        if not story_path.exists():
-            raise StoryServiceError(f"Story file not found: {story_path}")
-        if not scene_path.exists():
-            raise StoryServiceError(f"Scene file not found: {scene_path}")
-        story_text = story_path.read_text(encoding="utf-8")
-        scene_text = scene_path.read_text(encoding="utf-8")
-        story_errors = self.validate_story_text(story_text)
-        scene_errors = self.validate_scene_text(scene_text)
-        if story_errors or scene_errors:
-            raise StoryServiceError("; ".join(story_errors + scene_errors))
-
         pipeline_path = self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
         pipeline_path.mkdir(parents=True, exist_ok=True)
         final_prompt_path = pipeline_path / "Final_Image_Prompt.md"
         scene_builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
-        references_source = scene_text
+        references_source = ""
         scene_builder_data: dict | None = None
         if scene_builder_path.exists():
             scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
             references_source += "\n" + json.dumps(scene_builder_data)
         references = self._resolve_scene_references(references_source)
         if scene_builder_data is not None:
-            story_sections = {
-                key: value
-                for key, value in self._story_scene_sections(story_text, scene_text).items()
-                if key.startswith("STORY_") or key == "CANONICAL_ART_STYLE"
-            }
-            scene_sections = {
-                key: value
-                for key, value in self._story_scene_sections(story_text, scene_text).items()
-                if key.startswith("SCENE_")
-            }
-            scene_sections["_RAW_SCENE_TEXT"] = scene_text
-            compiled = compile_scene_render(
-                story_sections=story_sections,
-                scene_sections=scene_sections,
-                scene_builder=scene_builder_data,
-                references=references,
-                story_file=str(story_path),
-                scene_file=str(scene_path),
-                scene_builder_file=str(scene_builder_path),
-                final_prompt_file=str(final_prompt_path),
-            )
-            self._write_json(pipeline_path / "Scene_Render_Validation.json", compiled.validation)
-            if compiled.validation.get("errors"):
-                raise StoryServiceError(f"Scene render validation failed: {compiled.validation['errors']}")
-            prompt = compiled.prompt
+            normalized_scene = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
+            warnings = self.validate_scene_builder_data(normalized_scene)
+            story_settings_path = self._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
+            if not story_settings_path.exists():
+                raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
+            story_settings = self.load_story_settings(story_settings_path)
+            ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references})
+            ir["source"]["scene_json_path"] = str(scene_builder_path)
+            ir["source"]["story_settings_path"] = str(story_settings_path)
+            prompt = final_image_prompt_text(ir)
+            brief = local_render_brief(ir)
+            self._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
             final_prompt_path.write_text(prompt, encoding="utf-8")
-            self._write_json(pipeline_path / "Scene_Render_IR.json", compiled.ir)
-            self._write_json(pipeline_path / "Local_Render_Brief.json", compiled.local_brief)
-            (pipeline_path / "Local_Render_Prompt.md").write_text(compiled.local_prompt, encoding="utf-8")
-            self._write_json(pipeline_path / "Prompt_Source_Map.json", compiled.source_map)
+            self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+            self._write_json(pipeline_path / "Local_Render_Brief.json", brief)
+            (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
+            self._write_json(
+                pipeline_path / "Prompt_Source_Map.json",
+                {
+                    "story_settings_file": str(story_settings_path),
+                    "scene_builder_file": str(scene_builder_path),
+                    "final_prompt": str(final_prompt_path),
+                    "compiler": "scene_render_v3",
+                    "artifacts": ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"],
+                },
+            )
         else:
+            if not story_path.exists():
+                raise StoryServiceError(f"Story file not found: {story_path}")
+            if not scene_path.exists():
+                raise StoryServiceError(f"Scene file not found: {scene_path}")
+            story_text = story_path.read_text(encoding="utf-8")
+            scene_text = scene_path.read_text(encoding="utf-8")
+            story_errors = self.validate_story_text(story_text)
+            scene_errors = self.validate_scene_text(scene_text)
+            if story_errors or scene_errors:
+                raise StoryServiceError("; ".join(story_errors + scene_errors))
+            references = self._resolve_scene_references(scene_text)
             prompt = self._render_story_scene_prompt(story_text, scene_text)
             final_prompt_path.write_text(prompt, encoding="utf-8")
             template_path = self._story_scene_template_path()
@@ -1517,7 +1600,7 @@ class StoryService:
         normalized_character = str(character_filter or "").strip().lower()
         normalized_filter = str(text_filter or "").strip().lower()
         for resource in self.auxiliary_resource_repository.list_resources():
-            rows.append(self._aux_resource_row(resource))
+            rows.extend(self._aux_resource_rows(resource))
         base_character_root = Path(self.path_service.config.base_character_path)
         if not base_character_root.exists():
             base_character_root.mkdir(parents=True, exist_ok=True)
@@ -1539,19 +1622,22 @@ class StoryService:
         haystack = " ".join([row.tag, row.label, row.character, row.phase, row.kind, row.pipeline]).lower()
         return normalized_filter in haystack
 
-    def _aux_resource_row(self, resource: AuxiliaryResource) -> ImageReferenceRow:
-        """Return one picker row for an auxiliary resource."""
-        image_path = self.path_service.resolve_path(resource.image_path)
-        return ImageReferenceRow(
-            tag=resource.tag,
-            label=resource.label,
-            character="",
-            phase="",
-            kind=f"aux:{resource.category}",
-            pipeline="Auxiliary Resource",
-            image_path=str(image_path),
-            thumbnail_path=str(image_path),
-        )
+    def _aux_resource_rows(self, resource: AuxiliaryResource) -> list[ImageReferenceRow]:
+        """Return picker rows for auxiliary resource images."""
+        rows = []
+        for image in resource.images:
+            image_path = self.path_service.resolve_path(str(image.get("image_path") or ""))
+            rows.append(ImageReferenceRow(
+                tag=str(image.get("tag") or ""),
+                label=f"{resource.label} - {image.get('label') or image.get('image_id')}",
+                character="",
+                phase="",
+                kind=f"aux:{resource.category}",
+                pipeline="Auxiliary Resource",
+                image_path=str(image_path),
+                thumbnail_path=str(image_path),
+            ))
+        return rows
 
     def _locked_assets(self, character: str, phase: str) -> list[Asset]:
         """List locked assets for one character phase."""

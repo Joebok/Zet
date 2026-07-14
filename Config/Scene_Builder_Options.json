@@ -58,12 +58,15 @@
     "distant"
   ],
   "facing": [
-    "toward viewer",
-    "toward left",
-    "toward right",
-    "toward center",
-    "away from viewer",
-    "toward another character",
+    "front",
+    "front-left 3/4",
+    "front-right 3/4",
+    "left profile",
+    "right profile",
+    "back-left 3/4",
+    "back-right 3/4",
+    "back",
+    "toward another element",
     "custom"
   ],
   "gaze": [
@@ -156,6 +159,16 @@
     "chasing",
     "pointing at",
     "holding",
+    "custom"
+  ],
+  "contact_state": [
+    "no contact",
+    "touching",
+    "holding",
+    "grabbing",
+    "striking",
+    "blocking",
+    "supporting",
     "custom"
   ]
 }

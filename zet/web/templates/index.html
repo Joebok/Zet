@@ -302,10 +302,8 @@
           <table id="aux-resource-table">
             <thead>
               <tr>
-                <th class="aux-thumbnail-col">image</th>
                 <th>label</th>
-                <th>tag</th>
-                <th></th>
+                <th>folder</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -321,15 +319,25 @@
             Label
             <input id="aux-resource-label" type="text" placeholder="Old wizard">
           </label>
-          <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
-            <p>Click here, then press Ctrl+V to paste an image.</p>
-            <p class="status-text">Drag/drop and file picker also work.</p>
-            <input id="aux-resource-file-input" type="file" accept="image/*">
-          </div>
-          <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
           <button id="aux-resource-save" type="button">Save Resource</button>
           <button id="aux-resource-clear" type="button">Clear</button>
-          <h3>Selected Tag</h3>
+          <div class="aux-resource-image-editor">
+            <h3>Images</h3>
+            <div id="aux-resource-image-list" class="aux-resource-image-list">No images.</div>
+            <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
+            <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
+              <p>Click here, then press Ctrl+V to paste an image.</p>
+              <p class="status-text">Drag/drop and file picker also work.</p>
+              <input id="aux-resource-file-input" type="file" accept="image/*">
+            </div>
+            <button id="aux-resource-new-image" type="button">New Image</button>
+            <label>
+              Image Name
+              <input id="aux-resource-image-label" type="text" placeholder="Front view">
+            </label>
+            <button id="aux-resource-save-image" type="button">Save Image</button>
+          </div>
+          <h3>Selected Image Tag</h3>
           <code id="aux-resource-tag" class="copyable-tag"></code>
           <button id="aux-resource-copy-tag" type="button" disabled>Copy Tag</button>
         </aside>
@@ -512,6 +520,8 @@
             <h2 id="story-editor-title">Select a story</h2>
             <div class="button-row compact">
               <button id="story-delete" type="button" disabled>Delete Story</button>
+              <button id="story-settings-load" type="button" disabled>Settings</button>
+              <button id="story-settings-save" type="button" disabled>Save Settings</button>
               <button id="story-save" type="button" disabled>Save Story</button>
             </div>
           </div>
@@ -524,6 +534,7 @@
           </div>
           <div id="story-validation" class="action-message info" hidden></div>
           <textarea id="story-text" spellcheck="false" placeholder="Select or create a story to edit its markdown."></textarea>
+          <textarea id="story-settings-json" spellcheck="false" placeholder="Story settings JSON" hidden></textarea>
         </section>
       </div>
     </section>

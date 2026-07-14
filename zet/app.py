@@ -280,6 +280,19 @@ class ZetApp:
         """Save one story markdown document."""
         return self.story_service.save_story(story_slug, text)
 
+    def load_story_settings(self, story_slug: str) -> dict:
+        """Load one story settings JSON document."""
+        path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
+        if not path.exists():
+            self.story_service.save_story_settings(path, self.story_service.create_default_story_settings(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug))))
+        return self.story_service.load_story_settings(path)
+
+    def save_story_settings(self, story_slug: str, data: dict) -> dict:
+        """Save one story settings JSON document."""
+        path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
+        self.story_service.save_story_settings(path, data)
+        return self.story_service.load_story_settings(path)
+
     def delete_story(self, story_slug: str) -> StoryGitResult:
         """Commit and delete one story folder."""
         return self.story_service.delete_story(story_slug)
@@ -379,21 +392,28 @@ class ZetApp:
         self,
         category: str,
         label: str,
-        image_bytes: bytes,
-        content_type: str,
     ) -> AuxiliaryResource:
         """Create a global auxiliary resource."""
-        return self.auxiliary_resource_service.create_resource(category, label, image_bytes, content_type)
+        return self.auxiliary_resource_service.create_resource(category, label)
 
     def update_auxiliary_resource(
         self,
         resource_id: str,
         label: str,
-        image_bytes: bytes | None = None,
-        content_type: str = "",
     ) -> AuxiliaryResource:
         """Update a global auxiliary resource."""
-        return self.auxiliary_resource_service.update_resource(resource_id, label, image_bytes, content_type)
+        return self.auxiliary_resource_service.update_resource(resource_id, label)
+
+    def save_auxiliary_resource_image(
+        self,
+        resource_id: str,
+        image_label: str,
+        image_bytes: bytes,
+        content_type: str,
+        original_image_id: str = "",
+    ) -> AuxiliaryResource:
+        """Save or update one image inside an auxiliary resource."""
+        return self.auxiliary_resource_service.save_image(resource_id, image_label, image_bytes, content_type, original_image_id)
 
     def character_onboarding_options(self):
         """Return options used by new character and phase onboarding."""

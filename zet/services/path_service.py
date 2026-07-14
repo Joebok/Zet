@@ -100,6 +100,19 @@ class PathService:
         """Return the image path for a global auxiliary resource."""
         return self.auxiliary_resource_root() / "Images" / category / f"{resource_id}{extension}"
 
+    def auxiliary_resource_folder_path(self, resource_id: str) -> Path:
+        """Return one auxiliary resource folder path."""
+        return self.auxiliary_resource_root() / "Images" / str(resource_id or "").strip()
+
+    def auxiliary_resource_template_source_path(self) -> Path:
+        """Return the shared auxiliary resource template path."""
+        return self.auxiliary_resource_root() / "_Shared" / "AuxResource_Template.md"
+
+    def auxiliary_resource_folder_image_path(self, resource_id: str, image_label: str, extension: str = ".png") -> Path:
+        """Return an image path inside one auxiliary resource folder."""
+        safe = str(image_label or "").strip()
+        return self.auxiliary_resource_folder_path(resource_id) / f"{safe}{extension}"
+
     def costume_template_path(self, character: str, phase: str, costume_name: str) -> Path:
         """Return the markdown template path for a costume name."""
         safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(costume_name).strip())
