@@ -294,10 +294,6 @@
               Search Label
               <input id="aux-resource-search" type="search" placeholder="contains...">
             </label>
-            <label class="checkbox-label">
-              <input id="aux-resource-show-thumbnails" type="checkbox">
-              Thumbnails
-            </label>
           </div>
           <table id="aux-resource-table">
             <thead>
@@ -319,6 +315,7 @@
             Label
             <input id="aux-resource-label" type="text" placeholder="Old wizard">
           </label>
+          <button id="aux-resource-edit-template" type="button" disabled>Edit Template</button>
           <button id="aux-resource-save" type="button">Save Resource</button>
           <button id="aux-resource-clear" type="button">Clear</button>
           <div class="aux-resource-image-editor">
@@ -618,6 +615,35 @@
       </div>
       <div id="scene-builder-message" class="action-message" hidden></div>
       <div id="scene-builder-panel" class="scene-builder-panel"></div>
+      <div id="builder-element-modal" class="image-picker-modal" hidden>
+        <div class="image-picker-dialog">
+          <div class="review-header">
+            <h2>New Element</h2>
+          </div>
+          <label>
+            Resource Type
+            <select id="builder-element-resource-type"></select>
+          </label>
+          <section id="builder-element-character-section">
+            <h3>Character</h3>
+            <label>Character<select id="builder-element-character"></select></label>
+            <label>Phase<select id="builder-element-phase"></select></label>
+            <label>Costume<select id="builder-element-costume"></select></label>
+          </section>
+          <section id="builder-element-aux-section">
+            <h3>Aux Resource</h3>
+            <label>Resource<select id="builder-element-aux"></select></label>
+          </section>
+          <section id="builder-element-scene-section">
+            <h3>Scene-Only</h3>
+            <label>Display Name<input id="builder-element-scene-name" type="text"></label>
+          </section>
+          <div class="button-row compact">
+            <button id="builder-element-cancel" type="button">Cancel</button>
+            <button id="builder-element-add" type="button">Add</button>
+          </div>
+        </div>
+      </div>
       <div id="builder-image-picker-modal" class="image-picker-modal" hidden>
         <div class="image-picker-dialog">
           <div class="review-header">

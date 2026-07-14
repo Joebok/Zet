@@ -200,6 +200,10 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     for element in ir.get("elements", []):
         if _clean(element.get("importance")) == "primary":
             lines.append(f"- Preserve primary {element.get('element_type')} {element.get('display_name')}.")
+        sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
+        for key in ("identity_preservation_core", "identity_preservation_costume"):
+            if _clean(sections.get(key)):
+                lines.append(f"- {element.get('display_name')}: {_clean(sections.get(key))}")
     lines.extend(["", "# Avoid", "", "No " + ", ".join(ir.get("avoid") or ["unrequested text", "malformed hands"]) + ".", "", "# Final Verification", ""])
     for item in ir.get("final_verification", []):
         lines.append(f"- {item}.")

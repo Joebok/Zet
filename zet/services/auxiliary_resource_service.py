@@ -7,7 +7,12 @@ from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepo
 from zet.services.path_service import PathService
 
 
-VALID_AUXILIARY_CATEGORIES = {"person", "place", "thing"}
+AUXILIARY_RESOURCE_CATEGORIES = [
+    {"value": "person", "label": "Person", "resource_type": "Person"},
+    {"value": "place", "label": "Place", "resource_type": "Place"},
+    {"value": "thing", "label": "Thing", "resource_type": "Object"},
+]
+VALID_AUXILIARY_CATEGORIES = {item["value"] for item in AUXILIARY_RESOURCE_CATEGORIES}
 
 
 class AuxiliaryResourceServiceError(Exception):

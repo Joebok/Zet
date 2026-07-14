@@ -1374,12 +1374,17 @@ tr.auxiliary-row td:last-child {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: 52px 1fr auto;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
   text-align: left;
 }
 
 .aux-resource-image-row.selected {
   background: #e0f2fe;
+}
+
+.aux-resource-image-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .category-context {
@@ -1407,11 +1412,6 @@ tr.auxiliary-row td:last-child {
   height: 72px;
   object-fit: cover;
   width: 72px;
-}
-
-.aux-resource-table-no-thumbs .aux-thumbnail-col,
-.aux-resource-table-no-thumbs .aux-thumbnail-cell {
-  display: none;
 }
 
 .phase-comparison-controls {

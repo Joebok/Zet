@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from zet.app import ZetApp
 from zet.render_console.queue import RenderConsoleQueue
 from zet.services.config_service import ConfigService
+from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
 from zet.services.pipeline_control_service import AutomationSettings
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
@@ -1046,6 +1047,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             "onboarding_statuses": onboarding_statuses,
             "header_previews": header_previews,
             "onboarding_options": _onboarding_options_payload(zet_app.character_onboarding_options()),
+            "auxiliary_resource_categories": AUXILIARY_RESOURCE_CATEGORIES,
             "default_character": characters[0] if characters else None,
             "default_phase": phases_by_character.get(characters[0], [None])[0] if characters else None,
         }

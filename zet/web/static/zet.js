@@ -4,6 +4,7 @@ const state = {
   onboardingStatuses: {},
   headerPreviews: {},
   onboardingOptions: { species_ancestry: [], gender_presentation: [] },
+  auxiliaryResourceCategories: [],
   character: null,
   phase: null,
   assets: [],
@@ -67,6 +68,8 @@ const state = {
   sceneBuilderRendering: false,
   builderImagePickerReferences: [],
   builderImagePickerSearch: "",
+  builderElementAuxResources: {},
+  builderElementCostumes: [],
   auxiliaryResources: [],
   selectedAuxiliaryResourceId: null,
   selectedAuxiliaryImageId: null,
@@ -372,6 +375,18 @@ const sceneBuilderStatus = document.querySelector("#scene-builder-status");
 const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
 const builderImagePickerModal = document.querySelector("#builder-image-picker-modal");
+const builderElementModal = document.querySelector("#builder-element-modal");
+const builderElementResourceType = document.querySelector("#builder-element-resource-type");
+const builderElementCharacterSection = document.querySelector("#builder-element-character-section");
+const builderElementCharacter = document.querySelector("#builder-element-character");
+const builderElementPhase = document.querySelector("#builder-element-phase");
+const builderElementCostume = document.querySelector("#builder-element-costume");
+const builderElementAuxSection = document.querySelector("#builder-element-aux-section");
+const builderElementAux = document.querySelector("#builder-element-aux");
+const builderElementSceneSection = document.querySelector("#builder-element-scene-section");
+const builderElementSceneName = document.querySelector("#builder-element-scene-name");
+const builderElementCancel = document.querySelector("#builder-element-cancel");
+const builderElementAdd = document.querySelector("#builder-element-add");
 const builderImagePickerClose = document.querySelector("#builder-image-picker-close");
 const builderImagePickerCharacter = document.querySelector("#builder-image-picker-character");
 const builderImagePickerSearch = document.querySelector("#builder-image-picker-search");
@@ -398,13 +413,13 @@ const auxResourceStatus = document.querySelector("#aux-resource-status");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const auxResourceCategory = document.querySelector("#aux-resource-category");
 const auxResourceSearch = document.querySelector("#aux-resource-search");
-const auxResourceShowThumbnails = document.querySelector("#aux-resource-show-thumbnails");
 const auxResourceTable = document.querySelector("#aux-resource-table");
 const auxResourceTableBody = document.querySelector("#aux-resource-table tbody");
 const auxResourceAdd = document.querySelector("#aux-resource-add");
 const auxResourceFormTitle = document.querySelector("#aux-resource-form-title");
 const auxResourceFormCategory = document.querySelector("#aux-resource-form-category");
 const auxResourceLabel = document.querySelector("#aux-resource-label");
+const auxResourceEditTemplate = document.querySelector("#aux-resource-edit-template");
 const auxResourcePasteZone = document.querySelector("#aux-resource-paste-zone");
 const auxResourceFileInput = document.querySelector("#aux-resource-file-input");
 const auxResourceImagePreview = document.querySelector("#aux-resource-image-preview");
@@ -679,13 +694,12 @@ const SCENE_BUILDER_HELP = {
   "setup.style.dialogue_style_id": "ID of the story dialogue style used by this scene.",
   "setup.style.visual_continuity_override": "Scene-specific continuity note. Leave blank unless this scene intentionally contrasts with the story defaults.",
   "scene_elements[].display_name": "Human-readable label shown in the UI and generated prompts.",
+  "scene_elements[].resource_type": "Where this element comes from: Character, an auxiliary resource type, or Scene-Only.",
   "scene_elements[].element_type": "Type of visible thing: Character, Monster, Prop, or Anchor.",
   "scene_elements[].importance": "How important this element is visually: primary, secondary, background, or extra.",
   "scene_elements[].reference_images[].tag": "Resolvable image reference tag used by Zet, such as {{ASSET:...}} or {{AUX:...}}.",
   "scene_elements[].scene_visual_override": "Scene-specific visual override. Use only for temporary scene-specific changes.",
   "scene_elements[].fallback_visual_description": "Short local visual description used only if no canonical source or reference is available.",
-  "scene_elements[].source_refs.identity_source": "Path to canonical identity file for a recurring character or identity-sensitive element.",
-  "scene_elements[].source_refs.costume_source": "Path to selected costume file for this scene.",
   "scene_elements[].role": "Narrative or visual role in this scene, such as protagonist, threat, location anchor, offered object, or background feature.",
   "scene_elements[].notes": "Private notes for this element in this scene.",
   "placements[].screen_cell.row": "Planning grid row. Row 1 is the top row.",
@@ -907,6 +921,7 @@ async function loadContext() {
   state.onboardingStatuses = payload.onboarding_statuses || {};
   state.headerPreviews = payload.header_previews || {};
   state.onboardingOptions = payload.onboarding_options || { species_ancestry: [], gender_presentation: [] };
+  state.auxiliaryResourceCategories = payload.auxiliary_resource_categories || [];
   const preferredCharacter = state.character || stored.character;
   state.character = preferredCharacter && state.characters.includes(preferredCharacter) ? preferredCharacter : payload.default_character;
   const phases = state.phasesByCharacter[state.character] || [];
@@ -920,6 +935,9 @@ async function loadContext() {
   scenePickerSearch.value = state.scenePickerSearch || "";
   setSelectOptions(onboardingSpecies, state.onboardingOptions.species_ancestry || []);
   setSelectOptions(onboardingGender, state.onboardingOptions.gender_presentation || []);
+  if (state.auxiliaryResourceCategories.length) {
+    setSelectOptionsWithLabels(auxResourceCategory, state.auxiliaryResourceCategories.map((item) => ({ value: item.value, label: item.label })));
+  }
   updatePhaseSelect();
   saveStoredContext();
   renderOnboarding();
@@ -2837,6 +2855,10 @@ function builderElementLabel(elementId) {
   return element?.display_name || elementId || "";
 }
 
+function builderNormalizeId(value) {
+  return String(value || "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "scene_element";
+}
+
 function builderSyncControls() {
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
@@ -2948,14 +2970,96 @@ function builderCreatePlacementForElement(element) {
   };
 }
 
-function builderAddElement() {
+function builderResourceTypeOptions(selected = "Character") {
+  const options = state.sceneBuilderOptions.resource_type || [
+    { value: "Character", label: "Character" },
+    { value: "Person", label: "Person" },
+    { value: "Place", label: "Place" },
+    { value: "Object", label: "Object" },
+    { value: "Scene-Only", label: "Scene-Only" },
+  ];
+  return options.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === selected ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("");
+}
+
+function builderAuxCategoryForResourceType(resourceType) {
+  return (state.sceneBuilderOptions.resource_type || []).find((item) => item.value === resourceType)?.category || "";
+}
+
+function builderElementTypeForResourceType(resourceType) {
+  if (resourceType === "Place") return "Anchor";
+  if (resourceType === "Object" || resourceType === "Scene-Only") return "Prop";
+  return "Character";
+}
+
+function builderUpdateElementModalSections() {
+  const resourceType = builderElementResourceType.value || "Character";
+  builderElementCharacterSection.hidden = resourceType !== "Character";
+  builderElementAuxSection.hidden = !builderAuxCategoryForResourceType(resourceType);
+  builderElementSceneSection.hidden = resourceType !== "Scene-Only";
+}
+
+async function builderLoadElementCostumes() {
+  const character = builderElementCharacter.value || "";
+  const phase = builderElementPhase.value || "";
+  builderElementCostume.replaceChildren();
+  state.builderElementCostumes = [];
+  if (!character || !phase) return;
+  const params = new URLSearchParams({ character, phase });
+  const payload = await fetchJson(`/api/costumes?${params.toString()}`);
+  state.builderElementCostumes = payload.costumes || [];
+  setSelectOptions(builderElementCostume, state.builderElementCostumes.map((item) => item.name || ""));
+}
+
+async function builderLoadElementAuxResources() {
+  const category = builderAuxCategoryForResourceType(builderElementResourceType.value || "");
+  builderElementAux.replaceChildren();
+  if (!category) return;
+  if (!state.builderElementAuxResources[category]) {
+    const payload = await fetchJson(`/api/auxiliary-resources?${new URLSearchParams({ category }).toString()}`);
+    state.builderElementAuxResources[category] = payload.resources || [];
+  }
+  setSelectOptionsWithLabels(builderElementAux, state.builderElementAuxResources[category].map((item) => ({ value: item.resource_id, label: item.label || item.resource_id })));
+}
+
+async function openBuilderElementDialog() {
+  setSelectOptionsWithLabels(builderElementResourceType, (state.sceneBuilderOptions.resource_type || []).map((item) => ({ value: item.value, label: item.label })));
+  builderElementResourceType.value = "Character";
+  setSelectOptions(builderElementCharacter, state.characters || []);
+  builderElementCharacter.value = state.character || state.characters[0] || "";
+  setSelectOptions(builderElementPhase, state.phasesByCharacter[builderElementCharacter.value] || []);
+  builderElementPhase.value = state.phase || builderElementPhase.options[0]?.value || "";
+  builderElementSceneName.value = "";
+  builderUpdateElementModalSections();
+  await builderLoadElementCostumes();
+  await builderLoadElementAuxResources();
+  builderElementModal.hidden = false;
+}
+
+function builderAddElementFromDialog() {
   const index = (state.sceneBuilder.scene_elements || []).length + 1;
-  const id = index === 1 ? "new_element" : `new_element_${index}`;
+  const resourceType = builderElementResourceType.value || "Character";
+  const category = builderAuxCategoryForResourceType(resourceType);
+  const resource = category ? (state.builderElementAuxResources[category] || []).find((item) => item.resource_id === builderElementAux.value) : null;
+  const displayName = resourceType === "Character"
+    ? builderElementCharacter.value
+    : resourceType === "Scene-Only"
+      ? builderElementSceneName.value.trim()
+      : resource?.label || "";
+  if (!displayName) {
+    showSceneBuilderMessage("Display name is required.", "error");
+    return;
+  }
+  const baseId = self.crypto?.randomUUID ? `${builderNormalizeId(displayName)}_${self.crypto.randomUUID().slice(0, 8)}` : `${builderNormalizeId(displayName)}_${Date.now()}`;
   const element = {
-    id,
-    display_name: "New Element",
-    element_type: "Character",
-    source_refs: { identity_source: "", costume_source: "", location_source: "", monster_source: "", prop_source: "" },
+    id: index === 1 ? builderNormalizeId(displayName) : baseId,
+    display_name: displayName,
+    resource_type: resourceType,
+    element_type: builderElementTypeForResourceType(resourceType),
+    character: resourceType === "Character" ? builderElementCharacter.value : "",
+    phase: resourceType === "Character" ? builderElementPhase.value : "",
+    costume: resourceType === "Character" ? builderElementCostume.value : "",
+    aux_category: category,
+    aux_resource_id: resource?.resource_id || "",
     reference_images: [],
     scene_visual_override: "",
     fallback_visual_description: "",
@@ -2965,8 +3069,9 @@ function builderAddElement() {
   };
   state.sceneBuilder.scene_elements.push(element);
   state.sceneBuilder.placements.push(builderCreatePlacementForElement(element));
-  state.selectedBuilderElementId = id;
-  state.selectedBuilderPlacementId = builderPlacementForElement(id)?.id || null;
+  state.selectedBuilderElementId = element.id;
+  state.selectedBuilderPlacementId = builderPlacementForElement(element.id)?.id || null;
+  builderElementModal.hidden = true;
   renderSceneBuilder();
 }
 
@@ -3118,13 +3223,12 @@ function builderRenderElementEditor() {
       <h4>Selected Element</h4>
       <div class="scene-builder-fields">
         <label>${builderCaption("Display name", "scene_elements[].display_name")}<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
+        <label>${builderCaption("Resource type", "scene_elements[].resource_type")}<select data-builder-element-field="resource_type">${builderResourceTypeOptions(element.resource_type || "Character")}</select></label>
         <label>${builderCaption("Type", "scene_elements[].element_type")}<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Anchor"${element.element_type === "Anchor" ? " selected" : ""}>Anchor</option></select></label>
         <label>${builderCaption("Importance", "scene_elements[].importance")}<select data-builder-element-field="importance">${builderOptionHtml("importance", element.importance || "secondary")}</select></label>
         <label class="full">${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(element.reference_images?.[0]?.tag || "")}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label>
         <label class="full">${builderCaption("Scene visual override", "scene_elements[].scene_visual_override")}<textarea data-builder-element-field="scene_visual_override">${escapeHtml(element.scene_visual_override || "")}</textarea></label>
         <label class="full">${builderCaption("Fallback visual description", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
-        <label class="full">${builderCaption("Identity source", "scene_elements[].source_refs.identity_source")}<input value="${escapeHtml(element.source_refs?.identity_source || "")}" data-builder-element-field="source_refs.identity_source"></label>
-        <label class="full">${builderCaption("Costume/source", "scene_elements[].source_refs.costume_source")}<input value="${escapeHtml(element.source_refs?.costume_source || element.source_refs?.location_source || element.source_refs?.prop_source || "")}" data-builder-element-field="source_refs.costume_source"></label>
         <label>${builderCaption("Role", "scene_elements[].role")}<input value="${escapeHtml(element.role || "")}" data-builder-element-field="role"></label>
         <label class="full">${builderCaption("Notes", "scene_elements[].notes")}<textarea data-builder-element-field="notes">${escapeHtml(element.notes || "")}</textarea></label>
       </div>
@@ -3512,7 +3616,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   } else {
     const action = target.dataset.builderAction;
     if (action === "return-scenes") returnToScenesFromBuilder();
-    if (action === "add-element") builderAddElement();
+    if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
     if (action === "add-placement") builderAddPlacement();
     if (action === "delete-placement") builderDeletePlacement();
@@ -3640,6 +3744,7 @@ function clearAuxiliaryResourceForm() {
   updateAuxiliaryResourceCategoryDisplay();
   auxResourceFormTitle.textContent = "Add Resource";
   auxResourceLabel.value = "";
+  auxResourceEditTemplate.disabled = true;
   auxResourceImageLabel.value = "";
   auxResourceTag.textContent = "";
   auxResourceCopyTag.disabled = true;
@@ -3688,7 +3793,6 @@ function renderAuxiliaryResourceTable() {
     ? state.auxiliaryResources.filter((resource) => (resource.label || "").toLowerCase().includes(search))
     : state.auxiliaryResources;
   auxResourceTableBody.replaceChildren();
-  auxResourceTable.classList.toggle("aux-resource-table-no-thumbs", !auxResourceShowThumbnails.checked);
   if (!visibleResources.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
@@ -3730,6 +3834,7 @@ function selectAuxiliaryResource(resourceId) {
   updateAuxiliaryResourceCategoryDisplay();
   auxResourceFormTitle.textContent = "Update Resource";
   auxResourceLabel.value = resource.label || "";
+  auxResourceEditTemplate.disabled = !resource.template_path;
   auxResourceSave.textContent = "Update Resource";
   auxResourceImageLabel.value = "";
   auxResourceTag.textContent = "";
@@ -3760,6 +3865,7 @@ function renderAuxiliaryResourceImages(resource) {
     thumb.alt = imageRecord.label || imageRecord.image_id || "";
     thumb.src = fileUrl(imageRecord.image_path, imageRecord.updated_at || "");
     const label = document.createElement("span");
+    label.className = "aux-resource-image-label";
     label.textContent = imageRecord.label || imageRecord.image_id || "";
     const copy = document.createElement("span");
     copy.textContent = "Select";
@@ -3767,6 +3873,21 @@ function renderAuxiliaryResourceImages(resource) {
     button.addEventListener("click", () => selectAuxiliaryResourceImage(imageRecord.image_id));
     auxResourceImageList.append(button);
   }
+}
+
+async function openAuxiliaryResourceTemplate() {
+  const resource = selectedAuxiliaryResource();
+  if (!resource?.template_path) {
+    return;
+  }
+  await openSourceEditorForSource(
+    {
+      source_kind: "auxiliary_resource_template",
+      source_label: resource.label || resource.resource_id || "Aux Resource Template",
+      source_path: resource.template_path,
+    },
+    showAuxResourceMessage,
+  );
 }
 
 function selectedAuxiliaryResource() {
@@ -6106,13 +6227,26 @@ builderImagePickerRefresh.addEventListener("click", () => loadImagePickerReferen
 builderImagePickerClose.addEventListener("click", () => {
   builderImagePickerModal.hidden = true;
 });
+builderElementResourceType.addEventListener("change", async () => {
+  builderUpdateElementModalSections();
+  await builderLoadElementAuxResources();
+});
+builderElementCharacter.addEventListener("change", async () => {
+  setSelectOptions(builderElementPhase, state.phasesByCharacter[builderElementCharacter.value] || []);
+  await builderLoadElementCostumes();
+});
+builderElementPhase.addEventListener("change", builderLoadElementCostumes);
+builderElementCancel.addEventListener("click", () => {
+  builderElementModal.hidden = true;
+});
+builderElementAdd.addEventListener("click", builderAddElementFromDialog);
 auxResourceCategory.addEventListener("change", () => {
   clearAuxiliaryResourceForm();
   loadAuxiliaryResources();
 });
 auxResourceSearch.addEventListener("input", refreshAuxiliaryResourceTable);
-auxResourceShowThumbnails.addEventListener("change", refreshAuxiliaryResourceTable);
 auxResourceAdd.addEventListener("click", clearAuxiliaryResourceForm);
+auxResourceEditTemplate.addEventListener("click", openAuxiliaryResourceTemplate);
 auxResourcePasteZone.addEventListener("paste", (event) => {
   const blob = imageBlobFromPasteEvent(event);
   if (blob) {

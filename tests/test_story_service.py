@@ -11,12 +11,13 @@ from zet.services.story_service import StoryGitResult, StoryService, StoryServic
 
 
 class FakeAuxiliaryResource:
-    def __init__(self, resource_id: str, category: str, label: str, tag: str, image_path: str):
+    def __init__(self, resource_id: str, category: str, label: str, tag: str, image_path: str, template_path: str = ""):
         self.resource_id = resource_id
         self.category = category
         self.label = label
         self.tag = tag
         self.image_path = image_path
+        self.template_path = template_path
 
 
 class FakeAuxiliaryResourceRepository:
@@ -717,6 +718,44 @@ orientation: landscape
             self.assertIn("negative:", local_prompt)
             source_map = json.loads((pipeline / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
             self.assertEqual("scene_render_v2", source_map["compiler"])
+
+    def test_stage_scene_render_reads_scene_character_and_costume_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            character_dir = root / "Characters" / "Tsaeytte" / "Adult"
+            character_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[FirstDay]`\n", encoding="utf-8")
+            service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
+            (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
+            (character_dir / "Character_Image_Template.md").write_text(
+                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\ncore identity from character\n<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
+                encoding="utf-8",
+            )
+            (character_dir / "Costume_Canonical_Adventure_Gear.md").write_text(
+                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME_SCENE -->\ncostume identity from costume\n<!-- ZET:END IDENTITY_PRESERVATION_COSTUME_SCENE -->\n",
+                encoding="utf-8",
+            )
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["scene_elements"] = [{
+                "id": "tsa",
+                "display_name": "Tsaeytte",
+                "resource_type": "Character",
+                "element_type": "Character",
+                "character": "Tsaeytte",
+                "phase": "Adult",
+                "costume": "Canonical Adventure Gear",
+                "importance": "primary",
+            }]
+            service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(json.dumps(data), encoding="utf-8")
+
+            task = service.stage_scene_render("FirstDay", "At-the-Arch")
+
+            prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
+            self.assertIn("core identity from character", prompt)
+            self.assertIn("costume identity from costume", prompt)
 
     def test_stage_scene_render_blocks_invalid_builder_gaze(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

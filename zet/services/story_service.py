@@ -15,6 +15,7 @@ from zet.models.identity_key import IdentityKey
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
+from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
 from zet.services.scene_render_compiler import compile_scene_render, compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_prompt_text
 from zet.services.path_service import PathService
 
@@ -157,6 +158,53 @@ class StoryService:
         )
         match = pattern.search(text or "")
         return str(match.group(1)).strip() if match else ""
+
+    def _source_section(self, path: Path, section_name: str) -> str:
+        """Read one compiler section from a markdown source."""
+        if not path.is_file():
+            return ""
+        return self._extract_bounded_section(path.read_text(encoding="utf-8"), section_name)
+
+    def _element_source_sections(self, element: dict) -> dict:
+        resource_type = str(element.get("resource_type") or "").strip()
+        if resource_type == "Character":
+            character = str(element.get("character") or element.get("display_name") or "").strip()
+            phase = str(element.get("phase") or "").strip()
+            costume = str(element.get("costume") or "").strip()
+            if not character or not phase:
+                return {}
+            character_template = self.path_service.character_path(character, phase) / "Character_Image_Template.md"
+            costume_template = self.path_service.costume_template_path(character, phase, costume) if costume else Path()
+            return {
+                "identity_preservation_core": self._source_section(character_template, "IDENTITY_PRESERVATION_SCENE"),
+                "identity_preservation_costume": self._source_section(costume_template, "IDENTITY_PRESERVATION_COSTUME_SCENE"),
+                "identity_source": self._library_relative_path(character_template),
+                "costume_source": self._library_relative_path(costume_template) if costume else "",
+            }
+        if resource_type in {"Person", "Place", "Object"}:
+            resource_id = str(element.get("aux_resource_id") or "").strip()
+            if not resource_id:
+                return {}
+            resource = self.auxiliary_resource_repository.get_resource(resource_id)
+            template = self.path_service.resolve_path(resource.template_path)
+            return {
+                "identity_preservation_core": self._source_section(template, "IDENTITY_PRESERVATION_SCENE"),
+                "identity_preservation_costume": self._source_section(template, "IDENTITY_PRESERVATION_COSTUME_SCENE"),
+                "identity_source": self._library_relative_path(template),
+                "costume_source": self._library_relative_path(template),
+            }
+        return {}
+
+    def _resolve_scene_element_sources(self, data: dict) -> dict:
+        resolved = {}
+        for element in data.get("scene_elements") or []:
+            if not isinstance(element, dict):
+                continue
+            sections = self._element_source_sections(element)
+            if sections:
+                element["resolved_source_sections"] = sections
+                resolved[str(element.get("id") or "")] = sections
+        return resolved
 
     def _render_prompt_block(self, text: str) -> str:
         """Return the scene Render Prompt block."""
@@ -618,7 +666,14 @@ class StoryService:
         path = self._project_config_path("Scene_Builder_Options.json")
         if not path.exists():
             raise StoryServiceError(f"Scene Builder options not found: {path}")
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["auxiliary_resource_categories"] = AUXILIARY_RESOURCE_CATEGORIES
+        data["resource_type"] = [
+            {"value": "Character", "label": "Character"},
+            *[{"value": item["resource_type"], "label": item["label"], "category": item["value"]} for item in AUXILIARY_RESOURCE_CATEGORIES],
+            {"value": "Scene-Only", "label": "Scene-Only"},
+        ]
+        return data
 
     def _scene_builder_markdown_template_path(self) -> Path:
         path = self._project_config_path("Prompt_Templates", self.SCENE_BUILDER_MARKDOWN_TEMPLATE_NAME)
@@ -911,9 +966,10 @@ class StoryService:
             item = copy.deepcopy(element)
             item.setdefault("id", self.normalize_scene_element_id(item.get("display_name") or f"scene element {index}"))
             item.setdefault("display_name", item["id"])
+            item.setdefault("resource_type", item.get("element_type") if item.get("element_type") in {"Character", "Person", "Place", "Object", "Scene-Only"} else "Character")
             item.setdefault("element_type", "Character")
             item.pop("asset_tag", None)
-            item.setdefault("source_refs", {"identity_source": "", "costume_source": "", "location_source": "", "monster_source": "", "prop_source": ""})
+            item.pop("source_refs", None)
             item.setdefault("reference_images", [])
             if item.get("image_tag") and not item["reference_images"]:
                 item["reference_images"].append({"tag": item.pop("image_tag"), "roles": ["visual reference"], "ignore": ["source pose", "source background", "source framing"], "notes": ""})
@@ -1072,12 +1128,11 @@ class StoryService:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid element_type {element_type}.")
             if element.get("importance") not in {"primary", "secondary", "background", "extra"}:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid importance {element.get('importance')}.")
-            source_refs = element.get("source_refs") if isinstance(element.get("source_refs"), dict) else {}
-            has_source = any(str(value or "").strip() for value in source_refs.values())
+            has_source = element.get("resource_type") in {"Character", "Person", "Place", "Object"}
             has_reference = bool(element.get("reference_images"))
             if element_type in {"Character", "Monster"} and not has_source and not str(element.get("fallback_visual_description") or "").strip():
                 warnings.append(f"{element_type} {element_id} has no source reference or fallback visual description.")
-            if element_type == "Anchor" and not source_refs.get("location_source") and not has_reference and not str(element.get("fallback_visual_description") or "").strip():
+            if element_type == "Anchor" and not has_source and not has_reference and not str(element.get("fallback_visual_description") or "").strip():
                 warnings.append(f"Anchor {element_id} has no location source, reference image, or fallback visual description.")
         for placement in data.get("placements") or []:
             element_id = str(placement.get("scene_element_id") or "")
@@ -1497,7 +1552,8 @@ class StoryService:
             if not story_settings_path.exists():
                 raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
             story_settings = self.load_story_settings(story_settings_path)
-            ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references})
+            resolved_sources = self._resolve_scene_element_sources(normalized_scene)
+            ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references, "element_sources": resolved_sources})
             ir["source"]["scene_json_path"] = str(scene_builder_path)
             ir["source"]["story_settings_path"] = str(story_settings_path)
             prompt = final_image_prompt_text(ir)
