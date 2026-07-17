@@ -1,0 +1,269 @@
+{
+  "schema_version": 3,
+  "file_kind": "scene",
+  "scene": {
+    "id": "test_scene_01",
+    "name": "Test Scene 01",
+    "slug": "Test-Scene-01",
+    "sequence": null,
+    "story_settings_path": "Stories/V3-Test-Story/V3-Test-Story.story.json",
+    "associated_png_path": "Stories/V3-Test-Story/Test-Scene-01.png",
+    "story_beat": "Story Beat",
+    "author_notes": "Setup Notes",
+    "associated_md_path": "",
+    "notes": "Tsaeytte confronts Valindia. Valindia knows she has gone too far."
+  },
+  "setup": {
+    "canvas": {
+      "orientation": "landscape",
+      "aspect_ratio": "16:9",
+      "width": null,
+      "height": null
+    },
+    "environment": {
+      "location": "Env-Location",
+      "lighting": "Enf-Lighting",
+      "mood": "Env-Mood",
+      "weather_or_atmosphere": "Env-Weather",
+      "important_exclusions": [
+        "Env-Exclusions"
+      ],
+      "general_background_notes": "Enf-Background-Notes",
+      "general_foreground_notes": "Env-Foreground-Notes"
+    }
+  },
+  "scene_elements": [
+    {
+      "id": "Tsaeytte",
+      "display_name": "Tsaeytte",
+      "resource_type": "Character",
+      "element_type": "Character",
+      "character": "Tsaeytte",
+      "phase": "Adult",
+      "costume": "Canonical Adventure Gear",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "tag": "{{ASSET:Tsaeytte:Adult:27:Costume | Front-Right-3-4 | Canonical Adventure Gear}}"
+        }
+      ],
+      "scene_visual_override": "Tsaeytte is wearing a red fez at a jaunty angle on her head.",
+      "fallback_visual_description": "t-fallback",
+      "notes": "t-Notes",
+      "element_visual_override": "Tsaeytte is wearing a fez at a jaunty angle on her head."
+    },
+    {
+      "id": "Valindia_a14ff5be",
+      "display_name": "Valindia",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "person",
+      "aux_resource_id": "valindia",
+      "reference_images": [
+        {
+          "tag": "{{AUX:person:valindia:costume}}"
+        }
+      ],
+      "scene_visual_override": "",
+      "fallback_visual_description": "",
+      "notes": "v-Notes",
+      "element_visual_override": ""
+    },
+    {
+      "id": "Squirrel_929d978f",
+      "display_name": "Squirrel",
+      "resource_type": "Scene-Only",
+      "element_type": "Prop",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "tag": ""
+        }
+      ],
+      "scene_visual_override": "",
+      "fallback_visual_description": "A gray squirrel with a big fluffy tail.",
+      "notes": "",
+      "element_visual_override": ""
+    },
+    {
+      "id": "Spire_of_Celestial_Wisdom_750e56ef",
+      "display_name": "Spire of Celestial Wisdom",
+      "resource_type": "Place",
+      "element_type": "Backdrop",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "place",
+      "aux_resource_id": "spire-of-celestial-wisdom",
+      "reference_images": [
+        {
+          "tag": "{{AUX:place:spire-of-celestial-wisdom:arch}}"
+        }
+      ],
+      "scene_visual_override": "",
+      "fallback_visual_description": "",
+      "notes": "",
+      "element_visual_override": ""
+    }
+  ],
+  "placements": [
+    {
+      "id": "placement_1784061167747",
+      "scene_element_id": "Tsaeytte",
+      "position_within_cell": "left",
+      "depth": "foreground",
+      "frame_coverage": "",
+      "distance_from_camera": "",
+      "visual_scale": "",
+      "pose": {
+        "summary": "arms crossed",
+        "temporary_condition": "",
+        "action_direction_screen": "",
+        "gaze_target_element_id": "Valindia_a14ff5be",
+        "expression": "angry",
+        "left_arm_action": "",
+        "right_arm_action": "",
+        "leg_foot_detail": "",
+        "balance_weight_detail": ""
+      },
+      "placement_notes": "t-placement-notes"
+    },
+    {
+      "id": "placement_1784294100100",
+      "scene_element_id": "Valindia_a14ff5be",
+      "position_within_cell": "right",
+      "depth": "foreground",
+      "frame_coverage": "",
+      "distance_from_camera": "",
+      "visual_scale": "",
+      "pose": {
+        "summary": "one hand raised in warning",
+        "temporary_condition": "",
+        "action_direction_screen": "",
+        "gaze_target_element_id": "Tsaeytte",
+        "expression": "wary",
+        "left_arm_action": "",
+        "right_arm_action": "",
+        "leg_foot_detail": "",
+        "balance_weight_detail": ""
+      },
+      "placement_notes": "valindia-placement-notes"
+    },
+    {
+      "id": "placement_1784297000343",
+      "scene_element_id": "Squirrel_929d978f",
+      "position_within_cell": "center",
+      "depth": "midground",
+      "frame_coverage": "",
+      "distance_from_camera": "",
+      "visual_scale": "",
+      "pose": {
+        "summary": "",
+        "temporary_condition": "",
+        "action_direction_screen": "",
+        "gaze_target_element_id": "",
+        "expression": "",
+        "left_arm_action": "",
+        "right_arm_action": "",
+        "leg_foot_detail": "",
+        "balance_weight_detail": ""
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "placement_1784297696706",
+      "scene_element_id": "Spire_of_Celestial_Wisdom_750e56ef",
+      "position_within_cell": "",
+      "depth": "background",
+      "frame_coverage": "",
+      "distance_from_camera": "",
+      "visual_scale": "",
+      "pose": {
+        "summary": "",
+        "temporary_condition": "",
+        "action_direction_screen": "",
+        "gaze_target_element_id": "",
+        "expression": "",
+        "left_arm_action": "",
+        "right_arm_action": "",
+        "leg_foot_detail": "",
+        "balance_weight_detail": ""
+      },
+      "placement_notes": ""
+    }
+  ],
+  "props_and_states": [],
+  "interactions": [
+    {
+      "subject_element_id": "Tsaeytte",
+      "relationship": "looking at",
+      "target_element_id": "Valindia_a14ff5be",
+      "note": "t-v-notes"
+    },
+    {
+      "subject_element_id": "Valindia_a14ff5be",
+      "relationship": "looking at",
+      "target_element_id": "Tsaeytte",
+      "note": "v-t-notes"
+    }
+  ],
+  "dialogue": [
+    {
+      "id": "dialogue_1784000435085",
+      "speaker_element_id": "Valindia_a14ff5be",
+      "text": "wait...",
+      "target_element_id": "Tsaeytte",
+      "pointer_target": "speaker mouth",
+      "max_lines": 1,
+      "notes": "dialog-notes"
+    }
+  ],
+  "reference_assignments": [],
+  "avoid": {
+    "scene_specific": [],
+    "notes": ""
+  },
+  "render_settings": {
+    "final_image_prompt": {
+      "enabled": true,
+      "output_path": "Pipelines/Stories/V3-Test-Story/Test-Scene-01/Final_Image_Prompt.md"
+    },
+    "local_render_brief": {
+      "enabled": true,
+      "output_path": "Pipelines/Stories/V3-Test-Story/Test-Scene-01/Local_Render_Brief.json"
+    },
+    "local_render_prompt": {
+      "enabled": true,
+      "output_path": "Pipelines/Stories/V3-Test-Story/Test-Scene-01/Local_Render_Prompt.md"
+    },
+    "scene_render_ir": {
+      "enabled": true,
+      "output_path": "Pipelines/Stories/V3-Test-Story/Test-Scene-01/Scene_Render_IR.json"
+    }
+  },
+  "metadata": {
+    "created_at": "2026-07-12T07:24:01",
+    "updated_at": "2026-07-17T08:07:52",
+    "created_by": "Zet Scene Builder"
+  },
+  "depth_lanes": {
+    "foreground": [
+      "Tsaeytte",
+      "Valindia_a14ff5be"
+    ],
+    "midground": [
+      "Squirrel_929d978f"
+    ],
+    "background": [
+      "Spire_of_Celestial_Wisdom_750e56ef"
+    ]
+  }
+}

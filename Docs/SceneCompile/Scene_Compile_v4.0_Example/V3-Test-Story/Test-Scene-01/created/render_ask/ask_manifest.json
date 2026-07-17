@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "ask_id": "Ask_Story_V3-Test-Story_Test-Scene-01_RENDER_20260717_082109_599724",
+  "asset_id": null,
+  "character": "",
+  "phase": "",
+  "pipeline": "Story",
+  "pipeline_stage": "RENDER",
+  "story_slug": "V3-Test-Story",
+  "scene_slug": "Test-Scene-01",
+  "ollama_attempt_id": "20260717_082109_599724_V3-Test-Story_Test-Scene-01_RENDER",
+  "worker_type": "manual_chatgpt_render",
+  "ollama_model": "",
+  "prompt_file": "Final_Image_Prompt.md",
+  "expected_output": "Test-Scene-01.png",
+  "candidate_output_file": "Test-Scene-01.png",
+  "task_type": "render",
+  "render_preset": "chatgpt-manual",
+  "manual": true,
+  "target_output_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\V3-Test-Story\\Test-Scene-01.png",
+  "pipeline_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Pipelines\\Stories\\V3-Test-Story\\Test-Scene-01",
+  "reference_files": [
+    {
+      "role": "story_reference",
+      "label": "Tsaeytte Adult Costume-Dressing Front-Right-3-4",
+      "tag": "{{ASSET:Tsaeytte:Adult:27:Costume | Front-Right-3-4 | Canonical Adventure Gear}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Canonical-Adventure-Gear.png",
+      "kind": "asset",
+      "source_character": "Tsaeytte",
+      "source_phase": "Adult",
+      "source_asset_id": 27
+    },
+    {
+      "role": "story_reference",
+      "label": "Valindia - Costume",
+      "tag": "{{AUX:person:valindia:costume}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\valindia\\costume.png",
+      "kind": "aux:person"
+    },
+    {
+      "role": "story_reference",
+      "label": "Spire of Celestial Wisdom - Arch",
+      "tag": "{{AUX:place:spire-of-celestial-wisdom:arch}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\spire-of-celestial-wisdom\\arch.png",
+      "kind": "aux:place"
+    }
+  ],
+  "aspect_ratio": "16:9"
+}

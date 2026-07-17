@@ -1,0 +1,13 @@
+{
+  "story_settings_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\V3-Test-Story\\V3-Test-Story.story.json",
+  "scene_builder_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\V3-Test-Story\\Test-Scene-01.scene.json",
+  "final_prompt": "C:\\Users\\Joe\\Projects\\Zet_Library\\Pipelines\\Stories\\V3-Test-Story\\Test-Scene-01\\Final_Image_Prompt.md",
+  "compiler": "scene_render_v3",
+  "artifacts": [
+    "Scene_Render_IR.json",
+    "Final_Image_Prompt.md",
+    "Local_Render_Brief.json",
+    "Local_Render_Prompt.md",
+    "Local_Render_Forge_Couple_Prompt.md"
+  ]
+}

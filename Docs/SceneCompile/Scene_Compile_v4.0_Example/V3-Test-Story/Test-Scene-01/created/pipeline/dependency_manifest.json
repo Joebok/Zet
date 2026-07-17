@@ -1,0 +1,30 @@
+{
+  "story_slug": "V3-Test-Story",
+  "scene_slug": "Test-Scene-01",
+  "reference_files": [
+    {
+      "role": "story_reference",
+      "label": "Tsaeytte Adult Costume-Dressing Front-Right-3-4",
+      "tag": "{{ASSET:Tsaeytte:Adult:27:Costume | Front-Right-3-4 | Canonical Adventure Gear}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Assets\\Tsaeytte\\Adult\\Costume-Dressing_Front-Right-3-4_Front-Right-3-4_Canonical-Adventure-Gear.png",
+      "kind": "asset",
+      "source_character": "Tsaeytte",
+      "source_phase": "Adult",
+      "source_asset_id": 27
+    },
+    {
+      "role": "story_reference",
+      "label": "Valindia - Costume",
+      "tag": "{{AUX:person:valindia:costume}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\valindia\\costume.png",
+      "kind": "aux:person"
+    },
+    {
+      "role": "story_reference",
+      "label": "Spire of Celestial Wisdom - Arch",
+      "tag": "{{AUX:place:spire-of-celestial-wisdom:arch}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\spire-of-celestial-wisdom\\arch.png",
+      "kind": "aux:place"
+    }
+  ]
+}
