@@ -18,14 +18,6 @@
 
 - Orientation: {{CANVAS_ORIENTATION}}
 - Aspect ratio: {{CANVAS_ASPECT_RATIO}}
-- Grid: {{GRID_SUMMARY}}
-
-### Camera
-
-- Shot type: {{CAMERA_SHOT_TYPE}}
-- Camera height: {{CAMERA_HEIGHT}}
-- Camera angle: {{CAMERA_ANGLE}}
-- Viewer position: {{VIEWER_POSITION}}
 
 ### Characters and Placements
 

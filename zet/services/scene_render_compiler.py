@@ -51,23 +51,12 @@ def _lines(values: Any) -> list[str]:
     return [_clean(item) for item in values or [] if _clean(item)]
 
 
-def _style_text(story_settings: dict[str, Any], scene_data: dict[str, Any]) -> str:
-    style = scene_data.get("setup", {}).get("style", {})
-    if _clean(style.get("art_style_override")):
-        return _clean(style.get("art_style_override"))
+def _style_text(story_settings: dict[str, Any]) -> str:
     return _clean(story_settings.get("style_defaults", {}).get("canonical_art_style", {}).get("full_prompt_text"))
-
-
-def _dialogue_style(story_settings: dict[str, Any], style_id: str) -> dict[str, Any] | None:
-    for style in _items(story_settings.get("dialogue_styles")):
-        if _clean(style.get("id")) == style_id:
-            return style
-    return None
 
 
 def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str, Any], resolved_sources: dict[str, Any] | None = None) -> dict[str, Any]:
     setup = scene_data.get("setup", {})
-    style = setup.get("style", {})
     story_profile = story_settings.get("compiler_profiles", {}).get("final_image_prompt", {})
     references = list(_items(scene_data.get("reference_assignments")))
     for element in _items(scene_data.get("scene_elements")):
@@ -80,10 +69,7 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
                 "ignore": reference.get("ignore", []),
                 "notes": reference.get("notes", ""),
             })
-    dialogue = [
-        item for item in _items(scene_data.get("dialogue"))
-        if item.get("include_in_final_image_prompt", True)
-    ]
+    dialogue = _items(scene_data.get("dialogue"))
     avoid = []
     avoid.extend(_lines(story_settings.get("style_defaults", {}).get("default_avoid")))
     avoid.extend(_lines(scene_data.get("avoid", {}).get("scene_specific")))
@@ -102,19 +88,16 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
         },
         "canvas": setup.get("canvas", {}),
         "style": {
-            "art_style": _style_text(story_settings, scene_data),
+            "art_style": _style_text(story_settings),
             "visual_continuity": story_settings.get("style_defaults", {}).get("visual_continuity", {}),
             "profile": story_profile,
         },
-        "composition": setup.get("composition", {}),
-        "camera": setup.get("camera", {}),
         "environment": setup.get("environment", {}),
         "elements": _items(scene_data.get("scene_elements")),
         "placements": _items(scene_data.get("placements")),
         "props": _items(scene_data.get("props_and_states")),
         "interactions": _items(scene_data.get("interactions")),
         "dialogue": dialogue,
-        "dialogue_styles": story_settings.get("dialogue_styles", []),
         "references": references,
         "avoid": list(dict.fromkeys(avoid)),
         "final_verification": verification,
@@ -145,88 +128,31 @@ def get_element_display_name(element_id: str, elements_by_id: dict[str, dict[str
 def _semantic_region(ir: dict[str, Any], placement: dict[str, Any]) -> str:
     explicit = clean_prompt_sentence(placement.get("semantic_screen_region"))
     depth = clean_prompt_sentence(placement.get("depth"))
-    cell = placement.get("screen_cell", {}) if isinstance(placement.get("screen_cell"), dict) else {}
-    grid = ir.get("composition", {}).get("grid", {}) if isinstance(ir.get("composition", {}).get("grid"), dict) else {}
-    columns = int(grid.get("columns") or 0)
-    rows = int(grid.get("rows") or 0)
-    column = int(cell.get("column") or 0)
-    row = int(cell.get("row") or 0)
-    horizontal = ""
-    if columns == 2:
-        horizontal = {1: "left", 2: "right"}.get(column, "")
-    elif columns == 3:
-        horizontal = {1: "left", 2: "center", 3: "right"}.get(column, "")
-    elif columns >= 4 and column:
-        horizontal = "far left" if column == 1 else "far right" if column == columns else "left of center" if column <= columns / 2 else "right of center"
-    vertical = ""
-    if rows == 2:
-        vertical = {1: "upper", 2: "lower"}.get(row, "")
-    elif rows == 3:
-        vertical = {1: "upper", 2: "middle", 3: "lower"}.get(row, "")
-    region = "-".join(part for part in [vertical, horizontal] if part)
-    if not region:
-        region = explicit
-    if not region:
-        region = clean_prompt_sentence(cell.get("name"))
+    region = explicit or clean_prompt_sentence(placement.get("position_within_cell"))
     if depth and depth not in region:
         return f"{region} {depth}".strip()
     return region
 
 
 def _placement_sort_key(placement: dict[str, Any]) -> tuple[int, str, int]:
-    cell = placement.get("screen_cell", {}) if isinstance(placement.get("screen_cell"), dict) else {}
-    return (int(cell.get("column") or 9999), _clean(placement.get("position_within_cell")), int(placement.get("z_order") or 9999))
-
-
-def _left_to_right_order(ir: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]) -> list[str]:
-    explicit = _lines(ir.get("composition", {}).get("left_to_right_order"))
-    if explicit:
-        return [get_element_display_name(item, elements_by_id) if item in elements_by_id else clean_prompt_sentence(item) for item in explicit]
-    ordered = []
-    for placement in sorted(ir.get("placements", []), key=_placement_sort_key):
-        cell = placement.get("screen_cell", {}) if isinstance(placement.get("screen_cell"), dict) else {}
-        if cell.get("column"):
-            ordered.append(get_element_display_name(_clean(placement.get("scene_element_id")), elements_by_id))
-    return list(dict.fromkeys(item for item in ordered if item))
+    return (0, _clean(placement.get("position_within_cell")), int(placement.get("id", "").rsplit("_", 1)[-1] or 9999) if str(placement.get("id", "")).rsplit("_", 1)[-1].isdigit() else 9999)
 
 
 def _view_text(value: Any) -> str:
     return clean_prompt_sentence(value).replace("3/4", "three-quarter")
 
 
-def _dialogue_tones(ir: dict[str, Any]) -> dict[str, str]:
-    visible = {"worried", "angry", "sad", "happy", "afraid", "fearful", "surprised", "amused", "stern", "confused", "concerned"}
-    tones = {}
-    for item in ir.get("dialogue", []):
-        tone = clean_prompt_sentence(item.get("tone")).lower()
-        if tone in visible:
-            tones[_clean(item.get("speaker_element_id"))] = tone
-    return tones
-
-
 def _placement_element_id(placement: dict[str, Any]) -> str:
     return _clean(placement.get("scene_element_id"))
 
 
-def _placement_cell(placement: dict[str, Any]) -> dict[str, Any]:
-    return placement.get("screen_cell", {}) if isinstance(placement.get("screen_cell"), dict) else {}
-
-
-def _placement_column(placement: dict[str, Any]) -> int:
-    return int(_placement_cell(placement).get("column") or 0)
-
-
-def _placement_row(placement: dict[str, Any]) -> int:
-    return int(_placement_cell(placement).get("row") or 1)
-
-
 def _is_visible_subject(element: dict[str, Any], placement: dict[str, Any]) -> bool:
-    return placement.get("must_be_visible") is True and _clean(element.get("element_type")) in {"Character", "Monster"}
+    return _clean(element.get("element_type")) in {"Character", "Monster"}
 
 
 def _resource_subject_type(element: dict[str, Any]) -> str:
     text = " ".join(_lines([
-        element.get("scene_visual_override"),
+        element.get("element_visual_override"),
         element.get("fallback_visual_description"),
         element.get("display_name"),
         element.get("resource_type"),
@@ -258,7 +184,7 @@ def _descriptor_source(element: dict[str, Any]) -> str:
     sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
     return " ".join(_lines([
         element.get("local_render_visual_override"),
-        element.get("scene_visual_override"),
+        element.get("element_visual_override"),
         sections.get("identity_preservation_core"),
         sections.get("identity_preservation_costume"),
         element.get("fallback_visual_description"),
@@ -304,14 +230,7 @@ def _screen_facing(ir: dict[str, Any], placement: dict[str, Any]) -> tuple[str, 
     target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
     if not target_id:
         return "", ""
-    target = next((item for item in ir.get("placements", []) if _placement_element_id(item) == target_id), {})
-    target_column = _placement_column(target)
-    subject_column = _placement_column(placement)
-    if target_column and subject_column and target_column > subject_column:
-        return "facing screen-right", "looking toward the subject opposite"
-    if target_column and subject_column and target_column < subject_column:
-        return "facing screen-left", "looking toward the subject opposite"
-    return "", ""
+    return "", "looking toward the subject opposite"
 
 
 def _broad_pose(placement: dict[str, Any]) -> str:
@@ -320,8 +239,6 @@ def _broad_pose(placement: dict[str, Any]) -> str:
         pose.get("summary") if pose else placement.get("pose"),
         pose.get("left_arm_action"),
         pose.get("right_arm_action"),
-        pose.get("left_hand_detail"),
-        pose.get("right_hand_detail"),
     ])
     text = ", ".join(parts)
     replacements = {
@@ -333,19 +250,11 @@ def _broad_pose(placement: dict[str, Any]) -> str:
     return clean_prompt_sentence(text)
 
 
-def _region_name(column: int, columns: int) -> str:
-    if columns == 3:
-        return {1: "left", 2: "center", 3: "right"}.get(column, "")
-    if columns == 2:
-        return {1: "left", 2: "right"}.get(column, "")
-    return f"column {column}" if column else ""
-
-
 def _prompt_join(parts: list[str]) -> str:
     return ", ".join(dict.fromkeys(item for item in (clean_prompt_sentence(part) for part in parts) if item))
 
 
-def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_id: dict[str, dict[str, Any]], tones: dict[str, str]) -> str:
+def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]) -> str:
     element_id = _clean(placement.get("scene_element_id"))
     element = _element(ir, element_id)
     name = get_element_display_name(element_id, elements_by_id)
@@ -353,41 +262,24 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     pose_summary = clean_prompt_sentence(pose.get("summary") if pose else placement.get("pose"))
     region = _semantic_region(ir, placement)
     element_type = _clean(element.get("element_type"))
-    verb = "occupies" if element_type in {"Place", "Anchor"} or _clean(element.get("resource_type")) == "Place" else "stands"
+    verb = "occupies" if element_type in {"Place", "Backdrop"} or _clean(element.get("resource_type")) == "Place" else "stands"
     first = f"{name} {verb}"
     if pose_summary and pose_summary.lower() not in {"standing", "stands"} and verb == "stands":
         first = f"{name} {pose_summary}"
     if region:
         first += f" in the {region}" if verb == "stands" else f" the {region}"
     sentences = [_sentence(first)]
-    body = _view_text(pose.get("body_view") or placement.get("body_view"))
-    head = _view_text(pose.get("head_view") or placement.get("head_view"))
     target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
     target = get_element_display_name(target_id, elements_by_id) if target_id else ""
-    if body and head and body == head:
-        sentences.append(_sentence(f"Body and head are shown in {body}"))
-    else:
-        if body:
-            sentences.append(_sentence(f"Body is shown in {body}"))
-        if head:
-            detail = f"Head is turned into {head}"
-            if target:
-                detail += f" toward {target}"
-            sentences.append(_sentence(detail))
     actions = _lines([
         pose.get("left_arm_action"),
         pose.get("right_arm_action"),
-        pose.get("left_hand_detail"),
-        pose.get("right_hand_detail"),
     ])
     if actions:
         sentences.append(_sentence(", ".join(actions)))
-    gaze_description = clean_prompt_sentence(pose.get("gaze_description") or placement.get("gaze_description"))
     if target:
         sentences.append(_sentence(f"{name} looks directly at {target}"))
-    elif gaze_description:
-        sentences.append(_sentence(gaze_description))
-    expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression") or tones.get(element_id))
+    expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression"))
     if expression:
         sentences.append(_sentence(f"{name} appears {expression}"))
     notes = clean_prompt_sentence(placement.get("placement_notes"))
@@ -400,7 +292,7 @@ def _reference_defaults(element: dict[str, Any], ref: dict[str, Any]) -> tuple[s
     resource_type = _clean(element.get("resource_type")) or _clean(element.get("element_type"))
     roles = {item.lower() for item in _lines(ref.get("roles"))}
     tag = _clean(ref.get("tag")).lower()
-    if resource_type in {"Place", "Anchor"}:
+    if resource_type in {"Place", "Backdrop"}:
         return (
             "architecture, structural design, identifying materials, and location-defining features",
             "source camera composition, framing, people, lighting, weather, and temporary objects",
@@ -453,11 +345,8 @@ def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, A
 
 def final_image_prompt_text(ir: dict[str, Any]) -> str:
     canvas = ir.get("canvas", {})
-    camera = ir.get("camera", {})
-    composition = ir.get("composition", {})
     environment = ir.get("environment", {})
     elements_by_id = _elements_by_id(ir)
-    tones = _dialogue_tones(ir)
     lines = [
         "# Render Task",
         "",
@@ -479,27 +368,14 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
             lines.append(f"  Preserve {preserve}.")
             lines.append(f"  Ignore {ignore}.")
         lines.append("")
-    lines.extend(["# Camera and Composition", ""])
+    lines.extend(["# Canvas", ""])
     lines.append(f"- {clean_prompt_sentence(canvas.get('orientation')) or 'Landscape'} {clean_prompt_sentence(canvas.get('aspect_ratio')) or '16:9'}.")
-    camera_parts = [
-        clean_prompt_sentence(camera.get("shot_type")) or "wide shot",
-        clean_prompt_sentence(camera.get("camera_height")) or "eye level",
-        clean_prompt_sentence(camera.get("camera_angle")) or "straight-on",
-    ]
-    lens = clean_prompt_sentence(camera.get("lens_feel")) or "normal"
-    lines.append(f"- {', '.join(camera_parts)}, with a {lens} lens feel.")
-    focal = clean_prompt_sentence(composition.get("primary_focal_point"))
-    if focal:
-        lines.append(f"- Primary focal point: {get_element_display_name(focal, elements_by_id) if focal in elements_by_id else focal}.")
-    order = _left_to_right_order(ir, elements_by_id)
-    if order:
-        lines.append(f"- Left-to-right order: {' -> '.join(order)}.")
     lines.append("- Render one continuous scene. Do not show the planning grid or divide the image into panels.")
     lines.extend(["", "# Character and Location Staging", ""])
     for placement in ir.get("placements", []):
         element = _element(ir, _clean(placement.get("scene_element_id")))
-        if _clean(element.get("element_type")) in {"Character", "Monster", "Place", "Anchor", "Prop", "Effect", "Vehicle"}:
-            lines.append(f"- {_placement_line(ir, placement, elements_by_id, tones)}")
+        if _clean(element.get("element_type")) in {"Character", "Monster", "Place", "Backdrop", "Prop", "Effect", "Vehicle"}:
+            lines.append(f"- {_placement_line(ir, placement, elements_by_id)}")
     if lines[-1] == "":
         lines.extend(["- No staging specified."])
     lines.extend(["", "# Props and Interactions", ""])
@@ -529,36 +405,41 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     if ir.get("dialogue"):
         lines.extend(["", "# Dialogue Panel", ""])
         for item in ir["dialogue"]:
-            style = next((s for s in ir.get("dialogue_styles", []) if s.get("id") == item.get("panel_style_id")), {})
             speaker = get_element_display_name(_clean(item.get("speaker_element_id")), elements_by_id)
             lines.append(f"{speaker} says exactly: \"{item.get('text', '')}\"")
-            style_text = " ".join(_lines([style.get("panel_prompt"), style.get("pointer_prompt"), style.get("lettering_prompt")]))
-            if style_text:
-                lines.append("")
-                lines.append(_sentence(style_text))
             target = get_element_display_name(_clean(item.get("target_element_id")), elements_by_id) if _clean(item.get("target_element_id")) else ""
             if target:
                 lines.append(f"Place the panel so the dialogue reads as directed toward {target}.")
-            for rule in _lines(style.get("layout_rules")):
-                lines.append(f"  - {rule}")
     preserve_lines = []
+    referenced_element_ids = {
+        _clean(ref.get("applies_to_element_id"))
+        for ref in ir.get("references", [])
+        if _clean(ref.get("tag")) and _clean(ref.get("applies_to_element_id"))
+    }
     continuity = ir.get("style", {}).get("visual_continuity", {})
     for rule in _lines(continuity.get("rules")):
         preserve_lines.append(f"- {rule}")
     for element in ir.get("elements", []):
+        element_id = _clean(element.get("id"))
         sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
         identity = clean_prompt_sentence(sections.get("identity_preservation_core"))
         costume = clean_prompt_sentence(sections.get("identity_preservation_costume"))
-        if identity or costume:
-            preserve_lines.extend(["", f"## {get_element_display_name(_clean(element.get('id')), elements_by_id)}", ""])
+        override = clean_prompt_sentence(element.get("element_visual_override"))
+        fallback = clean_prompt_sentence(element.get("fallback_visual_description")) if element_id not in referenced_element_ids else ""
+        if identity or costume or override or fallback:
+            preserve_lines.extend(["", f"## {get_element_display_name(element_id, elements_by_id)}", ""])
             resource_type = _clean(element.get("resource_type")) or _clean(element.get("element_type"))
             if identity:
-                label = "Location design" if resource_type in {"Place", "Anchor"} else "Identity"
+                label = "Location design" if resource_type in {"Place", "Backdrop"} else "Identity"
                 preserve_lines.append(f"**{label}:** {identity}")
-            if costume and resource_type not in {"Place", "Object", "Anchor", "Prop"}:
+            if costume and resource_type not in {"Place", "Object", "Backdrop", "Prop"}:
                 costume_name = clean_prompt_sentence(element.get("costume"))
                 label = f"Costume - {costume_name}" if costume_name else "Costume"
                 preserve_lines.extend(["", f"**{label}:** {costume}"])
+            if override:
+                preserve_lines.extend(["", f"**Element Override:** {override}"])
+            if fallback:
+                preserve_lines.extend(["", f"**Visual description:** {fallback}"])
     if preserve_lines:
         lines.extend(["", "# Scene Element Preservation", "", *preserve_lines])
     avoid = ", ".join(_lines(ir.get("avoid")) or ["unrequested text", "malformed hands"])
@@ -571,11 +452,6 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
 def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
     canvas = ir.get("canvas", {})
     elements_by_id = _elements_by_id(ir)
-    tones = _dialogue_tones(ir)
-    composition = ir.get("composition", {})
-    grid = composition.get("grid", {}) if isinstance(composition.get("grid"), dict) else {}
-    columns = int(grid.get("columns") or 1)
-    rows = int(grid.get("rows") or 1)
     placements = sorted(ir.get("placements", []), key=_placement_sort_key)
     subjects = [(elements_by_id.get(_placement_element_id(item), {}), item) for item in placements]
     subjects = [(element, placement) for element, placement in subjects if _is_visible_subject(element, placement)]
@@ -583,48 +459,38 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
     anchor_parts = []
     for placement in placements:
         element = elements_by_id.get(_placement_element_id(placement), {})
-        if _clean(element.get("element_type")) not in {"Place", "Anchor"} and _clean(element.get("resource_type")) != "Place":
+        if _clean(element.get("element_type")) not in {"Place", "Backdrop"} and _clean(element.get("resource_type")) != "Place":
             continue
         region = _semantic_region(ir, placement)
         descriptor = _anchor_visual_descriptor(element)
         notes = clean_prompt_sentence(placement.get("placement_notes"))
         anchor_parts.append(_prompt_join([descriptor, f"{region} scenery", notes]))
-    center_foreground_open = columns == 3 and not any(
-        _placement_column(placement) == 2 and _clean(placement.get("depth")) == "foreground"
-        for placement in placements
-    )
     global_parts = [
-        clean_prompt_sentence(ir.get("camera", {}).get("shot_type")) or "wide shot",
         f"{_clean(canvas.get('orientation')) or 'landscape'} {_clean(canvas.get('aspect_ratio')) or '16:9'}",
         subject_phrase,
         "full bodies visible" if subjects else "",
-        clean_prompt_sentence(composition.get("overall_composition")) or "separated confrontation composition",
         *anchor_parts,
-        "open empty space in the center foreground" if center_foreground_open else "",
         clean_prompt_sentence(ir.get("environment", {}).get("weather_or_atmosphere")),
     ]
     regions = []
-    column_lines: dict[int, list[str]] = {column: [] for column in range(1, columns + 1)}
+    prompt_lines = [_prompt_join(global_parts)]
     for placement in placements:
         element_id = _placement_element_id(placement)
         element = elements_by_id.get(element_id, {})
-        column = _placement_column(placement)
-        row = _placement_row(placement)
-        region = _region_name(column, columns)
+        region = _semantic_region(ir, placement)
         if not region:
             continue
-        is_scenery = _clean(element.get("element_type")) in {"Place", "Anchor"} or _clean(element.get("resource_type")) == "Place"
+        is_scenery = _clean(element.get("element_type")) in {"Place", "Backdrop"} or _clean(element.get("resource_type")) == "Place"
         if not _is_visible_subject(element, placement) and not is_scenery:
             continue
         prompt_parts = [subject_phrase]
         if _is_visible_subject(element, placement):
             descriptor = build_local_visual_descriptor(element)
             facing, gaze = _screen_facing(ir, placement)
-            expression = clean_prompt_sentence((placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}).get("expression") or placement.get("expression") or tones.get(element_id))
-            side = "far left" if column == 1 and columns >= 3 else "far right" if column == columns and columns >= 3 else region
-            label = "left woman" if column == 1 else "right woman" if column == columns else "center subject"
+            expression = clean_prompt_sentence((placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}).get("expression") or placement.get("expression"))
+            label = "visible subject"
             prompt_parts.extend([
-                f"{label} positioned on the {side}",
+                f"{label} positioned in the {region}",
                 descriptor,
                 _broad_pose(placement),
                 expression,
@@ -633,16 +499,10 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
             ])
         elif is_scenery:
             prompt_parts.extend([_anchor_visual_descriptor(element), f"{region} {_clean(placement.get('depth')) or 'background'} scenery", clean_prompt_sentence(placement.get("placement_notes"))])
-        if column == 2 and center_foreground_open:
-            prompt_parts.append("center foreground remains open and empty")
         prompt = _prompt_join(prompt_parts)
-        column_lines.setdefault(column, []).append(prompt)
+        prompt_lines.append(prompt)
         regions.append({
             "region": region,
-            "row": row,
-            "column": column,
-            "x_range": [round((column - 1) / columns, 4), round(column / columns, 4)],
-            "y_range": [round((row - 1) / rows, 4), round(row / rows, 4)],
             "depths": list(dict.fromkeys([_clean(placement.get("depth"))] if _clean(placement.get("depth")) else [])),
             "element_ids": [element_id],
             "prompt": prompt,
@@ -673,8 +533,6 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
         "speech bubble",
         "watermark",
     ]))
-    prompt_lines = [_prompt_join(global_parts)]
-    prompt_lines.extend(_prompt_join(column_lines.get(column, [])) for column in range(1, columns + 1))
     prompt_lines = [line for line in prompt_lines if line]
     return {
         "schema_version": 2,

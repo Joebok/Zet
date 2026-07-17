@@ -133,23 +133,23 @@ Canonical Art Style: `[]`
 """
             (story_dir / "Old-Name.md").write_text(text, encoding="utf-8")
             (story_dir / "Old-Name.png").write_bytes(b"image")
-            (story_dir / "Old-Name.json").write_text('{"schema_version": 1}', encoding="utf-8")
+            (story_dir / "Old-Name.scene.json").write_text('{"schema_version": 3}', encoding="utf-8")
 
             document = service.save_scene("FirstDay", "Old-Name", text)
 
             self.assertEqual("02-Campfire", document.record.slug)
             self.assertFalse((story_dir / "Old-Name.md").exists())
             self.assertFalse((story_dir / "Old-Name.png").exists())
-            self.assertFalse((story_dir / "Old-Name.json").exists())
+            self.assertFalse((story_dir / "Old-Name.scene.json").exists())
             self.assertTrue((story_dir / "02-Campfire.md").exists())
             self.assertEqual(b"image", (story_dir / "02-Campfire.png").read_bytes())
-            self.assertTrue((story_dir / "02-Campfire.json").exists())
+            self.assertTrue((story_dir / "02-Campfire.scene.json").exists())
 
     def test_scene_builder_path_mapping_uses_scene_basename(self) -> None:
         service = self._service(Path("unused"))
 
-        self.assertEqual(Path("Scenes/Test_Scene.json"), service.get_scene_builder_json_path(Path("Scenes/Test_Scene.md")))
-        self.assertEqual(Path("Scenes/Test_Scene.json"), service.get_scene_builder_json_path(Path("Scenes/Test_Scene.png")))
+        self.assertEqual(Path("Scenes/Test_Scene.scene.json"), service.get_scene_builder_json_path(Path("Scenes/Test_Scene.md")))
+        self.assertEqual(Path("Scenes/Test_Scene.scene.json"), service.get_scene_builder_json_path(Path("Scenes/Test_Scene.png")))
 
     def test_scene_builder_save_and_reload_generates_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -182,26 +182,25 @@ At the Arch
             )
 
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
-            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary"}]
+            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"}]
             data["placements"] = [{
                 "id": "placement_001",
                 "scene_element_id": "Tsaeytte",
-                "screen_cell": {"row": 2, "column": 1},
+                "position_within_cell": "left",
                 "depth": "foreground",
-                "size_prominence": "large",
                 "pose": "crouched",
             }]
             data["setup"]["environment"]["location"] = "magic academy hall"
             data["setup"]["environment"]["lighting"] = "cool blue light"
-            data["setup"]["composition"]["primary_focal_point"] = "Tsaeytte"
 
             document = service.save_scene_builder_data("FirstDay", "At-the-Arch", data)
 
-            self.assertTrue((story_dir / "At-the-Arch.json").exists())
-            self.assertEqual(2, document.data["schema_version"])
-            self.assertEqual("lower-left", document.data["placements"][0]["screen_cell"]["name"])
-            self.assertIn("lower-left foreground", document.data["generation_outputs"]["scene_brief"])
-            self.assertIn("Painterly fantasy", document.data["generation_outputs"]["positive_prompt"])
+            self.assertTrue((story_dir / "At-the-Arch.scene.json").exists())
+            self.assertEqual(3, document.data["schema_version"])
+            self.assertNotIn("screen_cell", document.data["placements"][0])
+            self.assertNotIn("composition", document.data["setup"])
+            self.assertNotIn("camera", document.data["setup"])
+            self.assertNotIn("style", document.data["setup"])
             self.assertTrue(document.data["metadata"]["created_at"])
             self.assertTrue(document.data["metadata"]["updated_at"])
 
@@ -223,8 +222,6 @@ At the Arch
                         "id": "Tsaeytte",
                         "display_name": "Tsaeytte",
                         "asset_tag": "{{ASSET:Tsaeytte:Adult:31}}",
-                        "role": "protagonist",
-                        "importance": "primary",
                         "identity_prompt": "",
                         "default_costume": "adult adventuring outfit",
                         "notes": "",
@@ -261,7 +258,7 @@ At the Arch
             (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
             (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
-            data["scene_elements"] = [{"id": "Door", "display_name": "Door", "element_type": "Anchor", "importance": "background"}]
+            data["scene_elements"] = [{"id": "Door", "display_name": "Door", "element_type": "Backdrop"}]
             data["placements"] = []
 
             normalized = service._normalize_scene_builder_data("FirstDay", "At-the-Arch", data)
@@ -304,13 +301,11 @@ Keep this manual note.
             )
 
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
-            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte Display", "element_type": "Character", "importance": "primary"}]
+            data["scene_elements"] = [{"id": "Tsaeytte", "display_name": "Tsaeytte Display", "element_type": "Character"}]
             data["placements"] = [{
                 "id": "placement_001",
                 "scene_element_id": "Tsaeytte",
-                "screen_cell": {"row": 99, "column": 1},
                 "depth": "distant background",
-                "size_prominence": "distant",
                 "expression": "alert",
             }]
             data["interactions"] = [{"subject_element_id": "Tsaeytte", "relationship": "looking at", "target_element_id": "Teacher", "note": ""}]
@@ -318,8 +313,7 @@ Keep this manual note.
             warnings = service.validate_scene_builder_data(service._normalize_scene_builder_data("FirstDay", "At-the-Arch", data))
 
             self.assertTrue(any("missing target Teacher" in warning for warning in warnings))
-            self.assertTrue(any("outside grid bounds" in warning for warning in warnings))
-            self.assertTrue(any("Placement Tsaeytte Display is outside grid bounds" in warning for warning in warnings))
+            self.assertTrue(any("no image reference tag or fallback visual description" in warning for warning in warnings))
             self.assertFalse(any("Placement placement_001" in warning for warning in warnings))
             self.assertTrue(any("No lighting specified" in warning for warning in warnings))
             service.export_scene_markdown("FirstDay", "At-the-Arch", data)
@@ -672,29 +666,28 @@ Two students meet at the arch.
 """,
                 encoding="utf-8",
             )
-            (story_dir / "At-the-Arch.json").write_text(
+            service = self._service(root)
+            service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
+            service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(
                 json.dumps(
                     {
-                        "schema_version": 2,
+                        "schema_version": 3,
                         "setup": {
                             "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
-                            "composition": {"grid": {"columns": 3, "rows": 1}, "primary_focal_point": "the book exchange"},
-                            "camera": {"shot_type": "wide shot", "camera_height": "eye-level", "camera_angle": "straight-on"},
                             "environment": {"location": "academy archway", "lighting": "morning light", "mood": "tense"},
                         },
                         "scene_elements": [
-                            {"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary", "default_visual_description": "petite elf student"},
-                            {"id": "val", "display_name": "Valindia", "element_type": "Character", "importance": "primary", "default_visual_description": "elegant elf student"},
+                            {"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character", "default_visual_description": "petite elf student"},
+                            {"id": "val", "display_name": "Valindia", "element_type": "Character", "default_visual_description": "elegant elf student"},
                         ],
                         "placements": [
-                            {"scene_element_id": "val", "screen_cell": {"column": 1}, "depth": "foreground", "pose": "standing", "gaze_target_element_id": "tsa"},
-                            {"scene_element_id": "tsa", "screen_cell": {"column": 3}, "depth": "foreground", "pose": "kneeling", "gaze_target_element_id": "val"},
+                            {"scene_element_id": "val", "position_within_cell": "left", "depth": "foreground", "pose": {"summary": "standing", "gaze_target_element_id": "tsa"}},
+                            {"scene_element_id": "tsa", "position_within_cell": "right", "depth": "foreground", "pose": {"summary": "kneeling", "gaze_target_element_id": "val"}},
                         ],
                     }
                 ),
                 encoding="utf-8",
             )
-            service = self._service(root)
 
             task = service.stage_scene_render("FirstDay", "At-the-Arch")
 
@@ -705,13 +698,13 @@ Two students meet at the arch.
             self.assertTrue((pipeline / "Local_Render_Prompt.md").exists())
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
             self.assertIn("# Render Task", prompt)
-            self.assertIn("Left-to-right order: Valindia -> Tsaeytte.", prompt)
+            self.assertIn("Valindia stands in the left foreground.", prompt)
             self.assertNotIn("cell ", prompt)
             local_prompt = (pipeline / "Local_Render_Prompt.md").read_text(encoding="utf-8")
             self.assertIn("prompt:", local_prompt)
             self.assertIn("negative:", local_prompt)
             source_map = json.loads((pipeline / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
-            self.assertEqual("scene_render_v2", source_map["compiler"])
+            self.assertEqual("scene_render_v3", source_map["compiler"])
 
     def test_stage_scene_render_reads_scene_character_and_costume_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -741,7 +734,6 @@ Two students meet at the arch.
                 "character": "Tsaeytte",
                 "phase": "Adult",
                 "costume": "Canonical Adventure Gear",
-                "importance": "primary",
             }]
             service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(json.dumps(data), encoding="utf-8")
 
@@ -771,24 +763,24 @@ ink wash
                 encoding="utf-8",
             )
             (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
-            (story_dir / "At-the-Arch.json").write_text(
+            service = self._service(root)
+            service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
+            service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(
                 json.dumps(
                     {
-                        "schema_version": 2,
+                        "schema_version": 3,
                         "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}},
-                        "scene_elements": [{"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character", "importance": "primary"}],
-                        "placements": [{"scene_element_id": "tsa", "screen_cell": {"column": 1}, "gaze_target_element_id": "missing"}],
+                        "scene_elements": [{"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character"}],
+                        "placements": [{"scene_element_id": "tsa", "pose": {"gaze_target_element_id": "missing"}}],
                     }
                 ),
                 encoding="utf-8",
             )
-            service = self._service(root)
 
-            with self.assertRaises(StoryServiceError):
-                service.stage_scene_render("FirstDay", "At-the-Arch")
+            service.stage_scene_render("FirstDay", "At-the-Arch")
 
             validation = json.loads((root / "Pipelines" / "Stories" / "FirstDay" / "At-the-Arch" / "Scene_Render_Validation.json").read_text(encoding="utf-8"))
-            self.assertEqual("invalid_gaze_target", validation["errors"][0]["code"])
+            self.assertTrue(any("gaze target references missing element missing" in warning for warning in validation["warnings"]))
 
 
 if __name__ == "__main__":

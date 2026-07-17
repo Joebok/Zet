@@ -677,6 +677,27 @@ dl {
   min-height: 720px;
 }
 
+.story-settings-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.story-settings-fields label {
+  display: grid;
+  gap: 3px;
+}
+
+.story-settings-fields input,
+.story-settings-fields textarea {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+}
+
+.story-settings-fields textarea {
+  min-height: 84px;
+}
+
 .scene-image-panel {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -784,47 +805,6 @@ dl {
   display: grid;
   gap: 8px;
   padding-top: 10px;
-}
-
-.scene-builder-layout-preview {
-  aspect-ratio: 16 / 9;
-  border: 1px solid var(--line);
-  display: grid;
-  min-height: 260px;
-}
-
-.scene-builder-cell {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  display: grid;
-  gap: 4px;
-  min-height: 78px;
-  padding: 6px;
-  text-align: left;
-}
-
-.scene-builder-cell.selected {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.scene-builder-cell-title {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.scene-builder-token {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 3px 5px;
-}
-
-.scene-builder-token.selected {
-  border-color: var(--accent);
 }
 
 .scene-builder-element-list {
