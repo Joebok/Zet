@@ -605,8 +605,6 @@ class AIProxyService:
         }
         if manifest.get("aspect_ratio"):
             ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
-        if manifest.get("governing_template_path"):
-            ask_manifest["governing_template_path"] = manifest.get("governing_template_path")
         return ask_manifest
 
     def stage_render_task_local_render_ask(self, manifest: dict, prompt_path: Path, target_output_dir: Path) -> Path:

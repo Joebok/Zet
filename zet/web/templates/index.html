@@ -1101,16 +1101,18 @@
         <section class="control-panel ai-automation-panel">
           <h2>Image Generation</h2>
           <div class="settings-form">
-            <label><input id="setting-prompt-condense-enabled" type="checkbox" form="automation-form"> Prompt condense enabled</label>
-            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text" form="automation-form"></label>
-            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text" form="automation-form"></label>
-            <label><input id="setting-local-render-auto" type="checkbox" form="automation-form"> Auto preview render after condense</label>
+            <label><input id="setting-local-render-forge-couple" type="checkbox" form="automation-form"> Use Forge Couple</label>
             <label>
               Image generation
               <select id="setting-local-render-preset" form="automation-form">
                 <option value="body-reference-preview">Stable Matrix</option>
               </select>
             </label>
+            <label>
+              Checkpoint
+              <select id="setting-local-render-checkpoint" form="automation-form"></select>
+            </label>
+            <button id="refresh-local-render-checkpoints" type="button">Refresh Checkpoints</button>
             <label>Positive prompt Globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
             <label>Negative prompt Global<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
             <button class="primary-action" type="submit" form="automation-form">Save Project Settings</button>

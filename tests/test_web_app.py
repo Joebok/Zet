@@ -650,23 +650,22 @@ Backend = "manual_chatgpt"
                 "/api/pipeline-controls/automation",
                 params={"character": "Test", "phase": "Adult"},
                 json={
-                    "prompt_condense_enabled": True,
-                    "prompt_condense_model": "vision-test",
-                    "prompt_condense_file": "Config/Prompt_Condense_Tasks/body_reference_condense.md",
-                    "local_render_auto_queue_after_condense": True,
                     "local_render_preset": "body-reference-preview",
                     "local_render_positive_prompt_globals": "masterpiece",
                     "local_render_negative_prompt_globals": "blurry",
+                    "local_render_use_forge_couple": True,
+                    "local_render_checkpoint": "test-checkpoint",
                     "ai_harvest_auto_enabled": True,
                     "ai_harvest_interval_seconds": 600,
                     "render_backend": "manual_chatgpt",
                 },
             )
             self.assertEqual(saved.status_code, 200)
-            self.assertTrue(saved.json()["automation"]["prompt_condense_enabled"])
             self.assertEqual(saved.json()["automation"]["local_render_positive_prompt_globals"], "masterpiece")
+            self.assertTrue(saved.json()["automation"]["local_render_use_forge_couple"])
+            self.assertEqual(saved.json()["automation"]["local_render_checkpoint"], "test-checkpoint")
             self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
-            self.assertIn("[PromptCondense]", config_path.read_text(encoding="utf-8"))
+            self.assertIn('Checkpoint = "test-checkpoint"', config_path.read_text(encoding="utf-8"))
 
     def test_pipeline_controls_api_can_batch_reset_to_render(self):
         with tempfile.TemporaryDirectory() as temp_dir:

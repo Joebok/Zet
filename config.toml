@@ -24,6 +24,8 @@ Preset = "body-reference-preview"
 
 PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
 NegativePromptGlobals = "EasyNegative"
+LayoutBackend = "forge_couple_basic"
+Checkpoint = "sd\\perfectdeliberate_v90.safetensors [aea4ec6c4d]"
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 60

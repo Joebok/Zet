@@ -669,13 +669,6 @@ At the Arch
 <!-- ZET:BEGIN SCENE_DESCRIPTION -->
 Two students meet at the arch.
 <!-- ZET:END SCENE_DESCRIPTION -->
-
-<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->
-prompt:
-negative_prompt:denoising_strength:
-enable_hr: false
-orientation: landscape
-<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->
 """,
                 encoding="utf-8",
             )

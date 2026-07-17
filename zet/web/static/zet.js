@@ -28,6 +28,8 @@ const state = {
   selectedRenderConsoleAskId: null,
   renderConsoleDetail: null,
   renderConsoleImageBlob: null,
+  renderConsoleHarvestTimer: null,
+  renderConsoleHarvestRunsRemaining: 0,
   turnaroundRows: [],
   selectedTurnaroundId: null,
   selectedAuxiliaryTurnaroundId: null,
@@ -209,11 +211,10 @@ const monitorResponseTableBody = document.querySelector("#monitor-response-table
 const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
 const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
 const automationForm = document.querySelector("#automation-form");
-const settingPromptCondenseEnabled = document.querySelector("#setting-prompt-condense-enabled");
-const settingPromptCondenseModel = document.querySelector("#setting-prompt-condense-model");
-const settingPromptCondenseFile = document.querySelector("#setting-prompt-condense-file");
-const settingLocalRenderAuto = document.querySelector("#setting-local-render-auto");
+const settingLocalRenderForgeCouple = document.querySelector("#setting-local-render-forge-couple");
 const settingLocalRenderPreset = document.querySelector("#setting-local-render-preset");
+const settingLocalRenderCheckpoint = document.querySelector("#setting-local-render-checkpoint");
+const refreshLocalRenderCheckpoints = document.querySelector("#refresh-local-render-checkpoints");
 const settingLocalRenderPositiveGlobals = document.querySelector("#setting-local-render-positive-globals");
 const settingLocalRenderNegativeGlobals = document.querySelector("#setting-local-render-negative-globals");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
@@ -3523,6 +3524,7 @@ async function saveSceneBuilder(autosave = false) {
       body: JSON.stringify(state.sceneBuilder),
     });
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilder._validation_warnings = payload.document?.validation_warnings || state.sceneBuilder._validation_warnings || [];
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
     if (!autosave) {
@@ -5276,14 +5278,12 @@ async function loadPipelineControls() {
 function renderPipelineControls(payload) {
   state.pipelineControls = payload;
   const automation = payload.automation || {};
-  settingPromptCondenseEnabled.checked = Boolean(automation.prompt_condense_enabled);
-  settingPromptCondenseModel.value = automation.prompt_condense_model || "";
-  settingPromptCondenseFile.value = automation.prompt_condense_file || "";
-  settingLocalRenderAuto.checked = Boolean(automation.local_render_auto_queue_after_condense);
+  settingLocalRenderForgeCouple.checked = automation.local_render_use_forge_couple !== false;
   if (automation.local_render_preset && !Array.from(settingLocalRenderPreset.options).some((option) => option.value === automation.local_render_preset)) {
     settingLocalRenderPreset.add(new Option(automation.local_render_preset, automation.local_render_preset));
   }
   settingLocalRenderPreset.value = automation.local_render_preset || "body-reference-preview";
+  setLocalRenderCheckpointValue(automation.local_render_checkpoint || "");
   settingLocalRenderPositiveGlobals.value = automation.local_render_positive_prompt_globals || "";
   settingLocalRenderNegativeGlobals.value = automation.local_render_negative_prompt_globals || "";
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
@@ -5313,15 +5313,36 @@ function updatePromptReviewToggle() {
   promptReviewMode.value = modeByPipeline[promptReviewPipeline.value] || "OFF";
 }
 
+function setLocalRenderCheckpointValue(value) {
+  const checkpoint = value || "";
+  if (checkpoint && !Array.from(settingLocalRenderCheckpoint.options).some((option) => option.value === checkpoint)) {
+    settingLocalRenderCheckpoint.add(new Option(checkpoint, checkpoint));
+  }
+  settingLocalRenderCheckpoint.value = checkpoint;
+}
+
+async function refreshLocalRenderCheckpointOptions() {
+  const current = settingLocalRenderCheckpoint.value || state.pipelineControls?.automation?.local_render_checkpoint || "";
+  showLocalImageConfigMessage("Refreshing checkpoints...");
+  try {
+    const params = new URLSearchParams({ preset: settingLocalRenderPreset.value || "body-reference-preview" });
+    const payload = await fetchJson(`/api/local-image/checkpoints?${params.toString()}`);
+    const items = [{ value: "", label: "" }, ...(payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title }))];
+    setSelectOptionsWithLabels(settingLocalRenderCheckpoint, items);
+    setLocalRenderCheckpointValue(current);
+    showLocalImageConfigMessage(`Loaded ${(payload.checkpoints || []).length} checkpoints.`);
+  } catch (error) {
+    showLocalImageConfigMessage(error.message, "error");
+  }
+}
+
 function automationPayloadFromForm() {
   return {
-    prompt_condense_enabled: settingPromptCondenseEnabled.checked,
-    prompt_condense_model: settingPromptCondenseModel.value,
-    prompt_condense_file: settingPromptCondenseFile.value,
-    local_render_auto_queue_after_condense: settingLocalRenderAuto.checked,
     local_render_preset: settingLocalRenderPreset.value,
     local_render_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
     local_render_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
+    local_render_use_forge_couple: settingLocalRenderForgeCouple.checked,
+    local_render_checkpoint: settingLocalRenderCheckpoint.value,
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_review_model: settingAiPromptReviewModel.value,
@@ -5613,10 +5634,52 @@ async function runRenderConsoleLocalAction(action) {
     );
     renderRenderConsoleDetail(payload);
     showRenderConsoleMessage(payload.message || "Action complete.");
+    if (action === "local-test-render") {
+      startRenderConsoleHarvestTimer();
+    }
   } catch (error) {
     renderConsoleLocalStatus.textContent = error.message;
     showRenderConsoleMessage(error.message, "error");
   }
+}
+
+function stopRenderConsoleHarvestTimer() {
+  if (state.renderConsoleHarvestTimer) {
+    window.clearInterval(state.renderConsoleHarvestTimer);
+  }
+  state.renderConsoleHarvestTimer = null;
+  state.renderConsoleHarvestRunsRemaining = 0;
+}
+
+async function runRenderConsoleHarvestTick() {
+  if (state.renderConsoleHarvestRunsRemaining <= 0) {
+    stopRenderConsoleHarvestTimer();
+    return;
+  }
+  state.renderConsoleHarvestRunsRemaining -= 1;
+  try {
+    await fetchJson("/api/ai-controls/harvest", { method: "POST" });
+    if (state.selectedRenderConsoleAskId) {
+      await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
+    }
+    const remaining = state.renderConsoleHarvestRunsRemaining;
+    renderConsoleLocalStatus.textContent = remaining
+      ? `Harvested AI answers. Next harvest in 60 seconds.`
+      : "Harvested AI answers. Auto-harvest stopped.";
+  } catch (error) {
+    renderConsoleLocalStatus.textContent = error.message;
+    showRenderConsoleMessage(error.message, "error");
+  }
+  if (state.renderConsoleHarvestRunsRemaining <= 0) {
+    stopRenderConsoleHarvestTimer();
+  }
+}
+
+function startRenderConsoleHarvestTimer() {
+  stopRenderConsoleHarvestTimer();
+  state.renderConsoleHarvestRunsRemaining = 2;
+  renderConsoleLocalStatus.textContent = "Local render queued. Auto-harvest will run twice, every 60 seconds.";
+  state.renderConsoleHarvestTimer = window.setInterval(runRenderConsoleHarvestTick, 60000);
 }
 
 async function clearRenderConsoleLocalTest() {
@@ -6374,6 +6437,8 @@ openRenderConsoleTab.addEventListener("click", () => {
   document.querySelector('.tab[data-page="render-console"]').click();
 });
 automationForm.addEventListener("submit", saveAutomationSettings);
+refreshLocalRenderCheckpoints.addEventListener("click", refreshLocalRenderCheckpointOptions);
+settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpointOptions);
 promptReviewPipeline.addEventListener("change", updatePromptReviewToggle);
 promptReviewSave.addEventListener("click", savePromptReviewStage);
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);

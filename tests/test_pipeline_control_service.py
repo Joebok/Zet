@@ -73,8 +73,9 @@ Model = "old-model"
 PromptFile = "old.md"
 
 [LocalRender]
-AutoQueueAfterCondense = false
 Preset = "old-preset"
+LayoutBackend = "plain_txt2img"
+Checkpoint = "old-checkpoint"
 
 [AIHarvest]
 AutoEnabled = false
@@ -92,13 +93,11 @@ Backend = "local_image"
 
             app.save_automation_settings(
                 AutomationSettings(
-                    prompt_condense_enabled=True,
-                    prompt_condense_model="new-model",
-                    prompt_condense_file="Config/Prompt_Condense_Tasks/body_reference_condense.md",
-                    local_render_auto_queue_after_condense=True,
                     local_render_preset="body-reference-preview",
                     local_render_positive_prompt_globals="masterpiece",
                     local_render_negative_prompt_globals="blurry",
+                    local_render_use_forge_couple=True,
+                    local_render_checkpoint="new-checkpoint",
                     ai_harvest_auto_enabled=True,
                     ai_harvest_interval_seconds=300,
                     render_backend="manual_chatgpt",
@@ -106,11 +105,10 @@ Backend = "local_image"
             )
 
             reloaded = ZetApp.from_config(config_path).config
-            self.assertTrue(reloaded.prompt_condense_enabled)
-            self.assertEqual(reloaded.prompt_condense_model, "new-model")
-            self.assertTrue(reloaded.local_render_auto_queue_after_condense)
             self.assertEqual(reloaded.local_render_positive_prompt_globals, "masterpiece")
             self.assertEqual(reloaded.local_render_negative_prompt_globals, "blurry")
+            self.assertEqual(reloaded.local_render_layout_backend, "forge_couple_basic")
+            self.assertEqual(reloaded.local_render_checkpoint, "new-checkpoint")
             self.assertEqual(reloaded.ai_harvest_interval_seconds, 300)
             self.assertEqual(reloaded.render_backend, "manual_chatgpt")
             self.assertTrue(list(root.glob("config.backup.*.toml")))

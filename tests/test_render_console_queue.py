@@ -235,14 +235,13 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
         with patch.object(local_image_proxy_worker, "render_image", render_image):
             kwargs = local_image_proxy_worker.render_image_kwargs(
-                {"reference_files": [{"path": "ref.png"}], "governing_template_path": "template.md"},
+                {"reference_files": [{"path": "ref.png"}]},
                 Path("prompt.md"),
                 Path("job"),
                 "preset",
             )
 
         self.assertNotIn("reference_files", kwargs)
-        self.assertNotIn("governing_template_path", kwargs)
 
     def test_harvester_archives_already_harvested_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

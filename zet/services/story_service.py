@@ -1643,7 +1643,6 @@ class StoryService:
             "target_output_file": str(self.path_service.story_folder_path(safe_story_slug) / expected_output),
             "pipeline_path": str(pipeline_path),
             "reference_files": references,
-            "governing_template_path": str(scene_path),
             "aspect_ratio": scene_aspect_ratio,
         }
         self._write_json(ask_path / "ask_manifest.json", manifest)

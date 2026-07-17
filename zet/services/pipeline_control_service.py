@@ -17,13 +17,11 @@ class PipelineControlServiceError(Exception):
 
 @dataclass(frozen=True)
 class AutomationSettings:
-    prompt_condense_enabled: bool
-    prompt_condense_model: str
-    prompt_condense_file: str
-    local_render_auto_queue_after_condense: bool
     local_render_preset: str
     local_render_positive_prompt_globals: str
     local_render_negative_prompt_globals: str
+    local_render_use_forge_couple: bool
+    local_render_checkpoint: str
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
@@ -100,13 +98,11 @@ class PipelineControlService:
 
     def automation_settings(self) -> AutomationSettings:
         return AutomationSettings(
-            prompt_condense_enabled=bool(self.config.prompt_condense_enabled),
-            prompt_condense_model=str(self.config.prompt_condense_model),
-            prompt_condense_file=str(self.config.prompt_condense_file),
-            local_render_auto_queue_after_condense=bool(self.config.local_render_auto_queue_after_condense),
             local_render_preset=str(self.config.local_render_preset),
             local_render_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
             local_render_negative_prompt_globals=str(self.config.local_render_negative_prompt_globals),
+            local_render_use_forge_couple=str(self.config.local_render_layout_backend) == "forge_couple_basic",
+            local_render_checkpoint=str(self.config.local_render_checkpoint),
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
@@ -116,14 +112,6 @@ class PipelineControlService:
 
     def project_config_rows(self) -> list[dict]:
         return [
-            {"Scope": "Project config", "Setting": "PromptCondense.Enabled", "Value": self.config.prompt_condense_enabled},
-            {"Scope": "Project config", "Setting": "PromptCondense.Model", "Value": self.config.prompt_condense_model},
-            {"Scope": "Project config", "Setting": "PromptCondense.PromptFile", "Value": self.config.prompt_condense_file},
-            {
-                "Scope": "Project config",
-                "Setting": "LocalRender.AutoQueueAfterCondense",
-                "Value": self.config.local_render_auto_queue_after_condense,
-            },
             {"Scope": "Project config", "Setting": "LocalRender.Preset", "Value": self.config.local_render_preset},
             {
                 "Scope": "Project config",
@@ -135,6 +123,8 @@ class PipelineControlService:
                 "Setting": "LocalRender.NegativePromptGlobals",
                 "Value": self.config.local_render_negative_prompt_globals,
             },
+            {"Scope": "Project config", "Setting": "LocalRender.LayoutBackend", "Value": self.config.local_render_layout_backend},
+            {"Scope": "Project config", "Setting": "LocalRender.Checkpoint", "Value": self.config.local_render_checkpoint},
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
@@ -150,13 +140,11 @@ class PipelineControlService:
         """Persist project-level automation settings."""
         self._validate_settings(settings)
         updates = {
-            ("PromptCondense", "Enabled"): settings.prompt_condense_enabled,
-            ("PromptCondense", "Model"): settings.prompt_condense_model,
-            ("PromptCondense", "PromptFile"): settings.prompt_condense_file,
-            ("LocalRender", "AutoQueueAfterCondense"): settings.local_render_auto_queue_after_condense,
             ("LocalRender", "Preset"): settings.local_render_preset,
             ("LocalRender", "PositivePromptGlobals"): settings.local_render_positive_prompt_globals,
             ("LocalRender", "NegativePromptGlobals"): settings.local_render_negative_prompt_globals,
+            ("LocalRender", "LayoutBackend"): "forge_couple_basic" if settings.local_render_use_forge_couple else "plain_txt2img",
+            ("LocalRender", "Checkpoint"): settings.local_render_checkpoint,
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
@@ -233,10 +221,6 @@ class PipelineControlService:
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))
             raise PipelineControlServiceError(f"Render backend must be one of: {choices}.")
-        if not settings.prompt_condense_model.strip():
-            raise PipelineControlServiceError("Prompt condense model cannot be blank.")
-        if not settings.prompt_condense_file.strip():
-            raise PipelineControlServiceError("Prompt condense file cannot be blank.")
         if not settings.local_render_preset.strip():
             raise PipelineControlServiceError("Local render preset cannot be blank.")
         if settings.ai_harvest_interval_seconds < 0:

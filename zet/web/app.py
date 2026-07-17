@@ -9,6 +9,8 @@ from dataclasses import asdict
 from pathlib import Path
 import sys
 from typing import Any
+from urllib.error import URLError
+from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -704,14 +706,8 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
 
 def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
     """Build automation settings, preserving current values for omitted fields."""
-    defaults = defaults or AutomationSettings(False, "", "", False, "", "", "", False, 0, "", "", "")
+    defaults = defaults or AutomationSettings("", "", "", True, "", False, 0, "", "", "")
     return AutomationSettings(
-        prompt_condense_enabled=bool(payload.get("prompt_condense_enabled", defaults.prompt_condense_enabled)),
-        prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
-        prompt_condense_file=str(payload.get("prompt_condense_file", defaults.prompt_condense_file)),
-        local_render_auto_queue_after_condense=bool(
-            payload.get("local_render_auto_queue_after_condense", defaults.local_render_auto_queue_after_condense)
-        ),
         local_render_preset=str(payload.get("local_render_preset", defaults.local_render_preset)),
         local_render_positive_prompt_globals=str(
             payload.get("local_render_positive_prompt_globals", defaults.local_render_positive_prompt_globals)
@@ -719,6 +715,10 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         local_render_negative_prompt_globals=str(
             payload.get("local_render_negative_prompt_globals", defaults.local_render_negative_prompt_globals)
         ),
+        local_render_use_forge_couple=bool(
+            payload.get("local_render_use_forge_couple", defaults.local_render_use_forge_couple)
+        ),
+        local_render_checkpoint=str(payload.get("local_render_checkpoint", defaults.local_render_checkpoint)),
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
         render_backend=str(payload.get("render_backend", defaults.render_backend)),
@@ -1024,6 +1024,39 @@ def _action_response(zet_app: ZetApp, character: str, phase: str, asset_id: int,
         "detail": _asset_detail_payload(zet_app, character, phase, asset_id),
         "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
     }
+
+
+def _local_render_preset(config_path: str | Path, preset_name: str) -> dict[str, Any]:
+    path = PROJECT_ROOT / "Config" / "Local_Render_Presets.json"
+    presets = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    preset = presets.get(preset_name)
+    return preset if isinstance(preset, dict) else {}
+
+
+def _local_render_checkpoints(config_path: str | Path, preset_name: str) -> list[dict[str, str]]:
+    preset = _local_render_preset(config_path, preset_name)
+    server_url = str(preset.get("server_url") or "http://127.0.0.1:7860").rstrip("/")
+    request = UrlRequest(server_url + "/sdapi/v1/sd-models", method="GET")
+    try:
+        with urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except URLError as exc:
+        raise RuntimeError("Local image backend unavailable.") from exc
+    if not isinstance(data, list):
+        return []
+    checkpoints = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or item.get("model_name") or "").strip()
+        if title:
+            checkpoints.append({
+                "title": title,
+                "model_name": str(item.get("model_name") or ""),
+                "filename": str(item.get("filename") or ""),
+                "hash": str(item.get("hash") or ""),
+            })
+    return checkpoints
 
 
 def create_app(config_path: str | Path = "config.toml") -> FastAPI:
@@ -2289,6 +2322,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return response
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local-image/checkpoints")
+    def local_image_checkpoints(preset: str = Query("body-reference-preview")) -> dict[str, Any]:
+        try:
+            return {"checkpoints": _local_render_checkpoints(app.state.config_path, preset)}
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/api/pipeline-controls/prompt-review")
     def pipeline_controls_prompt_review(
