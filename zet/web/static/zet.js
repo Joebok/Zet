@@ -377,6 +377,10 @@ const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
 const builderImagePickerModal = document.querySelector("#builder-image-picker-modal");
 const builderElementModal = document.querySelector("#builder-element-modal");
+const builderContinueModal = document.querySelector("#builder-continue-modal");
+const builderContinueScene = document.querySelector("#builder-continue-scene");
+const builderContinueCancel = document.querySelector("#builder-continue-cancel");
+const builderContinueConfirm = document.querySelector("#builder-continue-confirm");
 const builderElementResourceType = document.querySelector("#builder-element-resource-type");
 const builderElementCharacterSection = document.querySelector("#builder-element-character-section");
 const builderElementCharacter = document.querySelector("#builder-element-character");
@@ -668,7 +672,7 @@ const SCENE_BUILDER_HELP = {
   "scene.name": "Human-readable scene title.",
   "scene.story_settings_path": "Path to the companion .story.json file containing story-wide art style, dialogue style, and compiler defaults.",
   "scene.associated_png_path": "Path where the rendered image for this scene should be stored or found.",
-  "scene.story_beat": "One short sentence describing what emotionally or narratively happens in this scene.",
+  "scene.story_beat": "One sentence describing the visual moment or change the image must communicate. Describe what is happening now, not the surrounding plot.",
   "scene.author_notes": "Private author notes. These are not automatically included in prompts unless explicitly compiled.",
   "setup.canvas.orientation": "Image orientation: landscape, portrait, square, comic panel, or custom.",
   "setup.canvas.aspect_ratio": "Target image shape such as 16:9, 4:5, 1:1, or custom.",
@@ -691,11 +695,18 @@ const SCENE_BUILDER_HELP = {
   "placements[].pose.summary": "Concise pose summary.",
   "placements[].pose.gaze_target_element_id": "Element ID that this element is looking at.",
   "placements[].pose.expression": "Facial expression or visible emotional state.",
+  "setup.composition.focal_point": "The person, action, or visual relationship viewers should notice first.",
+  "setup.composition.left_to_right": "Order the important visible elements as the viewer should encounter them from the left side of the image to the right.",
+  "setup.composition.composition_notes": "Optional brief instruction about framing, overlap, spacing, or a major visual relationship not captured by placement fields.",
+  "placements[].motion.state": "Whether this element is still or visibly moving in the scene.",
+  "placements[].motion.direction_screen": "The direction the element is visibly moving within the finished image.",
+  "placements[].motion.cue": "A short visual description showing movement, such as trailing hair, a lifted foot, flying fabric, falling debris, or a blurred limb.",
   "placements[].placement_notes": "Private notes about this placement.",
   "interactions[].subject_element_id": "Element initiating or owning the interaction.",
   "interactions[].action": "Action relationship, such as offers, attacks, protects, reaches toward, blocks, watches, or mutual eye contact.",
   "interactions[].target_element_id": "Element receiving or targeted by the interaction.",
   "interactions[].notes": "Private interaction notes.",
+  "custom_interactions": "Additional render interactions, one instruction per line.",
   "dialogue[].speaker_element_id": "Element ID of the speaker.",
   "dialogue[].text": "Exact dialogue text to render. Keep punctuation final.",
   "dialogue[].target_element_id": "Who the dialogue is addressed to, if anyone.",
@@ -713,10 +724,7 @@ function builderHelpPath(path) {
 }
 
 function builderCaption(label, path) {
-  const helpPath = builderHelpPath(path);
-  const help = SCENE_BUILDER_HELP[helpPath];
-  const button = help ? `<button type="button" class="field-help-button" data-builder-help="${escapeHtml(helpPath)}" title="${escapeHtml(help)}">?</button>` : "";
-  return `<span class="field-caption"><span>${escapeHtml(label)}</span>${button}</span>`;
+  return `<span class="field-caption"><span>${escapeHtml(label)}</span></span>`;
 }
 
 function builderField(path, label, optionsName = "", full = false, type = "text") {
@@ -2302,10 +2310,9 @@ function isStorySettingCsvList(path, value) {
     return false;
   }
   const textPath = storySettingPathLabel(path);
-  return textPath === "style_defaults.visual_continuity.rules"
-    || textPath === "style_defaults.default_avoid"
+  return textPath === "style_defaults.default_avoid"
     || textPath === "compiler_profiles.local_render.negative_text_terms"
-    || /^dialog(?:ue)?_styles\.\d+\.avoid$/.test(textPath);
+    || /^dialog(?:ue)?_styles\.\d+\.(?:avoid|layout_rules)$/.test(textPath);
 }
 
 function renderStorySettingField(path, value) {
@@ -2997,11 +3004,14 @@ function builderSyncControls() {
   }
 }
 
-function builderApplyChange() {
+function builderApplyChange(event) {
   if (!state.sceneBuilder) {
     return;
   }
   builderSyncControls();
+  if (event?.target?.id === "builder-composition-element") {
+    return;
+  }
   renderSceneBuilder();
 }
 
@@ -3013,12 +3023,13 @@ function builderCreatePlacementForElement(element) {
   return {
     id: `placement_${Date.now()}`,
     scene_element_id: element.id,
-    position_within_cell: "center",
+    position_within_cell: element.element_type === "Backdrop" ? "" : "center",
     depth: element.element_type === "Backdrop" ? "background" : "midground",
     frame_coverage: "",
     distance_from_camera: "",
     visual_scale: "",
-    pose: { summary: "", temporary_condition: "", action_direction_screen: "", gaze_target_element_id: "", expression: "", left_arm_action: "", right_arm_action: "", leg_foot_detail: "", balance_weight_detail: "" },
+    pose: { summary: "", temporary_condition: "", gaze_target_element_id: "", expression: "", left_arm_action: "", right_arm_action: "", leg_foot_detail: "", balance_weight_detail: "" },
+    motion: { state: "stationary", direction_screen: "", cue: "" },
     placement_notes: "",
   };
 }
@@ -3139,6 +3150,7 @@ function builderRemoveSelectedElement() {
   state.sceneBuilder.scene_elements = (state.sceneBuilder.scene_elements || []).filter((item) => item.id !== element.id);
   state.sceneBuilder.placements = (state.sceneBuilder.placements || []).filter((item) => item.scene_element_id !== element.id);
   state.sceneBuilder.interactions = (state.sceneBuilder.interactions || []).filter((item) => item.subject_element_id !== element.id && item.target_element_id !== element.id);
+  state.sceneBuilder.setup.composition.left_to_right = (state.sceneBuilder.setup.composition.left_to_right || []).filter((item) => item !== element.id);
   state.selectedBuilderElementId = state.sceneBuilder.scene_elements[0]?.id || null;
   state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
   renderSceneBuilder();
@@ -3158,6 +3170,11 @@ function builderDuplicateSelectedElement() {
 
 function builderAddInteraction() {
   state.sceneBuilder.interactions.push({ subject_element_id: "", relationship: "looking at", target_element_id: "", note: "" });
+  renderSceneBuilder();
+}
+
+function builderDeleteInteraction(index) {
+  state.sceneBuilder.interactions = (state.sceneBuilder.interactions || []).filter((_, itemIndex) => itemIndex !== index);
   renderSceneBuilder();
 }
 
@@ -3210,6 +3227,11 @@ function builderRenderElementEditor() {
   if (!element) {
     return `<div class="scene-builder-card"><h4>Selected Element</h4><p>Select or add a scene element.</p></div>`;
   }
+  const referenceTag = element.reference_images?.[0]?.tag || "";
+  const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
+  const referenceThumbnail = reference?.thumbnail_path
+    ? `<img class="scene-builder-reference-thumbnail" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}">`
+    : "";
   return `
     <div class="scene-builder-card">
       <h4>Selected Element</h4>
@@ -3217,9 +3239,9 @@ function builderRenderElementEditor() {
         <label>${builderCaption("Display name", "scene_elements[].display_name")}<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
         <label>${builderCaption("Resource type", "scene_elements[].resource_type")}<select data-builder-element-field="resource_type">${builderResourceTypeOptions(element.resource_type || "Character")}</select></label>
         <label>${builderCaption("Type", "scene_elements[].element_type")}<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Backdrop"${element.element_type === "Backdrop" ? " selected" : ""}>Backdrop</option></select></label>
-        <label class="full">${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(element.reference_images?.[0]?.tag || "")}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label>
-        <label class="full">${builderCaption("Element visual override", "scene_elements[].element_visual_override")}<textarea data-builder-element-field="element_visual_override">${escapeHtml(element.element_visual_override || "")}</textarea></label>
-        <label class="full">${builderCaption("Fallback visual description", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
+        <div class="scene-builder-reference-field full">${referenceThumbnail}<label>${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label></div>
+        <label class="full">${builderCaption("(Element visual override) Element Override: ...", "scene_elements[].element_visual_override")}<textarea data-builder-element-field="element_visual_override">${escapeHtml(element.element_visual_override || "")}</textarea></label>
+        <label class="full">${builderCaption("(Fallback visual description) Visual description: ...", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
         <label class="full">${builderCaption("Notes", "scene_elements[].notes")}<textarea data-builder-element-field="notes">${escapeHtml(element.notes || "")}</textarea></label>
       </div>
     </div>
@@ -3228,24 +3250,29 @@ function builderRenderElementEditor() {
 
 function builderRenderPlacementEditor() {
   const placement = builderSelectedPlacement();
-  if (!placement) {
-    return `<div class="scene-builder-card"><h4>Selected Placement</h4><p>Select or add a scene element.</p></div>`;
-  }
   const element = builderSelectedElement();
+  const placementTitle = `Placement for ${element?.display_name || element?.id || "Selected Element"}`;
+  if (!placement) {
+    return `<div class="scene-builder-card"><h4>${escapeHtml(placementTitle)}</h4><p>Select or add a scene element.</p></div>`;
+  }
   const showActing = !element || ["Character", "Monster"].includes(element.element_type || "Character");
   const isBackdrop = element?.element_type === "Backdrop";
+  placement.motion = placement.motion || { state: "stationary", direction_screen: "", cue: "" };
   if (isBackdrop) placement.position_within_cell = "";
   return `
     <div class="scene-builder-card">
-      <h4>Selected Placement</h4>
+      <h4>${escapeHtml(placementTitle)}</h4>
       <div class="scene-builder-fields">
         <label>${builderCaption("Position", "placements[].position_within_cell")}<select data-builder-placement-field="position_within_cell"${isBackdrop ? " disabled" : ""}>${builderOptionHtml("position_within_cell", isBackdrop ? "" : placement.position_within_cell || "center")}</select></label>
         <label>${builderCaption("Depth", "placements[].depth")}<select data-builder-placement-field="depth">${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
         ${showActing ? `
-          <label class="full">${builderCaption("Pose", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"></label>
-          <label>${builderCaption("Gaze target", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id">${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>
-          <label>${builderCaption("Expression", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"></label>
+          <label class="full">${builderCaption("(Pose) Element [pose] in the selected region.", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"></label>
+          <label>${builderCaption("(Gaze target) Element looks directly at ...", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id">${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>
+          <label>${builderCaption("(Expression) Element appears ...", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"></label>
         ` : ""}
+        <label>${builderCaption("Motion", "placements[].motion.state")}<select data-builder-placement-field="motion.state"><option value="stationary"${placement.motion.state !== "moving" ? " selected" : ""}>Stationary</option><option value="moving"${placement.motion.state === "moving" ? " selected" : ""}>Moving</option></select></label>
+        <label>${builderCaption("(Movement direction) Element is visibly moving ... on screen.", "placements[].motion.direction_screen")}<select data-builder-placement-field="motion.direction_screen"${placement.motion.state !== "moving" ? " disabled" : ""}>${["", "left", "right", "toward camera", "away from camera", "up", "down", "up-left", "up-right", "down-left", "down-right"].map((value) => `<option value="${value}"${value === (placement.motion.direction_screen || "") ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+        <label class="full">${builderCaption("(Motion cue) Element is visibly moving, ...", "placements[].motion.cue")}<input value="${escapeHtml(placement.motion.cue || "")}" data-builder-placement-field="motion.cue"></label>
         <label class="full">${builderCaption("Notes", "placements[].placement_notes")}<textarea data-builder-placement-field="placement_notes">${escapeHtml(placement.placement_notes || "")}</textarea></label>
       </div>
     </div>
@@ -3260,11 +3287,11 @@ function builderRenderDialogueEditor() {
         <button type="button" data-builder-action="delete-dialogue" data-builder-dialogue-index="${index}">Delete</button>
       </div>
       <div class="scene-builder-fields">
-        <label>${builderCaption("Speaker", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderElementOptions(dialogue.speaker_element_id || "")}</select></label>
-        <label>${builderCaption("Target", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderElementOptions(dialogue.target_element_id || "")}</select></label>
-        <label class="full">${builderCaption("Text", "dialogue[].text")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="text">${escapeHtml(dialogue.text || "")}</textarea></label>
-        <label>${builderCaption("Pointer target", "dialogue[].pointer_target")}<input value="${escapeHtml(dialogue.pointer_target || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="pointer_target"></label>
-        <label>${builderCaption("Max lines", "dialogue[].max_lines")}<input type="number" min="1" value="${escapeHtml(dialogue.max_lines || 3)}" data-builder-dialogue="${index}" data-builder-dialogue-field="max_lines"></label>
+        <label>${builderCaption("(Speaker) ... says exactly: [text]", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderElementOptions(dialogue.speaker_element_id || "")}</select></label>
+        <label>${builderCaption("(Target) Dialogue is directed toward ...", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderElementOptions(dialogue.target_element_id || "")}</select></label>
+        <label class="full">${builderCaption("(Text) Speaker says exactly: \"...\"", "dialogue[].text")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="text">${escapeHtml(dialogue.text || "")}</textarea></label>
+        <label>${builderCaption("(Pointer target) Aim dialogue-panel pointer at ...", "dialogue[].pointer_target")}<input value="${escapeHtml(dialogue.pointer_target || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="pointer_target"></label>
+        <label>${builderCaption("(Max lines) Wrap dialogue in no more than ... lines.", "dialogue[].max_lines")}<input type="number" min="1" value="${escapeHtml(dialogue.max_lines || 3)}" data-builder-dialogue="${index}" data-builder-dialogue-field="max_lines"></label>
         <label class="full">${builderCaption("Notes", "dialogue[].notes")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="notes">${escapeHtml(dialogue.notes || "")}</textarea></label>
       </div>
     </div>
@@ -3286,13 +3313,31 @@ function builderRenderEnvironment() {
     <div class="scene-builder-card">
       <h4>Environment</h4>
       <div class="scene-builder-fields">
-        ${builderField("setup.environment.location", "Location", "", true)}
-        ${builderField("setup.environment.lighting", "Lighting")}
-        ${builderField("setup.environment.mood", "Mood")}
-        ${builderField("setup.environment.weather_or_atmosphere", "Weather/Atmosphere", "", true)}
+        ${builderField("setup.environment.location", "(Location) The scene takes place...", "", true)}
+        ${builderField("setup.environment.lighting", "(Lighting) Lighting: ...")}
+        ${builderField("setup.environment.mood", "(Mood) Mood: ...")}
+        ${builderField("setup.environment.weather_or_atmosphere", "(Weather/Atmosphere) Atmosphere: ...", "", true)}
         <label class="full">${builderCaption("Important exclusions", "setup.environment.important_exclusions")}<input id="builder-important-exclusions" value="${escapeHtml((environment.important_exclusions || []).join(", "))}"></label>
-        ${builderField("setup.environment.general_foreground_notes", "General foreground notes", "", true, "textarea")}
-        ${builderField("setup.environment.general_background_notes", "General background notes", "", true, "textarea")}
+        ${builderField("setup.environment.general_foreground_notes", "(General foreground notes) Rendered as a bullet: ...", "", true, "textarea")}
+        ${builderField("setup.environment.general_background_notes", "(General background notes) Rendered as a bullet: ...", "", true, "textarea")}
+      </div>
+    </div>
+  `;
+}
+
+function builderRenderComposition() {
+  const composition = state.sceneBuilder.setup?.composition || { focal_point: "", left_to_right: [], composition_notes: "" };
+  state.sceneBuilder.setup.composition = composition;
+  const selectable = (state.sceneBuilder.scene_elements || []).filter((element) => element.element_type !== "Backdrop" && !composition.left_to_right.includes(element.id));
+  const ordered = composition.left_to_right.map((elementId, index) => `<li>${escapeHtml(builderElementLabel(elementId))}<span class="button-row compact"><button type="button" data-builder-action="composition-up" data-builder-composition-index="${index}">Up</button><button type="button" data-builder-action="composition-down" data-builder-composition-index="${index}">Down</button><button type="button" data-builder-action="composition-remove" data-builder-composition-index="${index}">Remove</button></span></li>`).join("");
+  return `
+    <div class="scene-builder-card">
+      <h4>Composition</h4>
+      <div class="scene-builder-fields">
+        ${builderField("setup.composition.focal_point", "(Primary focal point) Primary focal point: ...", "", true)}
+        <label class="full">${builderCaption("Left-to-Right Visual Read", "setup.composition.left_to_right")}<span class="inline-field"><select id="builder-composition-element"><option value=""></option>${selectable.map((element) => `<option value="${escapeHtml(element.id)}">${escapeHtml(element.display_name || element.id)}</option>`).join("")}</select><button type="button" data-builder-action="composition-add">Add</button></span></label>
+        <ol class="full">${ordered || "<li>No elements selected.</li>"}</ol>
+        ${builderField("setup.composition.composition_notes", "(Composition notes) Rendered as a bullet: ...", "", true, "textarea")}
       </div>
     </div>
   `;
@@ -3305,19 +3350,20 @@ function builderRenderInteractions() {
       <td><select data-builder-interaction="${index}" data-builder-interaction-field="relationship">${builderOptionHtml("relationship", interaction.relationship || "")}</select></td>
       <td><select data-builder-interaction="${index}" data-builder-interaction-field="target_element_id">${builderElementOptions(interaction.target_element_id || "")}</select></td>
       <td><input value="${escapeHtml(interaction.note || "")}" data-builder-interaction="${index}" data-builder-interaction-field="note"></td>
+      <td><button type="button" class="danger-action scene-builder-delete-interaction" data-builder-action="delete-interaction" data-builder-interaction-index="${index}" aria-label="Delete interaction" title="Delete interaction">×</button></td>
     </tr>
   `).join("");
   return `
     <div class="scene-builder-card">
       <h4>Interactions</h4>
       <button type="button" data-builder-action="add-interaction">Add Interaction</button>
-      <table class="scene-builder-table"><thead><tr><th>${builderCaption("subject", "interactions[].subject_element_id")}</th><th>${builderCaption("relationship", "interactions[].action")}</th><th>${builderCaption("target", "interactions[].target_element_id")}</th><th>${builderCaption("note", "interactions[].notes")}</th></tr></thead><tbody>${interactions}</tbody></table>
+      <table class="scene-builder-table"><thead><tr><th>${builderCaption("subject", "interactions[].subject_element_id")}</th><th>${builderCaption("relationship", "interactions[].action")}</th><th>${builderCaption("target", "interactions[].target_element_id")}</th><th>${builderCaption("note", "interactions[].notes")}</th><th></th></tr></thead><tbody>${interactions}</tbody></table>
+      <label class="full">${builderCaption("(Custom Interactions) Each line renders as: - ...", "custom_interactions")}<textarea data-builder-field="custom_interactions">${escapeHtml(state.sceneBuilder.custom_interactions || "")}</textarea></label>
     </div>
   `;
 }
 
 function builderRenderOutputs() {
-  const warnings = state.sceneBuilder._validation_warnings || [];
   return `
     <div class="scene-builder-card">
       <h4>Render Settings / Validation</h4>
@@ -3328,7 +3374,6 @@ function builderRenderOutputs() {
       ${builderField("render_settings.scene_render_ir.output_path", "Scene IR path", "", true)}
       ${builderField("render_settings.local_render_brief.output_path", "Local brief path", "", true)}
       ${builderField("render_settings.local_render_prompt.output_path", "Local prompt path", "", true)}
-      <div><strong>Validation Warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("") || "<li>None</li>"}</ul></div>
       <label class="full">JSON Preview<textarea class="scene-builder-output" readonly>${escapeHtml(JSON.stringify(state.sceneBuilder, null, 2))}</textarea></label>
     </div>
   `;
@@ -3346,6 +3391,10 @@ function renderSceneBuilder() {
   if (!state.sceneBuilder) {
     return;
   }
+  const warnings = state.sceneBuilder._validation_warnings || [];
+  const warningMarkup = warnings.length
+    ? `<div class="scene-builder-warnings"><strong>Validation warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul></div>`
+    : "";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
     ${builderRenderDatalists()}
@@ -3353,7 +3402,10 @@ function renderSceneBuilder() {
       <strong>Scene Builder</strong>
       <span>${escapeHtml(state.sceneBuilder?.scene?.name || "")}</span>
       <span>${escapeHtml(state.sceneBuilder?.scene?.slug || "")}.scene.json</span>
+      <button type="button" data-builder-action="continue-from">Continue from...</button>
+      <button type="button" class="scene-builder-render" data-builder-action="render">Render</button>
       <button type="button" data-builder-action="return-scenes">Back to Scene</button>
+      ${warningMarkup}
     </div>
     <div class="scene-builder-grid">
       <section class="scene-builder-section">
@@ -3362,7 +3414,7 @@ function renderSceneBuilder() {
           ${builderField("scene.name", "Scene name", "", true)}
           ${builderField("scene.story_settings_path", "Story settings path", "", true)}
           ${builderField("scene.associated_png_path", "Associated .png path", "", true)}
-          ${builderField("scene.story_beat", "Story beat", "", true, "textarea")}
+          ${builderField("scene.story_beat", "(Story Beat) Rendered as a bullet: ...", "", true, "textarea")}
           ${builderField("scene.author_notes", "Notes", "", true, "textarea")}
         </div>
         <h3>Canvas</h3>
@@ -3370,11 +3422,11 @@ function renderSceneBuilder() {
           ${builderField("setup.canvas.orientation", "Orientation", "orientation")}
           ${builderField("setup.canvas.aspect_ratio", "Aspect ratio", "aspect_ratio")}
         </div>
+        ${builderRenderComposition()}
         <h3>Environment</h3>
         ${builderRenderEnvironment()}
       </section>
       <section class="scene-builder-section">
-        <h3>Placements</h3>
         ${builderRenderPlacementEditor()}
         ${builderRenderDialogueEditor()}
       </section>
@@ -3445,6 +3497,80 @@ async function saveSceneBuilder(autosave = false) {
     if (!autosave) {
       showSceneBuilderMessage(payload.message || "Scene Builder saved.", "success");
     }
+    return payload;
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+    return null;
+  }
+}
+
+async function openBuilderContinueDialog() {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) {
+    return;
+  }
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes`);
+    const scenes = (payload.scenes || []).filter((scene) => scene.slug !== state.selectedSceneSlug);
+    builderContinueScene.replaceChildren(...scenes.map((scene) => {
+      const option = document.createElement("option");
+      option.value = scene.slug;
+      option.textContent = scene.title;
+      return option;
+    }));
+    if (!scenes.length) {
+      showSceneBuilderMessage("No other scenes are available to continue from.", "error");
+      return;
+    }
+    builderContinueModal.hidden = false;
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
+function closeBuilderContinueDialog() {
+  builderContinueModal.hidden = true;
+}
+
+async function continueSceneBuilderFrom() {
+  const sourceSceneSlug = builderContinueScene.value;
+  if (!sourceSceneSlug) {
+    return;
+  }
+  const saved = await saveSceneBuilder(true);
+  if (!saved) {
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ source_scene_slug: sourceSceneSlug });
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/continue-from?${params.toString()}`, {
+      method: "POST",
+    });
+    updateStoryGitWarning(payload.has_story_changes);
+    closeBuilderContinueDialog();
+    await openSceneBuilder();
+    showSceneBuilderMessage(payload.message || "Continued from selected scene.", "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
+async function renderSceneBuilderScene() {
+  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
+    return;
+  }
+  const saved = await saveSceneBuilder(true);
+  if (!saved) {
+    return;
+  }
+  showSceneBuilderMessage("Staging scene render...", "info");
+  try {
+    const payload = await fetchJson(
+      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/stage-render`,
+      { method: "POST" },
+    );
+    const askId = payload.task?.ask_id || null;
+    await activatePage("render-console", { skipAutosave: true });
+    await loadRenderConsoleTasks(askId);
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
@@ -3520,17 +3646,36 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   } else {
     const action = target.dataset.builderAction;
     if (action === "return-scenes") returnToScenesFromBuilder();
+    if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
     if (action === "delete-element") builderRemoveSelectedElement();
     if (action === "pick-image-tag") openBuilderImagePicker();
     if (action === "add-interaction") builderAddInteraction();
+    if (action === "delete-interaction") builderDeleteInteraction(Number(target.dataset.builderInteractionIndex));
     if (action === "add-dialogue") builderAddDialogue();
     if (action === "delete-dialogue") builderDeleteDialogue(Number(target.dataset.builderDialogueIndex));
+    if (action.startsWith("composition-")) {
+      builderSyncControls();
+      const composition = state.sceneBuilder.setup.composition;
+      const index = Number(target.dataset.builderCompositionIndex);
+      if (action === "composition-add") {
+        const elementId = sceneBuilderPanel.querySelector("#builder-composition-element")?.value;
+        if (elementId && !composition.left_to_right.includes(elementId)) composition.left_to_right.push(elementId);
+      }
+      if (action === "composition-remove") composition.left_to_right.splice(index, 1);
+      if (action === "composition-up" && index > 0) [composition.left_to_right[index - 1], composition.left_to_right[index]] = [composition.left_to_right[index], composition.left_to_right[index - 1]];
+      if (action === "composition-down" && index < composition.left_to_right.length - 1) [composition.left_to_right[index + 1], composition.left_to_right[index]] = [composition.left_to_right[index], composition.left_to_right[index + 1]];
+      renderSceneBuilder();
+    }
     if (action === "save") saveSceneBuilder(false);
     if (action === "export") exportSceneBuilderMarkdown();
+    if (action === "render") renderSceneBuilderScene();
   }
 });
+
+builderContinueCancel.addEventListener("click", closeBuilderContinueDialog);
+builderContinueConfirm.addEventListener("click", continueSceneBuilderFrom);
 
 async function loadImagePickerReferences(picker) {
   picker.status.textContent = "Loading references...";

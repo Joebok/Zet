@@ -734,6 +734,27 @@ dl {
   gap: 8px;
 }
 
+.scene-builder-render {
+  background: var(--update);
+  border-color: var(--update);
+  color: #fff;
+}
+
+.scene-builder-warnings {
+  background: #fffaeb;
+  border: 1px solid #fedf89;
+  border-radius: 4px;
+  color: #b54708;
+  font-size: 12px;
+  margin-left: auto;
+  padding: 4px 8px;
+}
+
+.scene-builder-warnings ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+
 .scene-builder-grid {
   display: grid;
   gap: 10px;
@@ -759,6 +780,10 @@ dl {
 .scene-builder-section select,
 .scene-builder-section textarea {
   width: 100%;
+}
+
+.scene-builder-section textarea {
+  min-height: 100px;
 }
 
 .scene-builder-section h3,
@@ -828,6 +853,12 @@ dl {
 
 .scene-builder-element-row small {
   color: var(--muted);
+}
+
+.scene-builder-delete-interaction {
+  line-height: 1;
+  min-width: 28px;
+  padding: 4px 8px;
 }
 
 .inline-field {
@@ -1319,6 +1350,21 @@ tr.auxiliary-row td:last-child {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(320px, 0.42fr) minmax(560px, 1fr);
+}
+
+.scene-builder-reference-field {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.scene-builder-reference-thumbnail {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  height: 72px;
+  object-fit: cover;
+  width: 72px;
 }
 
 .aux-resource-editor {

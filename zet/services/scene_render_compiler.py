@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
+
 
 @dataclass(frozen=True)
 class SceneRenderCompilation:
@@ -35,6 +37,16 @@ def _sentence(value: Any) -> str:
     if text.endswith((".", "!", "?")):
         return text
     return text + "."
+
+
+def _capitalize_bullet(line: str) -> str:
+    if not line.startswith("- "):
+        return line
+    match = re.search(r"[A-Za-z]", line[2:])
+    if match is None:
+        return line
+    index = match.start() + 2
+    return line[:index] + line[index].upper() + line[index + 1:]
 
 
 def humanize_identifier(value: str) -> str:
@@ -81,12 +93,19 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
         "setting, lighting, mood, and art style match the source data",
     ]
     return {
+        "scene": {
+            "id": scene_data.get("scene", {}).get("id", ""),
+            "name": scene_data.get("scene", {}).get("name", ""),
+            "slug": scene_data.get("scene", {}).get("slug", ""),
+            "story_beat": scene_data.get("scene", {}).get("story_beat", ""),
+        },
         "source": {
             "scene_json_path": scene_data.get("scene", {}).get("source_path", ""),
             "story_settings_path": scene_data.get("scene", {}).get("story_settings_path", ""),
             "source_hashes": {},
         },
         "canvas": setup.get("canvas", {}),
+        "composition": setup.get("composition", {}),
         "style": {
             "art_style": _style_text(story_settings),
             "visual_continuity": story_settings.get("style_defaults", {}).get("visual_continuity", {}),
@@ -97,6 +116,7 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
         "placements": _items(scene_data.get("placements")),
         "props": _items(scene_data.get("props_and_states")),
         "interactions": _items(scene_data.get("interactions")),
+        "custom_interactions": _clean(scene_data.get("custom_interactions")),
         "dialogue": dialogue,
         "references": references,
         "avoid": list(dict.fromkeys(avoid)),
@@ -148,6 +168,19 @@ def _placement_element_id(placement: dict[str, Any]) -> str:
 
 def _is_visible_subject(element: dict[str, Any], placement: dict[str, Any]) -> bool:
     return _clean(element.get("element_type")) in {"Character", "Monster"}
+
+
+def _backdrop_element(ir: dict[str, Any]) -> dict[str, Any]:
+    return next((element for element in ir.get("elements", []) if _clean(element.get("element_type")) == "Backdrop"), {})
+
+
+def _backdrop_description(element: dict[str, Any]) -> str:
+    sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
+    return clean_prompt_sentence(
+        sections.get("identity_preservation_core")
+        or element.get("element_visual_override")
+        or element.get("fallback_visual_description")
+    )
 
 
 def _resource_subject_type(element: dict[str, Any]) -> str:
@@ -257,17 +290,24 @@ def _prompt_join(parts: list[str]) -> str:
 def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]) -> str:
     element_id = _clean(placement.get("scene_element_id"))
     element = _element(ir, element_id)
-    name = get_element_display_name(element_id, elements_by_id)
     pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
     pose_summary = clean_prompt_sentence(pose.get("summary") if pose else placement.get("pose"))
     region = _semantic_region(ir, placement)
     element_type = _clean(element.get("element_type"))
     verb = "occupies" if element_type in {"Place", "Backdrop"} or _clean(element.get("resource_type")) == "Place" else "stands"
-    first = f"{name} {verb}"
+    first = verb.capitalize()
+    trailing_action = ""
     if pose_summary and pose_summary.lower() not in {"standing", "stands"} and verb == "stands":
-        first = f"{name} {pose_summary}"
+        pose_match = re.match(r"^(.*?),\s*(.+?)(?:,)?$", pose_summary)
+        if pose_match and region:
+            first, trailing_action = pose_match.group(1), pose_match.group(2)
+        else:
+            first = pose_summary
     if region:
         first += f" in the {region}" if verb == "stands" else f" the {region}"
+    if trailing_action:
+        first += f", {trailing_action}"
+    first = first[:1].upper() + first[1:]
     sentences = [_sentence(first)]
     target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
     target = get_element_display_name(target_id, elements_by_id) if target_id else ""
@@ -278,10 +318,10 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     if actions:
         sentences.append(_sentence(", ".join(actions)))
     if target:
-        sentences.append(_sentence(f"{name} looks directly at {target}"))
+        sentences.append(_sentence(f"Looks directly at {target}"))
     expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression"))
     if expression:
-        sentences.append(_sentence(f"{name} appears {expression}"))
+        sentences.append(_sentence(f"Appears {expression}"))
     notes = clean_prompt_sentence(placement.get("placement_notes"))
     if notes:
         sentences.append(_sentence(notes))
@@ -343,16 +383,25 @@ def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, A
     return lines
 
 
+def _custom_interaction_lines(ir: dict[str, Any]) -> list[str]:
+    return [line if line.startswith("- ") else f"- {line}" for value in str(ir.get("custom_interactions") or "").splitlines() if (line := value.strip())]
+
+
 def final_image_prompt_text(ir: dict[str, Any]) -> str:
     canvas = ir.get("canvas", {})
     environment = ir.get("environment", {})
     elements_by_id = _elements_by_id(ir)
+    composition = ir.get("composition", {}) if isinstance(ir.get("composition"), dict) else {}
+    backdrop = _backdrop_element(ir)
     lines = [
         "# Render Task",
         "",
-        f"Create one finished {clean_prompt_sentence(canvas.get('orientation')) or 'landscape'} {clean_prompt_sentence(canvas.get('aspect_ratio')) or '16:9'} scene image. Do not show the planning grid or split the image into comic panels.",
+        "Create one finished scene. Do not show the planning grid or split the image into comic panels.",
         "",
     ]
+    story_beat = clean_prompt_sentence(ir.get("scene", {}).get("story_beat"))
+    if story_beat:
+        lines.extend(["# Story Beat", "", f"- {_sentence(story_beat)}", ""])
     if ir.get("references"):
         lines.extend(["# Reference Image Assignment", ""])
         for ref in ir["references"]:
@@ -370,30 +419,76 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
         lines.append("")
     lines.extend(["# Canvas", ""])
     lines.append(f"- {clean_prompt_sentence(canvas.get('orientation')) or 'Landscape'} {clean_prompt_sentence(canvas.get('aspect_ratio')) or '16:9'}.")
-    lines.append("- Render one continuous scene. Do not show the planning grid or divide the image into panels.")
-    lines.extend(["", "# Character and Location Staging", ""])
+    composition_lines = []
+    if clean_prompt_sentence(composition.get("focal_point")):
+        composition_lines.append(f"- Primary focal point: {clean_prompt_sentence(composition.get('focal_point'))}.")
+    read_order = [get_element_display_name(element_id, elements_by_id) for element_id in _lines(composition.get("left_to_right"))]
+    if read_order:
+        composition_lines.append(f"- Read the scene from left to right: {', then '.join(read_order)}.")
+    if clean_prompt_sentence(composition.get("composition_notes")):
+        composition_lines.append(f"- {_sentence(composition.get('composition_notes'))}")
+    if composition_lines:
+        lines.extend(["", "# Composition", "", *composition_lines])
+    backdrop_lines = []
+    backdrop_name = get_element_display_name(_clean(backdrop.get("id")), elements_by_id) if backdrop else ""
+    backdrop_description = _backdrop_description(backdrop) if backdrop else ""
+    location = clean_prompt_sentence(environment.get("location"))
+    background_notes = clean_prompt_sentence(environment.get("general_background_notes"))
+    if backdrop or location or background_notes:
+        if location:
+            backdrop_lines.append(f"- The scene takes place {location}.")
+        if backdrop_name:
+            backdrop_lines.append(f"- {backdrop_name} defines the overall background and surrounding setting.")
+        if backdrop_description and backdrop_description.lower() not in {location.lower(), background_notes.lower()}:
+            backdrop_lines.append(f"- Show {backdrop_description}.")
+        if background_notes and background_notes.lower() not in {location.lower(), backdrop_description.lower()}:
+            backdrop_lines.append(f"- {_sentence(background_notes)}")
+        if backdrop:
+            backdrop_lines.append("- Integrate all characters, props, and action naturally within this setting.")
+    if backdrop_lines:
+        lines.extend(["", "# Backdrop and Setting", "", *backdrop_lines])
+    lines.extend(["", "# Character and Object Staging", ""])
+    staging_count = 0
     for placement in ir.get("placements", []):
         element = _element(ir, _clean(placement.get("scene_element_id")))
-        if _clean(element.get("element_type")) in {"Character", "Monster", "Place", "Backdrop", "Prop", "Effect", "Vehicle"}:
-            lines.append(f"- {_placement_line(ir, placement, elements_by_id)}")
-    if lines[-1] == "":
+        if _clean(element.get("element_type")) in {"Character", "Monster", "Place", "Prop", "Effect", "Vehicle"}:
+            name = get_element_display_name(_clean(placement.get("scene_element_id")), elements_by_id)
+            lines.append(f"- **{name}:** {_placement_line(ir, placement, elements_by_id)}")
+            staging_count += 1
+    if not staging_count:
         lines.extend(["- No staging specified."])
-    lines.extend(["", "# Props and Interactions", ""])
+    motion_lines = []
+    for placement in ir.get("placements", []):
+        motion = placement.get("motion", {}) if isinstance(placement.get("motion"), dict) else {}
+        if _clean(motion.get("state")) == "moving":
+            name = get_element_display_name(_clean(placement.get("scene_element_id")), elements_by_id)
+            direction = clean_prompt_sentence(motion.get("direction_screen"))
+            cue = clean_prompt_sentence(motion.get("cue"))
+            details = [f"{name} is visibly moving"]
+            if direction:
+                details.append(f"{direction} on screen")
+            if cue:
+                details.append(cue)
+            motion_lines.append(f"- {_sentence(', '.join(details))}")
+    if motion_lines:
+        lines.extend(["", "# Motion Cues", "", *motion_lines])
+    prop_lines = []
     for prop in ir.get("props", []):
         text = clean_prompt_sentence(prop.get("description") or prop.get("state") or prop.get("display_name"))
         if text:
-            lines.append(f"- {_sentence(text)}")
-    lines.extend(f"- {line}" for line in _interaction_lines(ir, elements_by_id))
-    if lines[-1] == "":
-        lines.append("- Preserve structured prop and interaction facts from the scene JSON.")
+            prop_lines.append(f"- {_sentence(text)}")
+    if prop_lines:
+        lines.extend(["", "# Props and States", "", *prop_lines])
+    interaction_lines = _interaction_lines(ir, elements_by_id)
+    custom_interaction_lines = _custom_interaction_lines(ir)
+    if interaction_lines or custom_interaction_lines:
+        lines.extend(["", "# Interactions", "", *[f"- {line}" for line in interaction_lines], *custom_interaction_lines])
     environment_lines = [
-        _sentence(environment.get("location")),
         _sentence(environment.get("general_foreground_notes")),
-        _sentence(environment.get("general_background_notes")),
     ]
     environment_lines = [item for item in environment_lines if item]
     if environment_lines:
-        lines.extend(["", "# Environment and Depth", "", *environment_lines])
+        lines.extend(["", "# Environment", "", *environment_lines])
     mood_lines = [
         f"- Lighting: {clean_prompt_sentence(environment.get('lighting'))}." if clean_prompt_sentence(environment.get("lighting")) else "",
         f"- Mood: {clean_prompt_sentence(environment.get('mood'))}." if clean_prompt_sentence(environment.get("mood")) else "",
@@ -410,6 +505,12 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
             target = get_element_display_name(_clean(item.get("target_element_id")), elements_by_id) if _clean(item.get("target_element_id")) else ""
             if target:
                 lines.append(f"Place the panel so the dialogue reads as directed toward {target}.")
+            pointer_target = clean_prompt_sentence(item.get("pointer_target"))
+            if pointer_target:
+                lines.append(f"Aim the dialogue-panel pointer at {pointer_target}.")
+            max_lines = item.get("max_lines")
+            if isinstance(max_lines, int) and max_lines > 0:
+                lines.append(f"Wrap the dialogue in no more than {max_lines} lines.")
     preserve_lines = []
     referenced_element_ids = {
         _clean(ref.get("applies_to_element_id"))
@@ -446,7 +547,8 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     lines.extend(["", "# Avoid", "", f"No {avoid}.", "", "# Final Verification", ""])
     for item in ir.get("final_verification", []):
         lines.append(f"- {_sentence(item)}")
-    return "\n".join(lines).strip() + "\n"
+    markdown = "\n".join(_capitalize_bullet(line) for line in lines).strip() + "\n"
+    return cleanup_compiled_scene_prompt(markdown)
 
 
 def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:

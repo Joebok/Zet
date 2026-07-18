@@ -27,8 +27,14 @@ class SceneRenderCompilerTests(unittest.TestCase):
             "reference_assignments": [{"tag": "{{REF:VAL}}", "applies_to_element_id": "Valindia_38f52dd6", "roles": [], "ignore": []}],
         })
 
-        self.assertIn("Valindia stands in the left foreground.", prompt)
+        self.assertIn("**Valindia:** Stands in the left foreground.", prompt)
         self.assertIn("In front of the archway.", prompt)
+        self.assertIn("The scene takes place In front of the archway.", prompt)
+        self.assertNotIn("The scene takes place at In front", prompt)
+        self.assertIn("Create one finished scene. Do not show the planning grid or split the image into comic panels.", prompt)
+        self.assertIn("# Canvas\n\n- Landscape 16:9.\n", prompt)
+        self.assertNotIn("Create one finished landscape", prompt)
+        self.assertNotIn("Render one continuous scene", prompt)
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn(": .", prompt)
         self.assertNotIn("preserve ; ignore .", prompt)
@@ -65,8 +71,9 @@ class SceneRenderCompilerTests(unittest.TestCase):
             ],
         })
 
-        self.assertIn("Left stands in the left foreground.", prompt)
-        self.assertIn("Center occupies the center background.", prompt)
+        self.assertIn("**Left:** Stands in the left foreground.", prompt)
+        self.assertIn("Center defines the overall background and surrounding setting.", prompt)
+        self.assertNotIn("Center occupies the center background.", prompt)
         self.assertNotIn("cell ", prompt)
         self.assertNotIn("row ", prompt)
         self.assertNotIn("column ", prompt)
@@ -100,15 +107,25 @@ class SceneRenderCompilerTests(unittest.TestCase):
                 {"subject_element_id": "Tsaeytte_12345678", "relationship": "looking at", "target_element_id": "Valindia_38f52dd6"},
                 {"subject_element_id": "Valindia_38f52dd6", "relationship": "looking at", "target_element_id": "Tsaeytte_12345678"},
             ],
-            "dialogue": [{"speaker_element_id": "Valindia_38f52dd6", "text": "wait..."}],
+            "custom_interactions": "Tsaeytte reaches toward Valindia.\n- Valindia steadies the books.",
+            "dialogue": [{
+                "speaker_element_id": "Valindia_38f52dd6",
+                "text": "wait...",
+                "pointer_target": "Valindia's mouth",
+                "max_lines": 2,
+            }],
         })
 
         self.assertIn("Tsaeytte and Valindia hold direct eye contact.", prompt)
         self.assertEqual(1, prompt.count("hold direct eye contact"))
+        self.assertIn("- Tsaeytte reaches toward Valindia.", prompt)
+        self.assertEqual(1, prompt.count("- Valindia steadies the books."))
         self.assertIn('Valindia says exactly: "wait..."', prompt)
         self.assertIn("**Identity:** Compact scene identity.", prompt)
         self.assertIn("**Costume - Canonical Adventure Gear:** Compact costume prompt.", prompt)
         self.assertIn("**Element Override:** scene-only blue cloak", prompt)
+        self.assertIn("Aim the dialogue-panel pointer at Valindia's mouth.", prompt)
+        self.assertIn("Wrap the dialogue in no more than 2 lines.", prompt)
         self.assertNotIn("{'subject_element_id'", prompt)
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn("Tsaeytte_12345678", prompt)

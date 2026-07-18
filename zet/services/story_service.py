@@ -491,14 +491,8 @@ class StoryService:
         return SceneDocument(story=story, record=record, text=text, validation_errors=self.validate_scene_text(text))
 
     def validate_scene_text(self, text: str) -> list[str]:
-        """Validate required scene compiler sections."""
-        errors: list[str] = []
-        scene_name = self._extract_bounded_section(text, "SCENE_NAME") or self._extract_scene_line(text)
-        if not scene_name or scene_name.lower() == "scene name":
-            errors.append("Scene name must be specified.")
-        if not self._extract_bounded_section(text, "SCENE_NAME"):
-            errors.append("Compiler section SCENE_NAME must be present and filled in.")
-        return errors
+        """Return scene markdown validation warnings."""
+        return []
 
     def save_scene(self, story_slug: str, scene_slug: str, text: str) -> SceneDocument:
         """Save one scene markdown file after validation."""
@@ -514,7 +508,7 @@ class StoryService:
             )
             return SceneDocument(story=self._story_record(safe_story_slug), record=record, text=str(text or ""), validation_errors=errors)
         scene_name = self._extract_bounded_section(text, "SCENE_NAME") or self._extract_scene_line(text)
-        saved_scene_slug = self.safe_slug(scene_name)
+        saved_scene_slug = self.safe_slug(scene_name) if scene_name else safe_scene_slug
         path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
         saved_path = self.path_service.scene_file_path(safe_story_slug, saved_scene_slug)
         if saved_scene_slug != safe_scene_slug and saved_path.exists():
@@ -617,7 +611,7 @@ class StoryService:
                     "id": "compact_parchment",
                     "display_name": "Compact parchment dialogue panel",
                     "enabled_by_default": True,
-                    "panel_prompt": "Compact rectangular parchment dialogue panel with softly rounded corners, warm ivory parchment background, subtle paper texture, and a thin dark bronze border.",
+                    "panel_prompt": "Compact rectangular parchment dialogue panel with softly rounded corners, minimal padding, warm ivory parchment background, subtle paper texture, and a thin dark bronze border.",
                     "pointer_prompt": "Short unobtrusive triangular pointer aimed toward the speaker's mouth.",
                     "lettering_prompt": "Clean modern comic-style sans-serif lettering, medium weight, crisp edges, high legibility.",
                     "layout_rules": ["Panel should be only slightly larger than the text.", "Do not obscure important faces, hands, props, or focal areas."],
@@ -733,6 +727,7 @@ class StoryService:
                     "width": None,
                     "height": None,
                 },
+                "composition": {"focal_point": "", "left_to_right": [], "composition_notes": ""},
                 "environment": {
                     "location": "",
                     "lighting": "",
@@ -747,6 +742,7 @@ class StoryService:
             "placements": [],
             "props_and_states": [],
             "interactions": [],
+            "custom_interactions": "",
             "dialogue": [],
             "reference_assignments": [],
             "avoid": {"scene_specific": [], "notes": ""},
@@ -782,12 +778,14 @@ class StoryService:
             },
             "setup": {
                 "canvas": {"orientation": "landscape", "aspect_ratio": "16:9", "width": None, "height": None},
+                "composition": {"focal_point": "", "left_to_right": [], "composition_notes": ""},
                 "environment": {"location": "", "lighting": "", "mood": "", "weather_or_atmosphere": "", "important_exclusions": [], "general_background_notes": "", "general_foreground_notes": ""},
             },
             "scene_elements": [],
             "placements": [],
             "props_and_states": [],
             "interactions": [],
+            "custom_interactions": "",
             "dialogue": [],
             "reference_assignments": [],
             "avoid": {"scene_specific": [], "notes": ""},
@@ -829,8 +827,16 @@ class StoryService:
         if not str(normalized["scene"].get("name") or "").strip():
             normalized["scene"]["name"] = default["scene"]["name"]
         normalized.setdefault("setup", {})
-        for key in ("composition", "camera", "style"):
+        for key in ("camera", "style"):
             normalized["setup"].pop(key, None)
+        composition = normalized["setup"].setdefault("composition", {})
+        composition["focal_point"] = str(composition.get("focal_point") or "").strip()
+        composition["composition_notes"] = str(composition.get("composition_notes") or "").strip()
+        seen_composition_ids: set[str] = set()
+        composition["left_to_right"] = [
+            element_id for value in composition.get("left_to_right") or []
+            if (element_id := str(value or "").strip()) and not (element_id in seen_composition_ids or seen_composition_ids.add(element_id))
+        ]
         normalized["scene_elements"] = self._normalized_scene_elements(normalized)
         normalized["placements"] = self._normalized_placements(normalized)
         for item in normalized.get("dialogue") or []:
@@ -898,6 +904,27 @@ class StoryService:
         temp_path.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         temp_path.replace(json_path)
         return self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
+
+    def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
+        """Copy the reusable visual setup from another scene in the same story."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        safe_source_scene_slug = self.safe_slug(source_scene_slug)
+        if safe_source_scene_slug == safe_scene_slug:
+            raise StoryServiceError("Choose a different scene to continue from.")
+        source = self.load_scene_builder_data(safe_story_slug, safe_source_scene_slug)
+        if source.blocked:
+            raise StoryServiceError(source.error or "Source Scene Builder JSON is blocked.")
+        target = self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
+        if target.blocked:
+            raise StoryServiceError(target.error or "Current Scene Builder JSON is blocked.")
+        data = copy.deepcopy(target.data)
+        data.setdefault("setup", {})["canvas"] = copy.deepcopy(source.data.get("setup", {}).get("canvas", {}))
+        data["setup"]["composition"] = copy.deepcopy(source.data.get("setup", {}).get("composition", {}))
+        data["setup"]["environment"] = copy.deepcopy(source.data.get("setup", {}).get("environment", {}))
+        data["scene_elements"] = copy.deepcopy(source.data.get("scene_elements", []))
+        data["placements"] = copy.deepcopy(source.data.get("placements", []))
+        return self.save_scene_builder_data(safe_story_slug, safe_scene_slug, data)
 
     def generate_scene_builder_outputs(self, story_slug: str, scene_slug: str, data: dict) -> dict:
         """Return Scene Builder data with validation only; prompt text is written as artifacts."""
@@ -970,7 +997,6 @@ class StoryService:
                 item["pose"] = {
                     "summary": item.pop("pose", ""),
                     "temporary_condition": "",
-                    "action_direction_screen": "",
                     "gaze_target_element_id": item.pop("gaze_target_element_id", ""),
                     "expression": item.pop("expression", ""),
                     "left_arm_action": "",
@@ -979,8 +1005,15 @@ class StoryService:
                     "balance_weight_detail": "",
                 }
             if isinstance(item.get("pose"), dict):
+                item["pose"].pop("action_direction_screen", None)
                 for key in ("body_view", "head_view", "left_hand_detail", "right_hand_detail", "gaze_description"):
                     item["pose"].pop(key, None)
+            motion = item.get("motion") if isinstance(item.get("motion"), dict) else {}
+            item["motion"] = {
+                "state": str(motion.get("state") or "stationary").strip() or "stationary",
+                "direction_screen": str(motion.get("direction_screen") or "").strip(),
+                "cue": str(motion.get("cue") or "").strip(),
+            }
             item.pop("occlusion", None)
             item.setdefault("placement_notes", "")
             placements.append(item)
@@ -992,12 +1025,13 @@ class StoryService:
         return {
             "id": f"placement_{self.normalize_scene_element_id(element_id) or index}",
             "scene_element_id": element_id,
-            "position_within_cell": "center",
+            "position_within_cell": "" if element_type == "Backdrop" else "center",
             "depth": "background" if element_type == "Backdrop" else "midground",
             "frame_coverage": "",
             "distance_from_camera": "",
             "visual_scale": "",
-            "pose": {"summary": "", "temporary_condition": "", "action_direction_screen": "", "gaze_target_element_id": "", "expression": "", "left_arm_action": "", "right_arm_action": "", "leg_foot_detail": "", "balance_weight_detail": ""},
+            "pose": {"summary": "", "temporary_condition": "", "gaze_target_element_id": "", "expression": "", "left_arm_action": "", "right_arm_action": "", "leg_foot_detail": "", "balance_weight_detail": ""},
+            "motion": {"state": "stationary", "direction_screen": "", "cue": ""},
             "placement_notes": "",
         }
 
@@ -1015,6 +1049,9 @@ class StoryService:
                 continue
             item = by_element.get(element_id) or self._default_scene_element_placement(element, index)
             item["scene_element_id"] = element_id
+            if element.get("element_type") == "Backdrop":
+                item["position_within_cell"] = ""
+                item["depth"] = "background"
             paired.append(item)
             seen.add(element_id)
         return paired
@@ -1042,6 +1079,7 @@ class StoryService:
         warnings: list[str] = []
         scene = data.get("scene", {})
         environment = self._setup(data, "environment")
+        composition = self._setup(data, "composition")
         elements = self._scene_element_lookup(data)
         if data.get("schema_version") != 3:
             warnings.append("Invalid schema_version; Scene Builder V3 requires 3.")
@@ -1051,6 +1089,8 @@ class StoryService:
             warnings.append("No scene id specified.")
         if not str(scene.get("name") or "").strip():
             warnings.append("No scene name specified.")
+        if not str(scene.get("story_beat") or "").strip():
+            warnings.append("No Story Beat specified.")
         if not str(scene.get("story_settings_path") or "").strip():
             warnings.append("No story settings path.")
         else:
@@ -1061,6 +1101,12 @@ class StoryService:
             warnings.append("No scene elements defined.")
         if not data.get("placements"):
             warnings.append("No placements defined.")
+        backdrop_count = sum(element.get("element_type") == "Backdrop" for element in data.get("scene_elements") or [])
+        if backdrop_count > 1:
+            warnings.append("More than one Backdrop is defined; the first will be used as the primary Backdrop.")
+        for element_id in composition.get("left_to_right") or []:
+            if element_id not in elements:
+                warnings.append(f"Left-to-right visual read references missing scene element {element_id}.")
         seen: set[str] = set()
         for element in data.get("scene_elements") or []:
             element_id = str(element.get("id") or "")
@@ -1087,6 +1133,9 @@ class StoryService:
                 warnings.append(f"{element.get('element_type')} {element_id} has an expression; this is allowed but unusual.")
             if pose.get("gaze_target_element_id") and pose.get("gaze_target_element_id") not in elements:
                 warnings.append(f"Placement {placement_label} gaze target references missing element {pose.get('gaze_target_element_id')}.")
+            motion = placement.get("motion") if isinstance(placement.get("motion"), dict) else {}
+            if motion.get("state") not in {"stationary", "moving"}:
+                warnings.append(f"Placement {placement_label} has invalid motion state {motion.get('state')}.")
         for interaction in data.get("interactions") or []:
             subject = str(interaction.get("subject_element_id") or "")
             prop = str(interaction.get("prop_id") or "")
@@ -1426,77 +1475,48 @@ class StoryService:
         """Compile one story scene prompt and stage it for the Render Console."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
-        story_path = self.path_service.story_file_path(safe_story_slug)
-        scene_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
         pipeline_path = self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
         pipeline_path.mkdir(parents=True, exist_ok=True)
         final_prompt_path = pipeline_path / "Final_Image_Prompt.md"
         scene_builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
-        references_source = ""
-        scene_builder_data: dict | None = None
+        if not scene_builder_path.exists():
+            raise StoryServiceError(f"Scene Builder JSON not found: {scene_builder_path}")
+        scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
+        references_source = "\n" + json.dumps(scene_builder_data)
         scene_aspect_ratio = ""
-        if scene_builder_path.exists():
-            scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
-            references_source += "\n" + json.dumps(scene_builder_data)
         references = self._resolve_scene_references(references_source)
-        if scene_builder_data is not None:
-            normalized_scene = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
-            warnings = self.validate_scene_builder_data(normalized_scene)
-            story_settings_path = self._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
-            if not story_settings_path.exists():
-                raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
-            story_settings = self.load_story_settings(story_settings_path)
-            resolved_sources = self._resolve_scene_element_sources(normalized_scene)
-            ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references, "element_sources": resolved_sources})
-            ir["source"]["scene_json_path"] = str(scene_builder_path)
-            ir["source"]["story_settings_path"] = str(story_settings_path)
-            scene_aspect_ratio = str((ir.get("canvas") or {}).get("aspect_ratio") or "")
-            prompt = final_image_prompt_text(ir)
-            brief = local_render_brief(ir)
-            self._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
-            final_prompt_path.write_text(prompt, encoding="utf-8")
-            self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
-            self._write_json(pipeline_path / "Local_Render_Brief.json", brief)
-            (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
-            artifacts = ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"]
-            if getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
-                (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
-                artifacts.append("Local_Render_Forge_Couple_Prompt.md")
-            self._write_json(
-                pipeline_path / "Prompt_Source_Map.json",
-                {
-                    "story_settings_file": str(story_settings_path),
-                    "scene_builder_file": str(scene_builder_path),
-                    "final_prompt": str(final_prompt_path),
-                    "compiler": "scene_render_v3",
-                    "artifacts": artifacts,
-                },
-            )
-        else:
-            if not story_path.exists():
-                raise StoryServiceError(f"Story file not found: {story_path}")
-            if not scene_path.exists():
-                raise StoryServiceError(f"Scene file not found: {scene_path}")
-            story_text = story_path.read_text(encoding="utf-8")
-            scene_text = scene_path.read_text(encoding="utf-8")
-            story_errors = self.validate_story_text(story_text)
-            scene_errors = self.validate_scene_text(scene_text)
-            if story_errors or scene_errors:
-                raise StoryServiceError("; ".join(story_errors + scene_errors))
-            references = self._resolve_scene_references(scene_text)
-            prompt = self._render_story_scene_prompt(story_text, scene_text)
-            final_prompt_path.write_text(prompt, encoding="utf-8")
-            template_path = self._story_scene_template_path()
-            self._write_json(
-                pipeline_path / "Prompt_Source_Map.json",
-                {
-                    "story_file": str(story_path),
-                    "scene_file": str(scene_path),
-                    "template_file": str(template_path),
-                    "final_prompt": str(final_prompt_path),
-                    "sections": sorted(self._story_scene_sections(story_text, scene_text)),
-                },
-            )
+        normalized_scene = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
+        warnings = self.validate_scene_builder_data(normalized_scene)
+        story_settings_path = self._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
+        if not story_settings_path.exists():
+            raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
+        story_settings = self.load_story_settings(story_settings_path)
+        resolved_sources = self._resolve_scene_element_sources(normalized_scene)
+        ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references, "element_sources": resolved_sources})
+        ir["source"]["scene_json_path"] = str(scene_builder_path)
+        ir["source"]["story_settings_path"] = str(story_settings_path)
+        scene_aspect_ratio = str((ir.get("canvas") or {}).get("aspect_ratio") or "")
+        prompt = final_image_prompt_text(ir)
+        brief = local_render_brief(ir)
+        self._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
+        final_prompt_path.write_text(prompt, encoding="utf-8")
+        self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+        self._write_json(pipeline_path / "Local_Render_Brief.json", brief)
+        (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
+        artifacts = ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"]
+        if getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
+            (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
+            artifacts.append("Local_Render_Forge_Couple_Prompt.md")
+        self._write_json(
+            pipeline_path / "Prompt_Source_Map.json",
+            {
+                "story_settings_file": str(story_settings_path),
+                "scene_builder_file": str(scene_builder_path),
+                "final_prompt": str(final_prompt_path),
+                "compiler": "scene_render_v3",
+                "artifacts": artifacts,
+            },
+        )
         self._write_json(
             pipeline_path / "dependency_manifest.json",
             {

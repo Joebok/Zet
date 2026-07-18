@@ -345,6 +345,10 @@ class ZetApp:
         """Save Scene Builder JSON for one story scene."""
         return self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
 
+    def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
+        """Copy reusable visual setup from another scene in the same story."""
+        return self.story_service.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
+
     def generate_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> dict:
         """Generate Scene Builder outputs without saving."""
         return self.story_service.generate_scene_builder_outputs(story_slug, scene_slug, data)

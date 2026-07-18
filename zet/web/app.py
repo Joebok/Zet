@@ -1461,6 +1461,20 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/continue-from")
+    def scene_builder_continue_from(story_slug: str, scene_slug: str, source_scene_slug: str = Query(...)) -> dict[str, Any]:
+        """Copy reusable visual setup from another scene in the same story."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
+            return {
+                "document": _scene_builder_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Continued from {source_scene_slug}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/generate")
     def scene_builder_generate(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
         """Generate Scene Builder outputs without saving JSON."""

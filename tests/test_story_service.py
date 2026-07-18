@@ -207,6 +207,47 @@ At the Arch
             reloaded = service.load_scene_builder_data("FirstDay", "At-the-Arch")
             self.assertEqual("Tsaeytte", reloaded.data["placements"][0]["scene_element_id"])
 
+    def test_continue_scene_builder_copies_visual_setup_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
+            for scene_slug in ("Arrival", "Departure"):
+                (story_dir / f"{scene_slug}.md").write_text(f"Scene: `[{scene_slug}]`\n", encoding="utf-8")
+
+            source = service.create_default_scene_builder_data("FirstDay", "Arrival")
+            source["setup"]["canvas"] = {"orientation": "landscape", "aspect_ratio": "16:9"}
+            source["setup"]["composition"] = {"focal_point": "Mira", "left_to_right": ["Mira"], "composition_notes": "wide"}
+            source["setup"]["environment"] = {"location": "Courtyard", "lighting": "Sunset"}
+            source["scene_elements"] = [
+                {"id": "Mira", "display_name": "Mira", "element_type": "Character"},
+                {"id": "Courtyard", "display_name": "Courtyard", "element_type": "Backdrop"},
+            ]
+            source["placements"] = [
+                {"id": "placement_001", "scene_element_id": "Mira", "position_within_cell": "left", "depth": "foreground"},
+                {"id": "placement_002", "scene_element_id": "Courtyard", "position_within_cell": "", "depth": "background"},
+            ]
+            service.save_scene_builder_data("FirstDay", "Arrival", source)
+
+            target = service.create_default_scene_builder_data("FirstDay", "Departure")
+            target["interactions"] = [{"subject_element_id": "Old", "relationship": "looks at", "target_element_id": "Other"}]
+            target["dialogue"] = [{"speaker_element_id": "Old", "text": "Keep this."}]
+            service.save_scene_builder_data("FirstDay", "Departure", target)
+
+            document = service.continue_scene_builder_from("FirstDay", "Departure", "Arrival")
+
+            self.assertEqual("landscape", document.data["setup"]["canvas"]["orientation"])
+            self.assertEqual("16:9", document.data["setup"]["canvas"]["aspect_ratio"])
+            self.assertEqual(source["setup"]["composition"], document.data["setup"]["composition"])
+            self.assertEqual("Courtyard", document.data["setup"]["environment"]["location"])
+            self.assertEqual("Mira", document.data["scene_elements"][0]["id"])
+            self.assertEqual("Courtyard", document.data["scene_elements"][1]["id"])
+            self.assertEqual("Mira", document.data["placements"][0]["scene_element_id"])
+            self.assertEqual(target["interactions"], document.data["interactions"])
+            self.assertEqual(target["dialogue"], document.data["dialogue"])
+
     def test_scene_builder_load_migrates_v1_character(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -781,6 +822,7 @@ ink wash
 
             validation = json.loads((root / "Pipelines" / "Stories" / "FirstDay" / "At-the-Arch" / "Scene_Render_Validation.json").read_text(encoding="utf-8"))
             self.assertTrue(any("gaze target references missing element missing" in warning for warning in validation["warnings"]))
+            self.assertIn("No Story Beat specified.", validation["warnings"])
 
 
 if __name__ == "__main__":
