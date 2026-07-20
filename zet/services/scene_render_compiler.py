@@ -584,7 +584,7 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
         clean_prompt_sentence(ir.get("environment", {}).get("weather_or_atmosphere")),
     ]
     regions = []
-    prompt_lines = [_prompt_join(global_parts)]
+    subject_prompt_lines: list[tuple[str, str]] = []
     for placement in placements:
         element_id = _placement_element_id(placement)
         element = elements_by_id.get(element_id, {})
@@ -613,7 +613,8 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
         elif is_scenery:
             prompt_parts.extend([_anchor_visual_descriptor(element), f"{region} {_clean(placement.get('depth')) or 'background'} scenery", clean_prompt_sentence(placement.get("placement_notes"))])
         prompt = _prompt_join(prompt_parts)
-        prompt_lines.append(prompt)
+        if _is_visible_subject(element, placement):
+            subject_prompt_lines.append((_clean(placement.get("position_within_cell")), prompt))
         regions.append({
             "region": region,
             "depths": list(dict.fromkeys([_clean(placement.get("depth"))] if _clean(placement.get("depth")) else [])),
@@ -646,7 +647,9 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
         "speech bubble",
         "watermark",
     ]))
-    prompt_lines = [line for line in prompt_lines if line]
+    horizontal_order = {"left": 0, "center": 1, "right": 2}
+    subject_prompt_lines.sort(key=lambda item: (horizontal_order.get(item[0], 3), item[0]))
+    prompt_lines = [line for line in [_prompt_join(global_parts), *[item[1] for item in subject_prompt_lines]] if line]
     return {
         "schema_version": 2,
         "purpose": "composition_preview",

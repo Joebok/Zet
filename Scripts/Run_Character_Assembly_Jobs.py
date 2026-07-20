@@ -207,7 +207,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
     )
     references = auxiliary_references_for_texts(
         project_root,
-        [prompt_text],
+        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
         references,
     )
     write_dependency_manifest(

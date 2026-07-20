@@ -576,7 +576,13 @@ class AIProxyService:
         )
         return ask_path
 
-    def render_task_local_render_api_params(self, manifest: dict, prompt_path: Path, target_output_dir: Path) -> dict:
+    def render_task_local_render_api_params(
+        self,
+        manifest: dict,
+        prompt_path: Path,
+        target_output_dir: Path,
+        render_layout: dict | None = None,
+    ) -> dict:
         stamp = self._timestamp_compact()
         target_output_file = f"test_{stamp}.png"
         ask_id = f"Ask_Render_Task_{manifest.get('ask_id') or 'LOCAL'}_LOCAL_RENDER_{stamp}"
@@ -605,9 +611,17 @@ class AIProxyService:
         }
         if manifest.get("aspect_ratio"):
             ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
+        if render_layout:
+            ask_manifest["render_layout"] = render_layout
         return ask_manifest
 
-    def stage_render_task_local_render_ask(self, manifest: dict, prompt_path: Path, target_output_dir: Path) -> Path:
+    def stage_render_task_local_render_ask(
+        self,
+        manifest: dict,
+        prompt_path: Path,
+        target_output_dir: Path,
+        render_layout: dict | None = None,
+    ) -> Path:
         self._ensure_queue_dirs()
         for root in [self.ai_proxy_path_service.ask_root(), self.ai_proxy_path_service.answer_root()]:
             if not root.exists():
@@ -620,12 +634,53 @@ class AIProxyService:
                     if not (path / "harvest_manifest.json").exists():
                         return path
 
-        ask_manifest = self.render_task_local_render_api_params(manifest, prompt_path, target_output_dir)
+        ask_manifest = self.render_task_local_render_api_params(manifest, prompt_path, target_output_dir, render_layout)
         ask_path = self.ai_proxy_path_service.ask_path(ask_manifest["ask_id"])
         ask_path.mkdir(parents=True, exist_ok=False)
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
         self._write_text_atomic(ask_path / prompt_path.name, prompt_path.read_text(encoding="utf-8"))
         return ask_path
+
+    def stage_scene_local_render_ask(self, manifest: dict, workspace: Path) -> Path:
+        prompt_path = workspace / "Local_Render_Prompt.md"
+        if not prompt_path.exists():
+            raise FileNotFoundError(f"No local render prompt was found: {prompt_path}")
+
+        layout_backend = str(getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic"))
+        brief_path = workspace / "Local_Render_Brief.json"
+        brief = self._read_json_if_exists(brief_path)
+        if layout_backend == "forge_couple_basic" and not brief:
+            raise FileNotFoundError(f"No valid local render brief was found: {brief_path}")
+        canvas = brief.get("canvas") if isinstance(brief.get("canvas"), dict) else {}
+        staged_manifest = dict(manifest)
+        if str(canvas.get("aspect_ratio") or "").strip():
+            staged_manifest["aspect_ratio"] = str(canvas["aspect_ratio"])
+
+        subject_count = int(brief.get("subject_count") or 0)
+        render_layout = None
+        if layout_backend == "forge_couple_basic" and subject_count >= 2:
+            forge = brief.get("forge_couple_basic") if isinstance(brief.get("forge_couple_basic"), dict) else {}
+            prompt_lines = [str(line).strip() for line in forge.get("prompt_lines", []) if str(line).strip()]
+            if len(prompt_lines) != subject_count + 1:
+                raise AIProxyServiceError("Forge Couple scene layout must contain one global line and one line per visible subject.")
+            render_layout = {
+                "backend": "forge_couple_basic",
+                "subject_count": subject_count,
+                "prompt_lines": prompt_lines,
+                "mode": "Basic",
+                "disable_hr": True,
+                "separator": "",
+                "direction": str(forge.get("direction") or "Horizontal"),
+                "background": str(forge.get("background") or "First Line"),
+                "background_weight": float(forge.get("background_weight", 0.5)),
+                "common_parser": "{ }",
+                "common_debug": False,
+                "def_in_prompt": True,
+            }
+        elif layout_backend not in {"forge_couple_basic", "plain_txt2img"}:
+            raise AIProxyServiceError(f"Unsupported local render layout backend: {layout_backend}")
+
+        return self.stage_render_task_local_render_ask(staged_manifest, prompt_path, workspace, render_layout)
 
     def stage_prompt_review_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
         if not self._local_render_auto_queue_after_condense_enabled():

@@ -5602,7 +5602,7 @@ function renderRenderConsoleDetail(detail) {
     .filter(Boolean)
     .join(" | ");
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
-  renderConsoleReferenceFiles(detail.manifest?.reference_files || []);
+  renderConsoleReferenceFiles(detail.reference_files || []);
   updateRenderConsoleNavigation();
 }
 

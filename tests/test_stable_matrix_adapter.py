@@ -14,6 +14,7 @@ SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from Local_Render_Adapters.common import LocalRenderError
 from Local_Render_Adapters.stable_matrix_adapter import _render_size_for_references, _reference_image_bytes, ensure_prompt_terms, render_preview
 
 
@@ -185,6 +186,70 @@ class StableMatrixAdapterTests(unittest.TestCase):
 
             payload = post_json.call_args.args[2]
             self.assertEqual((896, 512), (payload["width"], payload["height"]))
+
+    def test_forge_couple_layout_preserves_lines_and_adds_alwayson_script(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "config.toml").write_text(
+                '[LocalRender]\nPositivePromptGlobals = "masterpiece"\nNegativePromptGlobals = "blurry"\n',
+                encoding="utf-8",
+            )
+            prompt = root / "Local_Render_Prompt.md"
+            prompt.write_text("prompt: flat prompt\nnegative: exact negative\n", encoding="utf-8")
+            image = BytesIO()
+            Image.new("RGB", (1, 1), "white").save(image, format="PNG")
+            layout = {
+                "backend": "forge_couple_basic",
+                "subject_count": 2,
+                "prompt_lines": ["global scene", "left subject", "right subject"],
+                "mode": "Basic",
+                "disable_hr": True,
+                "separator": "",
+                "direction": "Horizontal",
+                "background": "First Line",
+                "background_weight": 0.5,
+                "common_parser": "{ }",
+                "common_debug": False,
+                "def_in_prompt": True,
+            }
+
+            with (
+                patch("Local_Render_Adapters.stable_matrix_adapter.load_preset", return_value={"backend": "stable_matrix"}),
+                patch("Local_Render_Adapters.stable_matrix_adapter._get_json", return_value={"txt2img": ["forge couple"]}),
+                patch(
+                    "Local_Render_Adapters.stable_matrix_adapter._post_json",
+                    return_value={"images": [__import__("base64").b64encode(image.getvalue()).decode()]},
+                ) as post_json,
+            ):
+                render_preview(project_root=root, final_prompt_path=prompt, job_output_dir=root, render_layout=layout)
+
+            payload = post_json.call_args.args[2]
+            self.assertEqual("global scene, masterpiece\nleft subject\nright subject", payload["prompt"])
+            self.assertEqual("exact negative, blurry", payload["negative_prompt"])
+            self.assertEqual(
+                [True, True, "Basic", "", "Horizontal", "First Line", 0.5, None, "{ }", False, True, None, None, None, None, None, None],
+                payload["alwayson_scripts"]["forge couple"]["args"],
+            )
+            api_call = json.loads((root / "Stable_Matrix_API_Call.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload, api_call["payload"])
+
+    def test_forge_couple_layout_requires_installed_script(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            prompt = root / "Local_Render_Prompt.md"
+            prompt.write_text("prompt: flat prompt\nnegative: exact negative\n", encoding="utf-8")
+            layout = {
+                "backend": "forge_couple_basic",
+                "subject_count": 2,
+                "prompt_lines": ["global scene", "left subject", "right subject"],
+            }
+
+            with (
+                patch("Local_Render_Adapters.stable_matrix_adapter.load_preset", return_value={"backend": "stable_matrix"}),
+                patch("Local_Render_Adapters.stable_matrix_adapter._get_json", return_value={"txt2img": []}),
+            ):
+                with self.assertRaisesRegex(LocalRenderError, "unavailable"):
+                    render_preview(project_root=root, final_prompt_path=prompt, job_output_dir=root, render_layout=layout)
 
 
 if __name__ == "__main__":

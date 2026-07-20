@@ -3,6 +3,7 @@
   "views": {
     "FRONT": {
       "label": "front view",
+      "costume_dressing_orientation_lock": "Preserve a true direct front orientation, square to the camera. Keep the body and face front-facing and the stance symmetrical. Do not add a three-quarter turn.",
       "folder_name": "Front",
       "output_name_fragment": "Front",
       "instruction": "Render the character from a direct front view, facing the viewer squarely.",
@@ -19,6 +20,7 @@
     },
     "FRONT_LEFT_3_4": {
       "label": "front-left three-quarter view",
+      "costume_dressing_orientation_lock": "Preserve the exact supplied front-left three-quarter angle. Do not repaint the face into a direct front view or create independent eye contact.",
       "folder_name": "Front_Left_3_4",
       "output_name_fragment": "Front-Left-3-4",
       "instruction": "Render the character from a front-left three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-left three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
@@ -35,6 +37,7 @@
     },
     "FRONT_RIGHT_3_4": {
       "label": "front-right three-quarter view",
+      "costume_dressing_orientation_lock": "Preserve the exact supplied front-right three-quarter angle. Do not repaint the face into a direct front view or create independent eye contact.",
       "folder_name": "Front_Right_3_4",
       "output_name_fragment": "Front-Right-3-4",
       "instruction": "Render the character from a front-right three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-right three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
@@ -51,6 +54,7 @@
     },
     "LEFT_PROFILE": {
       "label": "left profile view",
+      "costume_dressing_orientation_lock": "Preserve a true left-facing profile. Do not rotate the face or torso toward the camera.",
       "folder_name": "Left_Profile",
       "output_name_fragment": "Left-Profile",
       "instruction": "Render the character from a direct left profile view, showing the character's left side.",
@@ -67,6 +71,7 @@
     },
     "RIGHT_PROFILE": {
       "label": "right profile view",
+      "costume_dressing_orientation_lock": "Preserve a true right-facing profile. Do not rotate the face or torso toward the camera.",
       "folder_name": "Right_Profile",
       "output_name_fragment": "Right-Profile",
       "instruction": "Render the character from a direct right profile view, showing the character's right side.",
@@ -83,6 +88,7 @@
     },
     "BACK_LEFT_3_4": {
       "label": "back-left three-quarter view",
+      "costume_dressing_orientation_lock": "Preserve the exact supplied away-facing back-left three-quarter angle. The back remains the dominant body surface. Do not rotate the head or torso toward the viewer, and reveal the face only to the degree already present in the Character-Assembly source.",
       "folder_name": "Back_Left_3_4",
       "output_name_fragment": "Back-Left-3-4",
       "instruction": "Render the character from a back-left three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-left three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
@@ -99,6 +105,7 @@
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
+      "costume_dressing_orientation_lock": "Preserve the exact supplied away-facing back-right three-quarter angle. The back remains the dominant body surface. Do not rotate the head or torso toward the viewer, and reveal the face only to the degree already present in the Character-Assembly source.",
       "folder_name": "Back_Right_3_4",
       "output_name_fragment": "Back-Right-3-4",
       "instruction": "Render the character from a back-right three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-right three-quarter direction. Do not turn the head or eyes toward the viewer independently, do not twist the neck, and do not mirror or rotate the body.",
@@ -115,6 +122,7 @@
     },
     "BACK": {
       "label": "back view",
+      "costume_dressing_orientation_lock": "Preserve a true direct back orientation with the body and head facing away. Do not reveal more face than the supplied source or turn the character toward the viewer.",
       "folder_name": "Back",
       "output_name_fragment": "Back",
       "instruction": "Render the character from a direct back view, facing away from the viewer squarely.",

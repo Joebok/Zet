@@ -46,6 +46,18 @@ def _post_json(server_url: str, path: str, payload: dict[str, Any], timeout: int
         raise LocalRenderError(f"Stable Matrix returned invalid JSON for {path}.") from exc
 
 
+def _get_json(server_url: str, path: str, timeout: int = 10) -> Any:
+    url = server_url.rstrip("/") + path
+    request = Request(url, method="GET")
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except URLError as exc:
+        raise LocalRenderUnavailable("Local render backend unavailable.") from exc
+    except json.JSONDecodeError as exc:
+        raise LocalRenderError(f"Stable Matrix returned invalid JSON for {path}.") from exc
+
+
 def _first_image_bytes(response: dict[str, Any]) -> bytes:
     images = response.get("images")
     if not isinstance(images, list) or not images:
@@ -105,6 +117,35 @@ def ensure_prompt_terms(prompt: str, minimum_terms: str) -> str:
         if term.lower() not in lower_prompt:
             parts.append(term)
     return ", ".join(part for part in parts if part)
+
+
+def forge_couple_args(layout: dict[str, Any]) -> list[Any]:
+    return [
+        True,
+        bool(layout.get("disable_hr", True)),
+        str(layout.get("mode") or "Basic"),
+        str(layout.get("separator") or ""),
+        str(layout.get("direction") or "Horizontal"),
+        str(layout.get("background") or "First Line"),
+        float(layout.get("background_weight", 0.5)),
+        None,
+        str(layout.get("common_parser") or "{ }"),
+        bool(layout.get("common_debug", False)),
+        bool(layout.get("def_in_prompt", True)),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ]
+
+
+def ensure_forge_couple_available(server_url: str) -> None:
+    scripts = _get_json(server_url, "/sdapi/v1/scripts")
+    txt2img = scripts.get("txt2img", []) if isinstance(scripts, dict) else []
+    if "forge couple" not in {str(name).strip().lower() for name in txt2img}:
+        raise LocalRenderError("Forge Couple was requested, but the 'forge couple' txt2img script is unavailable.")
 
 
 def _reference_path(reference: dict[str, Any], project_root: Path) -> Path | None:
@@ -188,6 +229,7 @@ def render_preview(
     preset_name: str = "body-reference-preview",
     reference_files: list[dict[str, Any]] | None = None,
     aspect_ratio: str = "",
+    render_layout: dict[str, Any] | None = None,
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     server_url = str(preset.get("server_url", "http://127.0.0.1:7860"))
@@ -235,7 +277,17 @@ def render_preview(
         "override_settings_restore_after_call": bool(preset.get("override_settings_restore_after_call", True)),
     }
     local_render_config = _load_local_render_config(project_root)
-    payload["prompt"] = ensure_prompt_terms(str(payload["prompt"]), local_render_config.get("positive_prompt_globals", ""))
+    if render_layout and render_layout.get("backend") == "forge_couple_basic":
+        prompt_lines = [str(line).strip() for line in render_layout.get("prompt_lines", []) if str(line).strip()]
+        subject_count = int(render_layout.get("subject_count") or 0)
+        if subject_count < 2 or len(prompt_lines) != subject_count + 1:
+            raise LocalRenderError("Forge Couple requires one global prompt line and one line per visible subject.")
+        ensure_forge_couple_available(server_url)
+        prompt_lines[0] = ensure_prompt_terms(prompt_lines[0], local_render_config.get("positive_prompt_globals", ""))
+        payload["prompt"] = "\n".join(prompt_lines)
+        payload["alwayson_scripts"] = {"forge couple": {"args": forge_couple_args(render_layout)}}
+    else:
+        payload["prompt"] = ensure_prompt_terms(str(payload["prompt"]), local_render_config.get("positive_prompt_globals", ""))
     payload["negative_prompt"] = ensure_prompt_terms(str(payload["negative_prompt"]), local_render_config.get("negative_prompt_globals", ""))
     if local_render_config.get("checkpoint"):
         payload["override_settings"] = dict(payload["override_settings"])

@@ -10,7 +10,7 @@
     "batch_size": 1,
     "sampler_name": "DPM++ 2M",
     "scheduler": "Karras",
-    "enable_hr": true,
+    "enable_hr": false,
     "hr_upscaler": "Latent",
     "hr_second_pass_steps": 32,
     "hr_scale": 2.0,

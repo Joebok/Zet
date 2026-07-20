@@ -243,6 +243,127 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
         self.assertNotIn("reference_files", kwargs)
 
+    def test_stage_scene_local_render_ask_adds_forge_layout_for_multiple_subjects(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                f"""
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+
+[LocalRender]
+LayoutBackend = "forge_couple_basic"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            (workspace / "Local_Render_Prompt.md").write_text("prompt: flat\nnegative: bad\n", encoding="utf-8")
+            (workspace / "Local_Render_Brief.json").write_text(
+                json.dumps(
+                    {
+                        "subject_count": 2,
+                        "canvas": {"aspect_ratio": "16:9"},
+                        "forge_couple_basic": {
+                            "direction": "Horizontal",
+                            "background": "First Line",
+                            "background_weight": 0.5,
+                            "prompt_lines": ["global", "left", "right"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            app = ZetApp.from_config(config_path)
+
+            ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_Test"}, workspace)
+
+            manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("16:9", manifest["aspect_ratio"])
+            self.assertEqual("Local_Render_Prompt.md", manifest["prompt_file"])
+            self.assertEqual("forge_couple_basic", manifest["render_layout"]["backend"])
+            self.assertEqual(["global", "left", "right"], manifest["render_layout"]["prompt_lines"])
+
+    def test_stage_scene_local_render_ask_omits_forge_layout_for_single_subject(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                f"""
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            (workspace / "Local_Render_Prompt.md").write_text("prompt: one subject\nnegative: bad\n", encoding="utf-8")
+            (workspace / "Local_Render_Brief.json").write_text(
+                json.dumps({"subject_count": 1, "forge_couple_basic": {"prompt_lines": ["global", "subject"]}}),
+                encoding="utf-8",
+            )
+            app = ZetApp.from_config(config_path)
+
+            ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_One"}, workspace)
+
+            manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertNotIn("render_layout", manifest)
+
+    def test_stage_scene_local_render_ask_omits_forge_layout_when_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                f"""
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+
+[LocalRender]
+LayoutBackend = "plain_txt2img"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            (workspace / "Local_Render_Prompt.md").write_text("prompt: two subjects\nnegative: bad\n", encoding="utf-8")
+            (workspace / "Local_Render_Brief.json").write_text(
+                json.dumps({"subject_count": 2, "forge_couple_basic": {"prompt_lines": ["global", "left", "right"]}}),
+                encoding="utf-8",
+            )
+            app = ZetApp.from_config(config_path)
+
+            ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_Plain"}, workspace)
+
+            manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertNotIn("render_layout", manifest)
+
+    def test_local_image_worker_forwards_render_layout_when_supported(self) -> None:
+        def render_image(*, project_root, final_prompt_path, job_output_dir, prompt_review_path=None, preset_name="", render_layout=None):
+            return None
+
+        with patch.object(local_image_proxy_worker, "render_image", render_image):
+            kwargs = local_image_proxy_worker.render_image_kwargs(
+                {"render_layout": {"backend": "forge_couple_basic"}},
+                Path("prompt.md"),
+                Path("job"),
+                "preset",
+            )
+
+        self.assertEqual({"backend": "forge_couple_basic"}, kwargs["render_layout"])
+
     def test_harvester_archives_already_harvested_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

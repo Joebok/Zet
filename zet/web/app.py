@@ -115,6 +115,14 @@ def _render_console_asset_for_task(zet_app: ZetApp, task):
         return None
 
 
+def _render_console_reference_files(zet_app: ZetApp, task) -> list[dict]:
+    """Return the current asset references for a render task when available."""
+    asset = _render_console_asset_for_task(zet_app, task)
+    if asset is not None and asset.reference_files:
+        return asset.reference_files
+    return task.manifest.get("reference_files") or []
+
+
 def _view_keys() -> list[str]:
     """Return all configured normalized view keys."""
     view_text_path = PROJECT_ROOT / "Config" / "Prompt_View_Text.json"
@@ -580,20 +588,6 @@ def _render_console_scene_local_prompt_path(workspace: Path) -> Path:
     if forge_path.exists():
         return forge_path
     return workspace / "Local_Render_Prompt.md"
-
-
-def _render_console_scene_aspect_ratio(workspace: Path) -> str:
-    for path in (workspace / "Scene_Render_IR.json", workspace / "Scene_Render_Builder.json"):
-        if not path.exists():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        canvas = data.get("canvas") if path.name == "Scene_Render_IR.json" else data.get("setup", {}).get("canvas")
-        if isinstance(canvas, dict) and str(canvas.get("aspect_ratio") or "").strip():
-            return str(canvas.get("aspect_ratio"))
-    return ""
 
 
 def _latest_render_console_local_test_render(workspace: Path) -> Path | None:
@@ -2460,6 +2454,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         return {
             "task": task.to_dict(),
             "manifest": _jsonable(task.manifest),
+            "reference_files": _jsonable(_render_console_reference_files(zet_app, task)),
             "prompt": queue.read_prompt(task),
             "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
             "local_prompt": _render_console_local_prompt_payload(zet_app, task),
@@ -2504,14 +2499,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 ask_path = zet_app.stage_render_task_local_render_ask(task.manifest, context.condensed_prompt_path, context.condensed_prompt_path.parent)
             else:
                 workspace = _render_console_task_workspace(task)
-                local_prompt = _render_console_scene_local_prompt_path(workspace)
-                if not local_prompt.exists():
-                    raise FileNotFoundError(f"No local render prompt was found for task {ask_id}.")
                 manifest = dict(task.manifest)
-                aspect_ratio = _render_console_scene_aspect_ratio(workspace)
-                if aspect_ratio:
-                    manifest["aspect_ratio"] = aspect_ratio
-                ask_path = zet_app.stage_render_task_local_render_ask(manifest, local_prompt, workspace)
+                ask_path = zet_app.stage_scene_local_render_ask(manifest, workspace)
             payload = {
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),

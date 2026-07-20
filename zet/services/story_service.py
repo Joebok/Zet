@@ -16,6 +16,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
+from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
 from zet.services.scene_render_compiler import compile_scene_render, compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_forge_couple_prompt_text, local_render_prompt_text
 from zet.services.path_service import PathService
 
@@ -1305,23 +1306,21 @@ class StoryService:
         scene_path.write_text(text.rstrip() + "\n", encoding="utf-8")
         return self.load_scene(safe_story_slug, safe_scene_slug)
 
-    def _resolve_aux_reference(self, tag: str, category: str, resource_id: str, image_id: str) -> dict:
+    def _resolve_aux_reference(self, tag: str) -> dict:
         """Resolve one auxiliary image reference tag."""
-        resource = self.auxiliary_resource_repository.get_resource(resource_id)
-        if resource.category != category:
-            raise StoryServiceError(f"Auxiliary resource category mismatch for {tag}.")
-        image = next((item for item in resource.images if item.get("image_id") == image_id), None)
-        if not image:
-            raise StoryServiceError(f"Auxiliary image not found for {tag}.")
+        try:
+            resource, image = auxiliary_resource_image_for_tag(self.auxiliary_resource_repository.list_resources(), tag)
+        except LookupError as exc:
+            raise StoryServiceError(str(exc)) from exc
         path = self.path_service.resolve_path(str(image.get("image_path") or ""))
         if not path.exists():
             raise StoryServiceError(f"Auxiliary image not found: {path}")
         return {
             "role": "story_reference",
-            "label": f"{resource.label} - {image.get('label') or image_id}",
+            "label": f"{resource.label} - {image.get('label') or ''}",
             "tag": tag,
             "path": str(path),
-            "kind": f"aux:{category}",
+            "kind": f"aux:{resource.category}",
         }
 
     def _resolve_asset_reference(self, tag: str, character: str, phase: str, asset_id: str) -> dict:
@@ -1369,18 +1368,20 @@ class StoryService:
         """Resolve image reference tags used by a scene."""
         references = []
         seen = set()
-        pattern = r"\{\{AUX:([a-z]+):([a-z0-9-]+):([a-z0-9-]+)\}\}|\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
+        pattern = r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
+        for tag, _, _, _ in auxiliary_resource_tags_in_text(scene_text):
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self._resolve_aux_reference(tag))
         for match in re.finditer(pattern, scene_text or ""):
             tag = match.group(0)
             if tag in seen:
                 continue
             seen.add(tag)
             if match.group(1):
-                references.append(self._resolve_aux_reference(tag, match.group(1), match.group(2), match.group(3)))
-            elif match.group(4):
-                references.append(self._resolve_asset_reference(tag, match.group(4), match.group(5), match.group(6)))
+                references.append(self._resolve_asset_reference(tag, match.group(1), match.group(2), match.group(3)))
             else:
-                references.append(self._resolve_identity_reference(tag, match.group(7), match.group(8), match.group(9)))
+                references.append(self._resolve_identity_reference(tag, match.group(4), match.group(5), match.group(6)))
         return references
 
     def _write_json(self, path: Path, payload: dict) -> None:
@@ -1459,6 +1460,8 @@ class StoryService:
         if getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
             (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
             artifacts.append("Local_Render_Forge_Couple_Prompt.md")
+        else:
+            (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").unlink(missing_ok=True)
         self._write_json(
             pipeline_path / "Prompt_Source_Map.json",
             {

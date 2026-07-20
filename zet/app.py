@@ -484,6 +484,9 @@ class ZetApp:
     def stage_render_task_local_render_ask(self, manifest: dict, prompt_path: Path, target_output_dir: Path):
         return self.ai_proxy_service.stage_render_task_local_render_ask(manifest, prompt_path, target_output_dir)
 
+    def stage_scene_local_render_ask(self, manifest: dict, workspace: Path):
+        return self.ai_proxy_service.stage_scene_local_render_ask(manifest, workspace)
+
     def recompile_prompt_review(
         self,
         character: str,

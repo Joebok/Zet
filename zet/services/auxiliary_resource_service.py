@@ -4,6 +4,7 @@ from pathlib import Path
 
 from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
+from zet.services.auxiliary_resource_tags import auxiliary_resource_tag
 from zet.services.path_service import PathService
 
 
@@ -49,7 +50,7 @@ class AuxiliaryResourceService:
         return ".png"
 
     def _tag(self, category: str, resource_id: str, image_id: str) -> str:
-        return f"{{{{AUX:{category}:{resource_id}:{image_id}}}}}"
+        return auxiliary_resource_tag(category, resource_id, image_id)
 
     def _unique_resource_id(self, label: str) -> str:
         base = self._slug(label)

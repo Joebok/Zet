@@ -11,13 +11,14 @@ from zet.services.story_service import StoryGitResult, StoryService, StoryServic
 
 
 class FakeAuxiliaryResource:
-    def __init__(self, resource_id: str, category: str, label: str, tag: str, image_path: str, template_path: str = ""):
+    def __init__(self, resource_id: str, category: str, label: str, tag: str, image_path: str, template_path: str = "", images=None):
         self.resource_id = resource_id
         self.category = category
         self.label = label
         self.tag = tag
         self.image_path = image_path
         self.template_path = template_path
+        self.images = images or []
 
 
 class FakeAuxiliaryResourceRepository:
@@ -467,7 +468,7 @@ Two students meet at the arch.
 <!-- ZET:END SCENE_DESCRIPTION -->
 
 <!-- ZET:BEGIN SCENE_IMAGE_REFERENCES -->
-{{AUX:place:arch}}
+{{AUX:place:arch:main}}
 <!-- ZET:END SCENE_IMAGE_REFERENCES -->
 
 <!-- ZET:BEGIN SCENE_RENDERING_NOTES -->
@@ -482,8 +483,9 @@ Morning light.
                         "arch",
                         "place",
                         "Arch",
-                        "{{AUX:place:arch}}",
+                        "{{AUX:place:arch:main}}",
                         "AuxiliaryResources/Images/place/arch.png",
+                        images=[{"image_id": "main", "label": "Main", "image_path": "AuxiliaryResources/Images/place/arch.png"}],
                     )
                 ]
             )

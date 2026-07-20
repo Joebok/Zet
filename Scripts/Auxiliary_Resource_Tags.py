@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import re
 
 from Compile_Character_Template import TemplateCompileError
 from Library_Paths import library_root, resolve_library_path
+from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
 
-
-AUX_TAG_RE = re.compile(r"\{\{AUX:(person|place|thing):([a-z0-9][a-z0-9-]*)\}\}")
 
 
 def auxiliary_inventory_path(project_root: Path) -> Path:
@@ -17,24 +15,16 @@ def auxiliary_inventory_path(project_root: Path) -> Path:
     return library_root(project_root) / "AuxiliaryResources" / "AuxiliaryResources.json"
 
 
-def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str]]:
+def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str, str]]:
     """Return unique auxiliary tags found in prompt/source text."""
-    tags: list[tuple[str, str, str]] = []
-    seen: set[str] = set()
-    for match in AUX_TAG_RE.finditer(text or ""):
-        tag = match.group(0)
-        if tag in seen:
-            continue
-        seen.add(tag)
-        tags.append((tag, match.group(1), match.group(2)))
-    return tags
+    return auxiliary_resource_tags_in_text(text)
 
 
-def load_auxiliary_resource_lookup(project_root: Path) -> dict[tuple[str, str], dict]:
-    """Load auxiliary resources keyed by category and resource id."""
+def load_auxiliary_resource_lookup(project_root: Path) -> list[dict]:
+    """Load auxiliary resource records."""
     path = auxiliary_inventory_path(project_root)
     if not path.exists():
-        return {}
+        return []
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -42,15 +32,12 @@ def load_auxiliary_resource_lookup(project_root: Path) -> dict[tuple[str, str], 
     resources = payload.get("resources") if isinstance(payload, dict) else []
     if not isinstance(resources, list):
         raise TemplateCompileError("MALFORMED_AUXILIARY_RESOURCES", f"Auxiliary resource inventory has no resources list: {path}")
-    lookup: dict[tuple[str, str], dict] = {}
+    records: list[dict] = []
     for resource in resources:
         if not isinstance(resource, dict):
             continue
-        category = str(resource.get("category") or "").strip().lower()
-        resource_id = str(resource.get("resource_id") or "").strip()
-        if category and resource_id:
-            lookup[(category, resource_id)] = resource
-    return lookup
+        records.append(resource)
+    return records
 
 
 def auxiliary_references_for_texts(project_root: Path, texts: list[str], existing_references: list[dict]) -> list[dict]:
@@ -72,11 +59,12 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
         for reference in references
         if isinstance(reference, dict)
     }
-    for tag, category, resource_id in tags:
-        resource = lookup.get((category, resource_id))
-        if resource is None:
+    for tag, category, resource_id, image_id in tags:
+        try:
+            resource, image = auxiliary_resource_image_for_tag(lookup, tag)
+        except LookupError:
             raise TemplateCompileError("MISSING_REFERENCE", f"Auxiliary resource tag not found: {tag}")
-        image_path = resolve_library_path(project_root, str(resource.get("image_path") or ""))
+        image_path = resolve_library_path(project_root, str(image.get("image_path") or ""))
         if not image_path.exists() or not image_path.is_file():
             raise TemplateCompileError("MISSING_REFERENCE", f"Auxiliary resource image not found for {tag}: {image_path}")
         key = ("auxiliary_resource", category, resource_id, str(image_path))

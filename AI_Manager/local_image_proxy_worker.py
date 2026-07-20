@@ -224,6 +224,8 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
         kwargs["reference_files"] = ask_manifest.get("reference_files") or []
     if "aspect_ratio" in parameters:
         kwargs["aspect_ratio"] = str(ask_manifest.get("aspect_ratio") or "")
+    if "render_layout" in parameters:
+        kwargs["render_layout"] = ask_manifest.get("render_layout") or None
     return kwargs
 
 

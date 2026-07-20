@@ -245,7 +245,10 @@ class SceneRenderCompilerTests(unittest.TestCase):
         prompt_index = forge_lines.index("prompt:")
         negative_index = forge_lines.index("negative:")
         regional_lines = forge_lines[prompt_index + 1:negative_index - 1]
-        self.assertEqual(4, len(regional_lines))
+        self.assertEqual(3, len(regional_lines))
+        self.assertNotIn("background background scenery", "\n".join(regional_lines[1:]))
+        self.assertIn("left foreground", regional_lines[1])
+        self.assertIn("right foreground", regional_lines[2])
         self.assertFalse(forge.endswith("\n\n"))
 
 

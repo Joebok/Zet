@@ -134,21 +134,12 @@
       "description": "Static costume dressing prompt using a locked assembled character reference and a selected costume markdown file.",
       "prompt_builder": "static",
       "required_sections": [
-        "NEUTRAL_POSE_STANCE",
-        "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
-        "COSTUME_DESCRIPTION_FACTS",
-        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "EQUIPMENT_DESCRIPTION_FACTS",
-        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_CORE",
-        "IDENTITY_PRESERVATION_FACE",
-        "IDENTITY_PRESERVATION_HAIR",
-        "IDENTITY_PRESERVATION_EARS",
-        "IDENTITY_PRESERVATION_COSTUME",
-        "NEGATIVE_GUIDANCE_GENERAL"
+        "COSTUME_DESCRIPTION_FACTS"
       ],
       "optional_sections": [
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
+        "EQUIPMENT_DESCRIPTION_FACTS",
+        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}"
       ],
       "forbidden_sections": [
         "*_PICARESQUE"
