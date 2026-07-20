@@ -321,7 +321,7 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
         sentences.append(_sentence(f"Looks directly at {target}"))
     expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression"))
     if expression:
-        sentences.append(_sentence(f"Appears {expression}"))
+        sentences.append(_sentence(f"Expression: {expression}"))
     notes = clean_prompt_sentence(placement.get("placement_notes"))
     if notes:
         sentences.append(_sentence(notes))
@@ -344,11 +344,11 @@ def _reference_defaults(element: dict[str, Any], ref: dict[str, Any]) -> tuple[s
         )
     if "costume" in roles or "costume" in tag:
         return (
-            "identity, facial features, hair, ears when applicable, body proportions, costume design, costume colors, and signature worn items",
+            "identity, facial features, hair, ears if applicable, body proportions, costume design, costume colors, and signature worn items",
             "source pose, expression, action, camera angle, framing, background, and lighting",
         )
     return (
-        "identity, facial features, hair, ears when applicable, and body proportions",
+        "identity, facial features, hair, ears if applicable, and body proportions",
         "source costume unless explicitly assigned, pose, expression, action, camera angle, framing, background, and lighting",
     )
 
@@ -498,8 +498,11 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     if any(mood_lines):
         lines.extend(["", "# Lighting and Mood", "", *[line for line in mood_lines if line]])
     if ir.get("dialogue"):
-        lines.extend(["", "# Dialogue Panel", ""])
-        for item in ir["dialogue"]:
+        dialogue = ir["dialogue"]
+        lines.extend(["", "# Dialogue Panel" if len(dialogue) == 1 else "# Dialogue Panels", ""])
+        for index, item in enumerate(dialogue, start=1):
+            if len(dialogue) > 1:
+                lines.extend([f"## Dialogue Panel {index}", ""])
             speaker = get_element_display_name(_clean(item.get("speaker_element_id")), elements_by_id)
             lines.append(f"{speaker} says exactly: \"{item.get('text', '')}\"")
             target = get_element_display_name(_clean(item.get("target_element_id")), elements_by_id) if _clean(item.get("target_element_id")) else ""
@@ -510,7 +513,13 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
                 lines.append(f"Aim the dialogue-panel pointer at {pointer_target}.")
             max_lines = item.get("max_lines")
             if isinstance(max_lines, int) and max_lines > 0:
-                lines.append(f"Wrap the dialogue in no more than {max_lines} lines.")
+                line_label = "line" if max_lines == 1 else "lines"
+                lines.append(f"Wrap the dialogue in no more than {max_lines} {line_label}.")
+            instructions = clean_prompt_sentence(item.get("notes"))
+            if instructions:
+                lines.append(f"- **Special instructions:** {instructions}")
+            if index < len(dialogue):
+                lines.append("")
     preserve_lines = []
     referenced_element_ids = {
         _clean(ref.get("applies_to_element_id"))
@@ -590,6 +599,8 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
             descriptor = build_local_visual_descriptor(element)
             facing, gaze = _screen_facing(ir, placement)
             expression = clean_prompt_sentence((placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}).get("expression") or placement.get("expression"))
+            if expression:
+                expression = f"Expression: {expression}"
             label = "visible subject"
             prompt_parts.extend([
                 f"{label} positioned in the {region}",

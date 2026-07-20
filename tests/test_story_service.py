@@ -119,7 +119,7 @@ Canonical Art Style: `[]`
             self.assertEqual(text.rstrip() + "\n", saved_text)
             self.assertTrue(document.validation_errors)
 
-    def test_save_scene_renames_file_from_scene_name(self) -> None:
+    def test_save_scene_does_not_rename_from_scene_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             story_dir = root / "Stories" / "FirstDay"
@@ -137,13 +137,10 @@ Canonical Art Style: `[]`
 
             document = service.save_scene("FirstDay", "Old-Name", text)
 
-            self.assertEqual("02-Campfire", document.record.slug)
-            self.assertFalse((story_dir / "Old-Name.md").exists())
-            self.assertFalse((story_dir / "Old-Name.png").exists())
-            self.assertFalse((story_dir / "Old-Name.scene.json").exists())
-            self.assertTrue((story_dir / "02-Campfire.md").exists())
-            self.assertEqual(b"image", (story_dir / "02-Campfire.png").read_bytes())
-            self.assertTrue((story_dir / "02-Campfire.scene.json").exists())
+            self.assertEqual("Old-Name", document.record.slug)
+            self.assertTrue((story_dir / "Old-Name.md").exists())
+            self.assertEqual(b"image", (story_dir / "Old-Name.png").read_bytes())
+            self.assertTrue((story_dir / "Old-Name.scene.json").exists())
 
     def test_scene_builder_path_mapping_uses_scene_basename(self) -> None:
         service = self._service(Path("unused"))

@@ -41,6 +41,12 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
 DEFAULT_PROXY_ROOT = ""
 WORKER_VERSION = "7D.5"
 
+ANSI_RESET = "\033[0m"
+ANSI_YELLOW = "\033[33m"
+ANSI_BLUE = "\033[34m"
+ANSI_GREEN = "\033[32m"
+ANSI_RED = "\033[31m"
+
 
 class TransientOllamaConnectionError(RuntimeError):
     """Raised when Ollama is temporarily unavailable and the ask should be retried later."""
@@ -58,7 +64,17 @@ def default_proxy_root() -> Path:
 
 def log(message: str, *, error: bool = False) -> None:
     stream = sys.stderr if error else sys.stdout
-    print(f"{now_iso()} {message}", file=stream, flush=True)
+    color = ""
+    if error:
+        color = ANSI_RED
+    elif message.startswith("CLAIMED"):
+        color = ANSI_YELLOW
+    elif message.startswith("START "):
+        color = ANSI_BLUE
+    elif message.startswith("DONE SUCCESS"):
+        color = ANSI_GREEN
+    text = f"{now_iso()} {message}"
+    print(f"{color}{text}{ANSI_RESET if color else ''}", file=stream, flush=True)
 
 
 def read_json(path: Path) -> dict:
@@ -199,7 +215,7 @@ def write_rejected_answer(folder: Path, dirs: dict[str, Path], worker_id: str, r
     }
     write_json(folder / "answer_manifest.json", answer_manifest)
     dest = move_to_answer(folder, dirs)
-    print(f"REJECTED {folder.name} -> {dest}: {reason}", file=sys.stderr)
+    log(f"REJECTED {folder.name} -> {dest}: {reason}", error=True)
     return "REJECTED"
 
 
@@ -302,12 +318,9 @@ def wait_for_ollama(url: str, attempts: int, delay_seconds: float, timeout: int 
                     return True
         except Exception as exc:
             if attempt >= attempts:
-                print(f"Ollama preflight failed after {attempts} attempt(s): {exc}", file=sys.stderr)
+                log(f"Ollama preflight failed after {attempts} attempt(s): {exc}", error=True)
                 return False
-            print(
-                f"Ollama preflight failed attempt {attempt}/{attempts}: {exc}; retrying in {delay_seconds}s",
-                file=sys.stderr,
-            )
+            log(f"Ollama preflight failed attempt {attempt}/{attempts}: {exc}; retrying in {delay_seconds}s", error=True)
             time.sleep(delay_seconds)
     return False
 
@@ -374,10 +387,7 @@ def call_ollama(
             last_exc = exc
             if attempt >= total_attempts:
                 break
-            print(
-                f"Ollama connection failure attempt {attempt}/{total_attempts}: {exc}; retrying in {retry_seconds}s",
-                file=sys.stderr,
-            )
+            log(f"Ollama connection failure attempt {attempt}/{total_attempts}: {exc}; retrying in {retry_seconds}s", error=True)
             time.sleep(retry_seconds)
 
     raise TransientOllamaConnectionError(f"Ollama unavailable after {total_attempts} attempt(s): {last_exc}")
@@ -485,10 +495,10 @@ def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, re
         if ask_dest.exists():
             failed_dest = dirs["failed"] / f"{ask_name}__released_duplicate_{int(time.time())}"
             shutil.move(str(folder), str(failed_dest))
-            print(f"TRANSIENT_RELEASE_DUPLICATE {ask_name}: {reason}; parked at {failed_dest}", file=sys.stderr)
+            log(f"TRANSIENT_RELEASE_DUPLICATE {ask_name}: {reason}; parked at {failed_dest}", error=True)
             return True
         shutil.move(str(folder), str(ask_dest))
-        print(f"TRANSIENT_RELEASE {ask_name} -> {ask_dest}: {reason}", file=sys.stderr)
+        log(f"TRANSIENT_RELEASE {ask_name} -> {ask_dest}: {reason}", error=True)
         return True
     except Exception as exc:
         try:
@@ -496,7 +506,7 @@ def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, re
             shutil.move(str(folder), str(failed_dest))
         except Exception:
             pass
-        print(f"ERROR releasing transient claim {ask_name}: {exc}", file=sys.stderr)
+        log(f"ERROR releasing transient claim {ask_name}: {exc}", error=True)
         return False
 
 

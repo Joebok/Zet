@@ -740,6 +740,27 @@ dl {
   color: #fff;
 }
 
+.scene-builder-continue {
+  background: #855c35;
+  border-color: #855c35;
+  color: #fff;
+}
+
+.scene-builder-analysis-view {
+  background: #fff;
+  border-color: var(--nav);
+  color: var(--nav);
+  font-size: 18px;
+  line-height: 1;
+  min-width: 36px;
+}
+
+.scene-builder-analysis-view.complete {
+  background: var(--nav);
+  border-color: var(--nav);
+  color: #fff;
+}
+
 .scene-builder-warnings {
   background: #fffaeb;
   border: 1px solid #fedf89;

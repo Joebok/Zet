@@ -27,6 +27,7 @@ class AutomationSettings:
     render_backend: str
     ai_prompt_review_model: str = "qwen3.5:9b-instruct"
     ai_prompt_review_instructions_file: str = "Config/AI_Prompt_Review_Instructions.md"
+    ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,7 @@ class PipelineControlService:
             render_backend=str(self.config.render_backend),
             ai_prompt_review_model=str(self.config.ai_prompt_review_model),
             ai_prompt_review_instructions_file=str(self.config.ai_prompt_review_instructions_file),
+            ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
         )
 
     def project_config_rows(self) -> list[dict]:
@@ -134,6 +136,7 @@ class PipelineControlService:
                 "Setting": "AIPromptReview.InstructionsFile",
                 "Value": self.config.ai_prompt_review_instructions_file,
             },
+            {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
@@ -150,6 +153,7 @@ class PipelineControlService:
             ("Render", "Backend"): settings.render_backend,
             ("AIPromptReview", "Model"): settings.ai_prompt_review_model,
             ("AIPromptReview", "InstructionsFile"): settings.ai_prompt_review_instructions_file,
+            ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
         self._update_config_values(updates)
         ConfigService.load(self.config_path)
@@ -231,6 +235,8 @@ class PipelineControlService:
             raise PipelineControlServiceError("AI prompt review model cannot be blank.")
         if not settings.ai_prompt_review_instructions_file.strip():
             raise PipelineControlServiceError("AI prompt review instructions file cannot be blank.")
+        if not settings.ai_prompt_analysis_instructions_file.strip():
+            raise PipelineControlServiceError("AI prompt analysis instructions file cannot be blank.")
 
     def _update_config_values(self, updates: dict[tuple[str, str], object]) -> None:
         if not self.config_path.exists():
@@ -267,7 +273,7 @@ class PipelineControlService:
         section_body = match.group(2)
         key_pattern = re.compile(rf"(?m)^({re.escape(key)}\s*=\s*).*$")
         if key_pattern.search(section_body):
-            new_body = key_pattern.sub(rf"\g<1>{rendered_value}", section_body, count=1)
+            new_body = key_pattern.sub(lambda match: f"{match.group(1)}{rendered_value}", section_body, count=1)
         else:
             body_suffix = "" if section_body.endswith("\n") or not section_body else "\n"
             new_body = f"{section_body}{body_suffix}{key} = {rendered_value}\n"

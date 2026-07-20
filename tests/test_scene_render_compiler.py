@@ -126,9 +126,31 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("**Element Override:** scene-only blue cloak", prompt)
         self.assertIn("Aim the dialogue-panel pointer at Valindia's mouth.", prompt)
         self.assertIn("Wrap the dialogue in no more than 2 lines.", prompt)
+        self.assertIn("Wrap the dialogue in no more than 1 line.", self._prompt({
+            "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}, "environment": {}},
+            "scene_elements": [],
+            "dialogue": [{"text": "Hello.", "max_lines": 1}],
+        }))
         self.assertNotIn("{'subject_element_id'", prompt)
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn("Tsaeytte_12345678", prompt)
+
+    def test_multiple_dialogue_panels_are_separated_with_special_instructions(self):
+        prompt = self._prompt({
+            "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}, "environment": {}},
+            "scene_elements": [
+                {"id": "val", "display_name": "Valindia", "element_type": "Character"},
+                {"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character"},
+            ],
+            "dialogue": [
+                {"speaker_element_id": "val", "target_element_id": "tsa", "text": "...camouflaged.", "pointer_target": "speaker mouth", "max_lines": 1},
+                {"speaker_element_id": "tsa", "target_element_id": "val", "text": "hey!", "pointer_target": "speaker mouth", "max_lines": 1, "notes": "make this dialog panel smaller to indicate muttering"},
+            ],
+        })
+        self.assertIn("# Dialogue Panels", prompt)
+        self.assertIn("## Dialogue Panel 1", prompt)
+        self.assertIn("## Dialogue Panel 2", prompt)
+        self.assertIn("- **Special instructions:** make this dialog panel smaller to indicate muttering", prompt)
 
     def test_local_render_prompt_is_composition_first(self):
         story = {
@@ -210,6 +232,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("monumental gothic stone entrance arch", brief["regions"][0]["prompt"])
         self.assertIn("visible subject positioned", brief["regions"][1]["prompt"])
         self.assertIn("visible subject positioned", brief["regions"][2]["prompt"])
+        self.assertIn("Expression: angry", brief["regions"][1]["prompt"])
         self.assertIn("scenery", prompt)
         self.assertNotIn("Backdrop secondary", prompt)
         self.assertNotRegex(prompt_text, r"Painterly semi-realistic|cell|row 1 column|Character primary|scene_element_id|wait")

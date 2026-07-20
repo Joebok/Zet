@@ -26,6 +26,7 @@ from zet.services.pipeline_control_service import AutomationSettings, PipelineCo
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
+from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
@@ -158,6 +159,7 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -364,6 +366,12 @@ class ZetApp:
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""
         return self.story_service.stage_scene_render(story_slug, scene_slug)
+
+    def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str) -> dict:
+        return self.scene_prompt_analysis_service.queue(story_slug, scene_slug)
+
+    def scene_prompt_analysis_status(self, story_slug: str, scene_slug: str) -> dict:
+        return self.scene_prompt_analysis_service.status(story_slug, scene_slug)
 
     def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
         """List copyable image references for the scene editor."""

@@ -221,6 +221,7 @@ const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptReviewModel = document.querySelector("#setting-ai-prompt-review-model");
 const settingAiPromptReviewFile = document.querySelector("#setting-ai-prompt-review-file");
+const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
@@ -3268,7 +3269,7 @@ function builderRenderPlacementEditor() {
         ${showActing ? `
           <label class="full">${builderCaption("(Pose) Element [pose] in the selected region.", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"></label>
           <label>${builderCaption("(Gaze target) Element looks directly at ...", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id">${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>
-          <label>${builderCaption("(Expression) Element appears ...", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"></label>
+          <label>${builderCaption("(Expression) Comma-separated expression instructions.", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"></label>
         ` : ""}
         <label>${builderCaption("Motion", "placements[].motion.state")}<select data-builder-placement-field="motion.state"><option value="stationary"${placement.motion.state !== "moving" ? " selected" : ""}>Stationary</option><option value="moving"${placement.motion.state === "moving" ? " selected" : ""}>Moving</option></select></label>
         <label>${builderCaption("(Movement direction) Element is visibly moving ... on screen.", "placements[].motion.direction_screen")}<select data-builder-placement-field="motion.direction_screen"${placement.motion.state !== "moving" ? " disabled" : ""}>${["", "left", "right", "toward camera", "away from camera", "up", "down", "up-left", "up-right", "down-left", "down-right"].map((value) => `<option value="${value}"${value === (placement.motion.direction_screen || "") ? " selected" : ""}>${value}</option>`).join("")}</select></label>
@@ -3292,7 +3293,7 @@ function builderRenderDialogueEditor() {
         <label class="full">${builderCaption("(Text) Speaker says exactly: \"...\"", "dialogue[].text")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="text">${escapeHtml(dialogue.text || "")}</textarea></label>
         <label>${builderCaption("(Pointer target) Aim dialogue-panel pointer at ...", "dialogue[].pointer_target")}<input value="${escapeHtml(dialogue.pointer_target || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="pointer_target"></label>
         <label>${builderCaption("(Max lines) Wrap dialogue in no more than ... lines.", "dialogue[].max_lines")}<input type="number" min="1" value="${escapeHtml(dialogue.max_lines || 3)}" data-builder-dialogue="${index}" data-builder-dialogue-field="max_lines"></label>
-        <label class="full">${builderCaption("Notes", "dialogue[].notes")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="notes">${escapeHtml(dialogue.notes || "")}</textarea></label>
+        <label class="full">${builderCaption("Special Instructions", "dialogue[].notes")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="notes">${escapeHtml(dialogue.notes || "")}</textarea></label>
       </div>
     </div>
   `).join("");
@@ -3367,9 +3368,6 @@ function builderRenderOutputs() {
   return `
     <div class="scene-builder-card">
       <h4>Render Settings / Validation</h4>
-      <div class="button-row compact">
-        <button type="button" data-builder-action="save">Save JSON</button>
-      </div>
       ${builderField("render_settings.final_image_prompt.output_path", "Final prompt path", "", true)}
       ${builderField("render_settings.scene_render_ir.output_path", "Scene IR path", "", true)}
       ${builderField("render_settings.local_render_brief.output_path", "Local brief path", "", true)}
@@ -3402,9 +3400,11 @@ function renderSceneBuilder() {
       <strong>Scene Builder</strong>
       <span>${escapeHtml(state.sceneBuilder?.scene?.name || "")}</span>
       <span>${escapeHtml(state.sceneBuilder?.scene?.slug || "")}.scene.json</span>
-      <button type="button" data-builder-action="continue-from">Continue from...</button>
+      <button type="button" class="scene-builder-continue" data-builder-action="continue-from">Continue from...</button>
+      <button type="button" class="primary-action" data-builder-action="save">Save JSON</button>
+      <button type="button" data-builder-action="analyze-prompt">Analyze Prompt</button>
+      <button type="button" class="scene-builder-analysis-view${state.scenePromptAnalysis?.complete ? " complete" : ""}" data-builder-action="view-analysis" aria-label="View prompt analysis" title="View prompt analysis">&#128065;</button>
       <button type="button" class="scene-builder-render" data-builder-action="render">Render</button>
-      <button type="button" data-builder-action="return-scenes">Back to Scene</button>
       ${warningMarkup}
     </div>
     <div class="scene-builder-grid">
@@ -3459,6 +3459,7 @@ async function openSceneBuilder() {
     state.sceneBuilder = document.data || {};
     state.sceneBuilderOptions = payload.options || {};
     state.sceneBuilderReferences = payload.references || [];
+    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis`);
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.sceneBuilderOpen = true;
@@ -3576,6 +3577,36 @@ async function renderSceneBuilderScene() {
   }
 }
 
+async function analyzeScenePrompt() {
+  const saved = await saveSceneBuilder(true);
+  if (!saved) return;
+  try {
+    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis`, { method: "POST" });
+    renderSceneBuilder();
+    showSceneBuilderMessage(state.scenePromptAnalysis.message || "AI prompt analysis queued.", "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
+async function viewScenePromptAnalysis() {
+  if (state.scenePromptAnalysis?.complete && state.scenePromptAnalysis.result_path) {
+    window.open(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/view`, "_blank", "noopener");
+    return;
+  }
+  if (!state.scenePromptAnalysis?.pending) {
+    showSceneBuilderMessage("No AI prompt analysis has been requested.", "info");
+    return;
+  }
+  try {
+    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/harvest`, { method: "POST" });
+    renderSceneBuilder();
+    showSceneBuilderMessage(state.scenePromptAnalysis.message || "AI answers harvested.", "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
 async function generateSceneBuilder() {
   if (!state.sceneBuilder) {
     return;
@@ -3645,7 +3676,6 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     renderSceneBuilder();
   } else {
     const action = target.dataset.builderAction;
-    if (action === "return-scenes") returnToScenesFromBuilder();
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
@@ -3669,6 +3699,8 @@ sceneBuilderPanel.addEventListener("click", (event) => {
       renderSceneBuilder();
     }
     if (action === "save") saveSceneBuilder(false);
+    if (action === "analyze-prompt") analyzeScenePrompt();
+    if (action === "view-analysis") viewScenePromptAnalysis();
     if (action === "export") exportSceneBuilderMarkdown();
     if (action === "render") renderSceneBuilderScene();
   }
@@ -5334,6 +5366,7 @@ function renderPipelineControls(payload) {
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptReviewModel.value = automation.ai_prompt_review_model || "";
   settingAiPromptReviewFile.value = automation.ai_prompt_review_instructions_file || "";
+  settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
@@ -5391,6 +5424,7 @@ function automationPayloadFromForm() {
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_review_model: settingAiPromptReviewModel.value,
     ai_prompt_review_instructions_file: settingAiPromptReviewFile.value,
+    ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
   };
 }

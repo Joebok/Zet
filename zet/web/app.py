@@ -15,6 +15,7 @@ from urllib.request import Request as UrlRequest, urlopen
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+import markdown
 
 from zet.app import ZetApp
 from zet.render_console.queue import RenderConsoleQueue
@@ -725,6 +726,9 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ai_prompt_review_model=str(payload.get("ai_prompt_review_model", defaults.ai_prompt_review_model)),
         ai_prompt_review_instructions_file=str(
             payload.get("ai_prompt_review_instructions_file", defaults.ai_prompt_review_instructions_file)
+        ),
+        ai_prompt_analysis_instructions_file=str(
+            payload.get("ai_prompt_analysis_instructions_file", defaults.ai_prompt_analysis_instructions_file)
         ),
     )
 
@@ -1481,6 +1485,57 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         try:
             return {"data": _jsonable(zet_app.generate_scene_builder(story_slug, scene_slug, data))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis")
+    def scene_prompt_analysis_status(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis/view", response_class=HTMLResponse)
+    def scene_prompt_analysis_view(story_slug: str, scene_slug: str) -> HTMLResponse:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+            result_path = Path(status["result_path"])
+            if not status["complete"] or not result_path.is_file():
+                raise HTTPException(status_code=404, detail="Prompt analysis is not available.")
+            content = markdown.markdown(result_path.read_text(encoding="utf-8"), extensions=["extra", "sane_lists"])
+            return HTMLResponse(
+                f"<!doctype html><html><head><meta charset=\"utf-8\"><title>Prompt Analysis</title>"
+                "<style>body{max-width:900px;margin:40px auto;padding:0 24px;font:16px/1.55 system-ui,sans-serif}"
+                "pre{padding:16px;overflow:auto;background:#f5f5f5}code{font-family:ui-monospace,monospace}"
+                "table{border-collapse:collapse}th,td{padding:6px 10px;border:1px solid #ccc}</style></head>"
+                f"<body>{content}</body></html>",
+                headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"},
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis")
+    def scene_prompt_analysis_queue(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.queue_scene_prompt_analysis(story_slug, scene_slug)
+            status["message"] = "AI prompt analysis queued."
+            return status
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis/harvest")
+    def scene_prompt_analysis_harvest(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            zet_app.harvest_ai_answers()
+            status = zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+            status["message"] = "AI answers harvested."
+            return status
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

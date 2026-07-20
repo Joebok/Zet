@@ -30,6 +30,7 @@ class Config:
     render_backend: str = "local_image"
     ai_prompt_review_model: str = "qwen3.5:9b-instruct"
     ai_prompt_review_instructions_file: str = "Config/AI_Prompt_Review_Instructions.md"
+    ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
 
 
 class ConfigService:
@@ -90,6 +91,11 @@ class ConfigService:
         return review if isinstance(review, dict) else {}
 
     @staticmethod
+    def _ai_prompt_analysis_config(payload: dict) -> dict:
+        analysis = payload.get("AIPromptAnalysis", {})
+        return analysis if isinstance(analysis, dict) else {}
+
+    @staticmethod
     def load(config_path: str | Path) -> Config:
         path = Path(config_path)
         if not path.exists():
@@ -106,6 +112,7 @@ class ConfigService:
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
             ai_prompt_review = ConfigService._ai_prompt_review_config(payload)
+            ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
             library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
             return Config(
                 base_library_path=library_base,
@@ -130,6 +137,9 @@ class ConfigService:
                 ai_prompt_review_model=str(ai_prompt_review.get("Model", "qwen3.5:9b-instruct")),
                 ai_prompt_review_instructions_file=str(
                     ai_prompt_review.get("InstructionsFile", "Config/AI_Prompt_Review_Instructions.md")
+                ),
+                ai_prompt_analysis_instructions_file=str(
+                    ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),
             )
         except Exception as exc:

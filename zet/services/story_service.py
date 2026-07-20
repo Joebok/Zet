@@ -113,7 +113,6 @@ class StoryServiceError(Exception):
 class StoryService:
     """Manage story folders, scene markdown files, and scene image references."""
 
-    STORY_SCENE_TEMPLATE_NAME = "story_scene_v1.md"
     SCENE_BUILDER_MARKDOWN_TEMPLATE_NAME = "scene_builder_markdown_v1.md"
 
     def __init__(
@@ -277,18 +276,6 @@ class StoryService:
         output = "\n\n".join(outputs)
         return StoryGitResult(output=output, has_story_changes=self.story_git_has_changes(), conflict=self._story_git_conflict(output))
 
-    def _placeholder_section_value(self, value: str) -> bool:
-        """Return whether a compiler section still contains template placeholder text."""
-        cleaned = str(value or "").strip().strip("`").strip()
-        if not cleaned:
-            return True
-        normalized = cleaned.strip("[]").strip().lower()
-        return normalized in {
-            "story title",
-            "painterly semi-realistic, anime-influenced facial proportions, etc.",
-            "short premise, central conflict, emotional arc, or visual theme.",
-        }
-
     def _replace_metadata_field(self, text: str, label: str, value: str) -> str:
         """Replace or insert one markdown metadata field."""
         replacement = f"{label}: `[{value}]`"
@@ -335,7 +322,7 @@ class StoryService:
     def _scene_record(self, story_slug: str, path: Path) -> SceneRecord:
         """Build a scene record from one scene markdown path."""
         text = path.read_text(encoding="utf-8")
-        title = self._extract_bounded_section(text, "SCENE_NAME") or self._extract_scene_line(text) or self._scene_title_from_slug(path.stem)
+        title = self._extract_scene_line(text) or self._scene_title_from_slug(path.stem)
         return SceneRecord(
             story_slug=story_slug,
             slug=path.stem,
@@ -466,7 +453,6 @@ class StoryService:
         scene_path = self.path_service.scene_file_path(safe_story_slug, scene_slug)
         if not scene_path.exists():
             template = self._require_template(self.path_service.shared_scene_template_path(), "Scene")
-            template = self._replace_bounded_section(template, "SCENE_NAME", cleaned_name)
             template = re.sub(r"(?im)^Scene:\s*.+?$", f"Scene: `[{cleaned_name}]`", template, count=1)
             scene_path.write_text(template.rstrip() + "\n", encoding="utf-8")
         scene_json_path = self.scene_builder_json_path(safe_story_slug, scene_slug)
@@ -507,28 +493,10 @@ class StoryService:
                 path=str(self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)),
             )
             return SceneDocument(story=self._story_record(safe_story_slug), record=record, text=str(text or ""), validation_errors=errors)
-        scene_name = self._extract_bounded_section(text, "SCENE_NAME") or self._extract_scene_line(text)
-        saved_scene_slug = self.safe_slug(scene_name) if scene_name else safe_scene_slug
         path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
-        saved_path = self.path_service.scene_file_path(safe_story_slug, saved_scene_slug)
-        if saved_scene_slug != safe_scene_slug and saved_path.exists():
-            raise StoryServiceError(f"Scene file already exists: {saved_path.name}")
         path.parent.mkdir(parents=True, exist_ok=True)
-        if saved_scene_slug != safe_scene_slug and path.exists():
-            path.rename(saved_path)
-            image_path = self.scene_image_path(safe_story_slug, safe_scene_slug)
-            saved_image_path = self.scene_image_path(safe_story_slug, saved_scene_slug)
-            if image_path.exists() and not saved_image_path.exists():
-                image_path.rename(saved_image_path)
-            builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
-            saved_builder_path = self.scene_builder_json_path(safe_story_slug, saved_scene_slug)
-            if builder_path.exists() and not saved_builder_path.exists():
-                builder_path.rename(saved_builder_path)
-            legacy_builder_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug).with_suffix(".json")
-            if legacy_builder_path.exists():
-                legacy_builder_path.unlink()
-        saved_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
-        return self.load_scene(safe_story_slug, saved_scene_slug)
+        path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
+        return self.load_scene(safe_story_slug, safe_scene_slug)
 
     def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
         """Commit the current story state, then delete one scene markdown and image."""
@@ -563,6 +531,29 @@ class StoryService:
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         return self.get_scene_json_path_from_scene_slug(self.path_service.story_folder_path(safe_story_slug), safe_scene_slug)
+
+    def scene_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
+        return self.path_service.story_pipeline_path(self.safe_slug(story_slug), self.safe_slug(scene_slug))
+
+    def compile_scene_prompt(self, story_slug: str, scene_slug: str) -> Path:
+        """Compile the final image prompt used by Scene Builder automation."""
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        pipeline_path = self.scene_pipeline_path(safe_story_slug, safe_scene_slug)
+        pipeline_path.mkdir(parents=True, exist_ok=True)
+        scene_builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
+        if not scene_builder_path.exists():
+            raise StoryServiceError(f"Scene Builder JSON not found: {scene_builder_path}")
+        scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
+        normalized_scene = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
+        story_settings_path = self._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
+        if not story_settings_path.exists():
+            raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
+        references = self._resolve_scene_references("\n" + json.dumps(scene_builder_data))
+        ir = compile_scene_render_ir(normalized_scene, self.load_story_settings(story_settings_path), {"references": references, "element_sources": self._resolve_scene_element_sources(normalized_scene)})
+        prompt_path = pipeline_path / "Final_Image_Prompt.md"
+        prompt_path.write_text(final_image_prompt_text(ir), encoding="utf-8")
+        return prompt_path
 
     def get_scene_builder_json_path(self, scene_path: Path) -> Path:
         """Return the Scene Builder JSON path matching a scene markdown or image path."""
@@ -1313,45 +1304,6 @@ class StoryService:
             text = text.rstrip() + "\n\n" + managed
         scene_path.write_text(text.rstrip() + "\n", encoding="utf-8")
         return self.load_scene(safe_story_slug, safe_scene_slug)
-
-    def _story_scene_sections(self, story_text: str, scene_text: str) -> dict[str, str]:
-        """Return story and scene compiler sections for prompt rendering."""
-        sections = {}
-        for section_name in ("STORY_TITLE", "CANONICAL_ART_STYLE", "STORY_PREMISE", "STORY_VISUAL_CONTINUITY"):
-            value = self._extract_bounded_section(story_text, section_name)
-            if section_name == "STORY_TITLE" and self._placeholder_section_value(value):
-                value = self._extract_first_metadata_field(story_text, "Title")
-            if section_name == "CANONICAL_ART_STYLE" and self._placeholder_section_value(value):
-                value = self._extract_first_metadata_field(story_text, "Canonical Art Style")
-            if section_name == "STORY_PREMISE" and self._placeholder_section_value(value):
-                value = ""
-            sections[section_name] = value
-        for section_name in ("SCENE_NAME", "SCENE_DESCRIPTION", "SCENE_IMAGE_REFERENCES", "SCENE_RENDERING_NOTES"):
-            sections[section_name] = self._extract_bounded_section(scene_text, section_name)
-        return sections
-
-    def _render_story_scene_prompt(self, story_text: str, scene_text: str) -> str:
-        """Render a story scene final image prompt."""
-        prompt = self._story_scene_template_path().read_text(encoding="utf-8")
-        sections = self._story_scene_sections(story_text, scene_text)
-
-        def replace(match: re.Match) -> str:
-            section_name = match.group(1)
-            if section_name not in sections:
-                raise StoryServiceError(f"Unknown compiler section: {section_name}")
-            return sections.get(section_name, "")
-
-        rendered = re.sub(r"\{\{SECTION:([A-Z0-9_]+)\}\}", replace, prompt).strip()
-        if "{{SECTION:" in rendered:
-            raise StoryServiceError("Final prompt still contains unresolved section tokens.")
-        return rendered + "\n"
-
-    def _story_scene_template_path(self) -> Path:
-        """Return the configured story scene prompt template path."""
-        path = Path(__file__).resolve().parents[2] / "Config" / "Prompt_Templates" / self.STORY_SCENE_TEMPLATE_NAME
-        if not path.exists():
-            raise StoryServiceError(f"Story scene prompt template not found: {path}")
-        return path
 
     def _resolve_aux_reference(self, tag: str, category: str, resource_id: str, image_id: str) -> dict:
         """Resolve one auxiliary image reference tag."""
