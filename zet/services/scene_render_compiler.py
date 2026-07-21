@@ -63,12 +63,28 @@ def _lines(values: Any) -> list[str]:
     return [_clean(item) for item in values or [] if _clean(item)]
 
 
+def _is_suppressed_placement(placement: dict[str, Any]) -> bool:
+    return _clean(placement.get("position_within_cell")).lower() == "none"
+
+
 def _style_text(story_settings: dict[str, Any]) -> str:
     return _clean(story_settings.get("style_defaults", {}).get("canonical_art_style", {}).get("full_prompt_text"))
 
 
 def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str, Any], resolved_sources: dict[str, Any] | None = None) -> dict[str, Any]:
     setup = scene_data.get("setup", {})
+    placements = [item for item in _items(scene_data.get("placements")) if not _is_suppressed_placement(item)]
+    suppressed_element_ids = {
+        _clean(item.get("scene_element_id"))
+        for item in _items(scene_data.get("placements"))
+        if _is_suppressed_placement(item)
+    }
+    source_composition = setup.get("composition", {})
+    composition = dict(source_composition) if isinstance(source_composition, dict) else {}
+    composition["left_to_right"] = [
+        element_id for element_id in _lines(composition.get("left_to_right"))
+        if element_id not in suppressed_element_ids
+    ]
     story_profile = story_settings.get("compiler_profiles", {}).get("final_image_prompt", {})
     references = list(_items(scene_data.get("reference_assignments")))
     for element in _items(scene_data.get("scene_elements")):
@@ -105,7 +121,7 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
             "source_hashes": {},
         },
         "canvas": setup.get("canvas", {}),
-        "composition": setup.get("composition", {}),
+        "composition": composition,
         "style": {
             "art_style": _style_text(story_settings),
             "visual_continuity": story_settings.get("style_defaults", {}).get("visual_continuity", {}),
@@ -113,7 +129,7 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
         },
         "environment": setup.get("environment", {}),
         "elements": _items(scene_data.get("scene_elements")),
-        "placements": _items(scene_data.get("placements")),
+        "placements": placements,
         "props": _items(scene_data.get("props_and_states")),
         "interactions": _items(scene_data.get("interactions")),
         "custom_interactions": _clean(scene_data.get("custom_interactions")),
@@ -184,9 +200,11 @@ def _backdrop_description(element: dict[str, Any]) -> str:
 
 
 def _resource_subject_type(element: dict[str, Any]) -> str:
+    sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
     text = " ".join(_lines([
         element.get("element_visual_override"),
         element.get("fallback_visual_description"),
+        sections.get("identity_preservation_core"),
         element.get("display_name"),
         element.get("resource_type"),
         element.get("element_type"),
@@ -285,6 +303,300 @@ def _broad_pose(placement: dict[str, Any]) -> str:
 
 def _prompt_join(parts: list[str]) -> str:
     return ", ".join(dict.fromkeys(item for item in (clean_prompt_sentence(part) for part in parts) if item))
+
+
+def collect_primary_characters(ir: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    elements = _elements_by_id(ir)
+    placements = {_placement_element_id(item): item for item in ir.get("placements", [])}
+    return [
+        (element, placements[_clean(element.get("id"))])
+        for element in ir.get("elements", [])
+        if _clean(element.get("element_type")) == "Character" and _clean(element.get("id")) in placements
+    ]
+
+
+def collect_backdrops(ir: dict[str, Any]) -> list[dict[str, Any]]:
+    return [element for element in ir.get("elements", []) if _clean(element.get("element_type")) == "Backdrop"]
+
+
+def resolve_character_order(
+    ir: dict[str, Any],
+    characters: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], list[str]]:
+    by_id = {_clean(element.get("id")): (element, placement) for element, placement in characters}
+    ordered: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    warnings: list[str] = []
+    for element_id in _lines(ir.get("composition", {}).get("left_to_right")):
+        item = by_id.get(element_id)
+        if item is None:
+            warnings.append(f"Ignoring unresolved left-to-right character ID: {element_id}")
+        elif item not in ordered:
+            ordered.append(item)
+    horizontal = {"far_left": 0, "left": 1, "center_left": 2, "center": 3, "center_right": 4, "right": 5, "far_right": 6}
+    remaining = [item for item in characters if item not in ordered]
+    remaining.sort(key=lambda item: (horizontal.get(_clean(item[1].get("position_within_cell")).lower(), 7), characters.index(item)))
+    if not ordered and len(remaining) == 2:
+        first_key = horizontal.get(_clean(remaining[0][1].get("position_within_cell")).lower(), 7)
+        second_key = horizontal.get(_clean(remaining[1][1].get("position_within_cell")).lower(), 7)
+        if first_key == second_key:
+            first, second = remaining
+            first_name = (_clean(first[0].get("display_name")) or humanize_identifier(_clean(first[0].get("id")))).lower()
+            second_name = (_clean(second[0].get("display_name")) or humanize_identifier(_clean(second[0].get("id")))).lower()
+            first_notes = _clean(first[1].get("placement_notes")).lower()
+            second_notes = _clean(second[1].get("placement_notes")).lower()
+            if f"right of {second_name}" in first_notes or f"left of {first_name}" in second_notes:
+                remaining = [second, first]
+            elif f"left of {second_name}" in first_notes or f"right of {first_name}" in second_notes:
+                remaining = [first, second]
+    return ordered + remaining, warnings
+
+
+def normalize_horizontal_slots(
+    ordered_characters: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> dict[str, str]:
+    if len(ordered_characters) == 2:
+        return {
+            _clean(ordered_characters[0][0].get("id")): "left",
+            _clean(ordered_characters[1][0].get("id")): "right",
+        }
+    normalized = {"far left": "far_left", "center left": "center_left", "center right": "center_right", "far right": "far_right"}
+    result = {}
+    for index, (element, placement) in enumerate(ordered_characters):
+        raw = _clean(placement.get("position_within_cell")).lower().replace("_", " ")
+        result[_clean(element.get("id"))] = normalized.get(raw, raw.replace(" ", "_")) or ("center" if len(ordered_characters) == 1 else f"slot_{index + 1}")
+    return result
+
+
+def _count_word(value: int) -> str:
+    return {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four"}.get(value, str(value))
+
+
+def _normalized_view(element: dict[str, Any], placement: dict[str, Any]) -> str:
+    references = " ".join(_clean(item.get("tag")) for item in _items(element.get("reference_images")))
+    sources = [element.get("element_visual_override"), placement.get("placement_notes"), references]
+    patterns = [
+        (r"back[\s_-]*right(?:\s+|[-_/])*(?:3/4|three.quarter)", "back-right three-quarter"),
+        (r"back[\s_-]*left(?:\s+|[-_/])*(?:3/4|three.quarter)", "back-left three-quarter"),
+        (r"front[\s_-]*right(?:\s+|[-_/])*(?:3/4|three.quarter)", "front-right three-quarter"),
+        (r"front[\s_-]*left(?:\s+|[-_/])*(?:3/4|three.quarter)", "front-left three-quarter"),
+        (r"(?:rear|back)(?:\s+|[-_/])*(?:3/4|three.quarter)", "rear three-quarter"),
+        (r"\bleft\s+profile\b", "left profile"),
+        (r"\bright\s+profile\b", "right profile"),
+        (r"\bback\b|\brear\b", "back"),
+        (r"\bfront\b", "front"),
+    ]
+    for source in sources:
+        text = _clean(source).lower()
+        for pattern, value in patterns:
+            if re.search(pattern, text):
+                return value
+    motion = placement.get("motion", {}) if isinstance(placement.get("motion"), dict) else {}
+    return "back" if "away from camera" in _clean(motion.get("direction_screen")).lower() else "neutral three-quarter"
+
+
+def _identity_and_costume(element: dict[str, Any], other_names: list[str]) -> tuple[str, str]:
+    sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
+    identity = clean_prompt_sentence(sections.get("identity_preservation_core") or element.get("fallback_visual_description"))
+    costume = clean_prompt_sentence(sections.get("identity_preservation_costume"))
+    if not identity:
+        visual_override = clean_prompt_sentence(element.get("element_visual_override"))
+        visual_sentences = [
+            sentence for sentence in re.split(r"[.;]\s*", visual_override)
+            if sentence and not re.search(r"\b(walk|stand|move|view|arm|holding|through the arch)\b", sentence, re.IGNORECASE)
+        ]
+        identity = clean_prompt_sentence(". ".join(visual_sentences)) or f"adult {_resource_subject_type(element)}"
+    for name in [_clean(element.get("id")), _clean(element.get("display_name")), *other_names]:
+        if name:
+            identity = re.sub(re.escape(name), "", identity, flags=re.IGNORECASE)
+            costume = re.sub(re.escape(name), "", costume, flags=re.IGNORECASE)
+    identity = re.sub(r"^\s*[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+)?\s+—\s+", "", identity)
+    costume = re.sub(r"^\s*Costume\s+—\s+", "", costume, flags=re.IGNORECASE)
+    identity = re.sub(r"\b(?:with a confident, aristocratic bearing|poised, immaculately groomed, fashionable, and subtly condescending)\b,?", "", identity, flags=re.IGNORECASE)
+    identity_sentences = [
+        sentence.strip(" ,.—") for sentence in re.split(r"[.;]\s*", identity)
+        if sentence.strip(" ,.—") and not re.search(r"\b(innocent|thoughtful|determined|sense of wonder|personality|motivation)\b", sentence, re.IGNORECASE)
+    ]
+    costume_sentences = [
+        sentence.strip(" ,.—") for sentence in re.split(r"[.;]\s*", costume)
+        if sentence.strip(" ,.—") and not re.search(r"\b(reflecting|wealth|status|upbringing|taste)\b", sentence, re.IGNORECASE)
+    ]
+    identity = ". ".join(identity_sentences[:3])
+    costume = ". ".join(costume_sentences[:2])
+    phase = _clean(element.get("phase")).lower()
+    if phase in {"youth", "adolescent", "teen"} or re.search(r"\b(adolescent|teen(?:age)?)\b", identity, re.IGNORECASE):
+        identity = re.sub(r"\badult\s+(?:character|elf woman|woman)\b,?\s*", "", identity, flags=re.IGNORECASE)
+        if not re.search(r"\b(adolescent|teen(?:age)?)\b", identity, re.IGNORECASE):
+            identity = f"adolescent {identity}"
+    return clean_prompt_sentence(identity).strip(" ,.—"), clean_prompt_sentence(costume).strip(" ,.—")
+
+
+def _character_prop_text(ir: dict[str, Any], element: dict[str, Any], placement: dict[str, Any]) -> str:
+    pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
+    element_id = _clean(element.get("id"))
+    associated_props = [
+        clean_prompt_sentence(prop.get("description") or prop.get("state") or prop.get("display_name"))
+        for prop in ir.get("props", [])
+        if element_id in {
+            _clean(prop.get("scene_element_id")), _clean(prop.get("character_element_id")),
+            _clean(prop.get("holder_element_id")), _clean(prop.get("owner_element_id")),
+        }
+    ]
+    source = " ".join(_lines([
+        element.get("element_visual_override"), placement.get("placement_notes"), pose.get("summary"),
+        pose.get("left_arm_action"), pose.get("right_arm_action"), *associated_props,
+    ])).lower()
+    if "stack of books" in source:
+        return "carrying a stack of books in front"
+    if "book" in source:
+        if "wrapped around" in source or "holding one" in source:
+            return "carrying one book tightly against her torso"
+        return "carrying a book"
+    return ""
+
+
+def _character_region_prompt(
+    ir: dict[str, Any],
+    element: dict[str, Any],
+    placement: dict[str, Any],
+    slot: str,
+    subject_count: int,
+) -> tuple[str, dict[str, Any], list[str]]:
+    elements = _elements_by_id(ir)
+    element_id = _clean(element.get("id"))
+    name = get_element_display_name(element_id, elements)
+    other_names = [get_element_display_name(key, elements) for key in elements if key != element_id]
+    identity, costume = _identity_and_costume(element, other_names)
+    pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
+    motion = placement.get("motion", {}) if isinstance(placement.get("motion"), dict) else {}
+    moving = _clean(motion.get("state")).lower() == "moving" or "walking" in _clean(element.get("element_visual_override")).lower()
+    direction = clean_prompt_sentence(motion.get("direction_screen"))
+    action = f"walking {direction}".strip() if moving else clean_prompt_sentence(pose.get("summary"))
+    corrections = []
+    if moving and "stand" in _clean(pose.get("summary")).lower():
+        corrections.append(f"{name}: standing -> walking")
+    prop = _character_prop_text(ir, element, placement)
+    if prop and "wrapped around" in _clean(element.get("element_visual_override")).lower():
+        corrections.append(f"{name}: wrapped arms + book -> book held against torso")
+    view = _normalized_view(element, placement)
+    target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
+    if not target_id:
+        target_id = next((
+            _clean(item.get("target_element_id"))
+            for item in ir.get("interactions", [])
+            if _clean(item.get("subject_element_id")) == element_id
+            and _relationship_key(item.get("relationship") or item.get("type")) in {"looking at", "looks at", "gaze", "direct gaze"}
+        ), "")
+    target = get_element_display_name(target_id, elements) if target_id else ""
+    if target:
+        gaze = f"glancing sideways toward {target}" if "back" in view or "rear" in view else f"looking toward {target}"
+    else:
+        gaze = ""
+    expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression"))
+    depth = _clean(placement.get("depth")) or "midground"
+    parts = [
+        f"Scene contains exactly {_count_word(subject_count)} separate primary characters",
+        f"This region contains {name} only",
+        f"in the {slot.replace('_', ' ')} {depth}",
+        identity,
+        f"seen from the {view} view",
+        action,
+        costume,
+        prop,
+        expression,
+        gaze,
+    ]
+    return _prompt_join(parts), {"view": view, "action": action, "prop": prop, "gaze": gaze}, corrections
+
+
+def _advanced_mapping(canvas: dict[str, Any], index: int, count: int, depth: str, weight: float) -> list[float]:
+    portrait = _clean(canvas.get("orientation")).lower() != "landscape"
+    if count == 2:
+        x1, x2 = ((0.04, 0.47), (0.53, 0.96))[index] if portrait else ((0.02, 0.49), (0.51, 0.98))[index]
+    else:
+        gap = 0.04
+        width = (1.0 - gap * (count + 1)) / max(count, 1)
+        x1 = gap + index * (width + gap)
+        x2 = x1 + width
+    y1, y2 = {"foreground": (0.05, 1.0), "midground": (0.20, 0.98), "background": (0.30, 0.90)}.get(depth, (0.20, 0.98))
+    return [round(x1, 2), round(x2, 2), y1, y2, round(max(0.8, min(1.2, weight)), 2)]
+
+
+def validate_forge_couple_plan(plan: dict[str, Any]) -> bool:
+    lines = [plan.get("global_region", {}).get("prompt"), *[item.get("prompt") for item in plan.get("character_regions", [])]]
+    mappings = [plan.get("global_region", {}).get("mapping"), *[item.get("mapping") for item in plan.get("character_regions", [])]]
+    return bool(lines[0]) and len(lines) == len(mappings) and all(lines) and all(mapping for mapping in mappings)
+
+
+def build_forge_couple_plan(ir: dict[str, Any], settings: dict[str, Any] | None = None) -> dict[str, Any]:
+    settings = settings or {}
+    characters, backdrops = collect_primary_characters(ir), collect_backdrops(ir)
+    ordered, warnings = resolve_character_order(ir, characters)
+    slots = normalize_horizontal_slots(ordered)
+    elements = _elements_by_id(ir)
+    focal = _clean(ir.get("composition", {}).get("focal_point")).lower()
+    focal_ids = {key for key in elements if focal in {key.lower(), get_element_display_name(key, elements).lower()}}
+    regions = []
+    corrections = []
+    for index, (element, placement) in enumerate(ordered):
+        element_id = _clean(element.get("id"))
+        is_focal = element_id in focal_ids
+        prompt, staging, region_corrections = _character_region_prompt(ir, element, placement, slots[element_id], len(ordered))
+        corrections.extend(region_corrections)
+        depth = _clean(placement.get("depth")) or "midground"
+        regions.append({
+            "scene_element_id": element_id,
+            "display_name": get_element_display_name(element_id, elements),
+            "order_index": index,
+            "horizontal_slot": slots[element_id],
+            "depth": depth,
+            "is_focal": is_focal,
+            "staging": staging,
+            "prompt": prompt,
+            "mapping": _advanced_mapping(ir.get("canvas", {}), index, len(ordered), depth, 1.08 if is_focal else 1.0),
+        })
+    motions = [placement.get("motion", {}) if isinstance(placement.get("motion"), dict) else {} for _element_item, placement in ordered]
+    shared_motion = bool(motions) and len({(_clean(item.get("state")).lower(), _clean(item.get("direction_screen")).lower()) for item in motions}) == 1
+    direction = clean_prompt_sentence(motions[0].get("direction_screen")) if shared_motion else ""
+    action = f"walking side by side {direction}".strip() if shared_motion and _clean(motions[0].get("state")).lower() == "moving" else f"{_count_word(len(ordered))} separate characters occupying distinct positions"
+    names = " and ".join(f"{item['display_name']} on the {item['horizontal_slot'].replace('_', ' ')}" for item in regions)
+    subject_types = [_resource_subject_type(element) for element, _placement in ordered]
+    shared_subject_summary = ""
+    if subject_types and all("elf woman" in subject_type for subject_type in subject_types):
+        shared_subject_summary = f"{_count_word(len(ordered))} separate elf women"
+    depths = list(dict.fromkeys(item["depth"] for item in regions))
+    backdrop_text = _prompt_join([_backdrop_description(item) or get_element_display_name(_clean(item.get("id")), elements) for item in backdrops])
+    environment = ir.get("environment", {})
+    global_prompt = _prompt_join([
+        f"{_clean(ir.get('canvas', {}).get('orientation')) or 'landscape'} {_clean(ir.get('canvas', {}).get('aspect_ratio')) or '16:9'} fantasy scene",
+        f"exactly {_count_word(len(ordered))} separate primary characters",
+        shared_subject_summary,
+        action,
+        names,
+        f"full-body {' and '.join(depths)} figures" if ordered else "",
+        "rear three-quarter views" if direction.lower() == "away from camera" else "",
+        "clear space between their bodies" if len(ordered) == 2 else "",
+        f"{backdrop_text} spans the background" if backdrop_text else "",
+        clean_prompt_sentence(environment.get("location")),
+        clean_prompt_sentence(environment.get("lighting")),
+        clean_prompt_sentence(ir.get("style", {}).get("art_style")),
+    ])
+    advanced = bool(backdrops and len(ordered) >= 2)
+    plan = {
+        "mode": "Advanced" if advanced else "Basic",
+        "subject_count": len(ordered),
+        "backdrop_count": len(backdrops),
+        "strict_primary_subject_count": bool(settings.get("strict_primary_subject_count", True)),
+        "forge_couple_debug_base_pass": bool(settings.get("forge_couple_debug_base_pass", True)),
+        "global_region": {"prompt": global_prompt, "mapping": [0.0, 1.0, 0.0, 1.0, 0.65]},
+        "character_regions": regions,
+        "diagnostics": {
+            "warnings": warnings,
+            "conflict_corrections": corrections,
+            "suppressed_incidental_background_subjects": bool(settings.get("strict_primary_subject_count", True)),
+        },
+    }
+    plan["valid"] = validate_forge_couple_plan(plan)
+    return plan
 
 
 def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]) -> str:
@@ -424,7 +736,7 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
         composition_lines.append(f"- Primary focal point: {clean_prompt_sentence(composition.get('focal_point'))}.")
     read_order = [get_element_display_name(element_id, elements_by_id) for element_id in _lines(composition.get("left_to_right"))]
     if read_order:
-        composition_lines.append(f"- Read the scene from left to right: {', then '.join(read_order)}.")
+        composition_lines.append(f"- From left to right the viewer sees: {', then '.join(read_order)}.")
     if clean_prompt_sentence(composition.get("composition_notes")):
         composition_lines.append(f"- {_sentence(composition.get('composition_notes'))}")
     if composition_lines:
@@ -560,7 +872,7 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     return cleanup_compiled_scene_prompt(markdown)
 
 
-def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
+def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = None) -> dict[str, Any]:
     canvas = ir.get("canvas", {})
     elements_by_id = _elements_by_id(ir)
     placements = sorted(ir.get("placements", []), key=_placement_sort_key)
@@ -623,22 +935,29 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
         })
     plain_prompt = _prompt_join(global_parts + [region["prompt"] for region in regions])
     negative = list(dict.fromkeys([
+        "solo",
+        "one person",
+        "single person",
         "extra people",
-        "third person",
+        "extra primary character",
+        "third foreground person",
         "crowd",
         "duplicate character",
         "same character twice",
         "merged characters",
         "fused bodies",
+        "blended faces",
+        "hybrid character",
         "overlapping characters",
+        "overlapping bodies",
         "characters touching",
         "both characters on the same side",
         "person in the center foreground",
         "centered foreground character",
         "cropped body",
         "cropped feet",
-        "back turned toward the other character",
         "looking at viewer",
+        "front-facing body",
         "extra limbs",
         "malformed hands",
         "text",
@@ -649,12 +968,27 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
     ]))
     horizontal_order = {"left": 0, "center": 1, "right": 2}
     subject_prompt_lines.sort(key=lambda item: (horizontal_order.get(item[0], 3), item[0]))
-    prompt_lines = [line for line in [_prompt_join(global_parts), *[item[1] for item in subject_prompt_lines]] if line]
+    basic_prompt_lines = [line for line in [_prompt_join(global_parts), *[item[1] for item in subject_prompt_lines]] if line]
+    forge_plan = build_forge_couple_plan(ir, settings)
+    if forge_plan["subject_count"] < 2:
+        negative = [term for term in negative if term not in {"solo", "one person", "single person", "third foreground person"}]
+    if not forge_plan["strict_primary_subject_count"]:
+        negative = [term for term in negative if term not in {"extra people", "crowd"}]
+    prompt_lines = [
+        forge_plan.get("global_region", {}).get("prompt", ""),
+        *[region.get("prompt", "") for region in forge_plan.get("character_regions", [])],
+    ]
+    if not forge_plan.get("valid"):
+        forge_plan["mode"] = "Basic"
+        forge_plan.setdefault("diagnostics", {}).setdefault("warnings", []).append(
+            "Advanced prompt/mapping count mismatch; using safe Basic mode."
+        )
+        prompt_lines = basic_prompt_lines
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "purpose": "composition_preview",
         "include_dialogue": False,
-        "subject_count": len(subjects),
+        "subject_count": forge_plan["subject_count"],
         "canvas": canvas,
         "global_prompt": prompt_lines[0] if prompt_lines else "",
         "regions": regions,
@@ -669,6 +1003,7 @@ def local_render_brief(ir: dict[str, Any]) -> dict[str, Any]:
             "separator": "\n",
             "prompt_lines": prompt_lines,
         },
+        "forge_couple_plan": forge_plan,
     }
 
 
@@ -679,9 +1014,11 @@ def local_render_prompt_text(brief: dict[str, Any]) -> str:
 
 def local_render_forge_couple_prompt_text(brief: dict[str, Any]) -> str:
     forge = brief.get("forge_couple_basic", {}) if isinstance(brief.get("forge_couple_basic"), dict) else {}
+    plan = brief.get("forge_couple_plan", {}) if isinstance(brief.get("forge_couple_plan"), dict) else {}
     plain = brief.get("plain_txt2img", {}) if isinstance(brief.get("plain_txt2img"), dict) else {}
+    mode = str(plan.get("mode") or "Basic")
     lines = [
-        "mode: Basic",
+        f"mode: {mode}",
         f"direction: {forge.get('direction', 'Horizontal')}",
         f"background: {forge.get('background', 'First Line')}",
         f"background_weight: {forge.get('background_weight', 0.5)}",
@@ -693,6 +1030,24 @@ def local_render_forge_couple_prompt_text(brief: dict[str, Any]) -> str:
         "negative:",
         str(plain.get("negative_prompt", "")),
     ]
+    diagnostics = plan.get("diagnostics", {}) if isinstance(plan.get("diagnostics"), dict) else {}
+    if plan:
+        lines.extend([
+            "",
+            "diagnostics:",
+            f"Forge Couple mode: {mode}",
+            f"Primary subjects: {plan.get('subject_count', 0)}",
+            f"Backdrop regions: {plan.get('backdrop_count', 0)}",
+            "Character order:",
+            *[
+                f"  {index}. {region.get('scene_element_id')} -> {region.get('horizontal_slot')}"
+                for index, region in enumerate(plan.get("character_regions", []), start=1)
+            ],
+            f"Focal region: {next((region.get('display_name') for region in plan.get('character_regions', []) if region.get('is_focal')), 'none')}",
+            f"Suppressed incidental background subjects: {'yes' if diagnostics.get('suppressed_incidental_background_subjects') else 'no'}",
+            *[f"Warning: {warning}" for warning in diagnostics.get("warnings", [])],
+            *[f"Conflict correction: {correction}" for correction in diagnostics.get("conflict_corrections", [])],
+        ])
     return "\n".join(lines).rstrip() + "\n"
 
 

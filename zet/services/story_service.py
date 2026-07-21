@@ -831,6 +831,15 @@ class StoryService:
         ]
         normalized["scene_elements"] = self._normalized_scene_elements(normalized)
         normalized["placements"] = self._normalized_placements(normalized)
+        suppressed_element_ids = {
+            str(item.get("scene_element_id") or "")
+            for item in normalized["placements"]
+            if str(item.get("position_within_cell") or "").strip().lower() == "none"
+        }
+        composition["left_to_right"] = [
+            element_id for element_id in composition["left_to_right"]
+            if element_id not in suppressed_element_ids
+        ]
         for item in normalized.get("dialogue") or []:
             if isinstance(item, dict):
                 for key in ("tone", "include_in_final_image_prompt", "include_in_local_render", "panel_style_id", "preferred_screen_region", "must_not_cover"):
@@ -970,6 +979,10 @@ class StoryService:
 
     def _normalized_placements(self, data: dict) -> list[dict]:
         placements = []
+        element_types = {
+            str(element.get("id") or ""): str(element.get("element_type") or "")
+            for element in data.get("scene_elements") or []
+        }
         for index, placement in enumerate(data.get("placements") or [], start=1):
             if not isinstance(placement, dict):
                 continue
@@ -977,7 +990,8 @@ class StoryService:
             item.setdefault("id", f"placement_{index:03d}")
             item.setdefault("scene_element_id", item.get("character_id") or "")
             item.pop("screen_cell", None)
-            item.setdefault("position_within_cell", "center")
+            default_position = "None" if element_types.get(str(item.get("scene_element_id") or "")) == "Prop" else "center"
+            item.setdefault("position_within_cell", default_position)
             item.setdefault("depth", "midground")
             item.pop("z_order", None)
             item.setdefault("frame_coverage", "")
@@ -1017,7 +1031,7 @@ class StoryService:
         return {
             "id": f"placement_{self.normalize_scene_element_id(element_id) or index}",
             "scene_element_id": element_id,
-            "position_within_cell": "" if element_type == "Backdrop" else "center",
+            "position_within_cell": "" if element_type == "Backdrop" else "None" if element_type == "Prop" else "center",
             "depth": "background" if element_type == "Backdrop" else "midground",
             "frame_coverage": "",
             "distance_from_camera": "",
@@ -1052,6 +1066,8 @@ class StoryService:
         """Rebuild depth lanes from placements."""
         lanes = {"foreground": [], "midground": [], "background": []}
         for placement in data.get("placements") or []:
+            if str(placement.get("position_within_cell") or "").strip().lower() == "none":
+                continue
             depth = str(placement.get("depth") or "midground")
             key = "background" if "background" in depth else depth if depth in lanes else "midground"
             element_id = placement.get("scene_element_id")
@@ -1193,7 +1209,7 @@ class StoryService:
         ]
         for depth in ("foreground", "midground", "background", "distant background"):
             for placement in data.get("placements") or []:
-                if placement.get("depth") == depth:
+                if placement.get("depth") == depth and str(placement.get("position_within_cell") or "").strip().lower() != "none":
                     parts.append(self._placement_phrase(placement, elements.get(str(placement.get("scene_element_id") or ""))))
         if environment.get("lighting") or environment.get("mood"):
             parts.append(" ".join(str(value) for value in [environment.get("lighting"), environment.get("mood")] if value).strip() + ".")
@@ -1264,6 +1280,8 @@ class StoryService:
         ] for element in data.get("scene_elements") or []]
         placement_rows = []
         for placement in data.get("placements") or []:
+            if str(placement.get("position_within_cell") or "").strip().lower() == "none":
+                continue
             element = elements.get(str(placement.get("scene_element_id") or ""), {})
             pose = placement.get("pose") if isinstance(placement.get("pose"), dict) else {}
             placement_rows.append([
@@ -1450,7 +1468,10 @@ class StoryService:
         ir["source"]["story_settings_path"] = str(story_settings_path)
         scene_aspect_ratio = str((ir.get("canvas") or {}).get("aspect_ratio") or "")
         prompt = final_image_prompt_text(ir)
-        brief = local_render_brief(ir)
+        brief = local_render_brief(ir, {
+            "strict_primary_subject_count": getattr(self.path_service.config, "local_render_strict_primary_subject_count", True),
+            "forge_couple_debug_base_pass": getattr(self.path_service.config, "local_render_forge_couple_debug_base_pass", True),
+        })
         self._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
         final_prompt_path.write_text(prompt, encoding="utf-8")
         self._write_json(pipeline_path / "Scene_Render_IR.json", ir)

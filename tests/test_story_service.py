@@ -306,6 +306,25 @@ At the Arch
             self.assertEqual("Door", normalized["placements"][0]["scene_element_id"])
             self.assertEqual("background", normalized["placements"][0]["depth"])
 
+    def test_scene_builder_prop_defaults_to_suppressed_placement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["scene_elements"] = [{"id": "Book", "display_name": "Book", "element_type": "Prop"}]
+            data["placements"] = []
+            data["setup"]["composition"]["left_to_right"] = ["Book"]
+
+            normalized = service._normalize_scene_builder_data("FirstDay", "At-the-Arch", data)
+
+            self.assertEqual("None", normalized["placements"][0]["position_within_cell"])
+            self.assertEqual([], normalized["setup"]["composition"]["left_to_right"])
+            self.assertFalse(any("Book" in values for values in normalized["depth_lanes"].values()))
+
     def test_scene_builder_validation_and_markdown_export(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

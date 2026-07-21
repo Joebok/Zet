@@ -5,6 +5,7 @@ from datetime import datetime
 import base64
 from io import BytesIO
 import json
+import logging
 import mimetypes
 from pathlib import Path
 import re
@@ -15,6 +16,9 @@ from urllib.request import Request, urlopen
 
 from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable, split_positive_negative_prompt
 from PIL import Image
+
+
+LOGGER = logging.getLogger(__name__)
 
 def load_presets(project_root: Path) -> dict[str, Any]:
     path = project_root / "Config" / "Local_Render_Presets.json"
@@ -120,15 +124,16 @@ def ensure_prompt_terms(prompt: str, minimum_terms: str) -> str:
 
 
 def forge_couple_args(layout: dict[str, Any]) -> list[Any]:
+    advanced = str(layout.get("mode") or "Basic") == "Advanced"
     return [
         True,
         bool(layout.get("disable_hr", True)),
         str(layout.get("mode") or "Basic"),
         str(layout.get("separator") or ""),
-        str(layout.get("direction") or "Horizontal"),
-        str(layout.get("background") or "First Line"),
-        float(layout.get("background_weight", 0.5)),
-        None,
+        None if advanced else str(layout.get("direction") or "Horizontal"),
+        None if advanced else str(layout.get("background") or "First Line"),
+        None if advanced else float(layout.get("background_weight", 0.5)),
+        layout.get("mappings") if advanced else None,
         str(layout.get("common_parser") or "{ }"),
         bool(layout.get("common_debug", False)),
         bool(layout.get("def_in_prompt", True)),
@@ -250,7 +255,6 @@ def render_preview(
     payload = {
         "prompt": positive_prompt,
         "negative_prompt": negative_prompt,
-        "denoising_strength": float(preset.get("denoising_strength", 0.06)),
         "width": width,
         "height": height,
         "steps": int(preset.get("steps", 32)),
@@ -282,10 +286,24 @@ def render_preview(
         subject_count = int(render_layout.get("subject_count") or 0)
         if subject_count < 2 or len(prompt_lines) != subject_count + 1:
             raise LocalRenderError("Forge Couple requires one global prompt line and one line per visible subject.")
+        if str(render_layout.get("mode")) == "Advanced":
+            mappings = render_layout.get("mappings")
+            if not isinstance(mappings, list) or len(mappings) != len(prompt_lines):
+                LOGGER.warning("Forge Couple Advanced prompt/mapping count mismatch; falling back to Basic mode.")
+                render_layout = dict(render_layout)
+                render_layout["mode"] = "Basic"
+                render_layout["mappings"] = []
         ensure_forge_couple_available(server_url)
         prompt_lines[0] = ensure_prompt_terms(prompt_lines[0], local_render_config.get("positive_prompt_globals", ""))
         payload["prompt"] = "\n".join(prompt_lines)
         payload["alwayson_scripts"] = {"forge couple": {"args": forge_couple_args(render_layout)}}
+        if bool(render_layout.get("disable_hr", True)):
+            payload["enable_hr"] = False
+            if str(render_layout.get("mode")) == "Advanced":
+                if width <= height:
+                    payload["width"], payload["height"] = 640, 800
+                else:
+                    payload["width"], payload["height"] = 896, 512
     else:
         payload["prompt"] = ensure_prompt_terms(str(payload["prompt"]), local_render_config.get("positive_prompt_globals", ""))
     payload["negative_prompt"] = ensure_prompt_terms(str(payload["negative_prompt"]), local_render_config.get("negative_prompt_globals", ""))

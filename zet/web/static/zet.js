@@ -691,7 +691,7 @@ const SCENE_BUILDER_HELP = {
   "scene_elements[].element_visual_override": "Element-specific visual override. Use only for temporary scene-specific changes.",
   "scene_elements[].fallback_visual_description": "Short local visual description used only if no canonical source or reference is available.",
   "scene_elements[].notes": "Private notes for this element in this scene.",
-  "placements[].position_within_cell": "Position inside the grid cell: center, left, right, upper, lower, upper-left, etc.",
+  "placements[].position_within_cell": "Position inside the grid cell, or None to suppress placement output for this element.",
   "placements[].depth": "Depth layer: foreground, midground, background, or distant background.",
   "placements[].pose.summary": "Concise pose summary.",
   "placements[].pose.gaze_target_element_id": "Element ID that this element is looking at.",
@@ -2935,6 +2935,7 @@ function builderNormalizeId(value) {
 }
 
 function builderSyncControls() {
+  let elementTypeChangedToProp = false;
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
   }
@@ -2956,6 +2957,9 @@ function builderSyncControls() {
           if (interaction.target_element_id === oldId) interaction.target_element_id = control.value;
         }
       } else {
+        if (field === "element_type" && control.value === "Prop" && element.element_type !== "Prop") {
+          elementTypeChangedToProp = true;
+        }
         if (field.includes(".")) {
           setPathValue(element, field, control.value);
         } else {
@@ -3002,6 +3006,10 @@ function builderSyncControls() {
         placement[field] = control.type === "number" ? Number(control.value || 0) : control.value;
       }
     }
+    if (elementTypeChangedToProp) placement.position_within_cell = "None";
+    if (placement.position_within_cell === "None") {
+      state.sceneBuilder.setup.composition.left_to_right = (state.sceneBuilder.setup.composition.left_to_right || []).filter((item) => item !== placement.scene_element_id);
+    }
   }
 }
 
@@ -3024,7 +3032,7 @@ function builderCreatePlacementForElement(element) {
   return {
     id: `placement_${Date.now()}`,
     scene_element_id: element.id,
-    position_within_cell: element.element_type === "Backdrop" ? "" : "center",
+    position_within_cell: element.element_type === "Backdrop" ? "" : element.element_type === "Prop" ? "None" : "center",
     depth: element.element_type === "Backdrop" ? "background" : "midground",
     frame_coverage: "",
     distance_from_camera: "",
@@ -3260,21 +3268,22 @@ function builderRenderPlacementEditor() {
   const isBackdrop = element?.element_type === "Backdrop";
   placement.motion = placement.motion || { state: "stationary", direction_screen: "", cue: "" };
   if (isBackdrop) placement.position_within_cell = "";
+  const placementDisabled = placement.position_within_cell === "None" ? " disabled" : "";
   return `
     <div class="scene-builder-card">
       <h4>${escapeHtml(placementTitle)}</h4>
       <div class="scene-builder-fields">
         <label>${builderCaption("Position", "placements[].position_within_cell")}<select data-builder-placement-field="position_within_cell"${isBackdrop ? " disabled" : ""}>${builderOptionHtml("position_within_cell", isBackdrop ? "" : placement.position_within_cell || "center")}</select></label>
-        <label>${builderCaption("Depth", "placements[].depth")}<select data-builder-placement-field="depth">${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
+        <label>${builderCaption("Depth", "placements[].depth")}<select data-builder-placement-field="depth"${placementDisabled}>${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
         ${showActing ? `
-          <label class="full">${builderCaption("(Pose) Element [pose] in the selected region.", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"></label>
-          <label>${builderCaption("(Gaze target) Element looks directly at ...", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id">${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>
-          <label>${builderCaption("(Expression) Comma-separated expression instructions.", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"></label>
+          <label class="full">${builderCaption("(Pose) Element [pose] in the selected region.", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"${placementDisabled}></label>
+          <label>${builderCaption("(Gaze target) Element looks directly at ...", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id"${placementDisabled}>${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>
+          <label>${builderCaption("(Expression) Comma-separated expression instructions.", "placements[].pose.expression")}<input list="builder-expression-list" value="${escapeHtml(placement.pose?.expression || "")}" data-builder-placement-field="pose.expression"${placementDisabled}></label>
         ` : ""}
-        <label>${builderCaption("Motion", "placements[].motion.state")}<select data-builder-placement-field="motion.state"><option value="stationary"${placement.motion.state !== "moving" ? " selected" : ""}>Stationary</option><option value="moving"${placement.motion.state === "moving" ? " selected" : ""}>Moving</option></select></label>
-        <label>${builderCaption("(Movement direction) Element is visibly moving ... on screen.", "placements[].motion.direction_screen")}<select data-builder-placement-field="motion.direction_screen"${placement.motion.state !== "moving" ? " disabled" : ""}>${["", "left", "right", "toward camera", "away from camera", "up", "down", "up-left", "up-right", "down-left", "down-right"].map((value) => `<option value="${value}"${value === (placement.motion.direction_screen || "") ? " selected" : ""}>${value}</option>`).join("")}</select></label>
-        <label class="full">${builderCaption("(Motion cue) Element is visibly moving, ...", "placements[].motion.cue")}<input value="${escapeHtml(placement.motion.cue || "")}" data-builder-placement-field="motion.cue"></label>
-        <label class="full">${builderCaption("Notes", "placements[].placement_notes")}<textarea data-builder-placement-field="placement_notes">${escapeHtml(placement.placement_notes || "")}</textarea></label>
+        <label>${builderCaption("Motion", "placements[].motion.state")}<select data-builder-placement-field="motion.state"${placementDisabled}><option value="stationary"${placement.motion.state !== "moving" ? " selected" : ""}>Stationary</option><option value="moving"${placement.motion.state === "moving" ? " selected" : ""}>Moving</option></select></label>
+        <label>${builderCaption("(Movement direction) Element is visibly moving ... on screen.", "placements[].motion.direction_screen")}<select data-builder-placement-field="motion.direction_screen"${placementDisabled || placement.motion.state !== "moving" ? " disabled" : ""}>${["", "left", "right", "toward camera", "away from camera", "up", "down", "up-left", "up-right", "down-left", "down-right"].map((value) => `<option value="${value}"${value === (placement.motion.direction_screen || "") ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+        <label class="full">${builderCaption("(Motion cue) Element is visibly moving, ...", "placements[].motion.cue")}<input value="${escapeHtml(placement.motion.cue || "")}" data-builder-placement-field="motion.cue"${placementDisabled}></label>
+        <label class="full">${builderCaption("Notes", "placements[].placement_notes")}<textarea data-builder-placement-field="placement_notes"${placementDisabled}>${escapeHtml(placement.placement_notes || "")}</textarea></label>
       </div>
     </div>
   `;
@@ -3329,7 +3338,9 @@ function builderRenderEnvironment() {
 function builderRenderComposition() {
   const composition = state.sceneBuilder.setup?.composition || { focal_point: "", left_to_right: [], composition_notes: "" };
   state.sceneBuilder.setup.composition = composition;
-  const selectable = (state.sceneBuilder.scene_elements || []).filter((element) => element.element_type !== "Backdrop" && !composition.left_to_right.includes(element.id));
+  const suppressedIds = new Set((state.sceneBuilder.placements || []).filter((placement) => placement.position_within_cell === "None").map((placement) => placement.scene_element_id));
+  composition.left_to_right = (composition.left_to_right || []).filter((elementId) => !suppressedIds.has(elementId));
+  const selectable = (state.sceneBuilder.scene_elements || []).filter((element) => element.element_type !== "Backdrop" && !suppressedIds.has(element.id) && !composition.left_to_right.includes(element.id));
   const ordered = composition.left_to_right.map((elementId, index) => `<li>${escapeHtml(builderElementLabel(elementId))}<span class="button-row compact"><button type="button" data-builder-action="composition-up" data-builder-composition-index="${index}">Up</button><button type="button" data-builder-action="composition-down" data-builder-composition-index="${index}">Down</button><button type="button" data-builder-action="composition-remove" data-builder-composition-index="${index}">Remove</button></span></li>`).join("");
   return `
     <div class="scene-builder-card">

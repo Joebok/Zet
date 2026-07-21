@@ -660,15 +660,25 @@ class AIProxyService:
         render_layout = None
         if layout_backend == "forge_couple_basic" and subject_count >= 2:
             forge = brief.get("forge_couple_basic") if isinstance(brief.get("forge_couple_basic"), dict) else {}
+            plan = brief.get("forge_couple_plan") if isinstance(brief.get("forge_couple_plan"), dict) else {}
             prompt_lines = [str(line).strip() for line in forge.get("prompt_lines", []) if str(line).strip()]
             if len(prompt_lines) != subject_count + 1:
                 raise AIProxyServiceError("Forge Couple scene layout must contain one global line and one line per visible subject.")
+            mode = str(plan.get("mode") or "Basic")
+            mappings = [
+                plan.get("global_region", {}).get("mapping"),
+                *[region.get("mapping") for region in plan.get("character_regions", [])],
+            ] if plan else []
+            if mode == "Advanced" and (len(mappings) != len(prompt_lines) or not all(isinstance(item, list) and len(item) == 5 for item in mappings)):
+                mode = "Basic"
+                mappings = []
             render_layout = {
                 "backend": "forge_couple_basic",
                 "subject_count": subject_count,
                 "prompt_lines": prompt_lines,
-                "mode": "Basic",
-                "disable_hr": True,
+                "mode": mode,
+                "disable_hr": bool(plan.get("forge_couple_debug_base_pass", True)),
+                "mappings": mappings,
                 "separator": "",
                 "direction": str(forge.get("direction") or "Horizontal"),
                 "background": str(forge.get("background") or "First Line"),

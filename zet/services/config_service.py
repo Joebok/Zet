@@ -25,6 +25,8 @@ class Config:
     local_render_negative_prompt_globals: str = ""
     local_render_layout_backend: str = "forge_couple_basic"
     local_render_checkpoint: str = ""
+    local_render_strict_primary_subject_count: bool = True
+    local_render_forge_couple_debug_base_pass: bool = True
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
@@ -131,6 +133,8 @@ class ConfigService:
                 local_render_negative_prompt_globals=str(local_render.get("NegativePromptGlobals", "")),
                 local_render_layout_backend=str(local_render.get("LayoutBackend", "forge_couple_basic")),
                 local_render_checkpoint=str(local_render.get("Checkpoint", "")),
+                local_render_strict_primary_subject_count=bool(local_render.get("StrictPrimarySubjectCount", True)),
+                local_render_forge_couple_debug_base_pass=bool(local_render.get("ForgeCoupleDebugBasePass", True)),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),

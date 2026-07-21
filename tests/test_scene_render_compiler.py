@@ -39,6 +39,47 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn(": .", prompt)
         self.assertNotIn("preserve ; ignore .", prompt)
 
+    def test_none_position_suppresses_all_placement_output(self):
+        scene = {
+            "setup": {
+                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
+                "composition": {"left_to_right": ["satchel", "hero"]},
+                "environment": {},
+            },
+            "scene_elements": [
+                {"id": "satchel", "display_name": "Satchel", "element_type": "Prop", "element_visual_override": "worn red leather satchel"},
+                {"id": "hero", "display_name": "Hero", "element_type": "Character"},
+            ],
+            "placements": [
+                {
+                    "scene_element_id": "satchel",
+                    "position_within_cell": "None",
+                    "depth": "foreground",
+                    "motion": {"state": "moving", "direction_screen": "left", "cue": "swinging"},
+                    "placement_notes": "beside the doorway",
+                },
+                {"scene_element_id": "hero", "position_within_cell": "center", "depth": "midground"},
+            ],
+        }
+        story = {"style_defaults": {}, "compiler_profiles": {"final_image_prompt": {}}}
+
+        ir = compile_scene_render_ir(scene, story)
+        prompt = final_image_prompt_text(ir)
+
+        self.assertEqual(["hero"], ir["composition"]["left_to_right"])
+        self.assertEqual(["hero"], [item["scene_element_id"] for item in ir["placements"]])
+        self.assertIn("**Element Override:** worn red leather satchel", prompt)
+        self.assertNotIn("**Satchel:**", prompt)
+        self.assertNotIn("beside the doorway", prompt)
+        self.assertNotIn("Satchel is visibly moving", prompt)
+        self.assertNotIn("Satchel, then Hero", prompt)
+
+        scene["placements"][0]["position_within_cell"] = "left"
+        placed_ir = compile_scene_render_ir(scene, story)
+        placed_prompt = final_image_prompt_text(placed_ir)
+        self.assertEqual(["satchel", "hero"], placed_ir["composition"]["left_to_right"])
+        self.assertIn("**Satchel:** Stands in the left foreground.", placed_prompt)
+
     def test_fallback_visual_description_used_without_reference_tag(self):
         prompt = self._prompt({
             "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}, "environment": {}},
@@ -250,6 +291,58 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("left foreground", regional_lines[1])
         self.assertIn("right foreground", regional_lines[2])
         self.assertFalse(forge.endswith("\n\n"))
+
+    def test_chapter_five_forge_couple_plan_is_deterministic(self):
+        story = {
+            "style_defaults": {"canonical_art_style": {"full_prompt_text": "painterly fantasy"}},
+            "compiler_profiles": {"final_image_prompt": {}},
+        }
+        scene = {
+            "scene": {"story_beat": "The two walk through the arch."},
+            "setup": {
+                "canvas": {"orientation": "portrait", "aspect_ratio": "4:5"},
+                "composition": {"focal_point": "Tsaeytte", "left_to_right": ["Valindia_8844d004", "Tsaeytte"]},
+                "environment": {"location": "through the academy arch", "lighting": "morning sunlight", "general_background_notes": "Other students coming and going."},
+            },
+            "scene_elements": [
+                {
+                    "id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character", "phase": "Youth",
+                    "resolved_source_sections": {"identity_preservation_core": "petite adolescent high elf with a short black bob", "identity_preservation_costume": "green blouse and forest-green skirt"},
+                },
+                {
+                    "id": "Valindia_8844d004", "display_name": "Valindia", "element_type": "Character",
+                    "element_visual_override": "Valindia is walking next to Tsaeytte with her arms wrapped around herself. Back-right 3/4 view.",
+                    "resolved_source_sections": {"identity_preservation_core": "tall elegant half-elf with crimson-red hair", "identity_preservation_costume": "black academy clothing with gold embroidery"},
+                },
+                {"id": "Spire_Archway_efbf29cc", "display_name": "Spire Archway", "element_type": "Backdrop", "element_visual_override": "monumental stone academy archway"},
+            ],
+            "placements": [
+                {"scene_element_id": "Tsaeytte", "position_within_cell": "center", "depth": "midground", "pose": {"summary": "Walking through the arch", "gaze_target_element_id": "Valindia_8844d004"}, "motion": {"state": "moving", "direction_screen": "away from camera"}, "placement_notes": "Tsaeytte is to the right of Valindia, holding a stack of books, back-left 3/4 view."},
+                {"scene_element_id": "Valindia_8844d004", "position_within_cell": "left", "depth": "midground", "pose": {"summary": "Standing, holding one of the books", "gaze_target_element_id": "Tsaeytte"}, "motion": {"state": "moving", "direction_screen": "away from camera"}},
+                {"scene_element_id": "Spire_Archway_efbf29cc", "depth": "background"},
+            ],
+            "dialogue": [{"text": "Maybe you should try not to be so ...", "pointer_target": "speaker mouth"}],
+        }
+
+        brief = local_render_brief(compile_scene_render_ir(scene, story))
+        plan = brief["forge_couple_plan"]
+        regions = plan["character_regions"]
+        prompt_lines = [plan["global_region"]["prompt"], *[region["prompt"] for region in regions]]
+        mappings = [plan["global_region"]["mapping"], *[region["mapping"] for region in regions]]
+
+        self.assertEqual(("Advanced", 2), (plan["mode"], plan["subject_count"]))
+        self.assertEqual(["Valindia_8844d004", "Tsaeytte"], [region["scene_element_id"] for region in regions])
+        self.assertNotIn("Spire_Archway_efbf29cc", [region["scene_element_id"] for region in regions])
+        self.assertIn("This region contains Valindia only", regions[0]["prompt"])
+        self.assertIn("This region contains Tsaeytte only", regions[1]["prompt"])
+        self.assertEqual(3, len(prompt_lines))
+        self.assertEqual(len(prompt_lines), len(mappings))
+        self.assertGreater(regions[1]["mapping"][4], regions[0]["mapping"][4])
+        self.assertIn("walking", regions[0]["prompt"])
+        self.assertNotIn("standing", regions[0]["prompt"].lower())
+        self.assertNotIn("arms wrapped", regions[0]["prompt"].lower())
+        self.assertNotRegex("\n".join(prompt_lines).lower(), r"maybe you should|speech panel|pointer|other students|crowd")
+        self.assertNotRegex("\n".join(region["prompt"] for region in regions).lower(), r"direct eye contact|front-facing|looking directly at viewer")
 
 
 if __name__ == "__main__":
