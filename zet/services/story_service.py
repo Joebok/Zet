@@ -993,6 +993,12 @@ class StoryService:
             default_position = "None" if element_types.get(str(item.get("scene_element_id") or "")) == "Prop" else "center"
             item.setdefault("position_within_cell", default_position)
             item.setdefault("depth", "midground")
+            raw_world_position = item.get("world_position")
+            world_position = raw_world_position.strip() if isinstance(raw_world_position, str) else ""
+            if world_position:
+                item["world_position"] = world_position
+            else:
+                item.pop("world_position", None)
             item.pop("z_order", None)
             item.setdefault("frame_coverage", "")
             item.setdefault("distance_from_camera", "")

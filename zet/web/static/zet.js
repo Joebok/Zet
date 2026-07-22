@@ -693,6 +693,7 @@ const SCENE_BUILDER_HELP = {
   "scene_elements[].notes": "Private notes for this element in this scene.",
   "placements[].position_within_cell": "Position inside the grid cell, or None to suppress placement output for this element.",
   "placements[].depth": "Depth layer: foreground, midground, background, or distant background.",
+  "placements[].world_position": "Location within the scene, such as \"at the edge of the pit\" or \"inside the doorway.\"",
   "placements[].pose.summary": "Concise pose summary.",
   "placements[].pose.gaze_target_element_id": "Element ID that this element is looking at.",
   "placements[].pose.expression": "Facial expression or visible emotional state.",
@@ -3275,6 +3276,7 @@ function builderRenderPlacementEditor() {
       <div class="scene-builder-fields">
         <label>${builderCaption("Position", "placements[].position_within_cell")}<select data-builder-placement-field="position_within_cell"${isBackdrop ? " disabled" : ""}>${builderOptionHtml("position_within_cell", isBackdrop ? "" : placement.position_within_cell || "center")}</select></label>
         <label>${builderCaption("Depth", "placements[].depth")}<select data-builder-placement-field="depth"${placementDisabled}>${builderOptionHtml("depth", placement.depth || "midground")}</select></label>
+        <label class="full">${builderCaption("World Position", "placements[].world_position")}<input value="${escapeHtml(placement.world_position || "")}" data-builder-placement-field="world_position"${placementDisabled}></label>
         ${showActing ? `
           <label class="full">${builderCaption("(Pose) Element [pose] in the selected region.", "placements[].pose.summary")}<input list="builder-pose-list" value="${escapeHtml(placement.pose?.summary || "")}" data-builder-placement-field="pose.summary"${placementDisabled}></label>
           <label>${builderCaption("(Gaze target) Element looks directly at ...", "placements[].pose.gaze_target_element_id")}<select data-builder-placement-field="pose.gaze_target_element_id"${placementDisabled}>${builderElementOptions(placement.pose?.gaze_target_element_id || "")}</select></label>

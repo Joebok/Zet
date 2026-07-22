@@ -39,6 +39,47 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn(": .", prompt)
         self.assertNotIn("preserve ; ignore .", prompt)
 
+    def test_world_position_is_separate_from_pose_and_camera_placement(self):
+        prompt = self._prompt({
+            "scene_elements": [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"}],
+            "placements": [{
+                "scene_element_id": "Tsaeytte",
+                "position_within_cell": "left",
+                "depth": "foreground",
+                "world_position": "at the edge of the pit",
+                "pose": {"summary": "Looking straight down"},
+            }],
+        })
+
+        self.assertIn(
+            "**Tsaeytte:** At the edge of the pit. Looking straight down. Place Tsaeytte in the left foreground region.",
+            prompt,
+        )
+        self.assertNotIn("at the edge of the pit left foreground", prompt.lower())
+
+    def test_world_position_without_pose_and_exact_pose_prefix_cleanup(self):
+        scene = {
+            "scene_elements": [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"}],
+            "placements": [{
+                "scene_element_id": "Tsaeytte",
+                "position_within_cell": "center",
+                "depth": "foreground",
+                "world_position": "inside the doorway.",
+            }],
+        }
+        self.assertIn(
+            "**Tsaeytte:** Inside the doorway. Place Tsaeytte in the center foreground region.",
+            self._prompt(scene),
+        )
+        scene["placements"][0].update({
+            "world_position": "at the edge of the pit",
+            "pose": {"summary": "At the edge of the pit, looking straight down."},
+        })
+        self.assertIn(
+            "**Tsaeytte:** At the edge of the pit. Looking straight down. Place Tsaeytte in the center foreground region.",
+            self._prompt(scene),
+        )
+
     def test_none_position_suppresses_all_placement_output(self):
         scene = {
             "setup": {

@@ -604,6 +604,37 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     element = _element(ir, element_id)
     pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
     pose_summary = clean_prompt_sentence(pose.get("summary") if pose else placement.get("pose"))
+    world_position = clean_prompt_sentence(placement.get("world_position"))
+    if world_position:
+        name = get_element_display_name(element_id, elements_by_id)
+        world_sentence = _sentence(world_position)
+        world_sentence = world_sentence[:1].upper() + world_sentence[1:]
+        normalized_world = world_position.rstrip(".!?").lower()
+        pose_lower = pose_summary.lower()
+        prefix_boundary = pose_lower[len(normalized_world):len(normalized_world) + 1]
+        if pose_lower.startswith(normalized_world) and (not prefix_boundary or prefix_boundary in " ,.;:!?"):
+            pose_summary = pose_summary[len(normalized_world):].lstrip(" ,.;:!?")
+            pose_summary = pose_summary[:1].upper() + pose_summary[1:]
+        sentences = [world_sentence, _sentence(pose_summary)]
+        actions = _lines([pose.get("left_arm_action"), pose.get("right_arm_action")])
+        if actions:
+            sentences.append(_sentence(", ".join(actions)))
+        target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
+        target = get_element_display_name(target_id, elements_by_id) if target_id else ""
+        if target:
+            sentences.append(_sentence(f"Looks directly at {target}"))
+        expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression"))
+        if expression:
+            sentences.append(_sentence(f"Expression: {expression}"))
+        notes = clean_prompt_sentence(placement.get("placement_notes"))
+        if notes:
+            sentences.append(_sentence(notes))
+        position = clean_prompt_sentence(placement.get("position_within_cell"))
+        depth = clean_prompt_sentence(placement.get("depth"))
+        camera_region = " ".join(item for item in (position, depth) if item)
+        if camera_region:
+            sentences.append(_sentence(f"Place {name} in the {camera_region} region"))
+        return " ".join(item for item in sentences if item)
     region = _semantic_region(ir, placement)
     element_type = _clean(element.get("element_type"))
     verb = "occupies" if element_type in {"Place", "Backdrop"} or _clean(element.get("resource_type")) == "Place" else "stands"

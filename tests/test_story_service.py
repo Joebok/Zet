@@ -205,6 +205,31 @@ At the Arch
             reloaded = service.load_scene_builder_data("FirstDay", "At-the-Arch")
             self.assertEqual("Tsaeytte", reloaded.data["placements"][0]["scene_element_id"])
 
+    def test_scene_builder_world_position_is_trimmed_and_blank_is_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["scene_elements"] = [
+                {"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"},
+                {"id": "Rin", "display_name": "Rin", "element_type": "Character"},
+            ]
+            data["placements"] = [
+                {"scene_element_id": "Tsaeytte", "world_position": "  at the edge of the pit  "},
+                {"scene_element_id": "Rin", "world_position": "   "},
+            ]
+
+            document = service.save_scene_builder_data("FirstDay", "At-the-Arch", data)
+
+            self.assertEqual("at the edge of the pit", document.data["placements"][0]["world_position"])
+            self.assertNotIn("world_position", document.data["placements"][1])
+            reloaded = service.load_scene_builder_data("FirstDay", "At-the-Arch")
+            self.assertEqual("at the edge of the pit", reloaded.data["placements"][0]["world_position"])
+
     def test_continue_scene_builder_copies_visual_setup_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
