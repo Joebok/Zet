@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-import difflib
 import json
 import re
 from dataclasses import asdict
@@ -245,24 +244,12 @@ def _discover_phases(base_character_path: str, character: str) -> list[str]:
 
 
 def _review_image_ready(zet_app: ZetApp, asset) -> bool:
-    if asset.pipeline_stage == "PROMPT_REVIEW":
-        if asset.pipeline != "Body-Reference":
-            return False
-        try:
-            context = zet_app.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
-            return context.latest_local_test_render is not None
-        except Exception:
-            return False
     if asset.pipeline_stage == "RENDER_REVIEW":
         try:
             return zet_app.path_service.candidate_image_path(asset).exists()
         except Exception:
             return False
     return False
-
-
-def _is_prompt_review_asset(asset) -> bool:
-    return asset.pipeline_stage == "PROMPT_REVIEW" and asset.actor == "HUMAN_AGENT"
 
 
 def _is_render_review_asset(asset) -> bool:
@@ -486,41 +473,6 @@ def _onboarding_status_payload(status) -> dict[str, Any]:
 def _onboarding_options_payload(options) -> dict[str, Any]:
     """Serialize character onboarding dropdown options."""
     return asdict(options)
-
-
-def _prompt_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
-    payload = _asset_payload(zet_app, asset)
-    try:
-        context = zet_app.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
-        payload["prompt_path"] = str(context.prompt_path) if context.prompt_path else None
-        payload["condense_state"] = context.condense_status.get("state")
-        payload["latest_local_test_render"] = str(context.latest_local_test_render) if context.latest_local_test_render else None
-    except Exception:
-        payload["prompt_path"] = None
-        payload["condense_state"] = None
-        payload["latest_local_test_render"] = None
-    return payload
-
-
-def _prompt_review_context_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
-    context = zet_app.prompt_review_service.get_context(character, phase, asset_id)
-    asset = context.asset
-    return {
-        "asset": _asset_payload(zet_app, asset),
-        "is_reviewable": _is_prompt_review_asset(asset),
-        "supports_local_test_render": asset.pipeline == "Body-Reference",
-        "prompt_path": str(context.prompt_path) if context.prompt_path else None,
-        "prompt_text": context.prompt_text or "",
-        "condensed_prompt_path": str(context.condensed_prompt_path) if context.condensed_prompt_path else None,
-        "condensed_prompt_text": context.condensed_prompt_text or "",
-        "render_prompt_path": str(context.render_prompt_path) if context.render_prompt_path else None,
-        "source_map_path": str(context.source_map_path) if context.source_map_path else None,
-        "source_map": _jsonable(context.source_map),
-        "prompt_review_path": str(context.prompt_review_path) if context.prompt_review_path else None,
-        "latest_local_test_render": str(context.latest_local_test_render) if context.latest_local_test_render else None,
-        "prompt_candidates": [str(path) for path in context.prompt_candidates],
-        "condense_status": _jsonable(context.condense_status),
-    }
 
 
 def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any]:
@@ -757,10 +709,7 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
         render_backend=str(payload.get("render_backend", defaults.render_backend)),
-        ai_prompt_review_model=str(payload.get("ai_prompt_review_model", defaults.ai_prompt_review_model)),
-        ai_prompt_review_instructions_file=str(
-            payload.get("ai_prompt_review_instructions_file", defaults.ai_prompt_review_instructions_file)
-        ),
+        ai_prompt_analysis_model=str(payload.get("ai_prompt_analysis_model", defaults.ai_prompt_analysis_model)),
         ai_prompt_analysis_instructions_file=str(
             payload.get("ai_prompt_analysis_instructions_file", defaults.ai_prompt_analysis_instructions_file)
         ),
@@ -802,63 +751,6 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     return value
-
-
-def _source_for_line(source_map: dict[str, Any], line_number: int) -> dict[str, Any]:
-    fragments = source_map.get("fragments") if isinstance(source_map, dict) else []
-    if not isinstance(fragments, list):
-        return {}
-    for fragment in fragments:
-        if not isinstance(fragment, dict):
-            continue
-        start = int(fragment.get("prompt_start_line") or 0)
-        end = int(fragment.get("prompt_end_line") or start)
-        if start <= line_number <= end:
-            return fragment
-    return {}
-
-
-def _prompt_diff_payload(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
-    old_text = str(before.get("prompt_text") or "")
-    new_text = str(after.get("prompt_text") or "")
-    old_lines = old_text.splitlines()
-    new_lines = new_text.splitlines()
-    old_map = before.get("source_map") if isinstance(before.get("source_map"), dict) else {}
-    new_map = after.get("source_map") if isinstance(after.get("source_map"), dict) else {}
-    old_rows: list[dict[str, Any]] = []
-    new_rows: list[dict[str, Any]] = []
-
-    def row(line_no: int, text: str, status: str, source_map: dict[str, Any]) -> dict[str, Any]:
-        source = _source_for_line(source_map, line_no)
-        return {
-            "line_no": line_no,
-            "text": text,
-            "status": status,
-            "source_kind": source.get("source_kind") or "",
-            "source_label": source.get("source_label") or "",
-        }
-
-    matcher = difflib.SequenceMatcher(a=old_lines, b=new_lines)
-    for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
-        old_status = "unchanged" if tag == "equal" else "changed"
-        new_status = "unchanged" if tag == "equal" else "changed"
-        if tag == "delete":
-            old_status = "removed"
-        elif tag == "insert":
-            new_status = "added"
-
-        for index in range(old_start, old_end):
-            old_rows.append(row(index + 1, old_lines[index], old_status, old_map))
-        for index in range(new_start, new_end):
-            new_rows.append(row(index + 1, new_lines[index], new_status, new_map))
-
-    return {
-        "changed": old_text != new_text,
-        "old_prompt_path": before.get("prompt_path"),
-        "new_prompt_path": after.get("prompt_path"),
-        "old_rows": old_rows,
-        "new_rows": new_rows,
-    }
 
 
 def _record_source_edit(payload: dict[str, Any], result: dict[str, Any]) -> None:
@@ -1877,98 +1769,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             zet_app = _app(app.state.config_path)
             return _save_edit_source(zet_app, payload)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/prompt-review/tasks")
-    def prompt_review_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            assets = [asset for asset in zet_app.list_assets(character, phase) if _is_prompt_review_asset(asset)]
-            return {"tasks": [_prompt_review_task_payload(zet_app, asset) for asset in assets]}
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/prompt-review/{asset_id}")
-    def prompt_review_detail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            return _prompt_review_context_payload(zet_app, character, phase, asset_id)
-        except Exception as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-review/{asset_id}/local-test-render")
-    def prompt_review_local_test_render(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            result = zet_app.generate_local_test_render(character, phase, asset_id)
-            payload = _prompt_review_context_payload(zet_app, character, phase, asset_id)
-            payload["message"] = f"Local test image generated: {result.image_path}"
-            return payload
-        except LocalRenderUnavailable as exc:
-            raise HTTPException(status_code=503, detail="Local render backend unavailable.") from exc
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-review/{asset_id}/recompile")
-    def prompt_review_recompile(
-        asset_id: int,
-        character: str = Query(...),
-        phase: str = Query(...),
-        invalidate_review_artifacts: bool = Query(False),
-    ) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            before = _prompt_review_context_payload(zet_app, character, phase, asset_id)
-            zet_app.recompile_prompt_review(
-                character,
-                phase,
-                asset_id,
-                invalidate_review_artifacts=invalidate_review_artifacts,
-            )
-            payload = _prompt_review_context_payload(zet_app, character, phase, asset_id)
-            payload["prompt_diff"] = _prompt_diff_payload(before, payload)
-            suffix = " Review aids were cleared." if invalidate_review_artifacts else ""
-            payload["message"] = f"Prompt recompiled for Asset {asset_id}.{suffix}"
-            return payload
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-review/{asset_id}/approve")
-    def prompt_review_approve(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            updated = zet_app.approve_prompt_review(character, phase, asset_id)
-            return {
-                "message": f"Prompt approved. Asset {updated.asset_id} moved to {updated.pipeline_stage}.",
-                "asset": _asset_payload(zet_app, updated),
-                "tasks": [
-                    _prompt_review_task_payload(zet_app, asset)
-                    for asset in zet_app.list_assets(character, phase)
-                    if _is_prompt_review_asset(asset)
-                ],
-            }
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-review/{asset_id}/fail")
-    def prompt_review_fail(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            updated = zet_app.fail_prompt_review(character, phase, asset_id)
-            return {
-                "message": f"Prompt failed. Asset {updated.asset_id} moved to {updated.pipeline_stage}.",
-                "asset": _asset_payload(zet_app, updated),
-                "tasks": [
-                    _prompt_review_task_payload(zet_app, asset)
-                    for asset in zet_app.list_assets(character, phase)
-                    if _is_prompt_review_asset(asset)
-                ],
-            }
         except HTTPException:
             raise
         except Exception as exc:

@@ -30,8 +30,7 @@ class Config:
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
-    ai_prompt_review_model: str = "qwen3.5:9b-instruct"
-    ai_prompt_review_instructions_file: str = "Config/AI_Prompt_Review_Instructions.md"
+    ai_prompt_analysis_model: str = "qwen3.5:9b-instruct"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
 
 
@@ -88,11 +87,6 @@ class ConfigService:
         return render if isinstance(render, dict) else {}
 
     @staticmethod
-    def _ai_prompt_review_config(payload: dict) -> dict:
-        review = payload.get("AIPromptReview", {})
-        return review if isinstance(review, dict) else {}
-
-    @staticmethod
     def _ai_prompt_analysis_config(payload: dict) -> dict:
         analysis = payload.get("AIPromptAnalysis", {})
         return analysis if isinstance(analysis, dict) else {}
@@ -113,7 +107,6 @@ class ConfigService:
             local_render = ConfigService._local_render_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
-            ai_prompt_review = ConfigService._ai_prompt_review_config(payload)
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
             library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
             return Config(
@@ -138,10 +131,7 @@ class ConfigService:
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),
-                ai_prompt_review_model=str(ai_prompt_review.get("Model", "qwen3.5:9b-instruct")),
-                ai_prompt_review_instructions_file=str(
-                    ai_prompt_review.get("InstructionsFile", "Config/AI_Prompt_Review_Instructions.md")
-                ),
+                ai_prompt_analysis_model=str(ai_prompt_analysis.get("Model", "qwen3.5:9b-instruct")),
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),

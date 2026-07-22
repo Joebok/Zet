@@ -59,12 +59,6 @@ class AssetRef:
     def move_next(self) -> Asset:
         return self._app.asset_service.move_next(self._character, self._phase, self._asset_id)
 
-    def approve_prompt_review(self) -> Asset:
-        return self._app.prompt_review_service.approve(self._character, self._phase, self._asset_id)
-
-    def fail_prompt_review(self, reason: str = "") -> Asset:
-        return self._app.prompt_review_service.fail(self._character, self._phase, self._asset_id, reason)
-
     def prompt_review_context(self) -> PromptReviewContext:
         return self._app.prompt_review_service.get_context(self._character, self._phase, self._asset_id)
 
@@ -457,20 +451,14 @@ class ZetApp:
     def prompt_review_context(self, character: str, phase: str, asset_id: int) -> PromptReviewContext:
         return self.prompt_review_service.get_context(character, phase, asset_id)
 
-    def approve_prompt_review(self, character: str, phase: str, asset_id: int) -> Asset:
-        return self.prompt_review_service.approve(character, phase, asset_id)
-
-    def fail_prompt_review(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
-        return self.prompt_review_service.fail(character, phase, asset_id, reason)
-
     def generate_local_test_render(self, character: str, phase: str, asset_id: int):
         return self.prompt_review_service.generate_local_test_render(character, phase, asset_id)
 
     def stage_prompt_condense_ask(self, character: str, phase: str, asset_id: int, force: bool = False):
         return self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id, force)
 
-    def stage_prompt_review_render_ask(self, character: str, phase: str, asset_id: int):
-        return self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(character, phase, asset_id)
+    def stage_prompt_inspection_render_ask(self, character: str, phase: str, asset_id: int):
+        return self.ai_proxy_service.stage_prompt_inspection_render_ask_if_enabled(character, phase, asset_id)
 
     def stage_render_task_prompt_condense_ask(
         self,

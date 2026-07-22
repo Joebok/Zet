@@ -446,7 +446,7 @@ class AIProxyService:
             raise AIProxyServiceError("Prompt review service is required to stage prompt condense asks.")
 
         asset = self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.pipeline_stage not in {"PROMPT_REVIEW", "RENDER"}:
+        if asset.pipeline_stage != "RENDER":
             return None
         context = self.prompt_review_service.get_context(character, phase, asset_id)
         if context.prompt_path is None or not context.prompt_text:
@@ -692,39 +692,39 @@ class AIProxyService:
 
         return self.stage_render_task_local_render_ask(staged_manifest, prompt_path, workspace, render_layout)
 
-    def stage_prompt_review_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
+    def stage_prompt_inspection_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
         if not self._local_render_auto_queue_after_condense_enabled():
             return None
         if self.prompt_review_service is None:
-            raise AIProxyServiceError("Prompt review service is required to stage prompt review render asks.")
+            raise AIProxyServiceError("Prompt inspection service is required to stage preview render asks.")
 
         asset = self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.pipeline_stage not in {"PROMPT_REVIEW", "RENDER"}:
+        if asset.pipeline_stage != "RENDER":
             return None
 
         context = self.prompt_review_service.get_context(character, phase, asset_id)
         if context.condensed_prompt_path is None or not context.condensed_prompt_text:
             return None
-        if self._has_pending_auxiliary_task(asset, "prompt_review_render"):
+        if self._has_pending_auxiliary_task(asset, "prompt_inspection_render"):
             return None
 
         self._ensure_queue_dirs()
         stamp = self._timestamp_compact()
         target_output_file = f"test_{stamp}.png"
         ask = AIProxyAsk(
-            ask_id=f"Ask_Asset_{asset.asset_id}_PROMPT_REVIEW_RENDER_{stamp}",
+            ask_id=f"Ask_Asset_{asset.asset_id}_PROMPT_INSPECTION_RENDER_{stamp}",
             asset_id=asset.asset_id,
             character=asset.character,
             phase=asset.phase,
             pipeline=asset.pipeline,
             pipeline_stage=asset.pipeline_stage,
-            ollama_attempt_id=f"{stamp}_{asset.asset_id}_PROMPT_REVIEW_RENDER",
+            ollama_attempt_id=f"{stamp}_{asset.asset_id}_PROMPT_INSPECTION_RENDER",
             worker_type="local_image_render",
             ollama_model="",
             prompt_file="Condensed_Image_Prompt.md",
             expected_output=target_output_file,
             candidate_output_file=None,
-            task_type="prompt_review_render",
+            task_type="prompt_inspection_render",
             auxiliary=True,
             target_output_file=target_output_file,
             render_preset=self._local_render_preset(),

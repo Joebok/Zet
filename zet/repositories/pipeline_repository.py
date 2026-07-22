@@ -47,6 +47,8 @@ class PipelineRepository:
             raise PipelineRepositoryError(f"Pipeline {name} must define actor_by_stage as an object")
         if not isinstance(worker_by_stage, dict):
             raise PipelineRepositoryError(f"Pipeline {name} must define worker_by_stage as an object")
+        if "PROMPT_REVIEW" in stages or "PROMPT_REVIEW" in actor_by_stage or "PROMPT_REVIEW" in worker_by_stage:
+            raise PipelineRepositoryError(f"Pipeline {name} uses unsupported stage PROMPT_REVIEW")
         for stage in stages:
             if stage not in actor_by_stage:
                 raise PipelineRepositoryError(f"Pipeline {name} has no actor assignment for stage {stage}")

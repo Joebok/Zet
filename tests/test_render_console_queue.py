@@ -56,7 +56,25 @@ An arch.
 """.lstrip(),
                 encoding="utf-8",
             )
+            (story_dir / "At-the-Arch.scene.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 3,
+                        "setup": {
+                            "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
+                            "environment": {"location": "academy archway"},
+                        },
+                        "scene_elements": [],
+                        "placements": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
             app = ZetApp.from_config(config_path)
+            app.story_service.save_story_settings(
+                story_dir / "First-Day.story.json",
+                app.story_service.create_default_story_settings(story_dir / "First-Day.md"),
+            )
             first = app.stage_scene_render("First-Day", "At-the-Arch")
             first_ask = Path(first.ask_path)
             answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / first_ask.name

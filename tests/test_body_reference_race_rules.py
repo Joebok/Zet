@@ -17,6 +17,18 @@ from Run_Body_Reference_Jobs import compile_body_reference_job
 
 
 class BodyReferenceRaceRulesTests(unittest.TestCase):
+    def _write_config(self, root: Path) -> None:
+        (root / "config.toml").write_text(
+            f"""[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "_Lib/Characters"
+BaseAssetPath = "_Lib/Assets"
+BasePipelinePath = "_Lib/Pipelines"
+BaseAIQueuePath = "_Lib/AI_Queue"
+""",
+            encoding="utf-8",
+        )
+
     def _write_shared_stance_sections(self, root: Path, extra_sections: str = "") -> None:
         shared_dir = root / "_Lib" / "Characters" / "_Shared"
         shared_dir.mkdir(parents=True, exist_ok=True)
@@ -41,6 +53,7 @@ class BodyReferenceRaceRulesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            self._write_config(root)
             self._write_shared_stance_sections(root)
 
             character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
@@ -109,6 +122,7 @@ Gender Presentation: `[Feminine adult woman]`
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            self._write_config(root)
 
             self._write_shared_stance_sections(
                 root,
@@ -182,6 +196,7 @@ Gender Presentation: `[Feminine adult woman]`
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            self._write_config(root)
             self._write_shared_stance_sections(root)
 
             character_dir = root / "_Lib" / "Characters" / "Mystery" / "Adult"

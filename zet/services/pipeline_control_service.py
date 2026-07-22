@@ -25,8 +25,7 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
-    ai_prompt_review_model: str = "qwen3.5:9b-instruct"
-    ai_prompt_review_instructions_file: str = "Config/AI_Prompt_Review_Instructions.md"
+    ai_prompt_analysis_model: str = "qwen3.5:9b-instruct"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
 
 
@@ -107,8 +106,7 @@ class PipelineControlService:
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
-            ai_prompt_review_model=str(self.config.ai_prompt_review_model),
-            ai_prompt_review_instructions_file=str(self.config.ai_prompt_review_instructions_file),
+            ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
             ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
         )
 
@@ -130,12 +128,7 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
-            {"Scope": "Project config", "Setting": "AIPromptReview.Model", "Value": self.config.ai_prompt_review_model},
-            {
-                "Scope": "Project config",
-                "Setting": "AIPromptReview.InstructionsFile",
-                "Value": self.config.ai_prompt_review_instructions_file,
-            },
+            {"Scope": "Project config", "Setting": "AIPromptAnalysis.Model", "Value": self.config.ai_prompt_analysis_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
 
@@ -151,8 +144,7 @@ class PipelineControlService:
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
-            ("AIPromptReview", "Model"): settings.ai_prompt_review_model,
-            ("AIPromptReview", "InstructionsFile"): settings.ai_prompt_review_instructions_file,
+            ("AIPromptAnalysis", "Model"): settings.ai_prompt_analysis_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
         self._update_config_values(updates)
@@ -169,10 +161,8 @@ class PipelineControlService:
             raise PipelineControlServiceError("Auto harvest interval cannot be negative.")
         if settings.ai_harvest_interval_seconds > 86400:
             raise PipelineControlServiceError("Auto harvest interval must be 86400 seconds or less.")
-        if not settings.ai_prompt_review_model.strip():
-            raise PipelineControlServiceError("AI prompt review model cannot be blank.")
-        if not settings.ai_prompt_review_instructions_file.strip():
-            raise PipelineControlServiceError("AI prompt review instructions file cannot be blank.")
+        if not settings.ai_prompt_analysis_model.strip():
+            raise PipelineControlServiceError("AI prompt analysis model cannot be blank.")
         if not settings.ai_prompt_analysis_instructions_file.strip():
             raise PipelineControlServiceError("AI prompt analysis instructions file cannot be blank.")
 

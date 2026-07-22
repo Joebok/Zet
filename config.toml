@@ -35,9 +35,6 @@ IntervalSeconds = 60
 [Render]
 Backend = "manual_chatgpt"
 
-[AIPromptReview]
-Model = "qwen3:4b-q4_K_M "
-InstructionsFile = "Config/AI_Prompt_Review_Instructions.md"
-
 [AIPromptAnalysis]
+Model = "qwen3:4b-q4_K_M "
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

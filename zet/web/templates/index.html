@@ -38,7 +38,7 @@
     <button class="tab onboarding-tab" data-page="onboarding">Onboarding</button>
     <button class="tab active workflow-tab" data-page="assets">Assets</button>
     <button class="tab workflow-tab" data-page="manifest">Manifest</button>
-    <button class="tab workflow-tab" data-page="prompt-review">Prompt Review</button>
+    <button class="tab workflow-tab" data-page="prompt-review">Prompt Inspection</button>
     <button class="tab workflow-tab" data-page="render-console">Render Console</button>
     <button class="tab workflow-tab" data-page="render-review">Image Review</button>
     <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
@@ -738,7 +738,7 @@
 
     <section id="prompt-review-page" class="page">
       <div class="page-title-row">
-        <h1>Prompt Review</h1>
+        <h1>Prompt Inspection</h1>
         <div id="prompt-review-status" class="status-text"></div>
       </div>
       <div class="review-layout">
@@ -1037,7 +1037,7 @@
           <form id="automation-form" class="settings-form">
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
             <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
-            <label>AI prompt analysis model<input id="setting-ai-prompt-review-model" type="text"></label>
+            <label>AI prompt analysis model<input id="setting-ai-prompt-analysis-model" type="text"></label>
             <label>AI prompt analysis instructions<input id="setting-ai-prompt-analysis-file" type="text"></label>
             <label>
               Final render backend
@@ -1186,7 +1186,7 @@
       <div class="source-editor-layout">
         <section class="review-main">
           <div class="review-header">
-            <h2 id="source-editor-title">Select a source from Prompt Review</h2>
+            <h2 id="source-editor-title">Select a source from Prompt Inspection</h2>
           </div>
           <div class="source-editor-toolbar">
             <button id="source-editor-save" class="primary-action" disabled>Save Source</button>

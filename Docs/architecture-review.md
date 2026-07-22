@@ -322,3 +322,17 @@ These operations should be atomic - all succeed or rollback.
 9. **Are public-looking helpers in `scene_render_compiler.py` and `StoryService` imported by untracked personal scripts?** Confirm before deleting the D1 set.
 
 There are no untracked personal scripts.
+
+## Implementation Status
+
+### P0 implemented and verified.
+- Reproduced baseline: 16 failed, 85 passed.
+- Removed retired prompt-review worker, routes, transitions, config, and facade actions.
+- Enforced rejection of PROMPT_REVIEW.
+- Renamed active terminology to Prompt Inspection / AIPromptAnalysis.
+- Updated V3-only characterization tests and current docs.
+- Fixed Stable Matrix metadata harvesting.
+- Diff: 24 files, +172 / -712.
+- Tests: python3 -m pytest -q → 101 passed, 1 existing warning.
+- git diff --check passed.
+- No P1+ work performed.

@@ -12,9 +12,9 @@ Zet currently supports:
 - FastAPI dashboard controls
 - service-layer asset state transitions
 - body-reference prompt compilation
-- human prompt review
-- optional AI prompt condensing before prompt review
-- optional local prompt-review image previews
+- render-queue prompt inspection
+- optional AI prompt condensing before render
+- optional local prompt-inspection image previews
 - filesystem AI proxy ask/answer flow
 - local image rendering through a backend-neutral render worker
 - ComfyUI as the first local image render backend
@@ -25,7 +25,7 @@ The current first working end-to-end path is:
 
 ```text
 Body-Reference asset
-MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW -> LOCKED
+MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
 ```
 
 The current mature test asset is `asset_id = 1` for `Tsaeytte / Adult / Body-Reference / Front`.
@@ -124,7 +124,6 @@ Current stages used by the configured pipelines:
 
 - `MANIFEST`
 - `PROMPT`
-- `PROMPT_REVIEW`
 - `RENDER`
 - `RENDER_REVIEW`
 - `LOCKED`
@@ -133,7 +132,7 @@ Current stages used by the configured pipelines:
 The standard configured flow is:
 
 ```text
-MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW
+MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW
 ```
 
 Approved render reviews promote the asset into:
@@ -164,10 +163,9 @@ The dashboard exposes actions such as `Run Current Worker`, `Run Housekeeping`, 
 
 Currently implemented human review points:
 
-- `PROMPT_REVIEW`
 - `RENDER_REVIEW`
 
-Prompt review and render review both have dedicated FastAPI dashboard pages. Render review handles promotion to `LOCKED` and supports fail paths back to `RENDER` or full regeneration.
+Render review has a dedicated FastAPI dashboard page. It handles promotion to `LOCKED` and supports fail paths back to `RENDER` or full regeneration.
 
 ### `AI_AGENT`
 
@@ -231,7 +229,7 @@ Current dashboard pages:
 
 - `Assets`
 - `Manifest`
-- `Prompt Review`
+- `Prompt Inspection`
 - `Render Review`
 - `Render Console`
 - `AI Controls`
@@ -252,7 +250,7 @@ The active stage path is:
 MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
 ```
 
-Head-Fitment does not use Prompt Review or ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character_Image_Template.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
+Head-Fitment does not use ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character_Image_Template.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
 
 ### Assets Page
 
@@ -260,7 +258,7 @@ The Assets page shows asset records for the selected character and phase.
 
 Implemented controls include:
 
-- `Open Prompt Review`
+- `Open Prompt Inspection`
 - `Stage AI Ask`
 - `Run Current Worker`
 - `Run Housekeeping`
@@ -282,37 +280,9 @@ The page also shows:
 
 `Regenerate` is treated as a fresh start for that asset. It clears the asset pipeline working folder, removes stale proxy queue items for the asset, and removes known generated Body-Reference artifacts such as `Final_Image_Prompt.md`, `Condensed_Image_Prompt.md`, review files, dependency manifests, and local test renders before returning the asset to `MANIFEST`.
 
-### Prompt Review Page
+### Prompt Inspection Page
 
-The Prompt Review page is active for assets at:
-
-```text
-pipeline_stage = PROMPT_REVIEW
-actor = HUMAN_AGENT
-```
-
-Implemented features:
-
-- prompt display with readable contrast
-- prompt copy control
-- prompt search
-- two-column layout
-- Previous / Next navigation across assets waiting for prompt review
-- optional local test image generation
-- latest local test render display
-- Approve
-- Fail
-
-Approve advances the asset. If the next stage is `AI_AGENT`, the proxy ask is staged automatically.
-
-Fail currently blocks the asset by setting:
-
-```text
-asset_state = BLOCKED
-pipeline_stage = ERROR
-actor = HUMAN_AGENT
-error_code = PROMPT_REVIEW_FAILED
-```
+Prompt Inspection displays and recompiles prompts from queued `RENDER` tasks. It supports prompt copy/search, source attribution, Previous/Next navigation, and optional local test renders. It does not represent a pipeline stage or advance asset state.
 
 ### Template Editor
 
@@ -367,7 +337,7 @@ actor = AI_AGENT
 ai_state = ASKED
 ```
 
-The batch reset clears stale proxy queue items for each affected asset, removes old candidate render outputs and local render metadata, and stages fresh render asks. Locked assets are skipped unless `Include locked assets` is enabled. This is not a full regeneration; compiled prompts and prompt-review artifacts are preserved.
+The batch reset clears stale proxy queue items for each affected asset, removes old candidate render outputs and local render metadata, and stages fresh render asks. Locked assets are skipped unless `Include locked assets` is enabled. This is not a full regeneration; compiled prompts and prompt-inspection artifacts are preserved.
 
 ## Body-Reference Prompt Pipeline
 
@@ -424,7 +394,7 @@ AutoEnabled = true
 IntervalSeconds = 300
 ```
 
-When enabled, moving a Body-Reference asset from `PROMPT` to `PROMPT_REVIEW` stages an auxiliary proxy ask with:
+When enabled, moving a Body-Reference asset from `PROMPT` to `RENDER` stages an auxiliary proxy ask with:
 
 ```text
 worker_type = ollama_generate
@@ -446,7 +416,7 @@ The harvester copies successful condense output to:
 Condensed_Image_Prompt.md
 ```
 
-This task does not advance the asset, change `Final_Image_Prompt.md`, approve prompt review, or block prompt review if it fails.
+This task does not advance the asset or change `Final_Image_Prompt.md` if it fails.
 
 When `LocalRender.AutoQueueAfterCondense` is true, harvesting a successful `prompt_condense` answer queues a review-only `local_image_render` ask. That ask writes a test image into `Local_Test_Renders/` and does not advance the asset.
 
@@ -513,7 +483,7 @@ This is only a review aid.
 It does not:
 
 - modify `Final_Image_Prompt.md`
-- approve prompt review
+- inspect render prompts
 - advance the job
 - overwrite final body-reference output
 - require ComfyUI for normal prompt compilation

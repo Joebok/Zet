@@ -513,25 +513,15 @@ Backend = "manual_chatgpt"
             self.assertIn("Finished at RENDER", payload["message"])
             self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
 
-    def test_prompt_review_api_serves_tasks_detail_and_fail(self):
+    def test_retired_prompt_review_api_is_not_registered(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            config_path = self._write_fixture(root, stage="PROMPT_REVIEW", actor="HUMAN_AGENT")
+            config_path = self._write_fixture(root)
             client = TestClient(create_app(config_path))
 
             tasks = client.get("/api/prompt-review/tasks", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(tasks.status_code, 200)
-            self.assertEqual(tasks.json()["tasks"][0]["asset_id"], 1)
-
-            detail = client.get("/api/prompt-review/1", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(detail.status_code, 200)
-            self.assertTrue(detail.json()["is_reviewable"])
-            self.assertEqual(detail.json()["prompt_text"], "full final prompt\n")
-
-            failed = client.post("/api/prompt-review/1/fail", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(failed.status_code, 200)
-            self.assertIn("Prompt failed", failed.json()["message"])
-            self.assertEqual(failed.json()["asset"]["pipeline_stage"], "ERROR")
+            self.assertEqual(tasks.status_code, 404)
+            self.assertFalse(any(path.startswith("/api/prompt-review") for path in client.get("/openapi.json").json()["paths"]))
 
     def test_render_review_api_serves_tasks_detail_and_promotes_to_locked(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -716,7 +706,7 @@ Backend = "manual_chatgpt"
                 "Keep this front view absolutely square to the viewer.",
             )
             self.assertEqual(saved_helper.json()["gpt_helper_prompt"]["source"], "pipeline:Body-Reference")
-            helper_config = json.loads((root / "Config" / "GPT_Helper_Prompts.json").read_text(encoding="utf-8"))
+            helper_config = json.loads((root / "Characters" / "Test" / "Adult" / "GPT_Helper_Prompts.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 helper_config["pipelines"]["Body-Reference"]["FRONT"],
                 "Keep this front view absolutely square to the viewer.",

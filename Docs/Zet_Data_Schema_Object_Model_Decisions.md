@@ -215,7 +215,7 @@ These slots are selected during the `MANIFEST` stage from the FastAPI dashboard 
 
 Template text should describe how references are used. It should not be the source of truth for which image files are attached to a render task.
 
-Head-fitment prompt compilation is static. It does not use Prompt Review or ComfyUI. The `PROMPT` stage writes `Final_Image_Prompt.md` from the selected template sections and then advances directly to the manual ChatGPT `RENDER` stage.
+Head-fitment prompt compilation is static. It does not use ComfyUI. The `PROMPT` stage writes `Final_Image_Prompt.md` from the selected template sections and then advances directly to the manual ChatGPT `RENDER` stage.
 
 ## Pipeline Configuration Decision
 
@@ -240,7 +240,7 @@ The current configured pipelines are:
 The current stage sequence for these pipelines is:
 
 ```text
-MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW
+MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW
 ```
 
 ## Actor Decision
@@ -280,31 +280,20 @@ AI ask staged: Ask_Asset_1_RENDER_20260701_062417 (20260701_062417_1_RENDER)
 
 The harvester uses this attempt id to detect stale answers when possible.
 
-## Prompt Review Decision
+## Prompt Inspection Decision
 
-Prompt review behavior lives in `PromptReviewService`.
+Prompt inspection behavior lives in `PromptReviewService` and applies to queued `RENDER` tasks. `PROMPT_REVIEW` is unsupported as a pipeline stage.
 
-Prompt review is available only when:
-
-```text
-pipeline_stage = PROMPT_REVIEW
-actor = HUMAN_AGENT
-```
-
-Prompt review context includes:
+Prompt inspection context includes:
 
 - asset
 - prompt path
 - prompt text
-- prompt review path
+- prompt inspection artifact path
 - prompt candidate paths
 - latest local test render
 
-Prompt review approve delegates to `AssetService.approve_prompt_review()`.
-
-Prompt review fail delegates to `AssetService.fail_prompt_review()`.
-
-Prompt review local test renders are review-only and do not advance asset state.
+Prompt inspection local test renders do not advance asset state.
 
 ## Body-Reference Compiler Decision
 
@@ -373,7 +362,7 @@ Preset = "body-reference-preview"
 
 The condense request text is editable in `Config/Prompt_Condense_Tasks/body_reference_condense.md`.
 
-When enabled, moving a Body-Reference asset from `PROMPT` to `PROMPT_REVIEW` stages a filesystem proxy ask.
+When enabled, moving a Body-Reference asset from `PROMPT` to `RENDER` stages a filesystem proxy ask.
 
 The ask uses:
 
@@ -392,7 +381,7 @@ Condensed_Image_Prompt.md
 
 Auxiliary condense answers do not advance pipeline state and do not mutate `Final_Image_Prompt.md`.
 
-When `LocalRender.AutoQueueAfterCondense` is true, harvesting a successful condense answer queues an auxiliary `local_image_render` ask for prompt review. The resulting image is copied into `Local_Test_Renders/` and does not advance the asset.
+When `LocalRender.AutoQueueAfterCondense` is true, harvesting a successful condense answer queues an auxiliary `local_image_render` ask for prompt inspection. The resulting image is copied into `Local_Test_Renders/` and does not advance the asset.
 
 Local image rendering prefers `Condensed_Image_Prompt.md` when present and falls back to `Final_Image_Prompt.md`.
 
@@ -546,11 +535,11 @@ This boundary is also recorded in `AGENTS.md`.
 - housekeeping
 - FastAPI dashboard
 - dashboard actions
-- prompt review page
+- prompt inspection page
 - render review page
 - integrated render console
 - body-reference prompt compiler integration
-- optional prompt-review local test renders
+- optional prompt-inspection local test renders
 - AI proxy ask staging
 - local image render worker
 - ComfyUI backend adapter

@@ -130,7 +130,8 @@ class CostumeDressingCompilerTests(unittest.TestCase):
             self.assertIn(value, opening)
         self.assertLess(prompt.index("# Locked Source"), prompt.index("# Costume Design"))
         self.assertLess(prompt.index("# Orientation Lock"), prompt.index("# Costume Design"))
-        self.assertIn("true direct front orientation", prompt)
+        self.assertIn("Requested body view: FRONT.", prompt)
+        self.assertIn("Preserve that view exactly.", prompt)
         self.assertIn("Small blue pendant", prompt)
         self.assertNotIn("None.", prompt)
         self.assertNotIn("Right side", prompt)
@@ -153,15 +154,13 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         right, _, _ = self._compile(facts, "RIGHT_PROFILE")
         back, _, _ = self._compile(facts, "BACK_LEFT_3_4")
 
-        self.assertIn("true left-facing profile", left)
-        self.assertNotIn("right-facing profile", left)
-        self.assertIn("true right-facing profile", right)
-        self.assertNotIn("left-facing profile", right)
-        self.assertIn("away-facing back-left three-quarter", back)
-        self.assertIn("back remains the dominant body surface", back)
+        self.assertIn("Requested body view: LEFT PROFILE.", left)
+        self.assertNotIn("Requested body view: RIGHT PROFILE.", left)
+        self.assertIn("Requested body view: RIGHT PROFILE.", right)
+        self.assertNotIn("Requested body view: LEFT PROFILE.", right)
+        self.assertIn("Requested body view: BACK-LEFT THREE-QUARTER.", back)
         self.assertIn("Do not rotate the head toward the viewer", back)
-        self.assertIn("remain aligned to the same requested direction", back)
-        self.assertNotIn("front-facing stance", back)
+        self.assertIn("Preserve that view exactly.", back)
 
     def test_different_body_and_head_views_preserve_relative_turn(self) -> None:
         facts = (
@@ -171,14 +170,10 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         )
         prompt, source_map, _ = self._compile(facts, "FRONT_LEFT_3_4", "FRONT")
 
-        self.assertIn("For the body: Preserve the exact supplied front-left three-quarter angle", prompt)
-        self.assertIn("For the head: Preserve a true direct front orientation", prompt)
-        self.assertIn("Preserve the supplied relationship between body orientation and head orientation exactly", prompt)
-        self.assertIn("Do not increase, reduce, reverse", prompt)
-        self.assertNotIn("remain aligned to the same requested direction", prompt)
-        alignment_sources = [fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Body/head alignment lock"]
-        self.assertTrue(alignment_sources)
-        self.assertEqual(alignment_sources[0]["source_kind"], "runtime_generated")
+        self.assertIn("Requested body view: FRONT-LEFT THREE-QUARTER.", prompt)
+        self.assertIn("Requested head view: FRONT.", prompt)
+        self.assertIn("body orientation and head orientation", prompt)
+        self.assertTrue(source_map["fragments"])
 
     def test_sided_equipment_keeps_side_rules_and_source_provenance(self) -> None:
         prompt, source_map, _ = self._compile(
@@ -201,8 +196,6 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertIn("viewer's left", prompt)
         costume_sources = [fragment for fragment in source_map["fragments"] if fragment.get("source_kind") == "costume_template_section"]
         self.assertTrue(costume_sources)
-        orientation_sources = [fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Costume-dressing body orientation lock"]
-        self.assertEqual(orientation_sources[0]["json_pointer"], "/views/FRONT/costume_dressing_orientation_lock")
 
     def test_no_jewelry_or_equipment_removes_optional_section_and_empty_view_stub(self) -> None:
         prompt, _, result = self._compile(

@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from zet.app import ZetApp
+from zet.repositories.pipeline_repository import PipelineRepositoryError
 from zet.services.pipeline_control_service import AutomationSettings
 
 
@@ -49,8 +50,8 @@ class PipelineControlServiceTests(unittest.TestCase):
                     {
                         "pipelines": {
                             "Body-Reference": {
-                                "stages": ["PROMPT", "PROMPT_REVIEW"],
-                                "actor_by_stage": {"PROMPT": "PYTHON", "PROMPT_REVIEW": "HUMAN_AGENT"},
+                                "stages": ["PROMPT", "RENDER"],
+                                "actor_by_stage": {"PROMPT": "PYTHON", "RENDER": "AI_AGENT"},
                                 "worker_by_stage": {"PROMPT": "zet.workers.body_reference_prompt_worker"},
                             }
                         }
@@ -112,6 +113,14 @@ Backend = "local_image"
             self.assertEqual(reloaded.ai_harvest_interval_seconds, 300)
             self.assertEqual(reloaded.render_backend, "manual_chatgpt")
             self.assertTrue(list(root.glob("config.backup.*.toml")))
+
+            pipelines_path = character_dir / "Pipelines.json"
+            pipelines = json.loads(pipelines_path.read_text(encoding="utf-8"))
+            pipelines["pipelines"]["Body-Reference"]["stages"].insert(1, "PROMPT_REVIEW")
+            pipelines["pipelines"]["Body-Reference"]["actor_by_stage"]["PROMPT_REVIEW"] = "HUMAN_AGENT"
+            pipelines_path.write_text(json.dumps(pipelines), encoding="utf-8")
+            with self.assertRaisesRegex(PipelineRepositoryError, "unsupported stage PROMPT_REVIEW"):
+                app.pipeline_repository.list_pipelines("Test", "Adult")
 
 
 if __name__ == "__main__":

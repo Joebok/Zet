@@ -239,7 +239,7 @@ class AIAnswerHarvester:
             character = str(ask_manifest.get("character") or "")
             phase = str(ask_manifest.get("phase") or "")
             try:
-                render_ask_path = self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(
+                render_ask_path = self.ai_proxy_service.stage_prompt_inspection_render_ask_if_enabled(
                     character,
                     phase,
                     answer.asset_id,
@@ -252,7 +252,7 @@ class AIAnswerHarvester:
                         status=f"{task_type.upper()}_APPLIED",
                         message=(
                             f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}. "
-                            f"Queued prompt review render ask at {render_ask_path}."
+                            f"Queued prompt inspection render ask at {render_ask_path}."
                         ),
                     )
                     self._write_harvest_manifest(answer_path, result)
@@ -293,6 +293,9 @@ class AIAnswerHarvester:
         target_path = Path(target_output_file)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(response_path, target_path)
+        api_call_path = answer_path / "Stable_Matrix_API_Call.json"
+        if api_call_path.exists():
+            shutil.copy2(api_call_path, target_path.parent / "Stable_Matrix_API_Call.json")
         result = HarvestResult(
             answer_path=answer_path,
             ask_id=answer.ask_id,

@@ -37,7 +37,7 @@ class ScenePromptAnalysisService:
             "pipeline_stage": "PROMPT_ANALYSIS",
             "ollama_attempt_id": f"{stamp}_PROMPT_ANALYSIS",
             "worker_type": "ollama_generate",
-            "ollama_model": self.config.ai_prompt_review_model,
+            "ollama_model": self.config.ai_prompt_analysis_model,
             "prompt_file": self.PROMPT_FILE,
             "expected_output": self.RESULT_FILE,
             "task_type": self.TASK_TYPE,

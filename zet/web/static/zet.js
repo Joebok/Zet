@@ -216,7 +216,7 @@ const settingLocalRenderPositiveGlobals = document.querySelector("#setting-local
 const settingLocalRenderNegativeGlobals = document.querySelector("#setting-local-render-negative-globals");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
-const settingAiPromptReviewModel = document.querySelector("#setting-ai-prompt-review-model");
+const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
@@ -5378,7 +5378,7 @@ function renderPipelineControls(payload) {
   settingLocalRenderNegativeGlobals.value = automation.local_render_negative_prompt_globals || "";
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
-  settingAiPromptReviewModel.value = automation.ai_prompt_review_model || "";
+  settingAiPromptAnalysisModel.value = automation.ai_prompt_analysis_model || "";
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
@@ -5424,7 +5424,7 @@ function automationPayloadFromForm() {
     local_render_checkpoint: settingLocalRenderCheckpoint.value,
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
-    ai_prompt_review_model: settingAiPromptReviewModel.value,
+    ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
   };

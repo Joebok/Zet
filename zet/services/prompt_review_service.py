@@ -36,10 +36,6 @@ class PromptReviewContext:
     condense_status: dict
 
 
-def is_prompt_review_asset(asset: Asset) -> bool:
-    return asset.pipeline_stage == "PROMPT_REVIEW" and asset.actor == "HUMAN_AGENT"
-
-
 class PromptReviewService:
     def __init__(
         self,
@@ -217,12 +213,6 @@ class PromptReviewService:
         if render_dir.exists() and render_dir.is_dir():
             shutil.rmtree(render_dir)
 
-    def approve(self, character: str, phase: str, asset_id: int) -> Asset:
-        return self.asset_service.approve_prompt_review(character, phase, asset_id)
-
-    def fail(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
-        return self.asset_service.fail_prompt_review(character, phase, asset_id, reason)
-
     def recompile(
         self,
         character: str,
@@ -231,8 +221,8 @@ class PromptReviewService:
         invalidate_review_artifacts: bool = False,
     ) -> PromptReviewContext:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.pipeline_stage not in {"PROMPT_REVIEW", "RENDER"}:
-            raise ValueError(f"Asset {asset_id} has no render prompt available for review.")
+        if asset.pipeline_stage != "RENDER":
+            raise ValueError(f"Asset {asset_id} has no render prompt available for inspection.")
 
         prompt_path = self.resolve_prompt_file(asset, self.prompt_file_candidates(asset))
         if invalidate_review_artifacts and prompt_path is not None:

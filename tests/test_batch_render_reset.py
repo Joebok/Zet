@@ -60,9 +60,8 @@ class BatchRenderResetTests(unittest.TestCase):
                     {
                         "pipelines": {
                             "Body-Reference": {
-                                "stages": ["PROMPT_REVIEW", "RENDER", "RENDER_REVIEW"],
+                                "stages": ["RENDER", "RENDER_REVIEW"],
                                 "actor_by_stage": {
-                                    "PROMPT_REVIEW": "HUMAN_AGENT",
                                     "RENDER": "AI_AGENT",
                                     "RENDER_REVIEW": "HUMAN_AGENT",
                                 },
@@ -147,9 +146,8 @@ Backend = "manual_chatgpt"
                     {
                         "pipelines": {
                             "Body-Reference": {
-                                "stages": ["PROMPT_REVIEW", "RENDER", "RENDER_REVIEW"],
+                                "stages": ["RENDER", "RENDER_REVIEW"],
                                 "actor_by_stage": {
-                                    "PROMPT_REVIEW": "HUMAN_AGENT",
                                     "RENDER": "AI_AGENT",
                                     "RENDER_REVIEW": "HUMAN_AGENT",
                                 },

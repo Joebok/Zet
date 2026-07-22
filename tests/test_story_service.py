@@ -85,6 +85,39 @@ class StoryServiceTests(unittest.TestCase):
             identity_key_repository,
         )
 
+    def _write_scene_builder(
+        self,
+        service: StoryService,
+        story_slug: str,
+        scene_slug: str,
+        reference_tags: list[str] | None = None,
+    ) -> None:
+        story_path = service.path_service.story_folder_path(story_slug) / f"{story_slug}.md"
+        settings_path = service.path_service.story_folder_path(story_slug) / f"{story_slug}.story.json"
+        if not settings_path.exists():
+            service.save_story_settings(settings_path, service.create_default_story_settings(story_path))
+        data = {
+            "schema_version": 3,
+            "setup": {
+                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
+                "environment": {"location": "academy archway", "lighting": "morning light"},
+            },
+            "scene_elements": [],
+            "placements": [],
+        }
+        for index, tag in enumerate(reference_tags or [], start=1):
+            element_id = f"reference_{index}"
+            data["scene_elements"].append(
+                {
+                    "id": element_id,
+                    "display_name": f"Reference {index}",
+                    "element_type": "Object",
+                    "reference_images": [{"tag": tag}],
+                }
+            )
+            data["placements"].append({"scene_element_id": element_id, "position_within_cell": "center"})
+        service.scene_builder_json_path(story_slug, scene_slug).write_text(json.dumps(data), encoding="utf-8")
+
     def test_firstday_style_value_is_not_placeholder(self) -> None:
         service = self._service(Path("unused"))
         text = """Title: `[FirstDay]`
@@ -196,7 +229,7 @@ At the Arch
             self.assertTrue((story_dir / "At-the-Arch.scene.json").exists())
             self.assertEqual(3, document.data["schema_version"])
             self.assertNotIn("screen_cell", document.data["placements"][0])
-            self.assertNotIn("composition", document.data["setup"])
+            self.assertIn("composition", document.data["setup"])
             self.assertNotIn("camera", document.data["setup"])
             self.assertNotIn("style", document.data["setup"])
             self.assertTrue(document.data["metadata"]["created_at"])
@@ -271,7 +304,7 @@ At the Arch
             self.assertEqual(target["interactions"], document.data["interactions"])
             self.assertEqual(target["dialogue"], document.data["dialogue"])
 
-    def test_scene_builder_load_migrates_v1_character(self) -> None:
+    def test_scene_builder_load_rejects_v1_character(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             story_dir = root / "Stories" / "FirstDay"
@@ -279,7 +312,7 @@ At the Arch
             service = self._service(root)
             (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
             (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
-            (story_dir / "At-the-Arch.json").write_text(
+            (story_dir / "At-the-Arch.scene.json").write_text(
                 json.dumps({
                     "schema_version": 1,
                     "characters": [{
@@ -303,15 +336,8 @@ At the Arch
                 encoding="utf-8",
             )
 
-            document = service.load_scene_builder_data("FirstDay", "At-the-Arch")
-
-            self.assertEqual(2, document.data["schema_version"])
-            self.assertEqual("Tsaeytte", document.data["scene_elements"][0]["id"])
-            self.assertEqual("Character", document.data["scene_elements"][0]["element_type"])
-            self.assertNotIn("asset_tag", document.data["scene_elements"][0])
-            self.assertEqual("adult adventuring outfit", document.data["scene_elements"][0]["default_visual_description"])
-            self.assertEqual("Tsaeytte", document.data["placements"][0]["scene_element_id"])
-            self.assertIn("test note", document.data["placements"][0]["placement_notes"])
+            with self.assertRaisesRegex(StoryServiceError, "Unsupported Scene Builder schema_version: 1"):
+                service.load_scene_builder_data("FirstDay", "At-the-Arch")
 
     def test_scene_builder_normalize_creates_paired_placement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -534,13 +560,13 @@ Morning light.
                 ]
             )
             service = self._service(root, repository)
+            self._write_scene_builder(service, "FirstDay", "At-the-Arch", ["{{AUX:place:arch:main}}"])
 
             task = service.stage_scene_render("FirstDay", "At-the-Arch")
 
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
-            self.assertIn("FirstDay", prompt)
-            self.assertIn("ink wash", prompt)
-            self.assertIn("The Scene:\nTwo students meet at the arch.", prompt)
+            self.assertIn("academy archway", prompt)
+            self.assertIn("morning light", prompt)
             self.assertNotIn("[story title]", prompt)
             self.assertNotIn("Short premise", prompt)
             self.assertEqual(1, len(task.reference_files))
@@ -612,6 +638,7 @@ Morning light.
                 ]
             )
             service = self._service(root, identity_key_repository=identity_repository)
+            self._write_scene_builder(service, "FirstDay", "At-the-Arch", ["{{IDENTITY:Tsaeytte:YoungAdult:IK_front}}"])
 
             task = service.stage_scene_render("FirstDay", "At-the-Arch")
             rows = service.image_reference_rows(text_filter="Front identity")
@@ -713,6 +740,7 @@ Morning light.
 """,
                     encoding="utf-8",
                 )
+                self._write_scene_builder(service, "FirstDay", "At-the-Arch", [tag])
 
                 task = service.stage_scene_render("FirstDay", "At-the-Arch")
 
@@ -720,7 +748,7 @@ Morning light.
                 self.assertEqual(str(image_path), task.reference_files[0]["path"])
                 self.assertEqual(tag, task.reference_files[0]["tag"])
 
-    def test_stage_scene_render_with_builder_writes_v2_artifacts(self) -> None:
+    def test_stage_scene_render_with_builder_writes_v3_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             story_dir = root / "Stories" / "FirstDay"
@@ -782,7 +810,7 @@ Two students meet at the arch.
             self.assertTrue((pipeline / "Local_Render_Prompt.md").exists())
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
             self.assertIn("# Render Task", prompt)
-            self.assertIn("Valindia stands in the left foreground.", prompt)
+            self.assertIn("**Valindia:** Stands in the left foreground.", prompt)
             self.assertNotIn("cell ", prompt)
             local_prompt = (pipeline / "Local_Render_Prompt.md").read_text(encoding="utf-8")
             self.assertIn("prompt:", local_prompt)
