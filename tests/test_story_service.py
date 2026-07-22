@@ -258,6 +258,42 @@ At the Arch
             reloaded = service.load_scene_builder_data("FirstDay", "At-the-Arch")
             self.assertEqual("Tsaeytte", reloaded.data["placements"][0]["scene_element_id"])
 
+    def test_deprecated_prompt_fields_are_removed_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[First Day]`\n", encoding="utf-8")
+            (story_dir / "At-the-Arch.md").write_text("Scene: `[At the Arch]`\n", encoding="utf-8")
+            settings = service.create_default_story_settings(story_dir / "FirstDay.md")
+            self.assertNotIn("default_avoid", settings["style_defaults"])
+            self.assertNotIn("include_final_verification", settings["compiler_profiles"]["final_image_prompt"])
+            settings["style_defaults"]["default_avoid"] = ["legacy"]
+            settings["compiler_profiles"]["final_image_prompt"]["include_final_verification"] = False
+            settings["unrelated"] = "preserved"
+            settings_path = story_dir / "FirstDay.story.json"
+
+            service.save_story_settings(settings_path, settings)
+            saved_settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertNotIn("default_avoid", saved_settings["style_defaults"])
+            self.assertNotIn("include_final_verification", saved_settings["compiler_profiles"]["final_image_prompt"])
+            self.assertEqual("preserved", saved_settings["unrelated"])
+
+            scene = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            scene["setup"]["environment"]["important_exclusions"] = ["legacy"]
+            scene["avoid"] = {"scene_specific": ["legacy"]}
+            scene["unrelated"] = "preserved"
+            document = service.save_scene_builder_data("FirstDay", "At-the-Arch", scene)
+
+            self.assertNotIn("important_exclusions", document.data["setup"]["environment"])
+            self.assertNotIn("avoid", document.data)
+            self.assertEqual("preserved", document.data["unrelated"])
+            self.assertEqual(
+                {"anatomical_requirements", "avoid", "high_risk_elements", "final_verification"},
+                set(document.data["final_image_prompt_overrides"]),
+            )
+
     def test_scene_builder_world_position_is_trimmed_and_blank_is_omitted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -694,6 +730,30 @@ Morning light.
 
             self.assertEqual(1, len(rows))
             self.assertEqual("{{ASSET:Tsaeytte:Youth:29:Costume | Back | Woodland outfit}}", rows[0].tag)
+
+    def test_image_reference_rows_matches_all_space_separated_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Characters" / "Tsaeytte" / "Adult").mkdir(parents=True)
+            assets = [
+                Asset(
+                    asset_id,
+                    "Tsaeytte",
+                    "Adult",
+                    "Costume-Dressing",
+                    view,
+                    costume="Canonical Adventure Gear",
+                    asset_state="LOCKED",
+                    pipeline_stage="LOCKED",
+                    final_image_output=f"asset-{asset_id}.png",
+                )
+                for asset_id, view in [(25, "Front"), (26, "Front-Left-3-4"), (27, "Front-Right-3-4")]
+            ]
+            service = self._service(root, asset_repository=FakeAssetRepository(assets))
+
+            rows = service.image_reference_rows(text_filter="tsaeytte adult adventure gear front")
+
+            self.assertEqual([25, 26, 27], [int(row.tag.split(":")[3]) for row in rows])
 
     def test_stage_scene_render_resolves_old_and_descriptive_asset_tags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -88,6 +88,9 @@ class AIProxyAsk:
     target_output_file: Optional[str] = None
     render_preset: Optional[str] = None
     reference_files: list[dict | ReferenceFile] = field(default_factory=list)
+    ollama_temperature: Optional[float] = None
+    ollama_num_ctx: Optional[int] = None
+    consumer: str = "zet"
 
 
 @dataclass

@@ -513,6 +513,57 @@ Backend = "manual_chatgpt"
             self.assertIn("Finished at RENDER", payload["message"])
             self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
 
+    def test_assets_page_shows_advance_all_and_removes_retired_actions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            response = client.get("/")
+
+            self.assertEqual(response.status_code, 200)
+            html = response.text
+            self.assertIn('data-action="advance-all" disabled>Advance All</button>', html)
+            self.assertGreater(html.index('data-action="advance-all"'), html.index('id="asset-filter-hide-base"'))
+            self.assertIn('id="asset-detail-image-mode" type="button">Show Image</button>', html)
+            self.assertNotIn('data-action="retouch"', html)
+            self.assertNotIn('data-action="stage-ai-ask"', html)
+            self.assertNotIn('data-action="retry-ai"', html)
+
+            paths = client.get("/openapi.json").json()["paths"]
+            self.assertIn("/api/assets/advance-all", paths)
+            self.assertNotIn("/api/assets/advance-displayed", paths)
+            self.assertNotIn("/api/assets/{asset_id}/retouch", paths)
+            self.assertNotIn("/api/assets/{asset_id}/stage-ai-ask", paths)
+            self.assertNotIn("/api/assets/{asset_id}/retry-ai", paths)
+
+    def test_asset_regenerate_advances_only_the_selected_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            second = dict(payload["assets"][0])
+            second.update({"asset_id": 2, "pipeline_stage": "MANIFEST", "actor": "PYTHON", "final_image_output": "second.png"})
+            payload["assets"].append(second)
+            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            pipelines_path = root / "Characters" / "Test" / "Adult" / "Pipelines.json"
+            pipelines = json.loads(pipelines_path.read_text(encoding="utf-8"))
+            body_pipeline = pipelines["pipelines"]["Body-Reference"]
+            body_pipeline["stages"] = ["MANIFEST", "LOCKED"]
+            body_pipeline["actor_by_stage"] = {"MANIFEST": "PYTHON", "LOCKED": "HUMAN_AGENT"}
+            pipelines_path.write_text(json.dumps(pipelines, indent=2) + "\n", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            response = client.post("/api/assets/1/regenerate", params={"character": "Test", "phase": "Adult"})
+
+            self.assertEqual(response.status_code, 200)
+            result = response.json()
+            self.assertIn("regenerated and advanced to LOCKED", result["message"])
+            self.assertEqual(result["detail"]["asset"]["pipeline_stage"], "LOCKED")
+            assets = {asset["asset_id"]: asset for asset in result["assets"]}
+            self.assertEqual(assets[2]["pipeline_stage"], "MANIFEST")
+
     def test_retired_prompt_review_api_is_not_registered(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -585,27 +636,6 @@ Backend = "manual_chatgpt"
             self.assertEqual(payload["asset"]["ai_state"], "ASKED")
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
             self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
-
-    def test_asset_action_api_stages_retouch_as_manual_render(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config_path = self._write_fixture(root, stage="LOCKED", actor="HUMAN_AGENT")
-            client = TestClient(create_app(config_path))
-
-            response = client.post("/api/assets/1/retouch", params={"character": "Test", "phase": "Adult"})
-
-            self.assertEqual(response.status_code, 200)
-            payload = response.json()
-            self.assertIn("Retouch render staged", payload["message"])
-            self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
-            self.assertEqual(payload["detail"]["asset"]["actor"], "AI_AGENT")
-            self.assertEqual(payload["detail"]["asset"]["ai_state"], "ASKED")
-            self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
-            self.assertEqual(len(ask_dirs), 1)
-            manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
-            self.assertTrue(manifest["manual"])
 
     def test_ai_controls_api_serves_snapshot_and_monitor_test(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -973,36 +1003,6 @@ Backend = "manual_chatgpt"
             self.assertEqual(saved.status_code, 200)
             self.assertEqual(len(saved.json()["reference_files"]), 2)
             self.assertEqual(saved.json()["reference_files"][0]["role"], "body_reference")
-
-    def test_head_fitment_render_ask_includes_reference_files(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config_path = self._write_head_fitment_fixture(root)
-            client = TestClient(create_app(config_path))
-
-            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
-            body_path = detail.json()["body_reference_options"][0]["path"]
-            headshot_path = detail.json()["headshot_options"][0]["path"]
-            client.post(
-                "/api/head-fitment-manifest/2/references",
-                params={"character": "Test", "phase": "Adult"},
-                json={"body_reference_path": body_path, "headshot_path": headshot_path},
-            )
-
-            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
-            payload = json.loads(assets_path.read_text(encoding="utf-8"))
-            payload["assets"][1]["pipeline_stage"] = "RENDER"
-            payload["assets"][1]["actor"] = "AI_AGENT"
-            payload["assets"][1]["ai_state"] = "ASKED"
-            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-            staged = client.post("/api/assets/2/stage-ai-ask", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(staged.status_code, 200)
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
-            manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
-            self.assertEqual(manifest["prompt_file"], "Final_Image_Prompt.md")
-            self.assertEqual([item["role"] for item in manifest["reference_files"]], ["body_reference", "headshot"])
 
     def test_head_fitment_prompt_worker_compiles_prompt_and_stages_render_ask(self):
         with tempfile.TemporaryDirectory() as temp_dir:

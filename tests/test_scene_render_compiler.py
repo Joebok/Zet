@@ -1,10 +1,18 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from zet.services.scene_render_compiler import compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_forge_couple_prompt_text, local_render_prompt_text
+from zet.services.scene_prompt_sections import load_final_image_prompt_sections
+
+
+DEFAULT_PROMPT_SECTIONS = load_final_image_prompt_sections(
+    Path(__file__).resolve().parents[1] / "Config" / "Prompt_Templates" / "final_image_prompt_tail_v1.md"
+)
 
 
 class SceneRenderCompilerTests(unittest.TestCase):
-    def _prompt(self, scene):
+    def _ir(self, scene):
         story = {
             "style_defaults": {
                 "canonical_art_style": {"full_prompt_text": "ink wash"},
@@ -14,7 +22,51 @@ class SceneRenderCompilerTests(unittest.TestCase):
             "dialogue_styles": [],
             "compiler_profiles": {"final_image_prompt": {}},
         }
-        return final_image_prompt_text(compile_scene_render_ir(scene, story))
+        return compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS)
+
+    def _prompt(self, scene):
+        return final_image_prompt_text(self._ir(scene))
+
+    def test_default_tail_sections_are_appended_literally_in_order(self):
+        prompt = self._prompt({})
+
+        expected_tail = "\n\n".join(DEFAULT_PROMPT_SECTIONS.values()) + "\n"
+        self.assertTrue(prompt.endswith(expected_tail))
+
+    def test_nonblank_tail_override_replaces_only_its_section_literally(self):
+        override = "# Avoid\n\nkeep  lowercase,  spacing.."
+        scene = {
+            "final_image_prompt_overrides": {
+                "anatomical_requirements": "  ",
+                "avoid": f"\n{override}\n",
+            },
+            "setup": {"environment": {"important_exclusions": ["legacy environment term"]}},
+            "avoid": {"scene_specific": ["legacy scene term"]},
+        }
+        ir = self._ir(scene)
+        prompt = final_image_prompt_text(ir)
+
+        self.assertEqual(override, ir["final_image_prompt_sections"]["avoid"])
+        self.assertIn(override, prompt)
+        self.assertNotIn(DEFAULT_PROMPT_SECTIONS["avoid"], prompt)
+        self.assertNotIn("legacy environment term", prompt)
+        self.assertNotIn("legacy scene term", prompt)
+        self.assertIn(DEFAULT_PROMPT_SECTIONS["anatomical_requirements"], prompt)
+
+    def test_tail_template_validation_names_missing_section(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "tail.md"
+            path.write_text("# Avoid\n\n- Nothing.\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Anatomical Requirements"):
+                load_final_image_prompt_sections(path)
+
+            path.write_text(
+                "\n\n".join(DEFAULT_PROMPT_SECTIONS.values()) + "\n\n# Avoid\n\n- Duplicate.\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Avoid.*found 2"):
+                load_final_image_prompt_sections(path)
 
     def test_display_names_hide_internal_ids_and_empty_fields(self):
         prompt = self._prompt({
@@ -104,7 +156,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
         }
         story = {"style_defaults": {}, "compiler_profiles": {"final_image_prompt": {}}}
 
-        ir = compile_scene_render_ir(scene, story)
+        ir = compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS)
         prompt = final_image_prompt_text(ir)
 
         self.assertEqual(["hero"], ir["composition"]["left_to_right"])
@@ -116,7 +168,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn("Satchel, then Hero", prompt)
 
         scene["placements"][0]["position_within_cell"] = "left"
-        placed_ir = compile_scene_render_ir(scene, story)
+        placed_ir = compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS)
         placed_prompt = final_image_prompt_text(placed_ir)
         self.assertEqual(["satchel", "hero"], placed_ir["composition"]["left_to_right"])
         self.assertIn("**Satchel:** Stands in the left foreground.", placed_prompt)
@@ -301,7 +353,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
             ],
             "dialogue": [{"speaker_element_id": "Valindia_12345678", "target_element_id": "Tsaeytte_12345678", "text": "wait..."}],
         }
-        brief = local_render_brief(compile_scene_render_ir(scene, story))
+        brief = local_render_brief(compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS))
         prompt_text = local_render_prompt_text(brief)
         prompt = brief["plain_txt2img"]["prompt"]
         negative = brief["plain_txt2img"]["negative_prompt"]
@@ -365,7 +417,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
             "dialogue": [{"text": "Maybe you should try not to be so ...", "pointer_target": "speaker mouth"}],
         }
 
-        brief = local_render_brief(compile_scene_render_ir(scene, story))
+        brief = local_render_brief(compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS))
         plan = brief["forge_couple_plan"]
         regions = plan["character_regions"]
         prompt_lines = [plan["global_region"]["prompt"], *[region["prompt"] for region in regions]]

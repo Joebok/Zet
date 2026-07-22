@@ -70,6 +70,14 @@ class AIAnswerHarvester:
     def _harvest_manifest_path(self, answer_path: Path) -> Path:
         return answer_path / "harvest_manifest.json"
 
+    def _has_external_consumer(self, answer_path: Path) -> bool:
+        try:
+            ask_manifest = self._read_json(answer_path / "ask_manifest.json")
+        except AIAnswerHarvesterError:
+            return False
+        consumer = str(ask_manifest.get("consumer") or "zet").strip().lower()
+        return consumer != "zet"
+
     def _read_json(self, path: Path) -> dict:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -450,6 +458,8 @@ class AIAnswerHarvester:
 
         results: list[HarvestResult] = []
         for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
+            if self._has_external_consumer(answer_path):
+                continue
             try:
                 result = self.apply_answer_folder(answer_path)
                 if result.status.startswith("ALREADY_"):

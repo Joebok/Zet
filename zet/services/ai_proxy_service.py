@@ -151,13 +151,11 @@ class AIProxyService:
             reference_files=asset.reference_files or [],
         )
 
-    def _build_ask(self, asset, force_manual_render: bool = False) -> AIProxyAsk:
+    def _build_ask(self, asset) -> AIProxyAsk:
         """Build the queue ask appropriate for an asset's current pipeline stage."""
         stamp = self._timestamp_compact()
         ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}"
         attempt_id = f"{stamp}_{asset.asset_id}_{asset.pipeline_stage}"
-        if force_manual_render and asset.pipeline_stage == "RENDER":
-            return self._build_manual_render_ask(asset, ask_id, attempt_id)
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
             render_backend = self._render_backend()
             if render_backend == "manual_chatgpt":
@@ -243,13 +241,16 @@ class AIProxyService:
             "target_output_file": ask.target_output_file,
             "render_preset": ask.render_preset,
             "reference_files": reference_files_payload(ask.reference_files),
+            "ollama_temperature": ask.ollama_temperature,
+            "ollama_num_ctx": ask.ollama_num_ctx,
+            "consumer": ask.consumer,
         }
 
-    def _prompt_contents(self, asset, force_manual_render: bool = False) -> str:
+    def _prompt_contents(self, asset) -> str:
         """Read the prompt text that should be copied into a queued ask."""
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
             context = self.prompt_artifact_service.get_context(asset.character, asset.phase, asset.asset_id)
-            if force_manual_render or self._render_backend() == "manual_chatgpt":
+            if self._render_backend() == "manual_chatgpt":
                 if not context.prompt_text:
                     raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
                 return context.prompt_text
@@ -295,7 +296,7 @@ class AIProxyService:
             "This is a staged placeholder prompt for Zet AI proxy testing.\n"
         )
 
-    def stage_current_ai_ask(self, character: str, phase: str, asset_id: int, force_manual_render: bool = False) -> Path:
+    def stage_current_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
         """Write an AI queue ask for the asset's current AI_AGENT stage."""
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.actor != "AI_AGENT":
@@ -304,7 +305,7 @@ class AIProxyService:
             raise AIProxyServiceError(f"Asset {asset.asset_id} is missing final_image_output.")
 
         self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
-        ask = self._build_ask(asset, force_manual_render=force_manual_render)
+        ask = self._build_ask(asset)
         self._ensure_queue_dirs()
 
         ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
@@ -315,7 +316,7 @@ class AIProxyService:
         json.loads(manifest_path.read_text(encoding="utf-8"))
 
         prompt_path = ask_path / ask.prompt_file
-        self._write_text_atomic(prompt_path, self._prompt_contents(asset, force_manual_render=force_manual_render))
+        self._write_text_atomic(prompt_path, self._prompt_contents(asset))
 
         updated_asset = replace(asset)
         updated_asset.ai_state = "ASKED"

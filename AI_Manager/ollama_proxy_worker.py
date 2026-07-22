@@ -389,6 +389,35 @@ def call_ollama(
     raise TransientOllamaConnectionError(f"Ollama unavailable after {total_attempts} attempt(s): {last_exc}")
 
 
+def ollama_generation_options(ask_manifest: dict) -> tuple[float, int | None]:
+    raw_temperature = ask_manifest.get("ollama_temperature")
+    if raw_temperature is None or raw_temperature == "":
+        temperature = 0.1
+    else:
+        if isinstance(raw_temperature, bool):
+            raise ValueError("ask_manifest ollama_temperature must be a number between 0 and 2")
+        try:
+            temperature = float(raw_temperature)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ask_manifest ollama_temperature must be a number between 0 and 2") from exc
+        if not 0.0 <= temperature <= 2.0:
+            raise ValueError("ask_manifest ollama_temperature must be a number between 0 and 2")
+
+    raw_num_ctx = ask_manifest.get("ollama_num_ctx")
+    if raw_num_ctx is None or raw_num_ctx == "":
+        num_ctx = None
+    else:
+        if isinstance(raw_num_ctx, bool):
+            raise ValueError("ask_manifest ollama_num_ctx must be a positive integer")
+        try:
+            num_ctx = int(raw_num_ctx)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ask_manifest ollama_num_ctx must be a positive integer") from exc
+        if num_ctx <= 0 or isinstance(raw_num_ctx, float) and not raw_num_ctx.is_integer():
+            raise ValueError("ask_manifest ollama_num_ctx must be a positive integer")
+    return temperature, num_ctx
+
+
 def write_claim_file(path: Path, ask_name: str, worker_id: str) -> bool:
     return worker_protocol.write_claim_file(path, ask_name, worker_id, now_iso())
 
@@ -525,6 +554,7 @@ def process_claimed(
         f"expected_output={expected_output or '<blank>'}"
     )
     try:
+        temperature, num_ctx = ollama_generation_options(ask_manifest)
         if not prompt_file or not (folder / prompt_file).exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
         if not expected_output:
@@ -535,6 +565,8 @@ def process_claimed(
             ollama_url,
             model,
             prompt,
+            temperature=temperature,
+            num_ctx=num_ctx,
             timeout=timeout,
             retries=ollama_retries,
             retry_seconds=ollama_retry_seconds,
