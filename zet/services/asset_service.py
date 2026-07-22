@@ -12,6 +12,7 @@ from zet.services.housekeeping_service import HousekeepingService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.path_service import PathService
+from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
 
@@ -65,6 +66,7 @@ class AssetService:
         state_machine: StateMachine,
         housekeeping_service: HousekeepingService,
         path_service: PathService,
+        prompt_artifact_service: PromptArtifactService,
         worker_service: WorkerService,
         ai_proxy_service: AIProxyService,
         ai_answer_harvester: AIAnswerHarvester,
@@ -74,6 +76,7 @@ class AssetService:
         self.state_machine = state_machine
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
+        self.prompt_artifact_service = prompt_artifact_service
         self.worker_service = worker_service
         self.ai_proxy_service = ai_proxy_service
         self.ai_answer_harvester = ai_answer_harvester
@@ -220,8 +223,8 @@ class AssetService:
     def _render_reset_skip_message(self, asset: Asset) -> str | None:
         if asset.pipeline_stage in {"MANIFEST", "PROMPT"}:
             return f"Asset is at {asset.pipeline_stage}; upstream regeneration/compile work should finish before render reset."
-        if asset.pipeline == "Body-Reference" and self.ai_proxy_service.prompt_review_service is not None:
-            context = self.ai_proxy_service.prompt_review_service.get_context(asset.character, asset.phase, asset.asset_id)
+        if asset.pipeline == "Body-Reference":
+            context = self.prompt_artifact_service.get_context(asset.character, asset.phase, asset.asset_id)
             if not context.prompt_text:
                 return "No Final_Image_Prompt.md found; asset is not render-ready."
         return None

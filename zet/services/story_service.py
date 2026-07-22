@@ -16,9 +16,10 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
-from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
-from zet.services.scene_render_compiler import compile_scene_render, compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_forge_couple_prompt_text, local_render_prompt_text
 from zet.services.path_service import PathService
+from zet.services.scene_document_service import SceneDocumentService
+from zet.services.story_reference_service import StoryReferenceService
+from zet.services.story_render_service import StoryRenderService
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,20 @@ class StoryService:
         self.asset_repository = asset_repository
         self.auxiliary_resource_repository = auxiliary_resource_repository
         self.identity_key_repository = identity_key_repository
+        self.scene_document_service = SceneDocumentService(self, StoryServiceError)
+        self.story_reference_service = StoryReferenceService(
+            path_service,
+            asset_repository,
+            auxiliary_resource_repository,
+            identity_key_repository,
+            StoryServiceError,
+        )
+        self.story_render_service = StoryRenderService(
+            self,
+            self.story_reference_service,
+            StoryRenderTask,
+            StoryServiceError,
+        )
 
     def safe_slug(self, value: str) -> str:
         """Return a filename-safe slug for stories and scenes."""
@@ -637,31 +652,7 @@ class StoryService:
 
     def compile_scene_prompt(self, story_slug: str, scene_slug: str) -> Path:
         """Compile the final image prompt used by Scene Builder automation."""
-        safe_story_slug = self.safe_slug(story_slug)
-        safe_scene_slug = self.safe_slug(scene_slug)
-        pipeline_path = self.scene_pipeline_path(safe_story_slug, safe_scene_slug)
-        pipeline_path.mkdir(parents=True, exist_ok=True)
-        scene_builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
-        if not scene_builder_path.exists():
-            raise StoryServiceError(f"Scene Builder JSON not found: {scene_builder_path}")
-        scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
-        normalized_scene = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
-        story_settings_path = self._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
-        if not story_settings_path.exists():
-            raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
-        references = self._resolve_scene_references("\n" + json.dumps(scene_builder_data))
-        ir = compile_scene_render_ir(normalized_scene, self.load_story_settings(story_settings_path), {"references": references, "element_sources": self._resolve_scene_element_sources(normalized_scene)})
-        ir["source"]["scene_json_path"] = str(scene_builder_path)
-        ir["source"]["story_settings_path"] = str(story_settings_path)
-        prompt_path = pipeline_path / "Final_Image_Prompt.md"
-        prompt = final_image_prompt_text(ir)
-        prompt_path.write_text(prompt, encoding="utf-8")
-        self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
-        self._write_json(
-            pipeline_path / "Prompt_Source_Map.json",
-            self._scene_prompt_source_map(ir, prompt, prompt_path, scene_builder_path, story_settings_path, ["Scene_Render_IR.json", "Final_Image_Prompt.md"]),
-        )
-        return prompt_path
+        return self.story_render_service.compile_scene_prompt(story_slug, scene_slug)
 
     def get_scene_builder_json_path(self, scene_path: Path) -> Path:
         """Return the Scene Builder JSON path matching a scene markdown or image path."""
@@ -904,57 +895,7 @@ class StoryService:
 
     def _normalize_scene_builder_data(self, story_slug: str, scene_slug: str, data: dict) -> dict:
         """Apply defaults and derived scene paths to Scene Builder data."""
-        if not isinstance(data, dict):
-            raise StoryServiceError("Scene Builder JSON must be an object.")
-        schema_version = data.get("schema_version", 3)
-        if schema_version != 3:
-            raise StoryServiceError(f"Unsupported Scene Builder schema_version: {schema_version}")
-        if data.get("file_kind") not in (None, "scene"):
-            raise StoryServiceError(f"Unsupported Scene Builder file_kind: {data.get('file_kind')}")
-        safe_story_slug = self.safe_slug(story_slug)
-        safe_scene_slug = self.safe_slug(scene_slug)
-        default = self.create_default_scene_builder_data(safe_story_slug, safe_scene_slug)
-        normalized = self._merge_scene_builder_defaults(default, data)
-        scene_path, image_path, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
-        normalized["schema_version"] = 3
-        normalized["file_kind"] = "scene"
-        normalized.setdefault("scene", {})
-        normalized["scene"]["id"] = normalized["scene"].get("id") or self.normalize_scene_element_id(safe_scene_slug).lower()
-        normalized["scene"]["slug"] = safe_scene_slug
-        normalized["scene"]["story_settings_path"] = self._library_relative_path(self.get_story_settings_path_from_story_md(self.path_service.story_file_path(safe_story_slug)))
-        normalized["scene"]["associated_png_path"] = self._library_relative_path(image_path)
-        if not str(normalized["scene"].get("name") or "").strip():
-            normalized["scene"]["name"] = default["scene"]["name"]
-        normalized.setdefault("setup", {})
-        for key in ("camera", "style"):
-            normalized["setup"].pop(key, None)
-        composition = normalized["setup"].setdefault("composition", {})
-        composition["focal_point"] = str(composition.get("focal_point") or "").strip()
-        composition["composition_notes"] = str(composition.get("composition_notes") or "").strip()
-        seen_composition_ids: set[str] = set()
-        composition["left_to_right"] = [
-            element_id for value in composition.get("left_to_right") or []
-            if (element_id := str(value or "").strip()) and not (element_id in seen_composition_ids or seen_composition_ids.add(element_id))
-        ]
-        normalized["scene_elements"] = self._normalized_scene_elements(normalized)
-        normalized["placements"] = self._normalized_placements(normalized)
-        suppressed_element_ids = {
-            str(item.get("scene_element_id") or "")
-            for item in normalized["placements"]
-            if str(item.get("position_within_cell") or "").strip().lower() == "none"
-        }
-        composition["left_to_right"] = [
-            element_id for element_id in composition["left_to_right"]
-            if element_id not in suppressed_element_ids
-        ]
-        for item in normalized.get("dialogue") or []:
-            if isinstance(item, dict):
-                for key in ("tone", "include_in_final_image_prompt", "include_in_local_render", "panel_style_id", "preferred_screen_region", "must_not_cover"):
-                    item.pop(key, None)
-        normalized.pop("generation_outputs", None)
-        normalized.pop("_validation_warnings", None)
-        normalized["depth_lanes"] = self.rebuild_depth_lanes_from_placements(normalized)
-        return normalized
+        return self.scene_document_service.normalize(story_slug, scene_slug, data)
 
     def load_scene_builder_data(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         """Load Scene Builder data or return defaults when JSON does not exist."""
@@ -1439,81 +1380,19 @@ class StoryService:
 
     def _resolve_aux_reference(self, tag: str) -> dict:
         """Resolve one auxiliary image reference tag."""
-        try:
-            resource, image = auxiliary_resource_image_for_tag(self.auxiliary_resource_repository.list_resources(), tag)
-        except LookupError as exc:
-            raise StoryServiceError(str(exc)) from exc
-        path = self.path_service.resolve_path(str(image.get("image_path") or ""))
-        if not path.exists():
-            raise StoryServiceError(f"Auxiliary image not found: {path}")
-        return {
-            "role": "story_reference",
-            "label": f"{resource.label} - {image.get('label') or ''}",
-            "tag": tag,
-            "path": str(path),
-            "kind": f"aux:{resource.category}",
-        }
+        return self.story_reference_service.resolve_aux_reference(tag)
 
     def _resolve_asset_reference(self, tag: str, character: str, phase: str, asset_id: str) -> dict:
         """Resolve one locked asset image reference tag."""
-        asset = self.asset_repository.get_asset(character, phase, int(asset_id))
-        if asset.asset_state != "LOCKED" or asset.pipeline_stage != "LOCKED":
-            raise StoryServiceError(f"Asset reference is not locked: {tag}")
-        if not asset.final_image_output:
-            raise StoryServiceError(f"Asset reference has no final image output: {tag}")
-        path = self.path_service.character_asset_path(character, phase) / asset.final_image_output
-        if not path.exists():
-            raise StoryServiceError(f"Asset reference image not found: {path}")
-        return {
-            "role": "story_reference",
-            "label": f"{character} {phase} {asset.pipeline} {asset.body_view}",
-            "tag": tag,
-            "path": str(path),
-            "kind": "asset",
-            "source_character": character,
-            "source_phase": phase,
-            "source_asset_id": asset.asset_id,
-        }
+        return self.story_reference_service.resolve_asset_reference(tag, character, phase, asset_id)
 
     def _resolve_identity_reference(self, tag: str, character: str, phase: str, identity_key_id: str) -> dict:
         """Resolve one identity key image reference tag."""
-        if self.identity_key_repository is None:
-            raise StoryServiceError(f"Identity Key repository is not configured: {tag}")
-        identity_key = self.identity_key_repository.get_identity_key(character, phase, identity_key_id)
-        path = self.path_service.resolve_path(identity_key.image_path)
-        if not path.exists():
-            raise StoryServiceError(f"Identity Key image not found: {path}")
-        return {
-            "role": "story_reference",
-            "label": identity_key.label,
-            "tag": tag,
-            "path": str(path),
-            "kind": "identity-key",
-            "source_character": character,
-            "source_phase": phase,
-            "identity_key_id": identity_key.identity_key_id,
-            "source_asset_id": identity_key.source_asset_id,
-        }
+        return self.story_reference_service.resolve_identity_reference(tag, character, phase, identity_key_id)
 
     def _resolve_scene_references(self, scene_text: str) -> list[dict]:
         """Resolve image reference tags used by a scene."""
-        references = []
-        seen = set()
-        pattern = r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
-        for tag, _, _, _ in auxiliary_resource_tags_in_text(scene_text):
-            if tag not in seen:
-                seen.add(tag)
-                references.append(self._resolve_aux_reference(tag))
-        for match in re.finditer(pattern, scene_text or ""):
-            tag = match.group(0)
-            if tag in seen:
-                continue
-            seen.add(tag)
-            if match.group(1):
-                references.append(self._resolve_asset_reference(tag, match.group(1), match.group(2), match.group(3)))
-            else:
-                references.append(self._resolve_identity_reference(tag, match.group(4), match.group(5), match.group(6)))
-        return references
+        return self.story_reference_service.resolve_scene_references(scene_text)
 
     def _write_json(self, path: Path, payload: dict) -> None:
         """Write JSON with stable formatting."""
@@ -1557,100 +1436,7 @@ class StoryService:
 
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile one story scene prompt and stage it for the Render Console."""
-        safe_story_slug = self.safe_slug(story_slug)
-        safe_scene_slug = self.safe_slug(scene_slug)
-        pipeline_path = self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
-        pipeline_path.mkdir(parents=True, exist_ok=True)
-        final_prompt_path = pipeline_path / "Final_Image_Prompt.md"
-        scene_builder_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
-        if not scene_builder_path.exists():
-            raise StoryServiceError(f"Scene Builder JSON not found: {scene_builder_path}")
-        scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
-        references_source = "\n" + json.dumps(scene_builder_data)
-        scene_aspect_ratio = ""
-        references = self._resolve_scene_references(references_source)
-        normalized_scene = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
-        warnings = self.validate_scene_builder_data(normalized_scene)
-        story_settings_path = self._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
-        if not story_settings_path.exists():
-            raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
-        story_settings = self.load_story_settings(story_settings_path)
-        resolved_sources = self._resolve_scene_element_sources(normalized_scene)
-        ir = compile_scene_render_ir(normalized_scene, story_settings, {"references": references, "element_sources": resolved_sources})
-        ir["source"]["scene_json_path"] = str(scene_builder_path)
-        ir["source"]["story_settings_path"] = str(story_settings_path)
-        scene_aspect_ratio = str((ir.get("canvas") or {}).get("aspect_ratio") or "")
-        prompt = final_image_prompt_text(ir)
-        brief = local_render_brief(ir, {
-            "strict_primary_subject_count": getattr(self.path_service.config, "local_render_strict_primary_subject_count", True),
-            "forge_couple_debug_base_pass": getattr(self.path_service.config, "local_render_forge_couple_debug_base_pass", True),
-        })
-        self._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
-        final_prompt_path.write_text(prompt, encoding="utf-8")
-        self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
-        self._write_json(pipeline_path / "Local_Render_Brief.json", brief)
-        (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
-        artifacts = ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"]
-        if getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
-            (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
-            artifacts.append("Local_Render_Forge_Couple_Prompt.md")
-        else:
-            (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").unlink(missing_ok=True)
-        self._write_json(
-            pipeline_path / "Prompt_Source_Map.json",
-            self._scene_prompt_source_map(ir, prompt, final_prompt_path, scene_builder_path, story_settings_path, artifacts),
-        )
-        self._write_json(
-            pipeline_path / "dependency_manifest.json",
-            {
-                "story_slug": safe_story_slug,
-                "scene_slug": safe_scene_slug,
-                "reference_files": references,
-            },
-        )
-
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        self._clear_scene_render_queue_items(safe_story_slug, safe_scene_slug)
-        ask_id = f"Ask_Story_{safe_story_slug}_{safe_scene_slug}_RENDER_{stamp}"
-        ask_path = Path(self.path_service.config.base_ai_queue_path) / "Ollama_Proxy" / "Ask" / ask_id
-        ask_path.mkdir(parents=True, exist_ok=False)
-        expected_output = f"{safe_scene_slug}.png"
-        manifest = {
-            "version": 1,
-            "ask_id": ask_id,
-            "asset_id": None,
-            "character": "",
-            "phase": "",
-            "pipeline": "Story",
-            "pipeline_stage": "RENDER",
-            "story_slug": safe_story_slug,
-            "scene_slug": safe_scene_slug,
-            "ollama_attempt_id": f"{stamp}_{safe_story_slug}_{safe_scene_slug}_RENDER",
-            "worker_type": "manual_chatgpt_render",
-            "ollama_model": "",
-            "prompt_file": "Final_Image_Prompt.md",
-            "expected_output": expected_output,
-            "candidate_output_file": expected_output,
-            "task_type": "render",
-            "render_preset": "chatgpt-manual",
-            "manual": True,
-            "target_output_file": str(self.path_service.story_folder_path(safe_story_slug) / expected_output),
-            "pipeline_path": str(pipeline_path),
-            "reference_files": references,
-            "aspect_ratio": scene_aspect_ratio,
-        }
-        self._write_json(ask_path / "ask_manifest.json", manifest)
-        (ask_path / "Final_Image_Prompt.md").write_text(prompt, encoding="utf-8")
-        return StoryRenderTask(
-            story_slug=safe_story_slug,
-            scene_slug=safe_scene_slug,
-            ask_id=ask_id,
-            ask_path=str(ask_path),
-            pipeline_path=str(pipeline_path),
-            final_prompt_path=str(final_prompt_path),
-            expected_output=expected_output,
-            reference_files=references,
-        )
+        return self.story_render_service.stage_scene_render(story_slug, scene_slug)
 
     def image_reference_rows(self, character_filter: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
         """List copyable image reference rows for scenes."""

@@ -207,12 +207,6 @@ The primary dashboard is implemented in FastAPI at `zet/web/app.py`.
 
 The old Streamlit dashboard has been retired. New dashboard work belongs in `zet/web/` and should call backend services rather than owning workflow logic directly.
 
-A detailed inventory of current dashboard behavior and UI direction is maintained in:
-
-```text
-Docs/Dashboard_Functionality_and_UI_Direction.md
-```
-
 The FastAPI dashboard lives under:
 
 ```text
@@ -542,11 +536,8 @@ Current worker scripts:
 - `AI_Manager/proxy_worker.py`
 - `AI_Manager/ollama_proxy_worker.py`
 - `AI_Manager/local_image_proxy_worker.py`
-- `AI_Manager/comfyui_proxy_worker.py`
 
 `proxy_worker.py` is the preferred worker entry point. It claims one supported ask at a time and dispatches either `ollama_generate` or `local_image_render` work on the same machine, preventing concurrent condense/render jobs from competing for local resources.
-
-`comfyui_proxy_worker.py` is now only a compatibility wrapper around `local_image_proxy_worker.py`.
 
 The individual Ollama and local image workers remain useful for diagnostics, but should not both be run on the same machine when serialized local work is desired.
 

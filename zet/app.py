@@ -24,6 +24,7 @@ from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseCo
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
+from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
@@ -174,11 +175,13 @@ class ZetApp:
         state_machine = StateMachine()
         housekeeping_service = HousekeepingService(path_service)
         worker_service = WorkerService(asset_repository, pipeline_repository, path_service)
+        prompt_artifact_service = PromptArtifactService(asset_repository, path_service)
         ai_proxy_path_service = AIProxyPathService(config)
         ai_proxy_service = AIProxyService(
             asset_repository,
             pipeline_repository,
             path_service,
+            prompt_artifact_service,
             ai_proxy_path_service,
             housekeeping_service,
         )
@@ -198,13 +201,16 @@ class ZetApp:
             state_machine,
             housekeeping_service,
             path_service,
+            prompt_artifact_service,
             worker_service,
             ai_proxy_service,
             ai_answer_harvester,
         )
         prompt_review_service = PromptReviewService(
             asset_repository,
-            asset_service,
+            pipeline_repository,
+            prompt_artifact_service,
+            worker_service,
             path_service,
         )
         reference_service = ReferenceService(asset_repository, path_service)
@@ -230,7 +236,6 @@ class ZetApp:
             Path(__file__).resolve().parents[1],
         )
         story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository, identity_key_repository)
-        ai_proxy_service.prompt_review_service = prompt_review_service
         app = cls(
             config,
             asset_repository,

@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import json
-import re
 from dataclasses import asdict
 from pathlib import Path
-import sys
 from typing import Any
-from urllib.error import URLError
-from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -20,17 +15,16 @@ from zet.app import ZetApp
 from zet.render_console.queue import RenderConsoleQueue
 from zet.services.config_service import ConfigService
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
+from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
+from zet.services.gpt_helper_prompt_service import GptHelperPromptService
+from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.pipeline_control_service import AutomationSettings
+from zet.services.source_editor_service import SourceEditorService
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
-SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
-if str(SCRIPTS_PATH) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_PATH))
 
 from zet.services.prompt_review_service import LocalRenderUnavailable
-
-from Compile_Character_Template import MARKER_RE
-from Template_Section_Editor import save_template_sections
 
 
 def _app(config_path: str | Path) -> ZetApp:
@@ -39,41 +33,6 @@ def _app(config_path: str | Path) -> ZetApp:
 
 def _render_console_queue(config_path: str | Path) -> RenderConsoleQueue:
     return RenderConsoleQueue(ConfigService.load(config_path))
-
-
-def _render_console_tasks_for_context(queue: RenderConsoleQueue, character: str = "", phase: str = ""):
-    """Return manual render tasks filtered to the requested character and phase."""
-    tasks = queue.list_tasks()
-    if character:
-        tasks = [task for task in tasks if not task.character or task.character == character]
-    if phase:
-        tasks = [task for task in tasks if not task.phase or task.phase == phase]
-    return tasks
-
-
-def _render_console_task_for_context(queue: RenderConsoleQueue, ask_id: str, character: str = "", phase: str = ""):
-    """Return one manual render task only when it belongs to the requested context."""
-    task = queue.get_task(ask_id)
-    if task is None:
-        return None
-    if character and task.character and task.character != character:
-        return None
-    if phase and task.phase and task.phase != phase:
-        return None
-    return task
-
-
-def _view_key(value: Any) -> str:
-    """Normalize an asset view value to a config lookup key."""
-    return re.sub(r"[^A-Z0-9]+", "_", str(value or "").upper()).strip("_")
-
-
-def _gpt_helper_prompt_path(config_path: str | Path) -> Path:
-    """Resolve the GPT helper prompt config path for this app instance."""
-    local_path = Path(config_path).resolve().parent / "Config" / "GPT_Helper_Prompts.json"
-    if local_path.exists():
-        return local_path
-    return PROJECT_ROOT / "Config" / "GPT_Helper_Prompts.json"
 
 
 def _read_json_file(path: Path) -> dict[str, Any]:
@@ -85,23 +44,6 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
     return data
-
-
-def _read_gpt_helper_prompt_config(path: Path) -> dict[str, Any]:
-    """Read a phase-local GPT helper prompt config, returning a valid empty shape if missing."""
-    data = _read_json_file(path)
-    data.setdefault("schema_version", 1)
-    data.setdefault("pipelines", {})
-    return data
-
-
-def _write_gpt_helper_prompt_config(path: Path, data: dict[str, Any]) -> Path:
-    """Write the GPT helper prompt config atomically."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f"{path.name}.tmp")
-    temp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    temp_path.replace(path)
-    return path
 
 
 def _render_console_asset_for_task(zet_app: ZetApp, task):
@@ -122,103 +64,12 @@ def _render_console_reference_files(zet_app: ZetApp, task) -> list[dict]:
     return task.manifest.get("reference_files") or []
 
 
-def _view_keys() -> list[str]:
-    """Return all configured normalized view keys."""
-    view_text_path = PROJECT_ROOT / "Config" / "Prompt_View_Text.json"
-    data = _read_json_file(view_text_path)
-    views = data.get("views", {})
-    if not isinstance(views, dict):
-        return []
-    return [str(key) for key in views.keys()]
-
-
-def _phase_gpt_helper_prompt_path(zet_app: ZetApp, task) -> Path | None:
-    """Resolve the per-character-phase GPT helper prompt config path for a render task."""
-    asset = _render_console_asset_for_task(zet_app, task)
-    if asset is None:
-        return None
-    return zet_app.path_service.gpt_helper_prompt_path(asset.character, asset.phase)
-
-
-def _seed_phase_gpt_helper_prompt_config(zet_app: ZetApp, path: Path, task) -> Path:
-    """Create a per-phase GPT helper prompt config from the legacy global config."""
-    asset = _render_console_asset_for_task(zet_app, task)
-    if asset is None:
-        raise ValueError("Cannot seed helper prompts because the render task is not tied to an asset.")
-    legacy = _read_json_file(_gpt_helper_prompt_path(zet_app.config_path))
-    legacy_defaults = legacy.get("defaults", {}) if isinstance(legacy.get("defaults"), dict) else {}
-    legacy_pipelines = legacy.get("pipelines", {}) if isinstance(legacy.get("pipelines"), dict) else {}
-    phase_pipelines: dict[str, dict[str, str]] = {}
-    view_keys = _view_keys()
-    for pipeline in zet_app.pipeline_repository.list_pipelines(asset.character, asset.phase):
-        legacy_pipeline = legacy_pipelines.get(pipeline.name, {}) if isinstance(legacy_pipelines.get(pipeline.name), dict) else {}
-        prompts: dict[str, str] = {}
-        for view in view_keys:
-            text = str(legacy_pipeline.get(view) or legacy_pipeline.get("__default") or legacy_defaults.get(view) or "").strip()
-            prompts[view] = text
-        phase_pipelines[pipeline.name] = prompts
-    return _write_gpt_helper_prompt_config(path, {"schema_version": 1, "pipelines": phase_pipelines})
-
-
-def _ensure_phase_gpt_helper_prompt_config(zet_app: ZetApp, task) -> Path:
-    """Return a ready per-phase GPT helper prompt config path, seeding it if needed."""
-    path = _phase_gpt_helper_prompt_path(zet_app, task)
-    if path is None:
-        raise ValueError("Cannot load helper prompts because the render task is not tied to an asset.")
-    if not path.exists():
-        _seed_phase_gpt_helper_prompt_config(zet_app, path, task)
-    return path
-
-
 def _gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task) -> dict[str, str]:
-    """Return the short manual ChatGPT helper prompt for a render-console task."""
-    asset = _render_console_asset_for_task(zet_app, task)
-    if asset is None:
-        return {"text": "", "view": "", "source": ""}
-
-    view = _view_key(asset.body_view)
-    path = _ensure_phase_gpt_helper_prompt_config(zet_app, task)
-    data = _read_gpt_helper_prompt_config(path)
-    pipelines = data.get("pipelines", {}) if isinstance(data, dict) else {}
-    pipeline_prompts = pipelines.get(asset.pipeline, {}) if isinstance(pipelines, dict) else {}
-    text = ""
-    source = ""
-    if isinstance(pipeline_prompts, dict):
-        text = str(pipeline_prompts.get(view) or "").strip()
-        source = f"pipeline:{asset.pipeline}" if text else ""
-    return {"text": text, "view": view, "source": source, "pipeline": asset.pipeline, "config_path": str(path)}
+    return GptHelperPromptService(zet_app, PROJECT_ROOT).get(task)
 
 
 def _save_gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task, text: str) -> dict[str, str]:
-    """Save a pipeline/view GPT helper prompt override for a render-console task."""
-    asset = _render_console_asset_for_task(zet_app, task)
-    if asset is None:
-        raise ValueError("Cannot save helper prompt because the render task is not tied to an asset.")
-    view = _view_key(asset.body_view)
-    if not view:
-        raise ValueError("Cannot save helper prompt because the asset has no view.")
-
-    path = _ensure_phase_gpt_helper_prompt_config(zet_app, task)
-    data = _read_gpt_helper_prompt_config(path)
-    pipelines = data.setdefault("pipelines", {})
-    if not isinstance(pipelines, dict):
-        pipelines = {}
-        data["pipelines"] = pipelines
-    pipeline_prompts = pipelines.setdefault(asset.pipeline, {})
-    if not isinstance(pipeline_prompts, dict):
-        pipeline_prompts = {}
-        pipelines[asset.pipeline] = pipeline_prompts
-
-    cleaned = str(text or "").strip()
-    if cleaned:
-        pipeline_prompts[view] = cleaned
-    else:
-        pipeline_prompts[view] = ""
-
-    path = _write_gpt_helper_prompt_config(path, data)
-    prompt = _gpt_helper_prompt(zet_app, config_path, task)
-    prompt["config_path"] = str(path)
-    return prompt
+    return GptHelperPromptService(zet_app, PROJECT_ROOT).save(task, text)
 
 
 def _format_value(value: Any) -> str:
@@ -227,20 +78,6 @@ def _format_value(value: Any) -> str:
 
 def _format_timestamp_with_age(value: Any) -> str:
     return _format_value(value)
-
-
-def _discover_characters(base_character_path: str) -> list[str]:
-    root = Path(base_character_path)
-    if not root.exists() or not root.is_dir():
-        return []
-    return sorted(path.name for path in root.iterdir() if path.is_dir())
-
-
-def _discover_phases(base_character_path: str, character: str) -> list[str]:
-    root = Path(base_character_path) / character
-    if not root.exists() or not root.is_dir():
-        return []
-    return sorted(path.name for path in root.iterdir() if path.is_dir())
 
 
 def _review_image_ready(zet_app: ZetApp, asset) -> bool:
@@ -753,158 +590,6 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def _record_source_edit(payload: dict[str, Any], result: dict[str, Any]) -> None:
-    log_dir = PROJECT_ROOT / "Logs"
-    log_dir.mkdir(exist_ok=True)
-    entry = {
-        "saved_at": datetime.now().isoformat(timespec="seconds"),
-        "path": result.get("path"),
-        "editor_type": result.get("editor_type"),
-        "section_name": payload.get("section_name"),
-        "json_pointer": payload.get("json_pointer"),
-        "text_length": len(str(payload.get("text") or "")),
-    }
-    with (log_dir / "Source_Edits.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-
-def _resolve_editable_source_path(zet_app: ZetApp, path: str) -> Path:
-    requested = zet_app.path_service.resolve_path(path)
-    if not requested.is_absolute():
-        requested = PROJECT_ROOT / requested
-    resolved = requested.resolve()
-    project_root = PROJECT_ROOT.resolve()
-    library_root = Path(zet_app.config.base_library_path).resolve()
-    try:
-        if library_root and resolved.is_relative_to(library_root):
-            pass
-        else:
-            resolved.relative_to(project_root)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Source path must be inside the Zet project or configured library.") from exc
-    if not resolved.exists() or not resolved.is_file():
-        raise HTTPException(status_code=404, detail=f"Source file not found: {path}")
-    return resolved
-
-
-def _json_pointer_parts(pointer: str) -> list[str]:
-    raw = str(pointer or "").strip()
-    if not raw.startswith("/"):
-        raise HTTPException(status_code=400, detail="JSON pointer must start with '/'.")
-    return [part.replace("~1", "/").replace("~0", "~") for part in raw.split("/")[1:]]
-
-
-def _get_json_pointer(data: Any, pointer: str) -> Any:
-    item = data
-    for part in _json_pointer_parts(pointer):
-        if isinstance(item, dict):
-            item = item[part]
-        elif isinstance(item, list):
-            item = item[int(part)]
-        else:
-            raise KeyError(part)
-    return item
-
-
-def _set_json_pointer(data: Any, pointer: str, value: Any) -> None:
-    parts = _json_pointer_parts(pointer)
-    if not parts:
-        raise HTTPException(status_code=400, detail="Cannot replace the whole JSON document here.")
-    item = data
-    for part in parts[:-1]:
-        item = item[int(part)] if isinstance(item, list) else item[part]
-    last = parts[-1]
-    if isinstance(item, list):
-        item[int(last)] = value
-    elif isinstance(item, dict):
-        item[last] = value
-    else:
-        raise HTTPException(status_code=400, detail="JSON pointer does not reference an editable field.")
-
-
-def _extract_markdown_section(path: Path, section_name: str) -> tuple[str, int | None, int | None]:
-    text = path.read_text(encoding="utf-8")
-    open_name = None
-    content_start = 0
-    start_line = None
-    for marker in MARKER_RE.finditer(text):
-        kind, name = marker.group(1), marker.group(2)
-        if kind == "BEGIN":
-            open_name = name
-            content_start = marker.end()
-            start_line = text.count("\n", 0, content_start) + 1
-            continue
-        if open_name == section_name and kind == "END" and name == section_name:
-            end_line = text.count("\n", 0, marker.start()) + 1
-            return text[content_start:marker.start()].strip("\n"), start_line, end_line
-        open_name = None
-    raise HTTPException(status_code=404, detail=f"Section not found: {section_name}")
-
-
-def _edit_source_payload(zet_app: ZetApp, source: dict[str, Any]) -> dict[str, Any]:
-    kind = str(source.get("source_kind") or "")
-    path = _resolve_editable_source_path(zet_app, str(source.get("source_path") or ""))
-    section = str(source.get("section_name") or "")
-    json_pointer = str(source.get("json_pointer") or "")
-    warning = ""
-    if kind == "shared_template_section":
-        warning = "Shared template edits can affect multiple characters and phases."
-    if section:
-        text, start_line, end_line = _extract_markdown_section(path, section)
-        editor_type = "markdown_section"
-    elif json_pointer:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        text = _get_json_pointer(data, json_pointer)
-        if isinstance(text, (list, dict)):
-            text = json.dumps(text, indent=2, ensure_ascii=False)
-        editor_type = "json_field"
-        start_line = end_line = None
-    else:
-        text = path.read_text(encoding="utf-8")
-        editor_type = "markdown_file"
-        start_line = end_line = None
-    return {
-        "source": source,
-        "editor_type": editor_type,
-        "path": str(path),
-        "section_name": section or None,
-        "json_pointer": json_pointer or None,
-        "text": str(text),
-        "start_line": start_line,
-        "end_line": end_line,
-        "warning": warning,
-    }
-
-
-def _save_edit_source(zet_app: ZetApp, payload: dict[str, Any]) -> dict[str, Any]:
-    path = _resolve_editable_source_path(zet_app, str(payload.get("path") or ""))
-    editor_type = str(payload.get("editor_type") or "")
-    text = str(payload.get("text") or "")
-    if editor_type == "markdown_section":
-        section = str(payload.get("section_name") or "")
-        if not section:
-            raise HTTPException(status_code=400, detail="Missing section name.")
-        save_template_sections(path, {section: text}, [section])
-    elif editor_type == "json_field":
-        pointer = str(payload.get("json_pointer") or "")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        current = _get_json_pointer(data, pointer)
-        value: Any = text
-        if isinstance(current, list):
-            value = [line.strip() for line in text.splitlines() if line.strip()]
-        elif isinstance(current, (int, float, bool, dict)):
-            value = json.loads(text)
-        _set_json_pointer(data, pointer, value)
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    elif editor_type == "markdown_file":
-        path.write_text(text, encoding="utf-8")
-    else:
-        raise HTTPException(status_code=400, detail=f"Unsupported editor type: {editor_type}")
-    result = {"status": "SAVED", "path": str(path), "editor_type": editor_type}
-    _record_source_edit(payload, result)
-    return result
-
-
 def _asset_detail_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
     asset_ref = zet_app.asset(character, phase, asset_id)
     asset = asset_ref.get()
@@ -941,39 +626,6 @@ def _action_response(zet_app: ZetApp, character: str, phase: str, asset_id: int,
     }
 
 
-def _local_render_preset(config_path: str | Path, preset_name: str) -> dict[str, Any]:
-    path = PROJECT_ROOT / "Config" / "Local_Render_Presets.json"
-    presets = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    preset = presets.get(preset_name)
-    return preset if isinstance(preset, dict) else {}
-
-
-def _local_render_checkpoints(config_path: str | Path, preset_name: str) -> list[dict[str, str]]:
-    preset = _local_render_preset(config_path, preset_name)
-    server_url = str(preset.get("server_url") or "http://127.0.0.1:7860").rstrip("/")
-    request = UrlRequest(server_url + "/sdapi/v1/sd-models", method="GET")
-    try:
-        with urlopen(request, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except URLError as exc:
-        raise RuntimeError("Local image backend unavailable.") from exc
-    if not isinstance(data, list):
-        return []
-    checkpoints = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title") or item.get("model_name") or "").strip()
-        if title:
-            checkpoints.append({
-                "title": title,
-                "model_name": str(item.get("model_name") or ""),
-                "filename": str(item.get("filename") or ""),
-                "hash": str(item.get("hash") or ""),
-            })
-    return checkpoints
-
-
 def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     config_path = Path(config_path)
     config = ConfigService.load(config_path)
@@ -991,9 +643,10 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def context() -> dict[str, Any]:
         current_config = ConfigService.load(app.state.config_path)
         zet_app = _app(app.state.config_path)
-        characters = _discover_characters(current_config.base_character_path)
+        discovery = CharacterPhaseDiscoveryService(current_config.base_character_path)
+        characters = discovery.list_characters()
         phases_by_character = {
-            character: _discover_phases(current_config.base_character_path, character)
+            character: discovery.list_phases(character)
             for character in characters
         }
         onboarding_statuses = {
@@ -1758,7 +1411,9 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             zet_app = _app(app.state.config_path)
             if source.get("editable") is False:
                 raise HTTPException(status_code=400, detail="This source is not editable.")
-            return _edit_source_payload(zet_app, source)
+            return SourceEditorService(zet_app, PROJECT_ROOT).load(source)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except HTTPException:
             raise
         except Exception as exc:
@@ -1768,7 +1423,9 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def edit_source_save(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
             zet_app = _app(app.state.config_path)
-            return _save_edit_source(zet_app, payload)
+            return SourceEditorService(zet_app, PROJECT_ROOT).save(payload)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except HTTPException:
             raise
         except Exception as exc:
@@ -2214,7 +1871,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.get("/api/local-image/checkpoints")
     def local_image_checkpoints(preset: str = Query("body-reference-preview")) -> dict[str, Any]:
         try:
-            return {"checkpoints": _local_render_checkpoints(app.state.config_path, preset)}
+            service = LocalRenderBackendService(PROJECT_ROOT / "Config" / "Local_Render_Presets.json")
+            return {"checkpoints": service.list_checkpoints(preset)}
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -2245,8 +1903,9 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def render_console_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """List manual render tasks for the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
+        service = ManualRenderSubmissionService(queue)
         try:
-            return {"tasks": [task.to_dict() for task in _render_console_tasks_for_context(queue, character, phase)]}
+            return {"tasks": [task.to_dict() for task in service.list_tasks(character, phase)]}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2254,7 +1913,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def render_console_task_detail(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Return one manual render task for the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         zet_app = _app(app.state.config_path)
@@ -2269,7 +1928,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     ) -> dict[str, Any]:
         """Recompile an asset prompt and refresh the queued render prompt."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        service = ManualRenderSubmissionService(queue)
+        task = service.get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         if task.asset_id is None:
@@ -2284,7 +1944,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             )
             if context.prompt_text is None:
                 raise ValueError(f"No Final_Image_Prompt.md found for Asset {task.asset_id}.")
-            (task.ask_path / task.prompt_file).write_text(context.prompt_text, encoding="utf-8")
+            service.replace_prompt(task, context.prompt_text)
             payload = _render_console_detail_payload(zet_app, app.state.config_path, queue, task)
             payload["message"] = f"Prompt recompiled for Asset {task.asset_id}."
             return payload
@@ -2300,7 +1960,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     ) -> dict[str, Any]:
         """Save the editable GPT helper prompt for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
@@ -2318,7 +1978,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def render_console_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Generate a local test render for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
@@ -2350,7 +2010,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def render_console_local_test_render_api_params(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Return harvested local test render API parameters for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
@@ -2373,7 +2033,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     def render_console_clear_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Delete all local test renders for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
@@ -2400,14 +2060,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     ) -> dict[str, Any]:
         """Write a successful render answer for a task in the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        service = ManualRenderSubmissionService(queue)
+        task = service.get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         image_bytes = await request.body()
         content_type = request.headers.get("content-type", "")
         try:
-            answer_path = queue.write_answer_image(task, image_bytes, content_type, render_comment)
-            tasks = _render_console_tasks_for_context(queue, character, phase)
+            answer_path = service.submit_image(task, image_bytes, content_type, render_comment)
+            tasks = service.list_tasks(character, phase)
             return {
                 "status": "SUCCESS",
                 "answer_path": str(answer_path),
@@ -2425,7 +2086,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     ) -> dict[str, Any]:
         """Write a failed render answer for a task in the selected character phase."""
         queue = _render_console_queue(app.state.config_path)
-        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        service = ManualRenderSubmissionService(queue)
+        task = service.get_task(ask_id, character, phase)
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         payload = await request.json()
@@ -2433,8 +2095,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             zet_app = _app(app.state.config_path)
             zet_app.prompt_review_service.clear_local_test_renders(_render_console_task_workspace(task))
-            answer_path = queue.write_failed_answer(task, reason)
-            tasks = _render_console_tasks_for_context(queue, character, phase)
+            answer_path = service.submit_failure(task, reason)
+            tasks = service.list_tasks(character, phase)
             return {
                 "status": "ERROR",
                 "answer_path": str(answer_path),

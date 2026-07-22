@@ -35,6 +35,8 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
     if str(import_path) not in sys.path:
         sys.path.insert(0, str(import_path))
 
+from zet.models.ai_proxy import AIProxyAskManifest
+from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import ConfigService
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -83,6 +85,10 @@ def read_json(path: Path) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def read_ask_manifest(path: Path) -> dict:
+    return AIProxyAskManifest.from_dict(read_json(path)).to_dict()
 
 
 def ensure_directory(path: Path) -> None:
@@ -153,25 +159,14 @@ def write_text_atomic(path: Path, contents: str) -> None:
 
 
 def ensure_dirs(proxy_root: Path, worker_id: str) -> dict[str, Path]:
-    dirs = {
-        "ask": proxy_root / "Ask",
-        "claims": proxy_root / "Claims",
-        "claimed": proxy_root / "Claimed" / worker_id,
-        "answer": proxy_root / "Answer",
-        "failed": proxy_root / "Failed" / worker_id,
-        "control": proxy_root / "Control",
-        "monitor_requests": proxy_root / "Monitor" / "Requests",
-        "monitor_responses": proxy_root / "Monitor" / "Responses" / worker_id,
-    }
+    dirs = AIProxyPathService.worker_paths(proxy_root, worker_id)
     for path in dirs.values():
         ensure_directory(path)
     return dirs
 
 
 def normalize_proxy_root(path: Path) -> Path:
-    if path.name != "Ollama_Proxy" and (path.name == "AI_Queue" or (path / "Ollama_Proxy").exists()):
-        return path / "Ollama_Proxy"
-    return path
+    return AIProxyPathService.normalize_proxy_root(path)
 
 
 def stop_manifest_path(dirs: dict[str, Path]) -> Path:
@@ -198,7 +193,7 @@ def should_reject_ask(ask_manifest: dict, dirs: dict[str, Path]) -> bool:
 
 
 def write_rejected_answer(folder: Path, dirs: dict[str, Path], worker_id: str, reason: str) -> str:
-    ask_manifest = read_json(folder / "ask_manifest.json")
+    ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     answer_manifest = {
         "version": 1,
         "ask_id": ask_manifest.get("ask_id") or folder.name,
@@ -529,7 +524,7 @@ def process_claimed(
     preflight_attempts: int,
     return_transient_to_ask: bool,
 ) -> str:
-    ask_manifest = read_json(folder / "ask_manifest.json")
+    ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     if should_reject_ask(ask_manifest, dirs):
         return write_rejected_answer(
             folder,

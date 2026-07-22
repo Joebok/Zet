@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import importlib
 import json
 from pathlib import Path
 import shutil
@@ -9,8 +8,10 @@ import sys
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
-from zet.services.asset_service import AssetService
+from zet.repositories.pipeline_repository import PipelineRepository
 from zet.services.path_service import PathService
+from zet.services.prompt_artifact_service import PromptArtifactService
+from zet.services.worker_service import WorkerService, WorkerServiceError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
@@ -40,24 +41,29 @@ class PromptReviewService:
     def __init__(
         self,
         asset_repository: AssetRepository,
-        asset_service: AssetService,
+        pipeline_repository: PipelineRepository,
+        prompt_artifact_service: PromptArtifactService,
+        worker_service: WorkerService,
         path_service: PathService,
         project_root: Path = PROJECT_ROOT,
     ):
         self.asset_repository = asset_repository
-        self.asset_service = asset_service
+        self.pipeline_repository = pipeline_repository
+        self.prompt_artifact_service = prompt_artifact_service
+        self.worker_service = worker_service
         self.path_service = path_service
         self.project_root = project_root
 
     def get_context(self, character: str, phase: str, asset_id: int) -> PromptReviewContext:
-        asset = self.asset_repository.get_asset(character, phase, asset_id)
-        prompt_candidates = self.prompt_file_candidates(asset)
-        prompt_path = self.resolve_prompt_file(asset, prompt_candidates)
-        prompt_text = prompt_path.read_text(encoding="utf-8") if prompt_path else None
-        condensed_prompt_path = self.resolve_condensed_prompt_file(prompt_path) if prompt_path else None
-        condensed_prompt_text = condensed_prompt_path.read_text(encoding="utf-8") if condensed_prompt_path else None
-        render_prompt_path = condensed_prompt_path or prompt_path
-        render_prompt_text = condensed_prompt_text or prompt_text
+        artifacts = self.prompt_artifact_service.get_context(character, phase, asset_id)
+        asset = artifacts.asset
+        prompt_candidates = artifacts.prompt_candidates
+        prompt_path = artifacts.prompt_path
+        prompt_text = artifacts.prompt_text
+        condensed_prompt_path = artifacts.condensed_prompt_path
+        condensed_prompt_text = artifacts.condensed_prompt_text
+        render_prompt_path = artifacts.render_prompt_path
+        render_prompt_text = artifacts.render_prompt_text
         source_map_path = self.resolve_source_map_file(prompt_path) if prompt_path else None
         source_map = self._read_json_if_exists(source_map_path) if source_map_path else {}
         prompt_review_path = self.resolve_prompt_review_file(prompt_path) if prompt_path else None
@@ -80,29 +86,17 @@ class PromptReviewService:
         )
 
     def prompt_file_candidates(self, asset: Asset) -> list[Path]:
-        pipeline_path = self.path_service.pipeline_path(asset)
-        character_path = self.path_service.character_path(asset.character, asset.phase)
-        view_folder = self.view_folder_for_asset(asset)
-        return [
-            pipeline_path / "Final_Image_Prompt.md",
-            pipeline_path / "OLLAMA_PROMPT.md",
-            character_path / "Body_Reference" / view_folder / "Final_Image_Prompt.md",
-            character_path / "Body_Reference" / str(asset.body_view) / "Final_Image_Prompt.md",
-        ]
+        return self.prompt_artifact_service.prompt_file_candidates(asset)
 
     def resolve_prompt_file(self, asset: Asset, candidates: list[Path] | None = None) -> Path | None:
-        for path in candidates or self.prompt_file_candidates(asset):
-            if path.exists() and path.is_file():
-                return path
-        return None
+        return self.prompt_artifact_service.resolve_prompt_file(asset, candidates)
 
     def resolve_prompt_review_file(self, prompt_path: Path) -> Path | None:
         path = prompt_path.parent / "Prompt_Review.md"
         return path if path.exists() else None
 
     def resolve_condensed_prompt_file(self, prompt_path: Path) -> Path | None:
-        path = prompt_path.parent / "Condensed_Image_Prompt.md"
-        return path if path.exists() and path.is_file() else None
+        return self.prompt_artifact_service.resolve_condensed_prompt_file(prompt_path)
 
     def resolve_source_map_file(self, prompt_path: Path) -> Path | None:
         for name in ("Prompt_Source_Map.json", "source_map.json"):
@@ -228,17 +222,14 @@ class PromptReviewService:
         if invalidate_review_artifacts and prompt_path is not None:
             self._clear_review_aids(prompt_path)
 
-        pipeline = self.asset_service.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         worker_name = pipeline.worker_by_stage.get("PROMPT")
         if not worker_name:
             raise ValueError(f"Pipeline {asset.pipeline} has no PROMPT worker configured.")
-        module_name = self.asset_service.worker_service._normalize_worker_name(worker_name)
-        module = importlib.import_module(module_name)
-        run_func = getattr(module, "run", None)
-        if not callable(run_func):
-            raise ValueError(f"Prompt worker module {module_name} has no callable run function.")
-        context = self.asset_service.worker_service._build_context(asset)
-        result = run_func(asset, context)
+        try:
+            result = self.worker_service.run_named_worker(asset, worker_name)
+        except WorkerServiceError as exc:
+            raise ValueError(str(exc)) from exc
         if not result.success:
             raise ValueError(result.error_message or result.message)
         return self.get_context(character, phase, asset_id)
@@ -265,13 +256,7 @@ class PromptReviewService:
         )
 
     def view_folder_for_asset(self, asset: Asset) -> str:
-        views = self.load_view_options()
-        for view in views.values():
-            if not isinstance(view, dict):
-                continue
-            if asset.body_view in {view.get("folder_name"), view.get("output_name_fragment")}:
-                return str(view.get("folder_name"))
-        return str(asset.body_view).replace("-", "_")
+        return self.prompt_artifact_service.view_folder_for_asset(asset)
 
     def load_view_options(self) -> dict:
         path = self.project_root / "Config" / "Prompt_View_Text.json"

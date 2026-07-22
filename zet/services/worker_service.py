@@ -46,6 +46,11 @@ class WorkerService:
                 f"Pipeline {pipeline.name} has no worker configured for stage {asset.pipeline_stage}"
             )
 
+        return self.run_named_worker(asset, worker_name)
+
+    def run_named_worker(self, asset, worker_name: str) -> WorkerResult:
+        """Run a configured worker by module name for an already loaded asset."""
+
         module_name = self._normalize_worker_name(worker_name)
         context = self._build_context(asset)
 

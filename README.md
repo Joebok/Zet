@@ -6,7 +6,7 @@ Zet is a Python-based pipeline for creating character images, managing assets, a
 
 - **Character Onboarding**: Create new characters from onboarding options
 - **Multi-phase Rendering Pipeline**: Body Reference → Head Fitment → Costume Dressing → Expressions
-- **Prompt Review System**: AI-powered prompt validation and refinement using Qwen models
+- **Prompt Inspection**: Inspect and refine queued render prompts, with optional Qwen condensation
 - **Asset Management**: Organized storage for character assets, costumes, expressions, references
 - **Auto-Harvest**: Automatically process queued jobs from external sources (Dropbox sync)
 - **Render Console Queue**: Manage rendering tasks with priority queuing
@@ -43,7 +43,7 @@ To use full rendering capabilities with Stable Diffusion workflows:
 mkdir Zet_Library
 
 # Run the web dashboard to manage characters and scenes
-python -m zet.app
+python3 -B -m zet.web.app
 ```
 
 ### 2. Configuration
@@ -64,8 +64,8 @@ Model = "qwen3.5:4b-condenser"
 
 **Option A - Interactive Dashboard:**
 ```bash
-run_zet_web.bat    ; Windows batch script to start web app
-python -m zet.app   ; Direct Python execution
+run_zet_web.bat                 ; Windows batch script to start web app
+python3 -B -m zet.web.app       ; Direct Python execution
 ```
 
 **Option B - Automated Processing:**
@@ -88,7 +88,7 @@ python -m zet.app   ; Direct Python execution
 2. Use dashboard or run:
    ```powershell
    .\AI_Manager\run_proxy_worker.bat    ; Start ComfyUI proxy if using rendering
-   python -m zet.app                    ; Then start the pipeline app
+   python3 -B -m zet.web.app            ; Then start the pipeline app
    ```
 
 ## Project Structure
@@ -96,9 +96,9 @@ python -m zet.app   ; Direct Python execution
 ```
 Zet/
 ├── Config/                      # Prompt templates, review checklists, render presets
-│   ├── AI_Prompt_Review_Instructions.md
+│   ├── AI_Prompt_Analysis_Instructions.md
 │   ├── Character_Onboarding_Options.json
-│   ├── Local_Render_Workflows/  # ComfyUI workflow JSONs (.json)
+│   ├── Local_Render_Presets.json # Configured local render backends
 │   └── ...
 ├── Scripts/                     # Standalone Python scripts for pipeline stages
 │   ├── Run_Body_Reference_Jobs.py
@@ -108,24 +108,25 @@ Zet/
 │   ├── models/                  # Data models (Asset, Costume, Expression)
 │   ├── services/                # Business logic for each pipeline stage
 │   ├── repositories/            # Database/file storage accessors
-│   └── app.py                   # FastAPI web server entry point
-├── Tests/                       # Unit tests for core functionality
+│   ├── app.py                   # Reusable application facade
+│   └── web/app.py               # FastAPI web server entry point
+├── tests/                       # Unit tests for core functionality
 ├── AI_Manager/                  # Proxy workers (ComfyUI, Ollama, local image)
 ├── Logs/                        # Pipeline execution logs
-├── Source_Edits.jsonl          # Versioned prompt/source edits history
+├── Logs/Source_Edits.jsonl     # Versioned prompt/source edits history
 └── config.toml                 # Configuration file
 ```
 
 ## API Endpoints
 
-The FastAPI server exposes these endpoints (when running `python -m zet.app`):
+The FastAPI server exposes these representative endpoints (when running `python3 -B -m zet.web.app`):
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/characters/{name}` | GET, POST, DELETE | Character CRUD operations |
-| `/api/assets/search?q=...` | GET | Search assets by character/phase/tags |
-| `/api/prompts/review` | POST | Submit prompts for AI review |
-| `/api/render/console/status` | GET | Render queue status |
+| `/api/context` | GET | Dashboard character and phase context |
+| `/api/assets` | GET | List assets for a character and phase |
+| `/api/render-console/tasks` | GET | List queued manual render tasks |
+| `/api/stories/{story_slug}/scenes/{scene_slug}/stage-render` | POST | Stage a V3 scene render |
 
 ## Help & Troubleshooting
 
@@ -133,16 +134,16 @@ The FastAPI server exposes these endpoints (when running `python -m zet.app`):
 
 **"No module named 'zet'" error:**
 ```bash
-python -m pip install -e .    ; Or ensure current directory is project root
+python3 -m pip install -r requirements.txt    ; Run from the project root
 ```
 
 **ComfyUI proxy not connecting:**
 - Ensure ComfyUI server is running on default port 8188
-- Check `AI_Manager/comfyui_proxy_worker.py` for connection settings
+- Check `AI_Manager/local_image_proxy_worker.py` for connection settings
 
-**Prompt review model errors (Qwen):**
+**Prompt condensation model errors (Qwen):**
 - Verify Ollama or local LLM is accessible at configured endpoint
-- See `Config/AI_Prompt_Review_Instructions.md` for prompt templates
+- See `Config/AI_Prompt_Analysis_Instructions.md` for prompt-analysis instructions
 
 ### Logs Location
 
@@ -158,24 +159,23 @@ Contributors and maintainers (add your name here):
 * 1.0 (2026)
     * Initial release with character onboarding, multi-phase rendering pipeline
     * ComfyUI proxy integration for Stable Diffusion workflows
-    * AI prompt review system using Qwen models
+    * AI prompt condensation using Qwen models
     * Auto-harvest from Dropbox queue folder
 
 ## License
 
-This project is licensed under the MIT License - see LICENSE.md (if exists) or use standard open-source terms.
+No license file is currently included in this repository.
 
 ## Acknowledgments
 
 - [ComfyUI](https://github.com/comfyanonymous/comfyui) for the underlying image generation workflows
-- [Qwen models](https://ollama.com/library/qwen) via Ollama for prompt review and condensation
+- [Qwen models](https://ollama.com/library/qwen) via Ollama for prompt analysis and condensation
 - Stable Diffusion community for base model support (SD1.5, SDXL)
 
 ## Additional Resources
 
-- **Dashboard UI**: See `Docs/Dashboard_Functionality_and_UI_Direction.md` for feature roadmap
-- **Scenes & Stories**: Implementation details in `Docs/Scenes and Stories Implementation Plan.md`
-- **Data Schema**: Object model decisions documented in `Zet_Data_Schema_Object_Model_Decisions.md`
+- **Dashboard and workflows**: See `Docs/Zet.md`
+- **Data Schema**: Object model decisions documented in `Docs/Zet_Data_Schema_Object_Model_Decisions.md`
 
 ## Contributing
 

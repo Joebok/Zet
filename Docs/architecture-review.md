@@ -336,3 +336,16 @@ There are no untracked personal scripts.
 - Tests: python3 -m pytest -q → 101 passed, 1 existing warning.
 - git diff --check passed.
 - No P1+ work performed.
+
+### P1 implemented and verified.
+- Revalidated the P1 findings against the current repository before editing; the documented boundary violations, service cycle, protocol duplication, story ownership, and compound-write risks still matched.
+- Added typed/versioned queue and reference protocols with clear unsupported-version errors, and centralized queue paths and state scanning without changing the on-disk layout.
+- Removed the Asset/AI proxy/prompt service construction cycle and private worker calls through an injected prompt-artifact service and public named-worker API.
+- Extracted reusable discovery, backend lookup, helper-prompt, source-edit, and manual-render workflows from `zet/web`; routes now delegate to backend services.
+- Split V3 scene normalization, story reference resolution, and render staging from `StoryService` behind compatibility-preserving delegation.
+- Added batch asset persistence plus atomic costume/expression writes and rollback behavior.
+- Corrected obsolete launcher, route, file, repository, and schema documentation.
+- Diff: 38 files, +1,610 / -947.
+- Tests: `python3 -m pytest -q` → 121 passed, 2 subtests passed, 1 existing warning.
+- `python3 -m compileall -q zet AI_Manager Scripts` and `git diff --check` passed.
+- No P2+ work performed.

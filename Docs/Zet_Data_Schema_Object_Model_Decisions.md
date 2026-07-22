@@ -124,6 +124,9 @@ Current repositories:
 
 - `AssetRepository`
 - `PipelineRepository`
+- `TurnaroundRepository`
+- `IdentityKeyRepository`
+- `AuxiliaryResourceRepository`
 
 `AssetRepository` responsibilities:
 
@@ -205,6 +208,8 @@ Prompt review and local render operations are exposed through `PromptReviewServi
 ## Reference Slot Decision
 
 Assets may carry structured image references in `reference_files`.
+
+The persisted `Asset` record also includes `identity_key_id`, `expression_definition_path`, and `costume_path` for workflows that own those resources.
 
 Head-fitment uses explicit reference slots instead of searching markdown for image filenames:
 
@@ -445,8 +450,6 @@ AI_Manager/local_image_proxy_worker.py
 ```
 
 `AI_Manager/proxy_worker.py` is the preferred deployed worker because it claims exactly one supported ask at a time and dispatches text or image work serially on the machine.
-
-`AI_Manager/comfyui_proxy_worker.py` is a compatibility wrapper.
 
 The queue contract should use `local_image_render`, not `comfyui_render`.
 

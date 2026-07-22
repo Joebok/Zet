@@ -115,42 +115,76 @@ class AssetRepository:
 
     def save_asset(self, asset: Asset) -> None:
         """Replace an existing asset record."""
-        payload = self._load_payload(asset.character, asset.phase)
+        self.save_assets([asset])
+
+    def save_assets(self, assets: list[Asset]) -> None:
+        """Replace existing asset records in one storage write."""
+        if not assets:
+            return
+        character = assets[0].character
+        phase = assets[0].phase
+        if any(asset.character != character or asset.phase != phase for asset in assets):
+            raise AssetRepositoryError("Batch assets must belong to the same character phase")
+        replacements = {asset.asset_id: self._serialize_asset(asset) for asset in assets}
+        if len(replacements) != len(assets):
+            raise AssetRepositoryError("Batch assets must have unique asset ids")
+
+        payload = self._load_payload(character, phase)
         records = payload.get("assets")
         if not isinstance(records, list):
             raise AssetRepositoryError("Assets.json must contain an 'assets' list")
 
-        replacement = self._serialize_asset(asset)
-        found = False
+        found = set()
         updated_records = []
         for record in records:
             if not isinstance(record, dict):
                 raise AssetRepositoryError("Each asset record in Assets.json must be an object")
-            if record.get("asset_id") == asset.asset_id:
-                updated_records.append(replacement)
-                found = True
+            asset_id = record.get("asset_id")
+            if asset_id in replacements:
+                updated_records.append(replacements[asset_id])
+                found.add(asset_id)
             else:
                 updated_records.append(record)
 
-        if not found:
-            raise AssetRepositoryError(f"Asset {asset.asset_id} not found for {asset.character}/{asset.phase}")
+        missing = sorted(set(replacements) - found)
+        if missing:
+            raise AssetRepositoryError(f"Assets {', '.join(str(asset_id) for asset_id in missing)} not found for {character}/{phase}")
 
         payload["assets"] = updated_records
-        self._write_payload(asset.character, asset.phase, payload)
+        self._write_payload(character, phase, payload)
 
     def create_asset(self, asset: Asset) -> Asset:
         """Append a new asset and advance next_asset_id."""
-        payload = self._load_payload(asset.character, asset.phase)
+        return self.create_assets([asset])[0]
+
+    def create_assets(self, assets: list[Asset]) -> list[Asset]:
+        """Append assets and advance next_asset_id in one storage write."""
+        if not assets:
+            return []
+        character = assets[0].character
+        phase = assets[0].phase
+        if any(asset.character != character or asset.phase != phase for asset in assets):
+            raise AssetRepositoryError("Batch assets must belong to the same character phase")
+
+        payload = self._load_payload(character, phase)
         records = payload.get("assets")
         if not isinstance(records, list):
             raise AssetRepositoryError("Assets.json must contain an 'assets' list")
         next_asset_id = int(payload.get("next_asset_id") or 1)
-        if asset.asset_id <= 0:
-            asset.asset_id = next_asset_id
-        if any(isinstance(record, dict) and record.get("asset_id") == asset.asset_id for record in records):
-            raise AssetRepositoryError(f"Asset {asset.asset_id} already exists for {asset.character}/{asset.phase}")
-        payload["next_asset_id"] = max(next_asset_id, asset.asset_id + 1)
-        records.append(self._serialize_asset(asset))
+        used_ids = {
+            record.get("asset_id")
+            for record in records
+            if isinstance(record, dict)
+        }
+        for asset in assets:
+            if asset.asset_id <= 0:
+                asset.asset_id = next_asset_id
+            if asset.asset_id in used_ids:
+                raise AssetRepositoryError(f"Asset {asset.asset_id} already exists for {character}/{phase}")
+            used_ids.add(asset.asset_id)
+            next_asset_id = max(next_asset_id, asset.asset_id + 1)
+            records.append(self._serialize_asset(asset))
+        payload["next_asset_id"] = next_asset_id
         payload["assets"] = records
-        self._write_payload(asset.character, asset.phase, payload)
-        return asset
+        self._write_payload(character, phase, payload)
+        return assets

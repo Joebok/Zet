@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from zet.models.reference import ReferenceFile
+
 
 @dataclass
 class WorkerContext:
@@ -21,4 +23,4 @@ class WorkerResult:
     advance_stage: bool = True
     error_code: Optional[str] = None
     error_message: Optional[str] = None
-    reference_files: Optional[list[dict]] = None
+    reference_files: Optional[list[dict | ReferenceFile]] = None

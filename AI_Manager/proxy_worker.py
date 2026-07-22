@@ -43,7 +43,7 @@ def claim_one_supported(dirs: dict[str, Path], worker_id: str) -> Path | None:
         if not ask.is_dir() or not ask.name.startswith("Ask_"):
             continue
 
-        ask_manifest = ollama_worker.read_json(ask / "ask_manifest.json")
+        ask_manifest = ollama_worker.read_ask_manifest(ask / "ask_manifest.json")
         worker_type = str(ask_manifest.get("worker_type") or "")
         if worker_type not in SUPPORTED_WORKER_TYPES:
             continue
@@ -75,7 +75,7 @@ def process_claimed(
     worker_id: str,
     args: argparse.Namespace,
 ) -> str:
-    ask_manifest = ollama_worker.read_json(folder / "ask_manifest.json")
+    ask_manifest = ollama_worker.read_ask_manifest(folder / "ask_manifest.json")
     worker_type = str(ask_manifest.get("worker_type") or "")
     if worker_type in image_worker.SUPPORTED_WORKER_TYPES:
         return image_worker.process_claimed(

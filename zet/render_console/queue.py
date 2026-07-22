@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION, AIProxyAskManifest
+from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
 
 
@@ -47,18 +49,19 @@ class ManualRenderTask:
 class RenderConsoleQueue:
     def __init__(self, config: Config):
         self.config = config
+        self.path_service = AIProxyPathService(config)
 
     @property
     def proxy_root(self) -> Path:
-        return Path(self.config.base_ai_queue_path) / "Ollama_Proxy"
+        return self.path_service.proxy_root()
 
     @property
     def ask_root(self) -> Path:
-        return self.proxy_root / "Ask"
+        return self.path_service.ask_root()
 
     @property
     def answer_root(self) -> Path:
-        return self.proxy_root / "Answer"
+        return self.path_service.answer_root()
 
     def _timestamp(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
@@ -73,7 +76,7 @@ class RenderConsoleQueue:
         return data if isinstance(data, dict) else {}
 
     def _task_from_ask_path(self, ask_path: Path) -> ManualRenderTask | None:
-        manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
+        manifest = AIProxyAskManifest.from_dict(self._read_json_if_exists(ask_path / "ask_manifest.json")).to_dict()
         if manifest.get("worker_type") != MANUAL_CHATGPT_WORKER_TYPE:
             return None
 
@@ -102,7 +105,7 @@ class RenderConsoleQueue:
         if not self.ask_root.exists():
             return []
         tasks: list[ManualRenderTask] = []
-        for ask_path in sorted(path for path in self.ask_root.iterdir() if path.is_dir()):
+        for ask_path in sorted(self.path_service.task_paths("ask")):
             task = self._task_from_ask_path(ask_path)
             if task is not None:
                 tasks.append(task)
@@ -147,7 +150,7 @@ class RenderConsoleQueue:
 
         completed_at = self._timestamp()
         answer_manifest = {
-            "version": 1,
+            "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": task.ask_id,
             "asset_id": task.asset_id,
             "ollama_attempt_id": str(task.manifest.get("ollama_attempt_id") or ""),
@@ -180,7 +183,7 @@ class RenderConsoleQueue:
         completed_at = self._timestamp()
         message = reason.strip() or "Manual ChatGPT render failed from Render Console."
         answer_manifest = {
-            "version": 1,
+            "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": task.ask_id,
             "asset_id": task.asset_id,
             "ollama_attempt_id": str(task.manifest.get("ollama_attempt_id") or ""),

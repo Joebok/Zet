@@ -7,7 +7,10 @@ from zet.models.asset import Asset
 from zet.services.config_service import Config
 from zet.models.identity_key import IdentityKey
 from zet.services.path_service import PathService
+from zet.services.scene_document_service import SceneDocumentService
 from zet.services.story_service import StoryGitResult, StoryService, StoryServiceError
+from zet.services.story_reference_service import StoryReferenceService
+from zet.services.story_render_service import StoryRenderService
 
 
 class FakeAuxiliaryResource:
@@ -84,6 +87,14 @@ class StoryServiceTests(unittest.TestCase):
             auxiliary_resource_repository or FakeAuxiliaryResourceRepository(),
             identity_key_repository,
         )
+
+    def test_composes_scene_document_reference_and_render_services(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+
+            self.assertIsInstance(service.scene_document_service, SceneDocumentService)
+            self.assertIsInstance(service.story_reference_service, StoryReferenceService)
+            self.assertIsInstance(service.story_render_service, StoryRenderService)
 
     def _write_scene_builder(
         self,

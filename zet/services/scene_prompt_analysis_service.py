@@ -4,6 +4,9 @@ from datetime import datetime
 import json
 from pathlib import Path
 
+from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
+from zet.services.ai_proxy_path_service import AIProxyPathService
+
 
 class ScenePromptAnalysisService:
     """Queue and track AI analyses of compiled Scene Builder prompts."""
@@ -15,6 +18,7 @@ class ScenePromptAnalysisService:
     def __init__(self, config, story_service):
         self.config = config
         self.story_service = story_service
+        self.path_service = AIProxyPathService(config)
 
     def queue(self, story_slug: str, scene_slug: str) -> dict:
         prompt_path = self.story_service.compile_scene_prompt(story_slug, scene_slug)
@@ -24,11 +28,11 @@ class ScenePromptAnalysisService:
         result_path = Path(status["result_path"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         ask_id = f"Ask_Story_{story_slug}_{scene_slug}_PROMPT_ANALYSIS_{stamp}"
-        ask_path = Path(self.config.base_ai_queue_path) / "Ollama_Proxy" / "Ask" / ask_id
+        ask_path = self.path_service.ask_path(ask_id)
         ask_path.mkdir(parents=True, exist_ok=False)
         instructions_path = Path(__file__).resolve().parents[2] / self.config.ai_prompt_analysis_instructions_file
         manifest = {
-            "version": 1,
+            "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": ask_id,
             "asset_id": None,
             "character": "",
@@ -63,22 +67,10 @@ class ScenePromptAnalysisService:
         return {"pending": pending, "complete": result_path.exists() and not pending, "result_path": str(result_path)}
 
     def _has_pending(self, story_slug: str, scene_slug: str) -> bool:
-        proxy_root = Path(self.config.base_ai_queue_path) / "Ollama_Proxy"
-        roots = [proxy_root / "Ask", proxy_root / "Answer"]
-        claimed = proxy_root / "Claimed"
-        if claimed.exists():
-            roots.extend(path for path in claimed.iterdir() if path.is_dir())
-        for root in roots:
-            if not root.exists():
+        for path in self.path_service.task_paths("ask", "answer", "claimed"):
+            if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():
                 continue
-            for path in root.iterdir():
-                manifest_path = path / "ask_manifest.json"
-                if not path.is_dir() or (path / "harvest_manifest.json").exists() or not manifest_path.exists():
-                    continue
-                try:
-                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                except Exception:
-                    continue
-                if manifest.get("task_type") == self.TASK_TYPE and manifest.get("story_slug") == story_slug and manifest.get("scene_slug") == scene_slug:
-                    return True
+            manifest = self.path_service.read_ask_manifest(path)
+            if manifest.get("task_type") == self.TASK_TYPE and manifest.get("story_slug") == story_slug and manifest.get("scene_slug") == scene_slug:
+                return True
         return False
