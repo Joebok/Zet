@@ -14,7 +14,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable, split_positive_negative_prompt
+from .common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable, split_positive_negative_prompt
 from PIL import Image
 
 

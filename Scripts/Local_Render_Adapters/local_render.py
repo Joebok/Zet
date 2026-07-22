@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from Local_Render_Adapters.common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
+from .common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
 
 
 def load_presets(project_root: Path) -> dict[str, Any]:
@@ -36,7 +36,7 @@ def render_image(
     preset = load_preset(project_root, preset_name)
     backend = str(preset.get("backend") or "").strip().lower()
     if backend == "stable_matrix":
-        from Local_Render_Adapters.stable_matrix_adapter import render_preview
+        from Scripts.Local_Render_Adapters.stable_matrix_adapter import render_preview
 
         return render_preview(
             project_root=project_root,

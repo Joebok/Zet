@@ -166,7 +166,7 @@ class ZetApp:
     @classmethod
     def from_config(cls, config_path: str | Path) -> "ZetApp":
         config = ConfigService.load(config_path)
-        path_service = PathService(config)
+        path_service = PathService(config, Path(config_path).resolve().parent)
         asset_repository = AssetRepository(path_service)
         auxiliary_resource_repository = AuxiliaryResourceRepository(path_service)
         pipeline_repository = PipelineRepository(path_service)

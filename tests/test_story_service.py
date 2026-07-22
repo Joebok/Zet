@@ -6,8 +6,10 @@ import unittest
 from zet.models.asset import Asset
 from zet.services.config_service import Config
 from zet.models.identity_key import IdentityKey
+from zet.models import story as story_models
 from zet.services.path_service import PathService
 from zet.services.scene_document_service import SceneDocumentService
+from zet.services import story_service as story_service_module
 from zet.services.story_service import StoryGitResult, StoryService, StoryServiceError
 from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
@@ -73,6 +75,13 @@ class FakeAssetRepository:
 
 
 class StoryServiceTests(unittest.TestCase):
+    def test_story_service_reexports_story_models(self):
+        for name in (
+            "StoryRecord", "SceneRecord", "StoryDocument", "SceneDocument",
+            "SceneBuilderDocument", "ImageReferenceRow", "StoryRenderTask", "StoryGitResult",
+        ):
+            self.assertIs(getattr(story_service_module, name), getattr(story_models, name))
+
     def _service(self, root: Path, auxiliary_resource_repository=None, identity_key_repository=None, asset_repository=None) -> StoryService:
         config = Config(
             base_library_path=str(root),

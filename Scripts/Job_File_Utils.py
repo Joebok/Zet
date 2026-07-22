@@ -33,7 +33,7 @@ def render_static_prompt_artifacts(
     view_token: str,
     ensure_ascii_source_map: bool = False,
 ) -> str:
-    from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
+    from Scripts.Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
 
     template_file = prompt_template_path(project_root, str(bundle.get("static_prompt_template", "")))
     prompt_text, source_map = render_static_prompt_with_source_map(

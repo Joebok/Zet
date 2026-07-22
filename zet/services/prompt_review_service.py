@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import shutil
-import sys
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
@@ -13,12 +12,10 @@ from zet.services.path_service import PathService
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.worker_service import WorkerService, WorkerServiceError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
-if str(SCRIPTS_PATH) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_PATH))
+from Scripts.Local_Render_Adapters import LocalRenderResult, LocalRenderUnavailable, render_image
 
-from Local_Render_Adapters import LocalRenderResult, LocalRenderUnavailable, render_image
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 @dataclass(frozen=True)
 class PromptReviewContext:
@@ -259,6 +256,4 @@ class PromptReviewService:
         return self.prompt_artifact_service.view_folder_for_asset(asset)
 
     def load_view_options(self) -> dict:
-        path = self.project_root / "Config" / "Prompt_View_Text.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data.get("views", data)
+        return self.prompt_artifact_service.load_view_options()

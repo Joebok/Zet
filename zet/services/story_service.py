@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
 from datetime import datetime
 import json
 import re
@@ -12,6 +11,16 @@ from pathlib import Path
 from zet.models.asset import Asset
 from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.models.identity_key import IdentityKey
+from zet.models.story import (
+    ImageReferenceRow,
+    SceneBuilderDocument,
+    SceneDocument,
+    SceneRecord,
+    StoryDocument,
+    StoryGitResult,
+    StoryRecord,
+    StoryRenderTask,
+)
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
@@ -22,100 +31,12 @@ from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
 
 
-@dataclass(frozen=True)
-class StoryRecord:
-    """Describe one story folder and its main markdown file."""
-    slug: str
-    title: str
-    folder_path: str
-    story_file_path: str
-    story_file_exists: bool
-
-
-@dataclass(frozen=True)
-class SceneRecord:
-    """Describe one scene markdown file inside a story folder."""
-    story_slug: str
-    slug: str
-    title: str
-    path: str
-
-
-@dataclass(frozen=True)
-class StoryDocument:
-    """Describe one editable story markdown document."""
-    record: StoryRecord
-    text: str
-    validation_errors: list[str]
-
-
-@dataclass(frozen=True)
-class SceneDocument:
-    """Describe one editable scene markdown document."""
-    story: StoryRecord
-    record: SceneRecord
-    text: str
-    validation_errors: list[str]
-
-
-@dataclass(frozen=True)
-class SceneBuilderDocument:
-    """Describe one editable Scene Builder JSON document."""
-    story: StoryRecord
-    scene: SceneRecord
-    data: dict
-    json_path: str
-    md_path: str
-    png_path: str
-    json_exists: bool
-    png_exists: bool
-    validation_warnings: list[str]
-    blocked: bool = False
-    error: str = ""
-
-
-@dataclass(frozen=True)
-class ImageReferenceRow:
-    """Describe one copyable image reference for scene editing."""
-    tag: str
-    label: str
-    character: str
-    phase: str
-    kind: str
-    pipeline: str
-    image_path: str
-    thumbnail_path: str
-
-
-@dataclass(frozen=True)
-class StoryRenderTask:
-    """Describe a staged story scene render task."""
-    story_slug: str
-    scene_slug: str
-    ask_id: str
-    ask_path: str
-    pipeline_path: str
-    final_prompt_path: str
-    expected_output: str
-    reference_files: list[dict]
-
-
-@dataclass(frozen=True)
-class StoryGitResult:
-    """Describe one story git operation result."""
-    output: str
-    has_story_changes: bool
-    conflict: bool = False
-
-
 class StoryServiceError(Exception):
     """Report story and scene workflow failures."""
 
 
 class StoryService:
     """Manage story folders, scene markdown files, and scene image references."""
-
-    SCENE_BUILDER_MARKDOWN_TEMPLATE_NAME = "scene_builder_markdown_v1.md"
 
     def __init__(
         self,
@@ -222,11 +143,6 @@ class StoryService:
                 element["resolved_source_sections"] = sections
                 resolved[str(element.get("id") or "")] = sections
         return resolved
-
-    def _render_prompt_block(self, text: str) -> str:
-        """Return the scene Render Prompt block."""
-        match = re.search(r"(?ims)^##\s+Render Prompt\s*(.*)$", text or "")
-        return str(match.group(1)).strip() if match else ""
 
     def _git_repo_path(self) -> Path:
         """Return the library git repository path."""
@@ -737,9 +653,6 @@ class StoryService:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def load_scene_v3(self, path: Path) -> dict:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-
     def save_scene_v3(self, path: Path, data: dict) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -760,12 +673,6 @@ class StoryService:
             {"value": "Scene-Only", "label": "Scene-Only"},
         ]
         return data
-
-    def _scene_builder_markdown_template_path(self) -> Path:
-        path = self._project_config_path("Prompt_Templates", self.SCENE_BUILDER_MARKDOWN_TEMPLATE_NAME)
-        if not path.exists():
-            raise StoryServiceError(f"Scene Builder markdown template not found: {path}")
-        return path
 
     def _library_relative_path(self, path: Path) -> str:
         try:
@@ -847,40 +754,6 @@ class StoryService:
                 "updated_at": stamp,
                 "created_by": "Zet Scene Builder",
             },
-        }
-
-    def create_default_scene_builder_data_v2(self, scene_md_path: Path | None = None) -> dict:
-        """Create a standalone V3 Scene Builder document."""
-        scene_slug = scene_md_path.stem if scene_md_path else ""
-        stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        return {
-            "schema_version": 3,
-            "file_kind": "scene",
-            "scene": {
-                "id": self.normalize_scene_element_id(scene_slug or "Untitled").lower(),
-                "name": (scene_slug or "Untitled").replace("_", " "),
-                "slug": scene_slug or "Untitled",
-                "sequence": None,
-                "story_settings_path": "",
-                "associated_png_path": str(scene_md_path.with_suffix(".png")) if scene_md_path else "",
-                "story_beat": "",
-                "author_notes": "",
-            },
-            "setup": {
-                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9", "width": None, "height": None},
-                "composition": {"focal_point": "", "left_to_right": [], "composition_notes": ""},
-                "environment": {"location": "", "lighting": "", "mood": "", "weather_or_atmosphere": "", "important_exclusions": [], "general_background_notes": "", "general_foreground_notes": ""},
-            },
-            "scene_elements": [],
-            "placements": [],
-            "props_and_states": [],
-            "interactions": [],
-            "custom_interactions": "",
-            "dialogue": [],
-            "reference_assignments": [],
-            "avoid": {"scene_specific": [], "notes": ""},
-            "render_settings": {},
-            "metadata": {"created_at": stamp, "updated_at": stamp, "created_by": "Zet Scene Builder"},
         }
 
     def _merge_scene_builder_defaults(self, default: dict, current: dict) -> dict:
@@ -988,16 +861,6 @@ class StoryService:
         """Create a stable ID for scene elements when missing."""
         value = re.sub(r"[^A-Za-z0-9]+", "_", str(display_name or "").strip()).strip("_")
         return value or "scene_element"
-
-    def find_scene_element_id(self, data: dict, text: str) -> str | None:
-        """Match by id or display_name."""
-        needle = str(text or "").strip().lower()
-        if not needle:
-            return None
-        for element in data.get("scene_elements") or []:
-            if str(element.get("id") or "").strip().lower() == needle or str(element.get("display_name") or "").strip().lower() == needle:
-                return str(element.get("id") or "")
-        return None
 
     def _normalized_scene_elements(self, data: dict) -> list[dict]:
         elements = []
@@ -1268,50 +1131,6 @@ class StoryService:
         if environment.get("lighting") or environment.get("mood"):
             parts.append(" ".join(str(value) for value in [environment.get("lighting"), environment.get("mood")] if value).strip() + ".")
         return " ".join(part for part in parts if part).strip()
-
-    def generate_positive_prompt(self, story_slug: str, scene_slug: str, data: dict) -> str:
-        """Generate a positive image prompt from Scene Builder data."""
-        story_text = self.path_service.story_file_path(self.safe_slug(story_slug)).read_text(encoding="utf-8")
-        art_style = self._extract_bounded_section(story_text, "CANONICAL_ART_STYLE") or self._extract_first_metadata_field(story_text, "Canonical Art Style")
-        pieces = [art_style.strip(), self.generate_scene_brief(data)]
-        environment = self._setup(data, "environment")
-        elements = self._scene_element_lookup(data)
-        interactions = []
-        for interaction in data.get("interactions") or []:
-            subject = elements.get(str(interaction.get("subject_element_id") or ""), {}).get("display_name") or interaction.get("subject_description")
-            relationship = interaction.get("relationship")
-            target = elements.get(str(interaction.get("target_element_id") or ""), {}).get("display_name") or interaction.get("target_description")
-            note = interaction.get("note")
-            if subject and relationship and target:
-                interactions.append(" ".join(str(value) for value in [subject, relationship, target, note] if value))
-        if interactions:
-            pieces.append("Interactions: " + "; ".join(interactions) + ".")
-        if environment.get("weather_or_atmosphere"):
-            pieces.append(str(environment.get("weather_or_atmosphere")))
-        pieces.append("Clear spatial staging, readable silhouettes, coherent character placement, no cropped primary characters.")
-        return " ".join(piece for piece in pieces if piece).strip()
-
-    def generate_negative_prompt(self, data: dict) -> str:
-        """Generate a practical negative prompt."""
-        exclusions = self._setup(data, "environment").get("important_exclusions") or []
-        base = [
-            "confused layout",
-            "merged characters",
-            "duplicated characters",
-            "extra limbs",
-            "wrong character placement",
-            "cropped primary character",
-            "obscured faces",
-            "unreadable poses",
-            "inconsistent gaze direction",
-            "incorrect facing direction",
-            "cluttered composition",
-            "oversized speech bubbles",
-            "text artifacts",
-            "malformed hands",
-            "distorted anatomy",
-        ]
-        return ", ".join([*base, *[str(item) for item in exclusions if str(item).strip()]])
 
     def _markdown_list(self, items: list[str]) -> str:
         return "\n".join(f"- {item}" for item in items if str(item).strip()) or "- None"

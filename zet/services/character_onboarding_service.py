@@ -19,13 +19,8 @@ from zet.services.path_service import PathService
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 
-import sys
-
-if str(SCRIPTS_PATH) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_PATH))
-
-from Compile_Character_Template import TemplateCompileError, select_sections
-from Run_Body_Reference_Jobs import extract_template_field, load_body_reference_section_data, load_bundle
+from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from zet.services.pipeline_compiler_support import extract_template_field, load_body_reference_section_data, load_bundle
 
 
 FOUNDATION_VIEWS = [

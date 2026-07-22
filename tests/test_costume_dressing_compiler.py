@@ -3,17 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
-import sys
 import tempfile
 import unittest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = PROJECT_ROOT / "Scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from Run_Costume_Dressing_Jobs import compile_costume_dressing_job
+from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 
 
 class CostumeDressingCompilerTests(unittest.TestCase):

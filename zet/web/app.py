@@ -21,6 +21,7 @@ from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.source_editor_service import SourceEditorService
+from zet.web.pipeline_controls_router import create_pipeline_controls_router
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
@@ -631,6 +632,24 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     config = ConfigService.load(config_path)
     app = FastAPI(title="Zet Web")
     app.state.config_path = str(config_path)
+    app.state.zet_app = ZetApp.from_config(config_path)
+
+    def _app(_config_path: str | Path) -> ZetApp:
+        return app.state.zet_app
+
+    def _reload_app() -> ZetApp:
+        app.state.zet_app = ZetApp.from_config(app.state.config_path)
+        return app.state.zet_app
+
+    app.include_router(
+        create_pipeline_controls_router(
+            lambda: _app(app.state.config_path),
+            _reload_app,
+            _pipeline_controls_payload,
+            _automation_settings_from_payload,
+            _jsonable,
+        )
+    )
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
     app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")
@@ -641,9 +660,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
 
     @app.get("/api/context")
     def context() -> dict[str, Any]:
-        current_config = ConfigService.load(app.state.config_path)
         zet_app = _app(app.state.config_path)
-        discovery = CharacterPhaseDiscoveryService(current_config.base_character_path)
+        discovery = CharacterPhaseDiscoveryService(zet_app.config.base_character_path)
         characters = discovery.list_characters()
         phases_by_character = {
             character: discovery.list_phases(character)
@@ -1844,30 +1862,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/pipeline-controls")
-    def pipeline_controls(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            return _pipeline_controls_payload(zet_app, character, phase)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/pipeline-controls/automation")
-    def pipeline_controls_save_automation(
-        payload: dict[str, Any] = Body(...),
-        character: str = Query(...),
-        phase: str = Query(...),
-    ) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            zet_app.save_automation_settings(_automation_settings_from_payload(payload, zet_app.pipeline_control_service.automation_settings()))
-            refreshed = _app(app.state.config_path)
-            response = _pipeline_controls_payload(refreshed, character, phase)
-            response["message"] = "Project automation settings saved."
-            return response
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.get("/api/local-image/checkpoints")
     def local_image_checkpoints(preset: str = Query("body-reference-preview")) -> dict[str, Any]:
         try:
@@ -1875,29 +1869,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return {"checkpoints": service.list_checkpoints(preset)}
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    @app.post("/api/pipeline-controls/batch-render-reset")
-    def pipeline_controls_batch_render_reset(
-        pipeline_name: str = Query(...),
-        include_locked: bool = Query(False),
-        character: str = Query(...),
-        phase: str = Query(...),
-    ) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            results = zet_app.reset_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
-            response = _pipeline_controls_payload(zet_app, character, phase)
-            reset_count = sum(1 for result in results if result.status == "RESET")
-            skipped_count = sum(1 for result in results if result.status == "SKIPPED")
-            error_count = sum(1 for result in results if result.status == "ERROR")
-            response["message"] = (
-                f"Batch render reset complete for {pipeline_name}: "
-                f"{reset_count} reset, {skipped_count} skipped, {error_count} error."
-            )
-            response["batch_results"] = _jsonable(results)
-            return response
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/render-console/tasks")
     def render_console_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:

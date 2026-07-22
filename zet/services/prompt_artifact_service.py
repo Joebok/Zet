@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.path_service import PathService
+from zet.services.view_service import ViewService
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +34,7 @@ class PromptArtifactService:
         self.asset_repository = asset_repository
         self.path_service = path_service
         self.project_root = project_root
+        self.view_service = ViewService(project_root)
 
     def get_context(self, character: str, phase: str, asset_id: int) -> PromptArtifactContext:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
@@ -74,13 +75,10 @@ class PromptArtifactService:
         path = prompt_path.parent / "Condensed_Image_Prompt.md"
         return path if path.exists() and path.is_file() else None
 
-    def view_folder_for_asset(self, asset: Asset) -> str:
-        path = self.project_root / "Config" / "Prompt_View_Text.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        views = data.get("views", data)
-        for view in views.values():
-            if not isinstance(view, dict):
-                continue
-            if asset.body_view in {view.get("folder_name"), view.get("output_name_fragment")}:
-                return str(view.get("folder_name"))
-        return str(asset.body_view).replace("-", "_")
+    def view_folder_for_asset(self, asset: Asset, *, tolerate_config_errors: bool = False) -> str:
+        if tolerate_config_errors:
+            return self.view_service.folder_name_tolerant(asset.body_view)
+        return self.view_service.folder_name(asset.body_view)
+
+    def load_view_options(self) -> dict:
+        return self.view_service.load_view_options()

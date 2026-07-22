@@ -36,6 +36,7 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
         sys.path.insert(0, str(import_path))
 
 from zet.models.ai_proxy import AIProxyAskManifest
+from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import ConfigService
 
@@ -389,38 +390,7 @@ def call_ollama(
 
 
 def write_claim_file(path: Path, ask_name: str, worker_id: str) -> bool:
-    data = {
-        "version": 1,
-        "ask_folder": ask_name,
-        "worker_id": worker_id,
-        "claimed_at": now_iso(),
-        "host": socket.gethostname(),
-        "pid": os.getpid(),
-    }
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    try:
-        fd = os.open(str(path), flags)
-    except FileExistsError:
-        return False
-    except Exception:
-        return False
-
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
-            handle.flush()
-            try:
-                os.fsync(handle.fileno())
-            except Exception:
-                pass
-        return True
-    except Exception:
-        try:
-            path.unlink()
-        except Exception:
-            pass
-        return False
+    return worker_protocol.write_claim_file(path, ask_name, worker_id, now_iso())
 
 
 def claim_one(dirs: dict[str, Path], worker_id: str) -> Path | None:
@@ -434,17 +404,12 @@ def claim_one(dirs: dict[str, Path], worker_id: str) -> Path | None:
 
         dest = dirs["claimed"] / ask.name
         try:
-            if dest.exists():
-                shutil.rmtree(dest, ignore_errors=True)
-            shutil.copytree(str(ask), str(dest))
-            try:
-                shutil.copy2(str(claim_file), str(dest / "claim_manifest.json"))
-            except Exception:
-                pass
-            try:
-                shutil.rmtree(ask, ignore_errors=True)
-            except Exception:
-                pass
+            worker_protocol.move_ask_to_claimed(
+                ask,
+                dest,
+                claim_file,
+                tolerate_claim_manifest_copy_error=True,
+            )
             log(f"CLAIMED {ask.name} -> {dest}")
             return dest
         except Exception:
@@ -478,21 +443,20 @@ def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, re
         pass
 
     try:
-        claim_file.unlink(missing_ok=True)
-    except Exception:
-        pass
-    try:
-        (folder / "claim_manifest.json").unlink(missing_ok=True)
+        worker_protocol.remove_claim_files(folder, claim_file, suppress_errors=True)
     except Exception:
         pass
 
     try:
-        if ask_dest.exists():
-            failed_dest = dirs["failed"] / f"{ask_name}__released_duplicate_{int(time.time())}"
-            shutil.move(str(folder), str(failed_dest))
-            log(f"TRANSIENT_RELEASE_DUPLICATE {ask_name}: {reason}; parked at {failed_dest}", error=True)
+        dest, duplicate = worker_protocol.release_to_ask_or_failed(
+            folder,
+            ask_dest,
+            dirs["failed"],
+            int(time.time()),
+        )
+        if duplicate:
+            log(f"TRANSIENT_RELEASE_DUPLICATE {ask_name}: {reason}; parked at {dest}", error=True)
             return True
-        shutil.move(str(folder), str(ask_dest))
         log(f"TRANSIENT_RELEASE {ask_name} -> {ask_dest}: {reason}", error=True)
         return True
     except Exception as exc:
@@ -506,11 +470,7 @@ def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, re
 
 
 def move_to_answer(folder: Path, dirs: dict[str, Path]) -> Path:
-    dest = dirs["answer"] / folder.name
-    if dest.exists():
-        shutil.rmtree(dest, ignore_errors=True)
-    shutil.move(str(folder), str(dest))
-    return dest
+    return worker_protocol.move_to_answer(folder, dirs["answer"])
 
 
 def process_claimed(

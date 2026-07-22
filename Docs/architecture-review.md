@@ -349,3 +349,15 @@ There are no untracked personal scripts.
 - Tests: `python3 -m pytest -q` → 121 passed, 2 subtests passed, 1 existing warning.
 - `python3 -m compileall -q zet AI_Manager Scripts` and `git diff --check` passed.
 - No P2+ work performed.
+
+### P2 implemented and verified.
+- Revalidated every P2 finding before editing. D1, R2-R5, M2, A5, and A6 still applied; P1 had already mitigated parts of story ownership, queue paths, prompt view lookup, web import mutation, and AI result-model placement.
+- Removed the confirmed declaration-only Scene Builder and scene-render compiler helpers, and moved story workflow dataclasses to `zet/models` with compatibility re-exports.
+- Extracted shared compiler support, repository dataclass/atomic-JSON primitives, view resolution, and proxy-worker filesystem transitions while preserving stage- and repository-specific behavior.
+- Standardized unknown relative paths as project-relative, retaining the separate scene library-relative storage contract.
+- Packaged `Scripts`, replaced application-layer `sys.path` mutation with package imports, preserved direct-file entry points and public helper imports, and added outside-checkout import/launch coverage.
+- Made `ZetApp` application-scoped with explicit reconstruction after dashboard config saves, and extracted pipeline-control routes into a focused router.
+- Added characterization coverage for repositories, view/path behavior, proxy claim concurrency, packaged imports/entry points, story model compatibility, and application reload lifecycle.
+- Tests: `python3 -m pytest -q` → 136 passed, 2 subtests passed, 1 existing warning.
+- `python3 -m compileall -q zet AI_Manager Scripts` and `git diff --check` passed.
+- Preserved the pre-existing `Docs/ToDo.md` change; no P3 or unrelated cleanup performed.

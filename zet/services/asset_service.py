@@ -2,7 +2,6 @@ import shutil
 from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
-import json
 from pathlib import Path
 
 from zet.models.asset import Asset
@@ -92,19 +91,7 @@ class AssetService:
         return actor
 
     def _view_folder_for_asset(self, asset: Asset) -> str:
-        path = Path(__file__).resolve().parents[2] / "Config" / "Prompt_View_Text.json"
-        if path.exists():
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                views = data.get("views", data) if isinstance(data, dict) else {}
-                for view in views.values():
-                    if not isinstance(view, dict):
-                        continue
-                    if asset.body_view in {view.get("folder_name"), view.get("output_name_fragment")}:
-                        return str(view.get("folder_name"))
-            except Exception:
-                pass
-        return str(asset.body_view).replace("-", "_")
+        return self.prompt_artifact_service.view_folder_for_asset(asset, tolerate_config_errors=True)
 
     def _clear_body_reference_generated_artifacts(self, asset: Asset) -> None:
         if asset.pipeline != "Body-Reference":

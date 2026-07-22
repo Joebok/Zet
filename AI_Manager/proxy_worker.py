@@ -24,6 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import local_image_proxy_worker as image_worker
 import ollama_proxy_worker as ollama_worker
+from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
 
 WORKER_VERSION = "1.0"
 SUPPORTED_WORKER_TYPES = {"ollama_generate"} | image_worker.SUPPORTED_WORKER_TYPES
@@ -54,11 +55,7 @@ def claim_one_supported(dirs: dict[str, Path], worker_id: str) -> Path | None:
 
         dest = dirs["claimed"] / ask.name
         try:
-            if dest.exists():
-                shutil.rmtree(dest, ignore_errors=True)
-            shutil.copytree(str(ask), str(dest))
-            shutil.copy2(str(claim_file), str(dest / "claim_manifest.json"))
-            shutil.rmtree(ask, ignore_errors=True)
+            worker_protocol.move_ask_to_claimed(ask, dest, claim_file)
             log(f"CLAIMED {ask.name} worker_type={worker_type} -> {dest}")
             return dest
         except Exception as exc:

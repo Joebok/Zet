@@ -1,22 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-import json
-from pathlib import Path
 import re
 from typing import Any
 
 from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
-
-
-@dataclass(frozen=True)
-class SceneRenderCompilation:
-    prompt: str
-    ir: dict[str, Any]
-    validation: dict[str, Any]
-    local_brief: dict[str, Any]
-    local_prompt: str
-    source_map: dict[str, Any]
 
 
 def _clean(value: Any) -> str:
@@ -172,10 +159,6 @@ def _semantic_region(ir: dict[str, Any], placement: dict[str, Any]) -> str:
 
 def _placement_sort_key(placement: dict[str, Any]) -> tuple[int, str, int]:
     return (0, _clean(placement.get("position_within_cell")), int(placement.get("id", "").rsplit("_", 1)[-1] or 9999) if str(placement.get("id", "")).rsplit("_", 1)[-1].isdigit() else 9999)
-
-
-def _view_text(value: Any) -> str:
-    return clean_prompt_sentence(value).replace("3/4", "three-quarter")
 
 
 def _placement_element_id(placement: dict[str, Any]) -> str:
@@ -1080,63 +1063,3 @@ def local_render_forge_couple_prompt_text(brief: dict[str, Any]) -> str:
             *[f"Conflict correction: {correction}" for correction in diagnostics.get("conflict_corrections", [])],
         ])
     return "\n".join(lines).rstrip() + "\n"
-
-
-def write_final_image_prompt(ir: dict[str, Any], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(final_image_prompt_text(ir), encoding="utf-8")
-
-
-def write_local_render_brief(ir: dict[str, Any], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(local_render_brief(ir), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
-def write_local_render_prompt(local_brief: dict[str, Any], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(local_render_prompt_text(local_brief), encoding="utf-8")
-
-
-def write_local_render_forge_couple_prompt(local_brief: dict[str, Any], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(local_render_forge_couple_prompt_text(local_brief), encoding="utf-8")
-
-
-def compile_scene_render(
-    *,
-    story_sections: dict[str, str],
-    scene_sections: dict[str, str],
-    scene_builder: dict[str, Any],
-    references: list[dict[str, Any]],
-    story_file: str,
-    scene_file: str,
-    scene_builder_file: str,
-    final_prompt_file: str,
-) -> SceneRenderCompilation:
-    story_settings = {
-        "style_defaults": {
-            "canonical_art_style": {"full_prompt_text": story_sections.get("CANONICAL_ART_STYLE", "")},
-            "visual_continuity": {"rules": [story_sections.get("STORY_VISUAL_CONTINUITY", "")]},
-            "default_avoid": [],
-        },
-        "dialogue_styles": [],
-        "compiler_profiles": {"final_image_prompt": {}},
-    }
-    ir = compile_scene_render_ir(scene_builder, story_settings, {"legacy_references": references})
-    prompt = final_image_prompt_text(ir)
-    brief = local_render_brief(ir)
-    return SceneRenderCompilation(
-        prompt=prompt,
-        ir=ir,
-        validation={"errors": [], "warnings": []},
-        local_brief=brief,
-        local_prompt=local_render_prompt_text(brief),
-        source_map={
-            "story_file": story_file,
-            "scene_file": scene_file,
-            "scene_builder_file": scene_builder_file,
-            "final_prompt": final_prompt_file,
-            "compiler": "scene_render_v3",
-            "artifacts": ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"],
-        },
-    )

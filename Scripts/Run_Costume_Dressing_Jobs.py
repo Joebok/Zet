@@ -9,14 +9,14 @@ import re
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
-from Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, write_json_file
-from Library_Paths import character_root, pipeline_root
-from Run_Body_Reference_Jobs import (
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
+from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, write_json_file
+from Scripts.Library_Paths import character_root, pipeline_root
+from zet.services.pipeline_compiler_support import (
     expected_output_for_job,
     extract_template_field,
     job_get,
@@ -32,8 +32,10 @@ from Run_Body_Reference_Jobs import (
     resolve_project_path,
     template_metadata,
     view_instruction,
+    reference_by_role,
+    reference_files_for_job,
+    validate_reference,
 )
-from Run_Head_Fitment_Jobs import reference_by_role, reference_files_for_job, validate_reference
 
 
 def now_iso() -> str:

@@ -1,11 +1,15 @@
-import dataclasses
 import json
 import shutil
-from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from zet.models.asset import Asset
+from zet.repositories.json_storage import (
+    MissingDataclassFieldsError,
+    dataclass_from_record,
+    dataclass_to_record,
+    write_json_atomic,
+)
 from zet.services.path_service import PathService
 
 
@@ -45,28 +49,16 @@ class AssetRepository:
 
     def _asset_from_dict(self, record: dict) -> Asset:
         """Convert a JSON record into an Asset model."""
-        model_fields = list(fields(Asset))
-        required = [
-            field.name
-            for field in model_fields
-            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
-        ]
-        missing = sorted(set(required) - set(record))
-        if missing:
-            raise AssetRepositoryError(f"Asset record is missing required fields: {', '.join(missing)}")
-        values = {}
-        for field in model_fields:
-            if field.name in record:
-                values[field.name] = record[field.name]
-            elif field.default is not dataclasses.MISSING:
-                values[field.name] = field.default
-            elif field.default_factory is not dataclasses.MISSING:
-                values[field.name] = field.default_factory()
-        return Asset(**values)
+        try:
+            return dataclass_from_record(Asset, record)
+        except MissingDataclassFieldsError as exc:
+            raise AssetRepositoryError(
+                f"Asset record is missing required fields: {', '.join(exc.missing_fields)}"
+            ) from None
 
     def _serialize_asset(self, asset: Asset) -> dict:
         """Convert an Asset model into a JSON record."""
-        return {field.name: getattr(asset, field.name) for field in fields(Asset)}
+        return dataclass_to_record(asset)
 
     def _write_payload(self, character: str, phase: str, payload: dict) -> None:
         """Write asset storage atomically with a timestamped backup."""
@@ -77,21 +69,13 @@ class AssetRepository:
         backup_path = backup_dir / f"Assets.backup.{timestamp}.json"
         temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
 
-        serialized = json.dumps(payload, indent=2)
-        if not serialized.endswith("\n"):
-            serialized += "\n"
-
-        shutil.copy2(path, backup_path)
-        try:
-            with temp_path.open("w", encoding="utf-8") as handle:
-                handle.write(serialized)
-            with temp_path.open("r", encoding="utf-8") as handle:
-                json.load(handle)
-            temp_path.replace(path)
-        except Exception:
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
+        write_json_atomic(
+            path,
+            temp_path,
+            payload,
+            before_write=lambda: shutil.copy2(path, backup_path),
+            cleanup_temp_on_error=True,
+        )
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         """List all assets for a character phase."""

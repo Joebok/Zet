@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 import json
 from pathlib import Path
-import sys
 from typing import Any
 
 
@@ -13,11 +12,8 @@ class SourceEditorService:
         self.project_root = Path(project_root).resolve()
 
     def _editor_tools(self):
-        scripts_path = self.project_root / "Scripts"
-        if str(scripts_path) not in sys.path:
-            sys.path.insert(0, str(scripts_path))
-        from Compile_Character_Template import MARKER_RE
-        from Template_Section_Editor import save_template_sections
+        from Scripts.Compile_Character_Template import MARKER_RE
+        from Scripts.Template_Section_Editor import save_template_sections
 
         return MARKER_RE, save_template_sections
 

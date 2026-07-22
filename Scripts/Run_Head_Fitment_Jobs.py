@@ -8,14 +8,14 @@ from pathlib import Path
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from Compile_Character_Template import TemplateCompileError, select_sections
-from Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
-from Library_Paths import pipeline_root, resolve_library_path
-from Run_Body_Reference_Jobs import (
+from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
+from Scripts.Library_Paths import pipeline_root
+from zet.services.pipeline_compiler_support import (
     expected_output_for_job,
     job_get,
     load_bundle,
@@ -30,6 +30,9 @@ from Run_Body_Reference_Jobs import (
     template_path_for_job,
     metadata_source_map,
     view_instruction,
+    reference_by_role,
+    reference_files_for_job,
+    validate_reference,
 )
 
 
@@ -49,29 +52,6 @@ def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str
         / body_view_token
         / head_view_token
     )
-
-
-def reference_files_for_job(job: dict) -> list[dict]:
-    value = job.get("Reference Files") or job.get("reference_files") or []
-    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-
-
-def reference_by_role(reference_files: list[dict], role: str) -> dict:
-    for reference in reference_files:
-        if reference.get("role") == role:
-            return reference
-    raise TemplateCompileError("MISSING_REFERENCE", f"Missing required reference slot: {role}")
-
-
-def validate_reference(reference: dict, role: str, project_root: Path = PROJECT_ROOT) -> Path:
-    """Validate and resolve a reference image path."""
-    raw_path = str(reference.get("path") or "").strip()
-    if not raw_path:
-        raise TemplateCompileError("MISSING_REFERENCE", f"Reference slot {role} has no path.")
-    path = resolve_library_path(project_root, raw_path)
-    if not path.exists() or not path.is_file():
-        raise TemplateCompileError("MISSING_REFERENCE", f"Reference image for {role} was not found: {path}")
-    return path
 
 
 def write_dependency_manifest(

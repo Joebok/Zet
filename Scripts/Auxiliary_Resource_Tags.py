@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from Compile_Character_Template import TemplateCompileError
-from Library_Paths import library_root, resolve_library_path
+from Scripts.Compile_Character_Template import TemplateCompileError
+from Scripts.Library_Paths import library_root, resolve_library_path
 from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
 
 

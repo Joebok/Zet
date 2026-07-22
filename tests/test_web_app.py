@@ -630,7 +630,9 @@ Backend = "manual_chatgpt"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
-            client = TestClient(create_app(config_path))
+            web_app = create_app(config_path)
+            original_zet_app = web_app.state.zet_app
+            client = TestClient(web_app)
 
             snapshot = client.get("/api/pipeline-controls", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(snapshot.status_code, 200)
@@ -656,6 +658,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(saved.json()["automation"]["local_render_checkpoint"], "test-checkpoint")
             self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
             self.assertIn('Checkpoint = "test-checkpoint"', config_path.read_text(encoding="utf-8"))
+            self.assertIsNot(web_app.state.zet_app, original_zet_app)
 
     def test_pipeline_controls_api_can_batch_reset_to_render(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
-from Library_Paths import library_root
+from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
+from Scripts.Library_Paths import library_root
 from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE, auxiliary_resource_image_for_tag
 
 

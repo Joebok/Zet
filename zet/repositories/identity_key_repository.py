@@ -1,11 +1,15 @@
-import dataclasses
 import json
 import shutil
-from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from zet.models.identity_key import IdentityKey
+from zet.repositories.json_storage import (
+    MissingDataclassFieldsError,
+    dataclass_from_record,
+    dataclass_to_record,
+    write_json_atomic,
+)
 from zet.services.path_service import PathService
 
 
@@ -46,28 +50,16 @@ class IdentityKeyRepository:
 
     def _identity_from_dict(self, record: dict) -> IdentityKey:
         """Convert a JSON record into an identity key model."""
-        model_fields = list(fields(IdentityKey))
-        required = [
-            field.name
-            for field in model_fields
-            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
-        ]
-        missing = sorted(set(required) - set(record))
-        if missing:
-            raise IdentityKeyRepositoryError(f"Identity key record is missing required fields: {', '.join(missing)}")
-        values = {}
-        for field in model_fields:
-            if field.name in record:
-                values[field.name] = record[field.name]
-            elif field.default is not dataclasses.MISSING:
-                values[field.name] = field.default
-            elif field.default_factory is not dataclasses.MISSING:
-                values[field.name] = field.default_factory()
-        return IdentityKey(**values)
+        try:
+            return dataclass_from_record(IdentityKey, record)
+        except MissingDataclassFieldsError as exc:
+            raise IdentityKeyRepositoryError(
+                f"Identity key record is missing required fields: {', '.join(exc.missing_fields)}"
+            ) from None
 
     def _serialize_identity(self, identity_key: IdentityKey) -> dict:
         """Convert an identity key model into a JSON record."""
-        return {field.name: getattr(identity_key, field.name) for field in fields(IdentityKey)}
+        return dataclass_to_record(identity_key)
 
     def _write_payload(self, character: str, phase: str, payload: dict) -> None:
         """Write identity key storage atomically with a timestamped backup."""
@@ -79,9 +71,7 @@ class IdentityKeyRepository:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             shutil.copy2(path, backup_dir / f"IdentityKeys.backup.{timestamp}.json")
         temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
-        temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        json.loads(temp_path.read_text(encoding="utf-8"))
-        temp_path.replace(path)
+        write_json_atomic(path, temp_path, payload)
 
     def list_identity_keys(self, character: str, phase: str) -> list[IdentityKey]:
         """List all identity keys for a character phase."""

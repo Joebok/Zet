@@ -4,10 +4,14 @@ from zet.models.asset import Asset
 from zet.services.config_service import Config
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 class PathService:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, project_root: str | Path = PROJECT_ROOT):
         """Create a path service from loaded configuration."""
         self.config = config
+        self.project_root = Path(project_root)
 
     def character_path(self, character: str, phase: str) -> Path:
         """Return the character phase folder."""
@@ -39,7 +43,7 @@ class PathService:
             return self.library_path(*parts[1:])
         if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "Stories"}:
             return self.library_path(*parts)
-        return raw_path
+        return self.project_root / raw_path
 
     def character_asset_path(self, character: str, phase: str) -> Path:
         """Return the character phase asset folder."""
