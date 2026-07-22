@@ -536,6 +536,105 @@ class StoryService:
     def scene_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
         return self.path_service.story_pipeline_path(self.safe_slug(story_slug), self.safe_slug(scene_slug))
 
+    def _scene_prompt_source_map(
+        self,
+        ir: dict,
+        prompt: str,
+        final_prompt_path: Path,
+        scene_builder_path: Path,
+        story_settings_path: Path,
+        artifacts: list[str],
+    ) -> dict:
+        """Build line-level provenance for a compiled scene prompt."""
+        fragments: list[dict] = []
+        elements_by_name = {
+            str(element.get("display_name") or element.get("id") or ""): element
+            for element in ir.get("elements") or []
+            if isinstance(element, dict)
+        }
+        current_element = None
+        continuity_rules = {
+            str(rule).strip(): index
+            for index, rule in enumerate((ir.get("style") or {}).get("visual_continuity", {}).get("rules") or [])
+            if str(rule).strip()
+        }
+        for line_number, line in enumerate(prompt.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                current_element = elements_by_name.get(stripped[3:].strip())
+                continue
+            source = None
+            if stripped.startswith("- Art style:"):
+                source = {
+                    "source_kind": "story_settings",
+                    "source_path": str(story_settings_path),
+                    "source_label": "Canonical art style",
+                    "json_pointer": "/style_defaults/canonical_art_style/full_prompt_text",
+                    "editable": True,
+                }
+            elif stripped.startswith("- ") and stripped[2:].rstrip(".") in continuity_rules:
+                index = continuity_rules[stripped[2:].rstrip(".")]
+                source = {
+                    "source_kind": "story_settings",
+                    "source_path": str(story_settings_path),
+                    "source_label": "Visual continuity rule",
+                    "json_pointer": f"/style_defaults/visual_continuity/rules/{index}",
+                    "editable": True,
+                }
+            elif current_element and stripped.startswith(("**Identity:**", "**Location design:**")):
+                sections = current_element.get("resolved_source_sections") or {}
+                source_path = str(sections.get("identity_source") or "")
+                if source_path:
+                    source = {
+                        "source_kind": "auxiliary_template_section" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "character_template_section",
+                        "source_path": source_path,
+                        "source_label": f"{current_element.get('display_name') or current_element.get('id')} identity",
+                        "section_name": "IDENTITY_PRESERVATION_SCENE",
+                        "editable": True,
+                    }
+            elif current_element and stripped.startswith("**Costume"):
+                sections = current_element.get("resolved_source_sections") or {}
+                source_path = str(sections.get("costume_source") or "")
+                if source_path:
+                    source = {
+                        "source_kind": "auxiliary_template_section" if current_element.get("resource_type") == "Person" else "costume_template_section",
+                        "source_path": source_path,
+                        "source_label": f"{current_element.get('display_name') or current_element.get('id')} costume",
+                        "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE",
+                        "editable": True,
+                    }
+            if source:
+                source["prompt_start_line"] = line_number
+                source["prompt_end_line"] = line_number
+                fragments.append(source)
+        return {
+            "story_settings_file": str(story_settings_path),
+            "scene_builder_file": str(scene_builder_path),
+            "final_prompt": str(final_prompt_path),
+            "compiler": "scene_render_v3",
+            "artifacts": artifacts,
+            "fragments": fragments,
+        }
+
+    def scene_prompt_source_map(self, pipeline_path: Path, prompt: str) -> dict:
+        """Return current scene provenance, including for render asks staged before line maps existed."""
+        ir_path = Path(pipeline_path) / "Scene_Render_IR.json"
+        if not ir_path.exists():
+            return {}
+        ir = json.loads(ir_path.read_text(encoding="utf-8"))
+        source = ir.get("source") or {}
+        final_prompt_path = Path(pipeline_path) / "Final_Image_Prompt.md"
+        scene_builder_path = Path(str(source.get("scene_json_path") or ""))
+        story_settings_path = Path(str(source.get("story_settings_path") or ""))
+        return self._scene_prompt_source_map(
+            ir,
+            prompt,
+            final_prompt_path,
+            scene_builder_path,
+            story_settings_path,
+            [path.name for path in Path(pipeline_path).iterdir() if path.is_file()],
+        )
+
     def compile_scene_prompt(self, story_slug: str, scene_slug: str) -> Path:
         """Compile the final image prompt used by Scene Builder automation."""
         safe_story_slug = self.safe_slug(story_slug)
@@ -552,8 +651,16 @@ class StoryService:
             raise StoryServiceError(f"Story settings file not found: {story_settings_path}")
         references = self._resolve_scene_references("\n" + json.dumps(scene_builder_data))
         ir = compile_scene_render_ir(normalized_scene, self.load_story_settings(story_settings_path), {"references": references, "element_sources": self._resolve_scene_element_sources(normalized_scene)})
+        ir["source"]["scene_json_path"] = str(scene_builder_path)
+        ir["source"]["story_settings_path"] = str(story_settings_path)
         prompt_path = pipeline_path / "Final_Image_Prompt.md"
-        prompt_path.write_text(final_image_prompt_text(ir), encoding="utf-8")
+        prompt = final_image_prompt_text(ir)
+        prompt_path.write_text(prompt, encoding="utf-8")
+        self._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+        self._write_json(
+            pipeline_path / "Prompt_Source_Map.json",
+            self._scene_prompt_source_map(ir, prompt, prompt_path, scene_builder_path, story_settings_path, ["Scene_Render_IR.json", "Final_Image_Prompt.md"]),
+        )
         return prompt_path
 
     def get_scene_builder_json_path(self, scene_path: Path) -> Path:
@@ -1491,13 +1598,7 @@ class StoryService:
             (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").unlink(missing_ok=True)
         self._write_json(
             pipeline_path / "Prompt_Source_Map.json",
-            {
-                "story_settings_file": str(story_settings_path),
-                "scene_builder_file": str(scene_builder_path),
-                "final_prompt": str(final_prompt_path),
-                "compiler": "scene_render_v3",
-                "artifacts": artifacts,
-            },
+            self._scene_prompt_source_map(ir, prompt, final_prompt_path, scene_builder_path, story_settings_path, artifacts),
         )
         self._write_json(
             pipeline_path / "dependency_manifest.json",

@@ -17,7 +17,7 @@ const state = {
   assetDetailMode: "status",
   assetDetail: null,
   promptReviewTasks: [],
-  selectedPromptReviewAssetId: null,
+  selectedPromptReviewAskId: null,
   promptReviewDetail: null,
   renderReviewTasks: [],
   selectedRenderReviewAssetId: null,
@@ -153,11 +153,8 @@ const promptSearch = document.querySelector("#prompt-search");
 const promptPath = document.querySelector("#prompt-path");
 const promptText = document.querySelector("#prompt-text");
 const copyPromptButton = document.querySelector("#copy-prompt");
-const viewCondensedButton = document.querySelector("#view-condensed");
-const generateLocalTestButton = document.querySelector("#generate-local-test");
-const localTestRender = document.querySelector("#local-test-render");
-const promptApproveButton = document.querySelector("#prompt-approve");
-const promptFailButton = document.querySelector("#prompt-fail");
+const analyzePromptButton = document.querySelector("#analyze-prompt");
+const viewPromptAnalysisButton = document.querySelector("#view-prompt-analysis");
 const sourceInspectorEmpty = document.querySelector("#source-inspector-empty");
 const sourceInspectorDetail = document.querySelector("#source-inspector-detail");
 const sourceInspectorText = document.querySelector("#source-inspector-text");
@@ -220,15 +217,11 @@ const settingLocalRenderNegativeGlobals = document.querySelector("#setting-local
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptReviewModel = document.querySelector("#setting-ai-prompt-review-model");
-const settingAiPromptReviewFile = document.querySelector("#setting-ai-prompt-review-file");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
 const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
-const promptReviewPipeline = document.querySelector("#prompt-review-pipeline");
-const promptReviewMode = document.querySelector("#prompt-review-mode");
-const promptReviewSave = document.querySelector("#prompt-review-save");
 const batchRenderPipeline = document.querySelector("#batch-render-pipeline");
 const batchIncludeLocked = document.querySelector("#batch-include-locked");
 const batchRenderResetButton = document.querySelector("#batch-render-reset");
@@ -251,6 +244,7 @@ const renderConsolePrev = document.querySelector("#render-console-prev");
 const renderConsoleNext = document.querySelector("#render-console-next");
 const renderConsoleRefresh = document.querySelector("#render-console-refresh");
 const renderConsoleTitle = document.querySelector("#render-console-title");
+const renderConsoleReviewPrompt = document.querySelector("#render-console-review-prompt");
 const renderConsoleCopyPrompt = document.querySelector("#render-console-copy-prompt");
 const renderConsoleMessage = document.querySelector("#render-console-message");
 const consoleAskId = document.querySelector("#console-ask-id");
@@ -1561,7 +1555,7 @@ async function saveBeforePageNavigation(nextPage) {
 }
 
 async function activatePage(page, options = {}) {
-  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "ai-controls", "local-image-config", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
+  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "prompt-review", "ai-controls", "local-image-config", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
@@ -3415,8 +3409,6 @@ function renderSceneBuilder() {
       <span>${escapeHtml(state.sceneBuilder?.scene?.slug || "")}.scene.json</span>
       <button type="button" class="scene-builder-continue" data-builder-action="continue-from">Continue from...</button>
       <button type="button" class="primary-action" data-builder-action="save">Save JSON</button>
-      <button type="button" data-builder-action="analyze-prompt">Analyze Prompt</button>
-      <button type="button" class="scene-builder-analysis-view${state.scenePromptAnalysis?.complete ? " complete" : ""}" data-builder-action="view-analysis" aria-label="View prompt analysis" title="View prompt analysis">&#128065;</button>
       <button type="button" class="scene-builder-render" data-builder-action="render">Render</button>
       ${warningMarkup}
     </div>
@@ -3712,8 +3704,6 @@ sceneBuilderPanel.addEventListener("click", (event) => {
       renderSceneBuilder();
     }
     if (action === "save") saveSceneBuilder(false);
-    if (action === "analyze-prompt") analyzeScenePrompt();
-    if (action === "view-analysis") viewScenePromptAnalysis();
     if (action === "export") exportSceneBuilderMarkdown();
     if (action === "render") renderSceneBuilderScene();
   }
@@ -4231,24 +4221,20 @@ function movePhaseComparison(delta) {
   loadPhaseComparison({ preserveSlot: false });
 }
 
-async function loadPromptReviewTasks(preferredAssetId = null) {
-  if (!state.character || !state.phase) {
-    promptReviewStatus.textContent = "No character/phase selected.";
-    return;
-  }
+async function loadPromptReviewTasks(preferredAskId = null) {
   promptReviewStatus.textContent = "Loading prompt reviews...";
-  const payload = await fetchJson(`/api/prompt-review/tasks?${currentQuery().toString()}`);
+  const payload = await fetchJson(`/api/render-console/tasks?${currentQuery().toString()}`);
   state.promptReviewTasks = payload.tasks || [];
-  const taskIds = new Set(state.promptReviewTasks.map((task) => task.asset_id));
-  state.selectedPromptReviewAssetId =
-    preferredAssetId || state.selectedPromptReviewAssetId || state.promptReviewTasks[0]?.asset_id || null;
-  if (state.selectedPromptReviewAssetId && !taskIds.has(state.selectedPromptReviewAssetId)) {
-    state.selectedPromptReviewAssetId = state.promptReviewTasks[0]?.asset_id || null;
+  const taskIds = new Set(state.promptReviewTasks.map((task) => task.ask_id));
+  state.selectedPromptReviewAskId =
+    preferredAskId || state.selectedPromptReviewAskId || state.promptReviewTasks[0]?.ask_id || null;
+  if (state.selectedPromptReviewAskId && !taskIds.has(state.selectedPromptReviewAskId)) {
+    state.selectedPromptReviewAskId = state.promptReviewTasks[0]?.ask_id || null;
   }
   renderPromptReviewTaskTable();
-  promptReviewStatus.textContent = `${state.promptReviewTasks.length} prompt(s) waiting`;
-  if (state.selectedPromptReviewAssetId) {
-    await selectPromptReviewAsset(state.selectedPromptReviewAssetId);
+  promptReviewStatus.textContent = `${state.promptReviewTasks.length} render prompt(s)`;
+  if (state.selectedPromptReviewAskId) {
+    await selectPromptReviewTask(state.selectedPromptReviewAskId);
   } else {
     clearPromptReview();
   }
@@ -4258,24 +4244,24 @@ function renderPromptReviewTaskTable() {
   promptReviewTaskBody.replaceChildren();
   for (const task of state.promptReviewTasks) {
     const row = document.createElement("tr");
-    row.dataset.assetId = task.asset_id;
-    row.classList.toggle("selected", task.asset_id === state.selectedPromptReviewAssetId);
-    for (const value of [task.asset_id, task.body_view, task.condense_state || ""]) {
+    row.dataset.askId = task.ask_id;
+    row.classList.toggle("selected", task.ask_id === state.selectedPromptReviewAskId);
+    for (const value of [task.asset_id ?? "scene", task.ask_id]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);
     }
-    row.addEventListener("click", () => selectPromptReviewAsset(task.asset_id));
+    row.addEventListener("click", () => selectPromptReviewTask(task.ask_id));
     promptReviewTaskBody.append(row);
   }
 }
 
-async function selectPromptReviewAsset(assetId) {
-  state.selectedPromptReviewAssetId = Number(assetId);
+async function selectPromptReviewTask(askId) {
+  state.selectedPromptReviewAskId = askId;
   for (const row of promptReviewTaskBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", Number(row.dataset.assetId) === state.selectedPromptReviewAssetId);
+    row.classList.toggle("selected", row.dataset.askId === state.selectedPromptReviewAskId);
   }
-  const detail = await fetchJson(`/api/prompt-review/${state.selectedPromptReviewAssetId}?${currentQuery().toString()}`);
+  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`);
   renderPromptReview(detail);
 }
 
@@ -4285,31 +4271,70 @@ function clearPromptReview() {
   promptPath.textContent = "";
   promptText.textContent = "";
   clearSourceInspector();
-  localTestRender.textContent = "No local test render.";
   promptReviewPrev.disabled = true;
   promptReviewNext.disabled = true;
   copyPromptButton.disabled = true;
-  viewCondensedButton.disabled = true;
-  generateLocalTestButton.disabled = true;
-  promptApproveButton.disabled = true;
-  promptFailButton.disabled = true;
+  analyzePromptButton.disabled = true;
+  viewPromptAnalysisButton.disabled = true;
 }
 
 function renderPromptReview(detail) {
   state.promptReviewDetail = detail;
-  const asset = detail.asset;
-  promptReviewTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view}`;
+  const task = detail.task;
+  const storyLabel = detail.manifest?.story_slug && detail.manifest?.scene_slug
+    ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
+    : "";
+  promptReviewTitle.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
   promptPath.textContent = detail.prompt_path || "No prompt file found.";
   renderPromptText();
-  condensedText.value = detail.condensed_prompt_text || "";
-  viewCondensedButton.disabled = !detail.condensed_prompt_text;
-  copyPromptButton.disabled = !detail.prompt_text;
-  generateLocalTestButton.disabled = !detail.prompt_text || !detail.is_reviewable || !detail.supports_local_test_render;
-  promptApproveButton.disabled = !detail.is_reviewable;
-  promptFailButton.disabled = !detail.is_reviewable;
-  renderLocalTestRender(detail.latest_local_test_render);
+  copyPromptButton.disabled = !detail.prompt;
+  analyzePromptButton.disabled = !storyLabel;
+  viewPromptAnalysisButton.disabled = !storyLabel || !(detail.prompt_analysis?.pending || detail.prompt_analysis?.complete);
+  viewPromptAnalysisButton.classList.toggle("complete", Boolean(detail.prompt_analysis?.complete));
   clearSourceInspector();
   updatePromptReviewNavigation();
+}
+
+function selectedPromptReviewScene() {
+  const manifest = state.promptReviewDetail?.manifest || {};
+  return manifest.story_slug && manifest.scene_slug
+    ? { storySlug: manifest.story_slug, sceneSlug: manifest.scene_slug }
+    : null;
+}
+
+async function analyzePromptReview() {
+  const scene = selectedPromptReviewScene();
+  if (!scene) return;
+  analyzePromptButton.disabled = true;
+  showPromptMessage("Queuing prompt analysis...");
+  try {
+    const analysis = await fetchJson(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis`, { method: "POST" });
+    state.promptReviewDetail.prompt_analysis = analysis;
+    renderPromptReview(state.promptReviewDetail);
+    showPromptMessage(analysis.message || "AI prompt analysis queued.", "success");
+  } catch (error) {
+    showPromptMessage(error.message, "error");
+  } finally {
+    analyzePromptButton.disabled = false;
+  }
+}
+
+async function viewPromptReviewAnalysis() {
+  const scene = selectedPromptReviewScene();
+  if (!scene) return;
+  let analysis = state.promptReviewDetail?.prompt_analysis || {};
+  if (analysis.complete && analysis.result_path) {
+    window.open(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis/view`, "_blank", "noopener");
+    return;
+  }
+  try {
+    analysis = await fetchJson(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis/harvest`, { method: "POST" });
+    state.promptReviewDetail.prompt_analysis = analysis;
+    renderPromptReview(state.promptReviewDetail);
+    showPromptMessage(analysis.message || "AI answers harvested.", "success");
+  } catch (error) {
+    showPromptMessage(error.message, "error");
+  }
 }
 
 function renderPromptText() {
@@ -4319,7 +4344,7 @@ function renderPromptText() {
     return;
   }
   const query = promptSearch.value.trim();
-  const raw = detail.prompt_text || "";
+  const raw = detail.prompt || "";
   const lines = raw.split(/\r?\n/);
   if (lines.length && lines[lines.length - 1] === "") {
     lines.pop();
@@ -4334,9 +4359,14 @@ function renderPromptText() {
 
 function sourceForPromptLine(lineNumber) {
   const fragments = state.promptReviewDetail?.source_map?.fragments || [];
-  return fragments.find(
+  const source = fragments.find(
     (fragment) => lineNumber >= Number(fragment.prompt_start_line || 0) && lineNumber <= Number(fragment.prompt_end_line || 0),
   );
+  if (source) return source;
+  const manifest = state.promptReviewDetail?.manifest || {};
+  return manifest.story_slug && manifest.scene_slug
+    ? { source_kind: "scene_builder", source_label: "Scene Builder", editable: true, scene_builder: true }
+    : null;
 }
 
 function sourceBadgeLabel(source) {
@@ -4350,7 +4380,10 @@ function sourceBadgeLabel(source) {
     config_rule: "rule",
     template_metadata_field: "metadata",
     expression_definition: "expression",
+    auxiliary_template_section: "auxiliary",
+    story_settings: "story",
     runtime_generated: "generated",
+    scene_builder: "scene",
   };
   return labels[kind] || kind;
 }
@@ -4395,7 +4428,7 @@ function showSourceInspector(source, lineNumber, lineText) {
   sourceInspectorEmpty.hidden = true;
   sourceInspectorDetail.hidden = false;
   sourceInspectorText.hidden = false;
-  sourceOpenEditor.disabled = !source || source.editable === false || !source.source_path;
+  sourceOpenEditor.disabled = !source || source.editable === false || (!source.source_path && !source.scene_builder);
   sourceInspectorDetail.replaceChildren();
   addInspectorRow("Prompt line", lineNumber);
   addInspectorRow("Source", sourceBadgeLabel(source));
@@ -4441,6 +4474,13 @@ function renderSourceEditor(detail) {
 
 async function openSelectedSourceEditor() {
   if (!state.selectedSource) {
+    return;
+  }
+  if (state.selectedSource.scene_builder) {
+    const manifest = state.promptReviewDetail?.manifest || {};
+    state.selectedStorySlug = manifest.story_slug || null;
+    state.selectedSceneSlug = manifest.scene_slug || null;
+    await activatePage("scene-builder", { skipAutosave: true });
     return;
   }
   await openSourceEditorForSource(state.selectedSource, showPromptMessage);
@@ -4492,9 +4532,9 @@ async function saveSourceEditor() {
 }
 
 async function recompileCurrentPrompt() {
-  const assetId = state.promptReviewDetail?.asset?.asset_id || state.selectedPromptReviewAssetId;
-  if (!assetId) {
-    showSourceEditorMessage("No prompt review asset is selected.", "error");
+  const askId = state.promptReviewDetail?.task?.ask_id || state.selectedPromptReviewAskId;
+  if (!askId) {
+    showSourceEditorMessage("No render prompt is selected.", "error");
     return;
   }
   const params = currentQuery();
@@ -4502,9 +4542,9 @@ async function recompileCurrentPrompt() {
   sourceEditorRecompile.disabled = true;
   showSourceEditorMessage("Recompiling current prompt...");
   try {
-    const payload = await fetchJson(`/api/prompt-review/${assetId}/recompile?${params.toString()}`, { method: "POST" });
+    const payload = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}/recompile?${params.toString()}`, { method: "POST" });
     renderPromptReview(payload);
-    await loadPromptReviewTasks(assetId);
+    await loadPromptReviewTasks(askId);
     await loadAssets(state.selectedAssetId);
     showSourceEditorMessage(payload.message || "Prompt recompiled.");
     showPromptMessage(payload.message || "Prompt recompiled.");
@@ -4512,7 +4552,7 @@ async function recompileCurrentPrompt() {
   } catch (error) {
     showSourceEditorMessage(error.message, "error");
   } finally {
-    sourceEditorRecompile.disabled = !state.promptReviewDetail?.is_reviewable;
+    sourceEditorRecompile.disabled = !state.promptReviewDetail?.task?.asset_id;
   }
 }
 
@@ -4590,21 +4630,8 @@ function renderPromptLines(lines, searchPattern) {
   });
 }
 
-function renderLocalTestRender(path) {
-  localTestRender.replaceChildren();
-  if (!path) {
-    localTestRender.textContent = "No local test render.";
-    return;
-  }
-  const image = document.createElement("img");
-  image.alt = "Latest local test render";
-  image.src = fileUrl(path, Date.now().toString());
-  image.title = path;
-  localTestRender.append(image);
-}
-
 function updatePromptReviewNavigation() {
-  const index = state.promptReviewTasks.findIndex((task) => task.asset_id === state.selectedPromptReviewAssetId);
+  const index = state.promptReviewTasks.findIndex((task) => task.ask_id === state.selectedPromptReviewAskId);
   promptReviewPrev.disabled = index <= 0;
   promptReviewNext.disabled = index < 0 || index >= state.promptReviewTasks.length - 1;
 }
@@ -4629,32 +4656,6 @@ async function writeClipboardText(value) {
 async function copyText(value, label = "Copied.") {
   await writeClipboardText(value);
   showPromptMessage(label);
-}
-
-async function runPromptReviewAction(action) {
-  if (!state.selectedPromptReviewAssetId) {
-    return;
-  }
-  showPromptMessage("Working...");
-  try {
-    const payload = await fetchJson(
-      `/api/prompt-review/${state.selectedPromptReviewAssetId}/${action}?${currentQuery().toString()}`,
-      { method: "POST" },
-    );
-    if (action === "approve" || action === "fail") {
-      showPromptMessage(payload.message || "Review action complete.");
-      await loadPromptReviewTasks();
-      await loadAssets(state.selectedAssetId);
-      if (action === "approve" && state.promptReviewTasks.length === 0) {
-        activatePage("render-console");
-      }
-      return;
-    }
-    renderPromptReview(payload);
-    showPromptMessage(payload.message || "Action complete.");
-  } catch (error) {
-    showPromptMessage(error.message, "error");
-  }
 }
 
 async function loadRenderReviewTasks(preferredAssetId = null) {
@@ -5378,29 +5379,17 @@ function renderPipelineControls(payload) {
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptReviewModel.value = automation.ai_prompt_review_model || "";
-  settingAiPromptReviewFile.value = automation.ai_prompt_review_instructions_file || "";
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
   renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
-  const currentPromptReviewPipeline = promptReviewPipeline.value;
-  setSelectOptions(promptReviewPipeline, payload.pipeline_names || []);
-  if ((payload.pipeline_names || []).includes(currentPromptReviewPipeline)) {
-    promptReviewPipeline.value = currentPromptReviewPipeline;
-  }
-  updatePromptReviewToggle();
   const currentPipeline = batchRenderPipeline.value;
   setSelectOptions(batchRenderPipeline, payload.pipeline_names || []);
   if ((payload.pipeline_names || []).includes(currentPipeline)) {
     batchRenderPipeline.value = currentPipeline;
   }
   pipelineControlsStatus.textContent = "Ready";
-}
-
-function updatePromptReviewToggle() {
-  const modeByPipeline = state.pipelineControls?.prompt_review_modes || {};
-  promptReviewMode.value = modeByPipeline[promptReviewPipeline.value] || "OFF";
 }
 
 function setLocalRenderCheckpointValue(value) {
@@ -5436,7 +5425,6 @@ function automationPayloadFromForm() {
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_review_model: settingAiPromptReviewModel.value,
-    ai_prompt_review_instructions_file: settingAiPromptReviewFile.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
   };
@@ -5460,26 +5448,6 @@ async function saveAutomationSettings(event) {
     showMessage(payload.message || "Settings saved.");
   } catch (error) {
     showMessage(error.message, "error");
-  }
-}
-
-async function savePromptReviewStage() {
-  const pipelineName = promptReviewPipeline.value;
-  if (!pipelineName) {
-    return;
-  }
-  showPipelineControlsMessage("Saving...");
-  try {
-    const payload = await fetchJson(`/api/pipeline-controls/prompt-review?${currentQuery().toString()}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pipeline_name: pipelineName, mode: promptReviewMode.value }),
-    });
-    renderPipelineControls(payload);
-    showPipelineControlsMessage(payload.message || "Prompt review setting saved.");
-  } catch (error) {
-    showPipelineControlsMessage(error.message, "error");
-    updatePromptReviewToggle();
   }
 }
 
@@ -5578,6 +5546,7 @@ function clearRenderConsole() {
   renderConsoleImagePreview.removeAttribute("src");
   renderConsoleSaveImage.disabled = true;
   renderConsoleAnswerComment.value = "";
+  renderConsoleReviewPrompt.disabled = true;
   renderConsoleCopyPrompt.disabled = true;
   renderConsolePrev.disabled = true;
   renderConsoleNext.disabled = true;
@@ -5604,6 +5573,7 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleSaveHelper.disabled = !detail.gpt_helper_prompt?.source;
   renderConsoleCopyHelper.disabled = !helperText;
   renderConsolePrompt.value = detail.prompt || "";
+  renderConsoleReviewPrompt.disabled = !detail.prompt;
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
   const localPrompt = detail.local_prompt || {};
@@ -6117,7 +6087,7 @@ characterSelect.addEventListener("change", async () => {
   state.phase = null;
   saveStoredContext();
   state.selectedAssetId = null;
-  state.selectedPromptReviewAssetId = null;
+  state.selectedPromptReviewAskId = null;
   state.selectedRenderReviewAssetId = null;
   state.selectedRenderConsoleAskId = null;
   state.selectedTurnaroundId = null;
@@ -6172,7 +6142,7 @@ phaseSelect.addEventListener("change", async () => {
   saveStoredContext();
   updateHeaderFitmentPreview();
   state.selectedAssetId = null;
-  state.selectedPromptReviewAssetId = null;
+  state.selectedPromptReviewAskId = null;
   state.selectedRenderReviewAssetId = null;
   state.selectedRenderConsoleAskId = null;
   state.selectedTurnaroundId = null;
@@ -6473,25 +6443,23 @@ for (const imageBox of [phaseComparisonLeftImage, phaseComparisonRightImage]) {
 }
 
 promptSearch.addEventListener("input", renderPromptText);
-copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt_text || "", "Prompt copied."));
+copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt || "", "Prompt copied."));
 copyCondensedButton.addEventListener("click", () => copyText(condensedText.value, "Condensed prompt copied."));
-viewCondensedButton.addEventListener("click", () => condensedDialog.showModal());
+analyzePromptButton.addEventListener("click", analyzePromptReview);
+viewPromptAnalysisButton.addEventListener("click", viewPromptReviewAnalysis);
 sourceOpenEditor.addEventListener("click", openSelectedSourceEditor);
 sourceEditorSave.addEventListener("click", saveSourceEditor);
 sourceEditorRecompile.addEventListener("click", recompileCurrentPrompt);
-generateLocalTestButton.addEventListener("click", () => runPromptReviewAction("local-test-render"));
-promptApproveButton.addEventListener("click", () => runPromptReviewAction("approve"));
-promptFailButton.addEventListener("click", () => runPromptReviewAction("fail"));
 promptReviewPrev.addEventListener("click", () => {
-  const index = state.promptReviewTasks.findIndex((task) => task.asset_id === state.selectedPromptReviewAssetId);
+  const index = state.promptReviewTasks.findIndex((task) => task.ask_id === state.selectedPromptReviewAskId);
   if (index > 0) {
-    selectPromptReviewAsset(state.promptReviewTasks[index - 1].asset_id);
+    selectPromptReviewTask(state.promptReviewTasks[index - 1].ask_id);
   }
 });
 promptReviewNext.addEventListener("click", () => {
-  const index = state.promptReviewTasks.findIndex((task) => task.asset_id === state.selectedPromptReviewAssetId);
+  const index = state.promptReviewTasks.findIndex((task) => task.ask_id === state.selectedPromptReviewAskId);
   if (index >= 0 && index < state.promptReviewTasks.length - 1) {
-    selectPromptReviewAsset(state.promptReviewTasks[index + 1].asset_id);
+    selectPromptReviewTask(state.promptReviewTasks[index + 1].ask_id);
   }
 });
 renderPromoteButton.addEventListener("click", promoteRenderReview);
@@ -6530,10 +6498,14 @@ openRenderConsoleTab.addEventListener("click", () => {
 automationForm.addEventListener("submit", saveAutomationSettings);
 refreshLocalRenderCheckpoints.addEventListener("click", refreshLocalRenderCheckpointOptions);
 settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpointOptions);
-promptReviewPipeline.addEventListener("change", updatePromptReviewToggle);
-promptReviewSave.addEventListener("click", savePromptReviewStage);
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
+renderConsoleReviewPrompt.addEventListener("click", async () => {
+  const askId = state.renderConsoleDetail?.task?.ask_id;
+  if (!askId) return;
+  await activatePage("prompt-review", { skipAutosave: true });
+  await loadPromptReviewTasks(askId);
+});
 renderConsoleCopyPrompt.addEventListener("click", async () => {
   await writeClipboardText(state.renderConsoleDetail?.prompt || "");
   showRenderConsoleMessage("Prompt copied.");

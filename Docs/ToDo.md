@@ -1,8 +1,11 @@
 # To Do items
 
-## NPCs
+Story Rename/Delete
 
-## Expressions in Scenes
+Scene Rename/Delete
+
+Automate Scenes
+- Scene Interview - series of questions to ask to fill in the scene .json file.
 
 # Defer for now
 

@@ -624,14 +624,6 @@ class ZetApp:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
 
-    def set_pipeline_prompt_review_mode(self, character: str, phase: str, pipeline_name: str, mode: str) -> None:
-        """Set PROMPT_REVIEW mode for one character phase pipeline."""
-        self.pipeline_control_service.set_prompt_review_mode(character, phase, pipeline_name, mode)
-
-    def set_pipeline_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
-        """Enable or disable PROMPT_REVIEW for one character phase pipeline."""
-        self.pipeline_control_service.set_prompt_review_enabled(character, phase, pipeline_name, enabled)
-
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_fitment_context(character, phase, asset_id)
 

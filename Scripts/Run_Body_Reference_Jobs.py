@@ -585,8 +585,8 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     write_image_review(image_review_path, metadata, expected_output)
 
     return {
-        "status": str(bundle.get("next_status", "READY_FOR_PROMPT_REVIEW")),
-        "next_actor": str(bundle.get("next_actor", "HUMAN")),
+        "status": str(bundle.get("next_status", "READY_FOR_RENDER")),
+        "next_actor": str(bundle.get("next_actor", "AI_AGENT")),
         "final_prompt": str(final_prompt_path),
         "compiled_sections": str(compiled_sections_path),
         "dependency_manifest": str(manifest_path),

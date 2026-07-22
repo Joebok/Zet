@@ -564,6 +564,46 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     }
 
 
+def _render_console_detail_payload(zet_app: ZetApp, config_path: str | Path, queue: RenderConsoleQueue, task) -> dict[str, Any]:
+    """Return render-task prompt review data for assets and story scenes."""
+    prompt = queue.read_prompt(task)
+    source_map_path = None
+    source_map: dict[str, Any] = {}
+    if task.asset_id is not None:
+        try:
+            context = zet_app.prompt_review_service.get_context(task.character, task.phase, task.asset_id)
+            source_map_path = context.source_map_path
+            source_map = context.source_map
+        except Exception:
+            pass
+    manifest = task.manifest
+    prompt_analysis: dict[str, Any] = {}
+    story_slug = str(manifest.get("story_slug") or "")
+    scene_slug = str(manifest.get("scene_slug") or "")
+    if story_slug and scene_slug:
+        try:
+            pipeline_value = str(manifest.get("pipeline_path") or "")
+            if pipeline_value:
+                pipeline_path = Path(pipeline_value)
+                source_map_path = pipeline_path / "Prompt_Source_Map.json"
+                source_map = zet_app.story_service.scene_prompt_source_map(pipeline_path, prompt)
+            prompt_analysis = zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+        except Exception:
+            pass
+    return {
+        "task": task.to_dict(),
+        "manifest": _jsonable(manifest),
+        "reference_files": _jsonable(_render_console_reference_files(zet_app, task)),
+        "prompt_path": str(task.ask_path / task.prompt_file),
+        "prompt": prompt,
+        "source_map_path": str(source_map_path) if source_map_path else None,
+        "source_map": _jsonable(source_map),
+        "prompt_analysis": _jsonable(prompt_analysis),
+        "gpt_helper_prompt": _gpt_helper_prompt(zet_app, config_path, task),
+        "local_prompt": _render_console_local_prompt_payload(zet_app, task),
+    }
+
+
 def _render_console_local_render_status(zet_app: ZetApp, task) -> dict[str, Any]:
     source_ask_id = task.manifest.get("ask_id")
     items = []
@@ -730,19 +770,6 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
 def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> dict[str, Any]:
     snapshot = zet_app.pipeline_control_snapshot(character, phase)
     pipeline_names = sorted({row.pipeline for row in snapshot.pipeline_rows})
-    prompt_review_enabled = {
-        name: any(row.pipeline == name and row.stage == "PROMPT_REVIEW" for row in snapshot.pipeline_rows)
-        for name in pipeline_names
-    }
-    prompt_review_modes = {}
-    for name in pipeline_names:
-        prompt_row = next((row for row in snapshot.pipeline_rows if row.pipeline == name and row.stage == "PROMPT_REVIEW"), None)
-        if prompt_row is None:
-            prompt_review_modes[name] = "OFF"
-        elif prompt_row.actor == "PYTHON" and prompt_row.worker == "zet.workers.ai_prompt_review_worker":
-            prompt_review_modes[name] = "AI"
-        else:
-            prompt_review_modes[name] = "HUMAN"
     return {
         "config_path": str(snapshot.config_path),
         "pipelines_path": str(snapshot.pipelines_path),
@@ -750,8 +777,6 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
         "pipeline_rows": _jsonable(snapshot.pipeline_rows),
         "project_config_rows": _jsonable(snapshot.project_config_rows),
         "pipeline_names": pipeline_names,
-        "prompt_review_enabled": prompt_review_enabled,
-        "prompt_review_modes": prompt_review_modes,
     }
 
 
@@ -2393,24 +2418,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    @app.post("/api/pipeline-controls/prompt-review")
-    def pipeline_controls_prompt_review(
-        payload: dict[str, Any] = Body(...),
-        character: str = Query(...),
-        phase: str = Query(...),
-    ) -> dict[str, Any]:
-        """Set PROMPT_REVIEW mode for one pipeline."""
-        zet_app = _app(app.state.config_path)
-        try:
-            pipeline_name = str(payload.get("pipeline_name") or "").strip()
-            mode = str(payload.get("mode") or ("HUMAN" if bool(payload.get("enabled")) else "OFF")).strip().upper()
-            zet_app.set_pipeline_prompt_review_mode(character, phase, pipeline_name, mode)
-            response = _pipeline_controls_payload(zet_app, character, phase)
-            response["message"] = f"PROMPT_REVIEW set to {mode} for {pipeline_name}."
-            return response
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/pipeline-controls/batch-render-reset")
     def pipeline_controls_batch_render_reset(
         pipeline_name: str = Query(...),
@@ -2451,14 +2458,38 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         zet_app = _app(app.state.config_path)
-        return {
-            "task": task.to_dict(),
-            "manifest": _jsonable(task.manifest),
-            "reference_files": _jsonable(_render_console_reference_files(zet_app, task)),
-            "prompt": queue.read_prompt(task),
-            "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
-            "local_prompt": _render_console_local_prompt_payload(zet_app, task),
-        }
+        return _render_console_detail_payload(zet_app, app.state.config_path, queue, task)
+
+    @app.post("/api/render-console/tasks/{ask_id}/recompile")
+    def render_console_recompile_prompt(
+        ask_id: str,
+        character: str = Query(""),
+        phase: str = Query(""),
+        invalidate_review_artifacts: bool = Query(False),
+    ) -> dict[str, Any]:
+        """Recompile an asset prompt and refresh the queued render prompt."""
+        queue = _render_console_queue(app.state.config_path)
+        task = _render_console_task_for_context(queue, ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        if task.asset_id is None:
+            raise HTTPException(status_code=400, detail="Scene prompts must be edited in Scene Builder.")
+        zet_app = _app(app.state.config_path)
+        try:
+            context = zet_app.recompile_prompt_review(
+                task.character,
+                task.phase,
+                task.asset_id,
+                invalidate_review_artifacts=invalidate_review_artifacts,
+            )
+            if context.prompt_text is None:
+                raise ValueError(f"No Final_Image_Prompt.md found for Asset {task.asset_id}.")
+            (task.ask_path / task.prompt_file).write_text(context.prompt_text, encoding="utf-8")
+            payload = _render_console_detail_payload(zet_app, app.state.config_path, queue, task)
+            payload["message"] = f"Prompt recompiled for Asset {task.asset_id}."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/render-console/tasks/{ask_id}/gpt-helper-prompt")
     async def render_console_save_gpt_helper_prompt(

@@ -287,26 +287,21 @@ class CharacterOnboardingService:
         }
 
     def _normalize_foundation_pipelines(self, pipelines_path: Path) -> None:
-        """Ensure foundation pipelines include a human prompt-review stop."""
+        """Remove the retired prompt-review stage from phase pipelines."""
         data = json.loads(pipelines_path.read_text(encoding="utf-8"))
         pipelines = data.get("pipelines")
         if not isinstance(pipelines, dict):
             raise CharacterOnboardingError(f"Pipelines.json must contain a pipelines object: {pipelines_path}")
-        for name in ["Body-Reference", "Head-Fitment", "Character-Assembly"]:
-            pipeline = pipelines.get(name)
+        for pipeline in pipelines.values():
             if not isinstance(pipeline, dict):
                 continue
-            stages = list(pipeline.get("stages") or [])
-            if "PROMPT_REVIEW" not in stages and "PROMPT" in stages:
-                insert_at = stages.index("PROMPT") + 1
-                stages.insert(insert_at, "PROMPT_REVIEW")
-                pipeline["stages"] = stages
-            actor_by_stage = pipeline.setdefault("actor_by_stage", {})
+            pipeline["stages"] = [stage for stage in list(pipeline.get("stages") or []) if stage != "PROMPT_REVIEW"]
+            actor_by_stage = pipeline.get("actor_by_stage", {})
             if isinstance(actor_by_stage, dict):
-                actor_by_stage["PROMPT_REVIEW"] = "HUMAN_AGENT"
-            worker_by_stage = pipeline.setdefault("worker_by_stage", {})
+                actor_by_stage.pop("PROMPT_REVIEW", None)
+            worker_by_stage = pipeline.get("worker_by_stage", {})
             if isinstance(worker_by_stage, dict):
-                worker_by_stage["PROMPT_REVIEW"] = "zet.workers.noop_worker"
+                worker_by_stage.pop("PROMPT_REVIEW", None)
         pipelines_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def _render_template(self, payload: dict[str, Any], character: str, phase: str) -> str:

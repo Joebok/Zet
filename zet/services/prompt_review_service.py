@@ -231,8 +231,8 @@ class PromptReviewService:
         invalidate_review_artifacts: bool = False,
     ) -> PromptReviewContext:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
-        if not is_prompt_review_asset(asset):
-            raise ValueError(f"Asset {asset_id} is not currently in prompt review.")
+        if asset.pipeline_stage not in {"PROMPT_REVIEW", "RENDER"}:
+            raise ValueError(f"Asset {asset_id} has no render prompt available for review.")
 
         prompt_path = self.resolve_prompt_file(asset, self.prompt_file_candidates(asset))
         if invalidate_review_artifacts and prompt_path is not None:

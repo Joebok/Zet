@@ -789,6 +789,10 @@ Two students meet at the arch.
             self.assertIn("negative:", local_prompt)
             source_map = json.loads((pipeline / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
             self.assertEqual("scene_render_v3", source_map["compiler"])
+            art_style_source = next(
+                fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Canonical art style"
+            )
+            self.assertEqual("/style_defaults/canonical_art_style/full_prompt_text", art_style_source["json_pointer"])
 
     def test_stage_scene_render_reads_scene_character_and_costume_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -826,6 +830,45 @@ Two students meet at the arch.
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
             self.assertIn("core identity from character", prompt)
             self.assertIn("costume identity from costume", prompt)
+            source_map = json.loads((Path(task.pipeline_path) / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+            identity_source = next(
+                fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Tsaeytte identity"
+            )
+            costume_source = next(
+                fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Tsaeytte costume"
+            )
+            self.assertEqual("IDENTITY_PRESERVATION_SCENE", identity_source["section_name"])
+            self.assertEqual("IDENTITY_PRESERVATION_COSTUME_SCENE", costume_source["section_name"])
+
+    def test_scene_prompt_source_map_links_auxiliary_identity_and_story_style(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            service = self._service(root)
+            story_path = root / "Stories" / "Test" / "Test.story.json"
+            scene_path = root / "Stories" / "Test" / "Scene.scene.json"
+            prompt_path = root / "Pipelines" / "Stories" / "Test" / "Scene" / "Final_Image_Prompt.md"
+            ir = {
+                "style": {"visual_continuity": {"rules": []}},
+                "elements": [
+                    {
+                        "id": "val",
+                        "display_name": "Valindia",
+                        "resource_type": "Person",
+                        "resolved_source_sections": {
+                            "identity_source": "AuxiliaryResources/Images/valindia/valindia_Template.md",
+                        },
+                    }
+                ],
+            }
+            prompt = "- Art style: painterly fantasy.\n\n## Valindia\n\n**Identity:** elegant half-elf.\n"
+
+            source_map = service._scene_prompt_source_map(ir, prompt, prompt_path, scene_path, story_path, [])
+
+            story_source, identity_source = source_map["fragments"]
+            self.assertEqual("story_settings", story_source["source_kind"])
+            self.assertEqual("/style_defaults/canonical_art_style/full_prompt_text", story_source["json_pointer"])
+            self.assertEqual("auxiliary_template_section", identity_source["source_kind"])
+            self.assertEqual("IDENTITY_PRESERVATION_SCENE", identity_source["section_name"])
 
     def test_stage_scene_render_blocks_invalid_builder_gaze(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -337,8 +337,8 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "image_review": str(image_review_path),
         "source_map": str(source_map_path),
         "expected_output": expected_output,
-        "status": str(bundle.get("next_status", "READY_FOR_PROMPT_REVIEW")),
-        "next_actor": str(bundle.get("next_actor", "HUMAN_AGENT")),
+        "status": str(bundle.get("next_status", "READY_FOR_RENDER")),
+        "next_actor": str(bundle.get("next_actor", "AI_AGENT")),
         "reference_files": references,
     }
 

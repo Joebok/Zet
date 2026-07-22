@@ -38,11 +38,10 @@
         "compiled_sections": "Compiled_Sections.md",
         "final_prompt": "Final_Image_Prompt.md",
         "dependency_manifest": "dependency_manifest.json",
-        "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md"
       },
-      "next_status": "READY_FOR_PROMPT_REVIEW",
-      "next_actor": "HUMAN"
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     },
     "head-fitment": {
       "description": "Static head-fitment prompt using selected body-reference and headshot image references. No prompt review and no local preview render.",
@@ -154,11 +153,10 @@
         "compiled_sections": "Compiled_Sections.md",
         "final_prompt": "Final_Image_Prompt.md",
         "dependency_manifest": "dependency_manifest.json",
-        "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md"
       },
-      "next_status": "READY_FOR_PROMPT_REVIEW",
-      "next_actor": "HUMAN_AGENT"
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     },
     "expression": {
       "description": "Static standalone expression prompt using a selected Identity Key and one expression definition markdown file.",
@@ -193,11 +191,10 @@
         "compiled_sections": "Compiled_Sections.md",
         "final_prompt": "Final_Image_Prompt.md",
         "dependency_manifest": "dependency_manifest.json",
-        "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md"
       },
-      "next_status": "READY_FOR_PROMPT_REVIEW",
-      "next_actor": "HUMAN_AGENT"
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     }
   }
 }

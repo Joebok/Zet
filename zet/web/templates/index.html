@@ -751,8 +751,7 @@
             <thead>
               <tr>
                 <th>asset</th>
-                <th>view</th>
-                <th>condense</th>
+                <th>ask</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -763,7 +762,8 @@
             <h2 id="prompt-review-title">Select a prompt</h2>
             <div class="button-row compact">
               <button id="copy-prompt">Copy Prompt</button>
-              <button id="view-condensed">View Condensed</button>
+              <button id="analyze-prompt" type="button" disabled>Analyze Prompt</button>
+              <button id="view-prompt-analysis" type="button" aria-label="View prompt analysis" title="View prompt analysis" disabled>&#128065;</button>
             </div>
           </div>
           <div id="prompt-review-message" class="action-message" hidden></div>
@@ -777,10 +777,6 @@
           <div id="prompt-text" class="prompt-text"></div>
         </section>
         <aside class="review-actions">
-          <button id="generate-local-test" hidden>Generate Local Test Image</button>
-          <div id="local-test-render" class="image-placeholder">No local test render.</div>
-          <button id="prompt-approve" class="primary-action">Approve</button>
-          <button id="prompt-fail">Fail</button>
           <section class="source-inspector">
             <h3>Source Inspector</h3>
             <div id="source-inspector-empty" class="status-text">Select a source badge.</div>
@@ -879,7 +875,10 @@
         <section class="review-main">
           <div class="review-header">
             <h2 id="render-console-title">Select a render task</h2>
-            <button id="render-console-copy-prompt">Copy Prompt</button>
+            <div class="button-row compact">
+              <button id="render-console-review-prompt">Review Prompt</button>
+              <button id="render-console-copy-prompt">Copy Prompt</button>
+            </div>
           </div>
           <div id="render-console-message" class="action-message" hidden></div>
           <div class="details-grid compact-details">
@@ -1038,8 +1037,7 @@
           <form id="automation-form" class="settings-form">
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
             <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
-            <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
-            <label>AI prompt review instructions<input id="setting-ai-prompt-review-file" type="text"></label>
+            <label>AI prompt analysis model<input id="setting-ai-prompt-review-model" type="text"></label>
             <label>AI prompt analysis instructions<input id="setting-ai-prompt-analysis-file" type="text"></label>
             <label>
               Final render backend
@@ -1149,21 +1147,6 @@
         </section>
         <section class="control-panel pipeline-wide">
           <h2>Character / Phase Pipeline Config</h2>
-          <div class="batch-controls">
-            <label>
-              Pipeline
-              <select id="prompt-review-pipeline"></select>
-            </label>
-            <label>
-              Prompt review
-              <select id="prompt-review-mode">
-                <option value="HUMAN">Human</option>
-                <option value="AI">AI</option>
-                <option value="OFF">Off</option>
-              </select>
-            </label>
-            <button id="prompt-review-save" type="button">Save Prompt Review Mode</button>
-          </div>
           <table id="pipeline-stage-table">
             <thead>
               <tr>

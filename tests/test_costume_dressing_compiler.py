@@ -138,8 +138,8 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertNotIn("GOOD OUTPUT", prompt.upper())
         self.assertNotIn("BAD OUTPUT", prompt.upper())
         self.assertIn("# Final Constraints", prompt)
-        self.assertEqual(result["status"], "READY_FOR_PROMPT_REVIEW")
-        self.assertEqual(result["next_actor"], "HUMAN_AGENT")
+        self.assertEqual(result["status"], "READY_FOR_RENDER")
+        self.assertEqual(result["next_actor"], "AI_AGENT")
         for name in ("Final_Image_Prompt.md", "Compiled_Sections.md", "Prompt_Source_Map.json", "dependency_manifest.json", "Prompt_Review.md", "Image_Review.md"):
             self.assertTrue((Path(result["output_dir"]) / name).exists())
 

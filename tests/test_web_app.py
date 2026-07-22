@@ -740,6 +740,39 @@ Backend = "manual_chatgpt"
             self.assertEqual(manifest["status"], "SUCCESS")
             self.assertEqual(manifest["render_comment"], "First render has strong silhouette.")
 
+    def test_render_console_detail_supports_story_prompt_review(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            ask_path = root / "Queue" / "Ollama_Proxy" / "Ask" / "Ask_Story_demo_scene_RENDER_TEST"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "ask_id": ask_path.name,
+                        "asset_id": None,
+                        "character": "",
+                        "phase": "",
+                        "pipeline": "Story",
+                        "pipeline_stage": "RENDER",
+                        "worker_type": "manual_chatgpt_render",
+                        "prompt_file": "Final_Image_Prompt.md",
+                        "expected_output": "scene.png",
+                        "story_slug": "demo",
+                        "scene_slug": "scene",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (ask_path / "Final_Image_Prompt.md").write_text("scene line one\nscene line two\n", encoding="utf-8")
+
+            detail = TestClient(create_app(config_path)).get(f"/api/render-console/tasks/{ask_path.name}")
+
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(detail.json()["prompt"], "scene line one\nscene line two\n")
+            self.assertEqual(detail.json()["manifest"]["scene_slug"], "scene")
+            self.assertTrue(detail.json()["prompt_path"].endswith("Final_Image_Prompt.md"))
+
     def test_render_console_local_test_render_api_params(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
