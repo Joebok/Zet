@@ -72,6 +72,7 @@ const state = {
   builderImagePickerSearch: "",
   builderElementAuxResources: {},
   builderElementCostumes: [],
+  builderCostumesByCharacterPhase: {},
   auxiliaryResources: [],
   selectedAuxiliaryResourceId: null,
   selectedAuxiliaryImageId: null,
@@ -675,9 +676,12 @@ const SCENE_BUILDER_HELP = {
   "setup.environment.lighting": "Lighting direction, quality, and color.",
   "setup.environment.mood": "Emotional atmosphere conveyed by the image.",
   "setup.environment.weather_or_atmosphere": "Weather, haze, smoke, dust, fresh air, magical glow, or similar environmental conditions.",
-  "setup.environment.important_exclusions": "Scene-level things that must not appear.",
   "setup.environment.general_foreground_notes": "Foreground details that support the scene without needing individual elements.",
   "setup.environment.general_background_notes": "Background details that support the scene without needing individual elements.",
+  "final_image_prompt_overrides.anatomical_requirements": "Complete Markdown section that replaces the global Anatomical Requirements section when nonblank.",
+  "final_image_prompt_overrides.avoid": "Complete Markdown section that replaces the global Avoid section when nonblank.",
+  "final_image_prompt_overrides.high_risk_elements": "Complete Markdown section that replaces the global High-Risk Elements section when nonblank.",
+  "final_image_prompt_overrides.final_verification": "Complete Markdown section that replaces the global Final Verification section when nonblank.",
   "scene_elements[].display_name": "Human-readable label shown in the UI and generated prompts.",
   "scene_elements[].resource_type": "Where this element comes from: Character, an auxiliary resource type, or Scene-Only.",
   "scene_elements[].element_type": "Type of visible thing: Character, Monster, Prop, or Backdrop.",
@@ -1205,8 +1209,8 @@ function isBaseImageAsset(asset) {
   );
 }
 
-function visibleTodoAssets() {
-  return filteredAssets().filter((asset) => asset.asset_state !== "LOCKED" && asset.pipeline_stage !== "LOCKED");
+function eligibleAssets() {
+  return state.assets.filter((asset) => asset.asset_state !== "LOCKED" && asset.pipeline_stage !== "LOCKED");
 }
 
 function renderAssetTable() {
@@ -1374,15 +1378,12 @@ function updateActionButtons(detail) {
   const asset = detail?.asset || null;
   const candidateExists = Boolean(detail?.exists?.candidate_image);
   const lockedExists = Boolean(detail?.exists?.locked_image);
-  const hasVisibleTodo = visibleTodoAssets().length > 0;
+  const hasEligibleAssets = eligibleAssets().length > 0;
   for (const button of actionButtons) {
     const action = button.dataset.action;
     let enabled = Boolean(asset);
-    if (action === "stage-ai-ask" || action === "retry-ai") {
-      enabled = enabled && asset.actor === "AI_AGENT";
-    }
-    if (action === "run-current-worker") {
-      enabled = hasVisibleTodo;
+    if (action === "advance-all") {
+      enabled = hasEligibleAssets;
     }
     if (action === "promote-to-locked") {
       enabled = enabled && candidateExists;
@@ -1413,8 +1414,8 @@ function startIdentityKeyFromSelectedAsset() {
 }
 
 async function runAssetAction(action) {
-  if (action === "run-current-worker") {
-    await advanceVisibleAssets();
+  if (action === "advance-all") {
+    await advanceAllAssets();
     return;
   }
   if (!state.selectedAssetId) {
@@ -1443,24 +1444,24 @@ async function runAssetAction(action) {
   }
 }
 
-async function advanceVisibleAssets() {
-  const visible = visibleTodoAssets();
-  if (!visible.length) {
-    showActionMessage("No displayed todo assets to advance.");
+async function advanceAllAssets() {
+  const eligible = eligibleAssets();
+  if (!eligible.length) {
+    showActionMessage("No eligible assets to advance.");
     updateActionButtons(state.assetDetail);
     return;
   }
-  showActionMessage(`Advancing ${visible.length} displayed asset(s)...`);
+  showActionMessage(`Advancing ${eligible.length} eligible asset(s)...`);
   for (const button of actionButtons) {
     button.disabled = true;
   }
   try {
     const payload = await fetchJson(
-      `/api/assets/advance-displayed?${currentQuery().toString()}`,
+      `/api/assets/advance-all?${currentQuery().toString()}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset_ids: visible.map((asset) => asset.asset_id) }),
+        body: JSON.stringify({ asset_ids: eligible.map((asset) => asset.asset_id) }),
       },
     );
     state.assets = payload.assets || state.assets;
@@ -2306,8 +2307,7 @@ function isStorySettingCsvList(path, value) {
     return false;
   }
   const textPath = storySettingPathLabel(path);
-  return textPath === "style_defaults.default_avoid"
-    || textPath === "compiler_profiles.local_render.negative_text_terms"
+  return textPath === "compiler_profiles.local_render.negative_text_terms"
     || /^dialog(?:ue)?_styles\.\d+\.(?:avoid|layout_rules)$/.test(textPath);
 }
 
@@ -2984,10 +2984,6 @@ function builderSyncControls() {
       }
     }
   }
-  const exclusions = sceneBuilderPanel.querySelector("#builder-important-exclusions");
-  if (exclusions) {
-    state.sceneBuilder.setup.environment.important_exclusions = exclusions.value.split(",").map((item) => item.trim()).filter(Boolean);
-  }
   const placement = builderSelectedPlacement();
   if (placement) {
     const placementElement = builderSelectedElement();
@@ -3075,7 +3071,24 @@ async function builderLoadElementCostumes() {
   const params = new URLSearchParams({ character, phase });
   const payload = await fetchJson(`/api/costumes?${params.toString()}`);
   state.builderElementCostumes = payload.costumes || [];
+  state.builderCostumesByCharacterPhase[`${character}\n${phase}`] = state.builderElementCostumes;
   setSelectOptions(builderElementCostume, state.builderElementCostumes.map((item) => item.name || ""));
+}
+
+async function builderLoadSelectedElementCostumes(element = builderSelectedElement()) {
+  if (element?.resource_type !== "Character" || !element.character || !element.phase) return;
+  const key = `${element.character}\n${element.phase}`;
+  if (state.builderCostumesByCharacterPhase[key]) return;
+  const params = new URLSearchParams({ character: element.character, phase: element.phase });
+  const payload = await fetchJson(`/api/costumes?${params.toString()}`);
+  state.builderCostumesByCharacterPhase[key] = payload.costumes || [];
+}
+
+function builderCostumeOptions(element) {
+  const key = `${element.character || ""}\n${element.phase || ""}`;
+  const names = (state.builderCostumesByCharacterPhase[key] || []).map((item) => item.name || "").filter(Boolean);
+  if (element.costume && !names.includes(element.costume)) names.unshift(element.costume);
+  return names.map((name) => `<option value="${escapeHtml(name)}"${name === element.costume ? " selected" : ""}>${escapeHtml(name)}</option>`).join("");
 }
 
 async function builderLoadElementAuxResources() {
@@ -3243,6 +3256,7 @@ function builderRenderElementEditor() {
         <label>${builderCaption("Display name", "scene_elements[].display_name")}<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
         <label>${builderCaption("Resource type", "scene_elements[].resource_type")}<select data-builder-element-field="resource_type">${builderResourceTypeOptions(element.resource_type || "Character")}</select></label>
         <label>${builderCaption("Type", "scene_elements[].element_type")}<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Backdrop"${element.element_type === "Backdrop" ? " selected" : ""}>Backdrop</option></select></label>
+        ${element.resource_type === "Character" ? `<label>${builderCaption("Costume", "scene_elements[].costume")}<select data-builder-element-field="costume">${builderCostumeOptions(element)}</select></label>` : ""}
         <div class="scene-builder-reference-field full">${referenceThumbnail}<label>${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label></div>
         <label class="full">${builderCaption("(Element visual override) Element Override: ...", "scene_elements[].element_visual_override")}<textarea data-builder-element-field="element_visual_override">${escapeHtml(element.element_visual_override || "")}</textarea></label>
         <label class="full">${builderCaption("(Fallback visual description) Visual description: ...", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
@@ -3314,7 +3328,6 @@ function builderRenderDialogueEditor() {
 }
 
 function builderRenderEnvironment() {
-  const environment = state.sceneBuilder.setup?.environment || {};
   return `
     <div class="scene-builder-card">
       <h4>Environment</h4>
@@ -3323,7 +3336,6 @@ function builderRenderEnvironment() {
         ${builderField("setup.environment.lighting", "(Lighting) Lighting: ...")}
         ${builderField("setup.environment.mood", "(Mood) Mood: ...")}
         ${builderField("setup.environment.weather_or_atmosphere", "(Weather/Atmosphere) Atmosphere: ...", "", true)}
-        <label class="full">${builderCaption("Important exclusions", "setup.environment.important_exclusions")}<input id="builder-important-exclusions" value="${escapeHtml((environment.important_exclusions || []).join(", "))}"></label>
         ${builderField("setup.environment.general_foreground_notes", "(General foreground notes) Rendered as a bullet: ...", "", true, "textarea")}
         ${builderField("setup.environment.general_background_notes", "(General background notes) Rendered as a bullet: ...", "", true, "textarea")}
       </div>
@@ -3384,6 +3396,20 @@ function builderRenderOutputs() {
   `;
 }
 
+function builderRenderOverrides() {
+  return `
+    <div class="scene-builder-card">
+      <h4>Overrides</h4>
+      <div class="scene-builder-fields">
+        ${builderField("final_image_prompt_overrides.anatomical_requirements", "Anatomical Requirements override", "", true, "textarea")}
+        ${builderField("final_image_prompt_overrides.avoid", "Avoid override", "", true, "textarea")}
+        ${builderField("final_image_prompt_overrides.high_risk_elements", "High-Risk Elements override", "", true, "textarea")}
+        ${builderField("final_image_prompt_overrides.final_verification", "Final Verification override", "", true, "textarea")}
+      </div>
+    </div>
+  `;
+}
+
 function builderRenderDatalists() {
   return `
     <datalist id="builder-pose-list">${builderOptions("pose").map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
@@ -3434,11 +3460,12 @@ function renderSceneBuilder() {
       <section class="scene-builder-section">
         ${builderRenderPlacementEditor()}
         ${builderRenderDialogueEditor()}
+        ${builderRenderInteractions()}
       </section>
       <section class="scene-builder-section">
         ${builderRenderElements()}
         ${builderRenderElementEditor()}
-        ${builderRenderInteractions()}
+        ${builderRenderOverrides()}
         ${builderRenderOutputs()}
       </section>
     </div>
@@ -3468,6 +3495,7 @@ async function openSceneBuilder() {
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.sceneBuilderOpen = true;
+    await builderLoadSelectedElementCostumes();
     renderSceneBuilder();
     showSceneBuilderMessage(state.sceneBuilder._migrated_from_schema_version ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file." : "Scene Builder loaded.", "success");
   } catch (error) {
@@ -3679,6 +3707,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     state.selectedBuilderElementId = target.dataset.builderSelectElement;
     state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || state.selectedBuilderPlacementId;
     renderSceneBuilder();
+    builderLoadSelectedElementCostumes().then(() => renderSceneBuilder()).catch((error) => showSceneBuilderMessage(error.message, "error"));
   } else {
     const action = target.dataset.builderAction;
     if (action === "continue-from") openBuilderContinueDialog();
@@ -3738,7 +3767,7 @@ function renderImagePickerTable(picker) {
   if (!rows.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 3;
+    cell.colSpan = picker.labelOnly ? 1 : 3;
     cell.textContent = "No references found.";
     row.append(cell);
     picker.tableBody.append(row);
@@ -3746,13 +3775,17 @@ function renderImagePickerTable(picker) {
   }
   for (const item of rows) {
     const row = document.createElement("tr");
-    const tagCell = document.createElement("td");
-    tagCell.textContent = item.tag || "";
     const labelCell = document.createElement("td");
     labelCell.textContent = item.label || "";
-    const sourceCell = document.createElement("td");
-    sourceCell.textContent = [item.character, item.phase, item.pipeline].filter(Boolean).join(" | ") || item.kind || "";
-    row.append(tagCell, labelCell, sourceCell);
+    if (picker.labelOnly) {
+      row.append(labelCell);
+    } else {
+      const tagCell = document.createElement("td");
+      tagCell.textContent = item.tag || "";
+      const sourceCell = document.createElement("td");
+      sourceCell.textContent = [item.character, item.phase, item.pipeline].filter(Boolean).join(" | ") || item.kind || "";
+      row.append(tagCell, labelCell, sourceCell);
+    }
     row.addEventListener("click", () => picker.onSelect(item));
     picker.tableBody.append(row);
   }
@@ -3773,6 +3806,7 @@ const sceneImagePicker = {
 };
 
 const builderImagePicker = {
+  labelOnly: true,
   character: builderImagePickerCharacter,
   search: builderImagePickerSearch,
   status: builderImagePickerStatus,
@@ -3805,7 +3839,9 @@ function openBuilderImagePicker() {
   if (!element) {
     return;
   }
-  builderImagePickerSearch.value = element.display_name || "";
+  builderImagePickerSearch.value = element.resource_type === "Character"
+    ? [element.character || element.display_name, element.phase, element.costume].filter(Boolean).join(" ")
+    : element.display_name || "";
   state.builderImagePickerSearch = builderImagePickerSearch.value;
   builderImagePickerModal.hidden = false;
   loadImagePickerReferences(builderImagePicker);

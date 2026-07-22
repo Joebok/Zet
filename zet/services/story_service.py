@@ -27,6 +27,7 @@ from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
 from zet.services.path_service import PathService
 from zet.services.scene_document_service import SceneDocumentService
+from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
 
@@ -610,7 +611,6 @@ class StoryService:
                     ],
                     "notes": "",
                 },
-                "default_avoid": ["inconsistent character identity", "wrong costume", "modern objects", "unreadable faces", "merged characters", "extra limbs", "malformed hands"],
             },
             "dialogue_styles": [
                 {
@@ -631,7 +631,6 @@ class StoryService:
                     "include_visual_continuity": True,
                     "include_dialogue_when_scene_has_dialogue": True,
                     "include_reference_assignments": True,
-                    "include_final_verification": True,
                     "notes": "",
                 },
                 "local_render": {
@@ -647,11 +646,23 @@ class StoryService:
         }
 
     def load_story_settings(self, path: Path) -> dict:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        return self._without_deprecated_story_settings(json.loads(Path(path).read_text(encoding="utf-8")))
 
     def save_story_settings(self, path: Path, data: dict) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        cleaned = self._without_deprecated_story_settings(data)
+        Path(path).write_text(json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    def _without_deprecated_story_settings(self, data: dict) -> dict:
+        cleaned = copy.deepcopy(data)
+        style_defaults = cleaned.get("style_defaults")
+        if isinstance(style_defaults, dict):
+            style_defaults.pop("default_avoid", None)
+        profiles = cleaned.get("compiler_profiles")
+        final_profile = profiles.get("final_image_prompt") if isinstance(profiles, dict) else None
+        if isinstance(final_profile, dict):
+            final_profile.pop("include_final_verification", None)
+        return cleaned
 
     def save_scene_v3(self, path: Path, data: dict) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -730,7 +741,6 @@ class StoryService:
                     "lighting": "",
                     "mood": "",
                     "weather_or_atmosphere": "",
-                    "important_exclusions": [],
                     "general_background_notes": "",
                     "general_foreground_notes": "",
                 },
@@ -742,7 +752,9 @@ class StoryService:
             "custom_interactions": "",
             "dialogue": [],
             "reference_assignments": [],
-            "avoid": {"scene_specific": [], "notes": ""},
+            "final_image_prompt_overrides": {
+                key: "" for key in FINAL_IMAGE_PROMPT_SECTION_TITLES
+            },
             "render_settings": {
                 "final_image_prompt": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Final_Image_Prompt.md")},
                 "local_render_brief": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Local_Render_Brief.json")},
@@ -1173,7 +1185,7 @@ class StoryService:
             "## Negative Prompt\n\n" + (data.get("generation_outputs", {}).get("negative_prompt") or ""),
             "## Structured Layout Summary",
             "### Setup\n\n#### Canvas\n" + self._markdown_list([f"Orientation: {canvas.get('orientation') or ''}", f"Aspect ratio: {canvas.get('aspect_ratio') or ''}"]),
-            "#### Environment\n" + self._markdown_list([f"Location: {environment.get('location') or ''}", f"Lighting: {environment.get('lighting') or ''}", f"Mood: {environment.get('mood') or ''}", f"Weather/atmosphere: {environment.get('weather_or_atmosphere') or ''}", f"Important exclusions: {', '.join(map(str, environment.get('important_exclusions') or []))}"]),
+            "#### Environment\n" + self._markdown_list([f"Location: {environment.get('location') or ''}", f"Lighting: {environment.get('lighting') or ''}", f"Mood: {environment.get('mood') or ''}", f"Weather/atmosphere: {environment.get('weather_or_atmosphere') or ''}"]),
             "### Scene Elements\n\n" + self._markdown_table(["ID", "Display Name", "Type", "Image Tag"], element_rows),
             "### Placements\n\n" + self._markdown_table(["Element", "Depth", "Position", "Scale", "Pose", "Gaze", "Expression"], placement_rows),
             "### Interactions\n\n" + self._markdown_list([" ".join(str(value) for value in [elements.get(str(interaction.get("subject_element_id") or ""), {}).get("display_name") or interaction.get("subject_description"), interaction.get("relationship"), elements.get(str(interaction.get("target_element_id") or ""), {}).get("display_name") or interaction.get("target_description"), interaction.get("note")] if value) for interaction in data.get("interactions") or []]),
@@ -1283,7 +1295,7 @@ class StoryService:
         if not normalized_filter:
             return True
         haystack = " ".join([row.tag, row.label, row.character, row.phase, row.kind, row.pipeline]).lower()
-        return normalized_filter in haystack
+        return all(term in haystack for term in normalized_filter.split())
 
     def _aux_resource_rows(self, resource: AuxiliaryResource) -> list[ImageReferenceRow]:
         """Return picker rows for auxiliary resource images."""

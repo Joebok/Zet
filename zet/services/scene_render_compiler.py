@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
+from zet.services.scene_prompt_sections import select_final_image_prompt_sections
 
 
 def _clean(value: Any) -> str:
@@ -58,7 +59,12 @@ def _style_text(story_settings: dict[str, Any]) -> str:
     return _clean(story_settings.get("style_defaults", {}).get("canonical_art_style", {}).get("full_prompt_text"))
 
 
-def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str, Any], resolved_sources: dict[str, Any] | None = None) -> dict[str, Any]:
+def compile_scene_render_ir(
+    scene_data: dict[str, Any],
+    story_settings: dict[str, Any],
+    resolved_sources: dict[str, Any] | None = None,
+    default_prompt_sections: dict[str, str] | None = None,
+) -> dict[str, Any]:
     setup = scene_data.get("setup", {})
     placements = [item for item in _items(scene_data.get("placements")) if not _is_suppressed_placement(item)]
     suppressed_element_ids = {
@@ -85,16 +91,9 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
                 "notes": reference.get("notes", ""),
             })
     dialogue = _items(scene_data.get("dialogue"))
-    avoid = []
-    avoid.extend(_lines(story_settings.get("style_defaults", {}).get("default_avoid")))
-    avoid.extend(_lines(scene_data.get("avoid", {}).get("scene_specific")))
-    avoid.extend(_lines(setup.get("environment", {}).get("important_exclusions")))
-    verification = [
-        "character count and identities match the scene JSON",
-        "left/right placement and depth match placements",
-        "hands, props, gaze, and interactions are readable",
-        "setting, lighting, mood, and art style match the source data",
-    ]
+    prompt_sections = select_final_image_prompt_sections(
+        default_prompt_sections or {}, scene_data.get("final_image_prompt_overrides")
+    )
     return {
         "scene": {
             "id": scene_data.get("scene", {}).get("id", ""),
@@ -122,8 +121,7 @@ def compile_scene_render_ir(scene_data: dict[str, Any], story_settings: dict[str
         "custom_interactions": _clean(scene_data.get("custom_interactions")),
         "dialogue": dialogue,
         "references": references,
-        "avoid": list(dict.fromkeys(avoid)),
-        "final_verification": verification,
+        "final_image_prompt_sections": prompt_sections,
         "resolved_sources": resolved_sources or {},
     }
 
@@ -878,12 +876,11 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
                 preserve_lines.extend(["", f"**Visual description:** {fallback}"])
     if preserve_lines:
         lines.extend(["", "# Scene Element Preservation", "", *preserve_lines])
-    avoid = ", ".join(_lines(ir.get("avoid")) or ["unrequested text", "malformed hands"])
-    lines.extend(["", "# Avoid", "", f"No {avoid}.", "", "# Final Verification", ""])
-    for item in ir.get("final_verification", []):
-        lines.append(f"- {_sentence(item)}")
     markdown = "\n".join(_capitalize_bullet(line) for line in lines).strip() + "\n"
-    return cleanup_compiled_scene_prompt(markdown)
+    core = cleanup_compiled_scene_prompt(markdown).rstrip()
+    sections = ir.get("final_image_prompt_sections") or {}
+    tail = "\n\n".join(str(section).strip() for section in sections.values())
+    return f"{core}\n\n{tail}\n"
 
 
 def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = None) -> dict[str, Any]:

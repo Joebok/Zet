@@ -763,13 +763,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"assets": [_asset_payload(zet_app, asset) for asset in items]}
 
-    @app.post("/api/assets/advance-displayed")
-    def advance_displayed_assets(
+    @app.post("/api/assets/advance-all")
+    def advance_all_assets(
         payload: dict[str, Any] = Body(...),
         character: str = Query(...),
         phase: str = Query(...),
     ) -> dict[str, Any]:
-        """Advance the displayed non-locked assets through their current worker stage."""
+        """Advance the requested non-locked assets through their current worker stage."""
         zet_app = _app(app.state.config_path)
         try:
             asset_ids = [int(value) for value in payload.get("asset_ids", [])]
@@ -2076,15 +2076,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/assets/{asset_id}/stage-ai-ask")
-    def stage_ai_ask(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            ask_path = zet_app.asset(character, phase, asset_id).stage_ai_ask()
-            return _action_response(zet_app, character, phase, asset_id, f"AI ask staged at {ask_path}.")
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/assets/{asset_id}/run-current-worker")
     def run_current_worker(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -2106,37 +2097,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/assets/{asset_id}/retry-ai")
-    def retry_ai(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            updated = zet_app.asset(character, phase, asset_id).retry_ai()
-            return _action_response(zet_app, character, phase, updated.asset_id, "AI retry requested.")
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/assets/{asset_id}/regenerate")
     def regenerate(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            updated = zet_app.asset(character, phase, asset_id).regenerate()
-            return _action_response(zet_app, character, phase, updated.asset_id, f"Asset reset to {updated.pipeline_stage}.")
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/assets/{asset_id}/retouch")
-    def retouch(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        """Stage a selected asset for manual retouch rendering."""
-        zet_app = _app(app.state.config_path)
-        try:
-            updated = zet_app.asset(character, phase, asset_id).start_retouch_render()
-            return _action_response(
-                zet_app,
-                character,
-                phase,
-                updated.asset_id,
-                "Retouch render staged. Open Render Console to paste the edited image.",
-            )
+            result = zet_app.asset(character, phase, asset_id).regenerate_and_advance()
+            message = f"Asset regenerated and advanced to {result.asset.pipeline_stage}."
+            if result.messages:
+                message = f"{message} " + " | ".join(result.messages)
+            return _action_response(zet_app, character, phase, result.asset.asset_id, message)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

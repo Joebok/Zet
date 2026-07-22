@@ -138,6 +138,7 @@
               <input id="asset-filter-hide-base" type="checkbox">
               Hide Base Images
             </label>
+            <button id="advance-all" data-action="advance-all" disabled>Advance All</button>
             <label>
               Pipeline
               <select id="asset-filter-pipeline">
@@ -174,14 +175,10 @@
           <div id="action-message" class="action-message" hidden></div>
           <div class="asset-detail-toggle" role="group" aria-label="Asset detail display">
             <button id="asset-detail-status-mode" class="selected" type="button">Status</button>
-            <button id="asset-detail-image-mode" type="button">Locked Image</button>
+            <button id="asset-detail-image-mode" type="button">Show Image</button>
           </div>
           <div class="button-row">
-            <button id="run-current-worker" data-action="run-current-worker" disabled>Advance</button>
             <button id="regenerate" data-action="regenerate" disabled>Regenerate</button>
-            <button id="retouch" data-action="retouch" disabled>Retouch</button>
-            <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
-            <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
             <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
             <button id="create-identity-from-asset" type="button" disabled>Identity Key</button>
           </div>
@@ -676,9 +673,7 @@
           <table id="builder-image-picker-table">
             <thead>
               <tr>
-                <th>tag</th>
                 <th>label</th>
-                <th>source</th>
               </tr>
             </thead>
             <tbody></tbody>

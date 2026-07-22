@@ -80,8 +80,8 @@ class AssetRef:
     def regenerate(self) -> Asset:
         return self._app.asset_service.regenerate(self._character, self._phase, self._asset_id)
 
-    def retry_ai(self) -> Asset:
-        return self._app.asset_service.retry_ai(self._character, self._phase, self._asset_id)
+    def regenerate_and_advance(self):
+        return self._app.asset_service.regenerate_and_advance(self._character, self._phase, self._asset_id)
 
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
@@ -101,10 +101,6 @@ class AssetRef:
             self._asset_id,
             reason,
         )
-
-    def start_retouch_render(self) -> Asset:
-        """Move this asset to RENDER and stage a manual render ask for retouch upload."""
-        return self._app.asset_service.start_retouch_render(self._character, self._phase, self._asset_id)
 
     def run_current_worker(self) -> Asset:
         return self._app.asset_service.run_current_worker(self._character, self._phase, self._asset_id)
@@ -556,10 +552,6 @@ class ZetApp:
     def save_render_review_comment(self, character: str, phase: str, asset_id: int, comment: str) -> str:
         """Save the render-review comment for an asset."""
         return self.asset_service.save_render_review_comment(character, phase, asset_id, comment)
-
-    def start_retouch_render(self, character: str, phase: str, asset_id: int) -> Asset:
-        """Move an asset to RENDER and stage the render-console ask for retouch work."""
-        return self.asset_service.start_retouch_render(character, phase, asset_id)
 
     def issue_monitor_test(self, instruction: str = ""):
         return self.ai_proxy_service.issue_monitor_test(instruction)

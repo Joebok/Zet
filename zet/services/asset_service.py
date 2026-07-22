@@ -163,20 +163,6 @@ class AssetService:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         return self.housekeeping_service.prepare_stage(asset)
 
-    def retry_ai(self, character: str, phase: str, asset_id: int) -> Asset:
-        asset = self.asset_repository.get_asset(character, phase, asset_id)
-        if asset.actor != "AI_AGENT":
-            raise AssetServiceError("Retry AI is only available when Actor is AI_AGENT.")
-
-        updated_asset = replace(asset)
-        updated_asset.ai_state = "ASKED"
-        updated_asset.last_ai_update = f"Retry requested from dashboard at {self._timestamp()}"
-        updated_asset.updated_at = self._timestamp()
-
-        self.asset_repository.save_asset(updated_asset)
-        self.housekeeping_service.prepare_stage(updated_asset)
-        return updated_asset
-
     def _clear_render_outputs(self, asset: Asset) -> None:
         for path in (
             self.path_service.candidate_image_path(asset),
@@ -337,6 +323,10 @@ class AssetService:
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
 
+    def regenerate_and_advance(self, character: str, phase: str, asset_id: int) -> WorkerChainResult:
+        self.regenerate(character, phase, asset_id)
+        return self.run_current_worker_chain(character, phase, asset_id)
+
     def promote_to_locked(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         candidate_image_path = self.path_service.candidate_image_path(asset)
@@ -394,41 +384,6 @@ class AssetService:
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
         self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
-        return self.asset_repository.get_asset(character, phase, asset_id)
-
-    def start_retouch_render(self, character: str, phase: str, asset_id: int) -> Asset:
-        """Move an asset into the manual render lane so a retouched image can be supplied."""
-        asset = self.asset_repository.get_asset(character, phase, asset_id)
-        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
-        if "RENDER" not in pipeline.stages:
-            raise AssetServiceError(f"Pipeline {pipeline.name} has no RENDER stage.")
-
-        render_actor = self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
-        if render_actor != "AI_AGENT":
-            raise AssetServiceError(f"Pipeline {pipeline.name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
-
-        self.ai_proxy_service.clear_asset_queue_items(asset)
-
-        updated_asset = replace(asset)
-        updated_asset.asset_state = "IN_PROGRESS"
-        updated_asset.pipeline_stage = "RENDER"
-        updated_asset.actor = render_actor
-        updated_asset.ai_state = "ASKED"
-        updated_asset.error_code = None
-        updated_asset.error_message = None
-        updated_asset.last_ai_update = f"Retouch render requested at {self._timestamp()}"
-        updated_asset.updated_at = self._timestamp()
-
-        self.asset_repository.save_asset(updated_asset)
-        self.housekeeping_service.prepare_stage(updated_asset)
-        try:
-            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id, force_manual_render=True)
-        except Exception:
-            self.asset_repository.save_asset(asset)
-            self.housekeeping_service.prepare_stage(asset)
-            raise
-        self._clear_render_outputs(updated_asset)
-        self.housekeeping_service.prepare_stage(self.asset_repository.get_asset(character, phase, asset_id))
         return self.asset_repository.get_asset(character, phase, asset_id)
 
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> Asset:

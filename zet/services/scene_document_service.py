@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
+
 
 class SceneDocumentService:
     """Own the Scene Builder V3 normalization policy."""
@@ -35,6 +37,16 @@ class SceneDocumentService:
         for key in ("camera", "style"):
             normalized["setup"].pop(key, None)
         composition = normalized["setup"].setdefault("composition", {})
+        environment = normalized["setup"].setdefault("environment", {})
+        environment.pop("important_exclusions", None)
+        normalized.pop("avoid", None)
+        overrides = normalized.get("final_image_prompt_overrides")
+        if not isinstance(overrides, dict):
+            overrides = {}
+        normalized["final_image_prompt_overrides"] = {}
+        for key in FINAL_IMAGE_PROMPT_SECTION_TITLES:
+            value = overrides.get(key)
+            normalized["final_image_prompt_overrides"][key] = value if isinstance(value, str) else ""
         composition["focal_point"] = str(composition.get("focal_point") or "").strip()
         composition["composition_notes"] = str(composition.get("composition_notes") or "").strip()
         seen_composition_ids: set[str] = set()

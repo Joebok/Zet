@@ -345,7 +345,7 @@ h3 {
   border-bottom: 1px solid var(--line);
   display: grid;
   gap: 10px;
-  grid-template-columns: max-content minmax(200px, 260px);
+  grid-template-columns: max-content max-content max-content minmax(200px, 260px);
   padding: 10px;
   position: sticky;
   top: 0;

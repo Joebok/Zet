@@ -13,6 +13,7 @@ from zet.services.scene_render_compiler import (
     local_render_forge_couple_prompt_text,
     local_render_prompt_text,
 )
+from zet.services.scene_prompt_sections import load_final_image_prompt_sections
 
 
 class StoryRenderService:
@@ -39,10 +40,16 @@ class StoryRenderService:
         story_settings_path = story._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
         if not story_settings_path.exists():
             raise self.error_type(f"Story settings file not found: {story_settings_path}")
+        sections_path = story._project_config_path("Prompt_Templates", "final_image_prompt_tail_v1.md")
+        try:
+            default_prompt_sections = load_final_image_prompt_sections(sections_path)
+        except (OSError, ValueError) as exc:
+            raise self.error_type(f"Invalid final image prompt sections template {sections_path}: {exc}") from exc
         ir = compile_scene_render_ir(
             normalized_scene,
             story.load_story_settings(story_settings_path),
             {"references": references, "element_sources": story._resolve_scene_element_sources(normalized_scene)},
+            default_prompt_sections,
         )
         ir["source"]["scene_json_path"] = str(scene_builder_path)
         ir["source"]["story_settings_path"] = str(story_settings_path)
