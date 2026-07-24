@@ -10,7 +10,7 @@ Zet is a Python-based pipeline for creating character images, managing assets, a
 - **Asset Management**: Organized storage for character assets, costumes, expressions, references
 - **Auto-Harvest**: Automatically process queued jobs from external sources (Dropbox sync)
 - **Render Console Queue**: Manage rendering tasks with priority queuing
-- **ComfyUI Integration**: Proxy workers bridge ComfyUI workflows to the pipeline
+- **Local Image Backends**: Stable Matrix and core-node ComfyUI preview workflows share the local render queue
 
 ## System Requirements
 
@@ -30,9 +30,11 @@ pip install -r requirements.txt
 - `opencv-python` - Computer vision operations (pose detection, image analysis)
 
 ### Optional: ComfyUI Integration
-To use full rendering capabilities with Stable Diffusion workflows:
+To use local ComfyUI previews:
 1. Install [ComfyUI](https://github.com/comfyanonymous/comfyui) separately
-2. Configure proxy workers in `AI_Manager/local_image_proxy_worker.py` or other specialized proxies (Ollama, etc.)
+2. Start its local server, normally at `http://127.0.0.1:8188`
+3. Select ComfyUI and configure its profile, checkpoint, and prompt globals on the Image Config page
+4. Run `AI_Manager/local_image_proxy_worker.py` for queued Render Console previews
 
 ## Quick Start
 
@@ -58,7 +60,36 @@ BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
 [PromptCondense]
 Enabled = false  # Set to true for automatic prompt condensation with Qwen model
 Model = "qwen3.5:4b-condenser"
+
+[LocalRender]
+Backend = "stable_matrix" # stable_matrix or comfyui
+
+[StableMatrix]
+Profile = "body-reference-preview"
+Checkpoint = "stable-matrix-checkpoint"
+
+[ComfyUI]
+Profile = "comfyui-core-preview"
+ServerURL = "http://127.0.0.1:8188"
+Checkpoint = "checkpoint.safetensors"
+PositivePromptGlobals = "masterpiece, best quality"
+NegativePromptGlobals = "EasyNegative"
 ```
+
+### Local ComfyUI Scene Preview
+
+`Scene_Render_IR.json` is the canonical local scene-render input. Compile and run it directly with:
+
+```powershell
+python3 -m zet.scripts.render_comfyui_preview C:\path\to\Scene_Render_IR.json --config config.toml
+```
+
+Add `--compile-only` to write the API workflow without submitting it. The command writes
+`ComfyUI_Workflow_API.json` to the pipeline output folder and stores the generated image and
+`ComfyUI_Render_Metadata.json` under `Local_Test_Renders`.
+
+The initial ComfyUI workflow uses built-in txt2img and area-conditioning nodes. Dialogue,
+reference-image conditioning, ControlNet, IP-Adapter, and custom nodes are not part of this baseline.
 
 ### 3. Running the Pipeline
 
@@ -139,7 +170,8 @@ python3 -m pip install -r requirements.txt    ; Run from the project root
 
 **ComfyUI proxy not connecting:**
 - Ensure ComfyUI server is running on default port 8188
-- Check `AI_Manager/local_image_proxy_worker.py` for connection settings
+- Confirm the ComfyUI server URL and checkpoint on the Image Config page
+- Confirm the configured checkpoint filename matches ComfyUI's checkpoint list
 
 **Prompt condensation model errors (Qwen):**
 - Verify Ollama or local LLM is accessible at configured endpoint

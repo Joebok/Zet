@@ -31,6 +31,7 @@ from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisServic
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
+from zet.services.zine_service import ZineService
 
 
 class AssetRef:
@@ -150,6 +151,7 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.zine_service = ZineService(path_service, story_service)
         self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
@@ -371,6 +373,34 @@ class ZetApp:
     def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
         """List copyable image references for the scene editor."""
         return self.story_service.image_reference_rows(character, text_filter)
+
+    def list_zines(self):
+        """List saved zines."""
+        return self.zine_service.list_zines()
+
+    def load_zine(self, slug: str):
+        """Load one saved zine."""
+        return self.zine_service.load_zine(slug)
+
+    def zine_story_scene_sources(self, story_slug: str):
+        """List readable story scene images for zine auto-fill."""
+        return self.zine_service.story_scene_sources(story_slug)
+
+    def create_zine(self, payload: dict):
+        """Create and render a zine."""
+        return self.zine_service.create_zine(payload)
+
+    def update_zine(self, slug: str, payload: dict):
+        """Update, optionally rename, and render a zine."""
+        return self.zine_service.update_zine(slug, payload)
+
+    def regenerate_zine(self, slug: str):
+        """Regenerate a zine from its saved image tags."""
+        return self.zine_service.regenerate_zine(slug)
+
+    def delete_zine(self, slug: str) -> None:
+        """Delete one saved zine folder."""
+        self.zine_service.delete_zine(slug)
 
     def phase_comparison(
         self,

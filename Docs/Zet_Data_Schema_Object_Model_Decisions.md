@@ -332,18 +332,22 @@ Current files:
 - `common.py`
 - `local_render.py`
 - `comfyui_adapter.py`
+- `stable_matrix_adapter.py`
 - `__init__.py`
 
 `local_render.render_image(...)` is the generic entrypoint.
 
-ComfyUI-specific code belongs in `comfyui_adapter.py`.
+Reusable render contracts and ComfyUI compilation/execution belong under `zet/services`; adapter modules connect those services to the compatibility entrypoint and queue worker.
 
-Backend choice comes from `Config/Local_Render_Presets.json`.
+The active backend comes from `config.toml` `LocalRender.Backend`. The selected backend's profile comes from `Config/Local_Render_Presets.json`.
 
-Current backend:
+Current profile backends:
 
 ```json
-"backend": "comfyui"
+{
+  "stable-example": {"backend": "stable_matrix"},
+  "comfyui-example": {"backend": "comfyui"}
+}
 ```
 
 Future image generation backends should add new adapter modules and one dispatch branch in `local_render.py`, without changing dashboard code, asset state logic, or queue contract.

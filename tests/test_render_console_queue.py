@@ -368,6 +368,47 @@ LayoutBackend = "plain_txt2img"
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertNotIn("render_layout", manifest)
 
+    def test_stage_scene_comfyui_render_ask_copies_canonical_ir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                f"""
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+
+[LocalRender]
+Backend = "comfyui"
+
+[ComfyUI]
+Profile = "comfyui-core-preview"
+Checkpoint = "model.safetensors"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            (workspace / "Local_Render_Prompt.md").write_text("prompt: scene\nnegative: bad\n", encoding="utf-8")
+            (workspace / "Local_Render_Brief.json").write_text(
+                json.dumps({"canvas": {"aspect_ratio": "16:9"}}),
+                encoding="utf-8",
+            )
+            ir_text = json.dumps({"schema_version": 3, "scene": {"slug": "scene"}})
+            (workspace / "Scene_Render_IR.json").write_text(ir_text, encoding="utf-8")
+            app = ZetApp.from_config(config_path)
+
+            ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_Comfy"}, workspace)
+
+            manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("comfyui-core-preview", manifest["render_preset"])
+            self.assertEqual("Scene_Render_IR.json", manifest["scene_render_ir_file"])
+            self.assertNotIn("render_layout", manifest)
+            self.assertEqual(ir_text, (ask_path / "Scene_Render_IR.json").read_text(encoding="utf-8"))
+
     def test_local_image_worker_forwards_render_layout_when_supported(self) -> None:
         def render_image(*, project_root, final_prompt_path, job_output_dir, prompt_review_path=None, preset_name="", render_layout=None):
             return None
@@ -381,6 +422,28 @@ LayoutBackend = "plain_txt2img"
             )
 
         self.assertEqual({"backend": "forge_couple_basic"}, kwargs["render_layout"])
+
+    def test_local_image_worker_forwards_scene_render_ir_when_supported(self) -> None:
+        def render_image(
+            *,
+            project_root,
+            final_prompt_path,
+            job_output_dir,
+            prompt_review_path=None,
+            preset_name="",
+            scene_render_ir_path=None,
+        ):
+            return None
+
+        with patch.object(local_image_proxy_worker, "render_image", render_image):
+            kwargs = local_image_proxy_worker.render_image_kwargs(
+                {"scene_render_ir_file": "Scene_Render_IR.json"},
+                Path("prompt.md"),
+                Path("job"),
+                "comfyui-core-preview",
+            )
+
+        self.assertEqual(Path("job") / "Scene_Render_IR.json", kwargs["scene_render_ir_path"])
 
     def test_harvester_archives_already_harvested_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

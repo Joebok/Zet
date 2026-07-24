@@ -51,13 +51,14 @@
     <button class="tab workflow-tab" data-page="render-review">Image Review</button>
     <button class="tab workflow-tab" data-page="stories">Stories</button>
     <button class="tab workflow-tab" data-page="scenes">Scenes</button>
+    <button class="tab workflow-tab" data-page="zine">Zines</button>
     <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
     <div class="toolbar-menu">
       <button id="toolbar-todo-button" class="toolbar-settings-button" type="button" title="To Do">☑</button>
       <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
       <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
-        <button class="tab workflow-tab" data-page="local-image-config">Local Image Config</button>
+        <button class="tab workflow-tab" data-page="local-image-config">Image Config</button>
         <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
         <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
       </div>
@@ -608,6 +609,70 @@
       </div>
     </section>
 
+    <section id="zine-page" class="page">
+      <div class="page-title-row">
+        <h1>Zine Maker</h1>
+        <div id="zine-status" class="status-text"></div>
+      </div>
+      <div id="zine-message" class="action-message" hidden></div>
+      <div class="zine-layout">
+        <aside class="control-panel">
+          <div class="button-row compact">
+            <button id="zine-new" type="button">New Zine</button>
+          </div>
+          <table id="zine-table">
+            <thead>
+              <tr>
+                <th>zine</th>
+                <th>slug</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main zine-main">
+          <div class="review-header">
+            <h2 id="zine-editor-title">New Zine</h2>
+            <div class="button-row compact">
+              <button id="zine-edit" type="button" disabled>Edit</button>
+              <button id="zine-regenerate" type="button" disabled>Refresh / Regenerate</button>
+              <button id="zine-delete" type="button" disabled>Delete</button>
+              <button id="zine-save" class="primary-action" type="button">Create Zine</button>
+            </div>
+          </div>
+          <div class="zine-source-controls">
+            <label>
+              Story
+              <select id="zine-story-select"></select>
+            </label>
+            <button id="zine-fill-story" type="button">Fill from Story</button>
+          </div>
+          <label>
+            Zine Name
+            <input id="zine-name" type="text" placeholder="First Day">
+          </label>
+          <datalist id="zine-scene-options"></datalist>
+          <div class="zine-slot-grid">
+            <label>Front<input id="zine-front" type="text" list="zine-scene-options"></label>
+            <label>Page 1<input id="zine-page-1" type="text" list="zine-scene-options"></label>
+            <label class="zine-spread-toggle"><input id="zine-spread-1" type="checkbox"> Use Page 1 as a two-page spread</label>
+            <label>Page 2<input id="zine-page-2" type="text" list="zine-scene-options"><small>Leave blank to use the previous page image as a two-page spread.</small></label>
+            <label>Page 3<input id="zine-page-3" type="text" list="zine-scene-options"></label>
+            <label class="zine-spread-toggle"><input id="zine-spread-3" type="checkbox"> Use Page 3 as a two-page spread</label>
+            <label>Page 4<input id="zine-page-4" type="text" list="zine-scene-options"><small>Leave blank to use the previous page image as a two-page spread.</small></label>
+            <label>Page 5<input id="zine-page-5" type="text" list="zine-scene-options"></label>
+            <label class="zine-spread-toggle"><input id="zine-spread-5" type="checkbox"> Use Page 5 as a two-page spread</label>
+            <label>Page 6<input id="zine-page-6" type="text" list="zine-scene-options"><small>Leave blank to use the previous page image as a two-page spread.</small></label>
+            <label>Back<input id="zine-back" type="text" list="zine-scene-options"></label>
+          </div>
+          <section id="zine-preview-section" class="zine-preview-section" hidden>
+            <h3>Print Layout</h3>
+            <img id="zine-preview" alt="Zine print layout">
+          </section>
+        </section>
+      </div>
+    </section>
+
     <section id="scene-builder-page" class="page">
       <div class="page-title-row">
         <h1>Scene Builder</h1>
@@ -1102,29 +1167,78 @@
 
     <section id="local-image-config-page" class="page">
       <div class="page-title-row">
-        <h1>Local Image Config</h1>
+        <h1>Image Config</h1>
         <div id="local-image-config-status" class="status-text"></div>
       </div>
       <div id="local-image-config-message" class="action-message" hidden></div>
+      <div class="button-row compact">
+        <button class="primary-action" type="submit" form="automation-form">Save Project Settings</button>
+      </div>
       <div class="ai-controls-grid">
-        <section class="control-panel ai-automation-panel">
+        <section class="control-panel">
           <h2>Image Generation</h2>
           <div class="settings-form">
-            <label><input id="setting-local-render-forge-couple" type="checkbox" form="automation-form"> Use Forge Couple</label>
             <label>
               Image generation
-              <select id="setting-local-render-preset" form="automation-form">
-                <option value="body-reference-preview">Stable Matrix</option>
+              <select id="setting-local-render-backend" form="automation-form">
+                <option value="stable_matrix">Stable Matrix</option>
+                <option value="comfyui">ComfyUI</option>
               </select>
             </label>
+            <fieldset id="stable-matrix-settings">
+              <legend>Stable Matrix</legend>
+              <label>
+                Render profile
+                <select id="setting-local-render-preset" form="automation-form"></select>
+              </label>
+              <label><input id="setting-local-render-forge-couple" type="checkbox" form="automation-form"> Use Forge Couple</label>
+              <label>
+                Checkpoint
+                <select id="setting-local-render-checkpoint" form="automation-form"></select>
+              </label>
+              <button id="refresh-local-render-checkpoints" type="button">Refresh Stable Matrix Checkpoints</button>
+              <label>Positive prompt globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
+              <label>Negative prompt globals<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
+            </fieldset>
+            <fieldset id="comfyui-settings" hidden>
+              <legend>ComfyUI</legend>
+              <label>
+                Render profile
+                <select id="setting-comfyui-profile" form="automation-form"></select>
+              </label>
+              <label>
+                Server URL
+                <input id="setting-comfyui-server-url" type="url" form="automation-form">
+              </label>
+              <label>
+                Checkpoint
+                <select id="setting-comfyui-checkpoint" form="automation-form"></select>
+              </label>
+              <button id="refresh-comfyui-checkpoints" type="button">Refresh ComfyUI Checkpoints</button>
+              <label>Positive prompt globals<textarea id="setting-comfyui-positive-globals" form="automation-form"></textarea></label>
+              <label>Negative prompt globals<textarea id="setting-comfyui-negative-globals" form="automation-form"></textarea></label>
+              <label>
+                Poll seconds
+                <input id="setting-comfyui-poll-seconds" type="number" min="0" step="0.1" form="automation-form">
+              </label>
+              <label>
+                Timeout seconds
+                <input id="setting-comfyui-timeout-seconds" type="number" min="1" step="1" form="automation-form">
+              </label>
+            </fieldset>
+          </div>
+        </section>
+        <section class="control-panel">
+          <h2>Zines</h2>
+          <div class="settings-form">
             <label>
-              Checkpoint
-              <select id="setting-local-render-checkpoint" form="automation-form"></select>
+              Zine Print Scale
+              <input id="setting-zine-print-scale" type="number" min="0.0001" max="1" step="0.0001" value="0.9780" form="automation-form">
             </label>
-            <button id="refresh-local-render-checkpoints" type="button">Refresh Checkpoints</button>
-            <label>Positive prompt Globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
-            <label>Negative prompt Global<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
-            <button class="primary-action" type="submit" form="automation-form">Save Project Settings</button>
+            <label>
+              Zine Page Margin
+              <input id="setting-zine-page-margin" type="number" min="0" max="412" step="1" value="4" form="automation-form">
+            </label>
           </div>
         </section>
       </div>

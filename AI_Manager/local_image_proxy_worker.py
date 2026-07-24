@@ -194,6 +194,9 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
         kwargs["aspect_ratio"] = str(ask_manifest.get("aspect_ratio") or "")
     if "render_layout" in parameters:
         kwargs["render_layout"] = ask_manifest.get("render_layout") or None
+    if "scene_render_ir_path" in parameters:
+        ir_file = str(ask_manifest.get("scene_render_ir_file") or "").strip()
+        kwargs["scene_render_ir_path"] = folder / ir_file if ir_file else None
     return kwargs
 
 
@@ -252,6 +255,15 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
 
         result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
         shutil.copy2(result.image_path, folder / expected_output)
+        artifact_files = []
+        for artifact_path in getattr(result, "artifact_paths", []) or []:
+            source = Path(artifact_path)
+            if not source.exists() or not source.is_file():
+                continue
+            destination = folder / source.name
+            if source.resolve() != destination.resolve():
+                shutil.copy2(source, destination)
+            artifact_files.append(destination.name)
         write_json(
             folder / "LOCAL_RENDER_METADATA.json",
             {
@@ -261,6 +273,7 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
                 "local_render_metadata": str(result.metadata_path),
                 "backend_prompt_id": result.prompt_id,
                 "candidate_output": expected_output,
+                "artifact_files": artifact_files,
                 "completed_at": now_iso(),
             },
         )

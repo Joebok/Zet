@@ -159,3 +159,7 @@ class PathService:
     def story_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the pipeline work folder for one story scene."""
         return self.library_path("Pipelines", "Stories", story_slug, scene_slug)
+
+    def zines_path(self) -> Path:
+        """Return the generated zine asset folder."""
+        return Path(self.config.base_asset_path) / "Zines"

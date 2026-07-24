@@ -334,6 +334,8 @@ class AIProxyService:
         return bool(getattr(self.path_service.config, "local_render_auto_queue_after_condense", False))
 
     def _local_render_preset(self) -> str:
+        if str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower() == "comfyui":
+            return str(getattr(self.path_service.config, "comfyui_profile", "comfyui-core-preview"))
         return str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview"))
 
     def _prompt_condense_model(self) -> str:
@@ -544,6 +546,7 @@ class AIProxyService:
         prompt_path: Path,
         target_output_dir: Path,
         render_layout: dict | None = None,
+        scene_render_ir_path: Path | None = None,
     ) -> dict:
         stamp = self._timestamp_compact()
         target_output_file = f"test_{stamp}.png"
@@ -567,6 +570,7 @@ class AIProxyService:
             "source_ask_id": manifest.get("ask_id"),
             "source_prompt_file": prompt_path.name,
             "target_output_dir": str((target_output_dir / "Local_Test_Renders").resolve()),
+            "artifact_output_dir": str(target_output_dir.resolve()),
             "target_output_file": target_output_file,
             "render_preset": self._local_render_preset(),
             "reference_files": reference_files_payload(manifest.get("reference_files") or []),
@@ -575,6 +579,8 @@ class AIProxyService:
             ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
         if render_layout:
             ask_manifest["render_layout"] = render_layout
+        if scene_render_ir_path is not None:
+            ask_manifest["scene_render_ir_file"] = scene_render_ir_path.name
         return ask_manifest
 
     def stage_render_task_local_render_ask(
@@ -583,6 +589,7 @@ class AIProxyService:
         prompt_path: Path,
         target_output_dir: Path,
         render_layout: dict | None = None,
+        scene_render_ir_path: Path | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
         for path in self.ai_proxy_path_service.task_paths("ask", "answer"):
@@ -591,11 +598,22 @@ class AIProxyService:
                 if not (path / "harvest_manifest.json").exists():
                     return path
 
-        ask_manifest = self.render_task_local_render_api_params(manifest, prompt_path, target_output_dir, render_layout)
+        ask_manifest = self.render_task_local_render_api_params(
+            manifest,
+            prompt_path,
+            target_output_dir,
+            render_layout,
+            scene_render_ir_path,
+        )
         ask_path = self.ai_proxy_path_service.ask_path(ask_manifest["ask_id"])
         ask_path.mkdir(parents=True, exist_ok=False)
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
         self._write_text_atomic(ask_path / prompt_path.name, prompt_path.read_text(encoding="utf-8"))
+        if scene_render_ir_path is not None:
+            self._write_text_atomic(
+                ask_path / scene_render_ir_path.name,
+                scene_render_ir_path.read_text(encoding="utf-8"),
+            )
         return ask_path
 
     def stage_scene_local_render_ask(self, manifest: dict, workspace: Path) -> Path:
@@ -603,10 +621,11 @@ class AIProxyService:
         if not prompt_path.exists():
             raise FileNotFoundError(f"No local render prompt was found: {prompt_path}")
 
+        selected_backend = str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower()
         layout_backend = str(getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic"))
         brief_path = workspace / "Local_Render_Brief.json"
         brief = self._read_json_if_exists(brief_path)
-        if layout_backend == "forge_couple_basic" and not brief:
+        if selected_backend == "stable_matrix" and layout_backend == "forge_couple_basic" and not brief:
             raise FileNotFoundError(f"No valid local render brief was found: {brief_path}")
         canvas = brief.get("canvas") if isinstance(brief.get("canvas"), dict) else {}
         staged_manifest = dict(manifest)
@@ -615,7 +634,7 @@ class AIProxyService:
 
         subject_count = int(brief.get("subject_count") or 0)
         render_layout = None
-        if layout_backend == "forge_couple_basic" and subject_count >= 2:
+        if selected_backend == "stable_matrix" and layout_backend == "forge_couple_basic" and subject_count >= 2:
             forge = brief.get("forge_couple_basic") if isinstance(brief.get("forge_couple_basic"), dict) else {}
             plan = brief.get("forge_couple_plan") if isinstance(brief.get("forge_couple_plan"), dict) else {}
             prompt_lines = [str(line).strip() for line in forge.get("prompt_lines", []) if str(line).strip()]
@@ -644,10 +663,19 @@ class AIProxyService:
                 "common_debug": False,
                 "def_in_prompt": True,
             }
-        elif layout_backend not in {"forge_couple_basic", "plain_txt2img"}:
+        elif selected_backend == "stable_matrix" and layout_backend not in {"forge_couple_basic", "plain_txt2img"}:
             raise AIProxyServiceError(f"Unsupported local render layout backend: {layout_backend}")
 
-        return self.stage_render_task_local_render_ask(staged_manifest, prompt_path, workspace, render_layout)
+        ir_path = workspace / "Scene_Render_IR.json"
+        if selected_backend == "comfyui" and not ir_path.exists():
+            raise FileNotFoundError(f"No canonical scene render IR was found: {ir_path}")
+        return self.stage_render_task_local_render_ask(
+            staged_manifest,
+            prompt_path,
+            workspace,
+            render_layout,
+            ir_path if selected_backend == "comfyui" else None,
+        )
 
     def stage_prompt_inspection_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
         if not self._local_render_auto_queue_after_condense_enabled():

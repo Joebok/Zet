@@ -529,6 +529,11 @@ Backend = "manual_chatgpt"
             self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
             self.assertIn('id="character-assets-menu" class="tab active"', html)
             self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
+            self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
+            self.assertIn('<option value="comfyui">ComfyUI</option>', html)
+            self.assertIn('id="stable-matrix-settings"', html)
+            self.assertIn('id="comfyui-settings" hidden', html)
+            self.assertIn('id="setting-comfyui-checkpoint"', html)
             self.assertNotIn('data-page="turnarounds">Turnarounds</button>', html)
             self.assertIn('class="control-panel ai-automation-panel local-image-config-panel"', html)
             self.assertIn('document.querySelectorAll("button.tab")', (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8"))
@@ -678,11 +683,21 @@ Backend = "manual_chatgpt"
                 "/api/pipeline-controls/automation",
                 params={"character": "Test", "phase": "Adult"},
                 json={
+                    "local_render_backend": "comfyui",
                     "local_render_preset": "body-reference-preview",
                     "local_render_positive_prompt_globals": "masterpiece",
                     "local_render_negative_prompt_globals": "blurry",
                     "local_render_use_forge_couple": True,
                     "local_render_checkpoint": "test-checkpoint",
+                    "stable_matrix_profile": "body-reference-preview",
+                    "stable_matrix_checkpoint": "test-checkpoint",
+                    "comfyui_profile": "comfyui-core-preview",
+                    "comfyui_server_url": "http://127.0.0.1:8188",
+                    "comfyui_checkpoint": "comfy-checkpoint.safetensors",
+                    "comfyui_positive_prompt_globals": "comfy positive",
+                    "comfyui_negative_prompt_globals": "comfy negative",
+                    "comfyui_poll_seconds": 0.5,
+                    "comfyui_timeout_seconds": 120,
                     "ai_harvest_auto_enabled": True,
                     "ai_harvest_interval_seconds": 600,
                     "render_backend": "manual_chatgpt",
@@ -692,8 +707,11 @@ Backend = "manual_chatgpt"
             self.assertEqual(saved.json()["automation"]["local_render_positive_prompt_globals"], "masterpiece")
             self.assertTrue(saved.json()["automation"]["local_render_use_forge_couple"])
             self.assertEqual(saved.json()["automation"]["local_render_checkpoint"], "test-checkpoint")
+            self.assertEqual(saved.json()["automation"]["local_render_backend"], "comfyui")
+            self.assertEqual(saved.json()["automation"]["comfyui_checkpoint"], "comfy-checkpoint.safetensors")
             self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
             self.assertIn('Checkpoint = "test-checkpoint"', config_path.read_text(encoding="utf-8"))
+            self.assertIn('[ComfyUI]', config_path.read_text(encoding="utf-8"))
             self.assertIsNot(web_app.state.zet_app, original_zet_app)
 
     def test_pipeline_controls_api_can_batch_reset_to_render(self):

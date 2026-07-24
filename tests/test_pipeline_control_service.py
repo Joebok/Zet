@@ -102,6 +102,8 @@ Backend = "local_image"
                     ai_harvest_auto_enabled=True,
                     ai_harvest_interval_seconds=300,
                     render_backend="manual_chatgpt",
+                    zine_print_scale=0.965,
+                    zine_page_margin=8,
                 )
             )
 
@@ -112,6 +114,8 @@ Backend = "local_image"
             self.assertEqual(reloaded.local_render_checkpoint, "new-checkpoint")
             self.assertEqual(reloaded.ai_harvest_interval_seconds, 300)
             self.assertEqual(reloaded.render_backend, "manual_chatgpt")
+            self.assertEqual(reloaded.zine_print_scale, 0.965)
+            self.assertEqual(reloaded.zine_page_margin, 8)
             self.assertTrue(list(root.glob("config.backup.*.toml")))
 
             pipelines_path = character_dir / "Pipelines.json"

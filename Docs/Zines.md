@@ -37,10 +37,10 @@ Output format:
 PNG only.
 
 Page size:
-Each individual page panel is 1275 px wide by 1650 px tall.
+Each individual page panel is 825 px wide by 1275 px tall.
 
 Final output size:
-5100 px wide by 3300 px tall.
+3300 px wide by 2550 px tall, matching US Letter landscape (11 x 8.5 inches) at 300 DPI.
 
 Image scaling:
 Use center cover-crop only.
@@ -48,6 +48,14 @@ Scale each source image until it fully covers the target rectangle, then center 
 No crop adjustment UI.
 No face detection.
 No crop anchors.
+
+Print compensation:
+Read `Zine.PrintScale` and `Zine.PageMargin` from `config.toml`.
+Default `PrintScale` to `0.9780`.
+Default `PageMargin` to `4`.
+For a 4 px margin, crop single-page image content to 817 x 1267 and spread content to 1642 x 1267.
+Place the content inside white 825 x 1275 page panels, with a margin around the outside of a full spread but no margin at its center seam.
+After assembling the 3300 x 2550 print layout, scale the complete layout by `PrintScale` and center it on a white 3300 x 2550 canvas.
 
 Spread behavior:
 Front and Back never use spreads.
@@ -63,8 +71,8 @@ If Page 4 is blank, use the Page 3 image as a spread across Page 3 + Page 4.
 If Page 6 is blank, use the Page 5 image as a spread across Page 5 + Page 6.
 
 For spread images:
-Scale and center-crop the source image to 2550 px wide by 1650 px tall.
-Split it into two 1275 x 1650 halves.
+Scale and center-crop the source image to 1650 px wide by 1275 px tall.
+Split it into two 825 x 1275 halves.
 The lower-numbered page gets the left half.
 The higher-numbered page gets the right half.
 
@@ -98,12 +106,14 @@ Do not warn if the source images changed. That is intended.
 Guides:
 Add faint panel boundary guides by default.
 Draw vertical guide lines at:
-x = 1275
-x = 2550
-x = 3825
+x = 825
+x = 1650
+x = 2475
 
 Draw horizontal guide line at:
-y = 1650
+y = 1275
+
+Do not draw the internal vertical guide segment across a two-page spread.
 
 Use a faint gray guide color, for example RGB (190, 190, 190), with a narrow line width.
 Make guide drawing easy to disable in code, but default to enabled.
@@ -192,7 +202,7 @@ Suggested implementation order:
 Success criteria:
 A zine can be created from 8 single image references.
 A zine can be created with Page 1 spanning Page 1+2, Page 3 spanning Page 3+4, and Page 5 spanning Page 5+6 by leaving Page 2, Page 4, or Page 6 blank.
-The final PNG is exactly 5100 x 3300.
+The final PNG is exactly 3300 x 2550.
 The JSON can be reloaded to regenerate the PNG.
 Refresh overwrites the existing PNG without warnings.
 The preview shows the actual print layout scaled down.

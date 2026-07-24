@@ -35,5 +35,17 @@
     "hr_scale": 2.0,
     "seed": "random",
     "output_subdir": "Local_Test_Renders"
+  },
+  "comfyui-core-preview": {
+    "backend": "comfyui",
+    "short_side": 640,
+    "max_long_side": 960,
+    "steps": 28,
+    "cfg": 7.0,
+    "sampler_name": "dpmpp_2m",
+    "scheduler": "karras",
+    "denoise": 1.0,
+    "seed": "random",
+    "output_subdir": "Local_Test_Renders"
   }
 }

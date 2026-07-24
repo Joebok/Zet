@@ -280,6 +280,19 @@ def _image_reference_payload(row) -> dict[str, Any]:
     return asdict(row)
 
 
+def _zine_record_payload(record) -> dict[str, Any]:
+    """Serialize one saved zine."""
+    return asdict(record)
+
+
+def _zine_document_payload(document) -> dict[str, Any]:
+    """Serialize one saved zine and its metadata."""
+    return {
+        "zine": _zine_record_payload(document.record),
+        "metadata": _jsonable(document.metadata),
+    }
+
+
 def _story_render_task_payload(task) -> dict[str, Any]:
     """Serialize one staged story render task."""
     return {
@@ -429,6 +442,9 @@ def _latest_render_console_local_test_render(workspace: Path) -> Path | None:
 
 
 def _render_console_local_api_call_path(workspace: Path) -> Path:
+    comfyui_path = workspace / "ComfyUI_Workflow_API.json"
+    if comfyui_path.exists():
+        return comfyui_path
     return workspace / "Local_Test_Renders" / "Stable_Matrix_API_Call.json"
 
 
@@ -531,26 +547,86 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
 
 def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
     """Build automation settings, preserving current values for omitted fields."""
-    defaults = defaults or AutomationSettings("", "", "", True, "", False, 0, "", "", "")
+    defaults = defaults or AutomationSettings(
+        local_render_preset="body-reference-preview",
+        local_render_positive_prompt_globals="",
+        local_render_negative_prompt_globals="",
+        local_render_use_forge_couple=True,
+        local_render_checkpoint="",
+        ai_harvest_auto_enabled=False,
+        ai_harvest_interval_seconds=0,
+        render_backend="",
+    )
+    stable_profile = str(
+        payload.get("stable_matrix_profile", payload.get("local_render_preset", defaults.stable_matrix_profile or defaults.local_render_preset))
+    )
+    stable_positive = str(
+        payload.get(
+            "stable_matrix_positive_prompt_globals",
+            payload.get(
+                "local_render_positive_prompt_globals",
+                defaults.stable_matrix_positive_prompt_globals or defaults.local_render_positive_prompt_globals,
+            ),
+        )
+    )
+    stable_negative = str(
+        payload.get(
+            "stable_matrix_negative_prompt_globals",
+            payload.get(
+                "local_render_negative_prompt_globals",
+                defaults.stable_matrix_negative_prompt_globals or defaults.local_render_negative_prompt_globals,
+            ),
+        )
+    )
+    stable_forge = bool(
+        payload.get(
+            "stable_matrix_use_forge_couple",
+            payload.get(
+                "local_render_use_forge_couple",
+                defaults.stable_matrix_use_forge_couple
+                if defaults.stable_matrix_use_forge_couple is not None
+                else defaults.local_render_use_forge_couple,
+            ),
+        )
+    )
+    stable_checkpoint = str(
+        payload.get(
+            "stable_matrix_checkpoint",
+            payload.get("local_render_checkpoint", defaults.stable_matrix_checkpoint or defaults.local_render_checkpoint),
+        )
+    )
     return AutomationSettings(
-        local_render_preset=str(payload.get("local_render_preset", defaults.local_render_preset)),
-        local_render_positive_prompt_globals=str(
-            payload.get("local_render_positive_prompt_globals", defaults.local_render_positive_prompt_globals)
-        ),
-        local_render_negative_prompt_globals=str(
-            payload.get("local_render_negative_prompt_globals", defaults.local_render_negative_prompt_globals)
-        ),
-        local_render_use_forge_couple=bool(
-            payload.get("local_render_use_forge_couple", defaults.local_render_use_forge_couple)
-        ),
-        local_render_checkpoint=str(payload.get("local_render_checkpoint", defaults.local_render_checkpoint)),
+        local_render_preset=stable_profile,
+        local_render_positive_prompt_globals=stable_positive,
+        local_render_negative_prompt_globals=stable_negative,
+        local_render_use_forge_couple=stable_forge,
+        local_render_checkpoint=stable_checkpoint,
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
         render_backend=str(payload.get("render_backend", defaults.render_backend)),
+        local_render_backend=str(payload.get("local_render_backend", defaults.local_render_backend)),
+        stable_matrix_profile=stable_profile,
+        stable_matrix_positive_prompt_globals=stable_positive,
+        stable_matrix_negative_prompt_globals=stable_negative,
+        stable_matrix_use_forge_couple=stable_forge,
+        stable_matrix_checkpoint=stable_checkpoint,
+        comfyui_profile=str(payload.get("comfyui_profile", defaults.comfyui_profile)),
+        comfyui_server_url=str(payload.get("comfyui_server_url", defaults.comfyui_server_url)),
+        comfyui_checkpoint=str(payload.get("comfyui_checkpoint", defaults.comfyui_checkpoint)),
+        comfyui_positive_prompt_globals=str(
+            payload.get("comfyui_positive_prompt_globals", defaults.comfyui_positive_prompt_globals)
+        ),
+        comfyui_negative_prompt_globals=str(
+            payload.get("comfyui_negative_prompt_globals", defaults.comfyui_negative_prompt_globals)
+        ),
+        comfyui_poll_seconds=float(payload.get("comfyui_poll_seconds", defaults.comfyui_poll_seconds)),
+        comfyui_timeout_seconds=float(payload.get("comfyui_timeout_seconds", defaults.comfyui_timeout_seconds)),
         ai_prompt_analysis_model=str(payload.get("ai_prompt_analysis_model", defaults.ai_prompt_analysis_model)),
         ai_prompt_analysis_instructions_file=str(
             payload.get("ai_prompt_analysis_instructions_file", defaults.ai_prompt_analysis_instructions_file)
         ),
+        zine_print_scale=float(payload.get("zine_print_scale", defaults.zine_print_scale)),
+        zine_page_margin=int(payload.get("zine_page_margin", defaults.zine_page_margin)),
     )
 
 
@@ -561,6 +637,7 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
         "config_path": str(snapshot.config_path),
         "pipelines_path": str(snapshot.pipelines_path),
         "automation": _jsonable(snapshot.automation),
+        "render_profiles": snapshot.render_profiles,
         "pipeline_rows": _jsonable(snapshot.pipeline_rows),
         "project_config_rows": _jsonable(snapshot.project_config_rows),
         "pipeline_names": pipeline_names,
@@ -971,6 +1048,80 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         try:
             return {"scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/zines")
+    def zine_list() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"zines": [_zine_record_payload(item) for item in zet_app.list_zines()]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/zines")
+    def zine_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.create_zine(payload)
+            return {
+                "document": _zine_document_payload(document),
+                "zines": [_zine_record_payload(item) for item in zet_app.list_zines()],
+                "message": f"Created zine {document.record.name}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/zines/story-scenes/{story_slug}")
+    def zine_story_scenes(story_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"scenes": [asdict(item) for item in zet_app.zine_story_scene_sources(story_slug)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/zines/{slug}")
+    def zine_detail(slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"document": _zine_document_payload(zet_app.load_zine(slug))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/zines/{slug}")
+    def zine_update(slug: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.update_zine(slug, payload)
+            return {
+                "document": _zine_document_payload(document),
+                "zines": [_zine_record_payload(item) for item in zet_app.list_zines()],
+                "message": f"Saved zine {document.record.name}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/zines/{slug}/regenerate")
+    def zine_regenerate(slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.regenerate_zine(slug)
+            return {
+                "document": _zine_document_payload(document),
+                "message": f"Regenerated zine {document.record.name}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/zines/{slug}")
+    def zine_delete(slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            zet_app.delete_zine(slug)
+            return {
+                "zines": [_zine_record_payload(item) for item in zet_app.list_zines()],
+                "message": f"Deleted zine {slug}.",
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1863,10 +2014,16 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/local-image/checkpoints")
-    def local_image_checkpoints(preset: str = Query("body-reference-preview")) -> dict[str, Any]:
+    def local_image_checkpoints(
+        preset: str = Query("body-reference-preview"),
+        backend: str = Query("stable_matrix"),
+    ) -> dict[str, Any]:
         try:
-            service = LocalRenderBackendService(PROJECT_ROOT / "Config" / "Local_Render_Presets.json")
-            return {"checkpoints": service.list_checkpoints(preset)}
+            zet_app = _app(app.state.config_path)
+            profiles_path = Path(app.state.config_path).resolve().parent / "Config" / "Local_Render_Presets.json"
+            service = LocalRenderBackendService(profiles_path)
+            server_url = zet_app.config.comfyui_server_url if backend == "comfyui" else ""
+            return {"checkpoints": service.list_checkpoints(preset, backend=backend, server_url=server_url)}
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -1995,7 +2152,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 workspace = _render_console_task_workspace(task)
             api_call_path = _render_console_local_api_call_path(workspace)
             if not api_call_path.exists():
-                raise FileNotFoundError(f"No harvested Stable_Matrix_API_Call.json was found for task {ask_id}.")
+                raise FileNotFoundError(f"No harvested local render API artifact was found for task {ask_id}.")
             return {"path": str(api_call_path), "text": api_call_path.read_text(encoding="utf-8")}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

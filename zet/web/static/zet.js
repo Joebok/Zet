@@ -58,6 +58,11 @@ const state = {
   scenes: [],
   selectedSceneSlug: null,
   sceneDetail: null,
+  zines: [],
+  selectedZineSlug: null,
+  zineDocument: null,
+  zineStorySlug: null,
+  zineStorySources: [],
   sceneImageReferences: [],
   scenePickerCharacter: "",
   scenePickerSearch: "",
@@ -210,12 +215,25 @@ const monitorResponseTableBody = document.querySelector("#monitor-response-table
 const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
 const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
 const automationForm = document.querySelector("#automation-form");
+const settingLocalRenderBackend = document.querySelector("#setting-local-render-backend");
+const stableMatrixSettings = document.querySelector("#stable-matrix-settings");
+const comfyuiSettings = document.querySelector("#comfyui-settings");
 const settingLocalRenderForgeCouple = document.querySelector("#setting-local-render-forge-couple");
 const settingLocalRenderPreset = document.querySelector("#setting-local-render-preset");
 const settingLocalRenderCheckpoint = document.querySelector("#setting-local-render-checkpoint");
 const refreshLocalRenderCheckpoints = document.querySelector("#refresh-local-render-checkpoints");
 const settingLocalRenderPositiveGlobals = document.querySelector("#setting-local-render-positive-globals");
 const settingLocalRenderNegativeGlobals = document.querySelector("#setting-local-render-negative-globals");
+const settingComfyuiProfile = document.querySelector("#setting-comfyui-profile");
+const settingComfyuiServerUrl = document.querySelector("#setting-comfyui-server-url");
+const settingComfyuiCheckpoint = document.querySelector("#setting-comfyui-checkpoint");
+const refreshComfyuiCheckpoints = document.querySelector("#refresh-comfyui-checkpoints");
+const settingComfyuiPositiveGlobals = document.querySelector("#setting-comfyui-positive-globals");
+const settingComfyuiNegativeGlobals = document.querySelector("#setting-comfyui-negative-globals");
+const settingComfyuiPollSeconds = document.querySelector("#setting-comfyui-poll-seconds");
+const settingComfyuiTimeoutSeconds = document.querySelector("#setting-comfyui-timeout-seconds");
+const settingZinePrintScale = document.querySelector("#setting-zine-print-scale");
+const settingZinePageMargin = document.querySelector("#setting-zine-page-margin");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
@@ -369,6 +387,32 @@ const sceneToggleImage = document.querySelector("#scene-toggle-image");
 const sceneValidation = document.querySelector("#scene-validation");
 const sceneImagePanel = document.querySelector("#scene-image-panel");
 const sceneImagePreview = document.querySelector("#scene-image-preview");
+const zineStatus = document.querySelector("#zine-status");
+const zineMessage = document.querySelector("#zine-message");
+const zineTableBody = document.querySelector("#zine-table tbody");
+const zineNew = document.querySelector("#zine-new");
+const zineEditorTitle = document.querySelector("#zine-editor-title");
+const zineEdit = document.querySelector("#zine-edit");
+const zineRegenerate = document.querySelector("#zine-regenerate");
+const zineDelete = document.querySelector("#zine-delete");
+const zineSave = document.querySelector("#zine-save");
+const zineStorySelect = document.querySelector("#zine-story-select");
+const zineFillStory = document.querySelector("#zine-fill-story");
+const zineName = document.querySelector("#zine-name");
+const zineSceneOptions = document.querySelector("#zine-scene-options");
+const zineFront = document.querySelector("#zine-front");
+const zinePage1 = document.querySelector("#zine-page-1");
+const zinePage2 = document.querySelector("#zine-page-2");
+const zinePage3 = document.querySelector("#zine-page-3");
+const zinePage4 = document.querySelector("#zine-page-4");
+const zinePage5 = document.querySelector("#zine-page-5");
+const zinePage6 = document.querySelector("#zine-page-6");
+const zineBack = document.querySelector("#zine-back");
+const zineSpread1 = document.querySelector("#zine-spread-1");
+const zineSpread3 = document.querySelector("#zine-spread-3");
+const zineSpread5 = document.querySelector("#zine-spread-5");
+const zinePreviewSection = document.querySelector("#zine-preview-section");
+const zinePreview = document.querySelector("#zine-preview");
 const sceneBuilderStatus = document.querySelector("#scene-builder-status");
 const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
@@ -590,6 +634,12 @@ function showSceneMessage(message, kind = "info") {
   sceneMessage.hidden = !message;
 }
 
+function showZineMessage(message, kind = "info") {
+  zineMessage.textContent = message || "";
+  zineMessage.className = `action-message ${kind}`;
+  zineMessage.hidden = !message;
+}
+
 function showSceneBuilderMessage(message, kind = "info") {
   sceneBuilderMessage.textContent = message || "";
   sceneBuilderMessage.className = `action-message ${kind}`;
@@ -672,7 +722,7 @@ const SCENE_BUILDER_HELP = {
   "scene.story_beat": "One sentence describing the visual moment or change the image must communicate. Describe what is happening now, not the surrounding plot.",
   "scene.author_notes": "Private author notes. These are not automatically included in prompts unless explicitly compiled.",
   "setup.canvas.orientation": "Image orientation: landscape, portrait, square, comic panel, or custom.",
-  "setup.canvas.aspect_ratio": "Target image shape such as 16:9, 4:5, 1:1, or custom.",
+  "setup.canvas.aspect_ratio": "Target image shape such as 16:9, 4:3, 4:5, 1:1, or custom.",
   "setup.environment.location": "Where the scene takes place. Keep this visual and concrete.",
   "setup.environment.lighting": "Lighting direction, quality, and color.",
   "setup.environment.mood": "Emotional atmosphere conveyed by the image.",
@@ -1022,7 +1072,7 @@ function renderOnboarding() {
   const ready = selectedPhaseReady();
   for (const button of document.querySelectorAll(".workflow-tab")) {
     const page = button.dataset.page || "";
-    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "ai-controls", "local-image-config", "pipeline-controls"].includes(page);
+    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "zine", "ai-controls", "local-image-config", "pipeline-controls"].includes(page);
   }
   const onboardingTab = document.querySelector('.tab[data-page="onboarding"]');
   onboardingTab.hidden = ready;
@@ -1582,6 +1632,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
   document.querySelector("#stories-page").classList.toggle("active", page === "stories");
   document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
+  document.querySelector("#zine-page").classList.toggle("active", page === "zine");
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
@@ -1592,7 +1643,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "scene-builder", "render-console", "ai-controls", "local-image-config", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "ai-controls", "local-image-config", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -1629,6 +1680,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "scenes") {
     await loadScenesPage();
+  }
+  if (page === "zine") {
+    await loadZines();
   }
   if (page === "scene-builder") {
     await openSceneBuilder();
@@ -2522,6 +2576,7 @@ async function saveStory() {
     state.selectedStorySlug = state.storyDetail?.story?.slug || state.selectedStorySlug;
     renderStoryTable();
     renderSceneStoryOptions();
+    renderZineStoryOptions();
     renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
     showStoryMessage(settingsPayload ? "Story and settings saved." : (payload.message || "Story saved."));
   } catch (error) {
@@ -2896,6 +2951,285 @@ function toggleSceneImage() {
 function openSceneImageFullscreen() {
   if (!sceneImagePanel.hidden && sceneImagePreview.src) {
     openFullscreenImage(sceneImagePreview.src, sceneImagePreview.alt || "Scene render");
+  }
+}
+
+const zineSlotInputs = {
+  front: zineFront,
+  page_1: zinePage1,
+  page_2: zinePage2,
+  page_3: zinePage3,
+  page_4: zinePage4,
+  page_5: zinePage5,
+  page_6: zinePage6,
+  back: zineBack,
+};
+
+function renderZineStoryOptions() {
+  const selected = state.zineStorySlug || state.stories[0]?.slug || "";
+  zineStorySelect.replaceChildren(
+    ...state.stories.map((story) => option(story.slug, story.title || story.slug)),
+  );
+  state.zineStorySlug = state.stories.some((story) => story.slug === selected)
+    ? selected
+    : state.stories[0]?.slug || null;
+  zineStorySelect.value = state.zineStorySlug || "";
+  zineFillStory.disabled = !state.zineStorySlug;
+}
+
+function setZineSpread(oddPage, enabled) {
+  const evenPage = oddPage + 1;
+  const oddInput = zineSlotInputs[`page_${oddPage}`];
+  const evenInput = zineSlotInputs[`page_${evenPage}`];
+  const checkbox = oddPage === 1 ? zineSpread1 : oddPage === 3 ? zineSpread3 : zineSpread5;
+  checkbox.checked = enabled;
+  evenInput.disabled = enabled;
+  if (enabled) {
+    evenInput.value = "";
+  } else if (!evenInput.value.trim() && oddInput.value.trim()) {
+    evenInput.value = oddInput.value.trim();
+  }
+}
+
+function syncZineSpreadControls() {
+  for (const oddPage of [1, 3, 5]) {
+    const evenInput = zineSlotInputs[`page_${oddPage + 1}`];
+    const enabled = !evenInput.value.trim();
+    const checkbox = oddPage === 1 ? zineSpread1 : oddPage === 3 ? zineSpread3 : zineSpread5;
+    checkbox.checked = enabled;
+    evenInput.disabled = enabled;
+  }
+}
+
+function clearZineEditor() {
+  state.selectedZineSlug = null;
+  state.zineDocument = null;
+  zineEditorTitle.textContent = "New Zine";
+  zineName.value = "";
+  for (const input of Object.values(zineSlotInputs)) {
+    input.value = "";
+    input.disabled = false;
+  }
+  for (const checkbox of [zineSpread1, zineSpread3, zineSpread5]) {
+    checkbox.checked = false;
+  }
+  zineEdit.disabled = true;
+  zineRegenerate.disabled = true;
+  zineDelete.disabled = true;
+  zineSave.textContent = "Create Zine";
+  zinePreviewSection.hidden = true;
+  zinePreview.removeAttribute("src");
+  renderZineTable();
+  showZineMessage("");
+}
+
+function renderZineTable() {
+  zineTableBody.replaceChildren();
+  for (const zine of state.zines) {
+    const row = document.createElement("tr");
+    row.classList.toggle("selected", zine.slug === state.selectedZineSlug);
+    row.addEventListener("click", () => selectZine(zine.slug));
+    for (const value of [zine.name, zine.slug]) {
+      const cell = document.createElement("td");
+      cell.textContent = value || "";
+      row.append(cell);
+    }
+    zineTableBody.append(row);
+  }
+}
+
+function renderZineDocument(document) {
+  state.zineDocument = document;
+  state.selectedZineSlug = document?.zine?.slug || null;
+  const metadata = document?.metadata || {};
+  zineEditorTitle.textContent = metadata.zine_name || "Zine";
+  zineName.value = metadata.zine_name || "";
+  for (const [key, input] of Object.entries(zineSlotInputs)) {
+    input.value = metadata.slots?.[key] || "";
+  }
+  syncZineSpreadControls();
+  zineEdit.disabled = false;
+  zineRegenerate.disabled = false;
+  zineDelete.disabled = false;
+  zineSave.textContent = "Save Zine";
+  if (document?.zine?.image_exists && document.zine.image_path) {
+    zinePreview.src = fileUrl(document.zine.image_path, Date.now().toString());
+    zinePreviewSection.hidden = false;
+  } else {
+    zinePreviewSection.hidden = true;
+    zinePreview.removeAttribute("src");
+  }
+  renderZineTable();
+}
+
+async function loadZineStorySources() {
+  state.zineStorySlug = zineStorySelect.value || state.zineStorySlug;
+  state.zineStorySources = [];
+  zineSceneOptions.replaceChildren();
+  if (!state.zineStorySlug) {
+    zineFillStory.disabled = true;
+    return;
+  }
+  try {
+    const payload = await fetchJson(`/api/zines/story-scenes/${encodeURIComponent(state.zineStorySlug)}`);
+    state.zineStorySources = payload.scenes || [];
+    zineSceneOptions.replaceChildren(...state.zineStorySources.map((scene) => {
+      const item = document.createElement("option");
+      item.value = scene.tag;
+      item.label = scene.title || scene.scene_slug;
+      return item;
+    }));
+    zineFillStory.disabled = !state.zineStorySources.length;
+  } catch (error) {
+    zineFillStory.disabled = true;
+    showZineMessage(error.message, "error");
+  }
+}
+
+async function loadZines() {
+  zineStatus.textContent = "Loading zines...";
+  try {
+    if (!state.stories.length) {
+      await loadStories();
+    }
+    renderZineStoryOptions();
+    await loadZineStorySources();
+    const payload = await fetchJson("/api/zines");
+    state.zines = payload.zines || [];
+    if (state.selectedZineSlug && !state.zines.some((item) => item.slug === state.selectedZineSlug)) {
+      state.selectedZineSlug = null;
+    }
+    if (!state.selectedZineSlug && state.zines.length) {
+      state.selectedZineSlug = state.zines[0].slug;
+    }
+    renderZineTable();
+    if (state.selectedZineSlug) {
+      await selectZine(state.selectedZineSlug);
+    } else {
+      clearZineEditor();
+    }
+    zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
+  } catch (error) {
+    zineStatus.textContent = "Load failed.";
+    showZineMessage(error.message, "error");
+  }
+}
+
+async function selectZine(slug) {
+  state.selectedZineSlug = slug;
+  renderZineTable();
+  try {
+    const payload = await fetchJson(`/api/zines/${encodeURIComponent(slug)}`);
+    renderZineDocument(payload.document);
+    const sceneTag = Object.values(payload.document?.metadata?.slots || {})
+      .find((value) => String(value).startsWith("{{SCENE:"));
+    const storyMatch = String(sceneTag || "").match(/^\{\{SCENE:([^:}]+):/);
+    if (storyMatch && state.stories.some((story) => story.slug === storyMatch[1])) {
+      state.zineStorySlug = storyMatch[1];
+      renderZineStoryOptions();
+      await loadZineStorySources();
+    }
+    showZineMessage("");
+  } catch (error) {
+    showZineMessage(error.message, "error");
+  }
+}
+
+function fillZineFromStory() {
+  const story = state.stories.find((item) => item.slug === state.zineStorySlug);
+  if (!state.zineStorySources.length) {
+    showZineMessage("The selected story has no readable scene images.", "error");
+    return;
+  }
+  if (!zineName.value.trim()) {
+    zineName.value = story?.title || state.zineStorySlug || "";
+  }
+  for (const input of Object.values(zineSlotInputs)) {
+    input.value = "";
+    input.disabled = false;
+  }
+  for (const checkbox of [zineSpread1, zineSpread3, zineSpread5]) {
+    checkbox.checked = false;
+  }
+  const destinations = ["front", "page_1", "page_2", "page_3", "page_4", "page_5", "page_6", "back"];
+  let destinationIndex = 0;
+  let assigned = 0;
+  for (const scene of state.zineStorySources) {
+    if (destinationIndex >= destinations.length) break;
+    const destination = destinations[destinationIndex];
+    zineSlotInputs[destination].value = scene.tag;
+    assigned += 1;
+    const oddPage = destination === "page_1" ? 1 : destination === "page_3" ? 3 : destination === "page_5" ? 5 : 0;
+    if (oddPage && Number(scene.width) > Number(scene.height)) {
+      setZineSpread(oddPage, true);
+      destinationIndex += 2;
+    } else {
+      destinationIndex += 1;
+    }
+  }
+  syncZineSpreadControls();
+  const remaining = state.zineStorySources.length - assigned;
+  showZineMessage(remaining > 0 ? `Filled from story. ${remaining} scene image(s) were left unassigned.` : "Filled from story.");
+}
+
+function zinePayload() {
+  return {
+    zine_name: zineName.value.trim(),
+    slots: Object.fromEntries(Object.entries(zineSlotInputs).map(([key, input]) => [key, input.value.trim()])),
+  };
+}
+
+async function saveZine() {
+  const currentSlug = state.selectedZineSlug;
+  const isEdit = Boolean(currentSlug);
+  zineSave.disabled = true;
+  showZineMessage(isEdit ? "Saving zine..." : "Creating zine...");
+  try {
+    const payload = await fetchJson(isEdit ? `/api/zines/${encodeURIComponent(currentSlug)}` : "/api/zines", {
+      method: isEdit ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(zinePayload()),
+    });
+    state.zines = payload.zines || state.zines;
+    renderZineDocument(payload.document);
+    zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
+    showZineMessage(payload.message || "Zine saved.");
+  } catch (error) {
+    showZineMessage(error.message, "error");
+  } finally {
+    zineSave.disabled = false;
+  }
+}
+
+async function regenerateZine() {
+  if (!state.selectedZineSlug) return;
+  zineRegenerate.disabled = true;
+  showZineMessage("Regenerating zine...");
+  try {
+    const payload = await fetchJson(`/api/zines/${encodeURIComponent(state.selectedZineSlug)}/regenerate`, { method: "POST" });
+    renderZineDocument(payload.document);
+    showZineMessage(payload.message || "Zine regenerated.");
+  } catch (error) {
+    showZineMessage(error.message, "error");
+  } finally {
+    zineRegenerate.disabled = false;
+  }
+}
+
+async function deleteZine() {
+  if (!state.selectedZineSlug || !confirm(`Delete zine ${state.selectedZineSlug}?`)) return;
+  const slug = state.selectedZineSlug;
+  try {
+    const payload = await fetchJson(`/api/zines/${encodeURIComponent(slug)}`, { method: "DELETE" });
+    state.zines = payload.zines || [];
+    clearZineEditor();
+    if (state.zines.length) {
+      await selectZine(state.zines[0].slug);
+    }
+    zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
+    showZineMessage(payload.message || "Zine deleted.");
+  } catch (error) {
+    showZineMessage(error.message, "error");
   }
 }
 
@@ -5415,14 +5749,27 @@ async function loadPipelineControls() {
 function renderPipelineControls(payload) {
   state.pipelineControls = payload;
   const automation = payload.automation || {};
-  settingLocalRenderForgeCouple.checked = automation.local_render_use_forge_couple !== false;
-  if (automation.local_render_preset && !Array.from(settingLocalRenderPreset.options).some((option) => option.value === automation.local_render_preset)) {
-    settingLocalRenderPreset.add(new Option(automation.local_render_preset, automation.local_render_preset));
-  }
-  settingLocalRenderPreset.value = automation.local_render_preset || "body-reference-preview";
-  setLocalRenderCheckpointValue(automation.local_render_checkpoint || "");
-  settingLocalRenderPositiveGlobals.value = automation.local_render_positive_prompt_globals || "";
-  settingLocalRenderNegativeGlobals.value = automation.local_render_negative_prompt_globals || "";
+  const profiles = payload.render_profiles || {};
+  const stableProfile = automation.stable_matrix_profile || automation.local_render_preset || "body-reference-preview";
+  const comfyProfile = automation.comfyui_profile || "comfyui-core-preview";
+  setSelectOptions(settingLocalRenderPreset, profiles.stable_matrix?.length ? profiles.stable_matrix : [stableProfile]);
+  setSelectOptions(settingComfyuiProfile, profiles.comfyui?.length ? profiles.comfyui : [comfyProfile]);
+  settingLocalRenderBackend.value = automation.local_render_backend || "stable_matrix";
+  settingLocalRenderPreset.value = stableProfile;
+  settingComfyuiProfile.value = comfyProfile;
+  settingLocalRenderForgeCouple.checked = (automation.stable_matrix_use_forge_couple ?? automation.local_render_use_forge_couple) !== false;
+  setLocalRenderCheckpointValue(automation.stable_matrix_checkpoint || automation.local_render_checkpoint || "");
+  settingLocalRenderPositiveGlobals.value = automation.stable_matrix_positive_prompt_globals || automation.local_render_positive_prompt_globals || "";
+  settingLocalRenderNegativeGlobals.value = automation.stable_matrix_negative_prompt_globals || automation.local_render_negative_prompt_globals || "";
+  setComfyuiCheckpointValue(automation.comfyui_checkpoint || "");
+  settingComfyuiServerUrl.value = automation.comfyui_server_url || "http://127.0.0.1:8188";
+  settingComfyuiPositiveGlobals.value = automation.comfyui_positive_prompt_globals || "";
+  settingComfyuiNegativeGlobals.value = automation.comfyui_negative_prompt_globals || "";
+  settingComfyuiPollSeconds.value = automation.comfyui_poll_seconds ?? 1;
+  settingComfyuiTimeoutSeconds.value = automation.comfyui_timeout_seconds ?? 300;
+  syncLocalRenderBackendPanels();
+  settingZinePrintScale.value = Number(automation.zine_print_scale ?? 0.978).toFixed(4);
+  settingZinePageMargin.value = automation.zine_page_margin ?? 4;
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptAnalysisModel.value = automation.ai_prompt_analysis_model || "";
@@ -5447,11 +5794,28 @@ function setLocalRenderCheckpointValue(value) {
   settingLocalRenderCheckpoint.value = checkpoint;
 }
 
+function setComfyuiCheckpointValue(value) {
+  const checkpoint = value || "";
+  if (checkpoint && !Array.from(settingComfyuiCheckpoint.options).some((option) => option.value === checkpoint)) {
+    settingComfyuiCheckpoint.add(new Option(checkpoint, checkpoint));
+  }
+  settingComfyuiCheckpoint.value = checkpoint;
+}
+
+function syncLocalRenderBackendPanels() {
+  const useComfyui = settingLocalRenderBackend.value === "comfyui";
+  stableMatrixSettings.hidden = useComfyui;
+  comfyuiSettings.hidden = !useComfyui;
+}
+
 async function refreshLocalRenderCheckpointOptions() {
   const current = settingLocalRenderCheckpoint.value || state.pipelineControls?.automation?.local_render_checkpoint || "";
   showLocalImageConfigMessage("Refreshing checkpoints...");
   try {
-    const params = new URLSearchParams({ preset: settingLocalRenderPreset.value || "body-reference-preview" });
+    const params = new URLSearchParams({
+      preset: settingLocalRenderPreset.value || "body-reference-preview",
+      backend: "stable_matrix",
+    });
     const payload = await fetchJson(`/api/local-image/checkpoints?${params.toString()}`);
     const items = [{ value: "", label: "" }, ...(payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title }))];
     setSelectOptionsWithLabels(settingLocalRenderCheckpoint, items);
@@ -5462,13 +5826,46 @@ async function refreshLocalRenderCheckpointOptions() {
   }
 }
 
+async function refreshComfyuiCheckpointOptions() {
+  const current = settingComfyuiCheckpoint.value || state.pipelineControls?.automation?.comfyui_checkpoint || "";
+  showLocalImageConfigMessage("Refreshing ComfyUI checkpoints...");
+  try {
+    const params = new URLSearchParams({
+      preset: settingComfyuiProfile.value || "comfyui-core-preview",
+      backend: "comfyui",
+    });
+    const payload = await fetchJson(`/api/local-image/checkpoints?${params.toString()}`);
+    const items = [{ value: "", label: "" }, ...(payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title }))];
+    setSelectOptionsWithLabels(settingComfyuiCheckpoint, items);
+    setComfyuiCheckpointValue(current);
+    showLocalImageConfigMessage(`Loaded ${(payload.checkpoints || []).length} ComfyUI checkpoints.`);
+  } catch (error) {
+    showLocalImageConfigMessage(error.message, "error");
+  }
+}
+
 function automationPayloadFromForm() {
   return {
+    local_render_backend: settingLocalRenderBackend.value,
     local_render_preset: settingLocalRenderPreset.value,
     local_render_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
     local_render_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
     local_render_use_forge_couple: settingLocalRenderForgeCouple.checked,
     local_render_checkpoint: settingLocalRenderCheckpoint.value,
+    stable_matrix_profile: settingLocalRenderPreset.value,
+    stable_matrix_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
+    stable_matrix_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
+    stable_matrix_use_forge_couple: settingLocalRenderForgeCouple.checked,
+    stable_matrix_checkpoint: settingLocalRenderCheckpoint.value,
+    comfyui_profile: settingComfyuiProfile.value,
+    comfyui_server_url: settingComfyuiServerUrl.value,
+    comfyui_checkpoint: settingComfyuiCheckpoint.value,
+    comfyui_positive_prompt_globals: settingComfyuiPositiveGlobals.value,
+    comfyui_negative_prompt_globals: settingComfyuiNegativeGlobals.value,
+    comfyui_poll_seconds: Number(settingComfyuiPollSeconds.value || 0),
+    comfyui_timeout_seconds: Number(settingComfyuiTimeoutSeconds.value || 0),
+    zine_print_scale: Number(settingZinePrintScale.value || 0),
+    zine_page_margin: Number(settingZinePageMargin.value || 0),
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
@@ -6320,6 +6717,24 @@ sceneStageRender.addEventListener("click", stageSceneRender);
 sceneBuilderOpen.addEventListener("click", activateSceneBuilderPage);
 sceneToggleImage.addEventListener("click", toggleSceneImage);
 sceneImagePreview.addEventListener("click", openSceneImageFullscreen);
+zineNew.addEventListener("click", clearZineEditor);
+zineEdit.addEventListener("click", () => zineName.focus());
+zineSave.addEventListener("click", saveZine);
+zineRegenerate.addEventListener("click", regenerateZine);
+zineDelete.addEventListener("click", deleteZine);
+zineStorySelect.addEventListener("change", async () => {
+  state.zineStorySlug = zineStorySelect.value || null;
+  await loadZineStorySources();
+});
+zineFillStory.addEventListener("click", fillZineFromStory);
+zineSpread1.addEventListener("change", () => setZineSpread(1, zineSpread1.checked));
+zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checked));
+zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
+zinePreview.addEventListener("click", () => {
+  if (!zinePreviewSection.hidden && zinePreview.src) {
+    openFullscreenImage(zinePreview.src, zinePreview.alt || "Zine print layout");
+  }
+});
 auxResourceImagePreview.addEventListener("click", () => {
   if (!auxResourceImagePreview.hidden && auxResourceImagePreview.src) {
     openFullscreenImage(auxResourceImagePreview.src, auxResourceImagePreview.alt || "Auxiliary resource preview");
@@ -6545,6 +6960,9 @@ openRenderConsoleTab.addEventListener("click", () => {
 automationForm.addEventListener("submit", saveAutomationSettings);
 refreshLocalRenderCheckpoints.addEventListener("click", refreshLocalRenderCheckpointOptions);
 settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpointOptions);
+refreshComfyuiCheckpoints.addEventListener("click", refreshComfyuiCheckpointOptions);
+settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions);
+settingLocalRenderBackend.addEventListener("change", syncLocalRenderBackendPanels);
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsoleReviewPrompt.addEventListener("click", async () => {

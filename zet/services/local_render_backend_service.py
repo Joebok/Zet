@@ -16,14 +16,37 @@ class LocalRenderBackendService:
         preset = presets.get(preset_name)
         return preset if isinstance(preset, dict) else {}
 
-    def list_checkpoints(self, preset_name: str) -> list[dict[str, str]]:
-        server_url = str(self.preset(preset_name).get("server_url") or "http://127.0.0.1:7860").rstrip("/")
-        request = Request(server_url + "/sdapi/v1/sd-models", method="GET")
+    def list_checkpoints(
+        self,
+        preset_name: str,
+        *,
+        backend: str = "",
+        server_url: str = "",
+    ) -> list[dict[str, str]]:
+        preset = self.preset(preset_name)
+        selected_backend = str(backend or preset.get("backend") or "stable_matrix").strip().lower()
+        selected_url = str(
+            server_url
+            or preset.get("server_url")
+            or ("http://127.0.0.1:8188" if selected_backend == "comfyui" else "http://127.0.0.1:7860")
+        ).rstrip("/")
+        api_path = "/object_info/CheckpointLoaderSimple" if selected_backend == "comfyui" else "/sdapi/v1/sd-models"
+        request = Request(selected_url + api_path, method="GET")
         try:
             with urlopen(request, timeout=10) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except URLError as exc:
             raise RuntimeError("Local image backend unavailable.") from exc
+        if selected_backend == "comfyui":
+            loader = data.get("CheckpointLoaderSimple", {}) if isinstance(data, dict) else {}
+            required = loader.get("input", {}).get("required", {}) if isinstance(loader, dict) else {}
+            choices = required.get("ckpt_name", [])
+            names = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], list) else []
+            return [
+                {"title": str(name), "model_name": str(name), "filename": str(name), "hash": ""}
+                for name in names
+                if str(name).strip()
+            ]
         if not isinstance(data, list):
             return []
         checkpoints = []

@@ -1,0 +1,96 @@
+{
+  "story_settings_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\FirstDay.story.json",
+  "scene_builder_file": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\Chapter-03-Collision.scene.json",
+  "final_prompt": "C:\\Users\\Joe\\Projects\\Zet_Library\\Pipelines\\Stories\\FirstDay\\Chapter-03-Collision\\Final_Image_Prompt.md",
+  "compiler": "scene_render_v3",
+  "artifacts": [
+    "Scene_Render_IR.json",
+    "Final_Image_Prompt.md",
+    "Local_Render_Brief.json",
+    "Local_Render_Prompt.md",
+    "Local_Render_Forge_Couple_Prompt.md"
+  ],
+  "fragments": [
+    {
+      "source_kind": "story_settings",
+      "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Stories\\FirstDay\\FirstDay.story.json",
+      "source_label": "Canonical art style",
+      "json_pointer": "/style_defaults/canonical_art_style/full_prompt_text",
+      "editable": true,
+      "prompt_start_line": 67,
+      "prompt_end_line": 67
+    },
+    {
+      "source_kind": "character_template_section",
+      "source_path": "Characters/Tsaeytte/Youth/Character_Image_Template.md",
+      "source_label": "Tsaeytte identity",
+      "section_name": "IDENTITY_PRESERVATION_SCENE",
+      "editable": true,
+      "prompt_start_line": 84,
+      "prompt_end_line": 84
+    },
+    {
+      "source_kind": "costume_template_section",
+      "source_path": "Characters/Tsaeytte/Youth/Costume_Woodland_outfit.md",
+      "source_label": "Tsaeytte costume",
+      "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE",
+      "editable": true,
+      "prompt_start_line": 86,
+      "prompt_end_line": 86
+    },
+    {
+      "source_kind": "auxiliary_template_section",
+      "source_path": "AuxiliaryResources/Images/valindia/valindia_Template.md",
+      "source_label": "Valindia identity",
+      "section_name": "IDENTITY_PRESERVATION_SCENE",
+      "editable": true,
+      "prompt_start_line": 92,
+      "prompt_end_line": 92
+    },
+    {
+      "source_kind": "auxiliary_template_section",
+      "source_path": "AuxiliaryResources/Images/valindia/valindia_Template.md",
+      "source_label": "Valindia costume",
+      "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE",
+      "editable": true,
+      "prompt_start_line": 94,
+      "prompt_end_line": 94
+    },
+    {
+      "source_kind": "auxiliary_template_section",
+      "source_path": "AuxiliaryResources/Images/kaeldor/kaeldor_Template.md",
+      "source_label": "Kaeldor identity",
+      "section_name": "IDENTITY_PRESERVATION_SCENE",
+      "editable": true,
+      "prompt_start_line": 98,
+      "prompt_end_line": 98
+    },
+    {
+      "source_kind": "auxiliary_template_section",
+      "source_path": "AuxiliaryResources/Images/kaeldor/kaeldor_Template.md",
+      "source_label": "Kaeldor costume",
+      "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE",
+      "editable": true,
+      "prompt_start_line": 100,
+      "prompt_end_line": 100
+    },
+    {
+      "source_kind": "auxiliary_template_section",
+      "source_path": "AuxiliaryResources/Images/school-boys/school-boys_Template.md",
+      "source_label": "School Boys identity",
+      "section_name": "IDENTITY_PRESERVATION_SCENE",
+      "editable": true,
+      "prompt_start_line": 106,
+      "prompt_end_line": 106
+    },
+    {
+      "source_kind": "auxiliary_template_section",
+      "source_path": "AuxiliaryResources/Images/school-boys/school-boys_Template.md",
+      "source_label": "School Boys costume",
+      "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE",
+      "editable": true,
+      "prompt_start_line": 108,
+      "prompt_end_line": 108
+    }
+  ]
+}

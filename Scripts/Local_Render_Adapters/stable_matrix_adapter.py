@@ -100,13 +100,21 @@ def _load_local_render_config(project_root: Path) -> dict[str, str]:
     path = project_root / "config.toml"
     if not path.exists():
         return {}
-    local_render = tomllib.loads(path.read_text(encoding="utf-8")).get("LocalRender", {})
+    payload = tomllib.loads(path.read_text(encoding="utf-8"))
+    local_render = payload.get("LocalRender", {})
     if not isinstance(local_render, dict):
         return {}
+    stable_matrix = payload.get("StableMatrix", {})
+    if not isinstance(stable_matrix, dict):
+        stable_matrix = {}
     return {
-        "positive_prompt_globals": str(local_render.get("PositivePromptGlobals", "")),
-        "negative_prompt_globals": str(local_render.get("NegativePromptGlobals", "")),
-        "checkpoint": str(local_render.get("Checkpoint", "")),
+        "positive_prompt_globals": str(
+            stable_matrix.get("PositivePromptGlobals", local_render.get("PositivePromptGlobals", ""))
+        ),
+        "negative_prompt_globals": str(
+            stable_matrix.get("NegativePromptGlobals", local_render.get("NegativePromptGlobals", ""))
+        ),
+        "checkpoint": str(stable_matrix.get("Checkpoint", local_render.get("Checkpoint", ""))),
     }
 
 

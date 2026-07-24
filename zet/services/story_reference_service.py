@@ -70,10 +70,40 @@ class StoryReferenceService:
             "source_asset_id": identity_key.source_asset_id,
         }
 
+    def resolve_scene_reference(self, tag: str, story_slug: str, scene_slug: str) -> dict:
+        safe_story_slug = re.sub(r"[^A-Za-z0-9]+", "-", story_slug).strip("-")
+        safe_scene_slug = re.sub(r"[^A-Za-z0-9]+", "-", scene_slug).strip("-")
+        if not safe_story_slug or not safe_scene_slug or safe_story_slug != story_slug or safe_scene_slug != scene_slug:
+            raise self.error_type(f"Invalid scene image reference: {tag}")
+        path = self.path_service.story_folder_path(safe_story_slug) / f"{safe_scene_slug}.png"
+        if not path.exists() or not path.is_file():
+            raise self.error_type(f"Scene image not found: {path}")
+        return {
+            "role": "story_reference",
+            "label": f"{safe_story_slug} - {safe_scene_slug}",
+            "tag": tag,
+            "path": str(path),
+            "kind": "scene",
+            "story_slug": safe_story_slug,
+            "scene_slug": safe_scene_slug,
+        }
+
+    def resolve_image_tag(self, tag: str) -> dict:
+        """Resolve exactly one complete Zet image tag."""
+        cleaned = str(tag or "").strip()
+        references = self.resolve_scene_references(cleaned)
+        if len(references) != 1 or references[0].get("tag") != cleaned:
+            raise self.error_type(f"Expected one image reference tag: {cleaned or '(blank)'}")
+        return references[0]
+
     def resolve_scene_references(self, scene_text: str) -> list[dict]:
         references = []
         seen = set()
-        pattern = r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
+        pattern = (
+            r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}"
+            r"|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
+            r"|\{\{SCENE:([^:}]+):([^:}]+)\}\}"
+        )
         for tag, _, _, _ in auxiliary_resource_tags_in_text(scene_text):
             if tag not in seen:
                 seen.add(tag)
@@ -85,6 +115,8 @@ class StoryReferenceService:
             seen.add(tag)
             if match.group(1):
                 references.append(self.resolve_asset_reference(tag, match.group(1), match.group(2), match.group(3)))
-            else:
+            elif match.group(4):
                 references.append(self.resolve_identity_reference(tag, match.group(4), match.group(5), match.group(6)))
+            else:
+                references.append(self.resolve_scene_reference(tag, match.group(7), match.group(8)))
         return references

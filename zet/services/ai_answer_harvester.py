@@ -67,6 +67,23 @@ class AIAnswerHarvester:
         self.timestamp_provider = timestamp_provider
         self.ai_proxy_service = ai_proxy_service
 
+    def _copy_local_render_artifacts(self, answer_path: Path, output_dir: Path) -> None:
+        metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
+        if not metadata_path.exists():
+            return
+        metadata = self._read_json(metadata_path)
+        artifact_files = metadata.get("artifact_files")
+        if not isinstance(artifact_files, list):
+            return
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for value in artifact_files:
+            name = Path(str(value)).name
+            if not name or name != str(value):
+                continue
+            source = answer_path / name
+            if source.exists() and source.is_file():
+                shutil.copy2(source, output_dir / name)
+
     def _harvest_manifest_path(self, answer_path: Path) -> Path:
         return answer_path / "harvest_manifest.json"
 
@@ -234,6 +251,8 @@ class AIAnswerHarvester:
             api_call_path = answer_path / "Stable_Matrix_API_Call.json"
             if api_call_path.exists():
                 shutil.copy2(api_call_path, target_output_dir / "Stable_Matrix_API_Call.json")
+            artifact_output_dir = Path(str(ask_manifest.get("artifact_output_dir") or target_output_dir))
+            self._copy_local_render_artifacts(answer_path, artifact_output_dir)
 
         result = HarvestResult(
             answer_path=answer_path,
@@ -304,6 +323,7 @@ class AIAnswerHarvester:
         api_call_path = answer_path / "Stable_Matrix_API_Call.json"
         if api_call_path.exists():
             shutil.copy2(api_call_path, target_path.parent / "Stable_Matrix_API_Call.json")
+        self._copy_local_render_artifacts(answer_path, target_path.parent)
         result = HarvestResult(
             answer_path=answer_path,
             ask_id=answer.ask_id,

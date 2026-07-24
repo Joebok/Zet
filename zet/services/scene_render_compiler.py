@@ -95,6 +95,7 @@ def compile_scene_render_ir(
         default_prompt_sections or {}, scene_data.get("final_image_prompt_overrides")
     )
     return {
+        "schema_version": 3,
         "scene": {
             "id": scene_data.get("scene", {}).get("id", ""),
             "name": scene_data.get("scene", {}).get("name", ""),
@@ -124,6 +125,30 @@ def compile_scene_render_ir(
         "final_image_prompt_sections": prompt_sections,
         "resolved_sources": resolved_sources or {},
     }
+
+
+def validate_scene_render_ir(ir: dict[str, Any]) -> None:
+    if not isinstance(ir, dict):
+        raise ValueError("Scene render IR must be a JSON object.")
+    if ir.get("schema_version") != 3:
+        raise ValueError("Scene render IR schema_version must be 3.")
+    for key in ("scene", "source", "canvas", "composition", "environment", "resolved_sources"):
+        if not isinstance(ir.get(key), dict):
+            raise ValueError(f"Scene render IR {key} must be an object.")
+    for key in ("elements", "placements"):
+        if not isinstance(ir.get(key), list):
+            raise ValueError(f"Scene render IR {key} must be an array.")
+    if any(not isinstance(item, dict) or not _clean(item.get("id")) for item in ir["elements"]):
+        raise ValueError("Scene render IR elements must be objects with non-blank IDs.")
+    element_ids = {_clean(item.get("id")) for item in ir["elements"]}
+    if len(element_ids) != len(ir["elements"]):
+        raise ValueError("Scene render IR element IDs must be unique and non-blank.")
+    for placement in ir["placements"]:
+        if not isinstance(placement, dict):
+            raise ValueError("Scene render IR placements must contain objects.")
+        element_id = _clean(placement.get("scene_element_id"))
+        if not element_id or element_id not in element_ids:
+            raise ValueError(f"Scene render IR placement references an unknown element: {element_id or '<blank>'}.")
 
 
 def _element(ir: dict[str, Any], element_id: str) -> dict[str, Any]:

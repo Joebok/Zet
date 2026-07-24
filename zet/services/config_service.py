@@ -20,6 +20,7 @@ class Config:
     prompt_condense_model: str = "llama3.2-vision:11b"
     prompt_condense_file: str = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
     local_render_auto_queue_after_condense: bool = False
+    local_render_backend: str = "stable_matrix"
     local_render_preset: str = "body-reference-preview"
     local_render_positive_prompt_globals: str = ""
     local_render_negative_prompt_globals: str = ""
@@ -27,6 +28,15 @@ class Config:
     local_render_checkpoint: str = ""
     local_render_strict_primary_subject_count: bool = True
     local_render_forge_couple_debug_base_pass: bool = True
+    comfyui_profile: str = "comfyui-core-preview"
+    comfyui_server_url: str = "http://127.0.0.1:8188"
+    comfyui_checkpoint: str = ""
+    comfyui_positive_prompt_globals: str = ""
+    comfyui_negative_prompt_globals: str = ""
+    comfyui_poll_seconds: float = 1.0
+    comfyui_timeout_seconds: float = 300.0
+    zine_print_scale: float = 0.978
+    zine_page_margin: int = 4
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
@@ -77,9 +87,24 @@ class ConfigService:
         return local_render if isinstance(local_render, dict) else {}
 
     @staticmethod
+    def _stable_matrix_config(payload: dict) -> dict:
+        stable_matrix = payload.get("StableMatrix", {})
+        return stable_matrix if isinstance(stable_matrix, dict) else {}
+
+    @staticmethod
+    def _comfyui_config(payload: dict) -> dict:
+        comfyui = payload.get("ComfyUI", {})
+        return comfyui if isinstance(comfyui, dict) else {}
+
+    @staticmethod
     def _ai_harvest_config(payload: dict) -> dict:
         ai_harvest = payload.get("AIHarvest", {})
         return ai_harvest if isinstance(ai_harvest, dict) else {}
+
+    @staticmethod
+    def _zine_config(payload: dict) -> dict:
+        zine = payload.get("Zine", {})
+        return zine if isinstance(zine, dict) else {}
 
     @staticmethod
     def _render_config(payload: dict) -> dict:
@@ -105,6 +130,9 @@ class ConfigService:
             base_folders = ConfigService._base_folders_for_platform(payload)
             prompt_condense = ConfigService._prompt_condense_config(payload)
             local_render = ConfigService._local_render_config(payload)
+            stable_matrix = ConfigService._stable_matrix_config(payload)
+            comfyui = ConfigService._comfyui_config(payload)
+            zine = ConfigService._zine_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
@@ -121,13 +149,33 @@ class ConfigService:
                     prompt_condense.get("PromptFile", "Config/Prompt_Condense_Tasks/body_reference_condense.md")
                 ),
                 local_render_auto_queue_after_condense=bool(local_render.get("AutoQueueAfterCondense", False)),
-                local_render_preset=str(local_render.get("Preset", "body-reference-preview")),
-                local_render_positive_prompt_globals=str(local_render.get("PositivePromptGlobals", "")),
-                local_render_negative_prompt_globals=str(local_render.get("NegativePromptGlobals", "")),
-                local_render_layout_backend=str(local_render.get("LayoutBackend", "forge_couple_basic")),
-                local_render_checkpoint=str(local_render.get("Checkpoint", "")),
-                local_render_strict_primary_subject_count=bool(local_render.get("StrictPrimarySubjectCount", True)),
-                local_render_forge_couple_debug_base_pass=bool(local_render.get("ForgeCoupleDebugBasePass", True)),
+                local_render_backend=str(local_render.get("Backend", "stable_matrix")).strip().lower(),
+                local_render_preset=str(stable_matrix.get("Profile", local_render.get("Preset", "body-reference-preview"))),
+                local_render_positive_prompt_globals=str(
+                    stable_matrix.get("PositivePromptGlobals", local_render.get("PositivePromptGlobals", ""))
+                ),
+                local_render_negative_prompt_globals=str(
+                    stable_matrix.get("NegativePromptGlobals", local_render.get("NegativePromptGlobals", ""))
+                ),
+                local_render_layout_backend=str(
+                    stable_matrix.get("LayoutBackend", local_render.get("LayoutBackend", "forge_couple_basic"))
+                ),
+                local_render_checkpoint=str(stable_matrix.get("Checkpoint", local_render.get("Checkpoint", ""))),
+                local_render_strict_primary_subject_count=bool(
+                    stable_matrix.get("StrictPrimarySubjectCount", local_render.get("StrictPrimarySubjectCount", True))
+                ),
+                local_render_forge_couple_debug_base_pass=bool(
+                    stable_matrix.get("ForgeCoupleDebugBasePass", local_render.get("ForgeCoupleDebugBasePass", True))
+                ),
+                comfyui_profile=str(comfyui.get("Profile", "comfyui-core-preview")),
+                comfyui_server_url=str(comfyui.get("ServerURL", "http://127.0.0.1:8188")),
+                comfyui_checkpoint=str(comfyui.get("Checkpoint", "")),
+                comfyui_positive_prompt_globals=str(comfyui.get("PositivePromptGlobals", "")),
+                comfyui_negative_prompt_globals=str(comfyui.get("NegativePromptGlobals", "")),
+                comfyui_poll_seconds=float(comfyui.get("PollSeconds", 1.0)),
+                comfyui_timeout_seconds=float(comfyui.get("TimeoutSeconds", 300.0)),
+                zine_print_scale=float(zine.get("PrintScale", 0.978)),
+                zine_page_margin=int(zine.get("PageMargin", 4)),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),

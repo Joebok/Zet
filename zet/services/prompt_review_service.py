@@ -243,12 +243,19 @@ class PromptReviewService:
         context = self.get_context(character, phase, asset_id)
         if context.render_prompt_path is None:
             raise FileNotFoundError(f"No prompt file was found for asset {asset_id}.")
+        config = self.path_service.config
+        backend = str(getattr(config, "local_render_backend", "stable_matrix")).strip().lower()
+        profile_name = (
+            str(getattr(config, "comfyui_profile", "comfyui-core-preview"))
+            if backend == "comfyui"
+            else str(getattr(config, "local_render_preset", "body-reference-preview"))
+        )
         return render_image(
             project_root=self.project_root,
             final_prompt_path=context.render_prompt_path,
             job_output_dir=context.render_prompt_path.parent,
             prompt_review_path=context.prompt_review_path,
-            preset_name=str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview")),
+            preset_name=profile_name,
             reference_files=context.asset.reference_files or [],
         )
 

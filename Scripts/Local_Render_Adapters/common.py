@@ -1,26 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+from zet.services.local_render_types import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
 
 
 NEGATIVE_SECTION_MARKER = "Negative constraints:"
-
-
-class LocalRenderError(Exception):
-    pass
-
-
-class LocalRenderUnavailable(LocalRenderError):
-    pass
-
-
-@dataclass
-class LocalRenderResult:
-    image_path: Path
-    metadata_path: Path
-    prompt_review_path: Path | None
-    prompt_id: str
 
 
 def split_positive_negative_prompt(prompt_text: str) -> tuple[str, str]:

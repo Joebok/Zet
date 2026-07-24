@@ -1,0 +1,234 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "waiNTRMIXIllustrious_v11.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "portrait 4:5 fantasy scene, exactly four separate primary characters, four separate characters occupying distinct positions, School Boys on the left and Kaeldor on the left and Tsaeytte on the right and Valindia on the center, full-body foreground and midground and background figures, Spire - Archway spans the background, On the pathway in front of the arch., Morning sun, Painterly semi-realistic fantasy illustration with anime-influenced facial proportions, large expressive eyes, refined linework, and warm storybook-fantasy color handling., (masterpiece, best quality, highres), sharp focus",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "solo, one person, single person, extra people, extra primary character, third foreground person, crowd, duplicate character, same character twice, merged characters, fused bodies, blended faces, hybrid character, overlapping characters, overlapping bodies, characters touching, both characters on the same side, person in the center foreground, centered foreground character, cropped body, cropped feet, looking at viewer, front-facing body, extra limbs, malformed hands, text, letters, caption, speech bubble, watermark",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "4": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 640,
+      "height": 800,
+      "batch_size": 1
+    }
+  },
+  "10": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "exactly four visible subjects, visible subject positioned in the left foreground, adult person, Schoolboy Uniforms — Variations of the Spire academy uniform featuring tailored burgundy jackets or open vests with gold trim, academy crests, white dress shirts (often unbuttoned at the collar or with rolled sleeves), dark tailored trousers, leather belts, polished boots or shoes, Each student wears the uniform with individual flair while remaining recognizably part of the academy, Following closely behind Kaeldor, Expression: amused, looking toward the subject opposite",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "11": {
+    "class_type": "ConditioningSetArea",
+    "inputs": {
+      "conditioning": [
+        "10",
+        0
+      ],
+      "width": 168,
+      "height": 704,
+      "x": 0,
+      "y": 64,
+      "strength": 1.15
+    }
+  },
+  "12": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "2",
+        0
+      ],
+      "conditioning_2": [
+        "11",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "exactly four visible subjects, visible subject positioned in the left foreground, adult elf woman, — Tall, athletic young high elf with an effortlessly handsome, confident presence, Short tousled sandy-blond hair with shaved sides featuring a distinctive geometric undercut pattern, Warm tan complexion, amber-brown eyes, strong jawline, pointed elf ears, Confidently walking, Expression: confident",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "14": {
+    "class_type": "ConditioningSetArea",
+    "inputs": {
+      "conditioning": [
+        "13",
+        0
+      ],
+      "width": 176,
+      "height": 704,
+      "x": 152,
+      "y": 64,
+      "strength": 1.1
+    }
+  },
+  "15": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "12",
+        0
+      ],
+      "conditioning_2": [
+        "14",
+        0
+      ]
+    }
+  },
+  "16": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "exactly four visible subjects, visible subject positioned in the right midground, adult elf woman, — Petite adolescent high elf with a slender, lightly athletic build, youthful features, Short tousled black bob framing both cheeks, with a woodland-green ribbon tied at the back, Large expressive violet eyes, fair skin, pointed elf ears, Sitting on the ground amongst scattered books. Legs out front, hands behind to support her., Expression: confused, looking toward the subject opposite",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "17": {
+    "class_type": "ConditioningSetArea",
+    "inputs": {
+      "conditioning": [
+        "16",
+        0
+      ],
+      "width": 176,
+      "height": 704,
+      "x": 312,
+      "y": 64,
+      "strength": 1.1
+    }
+  },
+  "18": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "15",
+        0
+      ],
+      "conditioning_2": [
+        "17",
+        0
+      ]
+    }
+  },
+  "19": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "exactly four visible subjects, visible subject positioned in the center background, adult half-elf woman, Vandermere — Tall, elegant half-elf young woman with a confident, aristocratic bearing, Sharp jaw-length bob haircut with vivid crimson-red outer hair over black underlayers, straight with blunt ends, Fair skin, narrow violet eyes, refined features, Valindia is under the arch, she has turned to face Tsaeytte, she is raising her hands to her face in concern., Expression: Concerned, looking toward the subject opposite",
+      "clip": [
+        "1",
+        1
+      ]
+    }
+  },
+  "20": {
+    "class_type": "ConditioningSetArea",
+    "inputs": {
+      "conditioning": [
+        "19",
+        0
+      ],
+      "width": 168,
+      "height": 704,
+      "x": 472,
+      "y": 64,
+      "strength": 1.1
+    }
+  },
+  "21": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "18",
+        0
+      ],
+      "conditioning_2": [
+        "20",
+        0
+      ]
+    }
+  },
+  "22": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 8343556516923134802,
+      "steps": 28,
+      "cfg": 7.0,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "21",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "latent_image": [
+        "4",
+        0
+      ]
+    }
+  },
+  "23": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "22",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    }
+  },
+  "24": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "Zet/Chapter-03-Collision",
+      "images": [
+        "23",
+        0
+      ]
+    }
+  }
+}

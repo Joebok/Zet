@@ -5,19 +5,6 @@ BaseAssetPath = "Assets/"
 BasePipelinePath = "Pipelines/"
 BaseAIQueuePath = "AI_Queue/"
 
-[BaseFoldersByPlatform.Windows]
-BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
-BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
-
-[BaseFoldersByPlatform.Darwin]
-BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"
-BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
-
-[PromptCondense]
-Enabled = false
-Model = "qwen2.5vl:3b"
-PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
-
 [LocalRender]
 AutoQueueAfterCondense = false
 Backend = "comfyui"
@@ -29,7 +16,7 @@ NegativePromptGlobals = "EasyNegative"
 LayoutBackend = "forge_couple_basic"
 StrictPrimarySubjectCount = true
 ForgeCoupleDebugBasePass = true
-Checkpoint = "sd\\perfectdeliberate_ilAnime.safetensors [d80b4e4c68]"
+Checkpoint = "sd\\replace-with-stable-matrix-checkpoint.safetensors"
 
 [ComfyUI]
 Profile = "comfyui-core-preview"
@@ -40,17 +27,3 @@ NegativePromptGlobals = ""
 PollSeconds = 1.0
 TimeoutSeconds = 300.0
 
-[Zine]
-PrintScale = 0.97
-PageMargin = 4
-
-[AIHarvest]
-AutoEnabled = true
-IntervalSeconds = 60
-
-[Render]
-Backend = "manual_chatgpt"
-
-[AIPromptAnalysis]
-Model = "qwen3:4b-q4_K_M "
-InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

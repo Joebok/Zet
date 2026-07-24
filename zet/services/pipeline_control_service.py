@@ -25,8 +25,23 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
+    local_render_backend: str = "stable_matrix"
+    stable_matrix_profile: str = ""
+    stable_matrix_positive_prompt_globals: str = ""
+    stable_matrix_negative_prompt_globals: str = ""
+    stable_matrix_use_forge_couple: bool | None = None
+    stable_matrix_checkpoint: str = ""
+    comfyui_profile: str = "comfyui-core-preview"
+    comfyui_server_url: str = "http://127.0.0.1:8188"
+    comfyui_checkpoint: str = ""
+    comfyui_positive_prompt_globals: str = ""
+    comfyui_negative_prompt_globals: str = ""
+    comfyui_poll_seconds: float = 1.0
+    comfyui_timeout_seconds: float = 300.0
     ai_prompt_analysis_model: str = "qwen3.5:9b-instruct"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
+    zine_print_scale: float = 0.978
+    zine_page_margin: int = 4
 
 
 @dataclass(frozen=True)
@@ -46,10 +61,12 @@ class PipelineControlSnapshot:
     automation: AutomationSettings
     pipeline_rows: list[PipelineStageControlRow]
     project_config_rows: list[dict]
+    render_profiles: dict[str, list[str]]
 
 
 class PipelineControlService:
     SAFE_RENDER_BACKENDS = {"local_image", "manual_chatgpt"}
+    SAFE_LOCAL_RENDER_BACKENDS = {"stable_matrix", "comfyui"}
 
     def __init__(
         self,
@@ -94,6 +111,7 @@ class PipelineControlService:
             automation=self.automation_settings(),
             pipeline_rows=pipeline_rows,
             project_config_rows=self.project_config_rows(),
+            render_profiles=self.render_profiles(),
         )
 
     def automation_settings(self) -> AutomationSettings:
@@ -106,25 +124,59 @@ class PipelineControlService:
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
+            local_render_backend=str(self.config.local_render_backend),
+            stable_matrix_profile=str(self.config.local_render_preset),
+            stable_matrix_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
+            stable_matrix_negative_prompt_globals=str(self.config.local_render_negative_prompt_globals),
+            stable_matrix_use_forge_couple=str(self.config.local_render_layout_backend) == "forge_couple_basic",
+            stable_matrix_checkpoint=str(self.config.local_render_checkpoint),
+            comfyui_profile=str(self.config.comfyui_profile),
+            comfyui_server_url=str(self.config.comfyui_server_url),
+            comfyui_checkpoint=str(self.config.comfyui_checkpoint),
+            comfyui_positive_prompt_globals=str(self.config.comfyui_positive_prompt_globals),
+            comfyui_negative_prompt_globals=str(self.config.comfyui_negative_prompt_globals),
+            comfyui_poll_seconds=float(self.config.comfyui_poll_seconds),
+            comfyui_timeout_seconds=float(self.config.comfyui_timeout_seconds),
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
             ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
+            zine_print_scale=float(self.config.zine_print_scale),
+            zine_page_margin=int(self.config.zine_page_margin),
         )
+
+    def render_profiles(self) -> dict[str, list[str]]:
+        path = self.config_path.resolve().parent / "Config" / "Local_Render_Presets.json"
+        try:
+            profiles = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            profiles = {}
+        result = {"stable_matrix": [], "comfyui": []}
+        for name, profile in profiles.items() if isinstance(profiles, dict) else []:
+            backend = str(profile.get("backend") or "") if isinstance(profile, dict) else ""
+            if backend in result:
+                result[backend].append(str(name))
+        return {backend: sorted(names) for backend, names in result.items()}
 
     def project_config_rows(self) -> list[dict]:
         return [
-            {"Scope": "Project config", "Setting": "LocalRender.Preset", "Value": self.config.local_render_preset},
+            {"Scope": "Project config", "Setting": "LocalRender.Backend", "Value": self.config.local_render_backend},
+            {"Scope": "Project config", "Setting": "StableMatrix.Profile", "Value": self.config.local_render_preset},
             {
                 "Scope": "Project config",
-                "Setting": "LocalRender.PositivePromptGlobals",
+                "Setting": "StableMatrix.PositivePromptGlobals",
                 "Value": self.config.local_render_positive_prompt_globals,
             },
             {
                 "Scope": "Project config",
-                "Setting": "LocalRender.NegativePromptGlobals",
+                "Setting": "StableMatrix.NegativePromptGlobals",
                 "Value": self.config.local_render_negative_prompt_globals,
             },
-            {"Scope": "Project config", "Setting": "LocalRender.LayoutBackend", "Value": self.config.local_render_layout_backend},
-            {"Scope": "Project config", "Setting": "LocalRender.Checkpoint", "Value": self.config.local_render_checkpoint},
+            {"Scope": "Project config", "Setting": "StableMatrix.LayoutBackend", "Value": self.config.local_render_layout_backend},
+            {"Scope": "Project config", "Setting": "StableMatrix.Checkpoint", "Value": self.config.local_render_checkpoint},
+            {"Scope": "Project config", "Setting": "ComfyUI.Profile", "Value": self.config.comfyui_profile},
+            {"Scope": "Project config", "Setting": "ComfyUI.ServerURL", "Value": self.config.comfyui_server_url},
+            {"Scope": "Project config", "Setting": "ComfyUI.Checkpoint", "Value": self.config.comfyui_checkpoint},
+            {"Scope": "Project config", "Setting": "Zine.PrintScale", "Value": self.config.zine_print_scale},
+            {"Scope": "Project config", "Setting": "Zine.PageMargin", "Value": self.config.zine_page_margin},
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
@@ -135,12 +187,31 @@ class PipelineControlService:
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         """Persist project-level automation settings."""
         self._validate_settings(settings)
+        stable_profile = settings.stable_matrix_profile or settings.local_render_preset
+        stable_positive = settings.stable_matrix_positive_prompt_globals or settings.local_render_positive_prompt_globals
+        stable_negative = settings.stable_matrix_negative_prompt_globals or settings.local_render_negative_prompt_globals
+        stable_checkpoint = settings.stable_matrix_checkpoint or settings.local_render_checkpoint
+        stable_forge = (
+            settings.local_render_use_forge_couple
+            if settings.stable_matrix_use_forge_couple is None
+            else settings.stable_matrix_use_forge_couple
+        )
         updates = {
-            ("LocalRender", "Preset"): settings.local_render_preset,
-            ("LocalRender", "PositivePromptGlobals"): settings.local_render_positive_prompt_globals,
-            ("LocalRender", "NegativePromptGlobals"): settings.local_render_negative_prompt_globals,
-            ("LocalRender", "LayoutBackend"): "forge_couple_basic" if settings.local_render_use_forge_couple else "plain_txt2img",
-            ("LocalRender", "Checkpoint"): settings.local_render_checkpoint,
+            ("LocalRender", "Backend"): settings.local_render_backend,
+            ("StableMatrix", "Profile"): stable_profile,
+            ("StableMatrix", "PositivePromptGlobals"): stable_positive,
+            ("StableMatrix", "NegativePromptGlobals"): stable_negative,
+            ("StableMatrix", "LayoutBackend"): "forge_couple_basic" if stable_forge else "plain_txt2img",
+            ("StableMatrix", "Checkpoint"): stable_checkpoint,
+            ("ComfyUI", "Profile"): settings.comfyui_profile,
+            ("ComfyUI", "ServerURL"): settings.comfyui_server_url,
+            ("ComfyUI", "Checkpoint"): settings.comfyui_checkpoint,
+            ("ComfyUI", "PositivePromptGlobals"): settings.comfyui_positive_prompt_globals,
+            ("ComfyUI", "NegativePromptGlobals"): settings.comfyui_negative_prompt_globals,
+            ("ComfyUI", "PollSeconds"): settings.comfyui_poll_seconds,
+            ("ComfyUI", "TimeoutSeconds"): settings.comfyui_timeout_seconds,
+            ("Zine", "PrintScale"): settings.zine_print_scale,
+            ("Zine", "PageMargin"): settings.zine_page_margin,
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
@@ -155,12 +226,26 @@ class PipelineControlService:
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))
             raise PipelineControlServiceError(f"Render backend must be one of: {choices}.")
-        if not settings.local_render_preset.strip():
-            raise PipelineControlServiceError("Local render preset cannot be blank.")
+        local_backend = settings.local_render_backend.strip()
+        if local_backend not in self.SAFE_LOCAL_RENDER_BACKENDS:
+            choices = ", ".join(sorted(self.SAFE_LOCAL_RENDER_BACKENDS))
+            raise PipelineControlServiceError(f"Local render backend must be one of: {choices}.")
+        if not (settings.stable_matrix_profile or settings.local_render_preset).strip():
+            raise PipelineControlServiceError("Stable Matrix profile cannot be blank.")
+        if not settings.comfyui_profile.strip():
+            raise PipelineControlServiceError("ComfyUI profile cannot be blank.")
+        if not settings.comfyui_server_url.strip():
+            raise PipelineControlServiceError("ComfyUI server URL cannot be blank.")
+        if settings.comfyui_poll_seconds < 0 or settings.comfyui_timeout_seconds <= 0:
+            raise PipelineControlServiceError("ComfyUI polling must be non-negative and timeout must be positive.")
         if settings.ai_harvest_interval_seconds < 0:
             raise PipelineControlServiceError("Auto harvest interval cannot be negative.")
         if settings.ai_harvest_interval_seconds > 86400:
             raise PipelineControlServiceError("Auto harvest interval must be 86400 seconds or less.")
+        if settings.zine_print_scale <= 0 or settings.zine_print_scale > 1:
+            raise PipelineControlServiceError("Zine print scale must be greater than 0 and no greater than 1.")
+        if settings.zine_page_margin < 0 or settings.zine_page_margin * 2 >= 825:
+            raise PipelineControlServiceError("Zine page margin must be between 0 and 412 pixels.")
         if not settings.ai_prompt_analysis_model.strip():
             raise PipelineControlServiceError("AI prompt analysis model cannot be blank.")
         if not settings.ai_prompt_analysis_instructions_file.strip():
@@ -211,5 +296,7 @@ class PipelineControlService:
         if isinstance(value, bool):
             return "true" if value else "false"
         if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
             return str(value)
         return json.dumps(str(value))

@@ -381,7 +381,10 @@ PromptFile = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
 
 [LocalRender]
 AutoQueueAfterCondense = true
-Preset = "body-reference-preview"
+Backend = "stable_matrix"
+
+[StableMatrix]
+Profile = "body-reference-preview"
 
 [AIHarvest]
 AutoEnabled = true
@@ -420,67 +423,11 @@ Manual ChatGPT final render tasks always use `Final_Image_Prompt.md`. The conden
 
 ## Local Rendering
 
-Zet has a backend-neutral local render layer under:
+Zet supports Stable Matrix and ComfyUI behind a backend-neutral local render request/result contract. Scene previews use `Scene_Render_IR.json` as the canonical structured input; prompt-only asset previews use their labeled prompt.
 
-```text
-Scripts/Local_Render_Adapters/
-```
+Local test renders remain review aids. They do not modify prompts, advance a pipeline stage, or overwrite final output.
 
-Current files:
-
-- `common.py`
-- `local_render.py`
-- `comfyui_adapter.py`
-- `__init__.py`
-
-`local_render.render_image(...)` is the generic dispatch point.
-
-ComfyUI is currently the only implemented backend. It is selected through `Config/Local_Render_Presets.json`:
-
-```json
-{
-  "body-reference-preview": {
-    "backend": "comfyui"
-  }
-}
-```
-
-The current ComfyUI workflow file is:
-
-```text
-Config/Local_Render_Workflows/body_reference_preview_comfyui-api.json
-```
-
-The local render adapter:
-
-- reads `Final_Image_Prompt.md`
-- splits positive prompt and `Negative constraints:`
-- loads workflow JSON
-- injects prompt/settings where supported
-- queues ComfyUI via local API
-- downloads the generated image
-- writes PNG and JSON metadata
-
-## Review-Only Local Test Renders
-
-Prompt review can generate optional local test images.
-
-These are saved under the job output directory:
-
-```text
-Local_Test_Renders/test_YYYYMMDD_HHMMSS.png
-Local_Test_Renders/test_YYYYMMDD_HHMMSS.json
-```
-
-This is only a review aid.
-
-It does not:
-
-- modify `Final_Image_Prompt.md`
-- inspect render prompts
-- advance the job
-- overwrite final body-reference output
-- require ComfyUI for normal prompt compilation
+See [Local Image Generation](Local_Image_Generation.md) for complete configuration, compilation, backend, queue, CLI, artifact, troubleshooting, and example documentation.
 
 ## Filesystem AI Proxy
 
