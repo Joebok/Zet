@@ -182,6 +182,10 @@ button:disabled {
   color: #fff;
 }
 
+#character-assets-menu {
+  max-width: 170px;
+}
+
 .toolbar-menu {
   align-items: center;
   display: flex;
@@ -1690,6 +1694,10 @@ tr.auxiliary-row td:last-child {
 .ai-automation-panel {
   grid-column: 2;
   grid-row: 2 / span 5;
+}
+
+.local-image-config-panel {
+  grid-column: 1;
 }
 
 .ai-processes-panel {

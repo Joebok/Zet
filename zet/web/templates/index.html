@@ -36,17 +36,19 @@
 
   <nav class="tabs" aria-label="Dashboard sections">
     <button class="tab onboarding-tab" data-page="onboarding">Onboarding</button>
-    <button class="tab active workflow-tab" data-page="assets">Assets</button>
-    <button class="tab workflow-tab" data-page="manifest">Manifest</button>
+    <select id="character-assets-menu" class="tab active" aria-label="Character Assets">
+      <option value="" selected>Character Assets</option>
+      <option value="assets">Assets</option>
+      <option value="manifest">Manifest</option>
+      <option value="costumes">Costumes</option>
+      <option value="expressions">Expressions</option>
+      <option value="turnarounds">Turnarounds</option>
+      <option value="identity-keys">Identity Keys</option>
+      <option value="phase-comparison">Phase Comparison</option>
+    </select>
     <button class="tab workflow-tab" data-page="prompt-review">Prompt Inspection</button>
     <button class="tab workflow-tab" data-page="render-console">Render Console</button>
     <button class="tab workflow-tab" data-page="render-review">Image Review</button>
-    <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
-    <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
-    <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Resources</button>
-    <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
-    <button class="tab workflow-tab" data-page="costumes">Costumes</button>
-    <button class="tab workflow-tab" data-page="expressions">Expressions</button>
     <button class="tab workflow-tab" data-page="stories">Stories</button>
     <button class="tab workflow-tab" data-page="scenes">Scenes</button>
     <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
@@ -758,7 +760,7 @@
             <div class="button-row compact">
               <button id="copy-prompt">Copy Prompt</button>
               <button id="analyze-prompt" type="button" disabled>Analyze Prompt</button>
-              <button id="view-prompt-analysis" type="button" aria-label="View prompt analysis" title="View prompt analysis" disabled>&#128065;</button>
+              <button id="view-prompt-analysis" class="scene-builder-analysis-view" type="button" aria-label="View prompt analysis" title="View prompt analysis" disabled>&#128065;</button>
             </div>
           </div>
           <div id="prompt-review-message" class="action-message" hidden></div>
@@ -1027,7 +1029,7 @@
           </label>
           <button id="send-monitor-test" class="update-action">Send Monitor Test</button>
         </section>
-        <section class="control-panel ai-automation-panel">
+        <section class="control-panel ai-automation-panel local-image-config-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>

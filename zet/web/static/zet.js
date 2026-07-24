@@ -97,6 +97,7 @@ const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
 const newCharacterButton = document.querySelector("#new-character");
 const newPhaseButton = document.querySelector("#new-phase");
+const characterAssetsMenu = document.querySelector("#character-assets-menu");
 const headerFitmentPreview = document.querySelector("#header-fitment-preview");
 const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
@@ -1565,6 +1566,9 @@ async function activatePage(page, options = {}) {
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
+  const characterAssetPages = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison"];
+  characterAssetsMenu.classList.toggle("active", characterAssetPages.includes(page));
+  characterAssetsMenu.value = "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
   document.querySelector("#assets-page").classList.toggle("active", page === "assets");
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
@@ -1648,7 +1652,14 @@ async function activatePage(page, options = {}) {
 }
 
 function setupTabs() {
-  for (const button of document.querySelectorAll(".tab")) {
+  characterAssetsMenu.addEventListener("change", async () => {
+    const page = characterAssetsMenu.value;
+    if (page === "identity-keys") {
+      state.identityKeyMode = "list";
+    }
+    await activatePage(page);
+  });
+  for (const button of document.querySelectorAll("button.tab")) {
     button.addEventListener("click", async () => {
       if (button.dataset.page === "identity-keys") {
         state.identityKeyMode = "list";

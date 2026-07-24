@@ -1,14 +1,8 @@
 # To Do items
 
-After P1, the eye glyph on Prompt Inspection does not change to purple w/ white lettering when the prompt validation has been harvested.
+Story Rename
 
-Scene Builder 
-- add phase to element name
-- better filtering on images 
-
-Story Rename/Delete
-
-Scene Rename/Delete
+Scene Rename
 
 Automate Scenes
 - Scene Interview - series of questions to ask to fill in the scene .json file.
