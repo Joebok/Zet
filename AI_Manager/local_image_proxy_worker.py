@@ -197,6 +197,9 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
     if "scene_render_ir_path" in parameters:
         ir_file = str(ask_manifest.get("scene_render_ir_file") or "").strip()
         kwargs["scene_render_ir_path"] = folder / ir_file if ir_file else None
+    if "seed" in parameters:
+        value = ask_manifest.get("seed")
+        kwargs["seed"] = int(value) if str(value or "").strip() else None
     return kwargs
 
 
@@ -255,6 +258,7 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
 
         result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
         shutil.copy2(result.image_path, folder / expected_output)
+        backend_metadata = read_json(result.metadata_path) if result.metadata_path.exists() else {}
         artifact_files = []
         for artifact_path in getattr(result, "artifact_paths", []) or []:
             source = Path(artifact_path)
@@ -269,6 +273,8 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
             {
                 "version": 1,
                 "preset": preset_name,
+                "workflow_kind": backend_metadata.get("workflow_kind"),
+                "seed": backend_metadata.get("resolved_seed", backend_metadata.get("seed")),
                 "local_render": str(result.image_path),
                 "local_render_metadata": str(result.metadata_path),
                 "backend_prompt_id": result.prompt_id,
@@ -279,6 +285,9 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
         )
 
         answer_manifest["status"] = "SUCCESS"
+        answer_manifest["render_preset"] = preset_name
+        answer_manifest["workflow_kind"] = backend_metadata.get("workflow_kind")
+        answer_manifest["seed"] = backend_metadata.get("resolved_seed", backend_metadata.get("seed"))
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)

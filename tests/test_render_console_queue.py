@@ -261,6 +261,49 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
         self.assertNotIn("reference_files", kwargs)
 
+    def test_parallel_local_render_asks_keep_distinct_seeds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.toml"
+            config_path.write_text(
+                f"""
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+""".lstrip(),
+                encoding="utf-8",
+            )
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            prompt_path = workspace / "Condensed_Image_Prompt.md"
+            prompt_path.write_text("prompt: scene\nnegative: bad\n", encoding="utf-8")
+            app = ZetApp.from_config(config_path)
+            manifest = {"ask_id": "Ask_Story_Test", "worker_type": "manual_chatgpt_render"}
+
+            first = app.stage_render_task_local_render_ask(
+                manifest,
+                prompt_path,
+                workspace,
+                allow_parallel=True,
+                seed=101,
+            )
+            second = app.stage_render_task_local_render_ask(
+                manifest,
+                prompt_path,
+                workspace,
+                allow_parallel=True,
+                seed=202,
+            )
+
+            self.assertNotEqual(first, second)
+            first_manifest = json.loads((first / "ask_manifest.json").read_text(encoding="utf-8"))
+            second_manifest = json.loads((second / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(101, first_manifest["seed"])
+            self.assertEqual(202, second_manifest["seed"])
+
     def test_stage_scene_local_render_ask_adds_forge_layout_for_multiple_subjects(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -405,6 +448,7 @@ Checkpoint = "model.safetensors"
 
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual("comfyui-core-preview", manifest["render_preset"])
+            self.assertEqual("core_txt2img_scene_preview", manifest["workflow_kind"])
             self.assertEqual("Scene_Render_IR.json", manifest["scene_render_ir_file"])
             self.assertNotIn("render_layout", manifest)
             self.assertEqual(ir_text, (ask_path / "Scene_Render_IR.json").read_text(encoding="utf-8"))
@@ -444,6 +488,28 @@ Checkpoint = "model.safetensors"
             )
 
         self.assertEqual(Path("job") / "Scene_Render_IR.json", kwargs["scene_render_ir_path"])
+
+    def test_local_image_worker_forwards_fixed_seed_when_supported(self) -> None:
+        def render_image(
+            *,
+            project_root,
+            final_prompt_path,
+            job_output_dir,
+            prompt_review_path=None,
+            preset_name="",
+            seed=None,
+        ):
+            return None
+
+        with patch.object(local_image_proxy_worker, "render_image", render_image):
+            kwargs = local_image_proxy_worker.render_image_kwargs(
+                {"seed": 12345},
+                Path("prompt.md"),
+                Path("job"),
+                "preset",
+            )
+
+        self.assertEqual(12345, kwargs["seed"])
 
     def test_harvester_archives_already_harvested_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

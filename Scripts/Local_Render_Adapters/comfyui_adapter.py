@@ -10,6 +10,7 @@ from typing import Any
 from zet.services.comfyui_render_service import (
     compile_ir_to_comfyui_workflow,
     compile_prompt_to_comfyui_workflow,
+    list_comfyui_node_types,
     run_comfyui_workflow,
 )
 from zet.services.local_render_types import LocalRenderError, LocalRenderResult
@@ -51,13 +52,18 @@ def render_preview(
     profile_name: str = "comfyui-core-preview",
     scene_render_ir_path: Path | None = None,
     aspect_ratio: str = "",
+    reference_files: list[dict[str, Any]] | None = None,
+    seed: int | None = None,
 ) -> LocalRenderResult:
     profile = _load_profile(project_root, profile_name)
     config = _load_config(project_root)
     checkpoint = str(config.get("Checkpoint") or "")
     positive_globals = str(config.get("PositivePromptGlobals") or "")
     negative_globals = str(config.get("NegativePromptGlobals") or "")
-    seed = profile.get("seed")
+    profile_seed = profile.get("seed")
+    selected_seed = seed if seed is not None else profile_seed
+    workflow_kind = str(profile.get("workflow_kind") or "core_txt2img_scene_preview")
+    server_url = str(config.get("ServerURL") or "http://127.0.0.1:8188")
 
     ir: dict[str, Any] | None = None
     ir_hash = ""
@@ -72,8 +78,14 @@ def render_preview(
             checkpoint=checkpoint,
             positive_prompt_globals=positive_globals,
             negative_prompt_globals=negative_globals,
-            seed=None if str(seed).lower() == "random" else int(seed),
+            seed=None if str(selected_seed).lower() == "random" else int(selected_seed),
             output_prefix=f"Zet/{scene_slug}",
+            reference_files=reference_files,
+            available_node_types=(
+                list_comfyui_node_types(server_url)
+                if workflow_kind == "ipadapter_scene_preview"
+                else None
+            ),
         )
     else:
         positive, negative = split_labeled_prompt(final_prompt_path.read_text(encoding="utf-8"))
@@ -84,18 +96,31 @@ def render_preview(
             checkpoint=checkpoint,
             positive_prompt_globals=positive_globals,
             negative_prompt_globals=negative_globals,
-            seed=None if str(seed).lower() == "random" else int(seed),
+            seed=None if str(selected_seed).lower() == "random" else int(selected_seed),
             aspect_ratio=aspect_ratio,
         )
 
     workflow_path = job_output_dir / "ComfyUI_Workflow_API.json"
+    debug_path = job_output_dir / "ComfyUI_Compilation_Debug.json"
+    pose_path = job_output_dir / "ComfyUI_Pose_Layout_Control.json"
     _write_json(workflow_path, compilation.workflow)
+    _write_json(debug_path, {
+        "workflow_kind": compilation.workflow_kind,
+        "seed": compilation.seed,
+        "prompts": compilation.prompts,
+        **compilation.debug,
+    })
+    _write_json(
+        pose_path,
+        compilation.debug.get("layout_plan", {}).get("pose_control", {}),
+    )
     render_dir = job_output_dir / str(profile.get("output_subdir") or "Local_Test_Renders")
     started_at = datetime.now()
     run = run_comfyui_workflow(
         compilation.workflow,
-        server_url=str(config.get("ServerURL") or "http://127.0.0.1:8188"),
+        server_url=server_url,
         output_dir=render_dir,
+        reference_files=compilation.debug.get("references_used", []),
         poll_seconds=float(config.get("PollSeconds", 1.0)),
         timeout_seconds=float(config.get("TimeoutSeconds", 300.0)),
     )
@@ -107,14 +132,19 @@ def render_preview(
         "elapsed_seconds": round((completed_at - started_at).total_seconds(), 3),
         "backend": "comfyui",
         "profile": profile_name,
+        "workflow_kind": compilation.workflow_kind,
         "profile_settings": profile,
-        "server_url": str(config.get("ServerURL") or "http://127.0.0.1:8188"),
+        "server_url": server_url,
         "checkpoint": checkpoint,
         "scene_render_ir": str(scene_render_ir_path) if scene_render_ir_path else None,
         "scene_render_ir_sha256": ir_hash or None,
         "final_prompt": str(final_prompt_path),
         "prompts": compilation.prompts,
+        "layout_plan": compilation.debug.get("layout_plan", {}),
+        "references_used": compilation.debug.get("references_used", []),
+        "ipadapter_applications": compilation.debug.get("ipadapter_applications", []),
         "seed": compilation.seed,
+        "resolved_seed": compilation.seed,
         "width": compilation.width,
         "height": compilation.height,
         "prompt_id": run.prompt_id,
@@ -128,5 +158,5 @@ def render_preview(
         metadata_path=metadata_path,
         prompt_review_path=prompt_review_path,
         prompt_id=run.prompt_id,
-        artifact_paths=[workflow_path, metadata_path],
+        artifact_paths=[workflow_path, debug_path, pose_path, metadata_path],
     )

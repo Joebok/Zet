@@ -48,6 +48,7 @@
     </select>
     <button class="tab workflow-tab" data-page="prompt-review">Prompt Inspection</button>
     <button class="tab workflow-tab" data-page="render-console">Render Console</button>
+    <button class="tab workflow-tab" data-page="local-image-review">Local Image Review</button>
     <button class="tab workflow-tab" data-page="render-review">Image Review</button>
     <button class="tab workflow-tab" data-page="stories">Stories</button>
     <button class="tab workflow-tab" data-page="scenes">Scenes</button>
@@ -998,6 +999,59 @@
       </div>
     </section>
 
+    <section id="local-image-review-page" class="page">
+      <div class="page-title-row">
+        <h1>Local Image Review</h1>
+        <div id="local-image-review-status" class="status-text"></div>
+      </div>
+      <div class="local-image-review-layout">
+        <aside class="review-sidebar">
+          <div class="button-row two">
+            <button id="local-image-review-prev" type="button">Previous</button>
+            <button id="local-image-review-next" type="button">Next</button>
+          </div>
+          <button id="local-image-review-refresh" type="button">Refresh</button>
+          <table id="local-image-review-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+                <th>ask</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main local-image-review-main">
+          <div class="review-header">
+            <h2 id="local-image-review-title">Select a render task</h2>
+            <div class="local-image-review-controls">
+              <button id="local-image-review-clear" type="button" disabled>Clear</button>
+              <label>
+                Images
+                <select id="local-image-review-count">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
+                </select>
+              </label>
+              <button id="local-image-review-generate" class="primary-action" type="button" disabled>Gen Local Image(s)</button>
+            </div>
+          </div>
+          <p id="local-image-review-message" class="status-text"></p>
+          <div id="local-image-review-gallery" class="local-image-review-gallery">
+            <div class="image-placeholder">No local images.</div>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section id="turnarounds-page" class="page">
       <div class="page-title-row">
         <h1>Turnarounds</h1>
@@ -1086,7 +1140,6 @@
             <button id="refresh-ai-controls" class="navigation-action">Refresh</button>
             <button id="activate-proxy-stop" class="danger-action">Activate Stop</button>
             <button id="resume-proxy-stop" class="update-action">Resume</button>
-            <button id="dump-ai-queue" class="neutral-action">Dump Queue</button>
           </div>
           <label>
             Monitor note
@@ -1127,7 +1180,10 @@
           </table>
         </section>
         <section class="control-panel queue-panel">
-          <h2>Queue</h2>
+          <div class="page-title-row">
+            <h2>Queue</h2>
+            <button id="dump-ai-queue" class="neutral-action">Dump Queue</button>
+          </div>
           <div id="queue-counts" class="summary-bar"></div>
           <div class="queue-tables">
             <section>

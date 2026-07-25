@@ -221,7 +221,7 @@ class AIProxyService:
             path.mkdir(parents=True, exist_ok=True)
 
     def _manifest_payload(self, ask: AIProxyAsk) -> dict:
-        return {
+        payload = {
             "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": ask.ask_id,
             "asset_id": ask.asset_id,
@@ -245,6 +245,10 @@ class AIProxyService:
             "ollama_num_ctx": ask.ollama_num_ctx,
             "consumer": ask.consumer,
         }
+        workflow_kind = self._local_render_workflow_kind()
+        if ask.worker_type == "local_image_render" and workflow_kind:
+            payload["workflow_kind"] = workflow_kind
+        return payload
 
     def _prompt_contents(self, asset) -> str:
         """Read the prompt text that should be copied into a queued ask."""
@@ -337,6 +341,18 @@ class AIProxyService:
         if str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower() == "comfyui":
             return str(getattr(self.path_service.config, "comfyui_profile", "comfyui-core-preview"))
         return str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview"))
+
+    def _local_render_workflow_kind(self) -> str:
+        if str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower() != "comfyui":
+            return ""
+        profile_name = self._local_render_preset()
+        profiles = self._read_json_if_exists(
+            self.path_service.project_root / "Config" / "Local_Render_Presets.json"
+        )
+        profile = profiles.get(profile_name) if isinstance(profiles, dict) else None
+        if isinstance(profile, dict) and str(profile.get("workflow_kind") or "").strip():
+            return str(profile["workflow_kind"])
+        return "core_txt2img_scene_preview"
 
     def _prompt_condense_model(self) -> str:
         return str(getattr(self.path_service.config, "prompt_condense_model", "llama3.2-vision:11b"))
@@ -547,8 +563,9 @@ class AIProxyService:
         target_output_dir: Path,
         render_layout: dict | None = None,
         scene_render_ir_path: Path | None = None,
+        seed: int | None = None,
     ) -> dict:
-        stamp = self._timestamp_compact()
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
         ask_id = f"Ask_Render_Task_{manifest.get('ask_id') or 'LOCAL'}_LOCAL_RENDER_{stamp}"
         ask_manifest = {
@@ -575,6 +592,11 @@ class AIProxyService:
             "render_preset": self._local_render_preset(),
             "reference_files": reference_files_payload(manifest.get("reference_files") or []),
         }
+        workflow_kind = self._local_render_workflow_kind()
+        if workflow_kind:
+            ask_manifest["workflow_kind"] = workflow_kind
+        if seed is not None:
+            ask_manifest["seed"] = int(seed)
         if manifest.get("aspect_ratio"):
             ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
         if render_layout:
@@ -590,13 +612,17 @@ class AIProxyService:
         target_output_dir: Path,
         render_layout: dict | None = None,
         scene_render_ir_path: Path | None = None,
+        *,
+        allow_parallel: bool = False,
+        seed: int | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
-        for path in self.ai_proxy_path_service.task_paths("ask", "answer"):
-            queued = self._read_json_if_exists(path / "ask_manifest.json")
-            if queued.get("task_type") == "local_test_render" and queued.get("source_ask_id") == manifest.get("ask_id"):
-                if not (path / "harvest_manifest.json").exists():
-                    return path
+        if not allow_parallel:
+            for path in self.ai_proxy_path_service.task_paths("ask", "answer"):
+                queued = self._read_json_if_exists(path / "ask_manifest.json")
+                if queued.get("task_type") == "local_test_render" and queued.get("source_ask_id") == manifest.get("ask_id"):
+                    if not (path / "harvest_manifest.json").exists():
+                        return path
 
         ask_manifest = self.render_task_local_render_api_params(
             manifest,
@@ -604,6 +630,7 @@ class AIProxyService:
             target_output_dir,
             render_layout,
             scene_render_ir_path,
+            seed,
         )
         ask_path = self.ai_proxy_path_service.ask_path(ask_manifest["ask_id"])
         ask_path.mkdir(parents=True, exist_ok=False)
@@ -616,7 +643,14 @@ class AIProxyService:
             )
         return ask_path
 
-    def stage_scene_local_render_ask(self, manifest: dict, workspace: Path) -> Path:
+    def stage_scene_local_render_ask(
+        self,
+        manifest: dict,
+        workspace: Path,
+        *,
+        allow_parallel: bool = False,
+        seed: int | None = None,
+    ) -> Path:
         prompt_path = workspace / "Local_Render_Prompt.md"
         if not prompt_path.exists():
             raise FileNotFoundError(f"No local render prompt was found: {prompt_path}")
@@ -675,6 +709,8 @@ class AIProxyService:
             workspace,
             render_layout,
             ir_path if selected_backend == "comfyui" else None,
+            allow_parallel=allow_parallel,
+            seed=seed,
         )
 
     def stage_prompt_inspection_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:

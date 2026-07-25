@@ -199,11 +199,6 @@ class PromptReviewService:
         images = sorted(render_dir.glob("test_*.png"), key=lambda path: path.stat().st_mtime, reverse=True)
         return images[0] if images else None
 
-    def clear_local_test_renders(self, workspace: Path) -> None:
-        render_dir = workspace / "Local_Test_Renders"
-        if render_dir.exists() and render_dir.is_dir():
-            shutil.rmtree(render_dir)
-
     def recompile(
         self,
         character: str,

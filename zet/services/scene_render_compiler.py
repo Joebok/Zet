@@ -115,6 +115,7 @@ def compile_scene_render_ir(
             "profile": story_profile,
         },
         "environment": setup.get("environment", {}),
+        "depth_lanes": scene_data.get("depth_lanes", {}),
         "elements": _items(scene_data.get("scene_elements")),
         "placements": placements,
         "props": _items(scene_data.get("props_and_states")),
@@ -135,6 +136,8 @@ def validate_scene_render_ir(ir: dict[str, Any]) -> None:
     for key in ("scene", "source", "canvas", "composition", "environment", "resolved_sources"):
         if not isinstance(ir.get(key), dict):
             raise ValueError(f"Scene render IR {key} must be an object.")
+    if "depth_lanes" in ir and not isinstance(ir.get("depth_lanes"), dict):
+        raise ValueError("Scene render IR depth_lanes must be an object.")
     for key in ("elements", "placements"):
         if not isinstance(ir.get(key), list):
             raise ValueError(f"Scene render IR {key} must be an array.")
@@ -992,8 +995,6 @@ def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = Non
         "centered foreground character",
         "cropped body",
         "cropped feet",
-        "looking at viewer",
-        "front-facing body",
         "extra limbs",
         "malformed hands",
         "text",

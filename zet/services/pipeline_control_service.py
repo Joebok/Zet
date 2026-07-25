@@ -152,7 +152,7 @@ class PipelineControlService:
         result = {"stable_matrix": [], "comfyui": []}
         for name, profile in profiles.items() if isinstance(profiles, dict) else []:
             backend = str(profile.get("backend") or "") if isinstance(profile, dict) else ""
-            if backend in result:
+            if backend in result and profile.get("enabled", True):
                 result[backend].append(str(name))
         return {backend: sorted(names) for backend, names in result.items()}
 

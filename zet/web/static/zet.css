@@ -1361,6 +1361,60 @@ tr.auxiliary-row td:last-child {
   grid-template-columns: 260px minmax(460px, 1fr) minmax(520px, 0.5fr);
 }
 
+.local-image-review-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.local-image-review-main {
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.local-image-review-controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.local-image-review-controls label {
+  min-width: 78px;
+}
+
+.local-image-review-gallery {
+  align-content: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.local-image-review-card {
+  background: #101828;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #e4e7ec;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.local-image-review-card img {
+  height: auto;
+  max-height: 70vh;
+  max-width: 100%;
+  object-fit: contain;
+  place-self: center;
+}
+
+.local-image-review-card p {
+  font-size: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .render-console-actions {
   min-width: 0;
 }
@@ -1940,6 +1994,7 @@ dd {
   }
 
   .render-console-layout,
+  .local-image-review-layout,
   .turnaround-layout,
   .render-comparison,
   .compact-details {

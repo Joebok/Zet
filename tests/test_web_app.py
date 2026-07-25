@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -531,6 +532,17 @@ Backend = "manual_chatgpt"
             self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
             self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
             self.assertIn('<option value="comfyui">ComfyUI</option>', html)
+            self.assertIn('data-page="local-image-review">Local Image Review</button>', html)
+            self.assertLess(
+                html.index('data-page="render-console">Render Console</button>'),
+                html.index('data-page="local-image-review">Local Image Review</button>'),
+            )
+            self.assertLess(
+                html.index('data-page="local-image-review">Local Image Review</button>'),
+                html.index('data-page="render-review">Image Review</button>'),
+            )
+            self.assertIn('id="local-image-review-count"', html)
+            self.assertIn('id="local-image-review-gallery"', html)
             self.assertIn('id="stable-matrix-settings"', html)
             self.assertIn('id="comfyui-settings" hidden', html)
             self.assertIn('id="setting-comfyui-checkpoint"', html)
@@ -840,12 +852,12 @@ Backend = "manual_chatgpt"
             self.assertEqual(response.json()["text"], '{"prompt": "rendered"}\n')
             self.assertEqual(response.json()["path"], str(local_render_dir / "Stable_Matrix_API_Call.json"))
 
-    def test_render_console_clear_and_fail_remove_all_local_test_renders(self):
+    def test_render_console_clear_removes_only_images_and_fail_preserves_them(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
-            ask_path = self._write_manual_render_ask(root)
-            render_dir = ask_path / "Local_Test_Renders"
+            self._write_manual_render_ask(root)
+            render_dir = root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front" / "Local_Test_Renders"
             render_dir.mkdir()
             (render_dir / "test_1.png").write_bytes(b"image")
             (render_dir / "test_1.json").write_text("{}", encoding="utf-8")
@@ -854,9 +866,11 @@ Backend = "manual_chatgpt"
 
             cleared = client.delete("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render")
             self.assertEqual(cleared.status_code, 200)
-            self.assertFalse(render_dir.exists())
+            self.assertTrue(render_dir.exists())
+            self.assertFalse((render_dir / "test_1.png").exists())
+            self.assertTrue((render_dir / "test_1.json").exists())
+            self.assertTrue((render_dir / "Stable_Matrix_API_Call.json").exists())
 
-            render_dir.mkdir()
             (render_dir / "test_2.png").write_bytes(b"image")
             (render_dir / "test_2.json").write_text("{}", encoding="utf-8")
             failed = client.post(
@@ -864,7 +878,54 @@ Backend = "manual_chatgpt"
                 json={"reason": "Test failure"},
             )
             self.assertEqual(failed.status_code, 200)
-            self.assertFalse(render_dir.exists())
+            self.assertTrue((render_dir / "test_2.png").exists())
+            self.assertTrue((render_dir / "test_2.json").exists())
+
+    def test_local_image_review_lists_clears_and_queues_distinct_seed_images(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            self._write_manual_render_ask(root)
+            workspace = root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front"
+            (workspace / "Condensed_Image_Prompt.md").write_text("prompt: test\nnegative: bad\n", encoding="utf-8")
+            render_dir = workspace / "Local_Test_Renders"
+            render_dir.mkdir()
+            older = render_dir / "test_old.png"
+            newer = render_dir / "test_new.png"
+            older.write_bytes(b"old")
+            newer.write_bytes(b"new")
+            os.utime(older, (100, 100))
+            os.utime(newer, (200, 200))
+            (render_dir / "test_new.json").write_text("{}", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            detail = client.get("/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST")
+
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(["test_new.png", "test_old.png"], [item["name"] for item in detail.json()["images"]])
+
+            generated = client.post(
+                "/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST/images",
+                params={"count": 3},
+            )
+
+            self.assertEqual(generated.status_code, 200)
+            self.assertEqual(3, len(generated.json()["queued"]))
+            seeds = [item["seed"] for item in generated.json()["queued"]]
+            self.assertEqual(3, len(set(seeds)))
+            queued_manifests = [
+                json.loads(path.read_text(encoding="utf-8"))
+                for path in (root / "Queue" / "Ollama_Proxy" / "Ask").glob("Ask_Render_Task_*/ask_manifest.json")
+            ]
+            self.assertEqual(3, len(queued_manifests))
+            self.assertEqual(set(seeds), {item["seed"] for item in queued_manifests})
+
+            cleared = client.delete("/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST/images")
+
+            self.assertEqual(cleared.status_code, 200)
+            self.assertEqual(2, cleared.json()["removed_count"])
+            self.assertEqual([], cleared.json()["images"])
+            self.assertTrue((render_dir / "test_new.json").exists())
 
     def test_harvest_continues_after_malformed_answer_folder(self):
         with tempfile.TemporaryDirectory() as temp_dir:

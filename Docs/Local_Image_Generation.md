@@ -2,7 +2,7 @@
 
 This document describes Zet's complete local image generation process: configuration, scene compilation, backend dispatch, ComfyUI and Stable Matrix execution, filesystem queue processing, artifact harvesting, direct CLI use, and troubleshooting.
 
-The checked-in example bundle is in [`Docs/ComfyUI_Example`](ComfyUI_Example/README.md). It is a real successful preview of the `FirstDay` story scene `Chapter-03-Collision`.
+The checked-in reference snapshot is in [`Docs/Old/ComfyUI_Example`](Old/ComfyUI_Example/README.md). It is a real successful preview of the `FirstDay` story scene `Chapter-03-Collision`.
 
 ## Purpose and boundaries
 
@@ -108,6 +108,7 @@ TimeoutSeconds = 300.0
 {
   "comfyui-core-preview": {
     "backend": "comfyui",
+    "workflow_kind": "core_txt2img_scene_preview",
     "short_side": 640,
     "max_long_side": 960,
     "steps": 28,
@@ -116,12 +117,25 @@ TimeoutSeconds = 300.0
     "scheduler": "karras",
     "denoise": 1.0,
     "seed": "random",
+    "supports_reference_images": false,
+    "supports_pose_control": false,
+    "supports_masks": false,
+    "return_all_images": true,
     "output_subdir": "Local_Test_Renders"
   }
 }
 ```
 
 Profiles contain generation parameters, not project-specific checkpoint or prompt-global choices. The Image Config API returns profiles grouped by backend so each backend keeps its own selection.
+
+ComfyUI compilation is profile-driven:
+
+- `comfyui-core-preview` uses `core_txt2img_scene_preview`, the built-in-node baseline.
+- Prompt-only assets automatically use `core_txt2img_prompt_only`.
+- `comfyui-ipadapter-preview` uses `ipadapter_scene_preview` and resolved reference assignments.
+- `comfyui-openpose-preview` reserves `openpose_scene_preview`; it is disabled until a pose workflow consumes the persisted control artifact.
+
+The capability flags declare workflow intent without changing existing profile parsing.
 
 ### Image Config page
 
@@ -257,20 +271,31 @@ Local_Test_Renders/test_<timestamp>.json
 
 ## ComfyUI execution
 
-ComfyUI supports two compilation modes.
+ComfyUI uses a workflow compiler registry. A profile's `workflow_kind` selects a scene compiler, while prompt-only assets route to the compatible prompt compiler.
 
 ### Scene IR mode
 
 `compile_ir_to_comfyui_workflow(...)`:
 
 1. Validates the IR.
-2. Derives a global prompt, negative prompt, and ordered character-region prompts.
+2. Derives a concise global prompt, contradiction-aware negative prompt, and identity-first ordered character prompts.
 3. Appends ComfyUI-specific prompt globals.
 4. Derives dimensions from the IR aspect ratio and profile limits.
 5. Resolves a fixed or random seed.
-6. Produces a ComfyUI API-format workflow.
+6. Selects the profile's registered workflow compiler and produces API-format workflow JSON.
 
-One character receives the full canvas. Multiple characters receive ordered, slightly overlapping horizontal regions based on scene composition. The overlap helps preserve whole-image coherence while keeping character conditioning distinct.
+### Scene layout planning
+
+The backend-neutral layout planner derives one normalized box per visible primary character from `composition.left_to_right`, `position_within_cell`, depth, optional focal point, and optional scale hints.
+
+- One character receives nearly the full useful canvas.
+- Two characters receive broad, slightly overlapping left/right boxes.
+- Three or more characters use explicit horizontal anchors and foreground, midground, or background geometry.
+- Characters sharing a lane are deterministically nudged apart.
+- A focal subject receives a larger box and stronger conditioning.
+- Backdrops remain in global conditioning so they do not compete equally with character branches.
+
+Both normalized and pixel rectangles, conditioning strengths, and resolved subject order are persisted in `ComfyUI_Compilation_Debug.json` and render metadata. `ComfyUI_Pose_Layout_Control.json` records the same boxes as the first pose/layout-control artifact; the core workflow does not consume it yet.
 
 The initial workflow uses only built-in nodes:
 
@@ -284,6 +309,14 @@ The initial workflow uses only built-in nodes:
 - `SaveImage`.
 
 Dialogue is intentionally omitted from diffusion prompts.
+
+### Reference-image conditioning
+
+The core profile never uses reference images. The explicit `comfyui-ipadapter-preview` profile consumes reference assignments from the IR and resolved reference paths. It records each element-to-reference binding and applies character and backdrop weights separately.
+
+This profile requires `LoadImage` plus the `CLIPVisionLoader`, `IPAdapterModelLoader`, and `IPAdapterAdvanced` nodes supplied by ComfyUI_IPAdapter_plus, configured `ipadapter_model` and `clip_vision_model` filenames, existing resolved files, and corresponding images available to ComfyUI's input loader. Zet checks the server's node inventory and fails clearly when requirements are missing. It never silently falls back to the core workflow.
+
+The next enhanced stage is `openpose_scene_preview`. Its expected input is `ComfyUI_Pose_Layout_Control.json`; its eventual output is an OpenPose or layout-control image consumed by a registered workflow. The placeholder profile remains disabled until that renderer is implemented.
 
 ### Prompt-only mode
 
@@ -319,6 +352,8 @@ Connection failures are reported as backend-unavailable errors. Invalid JSON, mi
 
 ```text
 ComfyUI_Workflow_API.json
+ComfyUI_Compilation_Debug.json
+ComfyUI_Pose_Layout_Control.json
 Local_Test_Renders/ComfyUI_Render_Metadata.json
 Local_Test_Renders/<ComfyUI output image>
 ```
@@ -328,11 +363,13 @@ The workflow file is directly submit-ready API JSON, not the ordinary ComfyUI ed
 Render metadata records:
 
 - timestamps and elapsed time;
-- backend, profile, and full profile settings;
+- backend, profile, workflow kind, and full profile settings;
 - server URL and checkpoint;
 - source IR path and SHA-256;
 - source prompt path;
-- compiled global, negative, and region prompts;
+- compiled global, negative, and per-region prompts;
+- normalized and pixel layout boxes, subject order, and conditioning strengths;
+- resolved reference bindings used by enhanced profiles;
 - resolved seed and dimensions;
 - ComfyUI prompt ID and output descriptors;
 - downloaded image paths.
@@ -356,13 +393,14 @@ Important manifest fields include:
 | `worker_type` | `local_image_render` |
 | `task_type` | `local_test_render` |
 | `render_preset` | Selected backend profile |
+| `workflow_kind` | Selected ComfyUI workflow intent |
 | `scene_render_ir_file` | Queue-local canonical IR filename |
 | `expected_output` | Queue answer image filename |
 | `target_output_dir` | Pipeline `Local_Test_Renders` folder |
 | `artifact_output_dir` | Pipeline folder for workflow/metadata |
 | `source_ask_id` | Render Console task that requested the preview |
 
-Reference records are carried through the manifest even though the v1 ComfyUI core workflow does not yet condition on reference images.
+Reference records are carried through every ask. The core profile preserves but does not consume them; the IP-Adapter profile consumes resolved assignments.
 
 ### 2. Claiming and rendering
 
@@ -416,15 +454,15 @@ Examples:
 ```powershell
 # Deterministic compile and render
 python3 -m zet.scripts.render_comfyui_preview `
-  .\Docs\ComfyUI_Example\Scene_Render_IR.json `
-  --config .\Docs\ComfyUI_Example\Config_Example.toml `
+  .\Docs\Old\ComfyUI_Example\Scene_Render_IR.json `
+  --config .\Docs\Old\ComfyUI_Example\Config_Example.toml `
   --seed 8343556516923134802 `
   --output-dir .\.codex_tmp\comfyui-example
 
 # Inspect the generated API graph without running it
 python3 -m zet.scripts.render_comfyui_preview `
-  .\Docs\ComfyUI_Example\Scene_Render_IR.json `
-  --config .\Docs\ComfyUI_Example\Config_Example.toml `
+  .\Docs\Old\ComfyUI_Example\Scene_Render_IR.json `
+  --config .\Docs\Old\ComfyUI_Example\Config_Example.toml `
   --compile-only `
   --output-dir .\.codex_tmp\comfyui-compile
 ```
@@ -454,9 +492,9 @@ Key facts:
 | ComfyUI elapsed time | `37.618` seconds |
 | Status | `SUCCESS` |
 
-The compiled workflow contains four area-conditioning branches, one per visible character, combined with the global scene conditioning.
+The snapshot remains useful as a regression fixture because it contains four placed characters, shared left-foreground lanes, mixed depths, explicit gaze targets, and five resolved references. It records the earlier horizontal-layout result; recompiling the IR now gives shared-lane subjects distinct boxes, depth-specific geometry, explicit gaze wording, and inspectable layout metadata.
 
-![Chapter-03-Collision local ComfyUI preview](ComfyUI_Example/Local_Test_Render.png)
+![Chapter-03-Collision local ComfyUI preview](Old/ComfyUI_Example/Local_Test_Render.png)
 
 The bundle's queue files demonstrate the exact successful ask → answer → harvest lifecycle. Absolute paths in those snapshots record the machine and queue locations used during the run; they are provenance, not portable configuration.
 
@@ -475,6 +513,8 @@ Chapter-03-Collision/
 ├── Prompt_Source_Map.json
 ├── dependency_manifest.json
 ├── ComfyUI_Workflow_API.json
+├── ComfyUI_Compilation_Debug.json
+├── ComfyUI_Pose_Layout_Control.json
 ├── ComfyUI_Render_Metadata.json
 └── Local_Test_Renders/
     └── test_<timestamp>.png
@@ -498,6 +538,18 @@ The harvested ComfyUI metadata is copied to the pipeline folder for Render Conso
 - Inspect `ComfyUI_Workflow_API.json`.
 - Read the node errors returned by `/prompt`.
 
+### Enhanced profile reports missing custom nodes
+
+Use `comfyui-core-preview`, or install ComfyUI_IPAdapter_plus and configure the enhanced profile's IP-Adapter and CLIP Vision model filenames. Zet lists every missing required node and does not fall back automatically.
+
+### Enhanced profile reports a missing reference
+
+Confirm the IR assignment tag matches a record in `resolved_sources.references`, the resolved path exists on the rendering host, and the file is available to ComfyUI's `LoadImage` input. Restage the scene after repairing dependencies.
+
+### Profile and workflow do not match
+
+Inspect `workflow_kind` in `Config/Local_Render_Presets.json`, the ask manifest, and `ComfyUI_Compilation_Debug.json`. Scene profiles must use a registered scene compiler. Prompt-only inputs route to `core_txt2img_prompt_only`.
+
 ### Render times out
 
 - Increase `[ComfyUI].TimeoutSeconds`.
@@ -513,21 +565,23 @@ Restage or recompile the scene so its pipeline folder contains `Scene_Render_IR.
 
 This is expected. Prompt-only assets lack scene placements, so ComfyUI emits a normal global txt2img workflow.
 
-### Reference images are listed but not used by ComfyUI
+### Reference images are listed but not used by the core profile
 
-This is expected in the core-node baseline. The dependency and queue manifests retain reference provenance for future IP-Adapter, ControlNet, or masked conditioning profiles.
+This is expected. Select `comfyui-ipadapter-preview` explicitly to consume resolved references.
 
 ### Generated composition is weak
 
 - Inspect the IR's `composition.left_to_right` and placements.
-- Inspect the compiled region prompts in `ComfyUI_Render_Metadata.json`.
+- Inspect normalized and pixel boxes in `ComfyUI_Compilation_Debug.json`.
 - Use a fixed seed when comparing prompt or profile changes.
-- Treat the current horizontal area layout as a preview baseline, not deterministic pose control.
+- For lane collisions, supply distinct `position_within_cell` values or depth lanes where the scene permits.
+- Area boxes improve staging but are not deterministic skeletal pose control.
 
 ## Current limitations
 
-- No reference-image conditioning in the core ComfyUI profile.
-- No ControlNet, OpenPose, IP-Adapter, LoRA, or custom nodes.
+- No reference-image conditioning in the core ComfyUI profile; it remains built-in-node only.
+- IP-Adapter is available only through its explicit enhanced profile and required custom nodes.
+- OpenPose/ControlNet consumption is scaffolded but not implemented.
 - No generated dialogue, captions, or speech bubbles.
 - Area conditioning guides placement but does not guarantee identity separation or pose.
 - The first ComfyUI image is used as the queue's preview result when a workflow returns multiple images.
@@ -556,4 +610,3 @@ python3 -m pytest -q
 node --check .\zet\web\static\zet.js
 git diff --check
 ```
-

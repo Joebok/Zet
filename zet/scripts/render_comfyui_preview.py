@@ -7,7 +7,11 @@ import json
 from pathlib import Path
 import sys
 
-from zet.services.comfyui_render_service import compile_ir_to_comfyui_workflow, run_comfyui_workflow
+from zet.services.comfyui_render_service import (
+    compile_ir_to_comfyui_workflow,
+    list_comfyui_node_types,
+    run_comfyui_workflow,
+)
 from zet.services.config_service import ConfigService
 
 
@@ -52,10 +56,27 @@ def main(argv: list[str] | None = None) -> int:
             negative_prompt_globals=config.comfyui_negative_prompt_globals,
             seed=args.seed,
             output_prefix=f"Zet/{scene_slug}",
+            available_node_types=(
+                list_comfyui_node_types(config.comfyui_server_url)
+                if str(profile.get("workflow_kind") or "") == "ipadapter_scene_preview"
+                else None
+            ),
         )
         output_dir = (args.output_dir or ir_path.parent).resolve()
         workflow_path = output_dir / "ComfyUI_Workflow_API.json"
+        debug_path = output_dir / "ComfyUI_Compilation_Debug.json"
+        pose_path = output_dir / "ComfyUI_Pose_Layout_Control.json"
         _write_json(workflow_path, compilation.workflow)
+        _write_json(debug_path, {
+            "workflow_kind": compilation.workflow_kind,
+            "seed": compilation.seed,
+            "prompts": compilation.prompts,
+            **compilation.debug,
+        })
+        _write_json(
+            pose_path,
+            compilation.debug.get("layout_plan", {}).get("pose_control", {}),
+        )
         print(f"Wrote {workflow_path}")
         if args.compile_only:
             return 0
@@ -66,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             compilation.workflow,
             server_url=config.comfyui_server_url,
             output_dir=render_dir,
+            reference_files=compilation.debug.get("references_used", []),
             poll_seconds=config.comfyui_poll_seconds,
             timeout_seconds=config.comfyui_timeout_seconds,
         )
@@ -77,13 +99,18 @@ def main(argv: list[str] | None = None) -> int:
             "elapsed_seconds": round((completed_at - started_at).total_seconds(), 3),
             "backend": "comfyui",
             "profile": profile_name,
+            "workflow_kind": compilation.workflow_kind,
             "profile_settings": profile,
             "server_url": config.comfyui_server_url,
             "checkpoint": checkpoint,
             "scene_render_ir": str(ir_path),
             "scene_render_ir_sha256": hashlib.sha256(ir_bytes).hexdigest(),
             "prompts": compilation.prompts,
+            "layout_plan": compilation.debug.get("layout_plan", {}),
+            "references_used": compilation.debug.get("references_used", []),
+            "ipadapter_applications": compilation.debug.get("ipadapter_applications", []),
             "seed": compilation.seed,
+            "resolved_seed": compilation.seed,
             "width": compilation.width,
             "height": compilation.height,
             "prompt_id": result.prompt_id,

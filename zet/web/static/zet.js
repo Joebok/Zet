@@ -30,6 +30,11 @@ const state = {
   renderConsoleImageBlob: null,
   renderConsoleHarvestTimer: null,
   renderConsoleHarvestRunsRemaining: 0,
+  localImageReviewTasks: [],
+  selectedLocalImageReviewAskId: null,
+  localImageReviewDetail: null,
+  localImageReviewHarvestTimer: null,
+  localImageReviewHarvestRunsRemaining: 0,
   turnaroundRows: [],
   selectedTurnaroundId: null,
   selectedAuxiliaryTurnaroundId: null,
@@ -293,6 +298,17 @@ const renderConsoleAnswerComment = document.querySelector("#render-console-answe
 const renderConsoleFailReason = document.querySelector("#render-console-fail-reason");
 const renderConsoleFailTask = document.querySelector("#render-console-fail-task");
 const renderConsoleFailStatus = document.querySelector("#render-console-fail-status");
+const localImageReviewStatus = document.querySelector("#local-image-review-status");
+const localImageReviewTaskBody = document.querySelector("#local-image-review-task-table tbody");
+const localImageReviewPrev = document.querySelector("#local-image-review-prev");
+const localImageReviewNext = document.querySelector("#local-image-review-next");
+const localImageReviewRefresh = document.querySelector("#local-image-review-refresh");
+const localImageReviewTitle = document.querySelector("#local-image-review-title");
+const localImageReviewClear = document.querySelector("#local-image-review-clear");
+const localImageReviewCount = document.querySelector("#local-image-review-count");
+const localImageReviewGenerate = document.querySelector("#local-image-review-generate");
+const localImageReviewMessage = document.querySelector("#local-image-review-message");
+const localImageReviewGallery = document.querySelector("#local-image-review-gallery");
 const manifestStatus = document.querySelector("#manifest-status");
 const manifestTaskBody = document.querySelector("#manifest-task-table tbody");
 const manifestPrev = document.querySelector("#manifest-prev");
@@ -1638,12 +1654,13 @@ async function activatePage(page, options = {}) {
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
+  document.querySelector("#local-image-review-page").classList.toggle("active", page === "local-image-review");
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
   document
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "ai-controls", "local-image-config", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "pipeline-controls", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -1699,6 +1716,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "render-console") {
     await loadRenderConsoleTasks();
+  }
+  if (page === "local-image-review") {
+    await loadLocalImageReviewTasks();
   }
   if (page === "onboarding") {
     renderOnboarding();
@@ -6207,6 +6227,190 @@ async function clearRenderConsoleLocalTest() {
   }
 }
 
+async function loadLocalImageReviewTasks(preferredAskId = null) {
+  localImageReviewStatus.textContent = "Loading render tasks...";
+  const payload = await fetchJson(`/api/render-console/tasks?${currentQuery().toString()}`);
+  state.localImageReviewTasks = payload.tasks || [];
+  const askIds = new Set(state.localImageReviewTasks.map((task) => task.ask_id));
+  state.selectedLocalImageReviewAskId =
+    preferredAskId || state.selectedLocalImageReviewAskId || state.localImageReviewTasks[0]?.ask_id || null;
+  if (state.selectedLocalImageReviewAskId && !askIds.has(state.selectedLocalImageReviewAskId)) {
+    state.selectedLocalImageReviewAskId = state.localImageReviewTasks[0]?.ask_id || null;
+  }
+  renderLocalImageReviewTaskTable();
+  localImageReviewStatus.textContent = `${state.localImageReviewTasks.length} render task(s)`;
+  if (state.selectedLocalImageReviewAskId) {
+    await selectLocalImageReviewTask(state.selectedLocalImageReviewAskId);
+  } else {
+    clearLocalImageReview();
+  }
+}
+
+function renderLocalImageReviewTaskTable() {
+  localImageReviewTaskBody.replaceChildren();
+  for (const task of state.localImageReviewTasks) {
+    const row = document.createElement("tr");
+    row.dataset.askId = task.ask_id;
+    row.classList.toggle("selected", task.ask_id === state.selectedLocalImageReviewAskId);
+    for (const value of [task.asset_id ?? "", task.ask_id]) {
+      const cell = document.createElement("td");
+      cell.textContent = value ?? "";
+      row.append(cell);
+    }
+    row.addEventListener("click", () => selectLocalImageReviewTask(task.ask_id));
+    localImageReviewTaskBody.append(row);
+  }
+}
+
+async function selectLocalImageReviewTask(askId) {
+  state.selectedLocalImageReviewAskId = askId;
+  for (const row of localImageReviewTaskBody.querySelectorAll("tr")) {
+    row.classList.toggle("selected", row.dataset.askId === askId);
+  }
+  const detail = await fetchJson(
+    `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`,
+  );
+  renderLocalImageReviewDetail(detail);
+}
+
+function clearLocalImageReview() {
+  state.localImageReviewDetail = null;
+  localImageReviewTitle.textContent = "Select a render task";
+  localImageReviewMessage.textContent = "";
+  localImageReviewClear.disabled = true;
+  localImageReviewGenerate.disabled = true;
+  localImageReviewPrev.disabled = true;
+  localImageReviewNext.disabled = true;
+  renderLocalImageReviewGallery([]);
+}
+
+function renderLocalImageReviewDetail(detail) {
+  state.localImageReviewDetail = detail;
+  const task = detail.task;
+  const storyLabel = detail.manifest?.story_slug && detail.manifest?.scene_slug
+    ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
+    : "";
+  localImageReviewTitle.textContent =
+    storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
+  localImageReviewClear.disabled = false;
+  localImageReviewGenerate.disabled = !detail.supports_local_test_render;
+  const queueState = detail.local_render_status?.state || "";
+  localImageReviewMessage.textContent = [
+    `${detail.images?.length || 0} local image(s)`,
+    queueState ? `Queue: ${queueState}` : "",
+  ].filter(Boolean).join(" | ");
+  renderLocalImageReviewGallery(detail.images || []);
+  updateLocalImageReviewNavigation();
+}
+
+function renderLocalImageReviewGallery(images) {
+  localImageReviewGallery.replaceChildren();
+  if (!images.length) {
+    const empty = document.createElement("div");
+    empty.className = "image-placeholder";
+    empty.textContent = "No local images.";
+    localImageReviewGallery.append(empty);
+    return;
+  }
+  for (const item of images) {
+    const card = document.createElement("article");
+    card.className = "local-image-review-card";
+    const image = document.createElement("img");
+    image.alt = item.name || "Local test render";
+    image.src = fileUrl(item.path, item.modified_at || Date.now().toString());
+    image.title = item.path;
+    enableFullscreenImage(image);
+    const caption = document.createElement("p");
+    caption.textContent = `${item.name || ""}${item.modified_at ? ` · ${item.modified_at}` : ""}`;
+    card.append(image, caption);
+    localImageReviewGallery.append(card);
+  }
+}
+
+function updateLocalImageReviewNavigation() {
+  const index = state.localImageReviewTasks.findIndex(
+    (task) => task.ask_id === state.selectedLocalImageReviewAskId,
+  );
+  localImageReviewPrev.disabled = index <= 0;
+  localImageReviewNext.disabled = index < 0 || index >= state.localImageReviewTasks.length - 1;
+}
+
+async function generateLocalImageReviewImages() {
+  if (!state.selectedLocalImageReviewAskId) {
+    return;
+  }
+  localImageReviewGenerate.disabled = true;
+  localImageReviewClear.disabled = true;
+  localImageReviewMessage.textContent = "Queueing local images...";
+  const params = currentQuery();
+  params.set("count", localImageReviewCount.value || "1");
+  try {
+    const payload = await fetchJson(
+      `/api/local-image-review/tasks/${encodeURIComponent(state.selectedLocalImageReviewAskId)}/images?${params.toString()}`,
+      { method: "POST" },
+    );
+    renderLocalImageReviewDetail(payload);
+    localImageReviewMessage.textContent = payload.message || "Local images queued.";
+    startLocalImageReviewHarvestTimer();
+  } catch (error) {
+    localImageReviewMessage.textContent = error.message;
+  } finally {
+    localImageReviewGenerate.disabled = !state.localImageReviewDetail?.supports_local_test_render;
+    localImageReviewClear.disabled = !state.localImageReviewDetail;
+  }
+}
+
+async function clearLocalImageReviewImages() {
+  if (!state.selectedLocalImageReviewAskId) {
+    return;
+  }
+  localImageReviewClear.disabled = true;
+  localImageReviewMessage.textContent = "Clearing local images...";
+  try {
+    const payload = await fetchJson(
+      `/api/local-image-review/tasks/${encodeURIComponent(state.selectedLocalImageReviewAskId)}/images?${currentQuery().toString()}`,
+      { method: "DELETE" },
+    );
+    renderLocalImageReviewDetail(payload);
+    localImageReviewMessage.textContent = payload.message || "Local images cleared.";
+  } catch (error) {
+    localImageReviewMessage.textContent = error.message;
+  } finally {
+    localImageReviewClear.disabled = !state.localImageReviewDetail;
+  }
+}
+
+function stopLocalImageReviewHarvestTimer() {
+  if (state.localImageReviewHarvestTimer) {
+    window.clearInterval(state.localImageReviewHarvestTimer);
+  }
+  state.localImageReviewHarvestTimer = null;
+  state.localImageReviewHarvestRunsRemaining = 0;
+}
+
+async function runLocalImageReviewHarvestTick() {
+  if (state.localImageReviewHarvestRunsRemaining <= 0 || !state.selectedLocalImageReviewAskId) {
+    stopLocalImageReviewHarvestTimer();
+    return;
+  }
+  state.localImageReviewHarvestRunsRemaining -= 1;
+  try {
+    await fetchJson("/api/ai-controls/harvest", { method: "POST" });
+    await selectLocalImageReviewTask(state.selectedLocalImageReviewAskId);
+    if (!state.localImageReviewDetail?.local_render_status?.state) {
+      stopLocalImageReviewHarvestTimer();
+    }
+  } catch (error) {
+    localImageReviewMessage.textContent = error.message;
+  }
+}
+
+function startLocalImageReviewHarvestTimer() {
+  stopLocalImageReviewHarvestTimer();
+  state.localImageReviewHarvestRunsRemaining = 40;
+  state.localImageReviewHarvestTimer = window.setInterval(runLocalImageReviewHarvestTick, 30000);
+}
+
 async function saveAuxiliaryResourceImage() {
   const resource = selectedAuxiliaryResource();
   const imageLabel = auxResourceImageLabel.value.trim();
@@ -6534,6 +6738,7 @@ characterSelect.addEventListener("change", async () => {
   state.selectedPromptReviewAskId = null;
   state.selectedRenderReviewAssetId = null;
   state.selectedRenderConsoleAskId = null;
+  state.selectedLocalImageReviewAskId = null;
   state.selectedTurnaroundId = null;
   state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
@@ -6579,6 +6784,9 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#render-console-page").classList.contains("active")) {
     await loadRenderConsoleTasks();
   }
+  if (document.querySelector("#local-image-review-page").classList.contains("active")) {
+    await loadLocalImageReviewTasks();
+  }
 });
 
 phaseSelect.addEventListener("change", async () => {
@@ -6589,6 +6797,7 @@ phaseSelect.addEventListener("change", async () => {
   state.selectedPromptReviewAskId = null;
   state.selectedRenderReviewAssetId = null;
   state.selectedRenderConsoleAskId = null;
+  state.selectedLocalImageReviewAskId = null;
   state.selectedTurnaroundId = null;
   state.selectedAuxiliaryTurnaroundId = null;
   state.selectedManifestAssetId = null;
@@ -6632,6 +6841,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#render-console-page").classList.contains("active")) {
     await loadRenderConsoleTasks();
+  }
+  if (document.querySelector("#local-image-review-page").classList.contains("active")) {
+    await loadLocalImageReviewTasks();
   }
 });
 
@@ -6996,6 +7208,25 @@ document.addEventListener("click", (event) => {
   }
 });
 renderConsoleClearLocalTest.addEventListener("click", clearRenderConsoleLocalTest);
+localImageReviewRefresh.addEventListener("click", () => loadLocalImageReviewTasks());
+localImageReviewClear.addEventListener("click", clearLocalImageReviewImages);
+localImageReviewGenerate.addEventListener("click", generateLocalImageReviewImages);
+localImageReviewPrev.addEventListener("click", () => {
+  const index = state.localImageReviewTasks.findIndex(
+    (task) => task.ask_id === state.selectedLocalImageReviewAskId,
+  );
+  if (index > 0) {
+    selectLocalImageReviewTask(state.localImageReviewTasks[index - 1].ask_id);
+  }
+});
+localImageReviewNext.addEventListener("click", () => {
+  const index = state.localImageReviewTasks.findIndex(
+    (task) => task.ask_id === state.selectedLocalImageReviewAskId,
+  );
+  if (index >= 0 && index < state.localImageReviewTasks.length - 1) {
+    selectLocalImageReviewTask(state.localImageReviewTasks[index + 1].ask_id);
+  }
+});
 renderConsolePrev.addEventListener("click", () => {
   const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
   if (index > 0) {

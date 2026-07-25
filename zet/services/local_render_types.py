@@ -24,6 +24,7 @@ class LocalRenderRequest:
     reference_files: list[dict[str, Any]] = field(default_factory=list)
     aspect_ratio: str = ""
     render_layout: dict[str, Any] | None = None
+    seed: int | None = None
 
 
 @dataclass

@@ -500,11 +500,37 @@ class ZetApp:
     ):
         return self.ai_proxy_service.stage_render_task_prompt_condense_ask_if_enabled(manifest, prompt_path, target_output_dir, force)
 
-    def stage_render_task_local_render_ask(self, manifest: dict, prompt_path: Path, target_output_dir: Path):
-        return self.ai_proxy_service.stage_render_task_local_render_ask(manifest, prompt_path, target_output_dir)
+    def stage_render_task_local_render_ask(
+        self,
+        manifest: dict,
+        prompt_path: Path,
+        target_output_dir: Path,
+        *,
+        allow_parallel: bool = False,
+        seed: int | None = None,
+    ):
+        return self.ai_proxy_service.stage_render_task_local_render_ask(
+            manifest,
+            prompt_path,
+            target_output_dir,
+            allow_parallel=allow_parallel,
+            seed=seed,
+        )
 
-    def stage_scene_local_render_ask(self, manifest: dict, workspace: Path):
-        return self.ai_proxy_service.stage_scene_local_render_ask(manifest, workspace)
+    def stage_scene_local_render_ask(
+        self,
+        manifest: dict,
+        workspace: Path,
+        *,
+        allow_parallel: bool = False,
+        seed: int | None = None,
+    ):
+        return self.ai_proxy_service.stage_scene_local_render_ask(
+            manifest,
+            workspace,
+            allow_parallel=allow_parallel,
+            seed=seed,
+        )
 
     def recompile_prompt_review(
         self,

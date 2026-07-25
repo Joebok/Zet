@@ -2,7 +2,7 @@
 
 This folder is a real successful local-preview snapshot from the `FirstDay` story scene `Chapter-03-Collision`, generated July 24, 2026.
 
-See [`../Local_Image_Generation.md`](../Local_Image_Generation.md) for the complete process.
+See [`../../Local_Image_Generation.md`](../../Local_Image_Generation.md) for the current process.
 
 ## Files
 

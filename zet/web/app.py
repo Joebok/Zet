@@ -18,6 +18,7 @@ from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIE
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
 from zet.services.gpt_helper_prompt_service import GptHelperPromptService
 from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.source_editor_service import SourceEditorService
@@ -404,6 +405,19 @@ def _render_console_detail_payload(zet_app: ZetApp, config_path: str | Path, que
         "prompt_analysis": _jsonable(prompt_analysis),
         "gpt_helper_prompt": _gpt_helper_prompt(zet_app, config_path, task),
         "local_prompt": _render_console_local_prompt_payload(zet_app, task),
+    }
+
+
+def _local_image_review_payload(zet_app: ZetApp, task) -> dict[str, Any]:
+    service = LocalImageReviewService(zet_app)
+    local_prompt = _render_console_local_prompt_payload(zet_app, task)
+    return {
+        "task": task.to_dict(),
+        "manifest": _jsonable(task.manifest),
+        "workspace": str(service.workspace(task)),
+        "images": service.list_images(task),
+        "supports_local_test_render": bool(local_prompt.get("supports_local_test_render")),
+        "local_render_status": local_prompt.get("local_render_status") or {"state": ""},
     }
 
 
@@ -2047,6 +2061,58 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         return _render_console_detail_payload(zet_app, app.state.config_path, queue, task)
 
+    @app.get("/api/local-image-review/tasks/{ask_id}")
+    def local_image_review_task(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            return _local_image_review_payload(_app(app.state.config_path), task)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local-image-review/tasks/{ask_id}/images")
+    def local_image_review_generate(
+        ask_id: str,
+        count: int = Query(1, ge=1, le=10),
+        character: str = Query(""),
+        phase: str = Query(""),
+    ) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            zet_app = _app(app.state.config_path)
+            queued = LocalImageReviewService(zet_app).queue_images(task, count)
+            payload = _local_image_review_payload(zet_app, task)
+            payload["queued"] = queued
+            payload["message"] = f"Queued {len(queued)} local image render(s) with distinct seeds."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/local-image-review/tasks/{ask_id}/images")
+    def local_image_review_clear(
+        ask_id: str,
+        character: str = Query(""),
+        phase: str = Query(""),
+    ) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            zet_app = _app(app.state.config_path)
+            removed = LocalImageReviewService(zet_app).clear_images(task)
+            payload = _local_image_review_payload(zet_app, task)
+            payload["removed_count"] = removed
+            payload["message"] = f"Cleared {removed} local image(s)."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/render-console/tasks/{ask_id}/recompile")
     def render_console_recompile_prompt(
         ask_id: str,
@@ -2166,14 +2232,14 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         try:
             zet_app = _app(app.state.config_path)
-            zet_app.prompt_review_service.clear_local_test_renders(_render_console_task_workspace(task))
+            removed = LocalImageReviewService(zet_app).clear_images(task)
             return {
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),
                 "prompt": queue.read_prompt(task),
                 "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
                 "local_prompt": _render_console_local_prompt_payload(zet_app, task),
-                "message": "Local test image cleared.",
+                "message": f"Cleared {removed} local image(s).",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2221,8 +2287,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         payload = await request.json()
         reason = str(payload.get("reason") or "")
         try:
-            zet_app = _app(app.state.config_path)
-            zet_app.prompt_review_service.clear_local_test_renders(_render_console_task_workspace(task))
             answer_path = service.submit_failure(task, reason)
             tasks = service.list_tasks(character, phase)
             return {

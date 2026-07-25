@@ -2,30 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import mimetypes
 from pathlib import Path
 import random
 import time
 from typing import Any
 import urllib.parse
+import uuid
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from zet.services.local_render_types import LocalRenderError, LocalRenderUnavailable
-from zet.services.scene_render_compiler import (
-    collect_primary_characters,
-    local_render_brief,
-    resolve_character_order,
-    validate_scene_render_ir,
+from zet.services.comfyui_workflow_registry import (
+    ComfyUICompilation,
+    compile_prompt_workflow,
+    compile_scene_workflow,
+    workflow_kind_for_profile,
 )
-
-
-@dataclass(frozen=True)
-class ComfyUICompilation:
-    workflow: dict[str, Any]
-    prompts: dict[str, Any]
-    seed: int
-    width: int
-    height: int
+from zet.services.local_render_types import LocalRenderError, LocalRenderUnavailable
+from zet.services.scene_render_compiler import validate_scene_render_ir
 
 
 @dataclass(frozen=True)
@@ -34,15 +28,6 @@ class ComfyUIRunResult:
     image_paths: list[Path]
     outputs: dict[str, Any]
     history: dict[str, Any]
-
-
-def _prompt_terms(prompt: str, additions: str) -> str:
-    parts = [prompt.strip()]
-    lower_prompt = prompt.lower()
-    for term in (item.strip() for item in additions.replace("\n", ",").split(",")):
-        if term and term.lower() not in lower_prompt:
-            parts.append(term)
-    return ", ".join(part for part in parts if part)
 
 
 def _even8(value: float) -> int:
@@ -77,104 +62,6 @@ def _resolved_seed(profile: dict[str, Any], seed: int | None) -> int:
     return int(value)
 
 
-def _region_box(index: int, count: int, width: int, height: int) -> dict[str, int | float]:
-    if count <= 1:
-        return {"x": 0, "y": 0, "width": width, "height": height, "strength": 1.1}
-    overlap = 0.12 / count
-    left = max(0.0, index / count - overlap / 2)
-    right = min(1.0, (index + 1) / count + overlap / 2)
-    top = _even8(height * 0.08)
-    region_height = min(height - top, _even8(height * 0.88))
-    x = _even8(width * left) if left else 0
-    region_width = width - x if right >= 1 else min(width - x, _even8(width * (right - left)))
-    return {
-        "x": x,
-        "y": top,
-        "width": max(8, region_width),
-        "height": max(8, region_height),
-        "strength": 1.15 if index == 0 else 1.1,
-    }
-
-
-def _workflow(
-    *,
-    global_prompt: str,
-    negative_prompt: str,
-    region_prompts: list[str],
-    profile: dict[str, Any],
-    checkpoint: str,
-    seed: int,
-    width: int,
-    height: int,
-    output_prefix: str,
-) -> dict[str, Any]:
-    if not checkpoint.strip():
-        raise LocalRenderError("ComfyUI checkpoint cannot be blank.")
-    workflow: dict[str, Any] = {
-        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
-        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": global_prompt, "clip": ["1", 1]}},
-        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": negative_prompt, "clip": ["1", 1]}},
-        "4": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
-    }
-    next_id = 10
-    positive: list[Any] = ["2", 0]
-    for index, prompt in enumerate(region_prompts):
-        text_id = str(next_id)
-        area_id = str(next_id + 1)
-        next_id += 2
-        box = _region_box(index, len(region_prompts), width, height)
-        workflow[text_id] = {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": prompt, "clip": ["1", 1]},
-        }
-        workflow[area_id] = {
-            "class_type": "ConditioningSetArea",
-            "inputs": {
-                "conditioning": [text_id, 0],
-                "width": box["width"],
-                "height": box["height"],
-                "x": box["x"],
-                "y": box["y"],
-                "strength": box["strength"],
-            },
-        }
-        combine_id = str(next_id)
-        next_id += 1
-        workflow[combine_id] = {
-            "class_type": "ConditioningCombine",
-            "inputs": {"conditioning_1": positive, "conditioning_2": [area_id, 0]},
-        }
-        positive = [combine_id, 0]
-
-    sampler_id = str(next_id)
-    decode_id = str(next_id + 1)
-    save_id = str(next_id + 2)
-    workflow[sampler_id] = {
-        "class_type": "KSampler",
-        "inputs": {
-            "seed": seed,
-            "steps": int(profile.get("steps", 28)),
-            "cfg": float(profile.get("cfg", 7.0)),
-            "sampler_name": str(profile.get("sampler_name", "dpmpp_2m")),
-            "scheduler": str(profile.get("scheduler", "karras")),
-            "denoise": float(profile.get("denoise", 1.0)),
-            "model": ["1", 0],
-            "positive": positive,
-            "negative": ["3", 0],
-            "latent_image": ["4", 0],
-        },
-    }
-    workflow[decode_id] = {
-        "class_type": "VAEDecode",
-        "inputs": {"samples": [sampler_id, 0], "vae": ["1", 2]},
-    }
-    workflow[save_id] = {
-        "class_type": "SaveImage",
-        "inputs": {"filename_prefix": output_prefix, "images": [decode_id, 0]},
-    }
-    return workflow
-
-
 def compile_ir_to_comfyui_workflow(
     ir: dict[str, Any],
     profile: dict[str, Any],
@@ -184,45 +71,25 @@ def compile_ir_to_comfyui_workflow(
     negative_prompt_globals: str = "",
     seed: int | None = None,
     output_prefix: str = "Zet/Scene",
+    reference_files: list[dict[str, Any]] | None = None,
+    available_node_types: set[str] | None = None,
 ) -> ComfyUICompilation:
     validate_scene_render_ir(ir)
-    brief = local_render_brief(ir)
-    characters, _ = resolve_character_order(ir, collect_primary_characters(ir))
-    character_ids = {str(element.get("id") or "") for element, _ in characters}
-    regions_by_id = {
-        str(region.get("element_ids", [""])[0]): str(region.get("prompt") or "")
-        for region in brief.get("regions", [])
-        if isinstance(region, dict)
-        and isinstance(region.get("element_ids"), list)
-        and region.get("element_ids")
-    }
-    region_prompts = [
-        regions_by_id.get(str(element.get("id") or ""), "")
-        for element, _ in characters
-        if regions_by_id.get(str(element.get("id") or ""), "") and str(element.get("id") or "") in character_ids
-    ]
-    plain = brief.get("plain_txt2img", {}) if isinstance(brief.get("plain_txt2img"), dict) else {}
-    global_prompt = _prompt_terms(str(brief.get("global_prompt") or plain.get("prompt") or ""), positive_prompt_globals)
-    negative_prompt = _prompt_terms(str(plain.get("negative_prompt") or ""), negative_prompt_globals)
     resolved_seed = _resolved_seed(profile, seed)
     width, height = _render_size(ir, profile)
-    prompts = {"global": global_prompt, "negative": negative_prompt, "regions": region_prompts}
-    return ComfyUICompilation(
-        workflow=_workflow(
-            global_prompt=global_prompt,
-            negative_prompt=negative_prompt,
-            region_prompts=region_prompts,
-            profile=profile,
-            checkpoint=checkpoint,
-            seed=resolved_seed,
-            width=width,
-            height=height,
-            output_prefix=output_prefix,
-        ),
-        prompts=prompts,
+    return compile_scene_workflow(
+        workflow_kind_for_profile(profile),
+        ir,
+        profile,
+        checkpoint=checkpoint,
         seed=resolved_seed,
         width=width,
         height=height,
+        positive_prompt_globals=positive_prompt_globals,
+        negative_prompt_globals=negative_prompt_globals,
+        output_prefix=output_prefix,
+        reference_files=reference_files,
+        available_node_types=available_node_types,
     )
 
 
@@ -240,24 +107,18 @@ def compile_prompt_to_comfyui_workflow(
 ) -> ComfyUICompilation:
     resolved_seed = _resolved_seed(profile, seed)
     width, height = _render_size({"canvas": {"aspect_ratio": aspect_ratio}}, profile)
-    positive = _prompt_terms(positive_prompt, positive_prompt_globals)
-    negative = _prompt_terms(negative_prompt, negative_prompt_globals)
-    return ComfyUICompilation(
-        workflow=_workflow(
-            global_prompt=positive,
-            negative_prompt=negative,
-            region_prompts=[],
-            profile=profile,
-            checkpoint=checkpoint,
-            seed=resolved_seed,
-            width=width,
-            height=height,
-            output_prefix=output_prefix,
-        ),
-        prompts={"global": positive, "negative": negative, "regions": []},
+    return compile_prompt_workflow(
+        workflow_kind_for_profile(profile, prompt_only=True),
+        positive_prompt,
+        negative_prompt,
+        profile,
+        checkpoint=checkpoint,
         seed=resolved_seed,
         width=width,
         height=height,
+        positive_prompt_globals=positive_prompt_globals,
+        negative_prompt_globals=negative_prompt_globals,
+        output_prefix=output_prefix,
     )
 
 
@@ -283,15 +144,63 @@ def _request_bytes(url: str, timeout: float = 60) -> bytes:
         raise LocalRenderUnavailable(f"ComfyUI image download failed: {url}") from exc
 
 
+def list_comfyui_node_types(server_url: str) -> set[str]:
+    payload = _request_json(f"{server_url.rstrip('/')}/object_info")
+    if not isinstance(payload, dict):
+        raise LocalRenderError("ComfyUI object_info response must be a JSON object.")
+    return {str(key) for key in payload}
+
+
+def _upload_comfyui_input(server_url: str, reference: dict[str, Any], timeout: float = 60) -> None:
+    source = Path(str(reference.get("path") or "")).expanduser()
+    if not source.is_file():
+        raise LocalRenderError(f"ComfyUI reference image file is missing: {source}")
+    input_name = str(reference.get("comfyui_input_name") or source.name).replace("\\", "/")
+    input_path = Path(input_name)
+    filename = input_path.name
+    subfolder = input_path.parent.as_posix()
+    if subfolder == ".":
+        subfolder = ""
+
+    boundary = f"----ZetComfyUI{uuid.uuid4().hex}"
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    parts = [
+        f'--{boundary}\r\nContent-Disposition: form-data; name="subfolder"\r\n\r\n{subfolder}\r\n'.encode(),
+        f'--{boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\ninput\r\n'.encode(),
+        f'--{boundary}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n'.encode(),
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode(),
+        source.read_bytes(),
+        f"\r\n--{boundary}--\r\n".encode(),
+    ]
+    url = f"{server_url.rstrip('/')}/upload/image"
+    request = Request(url, data=b"".join(parts), method="POST")
+    request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise LocalRenderUnavailable(f"ComfyUI reference upload failed: {url}") from exc
+    except json.JSONDecodeError as exc:
+        raise LocalRenderError(f"ComfyUI returned invalid JSON: {url}") from exc
+    if not isinstance(payload, dict) or not payload.get("name"):
+        raise LocalRenderError("ComfyUI reference upload response did not include a filename.")
+
+
 def run_comfyui_workflow(
     workflow: dict[str, Any],
     *,
     server_url: str,
     output_dir: Path,
+    reference_files: list[dict[str, Any]] | None = None,
     poll_seconds: float = 1.0,
     timeout_seconds: float = 300.0,
 ) -> ComfyUIRunResult:
     base_url = server_url.rstrip("/")
+    for reference in reference_files or []:
+        _upload_comfyui_input(base_url, reference)
     submitted = _request_json(f"{base_url}/prompt", "POST", {"prompt": workflow})
     if not isinstance(submitted, dict):
         raise LocalRenderError("ComfyUI prompt response must be a JSON object.")

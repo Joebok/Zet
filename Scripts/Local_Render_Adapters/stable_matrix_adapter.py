@@ -243,14 +243,15 @@ def render_preview(
     reference_files: list[dict[str, Any]] | None = None,
     aspect_ratio: str = "",
     render_layout: dict[str, Any] | None = None,
+    seed: int | None = None,
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     server_url = str(preset.get("server_url", "http://127.0.0.1:7860"))
     prompt_text = final_prompt_path.read_text(encoding="utf-8")
     positive_prompt, negative_prompt = split_labeled_prompt(prompt_text)
-    seed = preset.get("seed", "random")
-    if str(seed).lower() == "random":
-        seed = -1
+    resolved_seed = preset.get("seed", "random") if seed is None else seed
+    if str(resolved_seed).lower() == "random":
+        resolved_seed = -1
 
     selected_aspect_ratio = aspect_ratio or preset.get("aspect_ratio")
     size = _render_size_for_aspect_ratio(str(selected_aspect_ratio)) if selected_aspect_ratio else None
@@ -267,7 +268,7 @@ def render_preview(
         "height": height,
         "steps": int(preset.get("steps", 32)),
         "cfg_scale": float(preset.get("cfg", 7.0)),
-        "seed": int(seed),
+        "seed": int(resolved_seed),
         "sampler_name": str(preset.get("sampler_name", "DPM++ 2M")),
         "scheduler": str(preset.get("scheduler", "Karras")),
         "enable_hr": bool(preset.get("enable_hr", True)),
@@ -332,7 +333,7 @@ def render_preview(
     response = _post_json(server_url, api_path, payload)
     image_bytes = _first_image_bytes(response)
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     render_dir = job_output_dir / str(preset.get("output_subdir", "Local_Test_Renders"))
     render_dir.mkdir(parents=True, exist_ok=True)
     image_path = render_dir / f"test_{stamp}.png"
@@ -345,6 +346,8 @@ def render_preview(
         "server_url": server_url,
         "final_prompt": str(final_prompt_path),
         "local_image": str(image_path),
+        "seed": int(payload["seed"]),
+        "resolved_seed": int(payload["seed"]),
         "settings": payload,
         "api_path": api_path,
         "info": response.get("info"),

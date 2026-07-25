@@ -23,7 +23,7 @@ AutoQueueAfterCondense = false
 Backend = "comfyui"
 
 [StableMatrix]
-Profile = "body-reference-preview"
+Profile = "scene-preview-sd15"
 PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
 NegativePromptGlobals = "EasyNegative"
 LayoutBackend = "forge_couple_basic"
@@ -32,7 +32,7 @@ ForgeCoupleDebugBasePass = true
 Checkpoint = "sd\\perfectdeliberate_ilAnime.safetensors [d80b4e4c68]"
 
 [ComfyUI]
-Profile = "comfyui-core-preview"
+Profile = "comfyui-ipadapter-preview"
 ServerURL = "http://127.0.0.1:8188"
 Checkpoint = "waiNTRMIXIllustrious_v11.safetensors"
 PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"

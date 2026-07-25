@@ -144,12 +144,19 @@ class AIAnswerHarvester:
         return None
 
     def _write_harvest_manifest(self, answer_path: Path, result: HarvestResult) -> None:
+        local_render_metadata = {}
+        metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
+        if metadata_path.exists():
+            local_render_metadata = self._read_json(metadata_path)
         payload = {
             "version": 1,
             "ask_id": result.ask_id,
             "asset_id": result.asset_id,
             "status": result.status,
             "message": result.message,
+            "render_preset": local_render_metadata.get("preset"),
+            "workflow_kind": local_render_metadata.get("workflow_kind"),
+            "seed": local_render_metadata.get("seed"),
             "harvested_at": self.timestamp_provider(),
         }
         self._harvest_manifest_path(answer_path).write_text(
