@@ -641,6 +641,8 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ),
         zine_print_scale=float(payload.get("zine_print_scale", defaults.zine_print_scale)),
         zine_page_margin=int(payload.get("zine_page_margin", defaults.zine_page_margin)),
+        zine_width=int(payload.get("zine_width", defaults.zine_width)),
+        turnaround_width=int(payload.get("turnaround_width", defaults.turnaround_width)),
     )
 
 

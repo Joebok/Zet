@@ -239,6 +239,8 @@ const settingComfyuiPollSeconds = document.querySelector("#setting-comfyui-poll-
 const settingComfyuiTimeoutSeconds = document.querySelector("#setting-comfyui-timeout-seconds");
 const settingZinePrintScale = document.querySelector("#setting-zine-print-scale");
 const settingZinePageMargin = document.querySelector("#setting-zine-page-margin");
+const settingZineWidth = document.querySelector("#setting-zine-width");
+const settingTurnaroundWidth = document.querySelector("#setting-turnaround-width");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
@@ -3582,12 +3584,13 @@ function builderDeleteDialogue(index) {
 
 function builderRenderElements() {
   const rows = (state.sceneBuilder.scene_elements || []).map((element) => {
-    const placed = (state.sceneBuilder.placements || []).some((placement) => placement.scene_element_id === element.id);
-    const placementCount = (state.sceneBuilder.placements || []).filter((placement) => placement.scene_element_id === element.id).length;
+    const placement = builderPlacementForElement(element.id);
+    const position = placement?.position_within_cell || "—";
+    const depth = position === "None" ? "None" : placement?.depth || "—";
     return `
       <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}">
         <span>${escapeHtml(element.display_name || element.id || "")}</span>
-        <small>${escapeHtml(element.element_type || "")} | ${placementCount} placement(s)</small>
+        <small>${escapeHtml(element.element_type || "")} | Position: ${escapeHtml(position)} | Depth: ${escapeHtml(depth)}</small>
       </button>
     `;
   }).join("");
@@ -5790,6 +5793,8 @@ function renderPipelineControls(payload) {
   syncLocalRenderBackendPanels();
   settingZinePrintScale.value = Number(automation.zine_print_scale ?? 0.978).toFixed(4);
   settingZinePageMargin.value = automation.zine_page_margin ?? 4;
+  settingZineWidth.value = automation.zine_width ?? 3300;
+  settingTurnaroundWidth.value = automation.turnaround_width ?? 3960;
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptAnalysisModel.value = automation.ai_prompt_analysis_model || "";
@@ -5886,6 +5891,8 @@ function automationPayloadFromForm() {
     comfyui_timeout_seconds: Number(settingComfyuiTimeoutSeconds.value || 0),
     zine_print_scale: Number(settingZinePrintScale.value || 0),
     zine_page_margin: Number(settingZinePageMargin.value || 0),
+    zine_width: Number(settingZineWidth.value || 0),
+    turnaround_width: Number(settingTurnaroundWidth.value || 0),
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,

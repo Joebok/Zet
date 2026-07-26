@@ -97,5 +97,7 @@ BaseAIQueuePath = "{(self.root / 'Queue').as_posix()}"
             "zine-preview",
             "setting-zine-print-scale",
             "setting-zine-page-margin",
+            "setting-zine-width",
+            "setting-turnaround-width",
         ):
             self.assertIn(f'id="{control_id}"', html)

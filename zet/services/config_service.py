@@ -37,6 +37,8 @@ class Config:
     comfyui_timeout_seconds: float = 300.0
     zine_print_scale: float = 0.978
     zine_page_margin: int = 4
+    zine_width: int = 3300
+    turnaround_width: int = 3960
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
@@ -112,6 +114,11 @@ class ConfigService:
         return render if isinstance(render, dict) else {}
 
     @staticmethod
+    def _turnaround_config(payload: dict) -> dict:
+        turnaround = payload.get("Turnaround", {})
+        return turnaround if isinstance(turnaround, dict) else {}
+
+    @staticmethod
     def _ai_prompt_analysis_config(payload: dict) -> dict:
         analysis = payload.get("AIPromptAnalysis", {})
         return analysis if isinstance(analysis, dict) else {}
@@ -133,6 +140,7 @@ class ConfigService:
             stable_matrix = ConfigService._stable_matrix_config(payload)
             comfyui = ConfigService._comfyui_config(payload)
             zine = ConfigService._zine_config(payload)
+            turnaround = ConfigService._turnaround_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
@@ -176,6 +184,8 @@ class ConfigService:
                 comfyui_timeout_seconds=float(comfyui.get("TimeoutSeconds", 300.0)),
                 zine_print_scale=float(zine.get("PrintScale", 0.978)),
                 zine_page_margin=int(zine.get("PageMargin", 4)),
+                zine_width=int(zine.get("Width", 3300)),
+                turnaround_width=int(turnaround.get("Width", 3960)),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),

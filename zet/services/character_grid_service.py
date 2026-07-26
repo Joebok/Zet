@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
+from zet.services.image_sheet_service import assemble_image_sheet
+
 
 BBox = Tuple[int, int, int, int]
 
@@ -52,6 +54,10 @@ class CharacterGridOptions:
     debug_grid: bool = True
     crop_height_percent: Optional[float] = None
     crop_width_to_character: bool = False
+    fixed_panel_width: Optional[int] = None
+    fixed_panel_height: Optional[int] = None
+    page_margin: int = 0
+    print_scale: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -304,6 +310,99 @@ class CharacterGridService:
             return scaled_bbox[0], top, scaled_bbox[2], bottom
         return int(xs.min()), top + int(ys.min()), int(xs.max()) + 1, top + int(ys.max()) + 1
 
+    def _assemble_fixed_grid(
+        self,
+        scaled_images,
+        visible_bboxes: list[BBox | None],
+        results: list[ImageAnalysisResult],
+        output_dir: Path,
+        output_name: str,
+        diagnostics_dir: Path,
+        options: CharacterGridOptions,
+    ) -> CharacterGridResult:
+        """Center normalized figures in fixed-size panels and assemble an exact-size sheet."""
+        _, Image, _ = self._load_image_dependencies()
+        panel_width = int(options.fixed_panel_width or 0)
+        panel_height = int(options.fixed_panel_height or 0)
+        content_width = panel_width - options.page_margin * 2
+        content_height = panel_height - options.page_margin * 2
+        if panel_width <= 0 or panel_height <= 0:
+            raise CharacterGridServiceError("Fixed panel width and height must be positive.")
+        if content_width <= 0 or content_height <= 0:
+            raise CharacterGridServiceError("Page margin leaves no room for turnaround panel content.")
+        if options.print_scale <= 0 or options.print_scale > 1:
+            raise CharacterGridServiceError("Print scale must be greater than 0 and no greater than 1.")
+
+        bounding_boxes = []
+        for scaled, bbox in zip(scaled_images, visible_bboxes):
+            left, top, right, bottom = bbox or (0, 0, scaled.width, scaled.height)
+            bounding_boxes.append((
+                max(0, int(left)),
+                max(0, int(top)),
+                min(scaled.width, int(right)),
+                min(scaled.height, int(bottom)),
+            ))
+        if any(right <= left or bottom <= top for left, top, right, bottom in bounding_boxes):
+            raise CharacterGridServiceError("Unable to compute a valid turnaround character bounding box.")
+        max_width = max(right - left for left, _, right, _ in bounding_boxes) + options.cell_padding_x * 2
+        max_height = max(bottom - top for _, top, _, bottom in bounding_boxes) + options.cell_padding_y * 2
+        fit_scale = min(content_width / max_width, content_height / max_height)
+
+        panels = []
+        try:
+            for scaled, (left, top, right, bottom) in zip(scaled_images, bounding_boxes):
+                resized = scaled.resize(
+                    (
+                        max(1, round(scaled.width * fit_scale)),
+                        max(1, round(scaled.height * fit_scale)),
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+                panel = Image.new("RGBA", (panel_width, panel_height), (255, 255, 255, 255))
+                content = Image.new("RGBA", (content_width, content_height), options.canvas_background)
+                bbox_center_x = round(((left + right) / 2) * fit_scale)
+                bbox_center_y = round(((top + bottom) / 2) * fit_scale)
+                content.alpha_composite(
+                    resized,
+                    (content_width // 2 - bbox_center_x, content_height // 2 - bbox_center_y),
+                )
+                resized.close()
+                panel.alpha_composite(content, (options.page_margin, options.page_margin))
+                content.close()
+                panels.append(panel)
+            canvas = assemble_image_sheet(
+                panels,
+                columns=options.columns,
+                rows=options.rows,
+                panel_width=panel_width,
+                panel_height=panel_height,
+                mode="RGBA",
+                background=(255, 255, 255, 255),
+                border_background=(255, 255, 255, 255),
+                print_scale=options.print_scale,
+            )
+            grid_path = output_dir / output_name
+            canvas.save(grid_path)
+            canvas.close()
+        finally:
+            for panel in panels:
+                panel.close()
+            for scaled in scaled_images:
+                scaled.close()
+
+        analysis_path = output_dir / "analysis.json"
+        analysis_path.write_text(
+            json.dumps([asdict(result) for result in results], indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return CharacterGridResult(
+            grid_path=grid_path,
+            analysis_path=analysis_path,
+            diagnostics_path=diagnostics_dir,
+            debug_grid_path=None,
+            results=results,
+        )
+
     def assemble_grid(
         self,
         image_paths: list[Path],
@@ -340,13 +439,27 @@ class CharacterGridService:
         scaled_images = []
         visible_bboxes: list[BBox | None] = []
         for result in results:
-            source = Image.open(result.path).convert("RGBA")
-            scaled = source.resize((int(result.scaled_width or 0), int(result.scaled_height or 0)), Image.Resampling.LANCZOS)
+            with Image.open(result.path) as source:
+                scaled = source.convert("RGBA").resize(
+                    (int(result.scaled_width or 0), int(result.scaled_height or 0)),
+                    Image.Resampling.LANCZOS,
+                )
             scaled_images.append(scaled)
             if options.crop_width_to_character and options.crop_height_percent is not None:
                 visible_bboxes.append(self._scaled_visible_bbox(scaled, result, options, visible_character_height))
             else:
                 visible_bboxes.append(result.scaled_bbox)
+
+        if options.fixed_panel_width is not None or options.fixed_panel_height is not None:
+            return self._assemble_fixed_grid(
+                scaled_images,
+                visible_bboxes,
+                results,
+                output_dir,
+                output_name,
+                diagnostics_dir,
+                options,
+            )
 
         if options.crop_width_to_character:
             scaled_bbox_widths = [int((bbox or (0, 0, 0, 0))[2]) - int((bbox or (0, 0, 0, 0))[0]) for bbox in visible_bboxes]

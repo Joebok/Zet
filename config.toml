@@ -32,7 +32,7 @@ ForgeCoupleDebugBasePass = true
 Checkpoint = "sd\\perfectdeliberate_ilAnime.safetensors [d80b4e4c68]"
 
 [ComfyUI]
-Profile = "comfyui-ipadapter-preview"
+Profile = "comfyui-core-preview"
 ServerURL = "http://127.0.0.1:8188"
 Checkpoint = "waiNTRMIXIllustrious_v11.safetensors"
 PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
@@ -43,6 +43,10 @@ TimeoutSeconds = 300.0
 [Zine]
 PrintScale = 0.97
 PageMargin = 4
+Width = 3300
+
+[Turnaround]
+Width = 3960
 
 [AIHarvest]
 AutoEnabled = true

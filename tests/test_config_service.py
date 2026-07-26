@@ -45,6 +45,8 @@ Backend = "manual_chatgpt"
             self.assertEqual(config.local_render_layout_backend, "forge_couple_basic")
             self.assertEqual(config.zine_print_scale, 0.978)
             self.assertEqual(config.zine_page_margin, 4)
+            self.assertEqual(config.zine_width, 3300)
+            self.assertEqual(config.turnaround_width, 3960)
 
     def test_backend_specific_render_config_is_independent(self):
         with tempfile.TemporaryDirectory() as temp_dir:

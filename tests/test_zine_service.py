@@ -173,9 +173,16 @@ class ZineServiceTests(unittest.TestCase):
         self.assertEqual("Renamed-Zine", renamed.record.slug)
         self.assertFalse((self.root / "Assets" / "Zines" / "My-Zine").exists())
         self.assertTrue(Path(renamed.record.json_path).is_file())
-
         self.service.delete_zine("Renamed-Zine")
         self.assertEqual([], self.service.list_zines())
+
+    def test_configured_width_sets_us_letter_output_dimensions(self) -> None:
+        self.path_service.config.zine_width = 3344
+
+        created = self.service.create_zine(self.payload("Wide Zine"))
+
+        with Image.open(created.record.image_path) as image:
+            self.assertEqual((3344, 2584), image.size)
 
     def test_validation_rejects_missing_required_slot_and_duplicate(self) -> None:
         payload = self.payload()

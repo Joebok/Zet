@@ -13,6 +13,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.character_grid_service import CharacterGridOptions, CharacterGridService
+from zet.services.image_sheet_service import letter_landscape_height
 from zet.services.path_service import PathService
 
 
@@ -109,6 +110,26 @@ class TurnaroundService:
         if tolerance < 1 or tolerance > 200:
             raise TurnaroundServiceError("Detection tolerance must be between 1 and 200.")
         return tolerance
+
+    def _grid_options(
+        self,
+        tolerance: float,
+        crop_height_percent: Optional[float] = None,
+    ) -> CharacterGridOptions:
+        """Build fixed US Letter turnaround panel settings from project config."""
+        width = int(getattr(self.path_service.config, "turnaround_width", 3960))
+        if width <= 0 or width % 44:
+            raise TurnaroundServiceError("Turnaround width must be a positive multiple of 44 pixels.")
+        height = letter_landscape_height(width)
+        return CharacterGridOptions(
+            tolerance=tolerance,
+            crop_height_percent=crop_height_percent,
+            crop_width_to_character=True,
+            fixed_panel_width=width // 4,
+            fixed_panel_height=height // 2,
+            page_margin=int(getattr(self.path_service.config, "zine_page_margin", 4)),
+            print_scale=float(getattr(self.path_service.config, "zine_print_scale", 0.978)),
+        )
 
     def _sheet_detection_tolerance(self, sheet: TurnaroundSheet | None) -> float:
         """Return the stored foreground detection tolerance for a sheet."""
@@ -315,7 +336,7 @@ class TurnaroundService:
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
-            CharacterGridOptions(tolerance=tolerance, crop_width_to_character=True),
+            self._grid_options(tolerance),
             output_name=f"{turnaround_id}.png",
         )
         sheet = TurnaroundSheet(
@@ -389,7 +410,7 @@ class TurnaroundService:
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
-            CharacterGridOptions(tolerance=tolerance, crop_height_percent=crop_value, crop_width_to_character=True),
+            self._grid_options(tolerance, crop_value),
             output_name=f"{partial_id}.png",
         )
         sheet = TurnaroundSheet(
@@ -451,7 +472,7 @@ class TurnaroundService:
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
-            CharacterGridOptions(tolerance=tolerance, crop_height_percent=crop_value, crop_width_to_character=True),
+            self._grid_options(tolerance, crop_value),
             output_name=f"{partial_turnaround_id}.png",
         )
         sheet.label = cleaned_label

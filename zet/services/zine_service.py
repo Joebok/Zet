@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 
 from zet.models.zine import ZineDocument, ZineRecord, ZineSceneSource
+from zet.services.image_sheet_service import assemble_image_sheet, letter_landscape_height
 
 
 PANEL_WIDTH = 825
@@ -31,68 +32,97 @@ def cover_crop(image: Image.Image, target_w: int, target_h: int) -> Image.Image:
     )
 
 
-def make_page_image(image: Image.Image, margin: int = 0) -> Image.Image:
+def make_page_image(
+    image: Image.Image,
+    margin: int = 0,
+    panel_width: int = PANEL_WIDTH,
+    panel_height: int = PANEL_HEIGHT,
+) -> Image.Image:
     """Center-crop one image inside a white page margin."""
-    page = Image.new("RGB", (PANEL_WIDTH, PANEL_HEIGHT), "white")
-    content = cover_crop(image, PANEL_WIDTH - margin * 2, PANEL_HEIGHT - margin * 2)
+    page = Image.new("RGB", (panel_width, panel_height), "white")
+    content = cover_crop(image, panel_width - margin * 2, panel_height - margin * 2)
     page.paste(content, (margin, margin))
     content.close()
     return page
 
 
-def make_spread_pages(image: Image.Image, margin: int = 0) -> tuple[Image.Image, Image.Image]:
+def make_spread_pages(
+    image: Image.Image,
+    margin: int = 0,
+    panel_width: int = PANEL_WIDTH,
+    panel_height: int = PANEL_HEIGHT,
+) -> tuple[Image.Image, Image.Image]:
     """Return spread halves with one white margin around the full two-page image."""
-    spread = Image.new("RGB", (PANEL_WIDTH * 2, PANEL_HEIGHT), "white")
-    content = cover_crop(image, PANEL_WIDTH * 2 - margin * 2, PANEL_HEIGHT - margin * 2)
+    spread = Image.new("RGB", (panel_width * 2, panel_height), "white")
+    content = cover_crop(image, panel_width * 2 - margin * 2, panel_height - margin * 2)
     spread.paste(content, (margin, margin))
     content.close()
-    left = spread.crop((0, 0, PANEL_WIDTH, PANEL_HEIGHT))
-    right = spread.crop((PANEL_WIDTH, 0, PANEL_WIDTH * 2, PANEL_HEIGHT))
+    left = spread.crop((0, 0, panel_width, panel_height))
+    right = spread.crop((panel_width, 0, panel_width * 2, panel_height))
     spread.close()
     return left, right
 
 
-def draw_guides(canvas: Image.Image, spread_pages: set[int] | None = None) -> None:
+def draw_guides(
+    canvas: Image.Image,
+    spread_pages: set[int] | None = None,
+    panel_width: int = PANEL_WIDTH,
+    panel_height: int = PANEL_HEIGHT,
+) -> None:
     """Draw faint panel boundaries on a printable zine canvas."""
     spread_pages = spread_pages or set()
     draw = ImageDraw.Draw(canvas)
     color = (190, 190, 190)
     if 5 not in spread_pages:
-        draw.line((PANEL_WIDTH, 0, PANEL_WIDTH, PANEL_HEIGHT), fill=color, width=1)
-    draw.line((PANEL_WIDTH, PANEL_HEIGHT, PANEL_WIDTH, CANVAS_HEIGHT), fill=color, width=1)
-    draw.line((PANEL_WIDTH * 2, 0, PANEL_WIDTH * 2, CANVAS_HEIGHT), fill=color, width=1)
+        draw.line((panel_width, 0, panel_width, panel_height), fill=color, width=1)
+    draw.line((panel_width, panel_height, panel_width, panel_height * 2), fill=color, width=1)
+    draw.line((panel_width * 2, 0, panel_width * 2, panel_height * 2), fill=color, width=1)
     if 3 not in spread_pages:
-        draw.line((PANEL_WIDTH * 3, 0, PANEL_WIDTH * 3, PANEL_HEIGHT), fill=color, width=1)
+        draw.line((panel_width * 3, 0, panel_width * 3, panel_height), fill=color, width=1)
     if 1 not in spread_pages:
-        draw.line((PANEL_WIDTH * 3, PANEL_HEIGHT, PANEL_WIDTH * 3, CANVAS_HEIGHT), fill=color, width=1)
-    draw.line((0, PANEL_HEIGHT, CANVAS_WIDTH, PANEL_HEIGHT), fill=color, width=1)
+        draw.line((panel_width * 3, panel_height, panel_width * 3, panel_height * 2), fill=color, width=1)
+    draw.line((0, panel_height, panel_width * 4, panel_height), fill=color, width=1)
 
 
 def assemble_zine(
     page_images: dict[str, Image.Image],
     guides_enabled: bool = True,
     spread_pages: set[int] | None = None,
+    panel_width: int = PANEL_WIDTH,
+    panel_height: int = PANEL_HEIGHT,
+    print_scale: float = 1.0,
 ) -> Image.Image:
     """Arrange eight page images into the printable folded-zine layout."""
-    canvas = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), "white")
     top_slots = ("page_6", "page_5", "page_4", "page_3")
     bottom_slots = ("back", "front", "page_1", "page_2")
-    for column, slot in enumerate(top_slots):
-        canvas.paste(page_images[slot].rotate(180), (column * PANEL_WIDTH, 0))
-    for column, slot in enumerate(bottom_slots):
-        canvas.paste(page_images[slot], (column * PANEL_WIDTH, PANEL_HEIGHT))
-    if guides_enabled:
-        draw_guides(canvas, spread_pages)
-    return canvas
+    images = [page_images[slot] for slot in top_slots + bottom_slots]
+    overlay = (
+        lambda canvas: draw_guides(canvas, spread_pages, panel_width, panel_height)
+    ) if guides_enabled else None
+    return assemble_image_sheet(
+        images,
+        columns=4,
+        rows=2,
+        panel_width=panel_width,
+        panel_height=panel_height,
+        rotations=[180] * 4 + [0] * 4,
+        print_scale=print_scale,
+        overlay=overlay,
+    )
 
 
-def scale_and_center_zine(image: Image.Image, print_scale: float) -> Image.Image:
+def scale_and_center_zine(
+    image: Image.Image,
+    print_scale: float,
+    canvas_width: int = CANVAS_WIDTH,
+    canvas_height: int = CANVAS_HEIGHT,
+) -> Image.Image:
     """Scale an assembled zine and center it on the fixed US Letter canvas."""
-    scaled_width = max(1, round(CANVAS_WIDTH * print_scale))
-    scaled_height = max(1, round(CANVAS_HEIGHT * print_scale))
+    scaled_width = max(1, round(canvas_width * print_scale))
+    scaled_height = max(1, round(canvas_height * print_scale))
     scaled = image.resize((scaled_width, scaled_height), Image.Resampling.LANCZOS)
-    canvas = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), "white")
-    canvas.paste(scaled, ((CANVAS_WIDTH - scaled_width) // 2, (CANVAS_HEIGHT - scaled_height) // 2))
+    canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
+    canvas.paste(scaled, ((canvas_width - scaled_width) // 2, (canvas_height - scaled_height) // 2))
     scaled.close()
     return canvas
 
@@ -107,14 +137,20 @@ class ZineService:
     def safe_slug(self, value: str) -> str:
         return self.story_service.safe_slug(value)
 
-    def _layout_settings(self) -> tuple[float, int]:
+    def _layout_settings(self) -> tuple[float, int, int, int]:
         print_scale = float(getattr(self.path_service.config, "zine_print_scale", 0.978))
         page_margin = int(getattr(self.path_service.config, "zine_page_margin", 4))
+        canvas_width = int(getattr(self.path_service.config, "zine_width", CANVAS_WIDTH))
+        canvas_height = letter_landscape_height(canvas_width)
+        panel_width = canvas_width // 4
+        panel_height = canvas_height // 2
         if print_scale <= 0 or print_scale > 1:
             raise ZineServiceError("Zine print scale must be greater than 0 and no greater than 1.")
-        if page_margin < 0 or page_margin * 2 >= PANEL_WIDTH:
-            raise ZineServiceError("Zine page margin must be between 0 and 412 pixels.")
-        return print_scale, page_margin
+        if canvas_width % 44:
+            raise ZineServiceError("Zine width must be a multiple of 44 pixels.")
+        if page_margin < 0 or page_margin * 2 >= panel_width:
+            raise ZineServiceError(f"Zine page margin must be between 0 and {(panel_width - 1) // 2} pixels.")
+        return print_scale, page_margin, panel_width, panel_height
 
     def _folder(self, slug: str) -> Path:
         safe_slug = self.safe_slug(slug)
@@ -222,7 +258,7 @@ class ZineService:
 
     def _page_images(self, metadata: dict) -> dict[str, Image.Image]:
         self._validate_metadata(metadata)
-        _, page_margin = self._layout_settings()
+        _, page_margin, panel_width, panel_height = self._layout_settings()
         slots = metadata["slots"]
         opened: dict[str, Image.Image] = {}
         try:
@@ -241,12 +277,14 @@ class ZineService:
             pages: dict[str, Image.Image] = {}
             for odd_key, even_key in (("page_1", "page_2"), ("page_3", "page_4"), ("page_5", "page_6")):
                 if str(slots.get(even_key) or "").strip():
-                    pages[odd_key] = make_page_image(opened[odd_key], page_margin)
-                    pages[even_key] = make_page_image(opened[even_key], page_margin)
+                    pages[odd_key] = make_page_image(opened[odd_key], page_margin, panel_width, panel_height)
+                    pages[even_key] = make_page_image(opened[even_key], page_margin, panel_width, panel_height)
                 else:
-                    pages[odd_key], pages[even_key] = make_spread_pages(opened[odd_key], page_margin)
-            pages["front"] = make_page_image(opened["front"], page_margin)
-            pages["back"] = make_page_image(opened["back"], page_margin)
+                    pages[odd_key], pages[even_key] = make_spread_pages(
+                        opened[odd_key], page_margin, panel_width, panel_height
+                    )
+            pages["front"] = make_page_image(opened["front"], page_margin, panel_width, panel_height)
+            pages["back"] = make_page_image(opened["back"], page_margin, panel_width, panel_height)
             return pages
         except Exception as exc:
             if isinstance(exc, ZineServiceError):
@@ -259,21 +297,20 @@ class ZineService:
     def _render(self, metadata: dict) -> Image.Image:
         pages = self._page_images(metadata)
         try:
-            print_scale, _ = self._layout_settings()
+            print_scale, _, panel_width, panel_height = self._layout_settings()
             spread_pages = {
                 odd_page
                 for odd_page in (1, 3, 5)
                 if not str(metadata["slots"].get(f"page_{odd_page + 1}") or "").strip()
             }
-            assembled = assemble_zine(
+            return assemble_zine(
                 pages,
                 bool(metadata.get("guides", {}).get("enabled", True)),
                 spread_pages,
+                panel_width,
+                panel_height,
+                print_scale,
             )
-            try:
-                return scale_and_center_zine(assembled, print_scale)
-            finally:
-                assembled.close()
         finally:
             for image in pages.values():
                 image.close()

@@ -42,6 +42,8 @@ class AutomationSettings:
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     zine_print_scale: float = 0.978
     zine_page_margin: int = 4
+    zine_width: int = 3300
+    turnaround_width: int = 3960
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,8 @@ class PipelineControlService:
             ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
             zine_print_scale=float(self.config.zine_print_scale),
             zine_page_margin=int(self.config.zine_page_margin),
+            zine_width=int(self.config.zine_width),
+            turnaround_width=int(self.config.turnaround_width),
         )
 
     def render_profiles(self) -> dict[str, list[str]]:
@@ -177,6 +181,8 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "ComfyUI.Checkpoint", "Value": self.config.comfyui_checkpoint},
             {"Scope": "Project config", "Setting": "Zine.PrintScale", "Value": self.config.zine_print_scale},
             {"Scope": "Project config", "Setting": "Zine.PageMargin", "Value": self.config.zine_page_margin},
+            {"Scope": "Project config", "Setting": "Zine.Width", "Value": self.config.zine_width},
+            {"Scope": "Project config", "Setting": "Turnaround.Width", "Value": self.config.turnaround_width},
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
@@ -212,6 +218,8 @@ class PipelineControlService:
             ("ComfyUI", "TimeoutSeconds"): settings.comfyui_timeout_seconds,
             ("Zine", "PrintScale"): settings.zine_print_scale,
             ("Zine", "PageMargin"): settings.zine_page_margin,
+            ("Zine", "Width"): settings.zine_width,
+            ("Turnaround", "Width"): settings.turnaround_width,
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
@@ -244,8 +252,15 @@ class PipelineControlService:
             raise PipelineControlServiceError("Auto harvest interval must be 86400 seconds or less.")
         if settings.zine_print_scale <= 0 or settings.zine_print_scale > 1:
             raise PipelineControlServiceError("Zine print scale must be greater than 0 and no greater than 1.")
-        if settings.zine_page_margin < 0 or settings.zine_page_margin * 2 >= 825:
-            raise PipelineControlServiceError("Zine page margin must be between 0 and 412 pixels.")
+        if settings.zine_width <= 0 or settings.zine_width % 44:
+            raise PipelineControlServiceError("Zine width must be a positive multiple of 44 pixels.")
+        if settings.turnaround_width <= 0 or settings.turnaround_width % 44:
+            raise PipelineControlServiceError("Turnaround width must be a positive multiple of 44 pixels.")
+        max_page_margin = (settings.zine_width // 4 - 1) // 2
+        if settings.zine_page_margin < 0 or settings.zine_page_margin > max_page_margin:
+            raise PipelineControlServiceError(
+                f"Zine page margin must be between 0 and {max_page_margin} pixels."
+            )
         if not settings.ai_prompt_analysis_model.strip():
             raise PipelineControlServiceError("AI prompt analysis model cannot be blank.")
         if not settings.ai_prompt_analysis_instructions_file.strip():

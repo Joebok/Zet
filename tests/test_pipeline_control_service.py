@@ -104,6 +104,8 @@ Backend = "local_image"
                     render_backend="manual_chatgpt",
                     zine_print_scale=0.965,
                     zine_page_margin=8,
+                    zine_width=3344,
+                    turnaround_width=4004,
                 )
             )
 
@@ -116,6 +118,8 @@ Backend = "local_image"
             self.assertEqual(reloaded.render_backend, "manual_chatgpt")
             self.assertEqual(reloaded.zine_print_scale, 0.965)
             self.assertEqual(reloaded.zine_page_margin, 8)
+            self.assertEqual(reloaded.zine_width, 3344)
+            self.assertEqual(reloaded.turnaround_width, 4004)
             self.assertTrue(list(root.glob("config.backup.*.toml")))
 
             pipelines_path = character_dir / "Pipelines.json"
