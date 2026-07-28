@@ -20,6 +20,7 @@ from zet.services.gpt_helper_prompt_service import GptHelperPromptService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
+from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
@@ -550,6 +551,7 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
     ]
     return {
         "stop_state": _jsonable(zet_app.proxy_stop_state()),
+        "harvested_answer_count": zet_app.harvested_answer_count(),
         "queue": _jsonable(queue_snapshot),
         "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
         "manual_render_asks": _jsonable(manual_render_asks),
@@ -2043,6 +2045,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.get("/api/ai-controls/ollama-models")
+    def ai_controls_ollama_models() -> dict[str, Any]:
+        try:
+            return OllamaModelService().list_models()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Unable to load Ollama models: {exc}") from exc
+
     @app.get("/api/render-console/tasks")
     def render_console_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """List manual render tasks for the selected character phase."""
@@ -2091,6 +2100,29 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             payload = _local_image_review_payload(zet_app, task)
             payload["queued"] = queued
             payload["message"] = f"Queued {len(queued)} local image render(s) with distinct seeds."
+            return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local-image-review/tasks/{ask_id}/images/all-checkpoints")
+    def local_image_review_generate_all_checkpoints(
+        ask_id: str,
+        count: int = Query(1, ge=1, le=10),
+        character: str = Query(""),
+        phase: str = Query(""),
+    ) -> dict[str, Any]:
+        queue = _render_console_queue(app.state.config_path)
+        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
+        try:
+            zet_app = _app(app.state.config_path)
+            queued, checkpoint_count = LocalImageReviewService(zet_app).queue_images_for_all_checkpoints(task, count)
+            payload = _local_image_review_payload(zet_app, task)
+            payload["queued"] = queued
+            payload["message"] = (
+                f"Queued {len(queued)} local image render(s) across {checkpoint_count} checkpoint(s)."
+            )
             return payload
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

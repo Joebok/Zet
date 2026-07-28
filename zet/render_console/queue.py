@@ -31,8 +31,17 @@ class ManualRenderTask:
     manifest: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
+        story_slug = str(self.manifest.get("story_slug") or "")
+        scene_slug = str(self.manifest.get("scene_slug") or "")
+        if story_slug or scene_slug:
+            display_label = " / ".join(value for value in [story_slug, scene_slug] if value)
+        elif self.asset_id is not None:
+            display_label = f"Asset {self.asset_id}"
+        else:
+            display_label = self.ask_id
         return {
             "ask_id": self.ask_id,
+            "display_label": display_label,
             "ask_path": str(self.ask_path),
             "asset_id": self.asset_id,
             "character": self.character,

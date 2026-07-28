@@ -45,6 +45,7 @@ from Local_Render_Adapters import LocalRenderUnavailable, render_image
 from zet.models.ai_proxy import AIProxyAskManifest
 from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
 from zet.services.ai_proxy_path_service import AIProxyPathService
+from AI_Manager.proxy_worker_output import log_job
 
 WORKER_VERSION = "1.0"
 SUPPORTED_WORKER_TYPES = {"local_image_render"}
@@ -122,7 +123,7 @@ def claim_one_local_render(dirs: dict[str, Path], worker_id: str) -> Path | None
         dest = dirs["claimed"] / ask.name
         try:
             worker_protocol.move_ask_to_claimed(ask, dest, claim_file)
-            log(f"CLAIMED {ask.name} -> {dest}")
+            log_job(read_ask_manifest(dest / "ask_manifest.json"), "CLAIMED")
             return dest
         except Exception:
             shutil.rmtree(dest, ignore_errors=True)
@@ -238,14 +239,7 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
     preset_name = str(ask_manifest.get("render_preset") or "body-reference-preview")
     answer_manifest = answer_manifest_base(ask_manifest, worker_id, expected_output)
     t0 = time.time()
-    log(
-        "START "
-        f"{folder.name} ask_id={ask_manifest.get('ask_id') or folder.name} "
-        f"asset_id={ask_manifest.get('asset_id') or ''} "
-        f"worker_type={ask_manifest.get('worker_type') or ''} "
-        f"task_type={ask_manifest.get('task_type') or ''} "
-        f"preset={preset_name} expected_output={expected_output or '<blank>'}"
-    )
+    log_job(ask_manifest, "START")
 
     try:
         if ask_manifest.get("worker_type") not in SUPPORTED_WORKER_TYPES:
@@ -273,6 +267,9 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
             {
                 "version": 1,
                 "preset": preset_name,
+                "image_generation": ask_manifest.get("image_generation") or backend_metadata.get("backend"),
+                "render_profile": preset_name,
+                "checkpoint": ask_manifest.get("checkpoint") or backend_metadata.get("checkpoint"),
                 "workflow_kind": backend_metadata.get("workflow_kind"),
                 "seed": backend_metadata.get("resolved_seed", backend_metadata.get("seed")),
                 "local_render": str(result.image_path),
@@ -292,12 +289,12 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
         dest = move_to_answer(folder, dirs)
-        log(f"DONE SUCCESS {folder.name} -> {dest} elapsed={answer_manifest['elapsed_seconds']}s")
+        log_job(ask_manifest, "DONE", result="SUCCESS")
         return "SUCCESS"
     except LocalRenderUnavailable as exc:
         if return_transient_to_ask:
             release_claim_to_ask(folder, dirs, worker_id, str(exc))
-            log(f"DONE RETRY_LATER {folder.name}: {exc}", error=True)
+            log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
             return "RETRY_LATER"
         answer_manifest["status"] = "RETRY_LATER"
         answer_manifest["error_type"] = "LOCAL_RENDER_UNAVAILABLE"
@@ -311,10 +308,11 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
     answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
     write_json(folder / "answer_manifest.json", answer_manifest)
     dest = move_to_answer(folder, dirs)
-    log(
-        f"DONE {answer_manifest['status']} {folder.name} -> {dest} "
-        f"elapsed={answer_manifest['elapsed_seconds']}s: {answer_manifest['error_message']}",
-        error=True,
+    log_job(
+        ask_manifest,
+        "DONE",
+        result=str(answer_manifest["status"]),
+        error_message=str(answer_manifest["error_message"]),
     )
     return str(answer_manifest["status"])
 

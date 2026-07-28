@@ -98,6 +98,15 @@ const state = {
     selectedSlotKey: "",
     rows: [],
   },
+  savedBaselines: {
+    story: "",
+    scene: "",
+    sceneBuilder: "",
+    sourceEditor: "",
+    zine: "",
+    settings: "",
+  },
+  transitionPromise: null,
 };
 
 const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
@@ -159,11 +168,13 @@ const promptReviewStatus = document.querySelector("#prompt-review-status");
 const promptReviewTaskBody = document.querySelector("#prompt-review-task-table tbody");
 const promptReviewPrev = document.querySelector("#prompt-review-prev");
 const promptReviewNext = document.querySelector("#prompt-review-next");
+const promptReviewRefresh = document.querySelector("#prompt-review-refresh");
 const promptReviewTitle = document.querySelector("#prompt-review-title");
 const promptReviewMessage = document.querySelector("#prompt-review-message");
 const promptSearch = document.querySelector("#prompt-search");
 const promptPath = document.querySelector("#prompt-path");
 const promptText = document.querySelector("#prompt-text");
+const promptReviewSceneBuilder = document.querySelector("#prompt-review-scene-builder");
 const copyPromptButton = document.querySelector("#copy-prompt");
 const analyzePromptButton = document.querySelector("#analyze-prompt");
 const viewPromptAnalysisButton = document.querySelector("#view-prompt-analysis");
@@ -239,11 +250,13 @@ const settingComfyuiPollSeconds = document.querySelector("#setting-comfyui-poll-
 const settingComfyuiTimeoutSeconds = document.querySelector("#setting-comfyui-timeout-seconds");
 const settingZinePrintScale = document.querySelector("#setting-zine-print-scale");
 const settingZinePageMargin = document.querySelector("#setting-zine-page-margin");
+const zineMarginHelp = document.querySelector("#zine-margin-help");
 const settingZineWidth = document.querySelector("#setting-zine-width");
 const settingTurnaroundWidth = document.querySelector("#setting-turnaround-width");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
+const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
@@ -258,19 +271,31 @@ const sourceEditorMessage = document.querySelector("#source-editor-message");
 const sourceEditorWarning = document.querySelector("#source-editor-warning");
 const sourceEditorTitle = document.querySelector("#source-editor-title");
 const sourceEditorSave = document.querySelector("#source-editor-save");
-const sourceEditorRecompile = document.querySelector("#source-editor-recompile");
-const sourceEditorClearReviewAids = document.querySelector("#source-editor-clear-review-aids");
+const sourceEditorSaveState = document.querySelector("#source-editor-save-state");
 const sourceEditorMeta = document.querySelector("#source-editor-meta");
 const sourceEditorText = document.querySelector("#source-editor-text");
+const storySaveState = document.querySelector("#story-save-state");
+const sceneSaveState = document.querySelector("#scene-save-state");
+const settingsSaveState = document.querySelector("#settings-save-state");
+const unsavedChangesDialog = document.querySelector("#unsaved-changes-dialog");
+const unsavedChangesMessage = document.querySelector("#unsaved-changes-message");
+const confirmationDialog = document.querySelector("#confirmation-dialog");
+const confirmationTitle = document.querySelector("#confirmation-title");
+const confirmationMessage = document.querySelector("#confirmation-message");
+const confirmationConfirm = document.querySelector("#confirmation-confirm");
 const todoDialog = document.querySelector("#todo-dialog");
 const todoForm = document.querySelector("#todo-form");
 const todoText = document.querySelector("#todo-text");
+const promptAnalysisDialog = document.querySelector("#prompt-analysis-dialog");
+const promptAnalysisClose = document.querySelector("#prompt-analysis-close");
+const promptAnalysisFrame = document.querySelector("#prompt-analysis-frame");
 const renderConsoleStatus = document.querySelector("#render-console-status");
 const renderConsoleTaskBody = document.querySelector("#render-console-task-table tbody");
 const renderConsolePrev = document.querySelector("#render-console-prev");
 const renderConsoleNext = document.querySelector("#render-console-next");
 const renderConsoleRefresh = document.querySelector("#render-console-refresh");
 const renderConsoleTitle = document.querySelector("#render-console-title");
+const renderConsoleSceneBuilder = document.querySelector("#render-console-scene-builder");
 const renderConsoleReviewPrompt = document.querySelector("#render-console-review-prompt");
 const renderConsoleCopyPrompt = document.querySelector("#render-console-copy-prompt");
 const renderConsoleMessage = document.querySelector("#render-console-message");
@@ -309,6 +334,7 @@ const localImageReviewTitle = document.querySelector("#local-image-review-title"
 const localImageReviewClear = document.querySelector("#local-image-review-clear");
 const localImageReviewCount = document.querySelector("#local-image-review-count");
 const localImageReviewGenerate = document.querySelector("#local-image-review-generate");
+const localImageReviewGenerateAllModels = document.querySelector("#local-image-review-generate-all-models");
 const localImageReviewMessage = document.querySelector("#local-image-review-message");
 const localImageReviewGallery = document.querySelector("#local-image-review-gallery");
 const manifestStatus = document.querySelector("#manifest-status");
@@ -432,6 +458,8 @@ const zineSpread5 = document.querySelector("#zine-spread-5");
 const zinePreviewSection = document.querySelector("#zine-preview-section");
 const zinePreview = document.querySelector("#zine-preview");
 const sceneBuilderStatus = document.querySelector("#scene-builder-status");
+const sceneBuilderPrevious = document.querySelector("#scene-builder-previous");
+const sceneBuilderNext = document.querySelector("#scene-builder-next");
 const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
 const builderImagePickerModal = document.querySelector("#builder-image-picker-modal");
@@ -463,15 +491,42 @@ const scenePickerSearch = document.querySelector("#scene-picker-search");
 const scenePickerRefresh = document.querySelector("#scene-picker-refresh");
 const scenePickerStatus = document.querySelector("#scene-picker-status");
 const scenePickerTableBody = document.querySelector("#scene-picker-table tbody");
-const fullscreenImageOverlay = document.createElement("div");
+const fullscreenImageOverlay = document.createElement("dialog");
 fullscreenImageOverlay.className = "fullscreen-image-overlay";
-fullscreenImageOverlay.hidden = true;
+fullscreenImageOverlay.setAttribute("aria-label", "Full-size image");
+const fullscreenImageClose = document.createElement("button");
+fullscreenImageClose.type = "button";
+fullscreenImageClose.className = "fullscreen-image-close";
+fullscreenImageClose.textContent = "Close";
+fullscreenImageClose.setAttribute("aria-label", "Close full-size image");
 const fullscreenImage = document.createElement("img");
 fullscreenImage.alt = "";
+const fullscreenImagePrevious = document.createElement("button");
+fullscreenImagePrevious.type = "button";
+fullscreenImagePrevious.className = "fullscreen-image-navigation fullscreen-image-previous";
+fullscreenImagePrevious.setAttribute("aria-label", "Previous scene");
+fullscreenImagePrevious.textContent = "‹";
+fullscreenImagePrevious.hidden = true;
+const fullscreenImageNext = document.createElement("button");
+fullscreenImageNext.type = "button";
+fullscreenImageNext.className = "fullscreen-image-navigation fullscreen-image-next";
+fullscreenImageNext.setAttribute("aria-label", "Next scene");
+fullscreenImageNext.textContent = "›";
+fullscreenImageNext.hidden = true;
+const fullscreenImageEmpty = document.createElement("p");
+fullscreenImageEmpty.className = "fullscreen-image-empty";
+fullscreenImageEmpty.hidden = true;
 const fullscreenCropBox = document.createElement("div");
 fullscreenCropBox.className = "fullscreen-crop-box";
 fullscreenCropBox.hidden = true;
-fullscreenImageOverlay.append(fullscreenImage, fullscreenCropBox);
+fullscreenImageOverlay.append(
+  fullscreenImageClose,
+  fullscreenImagePrevious,
+  fullscreenImage,
+  fullscreenImageEmpty,
+  fullscreenImageNext,
+  fullscreenCropBox,
+);
 document.body.append(fullscreenImageOverlay);
 const auxResourceStatus = document.querySelector("#aux-resource-status");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
@@ -515,20 +570,35 @@ const phaseComparisonLeftImage = document.querySelector("#phase-comparison-left-
 const phaseComparisonRightImage = document.querySelector("#phase-comparison-right-image");
 const phaseComparisonLeftMeta = document.querySelector("#phase-comparison-left-meta");
 const phaseComparisonRightMeta = document.querySelector("#phase-comparison-right-meta");
+const busyCounts = new WeakMap();
+
+function setBusy(container, busy) {
+  if (!container) return;
+  const next = Math.max(0, (busyCounts.get(container) || 0) + (busy ? 1 : -1));
+  busyCounts.set(container, next);
+  if (next) container.setAttribute("aria-busy", "true");
+  else container.removeAttribute("aria-busy");
+}
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const payload = await response.json();
-      detail = payload.detail || detail;
-    } catch {
-      // Keep HTTP detail.
+  const busyTarget = document.querySelector("main > .page.active");
+  setBusy(busyTarget, true);
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      let detail = `${response.status} ${response.statusText}`;
+      try {
+        const payload = await response.json();
+        detail = payload.detail || detail;
+      } catch {
+        // Keep HTTP detail.
+      }
+      throw new Error(detail);
     }
-    throw new Error(detail);
+    return response.json();
+  } finally {
+    setBusy(busyTarget, false);
   }
-  return response.json();
 }
 
 function fileUrl(path, cacheKey = "") {
@@ -549,88 +619,69 @@ function basename(path) {
   return String(path || "").split(/[\\/]/).filter(Boolean).pop() || "";
 }
 
+function showMessageElement(container, message, kind = "info") {
+  container.textContent = message || "";
+  container.className = `action-message ${kind}`;
+  container.hidden = !message;
+  container.setAttribute("role", kind === "error" ? "alert" : "status");
+  container.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+  container.setAttribute("aria-atomic", "true");
+}
+
 function showActionMessage(message, kind = "info") {
-  actionMessage.textContent = message || "";
-  actionMessage.className = `action-message ${kind}`;
-  actionMessage.hidden = !message;
+  showMessageElement(actionMessage, message, kind);
 }
 
 function showPromptMessage(message, kind = "info") {
-  promptReviewMessage.textContent = message || "";
-  promptReviewMessage.className = `action-message ${kind}`;
-  promptReviewMessage.hidden = !message;
+  showMessageElement(promptReviewMessage, message, kind);
 }
 
 function showRenderMessage(message, kind = "info") {
-  renderReviewMessage.textContent = message || "";
-  renderReviewMessage.className = `action-message ${kind}`;
-  renderReviewMessage.hidden = !message;
+  showMessageElement(renderReviewMessage, message, kind);
 }
 
 function showAiControlsMessage(message, kind = "info") {
-  aiControlsMessage.textContent = message || "";
-  aiControlsMessage.className = `action-message ${kind}`;
-  aiControlsMessage.hidden = !message;
+  showMessageElement(aiControlsMessage, message, kind);
 }
 
 function showLocalImageConfigMessage(message, kind = "info") {
-  localImageConfigMessage.textContent = message || "";
-  localImageConfigMessage.className = `action-message ${kind}`;
-  localImageConfigMessage.hidden = !message;
+  showMessageElement(localImageConfigMessage, message, kind);
 }
 
 function showPipelineControlsMessage(message, kind = "info") {
-  pipelineControlsMessage.textContent = message || "";
-  pipelineControlsMessage.className = `action-message ${kind}`;
-  pipelineControlsMessage.hidden = !message;
+  showMessageElement(pipelineControlsMessage, message, kind);
 }
 
 function showSourceEditorMessage(message, kind = "info") {
-  sourceEditorMessage.textContent = message || "";
-  sourceEditorMessage.className = `action-message ${kind}`;
-  sourceEditorMessage.hidden = !message;
+  showMessageElement(sourceEditorMessage, message, kind);
 }
 
 function showRenderConsoleMessage(message, kind = "info") {
-  renderConsoleMessage.textContent = message || "";
-  renderConsoleMessage.className = `action-message ${kind}`;
-  renderConsoleMessage.hidden = !message;
+  showMessageElement(renderConsoleMessage, message, kind);
 }
 
 function showManifestMessage(message, kind = "info") {
-  manifestMessage.textContent = message || "";
-  manifestMessage.className = `action-message ${kind}`;
-  manifestMessage.hidden = !message;
+  showMessageElement(manifestMessage, message, kind);
 }
 
 function showTurnaroundMessage(message, kind = "info") {
-  turnaroundMessage.textContent = message || "";
-  turnaroundMessage.className = `action-message ${kind}`;
-  turnaroundMessage.hidden = !message;
+  showMessageElement(turnaroundMessage, message, kind);
 }
 
 function showIdentityKeyMessage(message, kind = "info") {
-  identityKeyMessage.textContent = message || "";
-  identityKeyMessage.className = `action-message ${kind}`;
-  identityKeyMessage.hidden = !message;
+  showMessageElement(identityKeyMessage, message, kind);
 }
 
 function showCostumeMessage(message, kind = "info") {
-  costumeMessage.textContent = message || "";
-  costumeMessage.className = `action-message ${kind}`;
-  costumeMessage.hidden = !message;
+  showMessageElement(costumeMessage, message, kind);
 }
 
 function showExpressionMessage(message, kind = "info") {
-  expressionMessage.textContent = message || "";
-  expressionMessage.className = `action-message ${kind}`;
-  expressionMessage.hidden = !message;
+  showMessageElement(expressionMessage, message, kind);
 }
 
 function showStoryMessage(message, kind = "info") {
-  storyMessage.textContent = message || "";
-  storyMessage.className = `action-message ${kind}`;
-  storyMessage.hidden = !message;
+  showMessageElement(storyMessage, message, kind);
 }
 
 function updateStoryGitWarning(hasChanges) {
@@ -647,33 +698,23 @@ function applyStoryGitPayload(payload) {
 }
 
 function showSceneMessage(message, kind = "info") {
-  sceneMessage.textContent = message || "";
-  sceneMessage.className = `action-message ${kind}`;
-  sceneMessage.hidden = !message;
+  showMessageElement(sceneMessage, message, kind);
 }
 
 function showZineMessage(message, kind = "info") {
-  zineMessage.textContent = message || "";
-  zineMessage.className = `action-message ${kind}`;
-  zineMessage.hidden = !message;
+  showMessageElement(zineMessage, message, kind);
 }
 
 function showSceneBuilderMessage(message, kind = "info") {
-  sceneBuilderMessage.textContent = message || "";
-  sceneBuilderMessage.className = `action-message ${kind}`;
-  sceneBuilderMessage.hidden = !message;
+  showMessageElement(sceneBuilderMessage, message, kind);
 }
 
 function showAuxResourceMessage(message, kind = "info") {
-  auxResourceMessage.textContent = message || "";
-  auxResourceMessage.className = `action-message ${kind}`;
-  auxResourceMessage.hidden = !message;
+  showMessageElement(auxResourceMessage, message, kind);
 }
 
 function showPhaseComparisonMessage(message, kind = "info") {
-  phaseComparisonMessage.textContent = message || "";
-  phaseComparisonMessage.className = `action-message ${kind}`;
-  phaseComparisonMessage.hidden = !message;
+  showMessageElement(phaseComparisonMessage, message, kind);
 }
 
 function escapeHtml(value) {
@@ -690,6 +731,97 @@ function option(value, label = value) {
   item.value = value;
   item.textContent = label;
   return item;
+}
+
+function makeSelectableRow(row, label, selected, onSelect) {
+  const firstCell = row.cells[0];
+  if (!firstCell) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "row-selection-button";
+  button.setAttribute("aria-label", `Select ${label}`);
+  if (selected) button.setAttribute("aria-current", "true");
+  while (firstCell.firstChild) button.append(firstCell.firstChild);
+  firstCell.append(button);
+  row.classList.toggle("selected", selected);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onSelect();
+  });
+  row.addEventListener("click", (event) => {
+    if (!event.target.closest("button, input, select, textarea, a")) onSelect();
+  });
+}
+
+function updateSelectableRows(tbody, predicate) {
+  for (const row of tbody.querySelectorAll("tr")) {
+    const selected = predicate(row);
+    row.classList.toggle("selected", selected);
+    const button = row.querySelector(".row-selection-button");
+    if (button) {
+      if (selected) button.setAttribute("aria-current", "true");
+      else button.removeAttribute("aria-current");
+    }
+  }
+}
+
+function renderEmptyRow(tbody, columns, message) {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = columns;
+  cell.className = "empty-table-cell";
+  cell.textContent = message;
+  row.append(cell);
+  tbody.append(row);
+}
+
+function formatLocalTimestamp(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function appendAssetSelectionCell(row, task) {
+  const cell = document.createElement("td");
+  cell.textContent = task.display_label || (task.asset_id != null ? `Asset ${task.asset_id}` : task.ask_id);
+  cell.title = task.ask_id || "";
+  row.append(cell);
+}
+
+function renderAssetTaskTable(tbody, tasks, selectedAskId, selectTask, emptyMessage) {
+  tbody.replaceChildren();
+  if (!tasks.length) {
+    renderEmptyRow(tbody, 1, emptyMessage);
+    return;
+  }
+  for (const task of tasks) {
+    const row = document.createElement("tr");
+    row.dataset.askId = task.ask_id;
+    appendAssetSelectionCell(row, task);
+    makeSelectableRow(row, task.display_label || task.ask_id, task.ask_id === selectedAskId, () => selectTask(task.ask_id));
+    tbody.append(row);
+  }
+}
+
+function updateAssetTaskNavigation(tasks, selectedAskId, previousButton, nextButton) {
+  const index = tasks.findIndex((task) => task.ask_id === selectedAskId);
+  previousButton.disabled = index <= 0;
+  nextButton.disabled = index < 0 || index >= tasks.length - 1;
+}
+
+function selectAdjacentAssetTask(tasks, selectedAskId, offset, selectTask) {
+  const index = tasks.findIndex((task) => task.ask_id === selectedAskId);
+  const adjacentTask = tasks[index + offset];
+  if (adjacentTask) {
+    selectTask(adjacentTask.ask_id);
+  }
 }
 
 function setSelectOptions(select, values) {
@@ -792,8 +924,18 @@ function builderHelpPath(path) {
   return String(path || "").replace(/\.\d+(?=\.|$)/g, "[]");
 }
 
+let builderHelpSequence = 0;
+
 function builderCaption(label, path) {
-  return `<span class="field-caption"><span>${escapeHtml(label)}</span></span>`;
+  const helpPath = builderHelpPath(path);
+  const help = SCENE_BUILDER_HELP[helpPath];
+  const parenthetical = String(label).match(/^\(([^)]+)\)/);
+  const conciseLabel = (parenthetical?.[1] || String(label)).replace(/\s*:\s*\.\.\.$|\.\.\.$/g, "").trim();
+  if (!help) {
+    return `<span class="field-caption"><span>${escapeHtml(conciseLabel)}</span></span>`;
+  }
+  const helpId = `builder-help-${++builderHelpSequence}`;
+  return `<span class="field-caption"><span>${escapeHtml(conciseLabel)}</span><button type="button" class="field-help-button" data-builder-help="${escapeHtml(helpPath)}" aria-label="Help for ${escapeHtml(conciseLabel)}" aria-expanded="false" aria-controls="${helpId}">?</button><span id="${helpId}" class="field-help-text" role="note" hidden>${escapeHtml(help)}</span></span>`;
 }
 
 function builderField(path, label, optionsName = "", full = false, type = "text") {
@@ -810,27 +952,102 @@ function builderField(path, label, optionsName = "", full = false, type = "text"
 
 function closeFullscreenImage() {
   resetFullscreenCrop();
-  fullscreenImageOverlay.hidden = true;
+  resetFullscreenNavigation();
+  if (fullscreenImageOverlay.open) {
+    fullscreenImageOverlay.close();
+  }
   fullscreenImage.removeAttribute("src");
   fullscreenImage.alt = "";
 }
 
-function openFullscreenImage(src, alt = "") {
+let fullscreenSceneNavigation = null;
+
+function resetFullscreenNavigation() {
+  fullscreenSceneNavigation = null;
+  fullscreenImagePrevious.hidden = true;
+  fullscreenImageNext.hidden = true;
+  fullscreenImageEmpty.hidden = true;
+  fullscreenImageEmpty.textContent = "";
+  fullscreenImage.hidden = false;
+}
+
+function updateFullscreenNavigation() {
+  const index = fullscreenSceneNavigation?.index;
+  const scenes = fullscreenSceneNavigation?.scenes || [];
+  const enabled = Number.isInteger(index) && scenes.length > 0;
+  fullscreenImagePrevious.hidden = !enabled;
+  fullscreenImageNext.hidden = !enabled;
+  fullscreenImagePrevious.disabled = !enabled || index === 0;
+  fullscreenImageNext.disabled = !enabled || index === scenes.length - 1;
+}
+
+async function navigateFullscreenScene(offset) {
+  if (!fullscreenSceneNavigation) return;
+  const nextIndex = fullscreenSceneNavigation.index + offset;
+  const scene = fullscreenSceneNavigation.scenes[nextIndex];
+  if (!scene) return;
+  fullscreenImagePrevious.disabled = true;
+  fullscreenImageNext.disabled = true;
+  try {
+    const payload = await fetchJson(
+      `/api/stories/${encodeURIComponent(fullscreenSceneNavigation.storySlug)}/scenes/${encodeURIComponent(scene.slug)}`,
+    );
+    const document = payload.document || {};
+    fullscreenSceneNavigation.index = nextIndex;
+    const sceneName = document.scene?.title || scene.title || scene.slug;
+    if (document.image_exists && document.image_path) {
+      fullscreenImage.src = fileUrl(document.image_path, Date.now().toString());
+      fullscreenImage.alt = `${sceneName} render`;
+      fullscreenImage.hidden = false;
+      fullscreenImageEmpty.hidden = true;
+    } else {
+      fullscreenImage.removeAttribute("src");
+      fullscreenImage.alt = "";
+      fullscreenImage.hidden = true;
+      fullscreenImageEmpty.textContent = `No Image for ${sceneName}`;
+      fullscreenImageEmpty.hidden = false;
+    }
+  } finally {
+    updateFullscreenNavigation();
+  }
+}
+
+function openFullscreenImage(src, alt = "", options = {}) {
   if (!src) {
     return;
   }
+  resetFullscreenNavigation();
   fullscreenImage.src = src;
   fullscreenImage.alt = alt;
+  const sceneIndex = options.scenes?.findIndex((scene) => scene.slug === options.sceneSlug) ?? -1;
+  if (options.storySlug && sceneIndex >= 0) {
+    fullscreenSceneNavigation = {
+      index: sceneIndex,
+      scenes: options.scenes,
+      storySlug: options.storySlug,
+    };
+    updateFullscreenNavigation();
+  }
   resetFullscreenCrop();
-  fullscreenImageOverlay.hidden = false;
+  fullscreenImageOverlay.showModal();
+  fullscreenImageClose.focus();
 }
 
-function enableFullscreenImage(image) {
-  if (!image) {
-    return;
-  }
-  image.classList.add("fullscreen-image-trigger");
-  image.addEventListener("click", () => openFullscreenImage(image.src, image.alt || image.title || "Image"));
+function enableFullscreenImage(image, getOptions = null) {
+  if (!image) return null;
+  if (image.closest(".fullscreen-image-button")) return image.closest(".fullscreen-image-button");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "fullscreen-image-button";
+  button.setAttribute("aria-label", `Open full size: ${image.alt || image.title || "image"}`);
+  if (image.parentNode) image.replaceWith(button);
+  button.append(image);
+  button.addEventListener("click", () => openFullscreenImage(
+    image.src,
+    image.alt || image.title || "Image",
+    getOptions?.() || {},
+  ));
+  return button;
 }
 
 let fullscreenCropStart = null;
@@ -1295,6 +1512,10 @@ function renderAssetTable() {
     }
   }
   assetStatus.textContent = `${visibleAssets.length} of ${state.assets.length} asset(s)`;
+  if (!visibleAssets.length) {
+    renderEmptyRow(assetTableBody, 10, "No assets match the current character, phase, and filters.");
+    return;
+  }
   for (const asset of visibleAssets) {
     const row = document.createElement("tr");
     row.dataset.assetId = asset.asset_id;
@@ -1311,7 +1532,7 @@ function renderAssetTable() {
       asset.actor,
       asset.ai_state,
       asset.has_render_review_comment ? "NOTE" : "",
-      asset.updated_at_display,
+      asset.updated_at,
     ];
     for (const [index, value] of values.entries()) {
       const cell = document.createElement("td");
@@ -1325,12 +1546,18 @@ function renderAssetTable() {
           showAssetNote(asset);
         });
         cell.append(badge);
+      } else if (index === 9 && value) {
+        const time = document.createElement("time");
+        time.dateTime = String(value);
+        time.title = String(value);
+        time.textContent = formatLocalTimestamp(value);
+        cell.append(time);
       } else {
         cell.textContent = value ?? "";
       }
       row.append(cell);
     }
-    row.addEventListener("click", () => selectAsset(asset.asset_id));
+    makeSelectableRow(row, `Asset ${asset.asset_id}`, asset.asset_id === state.selectedAssetId, () => selectAsset(asset.asset_id));
     assetTableBody.append(row);
   }
 }
@@ -1356,9 +1583,7 @@ function applyAssetFilters() {
 
 async function selectAsset(assetId) {
   state.selectedAssetId = Number(assetId);
-  for (const row of assetTableBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", Number(row.dataset.assetId) === state.selectedAssetId);
-  }
+  updateSelectableRows(assetTableBody, (row) => Number(row.dataset.assetId) === state.selectedAssetId);
   const detail = await fetchJson(`/api/assets/${state.selectedAssetId}?${currentQuery().toString()}`);
   renderDetail(detail);
 }
@@ -1439,8 +1664,7 @@ function renderAssetLockedImage(detail) {
   image.alt = "Locked asset";
   image.src = fileUrl(path, detail.asset?.updated_at || Date.now().toString());
   image.title = path;
-  enableFullscreenImage(image);
-  assetLockedImage.append(image);
+  assetLockedImage.append(enableFullscreenImage(image));
 }
 
 function updateActionButtons(detail) {
@@ -1556,10 +1780,180 @@ function activePageName() {
   return activePage?.id?.replace(/-page$/, "") || "";
 }
 
+function controlValues(container) {
+  return Array.from(container.querySelectorAll("input, select, textarea")).map((control) => ({
+    name: control.id || control.dataset.storySettingPath || control.name || "",
+    value: control.type === "checkbox" ? control.checked : control.value,
+  }));
+}
+
+function storySnapshot() {
+  return JSON.stringify({
+    slug: state.selectedStorySlug,
+    text: storyText.value,
+    settings: controlValues(storySettingsFields),
+  });
+}
+
+function sceneSnapshot() {
+  return JSON.stringify({ story: state.selectedStorySlug, scene: state.selectedSceneSlug, text: sceneText.value });
+}
+
+function sceneBuilderSnapshot() {
+  if (state.sceneBuilder && activePageName() === "scene-builder") {
+    builderSyncControls();
+  }
+  return JSON.stringify(state.sceneBuilder || null);
+}
+
+function sourceEditorSnapshot() {
+  return JSON.stringify({ path: state.sourceEditor?.path || "", text: sourceEditorText.value });
+}
+
+function zineSnapshot() {
+  return JSON.stringify({ slug: state.selectedZineSlug, payload: zinePayload() });
+}
+
+function settingsSnapshot() {
+  return JSON.stringify(automationPayloadFromForm());
+}
+
+function setSaveState(container, text, kind = "") {
+  if (!container) return;
+  container.textContent = text;
+  container.className = `save-state ${kind}`.trim();
+}
+
+function updateDirtyIndicators() {
+  const storyDirty = storySnapshot() !== state.savedBaselines.story;
+  if (!(storyDirty && storySaveState.classList.contains("error"))) {
+    setSaveState(
+      storySaveState,
+      state.storyDetail ? (storyDirty ? "Dirty" : "Saved") : "",
+      storyDirty ? "dirty" : "saved",
+    );
+  }
+  const sceneDirty = sceneSnapshot() !== state.savedBaselines.scene;
+  if (!(sceneDirty && sceneSaveState.classList.contains("error"))) {
+    setSaveState(
+      sceneSaveState,
+      state.sceneDetail ? (sceneDirty ? "Dirty" : "Saved") : "",
+      sceneDirty ? "dirty" : "saved",
+    );
+  }
+  const sourceDirty = sourceEditorSnapshot() !== state.savedBaselines.sourceEditor;
+  if (!(sourceDirty && sourceEditorSaveState.classList.contains("error"))) {
+    setSaveState(
+      sourceEditorSaveState,
+      state.sourceEditor ? (sourceDirty ? "Dirty" : "Saved") : "",
+      sourceDirty ? "dirty" : "saved",
+    );
+  }
+  const settingsDirty = Boolean(state.savedBaselines.settings) && settingsSnapshot() !== state.savedBaselines.settings;
+  if (!(settingsDirty && settingsSaveState.classList.contains("error"))) {
+    setSaveState(settingsSaveState, state.savedBaselines.settings ? (settingsDirty ? "Dirty" : "Saved") : "", settingsDirty ? "dirty" : "saved");
+  }
+}
+
+function editorGuardForPage(page = activePageName()) {
+  if (page === "stories" && state.storyDetail && storySnapshot() !== state.savedBaselines.story) {
+    return { name: "story", autosave: true, save: saveStoryBeforeNavigation };
+  }
+  if (page === "scenes" && state.sceneDetail && sceneSnapshot() !== state.savedBaselines.scene) {
+    return { name: "scene", autosave: true, save: saveSceneBeforeNavigation };
+  }
+  if (page === "scene-builder" && state.sceneBuilder && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder) {
+    return { name: "Scene Builder", autosave: true, save: async () => Boolean(await saveSceneBuilder(true)) };
+  }
+  if (page === "template-editor" && state.sourceEditor && sourceEditorSnapshot() !== state.savedBaselines.sourceEditor) {
+    return {
+      name: "Source Editor",
+      autosave: false,
+      save: saveSourceEditor,
+      discard: () => { state.savedBaselines.sourceEditor = sourceEditorSnapshot(); },
+    };
+  }
+  if (page === "zine" && state.savedBaselines.zine && zineSnapshot() !== state.savedBaselines.zine) {
+    return {
+      name: "Zine",
+      autosave: false,
+      save: saveZine,
+      discard: () => { state.savedBaselines.zine = zineSnapshot(); },
+    };
+  }
+  if (["ai-controls", "local-image-config"].includes(page) && state.savedBaselines.settings && settingsSnapshot() !== state.savedBaselines.settings) {
+    return {
+      name: "project settings",
+      autosave: false,
+      save: saveAutomationSettings,
+      discard: () => { state.savedBaselines.settings = settingsSnapshot(); },
+    };
+  }
+  return null;
+}
+
+function dialogResult(dialog) {
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue || "cancel"), { once: true });
+    dialog.showModal();
+  });
+}
+
+async function confirmAction(title, message, confirmLabel = "Confirm") {
+  confirmationTitle.textContent = title;
+  confirmationMessage.textContent = message;
+  confirmationConfirm.textContent = confirmLabel;
+  confirmationDialog.returnValue = "cancel";
+  return (await dialogResult(confirmationDialog)) === "confirm";
+}
+
+async function guardCurrentEditor() {
+  const guard = editorGuardForPage();
+  if (!guard) return true;
+  if (guard.autosave) {
+    const saved = await guard.save();
+    updateDirtyIndicators();
+    return Boolean(saved);
+  }
+  unsavedChangesMessage.textContent = `Save changes to ${guard.name} before continuing?`;
+  unsavedChangesDialog.returnValue = "cancel";
+  const choice = await dialogResult(unsavedChangesDialog);
+  if (choice === "cancel") return false;
+  if (choice === "discard") {
+    guard.discard?.();
+    updateDirtyIndicators();
+    return true;
+  }
+  const saved = await guard.save();
+  updateDirtyIndicators();
+  return Boolean(saved);
+}
+
+async function runGuardedTransition(action) {
+  const previous = state.transitionPromise;
+  const execute = async () => {
+    if (!(await guardCurrentEditor())) return false;
+    await action();
+    return true;
+  };
+  const current = previous
+    ? previous.catch(() => false).then(execute)
+    : execute();
+  state.transitionPromise = current;
+  try {
+    return await current;
+  } finally {
+    if (state.transitionPromise === current) {
+      state.transitionPromise = null;
+    }
+  }
+}
+
 async function saveStoryBeforeNavigation() {
   if (!state.selectedStorySlug || !state.storyDetail) {
     return true;
   }
+  setSaveState(storySaveState, "Saving", "saving");
   try {
     await saveStorySettingsData(state.selectedStorySlug);
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}`, {
@@ -1575,9 +1969,12 @@ async function saveStoryBeforeNavigation() {
     renderSceneStoryOptions();
     renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
     showStoryMessage(payload.message || "Story saved.");
+    state.savedBaselines.story = storySnapshot();
+    setSaveState(storySaveState, "Saved", "saved");
     return true;
   } catch (error) {
     showStoryMessage(error.message, "error");
+    setSaveState(storySaveState, "Error", "error");
     return false;
   }
 }
@@ -1586,6 +1983,7 @@ async function saveSceneBeforeNavigation() {
   if (!state.selectedStorySlug || !state.selectedSceneSlug || !state.sceneDetail) {
     return true;
   }
+  setSaveState(sceneSaveState, "Saving", "saving");
   try {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
       method: "PUT",
@@ -1600,9 +1998,12 @@ async function saveSceneBeforeNavigation() {
     renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
     updateSceneImageToggle();
     showSceneMessage(payload.message || "Scene saved.");
+    state.savedBaselines.scene = sceneSnapshot();
+    setSaveState(sceneSaveState, "Saved", "saved");
     return true;
   } catch (error) {
     showSceneMessage(error.message, "error");
+    setSaveState(sceneSaveState, "Error", "error");
     return false;
   }
 }
@@ -1612,16 +2013,7 @@ async function saveBeforePageNavigation(nextPage) {
   if (currentPage === nextPage) {
     return true;
   }
-  if (currentPage === "stories") {
-    return saveStoryBeforeNavigation();
-  }
-  if (currentPage === "scenes") {
-    return saveSceneBeforeNavigation();
-  }
-  if (currentPage === "scene-builder") {
-    await saveSceneBuilder(true);
-  }
-  return true;
+  return guardCurrentEditor();
 }
 
 async function activatePage(page, options = {}) {
@@ -1629,14 +2021,17 @@ async function activatePage(page, options = {}) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
-    return;
+    characterAssetsMenu.value = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison"].includes(activePageName())
+      ? activePageName()
+      : "";
+    return false;
   }
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
   const characterAssetPages = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison"];
   characterAssetsMenu.classList.toggle("active", characterAssetPages.includes(page));
-  characterAssetsMenu.value = "";
+  characterAssetsMenu.value = characterAssetPages.includes(page) ? page : "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
   document.querySelector("#assets-page").classList.toggle("active", page === "assets");
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
@@ -1709,6 +2104,7 @@ async function activatePage(page, options = {}) {
   if (page === "ai-controls") {
     await loadAiControls();
     await loadPipelineControls();
+    await refreshOllamaModelOptions();
   }
   if (page === "pipeline-controls") {
     await loadPipelineControls();
@@ -1725,6 +2121,7 @@ async function activatePage(page, options = {}) {
   if (page === "onboarding") {
     renderOnboarding();
   }
+  return true;
 }
 
 function setupTabs() {
@@ -1733,7 +2130,7 @@ function setupTabs() {
     if (page === "identity-keys") {
       state.identityKeyMode = "list";
     }
-    await activatePage(page);
+    await runGuardedTransition(() => activatePage(page, { skipAutosave: true }));
   });
   for (const button of document.querySelectorAll("button.tab")) {
     button.addEventListener("click", async () => {
@@ -1741,7 +2138,7 @@ function setupTabs() {
         state.identityKeyMode = "list";
       }
       closeToolbarSettingsMenu();
-      await activatePage(button.dataset.page);
+      await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
     });
   }
 }
@@ -1750,27 +2147,42 @@ function toggleToolbarSettingsMenu() {
   const isHidden = toolbarSettingsMenu.hidden;
   toolbarSettingsMenu.hidden = !isHidden;
   toolbarSettingsButton.setAttribute("aria-expanded", isHidden ? "true" : "false");
+  if (isHidden) {
+    const rect = toolbarSettingsButton.getBoundingClientRect();
+    toolbarSettingsMenu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+    toolbarSettingsMenu.style.top = `${rect.bottom + 6}px`;
+    toolbarSettingsMenu.querySelector("button")?.focus();
+  }
 }
 
-function closeToolbarSettingsMenu() {
+function closeToolbarSettingsMenu(returnFocus = false) {
+  const wasOpen = !toolbarSettingsMenu.hidden;
   toolbarSettingsMenu.hidden = true;
   toolbarSettingsButton.setAttribute("aria-expanded", "false");
+  if (returnFocus && wasOpen) toolbarSettingsButton.focus();
 }
 
 async function openTodoDialog() {
   closeToolbarSettingsMenu();
   const payload = await fetchJson("/api/todo");
   todoText.value = payload.text || "";
+  todoDialog.dataset.savedText = todoText.value;
   todoDialog.showModal();
 }
 
-async function saveTodo(event) {
-  event.preventDefault();
+async function persistTodo() {
+  if (todoText.value === (todoDialog.dataset.savedText || "")) return;
   await fetchJson("/api/todo", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text: todoText.value }),
   });
+  todoDialog.dataset.savedText = todoText.value;
+}
+
+async function saveTodo(event) {
+  event.preventDefault();
+  await persistTodo();
   todoDialog.close();
 }
 
@@ -1804,6 +2216,10 @@ async function loadIdentityKeys() {
 
 function renderIdentityKeyTable() {
   identityKeyTableBody.replaceChildren();
+  if (!state.identityKeys.length) {
+    renderEmptyRow(identityKeyTableBody, 4, "No Identity Keys exist for this character and phase.");
+    return;
+  }
   for (const item of state.identityKeys) {
     const row = document.createElement("tr");
     row.dataset.identityKeyId = item.identity_key_id;
@@ -1824,6 +2240,7 @@ function renderIdentityKeyTable() {
     const actionCell = document.createElement("td");
     const updateButton = document.createElement("button");
     updateButton.type = "button";
+    updateButton.className = "update-action";
     updateButton.textContent = "Update";
     updateButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1831,6 +2248,7 @@ function renderIdentityKeyTable() {
     });
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
+    deleteButton.className = "danger-action";
     deleteButton.textContent = "Delete";
     deleteButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1838,7 +2256,7 @@ function renderIdentityKeyTable() {
     });
     actionCell.append(updateButton, deleteButton);
     row.append(labelCell, viewCell, imageCell, actionCell);
-    row.addEventListener("click", () => selectIdentityKey(item.identity_key_id));
+    makeSelectableRow(row, item.label || item.identity_key_id, item.identity_key_id === state.selectedIdentityKeyId, () => selectIdentityKey(item.identity_key_id));
     identityKeyTableBody.append(row);
   }
 }
@@ -2000,6 +2418,10 @@ async function loadCostumes() {
 
 function renderCostumeTable() {
   costumeTableBody.replaceChildren();
+  if (!state.costumes.length) {
+    renderEmptyRow(costumeTableBody, 4, "No costumes exist for this character and phase.");
+    return;
+  }
   for (const costume of state.costumes) {
     const row = document.createElement("tr");
     row.dataset.costumeSlug = costume.slug;
@@ -2014,6 +2436,7 @@ function renderCostumeTable() {
     const actionCell = document.createElement("td");
     const openButton = document.createElement("button");
     openButton.type = "button";
+    openButton.className = "navigation-action";
     openButton.textContent = "Open";
     openButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -2025,7 +2448,7 @@ function renderCostumeTable() {
     });
     actionCell.append(openButton);
     row.append(nameCell, countCell, pathCell, actionCell);
-    row.addEventListener("click", () => selectCostume(costume.slug));
+    makeSelectableRow(row, costume.name || costume.slug, costume.slug === state.selectedCostumeSlug, () => selectCostume(costume.slug));
     costumeTableBody.append(row);
   }
 }
@@ -2160,6 +2583,10 @@ function expressionDefinitionForAsset(asset) {
 
 function renderExpressionTable() {
   expressionTableBody.replaceChildren();
+  if (!state.expressionAssets.length) {
+    renderEmptyRow(expressionTableBody, 7, "No expression assets exist for this character and phase.");
+    return;
+  }
   for (const asset of state.expressionAssets) {
     const row = document.createElement("tr");
     row.dataset.assetId = asset.asset_id;
@@ -2181,6 +2608,7 @@ function renderExpressionTable() {
     const actionCell = document.createElement("td");
     const editButton = document.createElement("button");
     editButton.type = "button";
+    editButton.className = "navigation-action";
     editButton.textContent = "Open";
     editButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -2191,7 +2619,7 @@ function renderExpressionTable() {
     });
     actionCell.append(editButton);
     row.append(actionCell);
-    row.addEventListener("click", () => selectExpression(asset.asset_id));
+    makeSelectableRow(row, asset.expression || `Asset ${asset.asset_id}`, asset.asset_id === state.selectedExpressionAssetId, () => selectExpression(asset.asset_id));
     expressionTableBody.append(row);
   }
 }
@@ -2334,15 +2762,18 @@ async function loadStories(selectSlug = state.selectedStorySlug) {
 function renderStoryTable() {
   // Render the shared stories list.
   storyTableBody.replaceChildren();
+  if (!state.stories.length) {
+    renderEmptyRow(storyTableBody, 3, "No stories exist. Add a story to begin.");
+    return;
+  }
   for (const story of state.stories) {
     const row = document.createElement("tr");
-    row.classList.toggle("selected", story.slug === state.selectedStorySlug);
-    row.addEventListener("click", () => selectStory(story.slug));
     for (const value of [story.title, story.slug, basename(story.story_file_path || "")]) {
       const cell = document.createElement("td");
       cell.textContent = value || "";
       row.append(cell);
     }
+    makeSelectableRow(row, story.title || story.slug, story.slug === state.selectedStorySlug, () => selectStory(story.slug));
     storyTableBody.append(row);
   }
 }
@@ -2351,13 +2782,14 @@ function renderValidationBox(container, errors, emptyMessage) {
   // Show validation warnings for story and scene markdown editors.
   const items = Array.isArray(errors) ? errors.filter(Boolean) : [];
   if (!items.length) {
-    container.hidden = false;
-    container.className = "action-message info";
-    container.textContent = emptyMessage;
+    showMessageElement(container, emptyMessage, "info");
     return;
   }
   container.hidden = false;
   container.className = "action-message warning";
+  container.setAttribute("role", "status");
+  container.setAttribute("aria-live", "polite");
+  container.setAttribute("aria-atomic", "true");
   container.innerHTML = items.map((item) => `<div>${escapeHtml(item)}</div>`).join("");
 }
 
@@ -2375,6 +2807,8 @@ function clearStoryEditor() {
   storyDelete.disabled = true;
   storySettingsLoad.disabled = true;
   storySettingsSave.disabled = true;
+  state.savedBaselines.story = "";
+  setSaveState(storySaveState, "");
   renderValidationBox(storyValidation, [], "Create or select a story to edit its markdown.");
 }
 
@@ -2522,6 +2956,8 @@ async function loadStoryDetail(storySlug) {
       await loadStorySettingsData(state.selectedStorySlug);
     }
     renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
+    state.savedBaselines.story = storySnapshot();
+    setSaveState(storySaveState, "Saved", "saved");
   } catch (error) {
     clearStoryEditor();
     showStoryMessage(error.message, "error");
@@ -2530,15 +2966,18 @@ async function loadStoryDetail(storySlug) {
 
 async function selectStory(storySlug) {
   // Select one story and refresh the current page context.
-  state.selectedStorySlug = storySlug;
-  renderStoryTable();
-  renderSceneStoryOptions();
-  if (document.querySelector("#stories-page").classList.contains("active")) {
-    await loadStoryDetail(storySlug);
-  }
-  if (document.querySelector("#scenes-page").classList.contains("active")) {
-    await loadScenesPage();
-  }
+  if (storySlug === state.selectedStorySlug) return;
+  await runGuardedTransition(async () => {
+    state.selectedStorySlug = storySlug;
+    renderStoryTable();
+    renderSceneStoryOptions();
+    if (document.querySelector("#stories-page").classList.contains("active")) {
+      await loadStoryDetail(storySlug);
+    }
+    if (document.querySelector("#scenes-page").classList.contains("active")) {
+      await loadScenesPage();
+    }
+  });
 }
 
 async function createStory() {
@@ -2568,6 +3007,8 @@ async function createStory() {
       storySettingsSave.disabled = true;
       await loadStorySettingsData(state.selectedStorySlug);
       renderValidationBox(storyValidation, state.storyDetail.validation_errors || [], "Story markdown is valid.");
+      state.savedBaselines.story = storySnapshot();
+      setSaveState(storySaveState, "Saved", "saved");
     }
     showStoryMessage(payload.message || "Story created.");
   } catch (error) {
@@ -2601,8 +3042,13 @@ async function saveStory() {
     renderZineStoryOptions();
     renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
     showStoryMessage(settingsPayload ? "Story and settings saved." : (payload.message || "Story saved."));
+    state.savedBaselines.story = storySnapshot();
+    setSaveState(storySaveState, "Saved", "saved");
+    return true;
   } catch (error) {
     showStoryMessage(error.message, "error");
+    setSaveState(storySaveState, "Error", "error");
+    return false;
   } finally {
     storySave.disabled = false;
   }
@@ -2630,8 +3076,13 @@ async function saveStorySettings() {
     const payload = await saveStorySettingsData(state.selectedStorySlug);
     updateStoryGitWarning(payload?.has_story_changes);
     showStoryMessage(payload?.message || "Story settings saved.", "success");
+    state.savedBaselines.story = storySnapshot();
+    setSaveState(storySaveState, "Saved", "saved");
+    return true;
   } catch (error) {
     showStoryMessage(error.message, "error");
+    setSaveState(storySaveState, "Error", "error");
+    return false;
   }
 }
 
@@ -2713,6 +3164,8 @@ function clearSceneEditor() {
   sceneBuilderOpen.disabled = true;
   sceneDelete.disabled = true;
   sceneToggleImage.disabled = true;
+  state.savedBaselines.scene = "";
+  setSaveState(sceneSaveState, "");
   sceneImagePanel.hidden = true;
   sceneImagePreview.removeAttribute("src");
   closeSceneBuilder();
@@ -2772,15 +3225,18 @@ async function loadScenesPage() {
 function renderSceneTable() {
   // Render the scene list for the selected story.
   sceneTableBody.replaceChildren();
+  if (!state.scenes.length) {
+    renderEmptyRow(sceneTableBody, 2, state.selectedStorySlug ? "No scenes exist in this story." : "Select a story to view scenes.");
+    return;
+  }
   for (const scene of state.scenes) {
     const row = document.createElement("tr");
-    row.classList.toggle("selected", scene.slug === state.selectedSceneSlug);
-    row.addEventListener("click", () => selectScene(scene.slug));
     for (const value of [scene.title, basename(scene.path || "")]) {
       const cell = document.createElement("td");
       cell.textContent = value || "";
       row.append(cell);
     }
+    makeSelectableRow(row, scene.title || scene.slug, scene.slug === state.selectedSceneSlug, () => selectScene(scene.slug));
     sceneTableBody.append(row);
   }
 }
@@ -2806,6 +3262,8 @@ async function loadSceneDetail(storySlug, sceneSlug) {
     closeSceneBuilder();
     updateSceneImageToggle();
     renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
+    state.savedBaselines.scene = sceneSnapshot();
+    setSaveState(sceneSaveState, "Saved", "saved");
   } catch (error) {
     clearSceneEditor();
     showSceneMessage(error.message, "error");
@@ -2814,9 +3272,12 @@ async function loadSceneDetail(storySlug, sceneSlug) {
 
 async function selectScene(sceneSlug) {
   // Select one scene within the currently selected story.
-  state.selectedSceneSlug = sceneSlug;
-  renderSceneTable();
-  await loadSceneDetail(state.selectedStorySlug, sceneSlug);
+  if (sceneSlug === state.selectedSceneSlug) return;
+  await runGuardedTransition(async () => {
+    state.selectedSceneSlug = sceneSlug;
+    renderSceneTable();
+    await loadSceneDetail(state.selectedStorySlug, sceneSlug);
+  });
 }
 
 async function createScene() {
@@ -2852,6 +3313,8 @@ async function createScene() {
       sceneDelete.disabled = false;
       updateSceneImageToggle();
       renderValidationBox(sceneValidation, state.sceneDetail.validation_errors || [], "Scene markdown is valid.");
+      state.savedBaselines.scene = sceneSnapshot();
+      setSaveState(sceneSaveState, "Saved", "saved");
     }
     showSceneMessage(payload.message || "Scene created.");
   } catch (error) {
@@ -2883,8 +3346,13 @@ async function saveScene() {
     renderValidationBox(sceneValidation, state.sceneDetail?.validation_errors || [], "Scene markdown is valid.");
     updateSceneImageToggle();
     showSceneMessage(payload.message || "Scene saved.");
+    state.savedBaselines.scene = sceneSnapshot();
+    setSaveState(sceneSaveState, "Saved", "saved");
+    return true;
   } catch (error) {
     showSceneMessage(error.message, "error");
+    setSaveState(sceneSaveState, "Error", "error");
+    return false;
   } finally {
     sceneSave.disabled = false;
   }
@@ -3043,19 +3511,23 @@ function clearZineEditor() {
   zinePreview.removeAttribute("src");
   renderZineTable();
   showZineMessage("");
+  state.savedBaselines.zine = zineSnapshot();
 }
 
 function renderZineTable() {
   zineTableBody.replaceChildren();
+  if (!state.zines.length) {
+    renderEmptyRow(zineTableBody, 2, "No zines exist. Create a zine to begin.");
+    return;
+  }
   for (const zine of state.zines) {
     const row = document.createElement("tr");
-    row.classList.toggle("selected", zine.slug === state.selectedZineSlug);
-    row.addEventListener("click", () => selectZine(zine.slug));
     for (const value of [zine.name, zine.slug]) {
       const cell = document.createElement("td");
       cell.textContent = value || "";
       row.append(cell);
     }
+    makeSelectableRow(row, zine.name || zine.slug, zine.slug === state.selectedZineSlug, () => selectZine(zine.slug));
     zineTableBody.append(row);
   }
 }
@@ -3082,6 +3554,7 @@ function renderZineDocument(document) {
     zinePreview.removeAttribute("src");
   }
   renderZineTable();
+  state.savedBaselines.zine = zineSnapshot();
 }
 
 async function loadZineStorySources() {
@@ -3126,7 +3599,7 @@ async function loadZines() {
     }
     renderZineTable();
     if (state.selectedZineSlug) {
-      await selectZine(state.selectedZineSlug);
+      await selectZine(state.selectedZineSlug, { skipGuard: true });
     } else {
       clearZineEditor();
     }
@@ -3137,23 +3610,31 @@ async function loadZines() {
   }
 }
 
-async function selectZine(slug) {
-  state.selectedZineSlug = slug;
-  renderZineTable();
-  try {
-    const payload = await fetchJson(`/api/zines/${encodeURIComponent(slug)}`);
-    renderZineDocument(payload.document);
-    const sceneTag = Object.values(payload.document?.metadata?.slots || {})
-      .find((value) => String(value).startsWith("{{SCENE:"));
-    const storyMatch = String(sceneTag || "").match(/^\{\{SCENE:([^:}]+):/);
-    if (storyMatch && state.stories.some((story) => story.slug === storyMatch[1])) {
-      state.zineStorySlug = storyMatch[1];
-      renderZineStoryOptions();
-      await loadZineStorySources();
+async function selectZine(slug, options = {}) {
+  if (slug === state.selectedZineSlug && state.zineDocument?.zine?.slug === slug) return;
+  const select = async () => {
+    state.selectedZineSlug = slug;
+    renderZineTable();
+    try {
+      const payload = await fetchJson(`/api/zines/${encodeURIComponent(slug)}`);
+      renderZineDocument(payload.document);
+      const sceneTag = Object.values(payload.document?.metadata?.slots || {})
+        .find((value) => String(value).startsWith("{{SCENE:"));
+      const storyMatch = String(sceneTag || "").match(/^\{\{SCENE:([^:}]+):/);
+      if (storyMatch && state.stories.some((story) => story.slug === storyMatch[1])) {
+        state.zineStorySlug = storyMatch[1];
+        renderZineStoryOptions();
+        await loadZineStorySources();
+      }
+      showZineMessage("");
+    } catch (error) {
+      showZineMessage(error.message, "error");
     }
-    showZineMessage("");
-  } catch (error) {
-    showZineMessage(error.message, "error");
+  };
+  if (options.skipGuard) {
+    await select();
+  } else {
+    await runGuardedTransition(select);
   }
 }
 
@@ -3216,8 +3697,11 @@ async function saveZine() {
     renderZineDocument(payload.document);
     zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
     showZineMessage(payload.message || "Zine saved.");
+    state.savedBaselines.zine = zineSnapshot();
+    return true;
   } catch (error) {
     showZineMessage(error.message, "error");
+    return false;
   } finally {
     zineSave.disabled = false;
   }
@@ -3246,7 +3730,7 @@ async function deleteZine() {
     state.zines = payload.zines || [];
     clearZineEditor();
     if (state.zines.length) {
-      await selectZine(state.zines[0].slug);
+      await selectZine(state.zines[0].slug, { skipGuard: true });
     }
     zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
     showZineMessage(payload.message || "Zine deleted.");
@@ -3262,7 +3746,31 @@ function closeSceneBuilder() {
   state.selectedBuilderElementId = null;
   sceneBuilderPanel.replaceChildren();
   sceneBuilderStatus.textContent = "";
+  sceneBuilderPrevious.disabled = true;
+  sceneBuilderNext.disabled = true;
   showSceneBuilderMessage("");
+}
+
+function updateSceneBuilderNavigation() {
+  const index = state.scenes.findIndex((scene) => scene.slug === state.selectedSceneSlug);
+  sceneBuilderPrevious.disabled = index <= 0;
+  sceneBuilderNext.disabled = index < 0 || index >= state.scenes.length - 1;
+}
+
+async function navigateSceneBuilder(offset) {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  let index = state.scenes.findIndex((scene) => scene.slug === state.selectedSceneSlug);
+  if (index < 0) {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes`);
+    state.scenes = payload.scenes || [];
+    index = state.scenes.findIndex((scene) => scene.slug === state.selectedSceneSlug);
+  }
+  const target = state.scenes[index + offset];
+  if (!target) return;
+  if (state.sceneBuilder && await saveSceneBuilder(true) === null) return;
+  state.selectedSceneSlug = target.slug;
+  await loadSceneDetail(state.selectedStorySlug, target.slug);
+  await openSceneBuilder();
 }
 
 async function returnToScenesFromBuilder() {
@@ -3439,7 +3947,10 @@ async function builderLoadElementCostumes() {
   const payload = await fetchJson(`/api/costumes?${params.toString()}`);
   state.builderElementCostumes = payload.costumes || [];
   state.builderCostumesByCharacterPhase[`${character}\n${phase}`] = state.builderElementCostumes;
-  setSelectOptions(builderElementCostume, state.builderElementCostumes.map((item) => item.name || ""));
+  setSelectOptionsWithLabels(builderElementCostume, [
+    { value: "", label: "(No costume)" },
+    ...state.builderElementCostumes.map((item) => ({ value: item.name || "", label: item.name || "" })),
+  ]);
 }
 
 async function builderLoadSelectedElementCostumes(element = builderSelectedElement()) {
@@ -3455,7 +3966,10 @@ function builderCostumeOptions(element) {
   const key = `${element.character || ""}\n${element.phase || ""}`;
   const names = (state.builderCostumesByCharacterPhase[key] || []).map((item) => item.name || "").filter(Boolean);
   if (element.costume && !names.includes(element.costume)) names.unshift(element.costume);
-  return names.map((name) => `<option value="${escapeHtml(name)}"${name === element.costume ? " selected" : ""}>${escapeHtml(name)}</option>`).join("");
+  return [
+    `<option value=""${element.costume ? "" : " selected"}>(No costume)</option>`,
+    ...names.map((name) => `<option value="${escapeHtml(name)}"${name === element.costume ? " selected" : ""}>${escapeHtml(name)}</option>`),
+  ].join("");
 }
 
 async function builderLoadElementAuxResources() {
@@ -3480,7 +3994,8 @@ async function openBuilderElementDialog() {
   builderUpdateElementModalSections();
   await builderLoadElementCostumes();
   await builderLoadElementAuxResources();
-  builderElementModal.hidden = false;
+  builderElementModal.showModal();
+  builderElementResourceType.focus();
 }
 
 function builderAddElementFromDialog() {
@@ -3517,7 +4032,7 @@ function builderAddElementFromDialog() {
   state.sceneBuilder.placements.push(builderCreatePlacementForElement(element));
   state.selectedBuilderElementId = element.id;
   state.selectedBuilderPlacementId = builderPlacementForElement(element.id)?.id || null;
-  builderElementModal.hidden = true;
+  builderElementModal.close();
   renderSceneBuilder();
 }
 
@@ -3615,7 +4130,7 @@ function builderRenderElementEditor() {
   const referenceTag = element.reference_images?.[0]?.tag || "";
   const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
   const referenceThumbnail = reference?.thumbnail_path
-    ? `<img class="scene-builder-reference-thumbnail" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}">`
+    ? `<img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}">`
     : "";
   return `
     <div class="scene-builder-card">
@@ -3790,6 +4305,7 @@ function renderSceneBuilder() {
   if (!state.sceneBuilder) {
     return;
   }
+  builderHelpSequence = 0;
   const warnings = state.sceneBuilder._validation_warnings || [];
   const warningMarkup = warnings.length
     ? `<div class="scene-builder-warnings"><strong>Validation warnings</strong><ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul></div>`
@@ -3804,6 +4320,7 @@ function renderSceneBuilder() {
       <button type="button" class="scene-builder-continue" data-builder-action="continue-from">Continue from...</button>
       <button type="button" class="primary-action" data-builder-action="save">Save JSON</button>
       <button type="button" class="scene-builder-render" data-builder-action="render">Render</button>
+      ${state.scenePromptAnalysis?.complete ? '<button type="button" class="scene-builder-analysis-view complete" data-builder-action="view-analysis" aria-label="View prompt analysis" title="View prompt analysis">&#128065;</button>' : ""}
       ${warningMarkup}
     </div>
     <div class="scene-builder-grid">
@@ -3848,6 +4365,7 @@ async function openSceneBuilder() {
   }
   sceneBuilderOpen.disabled = true;
   sceneBuilderStatus.textContent = `${state.selectedStorySlug} / ${state.selectedSceneSlug}`;
+  updateSceneBuilderNavigation();
   showSceneBuilderMessage("Loading Scene Builder...");
   try {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`);
@@ -3865,6 +4383,8 @@ async function openSceneBuilder() {
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes();
     renderSceneBuilder();
+    updateSceneBuilderNavigation();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     showSceneBuilderMessage(state.sceneBuilder._migrated_from_schema_version ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file." : "Scene Builder loaded.", "success");
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
@@ -3896,6 +4416,7 @@ async function saveSceneBuilder(autosave = false) {
     state.sceneBuilder._validation_warnings = payload.document?.validation_warnings || state.sceneBuilder._validation_warnings || [];
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     if (!autosave) {
       showSceneBuilderMessage(payload.message || "Scene Builder saved.", "success");
     }
@@ -3923,14 +4444,15 @@ async function openBuilderContinueDialog() {
       showSceneBuilderMessage("No other scenes are available to continue from.", "error");
       return;
     }
-    builderContinueModal.hidden = false;
+    builderContinueModal.showModal();
+    builderContinueScene.focus();
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
 }
 
 function closeBuilderContinueDialog() {
-  builderContinueModal.hidden = true;
+  builderContinueModal.close();
 }
 
 async function continueSceneBuilderFrom() {
@@ -3992,7 +4514,7 @@ async function analyzeScenePrompt() {
 
 async function viewScenePromptAnalysis() {
   if (state.scenePromptAnalysis?.complete && state.scenePromptAnalysis.result_path) {
-    window.open(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/view`, "_blank", "noopener");
+    openPromptAnalysisDialog(state.selectedStorySlug, state.selectedSceneSlug);
     return;
   }
   if (!state.scenePromptAnalysis?.pending) {
@@ -4054,15 +4576,25 @@ sceneBuilderPanel.addEventListener("input", () => {
     return;
   }
   builderSyncControls();
+  updateDirtyIndicators();
 });
 sceneBuilderPanel.addEventListener("change", builderApplyChange);
 sceneBuilderPanel.addEventListener("click", (event) => {
+  const referenceImage = event.target.closest(".scene-builder-reference-thumbnail");
+  if (referenceImage) {
+    event.preventDefault();
+    event.stopPropagation();
+    openFullscreenImage(referenceImage.src, referenceImage.alt || "Reference image");
+    return;
+  }
   const helpTarget = event.target.closest("[data-builder-help]");
   if (helpTarget) {
     event.preventDefault();
     event.stopPropagation();
-    const path = helpTarget.dataset.builderHelp || "";
-    window.alert(SCENE_BUILDER_HELP[path] || "No help text is available for this field.");
+    const helpText = document.getElementById(helpTarget.getAttribute("aria-controls"));
+    const willOpen = Boolean(helpText?.hidden);
+    if (helpText) helpText.hidden = !willOpen;
+    helpTarget.setAttribute("aria-expanded", willOpen ? "true" : "false");
     return;
   }
   const target = event.target.closest("[data-builder-action], [data-builder-select-element]");
@@ -4103,6 +4635,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     if (action === "save") saveSceneBuilder(false);
     if (action === "export") exportSceneBuilderMarkdown();
     if (action === "render") renderSceneBuilderScene();
+    if (action === "view-analysis") viewScenePromptAnalysis();
   }
 });
 
@@ -4154,7 +4687,7 @@ function renderImagePickerTable(picker) {
       sourceCell.textContent = [item.character, item.phase, item.pipeline].filter(Boolean).join(" | ") || item.kind || "";
       row.append(tagCell, labelCell, sourceCell);
     }
-    row.addEventListener("click", () => picker.onSelect(item));
+    makeSelectableRow(row, item.label || item.tag || "reference", false, () => picker.onSelect(item));
     picker.tableBody.append(row);
   }
 }
@@ -4190,7 +4723,7 @@ const builderImagePicker = {
     element.reference_images = element.reference_images || [];
     element.reference_images[0] = element.reference_images[0] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
     element.reference_images[0].tag = item.tag || "";
-    builderImagePickerModal.hidden = true;
+    builderImagePickerModal.close();
     renderSceneBuilder();
     showSceneBuilderMessage(`Selected ${item.tag || "image tag"}.`, "success");
   },
@@ -4211,7 +4744,8 @@ function openBuilderImagePicker() {
     ? [element.character || element.display_name, element.phase, element.costume].filter(Boolean).join(" ")
     : element.display_name || "";
   state.builderImagePickerSearch = builderImagePickerSearch.value;
-  builderImagePickerModal.hidden = false;
+  builderImagePickerModal.showModal();
+  builderImagePickerSearch.focus();
   loadImagePickerReferences(builderImagePicker);
 }
 
@@ -4295,7 +4829,7 @@ function renderAuxiliaryResourceTable() {
     const folderCell = document.createElement("td");
     folderCell.textContent = resource.resource_id || "";
     row.append(labelCell, folderCell);
-    row.addEventListener("click", () => selectAuxiliaryResource(resource.resource_id));
+    makeSelectableRow(row, resource.label || resource.resource_id, resource.resource_id === state.selectedAuxiliaryResourceId, () => selectAuxiliaryResource(resource.resource_id));
     auxResourceTableBody.append(row);
   }
   return visibleResources.length;
@@ -4645,26 +5179,18 @@ async function loadPromptReviewTasks(preferredAskId = null) {
 }
 
 function renderPromptReviewTaskTable() {
-  promptReviewTaskBody.replaceChildren();
-  for (const task of state.promptReviewTasks) {
-    const row = document.createElement("tr");
-    row.dataset.askId = task.ask_id;
-    row.classList.toggle("selected", task.ask_id === state.selectedPromptReviewAskId);
-    for (const value of [task.asset_id ?? "scene", task.ask_id]) {
-      const cell = document.createElement("td");
-      cell.textContent = value ?? "";
-      row.append(cell);
-    }
-    row.addEventListener("click", () => selectPromptReviewTask(task.ask_id));
-    promptReviewTaskBody.append(row);
-  }
+  renderAssetTaskTable(
+    promptReviewTaskBody,
+    state.promptReviewTasks,
+    state.selectedPromptReviewAskId,
+    selectPromptReviewTask,
+    "No render prompts are waiting. Stage a render to create work.",
+  );
 }
 
 async function selectPromptReviewTask(askId) {
   state.selectedPromptReviewAskId = askId;
-  for (const row of promptReviewTaskBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", row.dataset.askId === state.selectedPromptReviewAskId);
-  }
+  updateSelectableRows(promptReviewTaskBody, (row) => row.dataset.askId === state.selectedPromptReviewAskId);
   const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`);
   renderPromptReview(detail);
 }
@@ -4678,6 +5204,8 @@ function clearPromptReview() {
   promptReviewPrev.disabled = true;
   promptReviewNext.disabled = true;
   copyPromptButton.disabled = true;
+  promptReviewSceneBuilder.hidden = true;
+  promptReviewSceneBuilder.disabled = true;
   analyzePromptButton.disabled = true;
   viewPromptAnalysisButton.disabled = true;
 }
@@ -4692,6 +5220,8 @@ function renderPromptReview(detail) {
   promptPath.textContent = detail.prompt_path || "No prompt file found.";
   renderPromptText();
   copyPromptButton.disabled = !detail.prompt;
+  promptReviewSceneBuilder.hidden = !storyLabel;
+  promptReviewSceneBuilder.disabled = !storyLabel;
   analyzePromptButton.disabled = !storyLabel;
   viewPromptAnalysisButton.disabled = !storyLabel || !(detail.prompt_analysis?.pending || detail.prompt_analysis?.complete);
   viewPromptAnalysisButton.classList.toggle("complete", Boolean(detail.prompt_analysis?.complete));
@@ -4728,7 +5258,7 @@ async function viewPromptReviewAnalysis() {
   if (!scene) return;
   let analysis = state.promptReviewDetail?.prompt_analysis || {};
   if (analysis.complete && analysis.result_path) {
-    window.open(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis/view`, "_blank", "noopener");
+    openPromptAnalysisDialog(scene.storySlug, scene.sceneSlug);
     return;
   }
   try {
@@ -4739,6 +5269,15 @@ async function viewPromptReviewAnalysis() {
   } catch (error) {
     showPromptMessage(error.message, "error");
   }
+}
+
+function openPromptAnalysisDialog(storySlug, sceneSlug) {
+  promptAnalysisFrame.src = `/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/view`;
+  promptAnalysisDialog.showModal();
+}
+
+function closePromptAnalysisDialog() {
+  promptAnalysisDialog.close();
 }
 
 function renderPromptText() {
@@ -4869,10 +5408,10 @@ function renderSourceEditor(detail) {
   addEditorMeta("Source lines", detail.start_line ? `${detail.start_line}-${detail.end_line || detail.start_line}` : "");
   sourceEditorText.value = detail.text || "";
   sourceEditorSave.disabled = false;
-  sourceEditorRecompile.disabled = !state.promptReviewDetail?.is_reviewable;
-  sourceEditorClearReviewAids.checked = true;
   sourceEditorWarning.textContent = detail.warning || "";
   sourceEditorWarning.hidden = !detail.warning;
+  state.savedBaselines.sourceEditor = sourceEditorSnapshot();
+  setSaveState(sourceEditorSaveState, "Saved", "saved");
   showSourceEditorMessage("");
 }
 
@@ -4928,35 +5467,15 @@ async function saveSourceEditor() {
       body: JSON.stringify(payload),
     });
     showSourceEditorMessage(`Saved ${result.path}.`);
+    state.savedBaselines.sourceEditor = sourceEditorSnapshot();
+    setSaveState(sourceEditorSaveState, "Saved", "saved");
+    return true;
   } catch (error) {
     showSourceEditorMessage(error.message, "error");
+    setSaveState(sourceEditorSaveState, "Error", "error");
+    return false;
   } finally {
     sourceEditorSave.disabled = false;
-  }
-}
-
-async function recompileCurrentPrompt() {
-  const askId = state.promptReviewDetail?.task?.ask_id || state.selectedPromptReviewAskId;
-  if (!askId) {
-    showSourceEditorMessage("No render prompt is selected.", "error");
-    return;
-  }
-  const params = currentQuery();
-  params.set("invalidate_review_artifacts", sourceEditorClearReviewAids.checked ? "true" : "false");
-  sourceEditorRecompile.disabled = true;
-  showSourceEditorMessage("Recompiling current prompt...");
-  try {
-    const payload = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}/recompile?${params.toString()}`, { method: "POST" });
-    renderPromptReview(payload);
-    await loadPromptReviewTasks(askId);
-    await loadAssets(state.selectedAssetId);
-    showSourceEditorMessage(payload.message || "Prompt recompiled.");
-    showPromptMessage(payload.message || "Prompt recompiled.");
-    renderPromptDiff(payload.prompt_diff);
-  } catch (error) {
-    showSourceEditorMessage(error.message, "error");
-  } finally {
-    sourceEditorRecompile.disabled = !state.promptReviewDetail?.task?.asset_id;
   }
 }
 
@@ -5035,9 +5554,12 @@ function renderPromptLines(lines, searchPattern) {
 }
 
 function updatePromptReviewNavigation() {
-  const index = state.promptReviewTasks.findIndex((task) => task.ask_id === state.selectedPromptReviewAskId);
-  promptReviewPrev.disabled = index <= 0;
-  promptReviewNext.disabled = index < 0 || index >= state.promptReviewTasks.length - 1;
+  updateAssetTaskNavigation(
+    state.promptReviewTasks,
+    state.selectedPromptReviewAskId,
+    promptReviewPrev,
+    promptReviewNext,
+  );
 }
 
 async function writeClipboardText(value) {
@@ -5087,6 +5609,10 @@ async function loadRenderReviewTasks(preferredAssetId = null) {
 
 function renderRenderReviewTaskTable() {
   renderReviewTaskBody.replaceChildren();
+  if (!state.renderReviewTasks.length) {
+    renderEmptyRow(renderReviewTaskBody, 3, "No render candidates are waiting. Complete a render to create review work.");
+    return;
+  }
   for (const task of state.renderReviewTasks) {
     const row = document.createElement("tr");
     row.dataset.assetId = task.asset_id;
@@ -5096,16 +5622,14 @@ function renderRenderReviewTaskTable() {
       cell.textContent = value ?? "";
       row.append(cell);
     }
-    row.addEventListener("click", () => selectRenderReviewAsset(task.asset_id));
+    makeSelectableRow(row, `Asset ${task.asset_id}`, task.asset_id === state.selectedRenderReviewAssetId, () => selectRenderReviewAsset(task.asset_id));
     renderReviewTaskBody.append(row);
   }
 }
 
 async function selectRenderReviewAsset(assetId) {
   state.selectedRenderReviewAssetId = Number(assetId);
-  for (const row of renderReviewTaskBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", Number(row.dataset.assetId) === state.selectedRenderReviewAssetId);
-  }
+  updateSelectableRows(renderReviewTaskBody, (row) => Number(row.dataset.assetId) === state.selectedRenderReviewAssetId);
   const detail = await fetchJson(`/api/render-review/${state.selectedRenderReviewAssetId}?${currentQuery().toString()}`);
   renderRenderReview(detail);
 }
@@ -5181,9 +5705,10 @@ function renderReviewImage(container, path, exists, emptyText, altText, cacheKey
   image.src = fileUrl(path, cacheKey || Date.now().toString());
   image.title = path;
   if (allowFullscreen) {
-    enableFullscreenImage(image);
+    container.append(enableFullscreenImage(image));
+  } else {
+    container.append(image);
   }
-  container.append(image);
 }
 
 function renderCandidateImage(detail) {
@@ -5285,6 +5810,10 @@ async function loadTurnarounds(preferredTurnaroundId = null) {
 
 function renderTurnaroundTable() {
   turnaroundTableBody.replaceChildren();
+  if (!state.turnaroundRows.length) {
+    renderEmptyRow(turnaroundTableBody, 5, "No turnaround tasks exist for this character and phase.");
+    return;
+  }
   for (const rowData of state.turnaroundRows) {
     const row = document.createElement("tr");
     row.dataset.turnaroundId = rowData.turnaround_id;
@@ -5292,6 +5821,7 @@ function renderTurnaroundTable() {
     const actionCell = document.createElement("td");
     const generateButton = document.createElement("button");
     generateButton.type = "button";
+    generateButton.className = "update-action";
     generateButton.textContent = "Generate";
     generateButton.disabled = !rowData.ready;
     generateButton.addEventListener("click", (event) => {
@@ -5301,6 +5831,7 @@ function renderTurnaroundTable() {
     actionCell.append(generateButton);
     const promoteButton = document.createElement("button");
     promoteButton.type = "button";
+    promoteButton.className = "primary-action";
     promoteButton.textContent = "Promote";
     promoteButton.disabled = !rowData.candidate_image_exists;
     promoteButton.addEventListener("click", (event) => {
@@ -5339,7 +5870,7 @@ function renderTurnaroundTable() {
     const missingCell = document.createElement("td");
     missingCell.textContent = (rowData.missing_views || []).join(", ");
     row.append(missingCell);
-    row.addEventListener("click", () => selectTurnaround(rowData.turnaround_id));
+    makeSelectableRow(row, rowData.label || rowData.turnaround_id, rowData.turnaround_id === state.selectedTurnaroundId, () => selectTurnaround(rowData.turnaround_id));
     turnaroundTableBody.append(row);
     for (const aux of rowData.auxiliary_sheets || []) {
       turnaroundTableBody.append(renderAuxiliaryMainTableRow(rowData, aux));
@@ -5373,6 +5904,7 @@ function renderAuxiliaryMainTableRow(parentRow, aux) {
   const actionCell = document.createElement("td");
   const promoteButton = document.createElement("button");
   promoteButton.type = "button";
+  promoteButton.className = "primary-action";
   promoteButton.textContent = "Promote";
   promoteButton.disabled = !aux.candidate_image_exists;
   promoteButton.addEventListener("click", (event) => {
@@ -5383,6 +5915,7 @@ function renderAuxiliaryMainTableRow(parentRow, aux) {
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
+  deleteButton.className = "danger-action";
   deleteButton.textContent = "Delete";
   deleteButton.disabled = !aux.deletable;
   deleteButton.addEventListener("click", (event) => {
@@ -5392,7 +5925,7 @@ function renderAuxiliaryMainTableRow(parentRow, aux) {
   actionCell.append(deleteButton);
 
   row.append(labelCell, statusCell, countCell, actionCell, missingCell);
-  row.addEventListener("click", () => selectAuxiliaryTurnaround(parentRow.turnaround_id, aux.turnaround_id));
+  makeSelectableRow(row, aux.label || aux.turnaround_id, aux.turnaround_id === state.selectedAuxiliaryTurnaroundId, () => selectAuxiliaryTurnaround(parentRow.turnaround_id, aux.turnaround_id));
   return row;
 }
 
@@ -5402,9 +5935,7 @@ async function selectTurnaround(turnaroundId) {
   turnaroundPartialLabel.value = "";
   turnaroundPartialPercent.value = "45";
   turnaroundDetectionTolerance.value = "50";
-  for (const row of turnaroundTableBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", row.dataset.turnaroundId === state.selectedTurnaroundId);
-  }
+  updateSelectableRows(turnaroundTableBody, (row) => row.dataset.turnaroundId === state.selectedTurnaroundId);
   const detail = await fetchJson(`/api/turnarounds/${encodeURIComponent(turnaroundId)}?${currentQuery().toString()}`);
   renderTurnaround(detail.row);
 }
@@ -5512,7 +6043,7 @@ function renderAuxiliaryTurnaroundTable(items) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 3;
-    cell.textContent = "None.";
+    cell.textContent = "No auxiliary turnaround sheets.";
     row.append(cell);
     turnaroundAuxTableBody.append(row);
     return;
@@ -5528,6 +6059,7 @@ function renderAuxiliaryTurnaroundTable(items) {
     const actionCell = document.createElement("td");
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
+    deleteButton.className = "danger-action";
     deleteButton.textContent = "Delete";
     deleteButton.disabled = !item.deletable;
     deleteButton.addEventListener("click", (event) => {
@@ -5536,7 +6068,7 @@ function renderAuxiliaryTurnaroundTable(items) {
     });
     actionCell.append(deleteButton);
     row.append(labelCell, percentCell, actionCell);
-    row.addEventListener("click", () => {
+    makeSelectableRow(row, item.label || item.turnaround_id, item.turnaround_id === state.selectedAuxiliaryTurnaroundId, () => {
       state.selectedAuxiliaryTurnaroundId = item.turnaround_id;
       turnaroundPartialLabel.value = item.label || "";
       turnaroundPartialPercent.value = item.crop_percent || 45;
@@ -5669,19 +6201,23 @@ async function promoteTurnaround(target = null) {
 function renderRows(tbody, rows, columns) {
   tbody.replaceChildren();
   if (!rows || rows.length === 0) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = Math.max(1, columns.length);
-    cell.textContent = "None.";
-    row.append(cell);
-    tbody.append(row);
+    renderEmptyRow(tbody, Math.max(1, columns.length), "No items.");
     return;
   }
   for (const item of rows) {
     const row = document.createElement("tr");
     for (const column of columns) {
       const cell = document.createElement("td");
-      cell.textContent = item[column] ?? "";
+      const value = item[column] ?? "";
+      if (/(?:^|_)(?:created|updated|responded)_at$/.test(column) && value !== "") {
+        const time = document.createElement("time");
+        time.dateTime = String(value);
+        time.title = String(value);
+        time.textContent = formatLocalTimestamp(value);
+        cell.append(time);
+      } else {
+        cell.textContent = value;
+      }
       row.append(cell);
     }
     tbody.append(row);
@@ -5729,6 +6265,8 @@ function renderProcessRows(processes) {
     actions.className = "mini-actions";
     for (const action of ["start", "stop", "restart"]) {
       const button = document.createElement("button");
+      button.type = "button";
+      button.className = action === "stop" ? "danger-action" : "update-action";
       button.textContent = action;
       button.disabled = item.manageable !== "yes";
       button.addEventListener("click", () => runAiControlsAction(`/api/ai-controls/processes/${item.process_id}/${action}`));
@@ -5794,10 +6332,11 @@ function renderPipelineControls(payload) {
   settingZinePrintScale.value = Number(automation.zine_print_scale ?? 0.978).toFixed(4);
   settingZinePageMargin.value = automation.zine_page_margin ?? 4;
   settingZineWidth.value = automation.zine_width ?? 3300;
+  updateZineMarginLimit();
   settingTurnaroundWidth.value = automation.turnaround_width ?? 3960;
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
-  settingAiPromptAnalysisModel.value = automation.ai_prompt_analysis_model || "";
+  setOllamaModelValue(automation.ai_prompt_analysis_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
@@ -5808,6 +6347,8 @@ function renderPipelineControls(payload) {
   if ((payload.pipeline_names || []).includes(currentPipeline)) {
     batchRenderPipeline.value = currentPipeline;
   }
+  state.savedBaselines.settings = settingsSnapshot();
+  setSaveState(settingsSaveState, "Saved", "saved");
   pipelineControlsStatus.textContent = "Ready";
 }
 
@@ -5817,6 +6358,44 @@ function setLocalRenderCheckpointValue(value) {
     settingLocalRenderCheckpoint.add(new Option(checkpoint, checkpoint));
   }
   settingLocalRenderCheckpoint.value = checkpoint;
+}
+
+function setOllamaModelValue(value) {
+  const model = value || "";
+  if (model && !Array.from(settingAiPromptAnalysisModel.options).some((option) => option.value === model)) {
+    settingAiPromptAnalysisModel.add(new Option(model, model));
+  }
+  settingAiPromptAnalysisModel.value = model;
+}
+
+async function refreshOllamaModelOptions() {
+  const current = settingAiPromptAnalysisModel.value || state.pipelineControls?.automation?.ai_prompt_analysis_model || "";
+  try {
+    const payload = await fetchJson("/api/ai-controls/ollama-models");
+    setSelectOptions(settingAiPromptAnalysisModel, payload.models || []);
+    setOllamaModelValue(current);
+    showAiControlsMessage(
+      `Loaded ${(payload.models || []).length} Ollama model(s)${payload.vision_filtered ? " with vision capability" : ""}.`,
+    );
+  } catch (error) {
+    setOllamaModelValue(current);
+    showAiControlsMessage(error.message, "error");
+  }
+}
+
+function updateZineMarginLimit() {
+  const width = Math.max(44, Number(settingZineWidth.value || 44));
+  const maximum = Math.max(0, Math.floor((Math.floor(width / 4) - 1) / 2));
+  settingZinePageMargin.max = String(maximum);
+  zineMarginHelp.textContent = `Allowed range: 0–${maximum} pixels for the current width.`;
+}
+
+function humanizeHeading(value) {
+  const raw = String(value || "");
+  return raw
+    .replaceAll("_", " ")
+    .replace(/\b(ai|id|ids|pid|pids|url)\b/gi, (match) => match.toUpperCase())
+    .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
 function setComfyuiCheckpointValue(value) {
@@ -5902,7 +6481,7 @@ function automationPayloadFromForm() {
 }
 
 async function saveAutomationSettings(event) {
-  event.preventDefault();
+  event?.preventDefault?.();
   const showMessage = document.querySelector("#pipeline-controls-page").classList.contains("active")
     ? showPipelineControlsMessage
     : document.querySelector("#local-image-config-page").classList.contains("active")
@@ -5917,8 +6496,13 @@ async function saveAutomationSettings(event) {
     });
     renderPipelineControls(payload);
     showMessage(payload.message || "Settings saved.");
+    state.savedBaselines.settings = settingsSnapshot();
+    setSaveState(settingsSaveState, "Saved", "saved");
+    return true;
   } catch (error) {
     showMessage(error.message, "error");
+    setSaveState(settingsSaveState, "Error", "error");
+    return false;
   }
 }
 
@@ -5927,11 +6511,35 @@ async function runBatchRenderReset() {
   if (!pipeline) {
     return;
   }
-  showPipelineControlsMessage("Working...");
+  showPipelineControlsMessage("Previewing affected assets...");
   const params = currentQuery();
   params.set("pipeline_name", pipeline);
   params.set("include_locked", batchIncludeLocked.checked ? "true" : "false");
   try {
+    const preview = await fetchJson(`/api/pipeline-controls/batch-render-reset/preview?${params.toString()}`);
+    const counts = preview.counts || {};
+    renderRows(batchRenderResultTableBody, preview.items || [], [
+      "asset_id",
+      "before_stage",
+      "before_actor",
+      "before_state",
+      "status",
+      "message",
+    ]);
+    if (!counts.affected) {
+      showPipelineControlsMessage(`Nothing to reset: ${counts.skipped || 0} skipped, ${counts.locked || 0} locked.`, "warning");
+      return;
+    }
+    const confirmed = await confirmAction(
+      "Reset pipeline assets",
+      `Reset ${pipeline} assets for ${state.character} / ${state.phase} to RENDER? Affected: ${counts.affected}; skipped: ${counts.skipped || 0}; locked: ${counts.locked || 0}. This clears queued render items and existing render outputs.`,
+      "Reset Assets",
+    );
+    if (!confirmed) {
+      showPipelineControlsMessage("Batch reset cancelled.");
+      return;
+    }
+    showPipelineControlsMessage("Resetting assets...");
     const payload = await fetchJson(`/api/pipeline-controls/batch-render-reset?${params.toString()}`, { method: "POST" });
     renderPipelineControls(payload);
     renderRows(batchRenderResultTableBody, payload.batch_results || [], [
@@ -5969,26 +6577,18 @@ async function loadRenderConsoleTasks(preferredAskId = null) {
 }
 
 function renderRenderConsoleTaskTable() {
-  renderConsoleTaskBody.replaceChildren();
-  for (const task of state.renderConsoleTasks) {
-    const row = document.createElement("tr");
-    row.dataset.askId = task.ask_id;
-    row.classList.toggle("selected", task.ask_id === state.selectedRenderConsoleAskId);
-    for (const value of [task.asset_id ?? "", task.ask_id]) {
-      const cell = document.createElement("td");
-      cell.textContent = value ?? "";
-      row.append(cell);
-    }
-    row.addEventListener("click", () => selectRenderConsoleTask(task.ask_id));
-    renderConsoleTaskBody.append(row);
-  }
+  renderAssetTaskTable(
+    renderConsoleTaskBody,
+    state.renderConsoleTasks,
+    state.selectedRenderConsoleAskId,
+    selectRenderConsoleTask,
+    "No manual render tasks are waiting.",
+  );
 }
 
 async function selectRenderConsoleTask(askId) {
   state.selectedRenderConsoleAskId = askId;
-  for (const row of renderConsoleTaskBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", row.dataset.askId === state.selectedRenderConsoleAskId);
-  }
+  updateSelectableRows(renderConsoleTaskBody, (row) => row.dataset.askId === state.selectedRenderConsoleAskId);
   const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`);
   renderRenderConsoleDetail(detail);
 }
@@ -6017,6 +6617,8 @@ function clearRenderConsole() {
   renderConsoleImagePreview.removeAttribute("src");
   renderConsoleSaveImage.disabled = true;
   renderConsoleAnswerComment.value = "";
+  renderConsoleSceneBuilder.hidden = true;
+  renderConsoleSceneBuilder.disabled = true;
   renderConsoleReviewPrompt.disabled = true;
   renderConsoleCopyPrompt.disabled = true;
   renderConsolePrev.disabled = true;
@@ -6044,6 +6646,9 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleSaveHelper.disabled = !detail.gpt_helper_prompt?.source;
   renderConsoleCopyHelper.disabled = !helperText;
   renderConsolePrompt.value = detail.prompt || "";
+  const isScene = Boolean(detail.manifest?.story_slug && detail.manifest?.scene_slug);
+  renderConsoleSceneBuilder.hidden = !isScene;
+  renderConsoleSceneBuilder.disabled = !isScene;
   renderConsoleReviewPrompt.disabled = !detail.prompt;
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
@@ -6071,8 +6676,7 @@ function renderRenderConsoleLocalTestRender(path) {
   image.alt = "Latest local test render";
   image.src = fileUrl(path, Date.now().toString());
   image.title = path;
-  enableFullscreenImage(image);
-  renderConsoleLocalTestRender.append(image);
+  renderConsoleLocalTestRender.append(enableFullscreenImage(image));
   renderConsoleClearLocalTest.disabled = false;
 }
 
@@ -6099,9 +6703,12 @@ function renderConsoleReferenceFiles(referenceFiles) {
 }
 
 function updateRenderConsoleNavigation() {
-  const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
-  renderConsolePrev.disabled = index <= 0;
-  renderConsoleNext.disabled = index < 0 || index >= state.renderConsoleTasks.length - 1;
+  updateAssetTaskNavigation(
+    state.renderConsoleTasks,
+    state.selectedRenderConsoleAskId,
+    renderConsolePrev,
+    renderConsoleNext,
+  );
 }
 
 function clearRenderConsoleImageSelection() {
@@ -6254,26 +6861,18 @@ async function loadLocalImageReviewTasks(preferredAskId = null) {
 }
 
 function renderLocalImageReviewTaskTable() {
-  localImageReviewTaskBody.replaceChildren();
-  for (const task of state.localImageReviewTasks) {
-    const row = document.createElement("tr");
-    row.dataset.askId = task.ask_id;
-    row.classList.toggle("selected", task.ask_id === state.selectedLocalImageReviewAskId);
-    for (const value of [task.asset_id ?? "", task.ask_id]) {
-      const cell = document.createElement("td");
-      cell.textContent = value ?? "";
-      row.append(cell);
-    }
-    row.addEventListener("click", () => selectLocalImageReviewTask(task.ask_id));
-    localImageReviewTaskBody.append(row);
-  }
+  renderAssetTaskTable(
+    localImageReviewTaskBody,
+    state.localImageReviewTasks,
+    state.selectedLocalImageReviewAskId,
+    selectLocalImageReviewTask,
+    "No local-image render tasks are waiting.",
+  );
 }
 
 async function selectLocalImageReviewTask(askId) {
   state.selectedLocalImageReviewAskId = askId;
-  for (const row of localImageReviewTaskBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", row.dataset.askId === askId);
-  }
+  updateSelectableRows(localImageReviewTaskBody, (row) => row.dataset.askId === askId);
   const detail = await fetchJson(
     `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`,
   );
@@ -6286,6 +6885,7 @@ function clearLocalImageReview() {
   localImageReviewMessage.textContent = "";
   localImageReviewClear.disabled = true;
   localImageReviewGenerate.disabled = true;
+  localImageReviewGenerateAllModels.disabled = true;
   localImageReviewPrev.disabled = true;
   localImageReviewNext.disabled = true;
   renderLocalImageReviewGallery([]);
@@ -6301,6 +6901,7 @@ function renderLocalImageReviewDetail(detail) {
     storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
   localImageReviewClear.disabled = false;
   localImageReviewGenerate.disabled = !detail.supports_local_test_render;
+  localImageReviewGenerateAllModels.disabled = !detail.supports_local_test_render;
   const queueState = detail.local_render_status?.state || "";
   localImageReviewMessage.textContent = [
     `${detail.images?.length || 0} local image(s)`,
@@ -6326,20 +6927,31 @@ function renderLocalImageReviewGallery(images) {
     image.alt = item.name || "Local test render";
     image.src = fileUrl(item.path, item.modified_at || Date.now().toString());
     image.title = item.path;
-    enableFullscreenImage(image);
+    const preview = document.createElement("div");
+    preview.className = "local-image-review-preview";
+    preview.append(enableFullscreenImage(image));
     const caption = document.createElement("p");
-    caption.textContent = `${item.name || ""}${item.modified_at ? ` · ${item.modified_at}` : ""}`;
-    card.append(image, caption);
+    const generation = {
+      stable_matrix: "Stable Matrix",
+      comfyui: "ComfyUI",
+    }[item.image_generation] || String(item.image_generation || "").replaceAll("_", " ");
+    caption.textContent = [
+      `Image Generation: ${generation || "Unknown"}`,
+      `Render Profile: ${item.render_profile || "Unknown"}`,
+      `Checkpoint: ${item.checkpoint || "Unknown"}`,
+    ].join(" · ");
+    card.append(preview, caption);
     localImageReviewGallery.append(card);
   }
 }
 
 function updateLocalImageReviewNavigation() {
-  const index = state.localImageReviewTasks.findIndex(
-    (task) => task.ask_id === state.selectedLocalImageReviewAskId,
+  updateAssetTaskNavigation(
+    state.localImageReviewTasks,
+    state.selectedLocalImageReviewAskId,
+    localImageReviewPrev,
+    localImageReviewNext,
   );
-  localImageReviewPrev.disabled = index <= 0;
-  localImageReviewNext.disabled = index < 0 || index >= state.localImageReviewTasks.length - 1;
 }
 
 async function generateLocalImageReviewImages() {
@@ -6367,8 +6979,54 @@ async function generateLocalImageReviewImages() {
   }
 }
 
+async function generateLocalImageReviewImagesForAllModels() {
+  if (!state.selectedLocalImageReviewAskId) {
+    return;
+  }
+  localImageReviewGenerate.disabled = true;
+  localImageReviewGenerateAllModels.disabled = true;
+  localImageReviewClear.disabled = true;
+  localImageReviewMessage.textContent = "Refreshing checkpoints and queueing local images...";
+  const params = currentQuery();
+  params.set("count", localImageReviewCount.value || "1");
+  try {
+    if (settingLocalRenderBackend.value === "comfyui") {
+      await refreshComfyuiCheckpointOptions();
+    } else {
+      await refreshLocalRenderCheckpointOptions();
+    }
+    const payload = await fetchJson(
+      `/api/local-image-review/tasks/${encodeURIComponent(state.selectedLocalImageReviewAskId)}/images/all-checkpoints?${params.toString()}`,
+      { method: "POST" },
+    );
+    renderLocalImageReviewDetail(payload);
+    localImageReviewMessage.textContent = payload.message || "Local images queued for all models.";
+    startLocalImageReviewHarvestTimer();
+  } catch (error) {
+    localImageReviewMessage.textContent = error.message;
+  } finally {
+    const disabled = !state.localImageReviewDetail?.supports_local_test_render;
+    localImageReviewGenerate.disabled = disabled;
+    localImageReviewGenerateAllModels.disabled = disabled;
+    localImageReviewClear.disabled = !state.localImageReviewDetail;
+  }
+}
+
 async function clearLocalImageReviewImages() {
   if (!state.selectedLocalImageReviewAskId) {
+    return;
+  }
+  const count = state.localImageReviewDetail?.images?.length || 0;
+  const label = state.localImageReviewDetail?.task?.display_label || state.selectedLocalImageReviewAskId;
+  if (!count) {
+    localImageReviewMessage.textContent = "No local images to clear.";
+    return;
+  }
+  if (!await confirmAction(
+    "Clear local images",
+    `Clear ${count} local image(s) for ${label}? This permanently deletes the generated images.`,
+    "Clear Images",
+  )) {
     return;
   }
   localImageReviewClear.disabled = true;
@@ -6384,6 +7042,32 @@ async function clearLocalImageReviewImages() {
     localImageReviewMessage.textContent = error.message;
   } finally {
     localImageReviewClear.disabled = !state.localImageReviewDetail;
+  }
+}
+
+async function archiveHarvestedAiAnswers() {
+  const count = state.aiControls?.harvested_answer_count || 0;
+  if (!count) {
+    showAiControlsMessage("No harvested answer folders are available to archive.");
+    return;
+  }
+  if (await confirmAction(
+    "Archive harvested answers",
+    `Archive ${count} harvested answer folder(s)? Unharvested answers are not affected.`,
+    "Archive Answers",
+  )) {
+    await runAiControlsAction("/api/ai-controls/archive-harvested");
+  }
+}
+
+async function activateProxyStop() {
+  const pending = state.aiControls?.queue_counts?.ask || 0;
+  if (await confirmAction(
+    "Activate proxy stop",
+    `Stop new proxy work and reject ${pending} pending Ask folder(s)? Pending asks will be moved to Answer as rejected.`,
+    "Activate Stop",
+  )) {
+    await runAiControlsAction("/api/ai-controls/stop");
   }
 }
 
@@ -6601,6 +7285,10 @@ async function loadManifestTasks(preferredAssetId = null) {
 
 function renderManifestTaskTable() {
   manifestTaskBody.replaceChildren();
+  if (!state.manifestTasks.length) {
+    renderEmptyRow(manifestTaskBody, 3, "No manifest tasks are waiting. Advance an asset to MANIFEST to create work.");
+    return;
+  }
   for (const task of state.manifestTasks) {
     const row = document.createElement("tr");
     row.dataset.assetId = task.asset_id;
@@ -6612,16 +7300,14 @@ function renderManifestTaskTable() {
       cell.textContent = value ?? "";
       row.append(cell);
     }
-    row.addEventListener("click", () => selectManifestAsset(task.asset_id));
+    makeSelectableRow(row, `Asset ${task.asset_id}`, task.asset_id === state.selectedManifestAssetId, () => selectManifestAsset(task.asset_id));
     manifestTaskBody.append(row);
   }
 }
 
 async function selectManifestAsset(assetId) {
   state.selectedManifestAssetId = Number(assetId);
-  for (const row of manifestTaskBody.querySelectorAll("tr")) {
-    row.classList.toggle("selected", Number(row.dataset.assetId) === state.selectedManifestAssetId);
-  }
+  updateSelectableRows(manifestTaskBody, (row) => Number(row.dataset.assetId) === state.selectedManifestAssetId);
   const detail = await fetchJson(`/api/head-fitment-manifest/${state.selectedManifestAssetId}?${currentQuery().toString()}`);
   renderManifest(detail);
 }
@@ -6738,7 +7424,17 @@ async function uploadHeadshotReference() {
 }
 
 characterSelect.addEventListener("change", async () => {
-  state.character = characterSelect.value;
+  const requestedCharacter = characterSelect.value;
+  const previousCharacter = state.character || "";
+  characterSelect.disabled = true;
+  const allowed = await guardCurrentEditor();
+  characterSelect.disabled = false;
+  if (!allowed) {
+    characterSelect.value = previousCharacter;
+    return;
+  }
+  characterSelect.value = requestedCharacter;
+  state.character = requestedCharacter;
   state.phase = null;
   saveStoredContext();
   state.selectedAssetId = null;
@@ -6797,7 +7493,17 @@ characterSelect.addEventListener("change", async () => {
 });
 
 phaseSelect.addEventListener("change", async () => {
-  state.phase = phaseSelect.value;
+  const requestedPhase = phaseSelect.value;
+  const previousPhase = state.phase || "";
+  phaseSelect.disabled = true;
+  const allowed = await guardCurrentEditor();
+  phaseSelect.disabled = false;
+  if (!allowed) {
+    phaseSelect.value = previousPhase;
+    return;
+  }
+  phaseSelect.value = requestedPhase;
+  state.phase = requestedPhase;
   saveStoredContext();
   updateHeaderFitmentPreview();
   state.selectedAssetId = null;
@@ -6871,19 +7577,33 @@ toolbarHarvestAi.addEventListener("click", (event) => {
 });
 document.addEventListener("click", (event) => {
   if (!toolbarSettingsMenu.hidden && !toolbarSettingsMenu.contains(event.target) && event.target !== toolbarSettingsButton) {
-    closeToolbarSettingsMenu();
+    closeToolbarSettingsMenu(true);
   }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
-    closeToolbarSettingsMenu();
+    closeToolbarSettingsMenu(true);
   }
 });
 todoForm.addEventListener("submit", saveTodo);
+todoDialog.addEventListener("close", () => {
+  persistTodo().catch((error) => {
+    console.error("Unable to save To Do text.", error);
+  });
+});
 todoDialog.addEventListener("click", (event) => {
   if (event.target === todoDialog) {
     todoDialog.close();
   }
+});
+promptAnalysisClose.addEventListener("click", closePromptAnalysisDialog);
+promptAnalysisDialog.addEventListener("click", (event) => {
+  if (event.target === promptAnalysisDialog) {
+    closePromptAnalysisDialog();
+  }
+});
+promptAnalysisDialog.addEventListener("close", () => {
+  promptAnalysisFrame.removeAttribute("src");
 });
 onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
 onboardingCopyGptPrompt.addEventListener("click", () => copyText(onboardingGptPrompt.value, "ChatGPT prompt copied."));
@@ -6925,7 +7645,16 @@ storyGitStatus.addEventListener("click", () => runStoryGitAction("status"));
 storyGitPull.addEventListener("click", () => runStoryGitAction("pull"));
 storyGitCommit.addEventListener("click", () => runStoryGitAction("commit"));
 sceneStorySelect.addEventListener("change", async () => {
-  state.selectedStorySlug = sceneStorySelect.value || null;
+  const requestedStory = sceneStorySelect.value || null;
+  const previousStory = state.selectedStorySlug;
+  sceneStorySelect.disabled = true;
+  const allowed = await guardCurrentEditor();
+  sceneStorySelect.disabled = false;
+  if (!allowed) {
+    sceneStorySelect.value = previousStory || "";
+    return;
+  }
+  state.selectedStorySlug = requestedStory;
   state.selectedSceneSlug = null;
   await loadScenesPage();
 });
@@ -6935,12 +7664,16 @@ sceneDelete.addEventListener("click", deleteScene);
 sceneStageRender.addEventListener("click", stageSceneRender);
 sceneBuilderOpen.addEventListener("click", activateSceneBuilderPage);
 sceneToggleImage.addEventListener("click", toggleSceneImage);
-sceneImagePreview.addEventListener("click", openSceneImageFullscreen);
-zineNew.addEventListener("click", clearZineEditor);
+enableFullscreenImage(sceneImagePreview, () => ({
+  sceneSlug: state.selectedSceneSlug,
+  scenes: state.scenes,
+  storySlug: state.selectedStorySlug,
+}));
+zineNew.addEventListener("click", () => runGuardedTransition(clearZineEditor));
 zineEdit.addEventListener("click", () => zineName.focus());
 zineSave.addEventListener("click", saveZine);
-zineRegenerate.addEventListener("click", regenerateZine);
-zineDelete.addEventListener("click", deleteZine);
+zineRegenerate.addEventListener("click", () => runGuardedTransition(regenerateZine));
+zineDelete.addEventListener("click", () => runGuardedTransition(deleteZine));
 zineStorySelect.addEventListener("change", async () => {
   state.zineStorySlug = zineStorySelect.value || null;
   await loadZineStorySources();
@@ -6949,26 +7682,36 @@ zineFillStory.addEventListener("click", fillZineFromStory);
 zineSpread1.addEventListener("change", () => setZineSpread(1, zineSpread1.checked));
 zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checked));
 zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
-zinePreview.addEventListener("click", () => {
-  if (!zinePreviewSection.hidden && zinePreview.src) {
-    openFullscreenImage(zinePreview.src, zinePreview.alt || "Zine print layout");
-  }
-});
-auxResourceImagePreview.addEventListener("click", () => {
-  if (!auxResourceImagePreview.hidden && auxResourceImagePreview.src) {
-    openFullscreenImage(auxResourceImagePreview.src, auxResourceImagePreview.alt || "Auxiliary resource preview");
+enableFullscreenImage(zinePreview);
+enableFullscreenImage(auxResourceImagePreview);
+fullscreenImageClose.addEventListener("click", closeFullscreenImage);
+fullscreenImagePrevious.addEventListener("click", () => navigateFullscreenScene(-1));
+fullscreenImageNext.addEventListener("click", () => navigateFullscreenScene(1));
+fullscreenImageOverlay.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    navigateFullscreenScene(-1);
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    navigateFullscreenScene(1);
   }
 });
 fullscreenImageOverlay.addEventListener("click", (event) => {
-  if (event.button === 0) {
+  if (event.button === 0 && event.target === fullscreenImageOverlay) {
     closeFullscreenImage();
   }
+});
+fullscreenImageOverlay.addEventListener("close", () => {
+  resetFullscreenCrop();
+  resetFullscreenNavigation();
+  fullscreenImage.removeAttribute("src");
+  fullscreenImage.alt = "";
 });
 fullscreenImageOverlay.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 });
 fullscreenImageOverlay.addEventListener("pointerdown", (event) => {
-  if (event.button !== 2 || fullscreenImageOverlay.hidden) {
+  if (event.button !== 2 || !fullscreenImageOverlay.open) {
     return;
   }
   event.preventDefault();
@@ -7002,11 +7745,6 @@ fullscreenImageOverlay.addEventListener("pointerup", async (event) => {
     fullscreenImageOverlay.releasePointerCapture(event.pointerId);
   }
 });
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !fullscreenImageOverlay.hidden) {
-    closeFullscreenImage();
-  }
-});
 scenePickerCharacter.addEventListener("change", () => {
   state.scenePickerCharacter = scenePickerCharacter.value || "";
   loadSceneImageReferences();
@@ -7023,7 +7761,7 @@ builderImagePickerSearch.addEventListener("input", () => {
 });
 builderImagePickerRefresh.addEventListener("click", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerClose.addEventListener("click", () => {
-  builderImagePickerModal.hidden = true;
+  builderImagePickerModal.close();
 });
 builderElementResourceType.addEventListener("change", async () => {
   builderUpdateElementModalSections();
@@ -7035,7 +7773,7 @@ builderElementCharacter.addEventListener("change", async () => {
 });
 builderElementPhase.addEventListener("change", builderLoadElementCostumes);
 builderElementCancel.addEventListener("click", () => {
-  builderElementModal.hidden = true;
+  builderElementModal.close();
 });
 builderElementAdd.addEventListener("click", builderAddElementFromDialog);
 auxResourceCategory.addEventListener("change", () => {
@@ -7125,24 +7863,25 @@ for (const imageBox of [phaseComparisonLeftImage, phaseComparisonRightImage]) {
 
 promptSearch.addEventListener("input", renderPromptText);
 copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDetail?.prompt || "", "Prompt copied."));
+promptReviewSceneBuilder.addEventListener("click", async () => {
+  const scene = selectedPromptReviewScene();
+  if (!scene) return;
+  state.selectedStorySlug = scene.storySlug;
+  state.selectedSceneSlug = scene.sceneSlug;
+  await activatePage("scene-builder", { skipAutosave: true });
+});
 copyCondensedButton.addEventListener("click", () => copyText(condensedText.value, "Condensed prompt copied."));
 analyzePromptButton.addEventListener("click", analyzePromptReview);
 viewPromptAnalysisButton.addEventListener("click", viewPromptReviewAnalysis);
 sourceOpenEditor.addEventListener("click", openSelectedSourceEditor);
 sourceEditorSave.addEventListener("click", saveSourceEditor);
-sourceEditorRecompile.addEventListener("click", recompileCurrentPrompt);
 promptReviewPrev.addEventListener("click", () => {
-  const index = state.promptReviewTasks.findIndex((task) => task.ask_id === state.selectedPromptReviewAskId);
-  if (index > 0) {
-    selectPromptReviewTask(state.promptReviewTasks[index - 1].ask_id);
-  }
+  selectAdjacentAssetTask(state.promptReviewTasks, state.selectedPromptReviewAskId, -1, selectPromptReviewTask);
 });
 promptReviewNext.addEventListener("click", () => {
-  const index = state.promptReviewTasks.findIndex((task) => task.ask_id === state.selectedPromptReviewAskId);
-  if (index >= 0 && index < state.promptReviewTasks.length - 1) {
-    selectPromptReviewTask(state.promptReviewTasks[index + 1].ask_id);
-  }
+  selectAdjacentAssetTask(state.promptReviewTasks, state.selectedPromptReviewAskId, 1, selectPromptReviewTask);
 });
+promptReviewRefresh.addEventListener("click", () => loadPromptReviewTasks());
 renderPromoteButton.addEventListener("click", promoteRenderReview);
 renderFailRenderButton.addEventListener("click", () => runRenderReviewAction("fail-to-render"));
 renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction("fail-to-regenerate"));
@@ -7165,8 +7904,8 @@ refreshAiControlsButton.addEventListener("click", async () => {
   await loadPipelineControls();
 });
 harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
-archiveHarvestedAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/archive-harvested"));
-activateProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/stop"));
+archiveHarvestedAiButton.addEventListener("click", archiveHarvestedAiAnswers);
+activateProxyStopButton.addEventListener("click", activateProxyStop);
 resumeProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/resume"));
 dumpAiQueueButton.addEventListener("click", dumpAiQueue);
 sendMonitorTestButton.addEventListener("click", () => {
@@ -7177,13 +7916,30 @@ openRenderConsoleTab.addEventListener("click", () => {
   document.querySelector('.tab[data-page="render-console"]').click();
 });
 automationForm.addEventListener("submit", saveAutomationSettings);
+automationForm.addEventListener("input", updateDirtyIndicators);
+automationForm.addEventListener("change", updateDirtyIndicators);
+settingZineWidth.addEventListener("input", updateZineMarginLimit);
+for (const control of document.querySelectorAll('[form="automation-form"]')) {
+  control.addEventListener("input", updateDirtyIndicators);
+  control.addEventListener("change", updateDirtyIndicators);
+}
 refreshLocalRenderCheckpoints.addEventListener("click", refreshLocalRenderCheckpointOptions);
+refreshOllamaModels.addEventListener("click", refreshOllamaModelOptions);
 settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpointOptions);
 refreshComfyuiCheckpoints.addEventListener("click", refreshComfyuiCheckpointOptions);
 settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions);
 settingLocalRenderBackend.addEventListener("change", syncLocalRenderBackendPanels);
+sceneBuilderPrevious.addEventListener("click", () => navigateSceneBuilder(-1));
+sceneBuilderNext.addEventListener("click", () => navigateSceneBuilder(1));
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
+renderConsoleSceneBuilder.addEventListener("click", async () => {
+  const manifest = state.renderConsoleDetail?.manifest || {};
+  if (!manifest.story_slug || !manifest.scene_slug) return;
+  state.selectedStorySlug = manifest.story_slug;
+  state.selectedSceneSlug = manifest.scene_slug;
+  await activatePage("scene-builder", { skipAutosave: true });
+});
 renderConsoleReviewPrompt.addEventListener("click", async () => {
   const askId = state.renderConsoleDetail?.task?.ask_id;
   if (!askId) return;
@@ -7218,33 +7974,40 @@ renderConsoleClearLocalTest.addEventListener("click", clearRenderConsoleLocalTes
 localImageReviewRefresh.addEventListener("click", () => loadLocalImageReviewTasks());
 localImageReviewClear.addEventListener("click", clearLocalImageReviewImages);
 localImageReviewGenerate.addEventListener("click", generateLocalImageReviewImages);
+localImageReviewGenerateAllModels.addEventListener("click", generateLocalImageReviewImagesForAllModels);
 localImageReviewPrev.addEventListener("click", () => {
-  const index = state.localImageReviewTasks.findIndex(
-    (task) => task.ask_id === state.selectedLocalImageReviewAskId,
-  );
-  if (index > 0) {
-    selectLocalImageReviewTask(state.localImageReviewTasks[index - 1].ask_id);
-  }
+  selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, -1, selectLocalImageReviewTask);
 });
 localImageReviewNext.addEventListener("click", () => {
-  const index = state.localImageReviewTasks.findIndex(
-    (task) => task.ask_id === state.selectedLocalImageReviewAskId,
-  );
-  if (index >= 0 && index < state.localImageReviewTasks.length - 1) {
-    selectLocalImageReviewTask(state.localImageReviewTasks[index + 1].ask_id);
+  selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, 1, selectLocalImageReviewTask);
+});
+storyText.addEventListener("input", updateDirtyIndicators);
+storySettingsFields.addEventListener("input", updateDirtyIndicators);
+storySettingsFields.addEventListener("change", updateDirtyIndicators);
+sceneText.addEventListener("input", updateDirtyIndicators);
+sourceEditorText.addEventListener("input", updateDirtyIndicators);
+for (const control of [zineName, ...Object.values(zineSlotInputs), zineSpread1, zineSpread3, zineSpread5]) {
+  control.addEventListener("input", updateDirtyIndicators);
+  control.addEventListener("change", updateDirtyIndicators);
+}
+window.addEventListener("beforeunload", (event) => {
+  if (
+    (state.savedBaselines.story && storySnapshot() !== state.savedBaselines.story)
+    || (state.savedBaselines.scene && sceneSnapshot() !== state.savedBaselines.scene)
+    || (state.savedBaselines.sceneBuilder && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder)
+    || (state.savedBaselines.sourceEditor && sourceEditorSnapshot() !== state.savedBaselines.sourceEditor)
+    || (state.savedBaselines.zine && zineSnapshot() !== state.savedBaselines.zine)
+    || (state.savedBaselines.settings && settingsSnapshot() !== state.savedBaselines.settings)
+  ) {
+    event.preventDefault();
+    event.returnValue = "";
   }
 });
 renderConsolePrev.addEventListener("click", () => {
-  const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
-  if (index > 0) {
-    selectRenderConsoleTask(state.renderConsoleTasks[index - 1].ask_id);
-  }
+  selectAdjacentAssetTask(state.renderConsoleTasks, state.selectedRenderConsoleAskId, -1, selectRenderConsoleTask);
 });
 renderConsoleNext.addEventListener("click", () => {
-  const index = state.renderConsoleTasks.findIndex((task) => task.ask_id === state.selectedRenderConsoleAskId);
-  if (index >= 0 && index < state.renderConsoleTasks.length - 1) {
-    selectRenderConsoleTask(state.renderConsoleTasks[index + 1].ask_id);
-  }
+  selectAdjacentAssetTask(state.renderConsoleTasks, state.selectedRenderConsoleAskId, 1, selectRenderConsoleTask);
 });
 renderConsolePasteZone.addEventListener("paste", (event) => {
   const blob = imageBlobFromPasteEvent(event);
@@ -7288,6 +8051,17 @@ manifestNext.addEventListener("click", () => {
 });
 
 async function main() {
+  for (const status of document.querySelectorAll(".status-text")) {
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
+  }
+  for (const heading of document.querySelectorAll("th")) {
+    const raw = heading.textContent.trim();
+    heading.title = raw;
+    heading.textContent = humanizeHeading(raw);
+  }
+  sourceEditorText.placeholder = "Open an editable source from Prompt Inspection.";
   setupTabs();
   loadStoredAssetFilters();
   try {

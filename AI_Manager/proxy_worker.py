@@ -24,6 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import local_image_proxy_worker as image_worker
 import ollama_proxy_worker as ollama_worker
+from proxy_worker_output import log_job
 from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
 
 WORKER_VERSION = "1.0"
@@ -56,12 +57,12 @@ def claim_one_supported(dirs: dict[str, Path], worker_id: str) -> Path | None:
         dest = dirs["claimed"] / ask.name
         try:
             worker_protocol.move_ask_to_claimed(ask, dest, claim_file)
-            log(f"CLAIMED {ask.name} worker_type={worker_type} -> {dest}")
+            log_job(ask_manifest, "CLAIMED")
             return dest
         except Exception as exc:
             shutil.rmtree(dest, ignore_errors=True)
             claim_file.unlink(missing_ok=True)
-            log(f"CLAIM_FAILED {ask.name}: {exc}", error=True)
+            log_job(ask_manifest, "CLAIM", result="ERROR", error_message=str(exc))
             continue
     return None
 
@@ -93,7 +94,12 @@ def process_claimed(
             args.preflight_attempts,
             return_transient_to_ask=not args.send_transient_to_answer,
         )
-    log(f"UNSUPPORTED {folder.name} worker_type={worker_type}", error=True)
+    log_job(
+        ask_manifest,
+        "DONE",
+        result="ERROR",
+        error_message=f"Unsupported worker_type: {worker_type}",
+    )
     return "UNSUPPORTED"
 
 

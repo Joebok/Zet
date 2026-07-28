@@ -39,6 +39,7 @@ from zet.models.ai_proxy import AIProxyAskManifest
 from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import ConfigService
+from AI_Manager.proxy_worker_output import log_job
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
 DEFAULT_PROXY_ROOT = ""
@@ -210,8 +211,8 @@ def write_rejected_answer(folder: Path, dirs: dict[str, Path], worker_id: str, r
         "error_message": reason,
     }
     write_json(folder / "answer_manifest.json", answer_manifest)
-    dest = move_to_answer(folder, dirs)
-    log(f"REJECTED {folder.name} -> {dest}: {reason}", error=True)
+    move_to_answer(folder, dirs)
+    log_job(ask_manifest, "DONE", result="REJECTED", error_message=reason)
     return "REJECTED"
 
 
@@ -333,6 +334,7 @@ def call_ollama_once(
         "model": model,
         "prompt": prompt,
         "stream": False,
+        "think": False,
         "keep_alive": 0,
         "options": {"temperature": temperature},
     }
@@ -439,7 +441,7 @@ def claim_one(dirs: dict[str, Path], worker_id: str) -> Path | None:
                 claim_file,
                 tolerate_claim_manifest_copy_error=True,
             )
-            log(f"CLAIMED {ask.name} -> {dest}")
+            log_job(read_ask_manifest(dest / "ask_manifest.json"), "CLAIMED")
             return dest
         except Exception:
             try:
@@ -545,14 +547,7 @@ def process_claimed(
     }
 
     t0 = time.time()
-    log(
-        "START "
-        f"{folder.name} ask_id={job_id} asset_id={asset_id} "
-        f"worker_type={ask_manifest.get('worker_type') or ''} "
-        f"task_type={ask_manifest.get('task_type') or ''} "
-        f"model={model} prompt_file={prompt_file or '<blank>'} "
-        f"expected_output={expected_output or '<blank>'}"
-    )
+    log_job(ask_manifest, "START")
     try:
         temperature, num_ctx = ollama_generation_options(ask_manifest)
         if not prompt_file or not (folder / prompt_file).exists():
@@ -585,12 +580,12 @@ def process_claimed(
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
         dest = move_to_answer(folder, dirs)
-        log(f"DONE SUCCESS {folder.name} -> {dest} elapsed={answer_manifest['elapsed_seconds']}s")
+        log_job(ask_manifest, "DONE", result="SUCCESS")
         return "SUCCESS"
     except TransientOllamaConnectionError as exc:
         if return_transient_to_ask:
             release_claim_to_ask(folder, dirs, worker_id, str(exc))
-            log(f"DONE RETRY_LATER {folder.name}: {exc}", error=True)
+            log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
             return "RETRY_LATER"
 
         answer_manifest["status"] = "RETRY_LATER"
@@ -601,11 +596,7 @@ def process_claimed(
         try:
             write_json(folder / "answer_manifest.json", answer_manifest)
             dest = move_to_answer(folder, dirs)
-            log(
-                f"DONE RETRY_LATER {folder.name} -> {dest} "
-                f"elapsed={answer_manifest['elapsed_seconds']}s: {exc}",
-                error=True,
-            )
+            log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
         except Exception:
             try:
                 shutil.move(str(folder), str(dirs["failed"] / folder.name))
@@ -621,11 +612,7 @@ def process_claimed(
         try:
             write_json(folder / "answer_manifest.json", answer_manifest)
             dest = move_to_answer(folder, dirs)
-            log(
-                f"DONE ERROR {folder.name} -> {dest} "
-                f"elapsed={answer_manifest['elapsed_seconds']}s: {exc}",
-                error=True,
-            )
+            log_job(ask_manifest, "DONE", result="ERROR", error_message=str(exc))
         except Exception:
             try:
                 shutil.move(str(folder), str(dirs["failed"] / folder.name))

@@ -564,6 +564,7 @@ class AIProxyService:
         render_layout: dict | None = None,
         scene_render_ir_path: Path | None = None,
         seed: int | None = None,
+        checkpoint: str | None = None,
     ) -> dict:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
@@ -590,8 +591,20 @@ class AIProxyService:
             "artifact_output_dir": str(target_output_dir.resolve()),
             "target_output_file": target_output_file,
             "render_preset": self._local_render_preset(),
+            "image_generation": str(
+                getattr(self.path_service.config, "local_render_backend", "stable_matrix")
+            ).strip().lower(),
             "reference_files": reference_files_payload(manifest.get("reference_files") or []),
         }
+        ask_manifest["checkpoint"] = checkpoint if checkpoint is not None else str(
+            getattr(
+                self.path_service.config,
+                "comfyui_checkpoint"
+                if ask_manifest["image_generation"] == "comfyui"
+                else "local_render_checkpoint",
+                "",
+            )
+        )
         workflow_kind = self._local_render_workflow_kind()
         if workflow_kind:
             ask_manifest["workflow_kind"] = workflow_kind
@@ -615,6 +628,7 @@ class AIProxyService:
         *,
         allow_parallel: bool = False,
         seed: int | None = None,
+        checkpoint: str | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
         if not allow_parallel:
@@ -631,6 +645,7 @@ class AIProxyService:
             render_layout,
             scene_render_ir_path,
             seed,
+            checkpoint,
         )
         ask_path = self.ai_proxy_path_service.ask_path(ask_manifest["ask_id"])
         ask_path.mkdir(parents=True, exist_ok=False)
@@ -650,6 +665,7 @@ class AIProxyService:
         *,
         allow_parallel: bool = False,
         seed: int | None = None,
+        checkpoint: str | None = None,
     ) -> Path:
         prompt_path = workspace / "Local_Render_Prompt.md"
         if not prompt_path.exists():
@@ -711,6 +727,7 @@ class AIProxyService:
             ir_path if selected_backend == "comfyui" else None,
             allow_parallel=allow_parallel,
             seed=seed,
+            checkpoint=checkpoint,
         )
 
     def stage_prompt_inspection_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:
@@ -897,6 +914,14 @@ class AIProxyService:
             "moved": moved,
             "skipped": skipped,
         }
+
+    def harvested_answer_count(self) -> int:
+        self._ensure_queue_dirs()
+        return sum(
+            1
+            for answer_path in self.ai_proxy_path_service.task_paths("answer")
+            if (answer_path / "harvest_manifest.json").exists()
+        )
 
     def list_monitor_responses(self) -> list[MonitorTestResult]:
         self._ensure_queue_dirs()

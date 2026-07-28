@@ -57,6 +57,16 @@ class BatchRenderResetResult:
     message: str
 
 
+@dataclass(frozen=True)
+class BatchRenderResetPreviewResult:
+    asset_id: int
+    previous_stage: str
+    previous_actor: str
+    previous_state: str
+    preview_status: str
+    reason: str
+
+
 class AssetService:
     def __init__(
         self,
@@ -202,13 +212,13 @@ class AssetService:
                 return "No Final_Image_Prompt.md found; asset is not render-ready."
         return None
 
-    def reset_pipeline_assets_to_render(
+    def _pipeline_render_reset_candidates(
         self,
         character: str,
         phase: str,
         pipeline_name: str,
-        include_locked: bool = False,
-    ) -> list[BatchRenderResetResult]:
+        include_locked: bool,
+    ) -> tuple[str, list[tuple[Asset, str | None]]]:
         pipeline = self.pipeline_repository.get_pipeline(character, phase, pipeline_name)
         if "RENDER" not in pipeline.stages:
             raise AssetServiceError(f"Pipeline {pipeline_name} has no RENDER stage.")
@@ -216,11 +226,50 @@ class AssetService:
         if render_actor != "AI_AGENT":
             raise AssetServiceError(f"Pipeline {pipeline_name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
 
-        results: list[BatchRenderResetResult] = []
+        candidates: list[tuple[Asset, str | None]] = []
         for asset in self.asset_repository.list_assets(character, phase):
             if asset.pipeline != pipeline_name:
                 continue
+            skip_message = None
             if asset.asset_state == "LOCKED" and not include_locked:
+                skip_message = "Asset is LOCKED. Enable include locked assets to reset it."
+            if skip_message is None:
+                skip_message = self._render_reset_skip_message(asset)
+            candidates.append((asset, skip_message))
+        return render_actor, candidates
+
+    def preview_pipeline_assets_to_render(
+        self,
+        character: str,
+        phase: str,
+        pipeline_name: str,
+        include_locked: bool = False,
+    ) -> list[BatchRenderResetPreviewResult]:
+        _, candidates = self._pipeline_render_reset_candidates(character, phase, pipeline_name, include_locked)
+        return [
+            BatchRenderResetPreviewResult(
+                asset_id=asset.asset_id,
+                previous_stage=asset.pipeline_stage,
+                previous_actor=asset.actor,
+                previous_state=asset.asset_state,
+                preview_status="SKIPPED" if skip_message else "WOULD_RESET",
+                reason=skip_message or "Asset will be moved to RENDER and its queued/render outputs cleared.",
+            )
+            for asset, skip_message in candidates
+        ]
+
+    def reset_pipeline_assets_to_render(
+        self,
+        character: str,
+        phase: str,
+        pipeline_name: str,
+        include_locked: bool = False,
+    ) -> list[BatchRenderResetResult]:
+        render_actor, candidates = self._pipeline_render_reset_candidates(character, phase, pipeline_name, include_locked)
+
+        results: list[BatchRenderResetResult] = []
+        for asset, skip_message in candidates:
+            if skip_message is not None:
                 results.append(
                     BatchRenderResetResult(
                         asset_id=asset.asset_id,
@@ -228,26 +277,12 @@ class AssetService:
                         before_actor=asset.actor,
                         before_state=asset.asset_state,
                         status="SKIPPED",
-                        message="Asset is LOCKED. Enable include locked assets to reset it.",
+                        message=skip_message,
                     )
                 )
                 continue
 
             try:
-                skip_message = self._render_reset_skip_message(asset)
-                if skip_message is not None:
-                    results.append(
-                        BatchRenderResetResult(
-                            asset_id=asset.asset_id,
-                            before_stage=asset.pipeline_stage,
-                            before_actor=asset.actor,
-                            before_state=asset.asset_state,
-                            status="SKIPPED",
-                            message=skip_message,
-                        )
-                    )
-                    continue
-
                 self.ai_proxy_service.clear_asset_queue_items(asset)
                 self._clear_render_outputs(asset)
 

@@ -255,6 +255,13 @@ class AIAnswerHarvester:
             )
         else:
             shutil.copy2(response_path, target_path)
+            metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
+            if task_type == "local_test_render" and metadata_path.exists():
+                metadata = self._read_json(metadata_path)
+                (target_path.with_suffix(".json")).write_text(
+                    json.dumps(metadata, indent=2) + "\n",
+                    encoding="utf-8",
+                )
             api_call_path = answer_path / "Stable_Matrix_API_Call.json"
             if api_call_path.exists():
                 shutil.copy2(api_call_path, target_output_dir / "Stable_Matrix_API_Call.json")

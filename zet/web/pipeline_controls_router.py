@@ -64,4 +64,30 @@ def create_pipeline_controls_router(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.get("/batch-render-reset/preview")
+    def batch_render_reset_preview(
+        pipeline_name: str = Query(...),
+        include_locked: bool = Query(False),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = get_app()
+        try:
+            results = zet_app.preview_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
+            affected_count = sum(1 for result in results if result.preview_status == "WOULD_RESET")
+            skipped_count = sum(1 for result in results if result.preview_status == "SKIPPED")
+            locked_count = sum(1 for result in results if result.previous_state == "LOCKED")
+            return {
+                "pipeline_name": pipeline_name,
+                "include_locked": include_locked,
+                "counts": {
+                    "affected": affected_count,
+                    "skipped": skipped_count,
+                    "locked": locked_count,
+                },
+                "items": jsonable(results),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return router

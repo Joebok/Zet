@@ -8,7 +8,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
-from zet.services.asset_service import AssetService, BatchRenderResetResult
+from zet.services.asset_service import AssetService, BatchRenderResetPreviewResult, BatchRenderResetResult
 from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
@@ -508,6 +508,7 @@ class ZetApp:
         *,
         allow_parallel: bool = False,
         seed: int | None = None,
+        checkpoint: str | None = None,
     ):
         return self.ai_proxy_service.stage_render_task_local_render_ask(
             manifest,
@@ -515,6 +516,7 @@ class ZetApp:
             target_output_dir,
             allow_parallel=allow_parallel,
             seed=seed,
+            checkpoint=checkpoint,
         )
 
     def stage_scene_local_render_ask(
@@ -524,12 +526,14 @@ class ZetApp:
         *,
         allow_parallel: bool = False,
         seed: int | None = None,
+        checkpoint: str | None = None,
     ):
         return self.ai_proxy_service.stage_scene_local_render_ask(
             manifest,
             workspace,
             allow_parallel=allow_parallel,
             seed=seed,
+            checkpoint=checkpoint,
         )
 
     def recompile_prompt_review(
@@ -598,6 +602,15 @@ class ZetApp:
     ) -> list[BatchRenderResetResult]:
         return self.asset_service.reset_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
 
+    def preview_pipeline_assets_to_render(
+        self,
+        character: str,
+        phase: str,
+        pipeline_name: str,
+        include_locked: bool = False,
+    ) -> list[BatchRenderResetPreviewResult]:
+        return self.asset_service.preview_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
+
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         return self.asset_service.fail_render_review_to_render(character, phase, asset_id, reason)
 
@@ -627,6 +640,9 @@ class ZetApp:
     def archive_harvested_answers(self):
         """Archive harvested AI answer folders."""
         return self.ai_proxy_service.archive_harvested_answers()
+
+    def harvested_answer_count(self) -> int:
+        return self.ai_proxy_service.harvested_answer_count()
 
     def dump_pending_ai_queue(self):
         """Clear pending AI queue ask and claimed task folders."""

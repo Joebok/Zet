@@ -26,12 +26,17 @@ Ignore `{{ }}` tags; they are reference codes and carry no descriptive meaning. 
 One or more dialog panels are acceptable.
 * Dialog panels do not contradict instructions to create one finished scene.
 * Dialog panels do not contradict instructions to not split the image into comic panels.
+* Ignore dialog placement instructions.
 
 Do not review the analysis instructions or wrapper text outside the separator lines.
 
 For each issue, briefly quote or identify the conflicting instructions and suggest a correction when the intended resolution is clear.
 
-Return only a concise markdown summary. If there are no meaningful issues, say so.
+Then return only a concise markdown summary.
+
+Start with a 2-3 sentence "Scene Summary" which succinctly describes the scene.
+
+Then return a concise markdown summary of the identifies issues. Each issue should be it's own paragraph. If there are no meaningful issues, say so.
 
 Now analyze the following prompt.
 

@@ -52,7 +52,19 @@ async function activateDashboardPage(page, pageName) {
     );
   }
   await page.waitForLoadState("networkidle");
-  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]'));
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      Array.from(document.images, (image) => {
+        if (image.hidden || image.complete) return undefined;
+        return new Promise((resolve) => {
+          image.addEventListener("load", resolve, { once: true });
+          image.addEventListener("error", resolve, { once: true });
+        });
+      }),
+    );
+  });
 }
 
 async function captureViewport(browser, viewport, expectedPages) {
@@ -79,6 +91,16 @@ async function captureViewport(browser, viewport, expectedPages) {
       animations: "disabled",
     });
     console.log(`${viewport.folder}: ${filename}`);
+  }
+
+  const expectedFiles = pages.map(
+    (pageName, index) => `${String(index + 1).padStart(2, "0")}-${pageName}.png`,
+  );
+  const capturedFiles = (await readdir(outputFolder))
+    .filter((name) => name.endsWith(".png"))
+    .sort();
+  if (capturedFiles.join("\n") !== expectedFiles.sort().join("\n")) {
+    throw new Error(`Missing dashboard captures in ${outputFolder}.`);
   }
 
   await context.close();

@@ -948,6 +948,48 @@ Two students meet at the arch.
             self.assertEqual("IDENTITY_PRESERVATION_SCENE", identity_source["section_name"])
             self.assertEqual("IDENTITY_PRESERVATION_COSTUME_SCENE", costume_source["section_name"])
 
+    def test_stage_scene_render_omits_costume_information_when_costume_is_blank(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "FirstDay"
+            story_dir.mkdir(parents=True)
+            character_dir = root / "Characters" / "Tsaeytte" / "Adult"
+            character_dir.mkdir(parents=True)
+            service = self._service(root)
+            (story_dir / "FirstDay.md").write_text("Title: `[FirstDay]`\n", encoding="utf-8")
+            service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
+            (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
+            (character_dir / "Character_Image_Template.md").write_text(
+                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\ncore identity from character\n<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
+                encoding="utf-8",
+            )
+            (character_dir / "Costume_Canonical_Adventure_Gear.md").write_text(
+                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME_SCENE -->\ncostume identity from costume\n<!-- ZET:END IDENTITY_PRESERVATION_COSTUME_SCENE -->\n",
+                encoding="utf-8",
+            )
+            data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
+            data["scene_elements"] = [{
+                "id": "tsa",
+                "display_name": "Tsaeytte",
+                "resource_type": "Character",
+                "element_type": "Character",
+                "character": "Tsaeytte",
+                "phase": "Adult",
+                "costume": "",
+            }]
+            service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(json.dumps(data), encoding="utf-8")
+
+            task = service.stage_scene_render("FirstDay", "At-the-Arch")
+
+            prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
+            self.assertIn("core identity from character", prompt)
+            self.assertNotIn("costume identity from costume", prompt)
+            source_map = json.loads((Path(task.pipeline_path) / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+            self.assertFalse(any(
+                fragment.get("source_label") == "Tsaeytte costume"
+                for fragment in source_map["fragments"]
+            ))
+
     def test_scene_prompt_source_map_links_auxiliary_identity_and_story_style(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

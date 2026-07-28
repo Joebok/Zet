@@ -107,6 +107,8 @@ An arch.
                         "worker_type": "manual_chatgpt_render",
                         "prompt_file": "Final_Image_Prompt.md",
                         "expected_output": "At-the-Arch.png",
+                        "story_slug": "FirstDay",
+                        "scene_slug": "At-the-Arch",
                         "target_output_file": str(target_path),
                     }
                 ),
@@ -123,6 +125,7 @@ An arch.
                 )
             )
             task = queue.get_task("Ask_Story_Test")
+            self.assertEqual(task.to_dict()["display_label"], "FirstDay / At-the-Arch")
 
             queue.write_answer_image(task, b"image bytes", "image/png")
 
@@ -210,12 +213,14 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                 {"ask_id": "Ask_Story_Test", "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}], "aspect_ratio": "16:9"},
                 prompt_path,
                 workspace,
+                checkpoint="override-model.safetensors",
             )
 
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual("local_image_render", manifest["worker_type"])
             self.assertEqual("local_test_render", manifest["task_type"])
             self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
+            self.assertEqual("override-model.safetensors", manifest["checkpoint"])
             self.assertEqual("16:9", manifest["aspect_ratio"])
             self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), manifest["target_output_dir"])
             self.assertEqual("condensed prompt\n", (ask_path / "Condensed_Image_Prompt.md").read_text(encoding="utf-8"))
@@ -237,6 +242,16 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             )
             (answer_path / manifest["expected_output"]).write_bytes(b"local image")
             (answer_path / "Stable_Matrix_API_Call.json").write_text('{"prompt": "local"}\n', encoding="utf-8")
+            (answer_path / "LOCAL_RENDER_METADATA.json").write_text(
+                json.dumps(
+                    {
+                        "image_generation": "stable_matrix",
+                        "render_profile": "body-reference-preview",
+                        "checkpoint": "model.safetensors",
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             results = app.harvest_ai_answers()
 
@@ -246,6 +261,14 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                 '{"prompt": "local"}',
                 (workspace / "Local_Test_Renders" / "Stable_Matrix_API_Call.json").read_text(encoding="utf-8").strip(),
             )
+            metadata = json.loads(
+                (workspace / "Local_Test_Renders" / Path(manifest["expected_output"]).with_suffix(".json")).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual("stable_matrix", metadata["image_generation"])
+            self.assertEqual("body-reference-preview", metadata["render_profile"])
+            self.assertEqual("model.safetensors", metadata["checkpoint"])
 
     def test_local_image_worker_omits_unsupported_render_kwargs(self) -> None:
         def render_image(*, project_root, final_prompt_path, job_output_dir, prompt_review_path=None, preset_name=""):

@@ -29,12 +29,12 @@ NegativePromptGlobals = "EasyNegative"
 LayoutBackend = "forge_couple_basic"
 StrictPrimarySubjectCount = true
 ForgeCoupleDebugBasePass = true
-Checkpoint = "sd\\perfectdeliberate_ilAnime.safetensors [d80b4e4c68]"
+Checkpoint = "sd\\perfectdeliberate_v90.safetensors [aea4ec6c4d]"
 
 [ComfyUI]
-Profile = "comfyui-core-preview"
+Profile = "comfyui-ipadapter-preview"
 ServerURL = "http://127.0.0.1:8188"
-Checkpoint = "waiNTRMIXIllustrious_v11.safetensors"
+Checkpoint = "illustriousXL_v01.safetensors"
 PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
 NegativePromptGlobals = ""
 PollSeconds = 1.0
@@ -56,5 +56,5 @@ IntervalSeconds = 60
 Backend = "manual_chatgpt"
 
 [AIPromptAnalysis]
-Model = "qwen3:4b-q4_K_M "
+Model = "qwen3.5:9b"
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

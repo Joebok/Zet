@@ -1,8 +1,10 @@
 {
   "scripts": {
-    "capture:ui": "node Scripts/capture-dashboard-ui.mjs"
+    "capture:ui": "node Scripts/capture-dashboard-ui.mjs",
+    "test:dashboard": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "playwright": "^1.62.0"
   }
 }

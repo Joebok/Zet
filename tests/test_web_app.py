@@ -526,22 +526,33 @@ Backend = "manual_chatgpt"
             html = response.text
             self.assertIn('data-action="advance-all" disabled>Advance All</button>', html)
             self.assertGreater(html.index('data-action="advance-all"'), html.index('id="asset-filter-hide-base"'))
-            self.assertIn('id="asset-detail-image-mode" type="button">Show Image</button>', html)
+            self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
             self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
             self.assertIn('id="character-assets-menu" class="tab active"', html)
             self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
             self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
             self.assertIn('<option value="comfyui">ComfyUI</option>', html)
-            self.assertIn('data-page="local-image-review">Local Image Review</button>', html)
+            self.assertIn('data-page="prompt-review">Prompts</button>', html)
+            self.assertIn('data-page="render-console">Render</button>', html)
+            self.assertIn('data-page="local-image-review">Local Images</button>', html)
             self.assertLess(
-                html.index('data-page="render-console">Render Console</button>'),
-                html.index('data-page="local-image-review">Local Image Review</button>'),
+                html.index('data-page="render-console">Render</button>'),
+                html.index('data-page="local-image-review">Local Images</button>'),
             )
             self.assertLess(
-                html.index('data-page="local-image-review">Local Image Review</button>'),
+                html.index('data-page="local-image-review">Local Images</button>'),
                 html.index('data-page="render-review">Image Review</button>'),
             )
+            self.assertLess(
+                html.index('data-page="scenes">Scenes</button>'),
+                html.index('data-page="auxiliary-resources">Aux Images</button>'),
+            )
+            self.assertLess(
+                html.index('data-page="auxiliary-resources">Aux Images</button>'),
+                html.index('data-page="zine">Zines</button>'),
+            )
             self.assertIn('id="local-image-review-count"', html)
+            self.assertIn('id="local-image-review-generate-all-models"', html)
             self.assertIn('id="local-image-review-gallery"', html)
             self.assertIn('id="stable-matrix-settings"', html)
             self.assertIn('id="comfyui-settings" hidden', html)
@@ -747,6 +758,56 @@ Backend = "manual_chatgpt"
             self.assertEqual(reset.json()["batch_results"][0]["status"], "RESET")
             self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
 
+    def test_pipeline_controls_batch_reset_preview_does_not_mutate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="LOCKED", actor="HUMAN_AGENT")
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            assets_payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            assets_payload["assets"][0]["asset_state"] = "LOCKED"
+            assets_path.write_text(json.dumps(assets_payload, indent=2) + "\n", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            preview = client.get(
+                "/api/pipeline-controls/batch-render-reset/preview",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "false",
+                },
+            )
+
+            self.assertEqual(preview.status_code, 200)
+            self.assertEqual(preview.json()["counts"], {"affected": 0, "skipped": 1, "locked": 1})
+            self.assertEqual(preview.json()["items"][0]["preview_status"], "SKIPPED")
+            asset = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(asset.json()["asset"]["pipeline_stage"], "LOCKED")
+            ask_dir = root / "Queue" / "Ollama_Proxy" / "Ask"
+            self.assertFalse(ask_dir.exists() and any(ask_dir.iterdir()))
+
+            included_preview = client.get(
+                "/api/pipeline-controls/batch-render-reset/preview",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "true",
+                },
+            ).json()
+            reset = client.post(
+                "/api/pipeline-controls/batch-render-reset",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "true",
+                },
+            ).json()
+            actual_reset_count = sum(item["status"] == "RESET" for item in reset["batch_results"])
+            self.assertEqual(included_preview["counts"]["affected"], actual_reset_count)
+            self.assertEqual(included_preview["items"][0]["previous_stage"], "LOCKED")
+
     def test_render_console_api_lists_task_detail_and_saves_image_answer(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -757,6 +818,7 @@ Backend = "manual_chatgpt"
             tasks = client.get("/api/render-console/tasks")
             self.assertEqual(tasks.status_code, 200)
             self.assertEqual(tasks.json()["tasks"][0]["ask_id"], "Ask_Asset_1_RENDER_TEST")
+            self.assertEqual(tasks.json()["tasks"][0]["display_label"], "Asset 1")
 
             detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
             self.assertEqual(detail.status_code, 200)
@@ -896,13 +958,33 @@ Backend = "manual_chatgpt"
             newer.write_bytes(b"new")
             os.utime(older, (100, 100))
             os.utime(newer, (200, 200))
-            (render_dir / "test_new.json").write_text("{}", encoding="utf-8")
+            (render_dir / "test_new.json").write_text(
+                json.dumps(
+                    {
+                        "image_generation": "comfyui",
+                        "render_profile": "portrait-preview",
+                        "checkpoint": "portrait.safetensors",
+                    }
+                ),
+                encoding="utf-8",
+            )
             client = TestClient(create_app(config_path))
 
             detail = client.get("/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST")
 
             self.assertEqual(detail.status_code, 200)
             self.assertEqual(["test_new.png", "test_old.png"], [item["name"] for item in detail.json()["images"]])
+            self.assertEqual(
+                {
+                    "image_generation": "comfyui",
+                    "render_profile": "portrait-preview",
+                    "checkpoint": "portrait.safetensors",
+                },
+                {
+                    key: detail.json()["images"][0][key]
+                    for key in ("image_generation", "render_profile", "checkpoint")
+                },
+            )
 
             generated = client.post(
                 "/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST/images",
@@ -1045,6 +1127,10 @@ Backend = "manual_chatgpt"
             (harvested / "harvest_manifest.json").write_text("{}\n", encoding="utf-8")
             (pending / "answer_manifest.json").write_text("{}\n", encoding="utf-8")
             client = TestClient(create_app(config_path))
+
+            controls = client.get("/api/ai-controls")
+            self.assertEqual(controls.status_code, 200)
+            self.assertEqual(controls.json()["harvested_answer_count"], 1)
 
             response = client.post("/api/ai-controls/archive-harvested")
 
