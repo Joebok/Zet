@@ -9,7 +9,6 @@ from zet.models.ai_proxy import (
     AIProxyAnswerManifest,
     AIProxyAsk,
     AIProxyAskManifest,
-    MonitorTestResult,
 )
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
@@ -96,39 +95,13 @@ class AIProxyService:
                 path.unlink(missing_ok=True)
                 removed += 1
 
-        for item in self.ai_proxy_path_service.task_paths("ask", "answer", "claimed", "failed"):
+        for item in self.ai_proxy_path_service.task_paths("ask", "answer"):
             manifest = self._read_json_if_exists(item / "ask_manifest.json")
             if manifest.get("asset_id") == asset.asset_id or item.name.startswith(asset_prefix):
                 remove_path(item)
-
-        claims_root = self.ai_proxy_path_service.claims_root()
-        if claims_root.exists():
-            for claim_path in claims_root.glob(f"{asset_prefix}*.claim.json"):
-                remove_path(claim_path)
+                self.ai_proxy_path_service.file_proxy_client.remove_route(item.name)
 
         return removed
-
-    def _clear_monitor_state(self) -> None:
-        request_root = self.ai_proxy_path_service.monitor_requests_root()
-        if request_root.exists():
-            for path in request_root.iterdir():
-                if path.is_dir():
-                    shutil.rmtree(path, ignore_errors=True)
-                else:
-                    path.unlink(missing_ok=True)
-
-        response_root = self.ai_proxy_path_service.monitor_responses_root()
-        if not response_root.exists():
-            return
-        for worker_dir in response_root.iterdir():
-            if worker_dir.is_dir():
-                for response_path in worker_dir.iterdir():
-                    if response_path.is_dir():
-                        shutil.rmtree(response_path, ignore_errors=True)
-                    else:
-                        response_path.unlink(missing_ok=True)
-            else:
-                worker_dir.unlink(missing_ok=True)
 
     def _build_manual_render_ask(self, asset, ask_id: str, attempt_id: str) -> AIProxyAsk:
         """Build a manual ChatGPT render ask for the render console."""
@@ -206,18 +179,7 @@ class AIProxyService:
 
     def _ensure_queue_dirs(self) -> None:
         self.ai_proxy_path_service.file_proxy_client.ensure_layout()
-        paths = self.ai_proxy_path_service.all_paths()
         for path in (
-            paths.proxy_root,
-            paths.ask_root,
-            paths.claims_root,
-            paths.claimed_root,
-            paths.answer_root,
-            paths.failed_root,
-            paths.control_root,
-            paths.monitor_root,
-            paths.monitor_requests_root,
-            paths.monitor_responses_root,
             self.ai_proxy_path_service.manual_ask_root(),
             self.ai_proxy_path_service.manual_answer_root(),
         ):
@@ -434,7 +396,7 @@ class AIProxyService:
                 shutil.rmtree(ask_path, ignore_errors=True)
 
     def _has_pending_auxiliary_task(self, asset, task_type: str) -> bool:
-        for ask_path in self.ai_proxy_path_service.task_paths("ask", "claimed", "answer"):
+        for ask_path in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
             manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
             if (ask_path / "harvest_manifest.json").exists():
                 continue
@@ -783,44 +745,6 @@ class AIProxyService:
         self._write_text_atomic(ask_path / ask.prompt_file, context.condensed_prompt_text)
         return self._publish_ask_folder(ask_path, ask.ask_id, ask.worker_type)
 
-    def issue_monitor_test(self, instruction: str = "") -> Path:
-        self._ensure_queue_dirs()
-        self._clear_monitor_state()
-        test_id = f"Test_{self._timestamp_compact()}"
-        request_path = self.ai_proxy_path_service.monitor_request_path(test_id)
-        request_path.mkdir(parents=True, exist_ok=False)
-        payload = {
-            "version": AI_PROXY_PROTOCOL_VERSION,
-            "test_id": test_id,
-            "instruction": instruction.strip(),
-            "created_at": self._timestamp(),
-        }
-        manifest_path = request_path / "request.json"
-        self._write_json_atomic(manifest_path, payload)
-        json.loads(manifest_path.read_text(encoding="utf-8"))
-        return request_path
-
-    def stop_state(self) -> dict:
-        self._ensure_queue_dirs()
-        payload = self._read_json_if_exists(self.ai_proxy_path_service.stop_manifest_path())
-        return {
-            "active": bool(payload.get("active", False)),
-            "stop_id": payload.get("stop_id"),
-            "reject_before_compact": payload.get("reject_before_compact"),
-            "activated_at": payload.get("activated_at"),
-            "cleared_at": payload.get("cleared_at"),
-            "cleared_asks": int(payload.get("cleared_asks", 0) or 0),
-        }
-
-    def activate_stop(self) -> dict:
-        raise AIProxyServiceError("The standalone file proxy does not support queue stop controls.")
-
-    def resume_stop(self) -> dict:
-        raise AIProxyServiceError("The standalone file proxy does not support queue stop controls.")
-
-    def dump_pending_queue(self) -> dict:
-        raise AIProxyServiceError("Global queue dumping was removed with the standalone file proxy cutover.")
-
     def archive_harvested_answers(self) -> dict:
         """Move harvested answer folders into a dated archive folder."""
         self._ensure_queue_dirs()
@@ -859,35 +783,12 @@ class AIProxyService:
             if (answer_path / "harvest_manifest.json").exists()
         )
 
-    def list_monitor_responses(self) -> list[MonitorTestResult]:
-        self._ensure_queue_dirs()
-        results: list[MonitorTestResult] = []
-        root = self.ai_proxy_path_service.monitor_responses_root()
-        for worker_dir in sorted(path for path in root.iterdir() if path.is_dir()):
-            for response_path in sorted(path for path in worker_dir.iterdir() if path.is_file() and path.suffix == ".json"):
-                payload = self._read_json_if_exists(response_path)
-                results.append(
-                    MonitorTestResult(
-                        test_id=str(payload.get("test_id") or response_path.stem),
-                        worker_id=str(payload.get("worker_id") or worker_dir.name),
-                        host=str(payload.get("host") or worker_dir.name),
-                        status=str(payload.get("status") or "UNKNOWN"),
-                        ollama_ok=bool(payload.get("ollama_ok", False)),
-                        models=[str(model) for model in payload.get("models", []) if str(model).strip()],
-                        message=str(payload.get("message")) if payload.get("message") is not None else None,
-                        responded_at=str(payload.get("responded_at")) if payload.get("responded_at") is not None else None,
-                    )
-                )
-        results.sort(key=lambda item: (item.test_id, item.worker_id), reverse=True)
-        return results
-
     def queue_snapshot(self) -> dict:
         self._ensure_queue_dirs()
         snapshot: dict[str, list[dict]] = {
             "ask": [],
-            "claimed": [],
+            "running": [],
             "answer": [],
-            "failed": [],
         }
 
         for ask_path in self.ai_proxy_path_service.task_paths("ask"):
@@ -904,12 +805,11 @@ class AIProxyService:
                 }
             )
 
-        for claim_path in self.ai_proxy_path_service.task_paths("claimed"):
-            payload = self._read_json_if_exists(claim_path / "ask_manifest.json")
-            snapshot["claimed"].append(
+        for running_path in self.ai_proxy_path_service.task_paths("running"):
+            payload = self._read_json_if_exists(running_path / "ask_manifest.json")
+            snapshot["running"].append(
                 {
-                    "worker_id": claim_path.parent.name,
-                    "ask_id": payload.get("ask_id") or claim_path.name,
+                    "ask_id": payload.get("ask_id") or running_path.name,
                     "asset_id": payload.get("asset_id"),
                     "pipeline_stage": payload.get("pipeline_stage"),
                     "worker_type": payload.get("worker_type"),
@@ -934,14 +834,6 @@ class AIProxyService:
                     "task_type": ask_payload.get("task_type"),
                     "source_ask_id": ask_payload.get("source_ask_id"),
                     "ollama_attempt_id": payload.get("ollama_attempt_id"),
-                }
-            )
-
-        for failed_path in self.ai_proxy_path_service.task_paths("failed"):
-            snapshot["failed"].append(
-                {
-                    "worker_id": failed_path.parent.name,
-                    "name": failed_path.name,
                 }
             )
 

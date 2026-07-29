@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import socket
 import sys
 import time
@@ -32,14 +31,9 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
         sys.path.insert(0, str(import_path))
 
 from zet.models.ai_proxy import AIProxyAskManifest
-from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
-from zet.services.ai_proxy_path_service import AIProxyPathService
-from zet.services.config_service import ConfigService
 from AI_Manager.proxy_worker_output import log_job
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_PROXY_ROOT = ""
-WORKER_VERSION = "7D.5"
 
 ANSI_RESET = "\033[0m"
 ANSI_YELLOW = "\033[33m"
@@ -54,12 +48,6 @@ class TransientOllamaConnectionError(RuntimeError):
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def default_proxy_root() -> Path:
-    """Return the configured standalone proxy root."""
-    config = ConfigService.load(PROJECT_ROOT / "config.toml")
-    return Path(config.base_ai_queue_path) / "File_Proxy"
 
 
 def log(message: str, *, error: bool = False) -> None:
@@ -154,118 +142,6 @@ def write_text_atomic(path: Path, contents: str) -> None:
                 pass
     if last_exc is not None:
         raise last_exc
-
-
-def ensure_dirs(proxy_root: Path, worker_id: str) -> dict[str, Path]:
-    dirs = AIProxyPathService.worker_paths(proxy_root, worker_id)
-    for path in dirs.values():
-        ensure_directory(path)
-    return dirs
-
-
-def normalize_proxy_root(path: Path) -> Path:
-    return AIProxyPathService.normalize_proxy_root(path)
-
-
-def stop_manifest_path(dirs: dict[str, Path]) -> Path:
-    return dirs["control"] / "stop.json"
-
-
-def read_stop_state(dirs: dict[str, Path]) -> dict:
-    return read_json(stop_manifest_path(dirs))
-
-
-def compact_attempt_id(attempt_id: str) -> str:
-    return str(attempt_id or "").replace("_", "")
-
-
-def should_reject_ask(ask_manifest: dict, dirs: dict[str, Path]) -> bool:
-    stop_state = read_stop_state(dirs)
-    if not bool(stop_state.get("active", False)):
-        return False
-    reject_before = str(stop_state.get("reject_before_compact") or "")
-    attempt_id = compact_attempt_id(str(ask_manifest.get("ollama_attempt_id") or ""))
-    if not reject_before or not attempt_id:
-        return True
-    return attempt_id <= reject_before
-
-
-def write_rejected_answer(folder: Path, dirs: dict[str, Path], worker_id: str, reason: str) -> str:
-    ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
-    answer_manifest = {
-        "version": 1,
-        "ask_id": ask_manifest.get("ask_id") or folder.name,
-        "asset_id": ask_manifest.get("asset_id"),
-        "ollama_attempt_id": ask_manifest.get("ollama_attempt_id") or "",
-        "worker_id": worker_id,
-        "status": "REJECTED",
-        "expected_output": ask_manifest.get("expected_output") or "OLLAMA_RESPONSE.md",
-        "started_at": now_iso(),
-        "completed_at": now_iso(),
-        "elapsed_seconds": 0,
-        "error_type": "STOPPED",
-        "error_message": reason,
-    }
-    write_json(folder / "answer_manifest.json", answer_manifest)
-    move_to_answer(folder, dirs)
-    log_job(ask_manifest, "DONE", result="REJECTED", error_message=reason)
-    return "REJECTED"
-
-
-def list_ollama_models(generate_url: str, timeout: int = 10) -> list[str]:
-    health_url = ollama_health_url(generate_url)
-    request = urllib.request.Request(health_url, method="GET")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read().decode("utf-8")
-    payload = json.loads(body)
-    models = payload.get("models", [])
-    results: list[str] = []
-    for item in models:
-        if isinstance(item, dict) and item.get("name"):
-            results.append(str(item["name"]))
-    return results
-
-
-def process_monitor_tests(dirs: dict[str, Path], worker_id: str, ollama_url: str) -> int:
-    responses_written = 0
-    host = socket.gethostname()
-    for request_dir in sorted(path for path in dirs["monitor_requests"].iterdir() if path.is_dir()):
-        test_id = request_dir.name
-        response_path = dirs["monitor_responses"] / f"{test_id}.json"
-        if response_path.exists():
-            continue
-
-        instruction = str(read_json(request_dir / "request.json").get("instruction") or "").strip()
-        try:
-            models = list_ollama_models(ollama_url)
-            payload = {
-                "version": 1,
-                "test_id": test_id,
-                "worker_id": worker_id,
-                "host": host,
-                "status": "ONLINE",
-                "ollama_ok": True,
-                "models": models,
-                "message": instruction or "Monitoring and connected to Ollama.",
-                "responded_at": now_iso(),
-            }
-        except Exception as exc:
-            payload = {
-                "version": 1,
-                "test_id": test_id,
-                "worker_id": worker_id,
-                "host": host,
-                "status": "OLLAMA_UNAVAILABLE",
-                "ollama_ok": False,
-                "models": [],
-                "message": str(exc),
-                "responded_at": now_iso(),
-            }
-
-        write_json(response_path, payload)
-        print(f"MONITOR_RESPONSE {worker_id} -> {response_path}")
-        responses_written += 1
-    return responses_written
 
 
 def ollama_health_url(generate_url: str) -> str:
@@ -416,111 +292,16 @@ def ollama_generation_options(ask_manifest: dict) -> tuple[float, int | None]:
     return temperature, num_ctx
 
 
-def write_claim_file(path: Path, ask_name: str, worker_id: str) -> bool:
-    return worker_protocol.write_claim_file(path, ask_name, worker_id, now_iso())
-
-
-def claim_one(dirs: dict[str, Path], worker_id: str) -> Path | None:
-    for ask in sorted(dirs["ask"].iterdir() if dirs["ask"].exists() else []):
-        if not ask.is_dir() or not ask.name.startswith("Ask_"):
-            continue
-
-        claim_file = dirs["claims"] / f"{ask.name}.claim.json"
-        if not write_claim_file(claim_file, ask.name, worker_id):
-            continue
-
-        dest = dirs["claimed"] / ask.name
-        try:
-            worker_protocol.move_ask_to_claimed(
-                ask,
-                dest,
-                claim_file,
-                tolerate_claim_manifest_copy_error=True,
-            )
-            log_job(read_ask_manifest(dest / "ask_manifest.json"), "CLAIMED")
-            return dest
-        except Exception:
-            try:
-                shutil.rmtree(dest, ignore_errors=True)
-            except Exception:
-                pass
-            try:
-                claim_file.unlink()
-            except Exception:
-                pass
-            continue
-    return None
-
-
-def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, reason: str) -> bool:
-    ask_name = folder.name
-    ask_dest = dirs["ask"] / ask_name
-    claim_file = dirs["claims"] / f"{ask_name}.claim.json"
-
-    try:
-        transient = {
-            "version": 1,
-            "status": "RETRY_LATER",
-            "worker_id": worker_id,
-            "reason": reason,
-            "released_at": now_iso(),
-        }
-        write_json(folder / "transient_worker_status.json", transient)
-    except Exception:
-        pass
-
-    try:
-        worker_protocol.remove_claim_files(folder, claim_file, suppress_errors=True)
-    except Exception:
-        pass
-
-    try:
-        dest, duplicate = worker_protocol.release_to_ask_or_failed(
-            folder,
-            ask_dest,
-            dirs["failed"],
-            int(time.time()),
-        )
-        if duplicate:
-            log(f"TRANSIENT_RELEASE_DUPLICATE {ask_name}: {reason}; parked at {dest}", error=True)
-            return True
-        log(f"TRANSIENT_RELEASE {ask_name} -> {ask_dest}: {reason}", error=True)
-        return True
-    except Exception as exc:
-        try:
-            failed_dest = dirs["failed"] / f"{ask_name}__release_failed_{int(time.time())}"
-            shutil.move(str(folder), str(failed_dest))
-        except Exception:
-            pass
-        log(f"ERROR releasing transient claim {ask_name}: {exc}", error=True)
-        return False
-
-
-def move_to_answer(folder: Path, dirs: dict[str, Path]) -> Path:
-    return worker_protocol.move_to_answer(folder, dirs["answer"])
-
-
 def process_claimed(
     folder: Path,
-    dirs: dict[str, Path],
     worker_id: str,
     ollama_url: str,
     timeout: int,
     ollama_retries: int,
     ollama_retry_seconds: float,
     preflight_attempts: int,
-    return_transient_to_ask: bool,
-    move_answer: bool = True,
 ) -> str:
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
-    if should_reject_ask(ask_manifest, dirs):
-        return write_rejected_answer(
-            folder,
-            dirs,
-            worker_id,
-            "Ask rejected because AI proxy stop is active.",
-        )
-
     prompt_file = str(ask_manifest.get("prompt_file") or "")
     expected_output = str(ask_manifest.get("expected_output") or "")
     model = str(ask_manifest.get("ollama_model") or "llama3.2:3b")
@@ -564,43 +345,21 @@ def process_claimed(
             retry_seconds=ollama_retry_seconds,
             preflight_attempts=preflight_attempts,
         )
-        if should_reject_ask(ask_manifest, dirs):
-            return write_rejected_answer(
-                folder,
-                dirs,
-                worker_id,
-                "Ask rejected because AI proxy stop became active during processing.",
-            )
         write_text_atomic(folder / expected_output, response)
         answer_manifest["status"] = "SUCCESS"
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
-        if move_answer:
-            move_to_answer(folder, dirs)
         log_job(ask_manifest, "DONE", result="SUCCESS")
         return "SUCCESS"
     except TransientOllamaConnectionError as exc:
-        if return_transient_to_ask:
-            release_claim_to_ask(folder, dirs, worker_id, str(exc))
-            log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
-            return "RETRY_LATER"
-
         answer_manifest["status"] = "RETRY_LATER"
         answer_manifest["error_type"] = "TRANSIENT_OLLAMA_CONNECTION"
         answer_manifest["error_message"] = str(exc)
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
-        try:
-            write_json(folder / "answer_manifest.json", answer_manifest)
-            if move_answer:
-                move_to_answer(folder, dirs)
-            log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
-        except Exception:
-            try:
-                shutil.move(str(folder), str(dirs["failed"] / folder.name))
-            except Exception:
-                pass
+        write_json(folder / "answer_manifest.json", answer_manifest)
+        log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
         return "RETRY_LATER"
     except Exception as exc:
         answer_manifest["status"] = "ERROR"
@@ -608,16 +367,8 @@ def process_claimed(
         answer_manifest["error_message"] = str(exc)
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
-        try:
-            write_json(folder / "answer_manifest.json", answer_manifest)
-            if move_answer:
-                move_to_answer(folder, dirs)
-            log_job(ask_manifest, "DONE", result="ERROR", error_message=str(exc))
-        except Exception:
-            try:
-                shutil.move(str(folder), str(dirs["failed"] / folder.name))
-            except Exception:
-                pass
+        write_json(folder / "answer_manifest.json", answer_manifest)
+        log_job(ask_manifest, "DONE", result="ERROR", error_message=str(exc))
         return "ERROR"
 
 
@@ -632,18 +383,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--preflight-attempts", type=int, default=3, help="Check Ollama /api/tags before generation")
     args = parser.parse_args(argv)
     job_dir = args.job_dir.resolve()
-    dirs = {"ask": job_dir.parent, "answer": job_dir.parent, "failed": job_dir.parent, "control": job_dir.parent}
     result = process_claimed(
         job_dir,
-        dirs,
         args.worker_id,
         args.ollama_url,
         args.timeout,
         args.ollama_retries,
         args.ollama_retry_seconds,
         args.preflight_attempts,
-        return_transient_to_ask=False,
-        move_answer=False,
     )
     return 0 if result == "SUCCESS" else 1
 

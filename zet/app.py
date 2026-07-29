@@ -622,18 +622,6 @@ class ZetApp:
         """Save the render-review comment for an asset."""
         return self.asset_service.save_render_review_comment(character, phase, asset_id, comment)
 
-    def issue_monitor_test(self, instruction: str = ""):
-        return self.ai_proxy_service.issue_monitor_test(instruction)
-
-    def activate_proxy_stop(self):
-        return self.ai_proxy_service.activate_stop()
-
-    def resume_proxy_stop(self):
-        return self.ai_proxy_service.resume_stop()
-
-    def proxy_stop_state(self):
-        return self.ai_proxy_service.stop_state()
-
     def queue_snapshot(self):
         return self.ai_proxy_service.queue_snapshot()
 
@@ -643,13 +631,6 @@ class ZetApp:
 
     def harvested_answer_count(self) -> int:
         return self.ai_proxy_service.harvested_answer_count()
-
-    def dump_pending_ai_queue(self):
-        """Clear pending AI queue ask and claimed task folders."""
-        return self.ai_proxy_service.dump_pending_queue()
-
-    def list_monitor_responses(self):
-        return self.ai_proxy_service.list_monitor_responses()
 
     def process_statuses(self):
         return self.process_service.statuses()

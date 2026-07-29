@@ -671,7 +671,7 @@ Backend = "manual_chatgpt"
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
             self.assertTrue(any((root / "Queue" / "File_Proxy" / "Ask" / "zet").iterdir()))
 
-    def test_ai_controls_api_serves_snapshot_and_monitor_test(self):
+    def test_ai_controls_api_serves_file_proxy_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
@@ -680,15 +680,8 @@ Backend = "manual_chatgpt"
             snapshot = client.get("/api/ai-controls")
             self.assertEqual(snapshot.status_code, 200)
             self.assertIn("queue_counts", snapshot.json())
+            self.assertEqual(set(snapshot.json()["queue_counts"]), {"ask", "running", "answer"})
             self.assertIn("processes", snapshot.json())
-
-            monitor = client.post(
-                "/api/ai-controls/monitor-test",
-                params={"instruction": "ping"},
-            )
-            self.assertEqual(monitor.status_code, 200)
-            self.assertIn("Monitor test sent", monitor.json()["message"])
-            self.assertEqual(monitor.json()["monitor_requests"][0]["instruction"], "ping")
 
     def test_pipeline_controls_api_serves_snapshot_and_saves_automation(self):
         with tempfile.TemporaryDirectory() as temp_dir:

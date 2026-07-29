@@ -34,7 +34,7 @@ To use local ComfyUI previews:
 1. Install [ComfyUI](https://github.com/comfyanonymous/comfyui) separately
 2. Start its local server, normally at `http://127.0.0.1:8188`
 3. Select ComfyUI and configure its profile, checkpoint, and prompt globals on the Image Config page
-4. Run `AI_Manager/local_image_proxy_worker.py` for queued Render Console previews
+4. Start `C:\Users\Joe\Projects\AI_Proxy\run_file_proxy.bat`; it invokes Zet's one-job local-image worker for queued previews
 
 ## Quick Start
 
@@ -118,7 +118,7 @@ python3 -B -m zet.web.app       ; Direct Python execution
    - Expression templates
 2. Use dashboard or run:
    ```powershell
-   .\AI_Manager\run_proxy_worker.bat    ; Start ComfyUI proxy if using rendering
+   C:\Users\Joe\Projects\AI_Proxy\run_file_proxy.bat    ; Start the standalone file proxy
    python3 -B -m zet.web.app            ; Then start the pipeline app
    ```
 
@@ -142,7 +142,7 @@ Zet/
 │   ├── app.py                   # Reusable application facade
 │   └── web/app.py               # FastAPI web server entry point
 ├── tests/                       # Unit tests for core functionality
-├── AI_Manager/                  # Proxy workers (ComfyUI, Ollama, local image)
+├── AI_Manager/                  # One-job Ollama and local-image worker executables
 ├── Logs/                        # Pipeline execution logs
 ├── Logs/Source_Edits.jsonl     # Versioned prompt/source edits history
 └── config.toml                 # Configuration file

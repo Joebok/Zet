@@ -58,13 +58,13 @@ class AIProxyProtocolTests(unittest.TestCase):
             root = Path(temp_dir)
             service = AIProxyPathService(self._config(root))
             ask = service.ask_root() / "Ask_1"
-            running = service.claimed_root() / "Ask_2"
+            running = service.running_root() / "Ask_2"
             for path in (ask, running):
                 path.mkdir(parents=True)
 
             self.assertEqual(
                 {ask, running},
-                set(service.task_paths("ask", "claimed")),
+                set(service.task_paths("ask", "running")),
             )
 
     def test_render_console_rejects_unsupported_ask_manifest(self) -> None:

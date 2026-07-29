@@ -67,7 +67,7 @@ class ScenePromptAnalysisService:
         return {"pending": pending, "complete": result_path.exists() and not pending, "result_path": str(result_path)}
 
     def _has_pending(self, story_slug: str, scene_slug: str) -> bool:
-        for path in self.path_service.task_paths("ask", "answer", "claimed"):
+        for path in self.path_service.task_paths("ask", "answer", "running"):
             if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():
                 continue
             manifest = self.path_service.read_ask_manifest(path)

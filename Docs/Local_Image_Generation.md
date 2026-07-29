@@ -402,20 +402,15 @@ Important manifest fields include:
 
 Reference records are carried through every ask. The core profile preserves but does not consume them; the IP-Adapter profile consumes resolved assignments.
 
-### 2. Claiming and rendering
+### 2. Proxy dispatch and rendering
 
-`AI_Manager/local_image_proxy_worker.py`:
+The standalone file proxy:
 
-1. Claims one compatible ask.
-2. Moves it to `Claimed/<worker-id>/`.
-3. Dispatches through the selected render profile.
-4. Copies the chosen image to `expected_output`.
-5. Copies backend artifacts into the answer folder.
-6. Writes `LOCAL_RENDER_METADATA.json`.
-7. Writes `answer_manifest.json`.
-8. Moves the completed folder to `Answer/`.
+1. Moves one compatible ask to `Running/zet/`.
+2. Invokes `AI_Manager/local_image_proxy_worker.py --job-dir <path>`.
+3. Moves the completed job to `Answer/zet/`.
 
-If the backend is temporarily unavailable, the worker can return the ask for later retry. Other failures produce an error answer.
+The one-job worker dispatches through the selected render profile, copies the chosen image and backend artifacts into the job folder, and writes `LOCAL_RENDER_METADATA.json` plus `answer_manifest.json`. A temporarily unavailable backend produces a `RETRY_LATER` result for the proxy to handle; other failures produce an error result.
 
 ### 3. Harvesting
 

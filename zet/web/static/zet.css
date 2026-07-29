@@ -1933,16 +1933,6 @@ tr.auxiliary-row td:last-child {
   grid-row: 4;
 }
 
-.ai-monitor-tests-panel {
-  grid-column: 1;
-  grid-row: 5;
-}
-
-.ai-monitor-responses-panel {
-  grid-column: 1;
-  grid-row: 6;
-}
-
 .control-panel {
   background: var(--panel);
   border: 1px solid var(--line);

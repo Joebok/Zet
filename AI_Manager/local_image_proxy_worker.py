@@ -42,21 +42,13 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
 
 from Local_Render_Adapters import LocalRenderUnavailable, render_image
 from zet.models.ai_proxy import AIProxyAskManifest
-from zet.repositories import ai_proxy_worker_protocol_repository as worker_protocol
-from zet.services.ai_proxy_path_service import AIProxyPathService
 from AI_Manager.proxy_worker_output import log_job
 
-WORKER_VERSION = "1.0"
 SUPPORTED_WORKER_TYPES = {"local_image_render"}
 
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def log(message: str, *, error: bool = False) -> None:
-    stream = sys.stderr if error else sys.stdout
-    print(f"{now_iso()} {message}", file=stream, flush=True)
 
 
 def read_json(path: Path) -> dict:
@@ -111,82 +103,6 @@ def localize_output_json_paths(folder: Path) -> None:
             write_json(path, localized)
 
 
-def ensure_dirs(proxy_root: Path, worker_id: str) -> dict[str, Path]:
-    dirs = AIProxyPathService.worker_paths(proxy_root, worker_id)
-    for path in dirs.values():
-        ensure_directory(path)
-    return dirs
-
-
-def normalize_proxy_root(path: Path) -> Path:
-    return AIProxyPathService.normalize_proxy_root(path)
-
-
-def write_claim_file(path: Path, ask_name: str, worker_id: str) -> bool:
-    return worker_protocol.write_claim_file(
-        path,
-        ask_name,
-        worker_id,
-        now_iso(),
-        suppress_cleanup_error=False,
-    )
-
-
-def claim_one_local_render(dirs: dict[str, Path], worker_id: str) -> Path | None:
-    for ask in sorted(dirs["ask"].iterdir() if dirs["ask"].exists() else []):
-        if not ask.is_dir() or not ask.name.startswith("Ask_"):
-            continue
-        ask_manifest = read_ask_manifest(ask / "ask_manifest.json")
-        if ask_manifest.get("worker_type") not in SUPPORTED_WORKER_TYPES:
-            continue
-
-        claim_file = dirs["claims"] / f"{ask.name}.claim.json"
-        if not write_claim_file(claim_file, ask.name, worker_id):
-            continue
-
-        dest = dirs["claimed"] / ask.name
-        try:
-            worker_protocol.move_ask_to_claimed(ask, dest, claim_file)
-            log_job(read_ask_manifest(dest / "ask_manifest.json"), "CLAIMED")
-            return dest
-        except Exception:
-            shutil.rmtree(dest, ignore_errors=True)
-            claim_file.unlink(missing_ok=True)
-            continue
-    return None
-
-
-def move_to_answer(folder: Path, dirs: dict[str, Path]) -> Path:
-    return worker_protocol.move_to_answer(folder, dirs["answer"])
-
-
-def release_claim_to_ask(folder: Path, dirs: dict[str, Path], worker_id: str, reason: str) -> None:
-    ask_name = folder.name
-    claim_file = dirs["claims"] / f"{ask_name}.claim.json"
-    ask_dest = dirs["ask"] / ask_name
-    worker_protocol.remove_claim_files(folder, claim_file)
-    write_json(
-        folder / "transient_worker_status.json",
-        {
-            "version": 1,
-            "status": "RETRY_LATER",
-            "worker_id": worker_id,
-            "reason": reason,
-            "released_at": now_iso(),
-        },
-    )
-    dest, duplicate = worker_protocol.release_to_ask_or_failed(
-        folder,
-        ask_dest,
-        dirs["failed"],
-        int(time.time()),
-    )
-    if duplicate:
-        log(f"RETRY_LATER_DUPLICATE {ask_name}: {reason}; parked at {dest}", error=True)
-        return
-    log(f"RETRY_LATER_RELEASED {ask_name} -> {ask_dest}: {reason}", error=True)
-
-
 def answer_manifest_base(ask_manifest: dict, worker_id: str, expected_output: str) -> dict:
     return {
         "version": 1,
@@ -235,40 +151,9 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
     return kwargs
 
 
-def process_monitor_tests(dirs: dict[str, Path], worker_id: str) -> int:
-    responses_written = 0
-    host = socket.gethostname()
-    for request_dir in sorted(path for path in dirs["monitor_requests"].iterdir() if path.is_dir()):
-        test_id = request_dir.name
-        response_path = dirs["monitor_responses"] / f"{test_id}.json"
-        if response_path.exists():
-            continue
-
-        instruction = str(read_json(request_dir / "request.json").get("instruction") or "").strip()
-        payload = {
-            "version": 1,
-            "test_id": test_id,
-            "worker_id": worker_id,
-            "host": host,
-            "status": "ONLINE",
-            "ollama_ok": False,
-            "models": [],
-            "message": instruction or "Monitoring and connected to local image worker.",
-            "responded_at": now_iso(),
-            "worker_type": "local_image_render",
-        }
-        write_json(response_path, payload)
-        print(f"MONITOR_RESPONSE {worker_id} -> {response_path}")
-        responses_written += 1
-    return responses_written
-
-
 def process_claimed(
     folder: Path,
-    dirs: dict[str, Path],
     worker_id: str,
-    return_transient_to_ask: bool,
-    move_answer: bool = True,
 ) -> str:
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     prompt_file = str(ask_manifest.get("prompt_file") or "Final_Image_Prompt.md")
@@ -326,15 +211,9 @@ def process_claimed(
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
         localize_output_json_paths(folder)
-        if move_answer:
-            move_to_answer(folder, dirs)
         log_job(ask_manifest, "DONE", result="SUCCESS")
         return "SUCCESS"
     except LocalRenderUnavailable as exc:
-        if return_transient_to_ask:
-            release_claim_to_ask(folder, dirs, worker_id, str(exc))
-            log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
-            return "RETRY_LATER"
         answer_manifest["status"] = "RETRY_LATER"
         answer_manifest["error_type"] = "LOCAL_RENDER_UNAVAILABLE"
         answer_manifest["error_message"] = str(exc)
@@ -347,8 +226,6 @@ def process_claimed(
     answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
     write_json(folder / "answer_manifest.json", answer_manifest)
     localize_output_json_paths(folder)
-    if move_answer:
-        move_to_answer(folder, dirs)
     log_job(
         ask_manifest,
         "DONE",
@@ -358,27 +235,16 @@ def process_claimed(
     return str(answer_manifest["status"])
 
 
-def default_proxy_root(config_path: Path) -> Path:
-    from zet.services.config_service import ConfigService
-
-    config = ConfigService.load(config_path)
-    return Path(config.base_ai_queue_path) / "File_Proxy"
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Process one Zet local-image file-proxy job.")
     parser.add_argument("--job-dir", required=True, type=Path)
-    parser.add_argument("--config", default="config.toml", help="Zet config path, used when --proxy-root is omitted")
+    parser.add_argument("--config", default="config.toml", help="Zet config path retained for the registered worker contract")
     parser.add_argument("--worker-id", default=f"{socket.gethostname()}-local-image", help="Worker ID for claim and answer manifests")
     args = parser.parse_args(argv)
     job_dir = args.job_dir.resolve()
-    dirs = {"ask": job_dir.parent, "answer": job_dir.parent, "failed": job_dir.parent}
     result = process_claimed(
         job_dir,
-        dirs,
         args.worker_id,
-        return_transient_to_ask=False,
-        move_answer=False,
     )
     return 0 if result == "SUCCESS" else 1
 

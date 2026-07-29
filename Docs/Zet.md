@@ -61,7 +61,7 @@ PipelineBasePath   = BasePipelinePath / Character / Phase
 PipelinePath       = PipelineBasePath / Pipeline / BodyView / HeadView-or-_ / Asset_{AssetID}
 CandidateImagePath = PipelinePath / FinalImageOutput
 LockedImagePath    = CharacterAssetPath / FinalImageOutput
-AIProxyRoot        = BaseAIQueuePath / Ollama_Proxy
+AIProxyRoot        = BaseAIQueuePath / File_Proxy
 ```
 
 For assets without `HeadView`, Zet uses `_` in the pipeline path.
@@ -289,18 +289,14 @@ It currently works with config-driven prompt task bundles and template section m
 AI Controls shows the filesystem proxy queue status:
 
 - Ask
-- Claimed
+- Running
 - Answer
-- Failed
 
 Harvested answer folders are no longer counted as pending answers.
 
 AI Controls also supports:
 
 - Harvest AI Answers
-- Stop Proxy
-- Resume Proxy
-- Send Monitor Test
 
 When `AIHarvest.AutoEnabled` is true, `run_auto_harvest.bat` starts a separate background harvester loop that runs at `AIHarvest.IntervalSeconds`. The dashboard does not refresh itself to harvest.
 
@@ -431,24 +427,20 @@ See [Local Image Generation](Local_Image_Generation.md) for complete configurati
 
 ## Filesystem AI Proxy
 
-Zet uses a filesystem proxy for asynchronous AI and local render work.
+Zet is a subscriber to the standalone filesystem proxy for asynchronous AI and local render work.
 
 Queue root:
 
 ```text
-BaseAIQueuePath / Ollama_Proxy
+BaseAIQueuePath / File_Proxy
 ```
 
 Current queue folders:
 
 ```text
-Ask/
-Claims/
-Claimed/
-Answer/
-Failed/
-Control/
-Monitor/
+Ask/zet/
+Running/zet/
+Answer/zet/
 ```
 
 Ask folders contain:
@@ -466,11 +458,12 @@ Answer folders contain:
 
 ### Ask Types
 
-Current worker types:
+Current standalone-proxy worker types:
 
 - `ollama_generate`
 - `local_image_render`
-- `manual_chatgpt_render`
+
+Manual ChatGPT renders use the separate `BaseAIQueuePath / Manual_Render_Queue` workflow.
 
 `local_image_render` is backend-neutral. The concrete backend is selected by `render_preset`.
 
@@ -478,21 +471,17 @@ The earlier `comfyui_render` name is kept only for compatibility in the local im
 
 ## Proxy Workers
 
-Current worker scripts:
+Zet provides these one-job worker executables:
 
-- `AI_Manager/proxy_worker.py`
 - `AI_Manager/ollama_proxy_worker.py`
 - `AI_Manager/local_image_proxy_worker.py`
 
-`proxy_worker.py` is the preferred worker entry point. It claims one supported ask at a time and dispatches either `ollama_generate` or `local_image_render` work on the same machine, preventing concurrent condense/render jobs from competing for local resources.
-
-The individual Ollama and local image workers remain useful for diagnostics, but should not both be run on the same machine when serialized local work is desired.
+The standalone proxy owns polling, claiming, retries, and queue transitions. It invokes one Zet worker with `--job-dir`; the worker reads inputs and writes outputs without moving the job folder.
 
 The local image handler:
 
-- claims `local_image_render` asks
 - calls the backend-neutral local render dispatcher
-- writes the expected image output into the Answer folder
+- writes the expected image output into the supplied job folder
 - writes `LOCAL_RENDER_METADATA.json`
 - does not modify Zet asset state
 
@@ -537,7 +526,7 @@ Platform-specific config overrides are supported through:
 
 The main known cross-machine path is the external Dropbox AI queue. Project-local `_Lib/...` paths should remain relative and portable.
 
-Standalone worker deployments outside the repo, such as `C:/Users/Joe/Ollama`, must be kept in sync manually for now. The batch files there should point at the same `Ollama_Proxy` path resolved by Zet.
+The standalone proxy is maintained in `C:/Users/Joe/Projects/AI_Proxy` and uses the same `BaseAIQueuePath / File_Proxy` queue as Zet.
 
 HTTPS over Tailscale for the Render Console is intentionally on hold. The current practical deployment is localhost or plain HTTP over the private Tailscale network.
 
@@ -548,7 +537,7 @@ AI Controls includes a process-management section for the local Zet service set.
 Current tracked processes:
 
 - Zet Web Dashboard
-- Unified Proxy Worker
+- File Proxy
 - Auto Harvester
 
 The primary dashboard and service processes can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot. The Render Console is integrated into the main FastAPI dashboard and no longer has a standalone server.

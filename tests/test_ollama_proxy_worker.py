@@ -89,12 +89,6 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             folder = Path(temp_dir) / "Running" / "zet" / "Ask_Storyizer_test"
             folder.mkdir(parents=True)
-            dirs = {
-                "ask": folder.parent,
-                "answer": folder.parent,
-                "failed": folder.parent,
-                "control": folder.parent,
-            }
             (folder / "OLLAMA_PROMPT.md").write_text("hello", encoding="utf-8")
             (folder / "ask_manifest.json").write_text(
                 json.dumps(
@@ -115,15 +109,12 @@ class OllamaProxyWorkerTests(unittest.TestCase):
             with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value="ok") as call:
                 result = process_claimed(
                     folder,
-                    dirs,
                     "worker-1",
                     "http://localhost:11434/api/generate",
                     30,
                     0,
                     0,
                     0,
-                    False,
-                    move_answer=False,
                 )
 
             self.assertEqual("SUCCESS", result)

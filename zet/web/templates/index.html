@@ -1154,19 +1154,11 @@
       <div class="ai-controls-grid">
         <section class="control-panel ai-actions-panel">
           <h2>Actions</h2>
-          <div id="proxy-stop-state" class="summary-bar"></div>
           <div class="button-row two">
             <button id="harvest-ai" class="update-action">Harvest AI Answers</button>
             <button id="archive-harvested-ai" class="danger-action">Archive Harvested Answers</button>
             <button id="refresh-ai-controls" class="navigation-action">Refresh</button>
-            <button id="activate-proxy-stop" class="danger-action">Activate Stop</button>
-            <button id="resume-proxy-stop" class="update-action">Resume</button>
           </div>
-          <label>
-            Monitor note
-            <input id="monitor-instruction" type="text" placeholder="Optional note for workers">
-          </label>
-          <button id="send-monitor-test" class="update-action">Send Monitor Test</button>
         </section>
         <section class="control-panel ai-automation-panel local-image-config-panel">
           <h2>Project Automation</h2>
@@ -1209,7 +1201,6 @@
         <section class="control-panel queue-panel">
           <div class="page-title-row">
             <h2>Queue</h2>
-            <button id="dump-ai-queue" class="neutral-action">Dump Queue</button>
           </div>
           <div id="queue-counts" class="summary-bar"></div>
           <div class="queue-tables">
@@ -1218,16 +1209,12 @@
               <table id="queue-ask-table"><tbody></tbody></table>
             </section>
             <section>
-              <h3>Claimed</h3>
-              <table id="queue-claimed-table"><tbody></tbody></table>
+              <h3>Running</h3>
+              <table id="queue-running-table"><tbody></tbody></table>
             </section>
             <section>
               <h3>Answer</h3>
               <table id="queue-answer-table"><tbody></tbody></table>
-            </section>
-            <section>
-              <h3>Failed</h3>
-              <table id="queue-failed-table"><tbody></tbody></table>
             </section>
           </div>
         </section>
@@ -1236,14 +1223,6 @@
           <button id="open-render-console-tab" class="navigation-action">Open Render Console</button>
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
-        </section>
-        <section class="control-panel ai-monitor-tests-panel">
-          <h2>Monitor Tests</h2>
-          <table id="monitor-request-table"><tbody></tbody></table>
-        </section>
-        <section class="control-panel ai-monitor-responses-panel">
-          <h2>Monitor Responses</h2>
-          <table id="monitor-response-table"><tbody></tbody></table>
         </section>
       </div>
     </section>

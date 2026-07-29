@@ -208,26 +208,17 @@ const renderCommentSave = document.querySelector("#render-comment-save");
 const aiControlsStatus = document.querySelector("#ai-controls-status");
 const aiControlsMessage = document.querySelector("#ai-controls-message");
 const localImageConfigMessage = document.querySelector("#local-image-config-message");
-const proxyStopState = document.querySelector("#proxy-stop-state");
 const harvestAiButton = document.querySelector("#harvest-ai");
 const archiveHarvestedAiButton = document.querySelector("#archive-harvested-ai");
 const refreshAiControlsButton = document.querySelector("#refresh-ai-controls");
-const activateProxyStopButton = document.querySelector("#activate-proxy-stop");
-const resumeProxyStopButton = document.querySelector("#resume-proxy-stop");
-const dumpAiQueueButton = document.querySelector("#dump-ai-queue");
-const monitorInstruction = document.querySelector("#monitor-instruction");
-const sendMonitorTestButton = document.querySelector("#send-monitor-test");
 const processTableBody = document.querySelector("#process-table tbody");
 const queueCounts = document.querySelector("#queue-counts");
 const queueAskTableBody = document.querySelector("#queue-ask-table tbody");
-const queueClaimedTableBody = document.querySelector("#queue-claimed-table tbody");
+const queueRunningTableBody = document.querySelector("#queue-running-table tbody");
 const queueAnswerTableBody = document.querySelector("#queue-answer-table tbody");
-const queueFailedTableBody = document.querySelector("#queue-failed-table tbody");
 const openRenderConsoleTab = document.querySelector("#open-render-console-tab");
 const manualRenderCount = document.querySelector("#manual-render-count");
 const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
-const monitorRequestTableBody = document.querySelector("#monitor-request-table tbody");
-const monitorResponseTableBody = document.querySelector("#monitor-response-table tbody");
 const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
 const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
 const automationForm = document.querySelector("#automation-form");
@@ -6232,20 +6223,14 @@ async function loadAiControls() {
 
 function renderAiControls(payload) {
   state.aiControls = payload;
-  const stopState = payload.stop_state || {};
-  proxyStopState.textContent = stopState.active
-    ? `Proxy STOPPED | stop_id: ${stopState.stop_id || ""} | cleared asks: ${stopState.cleared_asks || 0}`
-    : "Proxy ACTIVE";
   const counts = payload.queue_counts || {};
   queueCounts.textContent =
-    `Ask: ${counts.ask || 0} | Claimed: ${counts.claimed || 0} | Answer: ${counts.answer || 0} | Failed: ${counts.failed || 0}`;
+    `Ask: ${counts.ask || 0} | Running: ${counts.running || 0} | Answer: ${counts.answer || 0}`;
   renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
-  renderRows(queueClaimedTableBody, payload.queue?.claimed || [], ["worker_id", "ask_id", "asset_id", "worker_type", "task_type"]);
+  renderRows(queueRunningTableBody, payload.queue?.running || [], ["ask_id", "asset_id", "worker_type", "task_type"]);
   renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id"]);
   renderRows(queueFailedTableBody, payload.queue?.failed || [], ["worker_id", "name"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
-  renderRows(monitorRequestTableBody, payload.monitor_requests || [], ["test_id", "instruction", "created_at"]);
-  renderRows(monitorResponseTableBody, payload.monitor_responses || [], ["test_id", "worker_id", "host", "status", "ollama_ok", "responded_at"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
   renderProcessRows(payload.processes || []);
   aiControlsStatus.textContent = "Ready";
@@ -6287,14 +6272,6 @@ async function runAiControlsAction(url) {
   } catch (error) {
     showAiControlsMessage(error.message, "error");
   }
-}
-
-async function dumpAiQueue() {
-  // Require an explicit browser confirmation before deleting pending queue items.
-  if (!window.confirm("Dump all pending AI queue asks and claimed tasks? Answers and failed folders will be left alone.")) {
-    return;
-  }
-  await runAiControlsAction("/api/ai-controls/dump-queue");
 }
 
 async function loadPipelineControls() {
@@ -7057,17 +7034,6 @@ async function archiveHarvestedAiAnswers() {
     "Archive Answers",
   )) {
     await runAiControlsAction("/api/ai-controls/archive-harvested");
-  }
-}
-
-async function activateProxyStop() {
-  const pending = state.aiControls?.queue_counts?.ask || 0;
-  if (await confirmAction(
-    "Activate proxy stop",
-    `Stop new proxy work and reject ${pending} pending Ask folder(s)? Pending asks will be moved to Answer as rejected.`,
-    "Activate Stop",
-  )) {
-    await runAiControlsAction("/api/ai-controls/stop");
   }
 }
 
@@ -7905,13 +7871,6 @@ refreshAiControlsButton.addEventListener("click", async () => {
 });
 harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
 archiveHarvestedAiButton.addEventListener("click", archiveHarvestedAiAnswers);
-activateProxyStopButton.addEventListener("click", activateProxyStop);
-resumeProxyStopButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/resume"));
-dumpAiQueueButton.addEventListener("click", dumpAiQueue);
-sendMonitorTestButton.addEventListener("click", () => {
-  const params = new URLSearchParams({ instruction: monitorInstruction.value || "" });
-  runAiControlsAction(`/api/ai-controls/monitor-test?${params.toString()}`);
-});
 openRenderConsoleTab.addEventListener("click", () => {
   document.querySelector('.tab[data-page="render-console"]').click();
 });
