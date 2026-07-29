@@ -7,7 +7,7 @@ BaseAIQueuePath = "AI_Queue/"
 
 [BaseFoldersByPlatform.Windows]
 BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
-BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
+BaseAIQueuePath = "C:/Users/Joe/Dropbox/AI_Queue"
 
 [BaseFoldersByPlatform.Darwin]
 BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"

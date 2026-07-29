@@ -2,14 +2,10 @@
 """
 ollama_proxy_worker.py
 
-Disposable filesystem worker for Zet's Ollama file proxy.
+One-job Ollama executable for Zet's standalone file-proxy subscription.
 
-This script:
-- watches Ask/ for staged asks
-- claims one ask at a time using a claim sidecar file
-- runs local Ollama against OLLAMA_PROMPT.md
-- writes OLLAMA_RESPONSE.md plus answer_manifest.json
-- moves completed asks to Answer/
+The proxy passes one Running job with --job-dir. This process performs only
+the Ollama work and writes subscriber outputs inside that folder.
 
 It does not modify Zet asset state.
 It does not edit Assets.json.
@@ -61,9 +57,9 @@ def now_iso() -> str:
 
 
 def default_proxy_root() -> Path:
-    """Return the configured Ollama proxy root."""
+    """Return the configured standalone proxy root."""
     config = ConfigService.load(PROJECT_ROOT / "config.toml")
-    return Path(config.base_ai_queue_path) / "Ollama_Proxy"
+    return Path(config.base_ai_queue_path) / "File_Proxy"
 
 
 def log(message: str, *, error: bool = False) -> None:
@@ -514,6 +510,7 @@ def process_claimed(
     ollama_retry_seconds: float,
     preflight_attempts: int,
     return_transient_to_ask: bool,
+    move_answer: bool = True,
 ) -> str:
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     if should_reject_ask(ask_manifest, dirs):
@@ -579,7 +576,8 @@ def process_claimed(
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
-        dest = move_to_answer(folder, dirs)
+        if move_answer:
+            move_to_answer(folder, dirs)
         log_job(ask_manifest, "DONE", result="SUCCESS")
         return "SUCCESS"
     except TransientOllamaConnectionError as exc:
@@ -595,7 +593,8 @@ def process_claimed(
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         try:
             write_json(folder / "answer_manifest.json", answer_manifest)
-            dest = move_to_answer(folder, dirs)
+            if move_answer:
+                move_to_answer(folder, dirs)
             log_job(ask_manifest, "DONE", result="RETRY_LATER", error_message=str(exc))
         except Exception:
             try:
@@ -611,7 +610,8 @@ def process_claimed(
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         try:
             write_json(folder / "answer_manifest.json", answer_manifest)
-            dest = move_to_answer(folder, dirs)
+            if move_answer:
+                move_to_answer(folder, dirs)
             log_job(ask_manifest, "DONE", result="ERROR", error_message=str(exc))
         except Exception:
             try:
@@ -622,54 +622,30 @@ def process_claimed(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Claim and process Zet Ollama proxy ask folders.")
-    parser.add_argument("--proxy-root", default=DEFAULT_PROXY_ROOT, help="Path to Zet Ollama proxy root")
+    parser = argparse.ArgumentParser(description="Process one Zet Ollama file-proxy job.")
+    parser.add_argument("--job-dir", required=True, type=Path)
     parser.add_argument("--worker-id", default=socket.gethostname(), help="Worker ID for claim and answer manifests")
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL, help="Local Ollama generate endpoint")
-    parser.add_argument("--poll-seconds", type=int, default=30, help="Seconds between polls in loop mode")
     parser.add_argument("--timeout", type=int, default=7200, help="Ollama HTTP timeout seconds")
     parser.add_argument("--ollama-retries", type=int, default=8, help="Retries for transient Ollama connection failures")
     parser.add_argument("--ollama-retry-seconds", type=float, default=10.0, help="Seconds between transient retries")
     parser.add_argument("--preflight-attempts", type=int, default=3, help="Check Ollama /api/tags before generation")
-    parser.add_argument("--transient-cooldown-seconds", type=float, default=60.0, help="Sleep after transient retry release")
-    parser.add_argument("--send-transient-to-answer", action="store_true", help="Write RETRY_LATER answer folders instead of returning Ask")
-    parser.add_argument("--once", action="store_true", help="Process at most one ask and exit")
-    parser.add_argument("--max-jobs", type=int, default=None, help="Process at most N asks and exit")
     args = parser.parse_args(argv)
-
-    proxy_root_arg = Path(args.proxy_root).expanduser() if args.proxy_root else default_proxy_root()
-    proxy_root = normalize_proxy_root(proxy_root_arg).resolve()
-    dirs = ensure_dirs(proxy_root, args.worker_id)
-    processed = 0
-    log(f"Worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")
-
-    while True:
-        process_monitor_tests(dirs, args.worker_id, args.ollama_url)
-        claimed = claim_one(dirs, args.worker_id)
-        if claimed is None:
-            if args.once or (args.max_jobs is not None and processed >= args.max_jobs):
-                return 0
-            time.sleep(args.poll_seconds)
-            continue
-
-        result = process_claimed(
-            claimed,
-            dirs,
-            args.worker_id,
-            args.ollama_url,
-            args.timeout,
-            args.ollama_retries,
-            args.ollama_retry_seconds,
-            args.preflight_attempts,
-            return_transient_to_ask=not args.send_transient_to_answer,
-        )
-        if result in {"SUCCESS", "ERROR"}:
-            processed += 1
-        elif result == "RETRY_LATER":
-            time.sleep(args.transient_cooldown_seconds)
-
-        if args.once or (args.max_jobs is not None and processed >= args.max_jobs):
-            return 0
+    job_dir = args.job_dir.resolve()
+    dirs = {"ask": job_dir.parent, "answer": job_dir.parent, "failed": job_dir.parent, "control": job_dir.parent}
+    result = process_claimed(
+        job_dir,
+        dirs,
+        args.worker_id,
+        args.ollama_url,
+        args.timeout,
+        args.ollama_retries,
+        args.ollama_retry_seconds,
+        args.preflight_attempts,
+        return_transient_to_ask=False,
+        move_answer=False,
+    )
+    return 0 if result == "SUCCESS" else 1
 
 
 if __name__ == "__main__":

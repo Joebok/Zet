@@ -53,19 +53,18 @@ class AIProxyProtocolTests(unittest.TestCase):
                 {"version": 1, "reference_files": [{"version": 2, "type": "reference_file", "path": "ref.png"}]}
             )
 
-    def test_task_paths_flatten_worker_owned_states(self) -> None:
+    def test_task_paths_use_flat_subscriber_states(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             service = AIProxyPathService(self._config(root))
             ask = service.ask_root() / "Ask_1"
-            claimed = service.claimed_root() / "worker-a" / "Ask_2"
-            failed = service.failed_root() / "worker-b" / "Ask_3"
-            for path in (ask, claimed, failed):
+            running = service.claimed_root() / "Ask_2"
+            for path in (ask, running):
                 path.mkdir(parents=True)
 
             self.assertEqual(
-                {ask, claimed, failed},
-                set(service.task_paths("ask", "claimed", "failed")),
+                {ask, running},
+                set(service.task_paths("ask", "claimed")),
             )
 
     def test_render_console_rejects_unsupported_ask_manifest(self) -> None:

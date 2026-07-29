@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from AI_Manager.ollama_proxy_worker import (
     call_ollama_once,
-    ensure_dirs,
     ollama_generation_options,
     process_claimed,
 )
@@ -88,9 +87,14 @@ class OllamaProxyWorkerTests(unittest.TestCase):
 
     def test_process_claimed_forwards_manifest_generation_options(self):
         with TemporaryDirectory() as temp_dir:
-            dirs = ensure_dirs(Path(temp_dir), "worker-1")
-            folder = dirs["claimed"] / "Ask_Storyizer_test"
-            folder.mkdir()
+            folder = Path(temp_dir) / "Running" / "zet" / "Ask_Storyizer_test"
+            folder.mkdir(parents=True)
+            dirs = {
+                "ask": folder.parent,
+                "answer": folder.parent,
+                "failed": folder.parent,
+                "control": folder.parent,
+            }
             (folder / "OLLAMA_PROMPT.md").write_text("hello", encoding="utf-8")
             (folder / "ask_manifest.json").write_text(
                 json.dumps(
@@ -119,6 +123,7 @@ class OllamaProxyWorkerTests(unittest.TestCase):
                     0,
                     0,
                     False,
+                    move_answer=False,
                 )
 
             self.assertEqual("SUCCESS", result)

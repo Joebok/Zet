@@ -106,9 +106,28 @@ class AIAnswerHarvester:
 
     def _load_answer(self, answer_path: Path) -> AIProxyAnswer:
         manifest_path = answer_path / "answer_manifest.json"
-        if not manifest_path.exists():
+        proxy_result_path = answer_path / "proxy_result.json"
+        proxy_result = self._read_json(proxy_result_path) if proxy_result_path.exists() else {}
+        if manifest_path.exists():
+            data = self._read_json(manifest_path)
+        elif proxy_result:
+            ask = self._load_ask_manifest(answer_path)
+            data = {
+                "ask_id": ask.get("ask_id") or answer_path.name,
+                "asset_id": ask.get("asset_id"),
+                "ollama_attempt_id": ask.get("ollama_attempt_id") or "",
+                "worker_id": proxy_result.get("worker") or "file-proxy",
+                "status": "ERROR",
+                "expected_output": ask.get("expected_output") or "",
+                "error_type": proxy_result.get("error_type") or proxy_result.get("status"),
+                "error_message": proxy_result.get("error_message") or "File proxy job failed.",
+            }
+        else:
             raise AIAnswerHarvesterError(f"Missing answer_manifest.json in {answer_path}")
-        data = self._read_json(manifest_path)
+        if proxy_result.get("status") in {"FAILED", "INVALID"}:
+            data["status"] = "ERROR"
+            data["error_type"] = proxy_result.get("error_type") or proxy_result["status"]
+            data["error_message"] = proxy_result.get("error_message") or "File proxy job failed."
         try:
             asset_id = data.get("asset_id")
             if asset_id == "":
@@ -131,7 +150,9 @@ class AIAnswerHarvester:
         manifest_path = answer_path / "ask_manifest.json"
         if not manifest_path.exists():
             raise AIAnswerHarvesterError(f"Missing ask_manifest.json in {answer_path}")
-        return self._read_json(manifest_path)
+        manifest = self._read_json(manifest_path)
+        manifest.update(self.ai_proxy_path_service.file_proxy_client.load_route(answer_path.name))
+        return manifest
 
     def _render_review_comment_path(self, asset) -> Path:
         """Return the render-review comment sidecar path for an asset."""
@@ -172,6 +193,7 @@ class AIAnswerHarvester:
             suffix = datetime.now().strftime("%H%M%S_%f")
             dest_path = archive_root / f"{answer_path.name}.{suffix}"
         shutil.move(str(answer_path), str(dest_path))
+        self.ai_proxy_path_service.file_proxy_client.remove_route(answer_path.name)
 
     def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
@@ -486,12 +508,8 @@ class AIAnswerHarvester:
         raise AIAnswerHarvesterError(f"Unsupported answer status {answer.status} in {answer_path}")
 
     def harvest_once(self) -> list[HarvestResult]:
-        answer_root = self.ai_proxy_path_service.answer_root()
-        if not answer_root.exists():
-            return []
-
         results: list[HarvestResult] = []
-        for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
+        for answer_path in self.ai_proxy_path_service.task_paths("answer"):
             if self._has_external_consumer(answer_path):
                 continue
             try:

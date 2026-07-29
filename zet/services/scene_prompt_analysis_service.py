@@ -28,8 +28,7 @@ class ScenePromptAnalysisService:
         result_path = Path(status["result_path"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         ask_id = f"Ask_Story_{story_slug}_{scene_slug}_PROMPT_ANALYSIS_{stamp}"
-        ask_path = self.path_service.ask_path(ask_id)
-        ask_path.mkdir(parents=True, exist_ok=False)
+        ask_path = self.path_service.file_proxy_client.create_staging(ask_id)
         instructions_path = Path(__file__).resolve().parents[2] / self.config.ai_prompt_analysis_instructions_file
         manifest = {
             "version": AI_PROXY_PROTOCOL_VERSION,
@@ -58,6 +57,7 @@ class ScenePromptAnalysisService:
         (ask_path / self.PROMPT_FILE).write_text(
             instructions.replace("{{FINAL_IMAGE_PROMPT}}", prompt_path.read_text(encoding="utf-8")), encoding="utf-8"
         )
+        self.path_service.file_proxy_client.publish(ask_path, ask_id, "ollama_generate")
         return self.status(story_slug, scene_slug)
 
     def status(self, story_slug: str, scene_slug: str) -> dict:

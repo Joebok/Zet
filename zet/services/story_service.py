@@ -1231,7 +1231,7 @@ class StoryService:
 
     def _clear_scene_render_queue_items(self, story_slug: str, scene_slug: str) -> None:
         """Remove stale queued render work for one story scene."""
-        proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Ollama_Proxy"
+        proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Manual_Render_Queue"
         ask_prefix = f"Ask_Story_{story_slug}_{scene_slug}_RENDER_"
 
         def matches(path: Path) -> bool:
@@ -1251,19 +1251,6 @@ class StoryService:
                 for path in root.iterdir():
                     if path.is_dir() and matches(path):
                         shutil.rmtree(path, ignore_errors=True)
-
-        for root in (proxy_root / "Claimed", proxy_root / "Failed"):
-            if root.exists():
-                for worker_dir in root.iterdir():
-                    if worker_dir.is_dir():
-                        for path in worker_dir.iterdir():
-                            if path.is_dir() and matches(path):
-                                shutil.rmtree(path, ignore_errors=True)
-
-        claims_root = proxy_root / "Claims"
-        if claims_root.exists():
-            for path in claims_root.glob(f"{ask_prefix}*.claim.json"):
-                path.unlink(missing_ok=True)
 
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile one story scene prompt and stage it for the Render Console."""

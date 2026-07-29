@@ -107,7 +107,7 @@ class StoryRenderService:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         story._clear_scene_render_queue_items(safe_story_slug, safe_scene_slug)
         ask_id = f"Ask_Story_{safe_story_slug}_{safe_scene_slug}_RENDER_{stamp}"
-        ask_path = Path(story.path_service.config.base_ai_queue_path) / "Ollama_Proxy" / "Ask" / ask_id
+        ask_path = Path(story.path_service.config.base_ai_queue_path) / "Manual_Render_Queue" / "Ask" / ask_id
         ask_path.mkdir(parents=True, exist_ok=False)
         expected_output = f"{safe_scene_slug}.png"
         manifest = {

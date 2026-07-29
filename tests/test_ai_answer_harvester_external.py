@@ -13,6 +13,10 @@ class StubProxyPathService:
     def answer_root(self) -> Path:
         return self._answer_root
 
+    def task_paths(self, *states):
+        if "answer" in states and self._answer_root.exists():
+            yield from (path for path in self._answer_root.iterdir() if path.is_dir())
+
 
 class AIAnswerHarvesterExternalConsumerTests(unittest.TestCase):
     def test_harvest_once_ignores_external_consumer(self):

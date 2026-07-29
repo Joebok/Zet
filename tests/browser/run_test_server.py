@@ -172,7 +172,7 @@ zine_dir.mkdir(parents=True, exist_ok=True)
 )
 Image.new("RGB", (1320, 1020), "white").save(zine_dir / "Browser-Zine.png")
 
-answer_dir = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Harvested"
+answer_dir = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Harvested"
 answer_dir.mkdir(parents=True, exist_ok=True)
 (answer_dir / "harvest_manifest.json").write_text("{}\n", encoding="utf-8")
 

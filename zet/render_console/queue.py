@@ -62,15 +62,15 @@ class RenderConsoleQueue:
 
     @property
     def proxy_root(self) -> Path:
-        return self.path_service.proxy_root()
+        return self.path_service.manual_root()
 
     @property
     def ask_root(self) -> Path:
-        return self.path_service.ask_root()
+        return self.path_service.manual_ask_root()
 
     @property
     def answer_root(self) -> Path:
-        return self.path_service.answer_root()
+        return self.path_service.manual_answer_root()
 
     def _timestamp(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
@@ -114,7 +114,7 @@ class RenderConsoleQueue:
         if not self.ask_root.exists():
             return []
         tasks: list[ManualRenderTask] = []
-        for ask_path in sorted(self.path_service.task_paths("ask")):
+        for ask_path in sorted(path for path in self.ask_root.iterdir() if path.is_dir()):
             task = self._task_from_ask_path(ask_path)
             if task is not None:
                 tasks.append(task)

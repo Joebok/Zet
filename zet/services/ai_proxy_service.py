@@ -205,6 +205,7 @@ class AIProxyService:
         )
 
     def _ensure_queue_dirs(self) -> None:
+        self.ai_proxy_path_service.file_proxy_client.ensure_layout()
         paths = self.ai_proxy_path_service.all_paths()
         for path in (
             paths.proxy_root,
@@ -217,8 +218,22 @@ class AIProxyService:
             paths.monitor_root,
             paths.monitor_requests_root,
             paths.monitor_responses_root,
+            self.ai_proxy_path_service.manual_ask_root(),
+            self.ai_proxy_path_service.manual_answer_root(),
         ):
             path.mkdir(parents=True, exist_ok=True)
+
+    def _create_ask_folder(self, ask_id: str, worker_type: str) -> Path:
+        if worker_type == "manual_chatgpt_render":
+            path = self.ai_proxy_path_service.manual_ask_path(ask_id)
+            path.mkdir(parents=True, exist_ok=False)
+            return path
+        return self.ai_proxy_path_service.file_proxy_client.create_staging(ask_id)
+
+    def _publish_ask_folder(self, path: Path, ask_id: str, worker_type: str) -> Path:
+        if worker_type == "manual_chatgpt_render":
+            return path
+        return self.ai_proxy_path_service.file_proxy_client.publish(path, ask_id, worker_type)
 
     def _manifest_payload(self, ask: AIProxyAsk) -> dict:
         payload = {
@@ -312,8 +327,7 @@ class AIProxyService:
         ask = self._build_ask(asset)
         self._ensure_queue_dirs()
 
-        ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
-        ask_path.mkdir(parents=True, exist_ok=False)
+        ask_path = self._create_ask_folder(ask.ask_id, ask.worker_type)
 
         manifest_path = ask_path / "ask_manifest.json"
         self._write_json_atomic(manifest_path, self._manifest_payload(ask))
@@ -329,7 +343,7 @@ class AIProxyService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
-        return ask_path
+        return self._publish_ask_folder(ask_path, ask.ask_id, ask.worker_type)
 
     def _prompt_condense_enabled(self) -> bool:
         return bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
@@ -470,15 +484,14 @@ class AIProxyService:
             auxiliary=True,
             target_output_file="Condensed_Image_Prompt.md",
         )
-        ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
-        ask_path.mkdir(parents=True, exist_ok=False)
+        ask_path = self._create_ask_folder(ask.ask_id, ask.worker_type)
         manifest = self._manifest_payload(ask)
         manifest["source_prompt_file"] = "Final_Image_Prompt.md"
         manifest["target_output_dir"] = str(context.prompt_path.parent.resolve())
         manifest["prompt_condense_template"] = str(self._prompt_condense_file())
         self._write_json_atomic(ask_path / "ask_manifest.json", manifest)
         self._write_text_atomic(ask_path / ask.prompt_file, self._prompt_condense_contents(asset, context.prompt_text))
-        return ask_path
+        return self._publish_ask_folder(ask_path, ask.ask_id, ask.worker_type)
 
     def stage_render_task_prompt_condense_ask_if_enabled(
         self,
@@ -512,8 +525,7 @@ class AIProxyService:
 
         stamp = self._timestamp_compact()
         ask_id = f"Ask_{ask_id_base}_PROMPT_CONDENSE_{stamp}"
-        ask_path = self.ai_proxy_path_service.ask_path(ask_id)
-        ask_path.mkdir(parents=True, exist_ok=False)
+        ask_path = self._create_ask_folder(ask_id, "ollama_generate")
         ask_manifest = {
             "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": ask_id,
@@ -554,7 +566,7 @@ class AIProxyService:
                 },
             ),
         )
-        return ask_path
+        return self._publish_ask_folder(ask_path, ask_id, "ollama_generate")
 
     def render_task_local_render_api_params(
         self,
@@ -647,8 +659,7 @@ class AIProxyService:
             seed,
             checkpoint,
         )
-        ask_path = self.ai_proxy_path_service.ask_path(ask_manifest["ask_id"])
-        ask_path.mkdir(parents=True, exist_ok=False)
+        ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
         self._write_text_atomic(ask_path / prompt_path.name, prompt_path.read_text(encoding="utf-8"))
         if scene_render_ir_path is not None:
@@ -656,7 +667,7 @@ class AIProxyService:
                 ask_path / scene_render_ir_path.name,
                 scene_render_ir_path.read_text(encoding="utf-8"),
             )
-        return ask_path
+        return self._publish_ask_folder(ask_path, ask_manifest["ask_id"], "local_image_render")
 
     def stage_scene_local_render_ask(
         self,
@@ -764,14 +775,13 @@ class AIProxyService:
             target_output_file=target_output_file,
             render_preset=self._local_render_preset(),
         )
-        ask_path = self.ai_proxy_path_service.ask_path(ask.ask_id)
-        ask_path.mkdir(parents=True, exist_ok=False)
+        ask_path = self._create_ask_folder(ask.ask_id, ask.worker_type)
         manifest = self._manifest_payload(ask)
         manifest["source_prompt_file"] = "Condensed_Image_Prompt.md"
         manifest["target_output_dir"] = str((context.condensed_prompt_path.parent / "Local_Test_Renders").resolve())
         self._write_json_atomic(ask_path / "ask_manifest.json", manifest)
         self._write_text_atomic(ask_path / ask.prompt_file, context.condensed_prompt_text)
-        return ask_path
+        return self._publish_ask_folder(ask_path, ask.ask_id, ask.worker_type)
 
     def issue_monitor_test(self, instruction: str = "") -> Path:
         self._ensure_queue_dirs()
@@ -803,88 +813,13 @@ class AIProxyService:
         }
 
     def activate_stop(self) -> dict:
-        self._ensure_queue_dirs()
-        stop_id = f"Stop_{self._timestamp_compact()}"
-        reject_before_compact = self._timestamp_compact().replace("_", "")
-        cleared_asks = 0
-
-        for ask_path in sorted(path for path in self.ai_proxy_path_service.ask_root().iterdir() if path.is_dir()):
-            ask_manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
-            answer_manifest = {
-                "version": AI_PROXY_PROTOCOL_VERSION,
-                "ask_id": ask_manifest.get("ask_id") or ask_path.name,
-                "asset_id": ask_manifest.get("asset_id"),
-                "ollama_attempt_id": ask_manifest.get("ollama_attempt_id") or "",
-                "worker_id": "SYSTEM_STOP",
-                "status": "REJECTED",
-                "expected_output": ask_manifest.get("expected_output") or "OLLAMA_RESPONSE.md",
-                "started_at": self._timestamp(),
-                "completed_at": self._timestamp(),
-                "elapsed_seconds": 0,
-                "error_type": "STOPPED",
-                "error_message": "Ask rejected because AI proxy stop was activated.",
-            }
-            self._write_json_atomic(ask_path / "answer_manifest.json", answer_manifest)
-            dest = self.ai_proxy_path_service.answer_root() / ask_path.name
-            if dest.exists():
-                shutil.rmtree(dest, ignore_errors=True)
-            shutil.move(str(ask_path), str(dest))
-            cleared_asks += 1
-
-        payload = {
-            "version": AI_PROXY_PROTOCOL_VERSION,
-            "active": True,
-            "stop_id": stop_id,
-            "reject_before_compact": reject_before_compact,
-            "activated_at": self._timestamp(),
-            "cleared_at": None,
-            "cleared_asks": cleared_asks,
-        }
-        self._write_json_atomic(self.ai_proxy_path_service.stop_manifest_path(), payload)
-        return payload
+        raise AIProxyServiceError("The standalone file proxy does not support queue stop controls.")
 
     def resume_stop(self) -> dict:
-        self._ensure_queue_dirs()
-        current = self._read_json_if_exists(self.ai_proxy_path_service.stop_manifest_path())
-        payload = {
-            "version": AI_PROXY_PROTOCOL_VERSION,
-            "active": False,
-            "stop_id": current.get("stop_id"),
-            "reject_before_compact": current.get("reject_before_compact"),
-            "activated_at": current.get("activated_at"),
-            "cleared_at": self._timestamp(),
-            "cleared_asks": int(current.get("cleared_asks", 0) or 0),
-        }
-        self._write_json_atomic(self.ai_proxy_path_service.stop_manifest_path(), payload)
-        return payload
+        raise AIProxyServiceError("The standalone file proxy does not support queue stop controls.")
 
     def dump_pending_queue(self) -> dict:
-        """Delete pending ask and claimed task folders without touching answers."""
-        self._ensure_queue_dirs()
-        removed: list[dict] = []
-
-        def remove_path(path: Path, queue_area: str, worker_id: str = "") -> None:
-            if path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
-            elif path.exists():
-                path.unlink(missing_ok=True)
-            removed.append({"queue_area": queue_area, "worker_id": worker_id, "name": path.name})
-
-        for ask_path in self.ai_proxy_path_service.task_paths("ask"):
-            remove_path(ask_path, "Ask")
-
-        for task_path in self.ai_proxy_path_service.task_paths("claimed"):
-            remove_path(task_path, "Claimed", task_path.parent.name)
-
-        claims_root = self.ai_proxy_path_service.claims_root()
-        if claims_root.exists():
-            for claim_path in sorted(path for path in claims_root.iterdir() if path.is_file()):
-                remove_path(claim_path, "Claims")
-
-        return {
-            "removed_count": len(removed),
-            "removed": removed,
-        }
+        raise AIProxyServiceError("Global queue dumping was removed with the standalone file proxy cutover.")
 
     def archive_harvested_answers(self) -> dict:
         """Move harvested answer folders into a dated archive folder."""
@@ -905,6 +840,7 @@ class AIProxyService:
                 suffix = datetime.now().strftime("%H%M%S_%f")
                 dest_path = archive_root / f"{answer_path.name}.{suffix}"
             shutil.move(str(answer_path), str(dest_path))
+            self.ai_proxy_path_service.file_proxy_client.remove_route(answer_path.name)
             moved.append({"name": answer_path.name, "archived_to": str(dest_path)})
 
         return {

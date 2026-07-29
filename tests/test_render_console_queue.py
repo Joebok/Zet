@@ -77,26 +77,19 @@ An arch.
             )
             first = app.stage_scene_render("First-Day", "At-the-Arch")
             first_ask = Path(first.ask_path)
-            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / first_ask.name
-            claimed_path = root / "Queue" / "Ollama_Proxy" / "Claimed" / "worker" / first_ask.name
-            claim_path = root / "Queue" / "Ollama_Proxy" / "Claims" / f"{first_ask.name}.claim.json"
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / first_ask.name
             shutil.copytree(first_ask, answer_path)
-            shutil.copytree(first_ask, claimed_path)
-            claim_path.parent.mkdir(parents=True)
-            claim_path.write_text("{}", encoding="utf-8")
 
             second = app.stage_scene_render("First-Day", "At-the-Arch")
 
             self.assertFalse(first_ask.exists())
             self.assertFalse(answer_path.exists())
-            self.assertFalse(claimed_path.exists())
-            self.assertFalse(claim_path.exists())
             self.assertTrue(Path(second.ask_path).exists())
 
     def test_write_answer_image_copies_story_target_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            ask_path = root / "Queue" / "Ollama_Proxy" / "Ask" / "Ask_Story_Test"
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Story_Test"
             target_path = root / "Stories" / "FirstDay" / "At-the-Arch.png"
             ask_path.mkdir(parents=True)
             (ask_path / "ask_manifest.json").write_text(
@@ -130,12 +123,12 @@ An arch.
             queue.write_answer_image(task, b"image bytes", "image/png")
 
             self.assertEqual(b"image bytes", target_path.read_bytes())
-            self.assertEqual(b"image bytes", (root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Story_Test" / "At-the-Arch.png").read_bytes())
+            self.assertEqual(b"image bytes", (root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test" / "At-the-Arch.png").read_bytes())
 
     def test_harvester_applies_story_target_output_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Story_Test"
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test"
             target_path = root / "Stories" / "FirstDay" / "At-the-Arch.png"
             answer_path.mkdir(parents=True)
             (answer_path / "ask_manifest.json").write_text(
@@ -222,10 +215,12 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
             self.assertEqual("override-model.safetensors", manifest["checkpoint"])
             self.assertEqual("16:9", manifest["aspect_ratio"])
-            self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), manifest["target_output_dir"])
+            route = app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.load_route(ask_path.name)
+            self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), route["target_output_dir"])
             self.assertEqual("condensed prompt\n", (ask_path / "Condensed_Image_Prompt.md").read_text(encoding="utf-8"))
-            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / ask_path.name
+            answer_path = root / "Queue" / "File_Proxy" / "Answer" / "zet" / ask_path.name
             answer_path.mkdir(parents=True)
+            shutil.copy2(ask_path / "job.json", answer_path / "job.json")
             (answer_path / "ask_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             (answer_path / "answer_manifest.json").write_text(
                 json.dumps(
@@ -248,6 +243,16 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                         "image_generation": "stable_matrix",
                         "render_profile": "body-reference-preview",
                         "checkpoint": "model.safetensors",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            client = app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
+            (answer_path / "proxy_result.json").write_text(
+                json.dumps(
+                    {
+                        "status": "SUCCEEDED",
+                        "output_files": client._file_inventory(answer_path),
                     }
                 ),
                 encoding="utf-8",
@@ -474,7 +479,10 @@ Checkpoint = "model.safetensors"
             self.assertEqual("core_txt2img_scene_preview", manifest["workflow_kind"])
             self.assertEqual("Scene_Render_IR.json", manifest["scene_render_ir_file"])
             self.assertNotIn("render_layout", manifest)
-            self.assertEqual(ir_text, (ask_path / "Scene_Render_IR.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                json.loads(ir_text),
+                json.loads((ask_path / "Scene_Render_IR.json").read_text(encoding="utf-8")),
+            )
 
     def test_local_image_worker_forwards_render_layout_when_supported(self) -> None:
         def render_image(*, project_root, final_prompt_path, job_output_dir, prompt_review_path=None, preset_name="", render_layout=None):
@@ -537,7 +545,7 @@ Checkpoint = "model.safetensors"
     def test_harvester_archives_already_harvested_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Story_Test"
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test"
             target_path = root / "Stories" / "FirstDay" / "At-the-Arch.png"
             answer_path.mkdir(parents=True)
             (answer_path / "ask_manifest.json").write_text(
@@ -586,7 +594,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
             self.assertEqual([], results)
             self.assertFalse(answer_path.exists())
-            archive_matches = list((root / "Queue" / "Ollama_Proxy" / "Archive" / "Harvested").glob("*/*Ask_Story_Test"))
+            archive_matches = list((root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested").glob("*/*Ask_Story_Test"))
             self.assertEqual(1, len(archive_matches))
 
 

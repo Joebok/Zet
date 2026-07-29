@@ -119,14 +119,12 @@ class PromptReviewService:
         return str(answer_manifest.get("status") or "ANSWER_READY")
 
     def _condense_queue_items(self, asset: Asset) -> list[dict]:
-        proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Ollama_Proxy"
+        proxy_root = Path(self.path_service.config.base_ai_queue_path) / "File_Proxy"
         roots = [
-            ("ASKED", proxy_root / "Ask"),
-            ("ANSWER", proxy_root / "Answer"),
+            ("ASKED", proxy_root / "Ask" / "zet"),
+            ("ANSWER", proxy_root / "Answer" / "zet"),
+            ("RUNNING", proxy_root / "Running" / "zet"),
         ]
-        claimed_root = proxy_root / "Claimed"
-        if claimed_root.exists():
-            roots.extend((f"CLAIMED:{worker_dir.name}", worker_dir) for worker_dir in claimed_root.iterdir() if worker_dir.is_dir())
 
         items: list[dict] = []
         for state, root in roots:

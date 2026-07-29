@@ -103,7 +103,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         return config_path
 
     def _write_manual_render_ask(self, root: Path) -> Path:
-        ask_path = root / "Queue" / "Ollama_Proxy" / "Ask" / "Ask_Asset_1_RENDER_TEST"
+        ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Asset_1_RENDER_TEST"
         ask_path.mkdir(parents=True, exist_ok=True)
         (ask_path / "ask_manifest.json").write_text(
             json.dumps(
@@ -669,7 +669,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(payload["asset"]["actor"], "AI_AGENT")
             self.assertEqual(payload["asset"]["ai_state"], "ASKED")
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
-            self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+            self.assertTrue(any((root / "Queue" / "File_Proxy" / "Ask" / "zet").iterdir()))
 
     def test_ai_controls_api_serves_snapshot_and_monitor_test(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -756,7 +756,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(reset.status_code, 200)
             self.assertIn("1 reset", reset.json()["message"])
             self.assertEqual(reset.json()["batch_results"][0]["status"], "RESET")
-            self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+            self.assertTrue(any((root / "Queue" / "File_Proxy" / "Ask" / "zet").iterdir()))
 
     def test_pipeline_controls_batch_reset_preview_does_not_mutate(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -783,7 +783,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(preview.json()["items"][0]["preview_status"], "SKIPPED")
             asset = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(asset.json()["asset"]["pipeline_stage"], "LOCKED")
-            ask_dir = root / "Queue" / "Ollama_Proxy" / "Ask"
+            ask_dir = root / "Queue" / "File_Proxy" / "Ask" / "zet"
             self.assertFalse(ask_dir.exists() and any(ask_dir.iterdir()))
 
             included_preview = client.get(
@@ -851,7 +851,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(saved.status_code, 200)
             self.assertEqual(saved.json()["status"], "SUCCESS")
             self.assertFalse(ask_path.exists())
-            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Asset_1_RENDER_TEST"
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Asset_1_RENDER_TEST"
             self.assertTrue((answer_path / "front.png").exists())
             self.assertEqual(
                 (answer_path / "Render_Review_Comment.md").read_text(encoding="utf-8").strip(),
@@ -865,7 +865,7 @@ Backend = "manual_chatgpt"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
-            ask_path = root / "Queue" / "Ollama_Proxy" / "Ask" / "Ask_Story_demo_scene_RENDER_TEST"
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Story_demo_scene_RENDER_TEST"
             ask_path.mkdir(parents=True)
             (ask_path / "ask_manifest.json").write_text(
                 json.dumps(
@@ -997,7 +997,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(3, len(set(seeds)))
             queued_manifests = [
                 json.loads(path.read_text(encoding="utf-8"))
-                for path in (root / "Queue" / "Ollama_Proxy" / "Ask").glob("Ask_Render_Task_*/ask_manifest.json")
+                for path in (root / "Queue" / "File_Proxy" / "Ask" / "zet").glob("Ask_Render_Task_*/ask_manifest.json")
             ]
             self.assertEqual(3, len(queued_manifests))
             self.assertEqual(set(seeds), {item["seed"] for item in queued_manifests})
@@ -1013,7 +1013,7 @@ Backend = "manual_chatgpt"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root, stage="RENDER", actor="AI_AGENT")
-            queue_root = root / "Queue" / "Ollama_Proxy" / "Answer"
+            queue_root = root / "Queue" / "Manual_Render_Queue" / "Answer"
             malformed = queue_root / "Ask_Asset_1_RENDER_A_MALFORMED"
             malformed.mkdir(parents=True)
             (malformed / "answer_manifest.json").write_text(
@@ -1118,7 +1118,7 @@ Backend = "manual_chatgpt"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
-            answer_root = root / "Queue" / "Ollama_Proxy" / "Answer"
+            answer_root = root / "Queue" / "File_Proxy" / "Answer" / "zet"
             harvested = answer_root / "Ask_Harvested"
             pending = answer_root / "Ask_Pending"
             harvested.mkdir(parents=True)
@@ -1139,7 +1139,7 @@ Backend = "manual_chatgpt"
             self.assertIn("Archived 1 harvested", payload["message"])
             self.assertFalse(harvested.exists())
             self.assertTrue(pending.exists())
-            archive_matches = list((root / "Queue" / "Ollama_Proxy" / "Archive" / "Harvested").glob("*/*Ask_Harvested"))
+            archive_matches = list((root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested").glob("*/*Ask_Harvested"))
             self.assertEqual(len(archive_matches), 1)
 
     def test_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
@@ -1205,7 +1205,7 @@ Backend = "manual_chatgpt"
             self.assertIn("The output must be a standalone head-and-neck module.", prompt_text)
             self.assertIn("Use the Reference Body as a direct front-view neck-fitment source.", prompt_text)
             self.assertIn("Render the Character Head and fitted neck from a direct front view", prompt_text)
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
 
@@ -1305,7 +1305,7 @@ Backend = "manual_chatgpt"
             self.assertIn("shared_template_section", source_kinds)
             self.assertIn("config_view_instruction", source_kinds)
 
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").iterdir())
             self.assertEqual(len(ask_dirs), 1)
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(ask_manifest["worker_type"], "manual_chatgpt_render")

@@ -54,7 +54,7 @@ class ProcessService:
         self.project_root = project_root.resolve()
 
     def specs(self) -> list[ManagedProcessSpec]:
-        ollama_root = Path("C:/Users/Joe/Ollama")
+        proxy_root = Path("C:/Users/Joe/Projects/AI_Proxy")
         return [
             ManagedProcessSpec(
                 process_id="zet_web",
@@ -65,10 +65,10 @@ class ProcessService:
             ),
             ManagedProcessSpec(
                 process_id="proxy_worker",
-                label="Unified Proxy Worker",
-                match_terms=("proxy_worker.py", "Ollama_Proxy"),
-                command="run_proxy_worker.bat",
-                cwd=ollama_root,
+                label="File Proxy",
+                match_terms=("file_proxy.cli", "File_Proxy"),
+                command="run_file_proxy.bat",
+                cwd=proxy_root,
             ),
             ManagedProcessSpec(
                 process_id="auto_harvest",

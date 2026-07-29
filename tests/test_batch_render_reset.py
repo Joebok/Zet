@@ -122,7 +122,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(unchanged_3.pipeline, "Head-Fitment")
             self.assertEqual(unchanged_3.pipeline_stage, "RENDER_REVIEW")
 
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").glob("Ask_Asset_1_RENDER_*"))
+            ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").glob("Ask_Asset_1_RENDER_*"))
             self.assertEqual(len(ask_dirs), 1)
             manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
@@ -185,7 +185,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(unchanged.asset_state, "IN_PROGRESS")
             self.assertEqual(unchanged.pipeline_stage, "RENDER_REVIEW")
             self.assertEqual(unchanged.actor, "HUMAN_AGENT")
-            self.assertFalse((root / "Queue" / "Ollama_Proxy" / "Ask").exists())
+            self.assertFalse((root / "Queue" / "Manual_Render_Queue" / "Ask").exists())
 
 
 if __name__ == "__main__":

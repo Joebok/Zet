@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Claim Zet file-proxy local image render asks and complete them with the
-configured local render backend.
+Process one Zet file-proxy local-image job with the configured render backend.
 
 The queue contract is backend-neutral:
 - ask_manifest.json worker_type = "local_image_render"
@@ -85,6 +84,31 @@ def write_json(path: Path, data: dict) -> None:
         temp_path.replace(path)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def localize_output_json_paths(folder: Path) -> None:
+    root = folder.resolve()
+
+    def localize(value):
+        if isinstance(value, dict):
+            return {key: localize(child) for key, child in value.items()}
+        if isinstance(value, list):
+            return [localize(child) for child in value]
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            return value
+        try:
+            return Path(value).resolve().relative_to(root).as_posix()
+        except (OSError, ValueError):
+            return value
+
+    for path in folder.rglob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        localized = localize(payload)
+        if localized != payload:
+            write_json(path, localized)
 
 
 def ensure_dirs(proxy_root: Path, worker_id: str) -> dict[str, Path]:
@@ -190,7 +214,14 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
     }
     parameters = inspect.signature(render_image).parameters
     if "reference_files" in parameters:
-        kwargs["reference_files"] = ask_manifest.get("reference_files") or []
+        references = []
+        for reference in ask_manifest.get("reference_files") or []:
+            localized = dict(reference)
+            value = str(localized.get("path") or "")
+            if value and not Path(value).is_absolute():
+                localized["path"] = str((folder / value).resolve())
+            references.append(localized)
+        kwargs["reference_files"] = references
     if "aspect_ratio" in parameters:
         kwargs["aspect_ratio"] = str(ask_manifest.get("aspect_ratio") or "")
     if "render_layout" in parameters:
@@ -232,7 +263,13 @@ def process_monitor_tests(dirs: dict[str, Path], worker_id: str) -> int:
     return responses_written
 
 
-def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_transient_to_ask: bool) -> str:
+def process_claimed(
+    folder: Path,
+    dirs: dict[str, Path],
+    worker_id: str,
+    return_transient_to_ask: bool,
+    move_answer: bool = True,
+) -> str:
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     prompt_file = str(ask_manifest.get("prompt_file") or "Final_Image_Prompt.md")
     expected_output = str(ask_manifest.get("expected_output") or "")
@@ -272,8 +309,8 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
                 "checkpoint": ask_manifest.get("checkpoint") or backend_metadata.get("checkpoint"),
                 "workflow_kind": backend_metadata.get("workflow_kind"),
                 "seed": backend_metadata.get("resolved_seed", backend_metadata.get("seed")),
-                "local_render": str(result.image_path),
-                "local_render_metadata": str(result.metadata_path),
+                "local_render": expected_output,
+                "local_render_metadata": Path(result.metadata_path).name,
                 "backend_prompt_id": result.prompt_id,
                 "candidate_output": expected_output,
                 "artifact_files": artifact_files,
@@ -288,7 +325,9 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
         write_json(folder / "answer_manifest.json", answer_manifest)
-        dest = move_to_answer(folder, dirs)
+        localize_output_json_paths(folder)
+        if move_answer:
+            move_to_answer(folder, dirs)
         log_job(ask_manifest, "DONE", result="SUCCESS")
         return "SUCCESS"
     except LocalRenderUnavailable as exc:
@@ -307,7 +346,9 @@ def process_claimed(folder: Path, dirs: dict[str, Path], worker_id: str, return_
     answer_manifest["completed_at"] = now_iso()
     answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)
     write_json(folder / "answer_manifest.json", answer_manifest)
-    dest = move_to_answer(folder, dirs)
+    localize_output_json_paths(folder)
+    if move_answer:
+        move_to_answer(folder, dirs)
     log_job(
         ask_manifest,
         "DONE",
@@ -321,46 +362,25 @@ def default_proxy_root(config_path: Path) -> Path:
     from zet.services.config_service import ConfigService
 
     config = ConfigService.load(config_path)
-    return Path(config.base_ai_queue_path) / "Ollama_Proxy"
+    return Path(config.base_ai_queue_path) / "File_Proxy"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Claim and process Zet local image render proxy ask folders.")
+    parser = argparse.ArgumentParser(description="Process one Zet local-image file-proxy job.")
+    parser.add_argument("--job-dir", required=True, type=Path)
     parser.add_argument("--config", default="config.toml", help="Zet config path, used when --proxy-root is omitted")
-    parser.add_argument("--proxy-root", default="", help="Path to Zet proxy root")
     parser.add_argument("--worker-id", default=f"{socket.gethostname()}-local-image", help="Worker ID for claim and answer manifests")
-    parser.add_argument("--poll-seconds", type=int, default=30, help="Seconds between polls in loop mode")
-    parser.add_argument("--once", action="store_true", help="Process at most one ask and exit")
-    parser.add_argument("--max-jobs", type=int, default=None, help="Process at most N asks and exit")
-    parser.add_argument("--send-transient-to-answer", action="store_true", help="Write RETRY_LATER answer folders instead of returning Ask")
     args = parser.parse_args(argv)
-
-    proxy_root = Path(args.proxy_root).expanduser() if args.proxy_root else default_proxy_root(Path(args.config))
-    proxy_root = normalize_proxy_root(proxy_root).resolve()
-    dirs = ensure_dirs(proxy_root, args.worker_id)
-    processed = 0
-    log(f"Local image worker {args.worker_id} v{WORKER_VERSION} watching {proxy_root}")
-
-    while True:
-        process_monitor_tests(dirs, args.worker_id)
-        claimed = claim_one_local_render(dirs, args.worker_id)
-        if claimed is None:
-            if args.once or (args.max_jobs is not None and processed >= args.max_jobs):
-                return 0
-            time.sleep(args.poll_seconds)
-            continue
-
-        result = process_claimed(
-            claimed,
-            dirs,
-            args.worker_id,
-            return_transient_to_ask=not args.send_transient_to_answer,
-        )
-        if result in {"SUCCESS", "ERROR"}:
-            processed += 1
-
-        if args.once or (args.max_jobs is not None and processed >= args.max_jobs):
-            return 0
+    job_dir = args.job_dir.resolve()
+    dirs = {"ask": job_dir.parent, "answer": job_dir.parent, "failed": job_dir.parent}
+    result = process_claimed(
+        job_dir,
+        dirs,
+        args.worker_id,
+        return_transient_to_ask=False,
+        move_answer=False,
+    )
+    return 0 if result == "SUCCESS" else 1
 
 
 if __name__ == "__main__":
