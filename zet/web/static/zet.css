@@ -673,6 +673,24 @@ dl {
   min-width: 320px;
 }
 
+.management-row {
+  align-items: end;
+  justify-content: flex-start;
+}
+
+.management-row label {
+  min-width: 180px;
+}
+
+.order-controls {
+  white-space: nowrap;
+}
+
+.order-controls button {
+  min-width: 34px;
+  padding: 4px 8px;
+}
+
 .story-git-panel {
   display: grid;
   gap: 8px;

@@ -13,6 +13,8 @@ COMPILER_MODULES = [
     "Scripts.Run_Character_Assembly_Jobs",
     "Scripts.Run_Costume_Dressing_Jobs",
     "Scripts.Run_Expression_Jobs",
+    "Scripts.CostumeReferenceImage",
+    "Scripts.LocalImageRecipe",
 ]
 
 

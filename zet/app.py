@@ -14,6 +14,7 @@ from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
+from zet.services.character_source_service import CharacterSourceService
 from zet.services.config_service import ConfigService
 from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
@@ -151,6 +152,12 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.character_source_service = CharacterSourceService(
+            path_service,
+            costume_service,
+            story_service,
+            Path(__file__).resolve().parents[1],
+        )
         self.zine_service = ZineService(path_service, story_service)
         self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
@@ -233,7 +240,13 @@ class ZetApp:
             path_service,
             Path(__file__).resolve().parents[1],
         )
-        story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository, identity_key_repository)
+        story_service = StoryService(
+            path_service,
+            asset_repository,
+            auxiliary_resource_repository,
+            identity_key_repository,
+            turnaround_repository,
+        )
         app = cls(
             config,
             asset_repository,
@@ -278,6 +291,14 @@ class ZetApp:
     def save_story(self, story_slug: str, text: str) -> StoryDocument:
         """Save one story markdown document."""
         return self.story_service.save_story(story_slug, text)
+
+    def rename_story(self, story_slug: str, title: str) -> StoryDocument:
+        """Rename one story without changing its stable slug."""
+        return self.story_service.rename_story(story_slug, title)
+
+    def reorder_stories(self, story_slugs: list[str]) -> list[StoryRecord]:
+        """Persist the display order for all stories."""
+        return self.story_service.reorder_stories(story_slugs)
 
     def load_story_settings(self, story_slug: str) -> dict:
         """Load one story settings JSON document."""
@@ -328,6 +349,18 @@ class ZetApp:
         """Save one scene markdown document."""
         return self.story_service.save_scene(story_slug, scene_slug, text)
 
+    def rename_scene(self, story_slug: str, scene_slug: str, title: str) -> SceneDocument:
+        """Rename one scene without changing its stable slug."""
+        return self.story_service.rename_scene(story_slug, scene_slug, title)
+
+    def reorder_scenes(self, story_slug: str, scene_slugs: list[str]) -> list[SceneRecord]:
+        """Persist the display order for one story's scenes."""
+        return self.story_service.reorder_scenes(story_slug, scene_slugs)
+
+    def move_scene(self, story_slug: str, scene_slug: str, target_story_slug: str) -> SceneDocument:
+        """Move one scene and its artifacts to another story."""
+        return self.story_service.move_scene(story_slug, scene_slug, target_story_slug)
+
     def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
         """Commit and delete one scene markdown and image."""
         return self.story_service.delete_scene(story_slug, scene_slug)
@@ -373,6 +406,53 @@ class ZetApp:
     def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
         """List copyable image references for the scene editor."""
         return self.story_service.image_reference_rows(character, text_filter)
+
+    def character_source_options(self, character: str = "", phase: str = "") -> dict:
+        """Return safe dropdown options for a character-source consumer."""
+        return self.character_source_service.options(character, phase)
+
+    def image_reference_rows(
+        self,
+        character: str = "",
+        phase: str = "",
+        costume: str = "",
+        text_filter: str = "",
+        scope: str = "context",
+        include_unavailable: bool = True,
+    ) -> list[ImageReferenceRow]:
+        """List reusable image-reference tags with contextual filters."""
+        return self.story_service.image_reference_rows(
+            character,
+            text_filter,
+            phase,
+            costume,
+            scope,
+            include_unavailable,
+        )
+
+    def resolve_image_reference_tag(self, tag: str) -> dict:
+        """Resolve one exact Zet image-reference tag."""
+        return self.story_service.story_reference_service.resolve_image_tag(tag)
+
+    def compile_character_source(
+        self,
+        *,
+        character: str,
+        phase: str,
+        costume_slug: str | None,
+        view_token: str,
+        selected_sections: tuple[str, ...],
+        reference_tags: tuple[str, ...],
+    ) -> dict:
+        """Compile one immutable character-source snapshot."""
+        return self.character_source_service.compile(
+            character=character,
+            phase=phase,
+            costume_slug=costume_slug,
+            view_token=view_token,
+            selected_sections=selected_sections,
+            reference_tags=reference_tags,
+        )
 
     def list_zines(self):
         """List saved zines."""

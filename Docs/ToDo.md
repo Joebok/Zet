@@ -1,8 +1,10 @@
 # To Do items
 
-Story Rename
+Story and Scene Management
 
-Scene Rename
+* Story Rename
+* Scene Rename
+* Move Scene from one Story to another
 
 List of all shared templates/.json files and ability to edit them.
 

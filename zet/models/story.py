@@ -64,6 +64,10 @@ class ImageReferenceRow:
     pipeline: str
     image_path: str
     thumbnail_path: str
+    costume: str = ""
+    view: str = ""
+    available: bool = True
+    disabled_reason: str = ""
 
 
 @dataclass(frozen=True)

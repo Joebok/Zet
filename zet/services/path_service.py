@@ -143,6 +143,10 @@ class PathService:
         """Return the shared scene markdown template path."""
         return self.stories_path() / "_Scene_Template.md"
 
+    def story_index_path(self) -> Path:
+        """Return the persisted story ordering index path."""
+        return self.stories_path() / "_Story_Index.json"
+
     def story_folder_path(self, story_slug: str) -> Path:
         """Return the folder path for one story slug."""
         return self.stories_path() / str(story_slug or "").strip()

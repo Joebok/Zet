@@ -963,6 +963,20 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/stories/order")
+    def story_reorder(data: dict = Body(...)) -> dict[str, Any]:
+        """Persist the complete story display order."""
+        zet_app = _app(app.state.config_path)
+        try:
+            stories = zet_app.reorder_stories(data.get("slugs"))
+            return {
+                "stories": [_story_record_payload(item) for item in stories],
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": "Story order saved.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/stories/{story_slug}")
     def story_detail(story_slug: str) -> dict[str, Any]:
         """Load one story markdown document."""
@@ -987,6 +1001,21 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             }
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=400, detail="Story markdown must be UTF-8.") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch("/api/stories/{story_slug}")
+    def story_rename(story_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Rename one story while preserving its slug."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.rename_story(story_slug, data.get("title"))
+            return {
+                "stories": [_story_record_payload(item) for item in zet_app.list_stories()],
+                "document": _story_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Renamed story to {document.record.title}.",
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1169,6 +1198,52 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "document": _scene_builder_document_payload(zet_app.load_scene_builder(story_slug, scene_slug)),
                 "options": zet_app.scene_builder_options(),
                 "references": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows()],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/stories/{story_slug}/scenes/order")
+    def scene_reorder(story_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Persist the complete scene display order for one story."""
+        zet_app = _app(app.state.config_path)
+        try:
+            scenes = zet_app.reorder_scenes(story_slug, data.get("slugs"))
+            return {
+                "scenes": [_scene_record_payload(item) for item in scenes],
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": "Scene order saved.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch("/api/stories/{story_slug}/scenes/{scene_slug}")
+    def scene_rename(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Rename one scene while preserving its slug."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.rename_scene(story_slug, scene_slug, data.get("title"))
+            return {
+                "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
+                "document": _scene_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Renamed scene to {document.record.title}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/move")
+    def scene_move(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
+        """Move one scene and its artifacts to another story."""
+        zet_app = _app(app.state.config_path)
+        try:
+            target_story_slug = data.get("target_story_slug")
+            document = zet_app.move_scene(story_slug, scene_slug, target_story_slug)
+            return {
+                "source_scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
+                "target_scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(target_story_slug)],
+                "document": _scene_document_payload(document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Moved scene {document.record.title} to {document.story.title}.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -1305,6 +1305,63 @@ Backend = "manual_chatgpt"
             self.assertEqual(ask_manifest["prompt_file"], "Final_Image_Prompt.md")
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "head_fitment"])
 
+    def test_story_management_api_renames_reorders_and_moves(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            for story_slug in ("Alpha", "Beta"):
+                folder = root / "Stories" / story_slug
+                folder.mkdir(parents=True)
+                (folder / f"{story_slug}.md").write_text(f"Title: `[{story_slug}]`\n", encoding="utf-8")
+                (folder / f"{story_slug}.story.json").write_text(
+                    json.dumps({
+                        "schema_version": 1,
+                        "file_kind": "story_settings",
+                        "story": {"slug": story_slug, "title": story_slug},
+                        "scene_index": ["Opening"] if story_slug == "Alpha" else [],
+                        "metadata": {},
+                    }),
+                    encoding="utf-8",
+                )
+            alpha = root / "Stories" / "Alpha"
+            (alpha / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            (alpha / "Opening.scene.json").write_text(
+                json.dumps({"schema_version": 3, "file_kind": "scene", "scene": {"slug": "Opening", "name": "Opening"}}),
+                encoding="utf-8",
+            )
+            client = TestClient(create_app(config_path))
+
+            response = client.put("/api/stories/order", json={"slugs": ["Beta", "Alpha"]})
+            self.assertEqual(200, response.status_code, response.text)
+            self.assertEqual(["Beta", "Alpha"], [item["slug"] for item in response.json()["stories"]])
+
+            response = client.patch("/api/stories/Alpha", json={"title": "Renamed Alpha"})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual("Renamed Alpha", response.json()["document"]["story"]["title"])
+
+            response = client.put("/api/stories/Alpha/scenes/order", json={"slugs": ["Opening"]})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(["Opening"], [item["slug"] for item in response.json()["scenes"]])
+
+            response = client.patch("/api/stories/Alpha/scenes/Opening", json={"title": "New Opening"})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual("New Opening", response.json()["document"]["scene"]["title"])
+
+            response = client.post(
+                "/api/stories/Alpha/scenes/Opening/move",
+                json={"target_story_slug": "Beta"},
+            )
+            self.assertEqual(200, response.status_code)
+            self.assertEqual([], response.json()["source_scenes"])
+            self.assertEqual(["Opening"], [item["slug"] for item in response.json()["target_scenes"]])
+
 
 if __name__ == "__main__":
     unittest.main()

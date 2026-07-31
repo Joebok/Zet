@@ -11,6 +11,7 @@ from pathlib import Path
 from zet.models.asset import Asset
 from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.models.identity_key import IdentityKey
+from zet.models.turnaround import TurnaroundSheet
 from zet.models.story import (
     ImageReferenceRow,
     SceneBuilderDocument,
@@ -24,7 +25,9 @@ from zet.models.story import (
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
+from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
+from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.path_service import PathService
 from zet.services.scene_document_service import SceneDocumentService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
@@ -45,12 +48,14 @@ class StoryService:
         asset_repository: AssetRepository,
         auxiliary_resource_repository: AuxiliaryResourceRepository,
         identity_key_repository: IdentityKeyRepository | None = None,
+        turnaround_repository: TurnaroundRepository | None = None,
     ):
         """Create a story service with filesystem and repository access."""
         self.path_service = path_service
         self.asset_repository = asset_repository
         self.auxiliary_resource_repository = auxiliary_resource_repository
         self.identity_key_repository = identity_key_repository
+        self.turnaround_repository = turnaround_repository
         self.scene_document_service = SceneDocumentService(self, StoryServiceError)
         self.story_reference_service = StoryReferenceService(
             path_service,
@@ -58,6 +63,7 @@ class StoryService:
             auxiliary_resource_repository,
             identity_key_repository,
             StoryServiceError,
+            turnaround_repository,
         )
         self.story_render_service = StoryRenderService(
             self,
@@ -282,6 +288,79 @@ class StoryService:
         """Return the scene line value from a scene template."""
         return self._extract_first_metadata_field(text, "Scene")
 
+    def _load_story_order(self) -> list[str]:
+        path = self.path_service.story_index_path()
+        if not path.exists():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise StoryServiceError(f"Invalid story index {path}: {exc}") from exc
+        if not isinstance(data, dict) or data.get("file_kind") != "story_index" or data.get("schema_version") != 1:
+            raise StoryServiceError(f"Invalid story index: {path}")
+        order = data.get("story_order")
+        if not isinstance(order, list) or not all(isinstance(item, str) for item in order):
+            raise StoryServiceError(f"Story index story_order must be an array of slugs: {path}")
+        return list(dict.fromkeys(order))
+
+    def _save_story_order(self, order: list[str]) -> None:
+        path = self.path_service.story_index_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_json(path, {"schema_version": 1, "file_kind": "story_index", "story_order": order})
+
+    def _story_settings_path(self, story_slug: str) -> Path:
+        return self.get_story_settings_path_from_story_md(self.path_service.story_file_path(story_slug))
+
+    def _load_scene_order(self, story_slug: str) -> list[str]:
+        path = self._story_settings_path(story_slug)
+        if not path.exists():
+            return []
+        data = self.load_story_settings(path)
+        order = data.get("scene_index", [])
+        if not isinstance(order, list) or not all(isinstance(item, str) for item in order):
+            raise StoryServiceError(f"Story settings scene_index must be an array of slugs: {path}")
+        return list(dict.fromkeys(order))
+
+    def _save_scene_order(self, story_slug: str, order: list[str]) -> None:
+        path = self._story_settings_path(story_slug)
+        data = self.load_story_settings(path) if path.exists() else self.create_default_story_settings(self.path_service.story_file_path(story_slug))
+        data["scene_index"] = order
+        metadata = data.setdefault("metadata", {})
+        if isinstance(metadata, dict):
+            metadata["updated_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        self.save_story_settings(path, data)
+
+    @staticmethod
+    def _apply_order(records: list, order: list[str]) -> list:
+        by_slug = {record.slug: record for record in records}
+        ordered = [by_slug[slug] for slug in order if slug in by_slug]
+        seen = {record.slug for record in ordered}
+        ordered.extend(sorted((record for record in records if record.slug not in seen), key=lambda record: record.slug.lower()))
+        return ordered
+
+    def reorder_stories(self, story_slugs: list[str]) -> list[StoryRecord]:
+        if not isinstance(story_slugs, list):
+            raise StoryServiceError("Story order slugs must be an array.")
+        current = self.list_stories()
+        current_slugs = [record.slug for record in current]
+        requested = [str(slug or "").strip() for slug in story_slugs]
+        if len(requested) != len(set(requested)) or set(requested) != set(current_slugs):
+            raise StoryServiceError("Story order must contain every current story slug exactly once.")
+        self._save_story_order(requested)
+        return self.list_stories()
+
+    def reorder_scenes(self, story_slug: str, scene_slugs: list[str]) -> list[SceneRecord]:
+        if not isinstance(scene_slugs, list):
+            raise StoryServiceError("Scene order slugs must be an array.")
+        safe_story_slug = self.safe_slug(story_slug)
+        current = self.list_scenes(safe_story_slug)
+        current_slugs = [record.slug for record in current]
+        requested = [str(slug or "").strip() for slug in scene_slugs]
+        if len(requested) != len(set(requested)) or set(requested) != set(current_slugs):
+            raise StoryServiceError("Scene order must contain every current scene slug exactly once.")
+        self._save_scene_order(safe_story_slug, requested)
+        return self.list_scenes(safe_story_slug)
+
     def list_stories(self) -> list[StoryRecord]:
         """List all user story folders in the library."""
         root = self.path_service.stories_path()
@@ -290,13 +369,14 @@ class StoryService:
         records = []
         for folder in sorted(item for item in root.iterdir() if item.is_dir() and not item.name.startswith("_")):
             records.append(self._story_record(folder.name))
-        return records
+        return self._apply_order(records, self._load_story_order())
 
     def create_story(self, title: str) -> StoryDocument:
         """Create a new story folder and main markdown file from template."""
         cleaned_title = str(title or "").strip()
         if not cleaned_title:
             raise StoryServiceError("Story title is required.")
+        existing_order = [record.slug for record in self.list_stories()]
         story_slug = self.safe_slug(cleaned_title)
         folder_path = self.path_service.story_folder_path(story_slug)
         story_file_path = self.path_service.story_file_path(story_slug)
@@ -312,6 +392,9 @@ class StoryService:
         story_settings_path = self.get_story_settings_path_from_story_md(story_file_path)
         if not story_settings_path.exists():
             self.save_story_settings(story_settings_path, self.create_default_story_settings(story_file_path))
+        if story_slug not in existing_order:
+            existing_order.append(story_slug)
+        self._save_story_order(existing_order)
         return self.load_story(story_slug)
 
     def load_story(self, story_slug: str) -> StoryDocument:
@@ -340,6 +423,30 @@ class StoryService:
         story_file_path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
         return self.load_story(safe_slug)
 
+    def rename_story(self, story_slug: str, title: str) -> StoryDocument:
+        safe_slug = self.safe_slug(story_slug)
+        clean_title = str(title or "").strip()
+        if not clean_title:
+            raise StoryServiceError("Story title is required.")
+        story_path = self.path_service.story_file_path(safe_slug)
+        if not story_path.is_file():
+            raise StoryServiceError(f"Story file not found: {story_path}")
+        settings_path = self._story_settings_path(safe_slug)
+        originals = {path: path.read_bytes() if path.exists() else None for path in (story_path, settings_path)}
+        try:
+            text = self._replace_metadata_field(story_path.read_text(encoding="utf-8"), "Title", clean_title)
+            if self._extract_bounded_section(text, "STORY_TITLE") or "<!-- ZET:BEGIN STORY_TITLE -->" in text:
+                text = self._replace_bounded_section(text, "STORY_TITLE", clean_title)
+            story_path.write_text(text.rstrip() + "\n", encoding="utf-8")
+            data = self.load_story_settings(settings_path) if settings_path.exists() else self.create_default_story_settings(story_path)
+            data.setdefault("story", {})["title"] = clean_title
+            data.setdefault("metadata", {})["updated_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            self.save_story_settings(settings_path, data)
+        except Exception:
+            self._restore_files(originals)
+            raise
+        return self.load_story(safe_slug)
+
     def delete_story(self, story_slug: str) -> StoryGitResult:
         """Commit the current story state, then delete one story folder."""
         safe_slug = self.safe_slug(story_slug)
@@ -350,6 +457,7 @@ class StoryService:
         if commit.conflict or commit.has_story_changes:
             raise StoryServiceError(f"Story delete aborted; commit current story changes first.\n\n{commit.output}")
         shutil.rmtree(folder_path)
+        self._save_story_order([record.slug for record in self.list_stories()])
         return commit
 
     def list_scenes(self, story_slug: str) -> list[SceneRecord]:
@@ -371,11 +479,12 @@ class StoryService:
             record = self._scene_json_record(safe_slug, path)
             if record.slug not in seen_slugs:
                 records.append(record)
-        return records
+        return self._apply_order(records, self._load_scene_order(safe_slug))
 
     def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
         """Create a new scene markdown file from template."""
         safe_story_slug = self.safe_slug(story_slug)
+        existing_order = [record.slug for record in self.list_scenes(safe_story_slug)]
         cleaned_name = str(scene_name or "").strip()
         if not cleaned_name:
             raise StoryServiceError("Scene name is required.")
@@ -391,6 +500,9 @@ class StoryService:
         scene_json_path = self.scene_builder_json_path(safe_story_slug, scene_slug)
         if not scene_json_path.exists():
             self.save_scene_v3(scene_json_path, self.create_default_scene_builder_data(safe_story_slug, scene_slug))
+        if scene_slug not in existing_order:
+            existing_order.append(scene_slug)
+        self._save_scene_order(safe_story_slug, existing_order)
         return self.load_scene(safe_story_slug, scene_slug)
 
     def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
@@ -431,6 +543,32 @@ class StoryService:
         path.write_text(str(text or "").rstrip() + "\n", encoding="utf-8")
         return self.load_scene(safe_story_slug, safe_scene_slug)
 
+    def rename_scene(self, story_slug: str, scene_slug: str, title: str) -> SceneDocument:
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        clean_title = str(title or "").strip()
+        if not clean_title:
+            raise StoryServiceError("Scene title is required.")
+        scene_path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)
+        json_path = self.scene_builder_json_path(safe_story_slug, safe_scene_slug)
+        if not scene_path.exists() and not json_path.exists():
+            raise StoryServiceError(f"Scene not found: {safe_story_slug}/{safe_scene_slug}")
+        originals = {path: path.read_bytes() if path.exists() else None for path in (scene_path, json_path)}
+        try:
+            if scene_path.exists():
+                text = self._replace_metadata_field(scene_path.read_text(encoding="utf-8"), "Scene", clean_title)
+                if self._extract_bounded_section(text, "SCENE_NAME") or "<!-- ZET:BEGIN SCENE_NAME -->" in text:
+                    text = self._replace_bounded_section(text, "SCENE_NAME", clean_title)
+                scene_path.write_text(text.rstrip() + "\n", encoding="utf-8")
+            if json_path.exists():
+                data = json.loads(json_path.read_text(encoding="utf-8"))
+                data.setdefault("scene", {})["name"] = clean_title
+                self.save_scene_v3(json_path, data)
+        except Exception:
+            self._restore_files(originals)
+            raise
+        return self.load_scene(safe_story_slug, safe_scene_slug)
+
     def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
         """Commit the current story state, then delete one scene markdown and image."""
         safe_story_slug = self.safe_slug(story_slug)
@@ -451,7 +589,164 @@ class StoryService:
             builder_path.unlink()
         if legacy_builder_path.exists():
             legacy_builder_path.unlink()
+        self._save_scene_order(safe_story_slug, [record.slug for record in self.list_scenes(safe_story_slug)])
         return commit
+
+    @staticmethod
+    def _restore_files(originals: dict[Path, bytes | None]) -> None:
+        for path, content in originals.items():
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+
+    def _scene_has_pending_tasks(self, story_slug: str, scene_slug: str) -> bool:
+        paths = AIProxyPathService(self.path_service.config)
+        for task_path in paths.task_paths("ask", "answer", "running"):
+            if (task_path / "harvest_manifest.json").exists():
+                continue
+            manifest_path = task_path / "ask_manifest.json"
+            if not manifest_path.exists():
+                continue
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if manifest.get("story_slug") == story_slug and manifest.get("scene_slug") == scene_slug:
+                return True
+        return False
+
+    @staticmethod
+    def _rewrite_scene_values(value, old_story_slug: str, new_story_slug: str, replacements: list[tuple[str, str]]):
+        if isinstance(value, dict):
+            rewritten = {
+                key: StoryService._rewrite_scene_values(item, old_story_slug, new_story_slug, replacements)
+                for key, item in value.items()
+            }
+            if rewritten.get("story_slug") == old_story_slug:
+                rewritten["story_slug"] = new_story_slug
+            return rewritten
+        if isinstance(value, list):
+            return [StoryService._rewrite_scene_values(item, old_story_slug, new_story_slug, replacements) for item in value]
+        if isinstance(value, str):
+            for old, new in replacements:
+                value = value.replace(old, new)
+        return value
+
+    def move_scene(self, story_slug: str, scene_slug: str, target_story_slug: str) -> SceneDocument:
+        if not str(target_story_slug or "").strip():
+            raise StoryServiceError("Destination story is required.")
+        source_story = self.safe_slug(story_slug)
+        target_story = self.safe_slug(target_story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        if source_story == target_story:
+            raise StoryServiceError("Source and destination stories must differ.")
+        source_folder = self.path_service.story_folder_path(source_story)
+        target_folder = self.path_service.story_folder_path(target_story)
+        if not source_folder.is_dir() or not target_folder.is_dir():
+            raise StoryServiceError("Source and destination stories must both exist.")
+        source_paths = [
+            self.path_service.scene_file_path(source_story, safe_scene_slug),
+            self.scene_builder_json_path(source_story, safe_scene_slug),
+            self.scene_image_path(source_story, safe_scene_slug),
+            self.path_service.scene_file_path(source_story, safe_scene_slug).with_suffix(".json"),
+        ]
+        target_paths = [
+            self.path_service.scene_file_path(target_story, safe_scene_slug),
+            self.scene_builder_json_path(target_story, safe_scene_slug),
+            self.scene_image_path(target_story, safe_scene_slug),
+            self.path_service.scene_file_path(target_story, safe_scene_slug).with_suffix(".json"),
+        ]
+        if not source_paths[0].exists() and not source_paths[1].exists():
+            raise StoryServiceError(f"Scene not found: {source_story}/{safe_scene_slug}")
+        collisions = [path for path in target_paths if path.exists()]
+        source_pipeline = self.scene_pipeline_path(source_story, safe_scene_slug)
+        target_pipeline = self.scene_pipeline_path(target_story, safe_scene_slug)
+        if target_pipeline.exists():
+            collisions.append(target_pipeline)
+        if collisions:
+            raise StoryServiceError(f"Scene move destination already exists: {collisions[0]}")
+        if self._scene_has_pending_tasks(source_story, safe_scene_slug):
+            raise StoryServiceError("Scene cannot be moved while render or prompt-analysis work is pending.")
+
+        old_tag = f"{{{{SCENE:{source_story}:{safe_scene_slug}}}}}"
+        new_tag = f"{{{{SCENE:{target_story}:{safe_scene_slug}}}}}"
+        old_story_rel = f"Stories/{source_story}"
+        new_story_rel = f"Stories/{target_story}"
+        old_pipeline_rel = f"Pipelines/Stories/{source_story}/{safe_scene_slug}"
+        new_pipeline_rel = f"Pipelines/Stories/{target_story}/{safe_scene_slug}"
+        replacements = [
+            (old_tag, new_tag),
+            (old_story_rel, new_story_rel),
+            (old_story_rel.replace("/", "\\"), new_story_rel.replace("/", "\\")),
+            (old_pipeline_rel, new_pipeline_rel),
+            (old_pipeline_rel.replace("/", "\\"), new_pipeline_rel.replace("/", "\\")),
+            (str(source_folder), str(target_folder)),
+            (str(source_pipeline), str(target_pipeline)),
+        ]
+        source_order = [record.slug for record in self.list_scenes(source_story) if record.slug != safe_scene_slug]
+        target_order = [record.slug for record in self.list_scenes(target_story)] + [safe_scene_slug]
+        settings_paths = (self._story_settings_path(source_story), self._story_settings_path(target_story))
+        originals = {path: path.read_bytes() if path.exists() else None for path in settings_paths}
+        managed_paths = [
+            path
+            for root in (self.path_service.stories_path(), self.path_service.zines_path())
+            if root.exists()
+            for pattern in ("*.md", "*.json")
+            for path in root.rglob(pattern)
+            if path not in source_paths and old_tag in path.read_text(encoding="utf-8", errors="ignore")
+        ]
+        originals.update({path: path.read_bytes() for path in managed_paths})
+        artifact_originals = {
+            path: path.read_bytes()
+            for path in [*source_paths, *(source_pipeline.rglob("*") if source_pipeline.exists() else [])]
+            if path.is_file()
+        }
+        moved: list[tuple[Path, Path]] = []
+        try:
+            target_folder.mkdir(parents=True, exist_ok=True)
+            for source, target in zip(source_paths, target_paths):
+                if source.exists():
+                    source.replace(target)
+                    moved.append((source, target))
+            if source_pipeline.exists():
+                target_pipeline.parent.mkdir(parents=True, exist_ok=True)
+                source_pipeline.replace(target_pipeline)
+                moved.append((source_pipeline, target_pipeline))
+            for path in [*target_paths, *(target_pipeline.rglob("*") if target_pipeline.exists() else [])]:
+                if not path.is_file() or path.suffix.lower() not in {".json", ".md"}:
+                    continue
+                if path.suffix.lower() == ".json":
+                    try:
+                        data = json.loads(path.read_text(encoding="utf-8"))
+                    except json.JSONDecodeError:
+                        continue
+                    data = self._rewrite_scene_values(data, source_story, target_story, replacements)
+                    if path == target_paths[1]:
+                        scene_data = data.setdefault("scene", {})
+                        scene_data["story_settings_path"] = self._library_relative_path(self._story_settings_path(target_story))
+                        scene_data["associated_png_path"] = self._library_relative_path(self.scene_image_path(target_story, safe_scene_slug))
+                    self._write_json(path, data)
+                else:
+                    text = path.read_text(encoding="utf-8")
+                    for old, new in replacements:
+                        text = text.replace(old, new)
+                    path.write_text(text, encoding="utf-8")
+            for path in managed_paths:
+                text = path.read_text(encoding="utf-8")
+                path.write_text(text.replace(old_tag, new_tag), encoding="utf-8")
+            self._save_scene_order(source_story, source_order)
+            self._save_scene_order(target_story, target_order)
+        except Exception:
+            for source, target in reversed(moved):
+                if target.exists():
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    target.replace(source)
+            self._restore_files(originals)
+            self._restore_files(artifact_originals)
+            raise
+        return self.load_scene(target_story, safe_scene_slug)
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""
@@ -1256,24 +1551,59 @@ class StoryService:
         """Compile one story scene prompt and stage it for the Render Console."""
         return self.story_render_service.stage_scene_render(story_slug, scene_slug)
 
-    def image_reference_rows(self, character_filter: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
+    def image_reference_rows(
+        self,
+        character_filter: str = "",
+        text_filter: str = "",
+        phase_filter: str = "",
+        costume_filter: str = "",
+        scope: str = "all",
+        include_unavailable: bool = True,
+    ) -> list[ImageReferenceRow]:
         """List copyable image reference rows for scenes."""
         rows: list[ImageReferenceRow] = []
         normalized_character = str(character_filter or "").strip().lower()
+        normalized_phase = str(phase_filter or "").strip().lower()
+        normalized_costume = self._normalize_costume(costume_filter)
         normalized_filter = str(text_filter or "").strip().lower()
-        for resource in self.auxiliary_resource_repository.list_resources():
-            rows.extend(self._aux_resource_rows(resource))
+        contextual = scope == "context"
+        if scope not in {"all", "context"}:
+            raise StoryServiceError(f"Unsupported image reference scope: {scope}")
+        if not contextual:
+            for resource in self.auxiliary_resource_repository.list_resources():
+                rows.extend(self._aux_resource_rows(resource))
+            rows.extend(self._scene_reference_rows())
         base_character_root = Path(self.path_service.config.base_character_path)
-        if not base_character_root.exists():
-            base_character_root.mkdir(parents=True, exist_ok=True)
-        for character in sorted(item.name for item in base_character_root.iterdir() if item.is_dir() and not item.name.startswith("_")):
-            if normalized_character and character.lower() != normalized_character:
+        characters = (
+            sorted(
+                item.name
+                for item in base_character_root.iterdir()
+                if item.is_dir() and not item.name.startswith("_")
+            )
+            if base_character_root.exists()
+            else []
+        )
+        for character in characters:
+            if contextual and normalized_character and character.lower() != normalized_character:
                 continue
             for phase_dir in sorted(item for item in (base_character_root / character).iterdir() if item.is_dir() and not item.name.startswith("_")):
+                if contextual and normalized_phase and phase_dir.name.lower() != normalized_phase:
+                    continue
                 for asset in self._locked_assets(character, phase_dir.name):
                     rows.append(self._asset_reference_row(asset))
+                for sheet in self._turnarounds(character, phase_dir.name):
+                    rows.append(self._turnaround_reference_row(sheet))
                 for identity_key in self._identity_keys(character, phase_dir.name):
                     rows.append(self._identity_reference_row(identity_key))
+        if contextual and normalized_costume:
+            rows = [
+                row
+                for row in rows
+                if not row.costume
+                or self._normalize_costume(row.costume) == normalized_costume
+            ]
+        if not include_unavailable:
+            rows = [row for row in rows if row.available]
         rows = [row for row in rows if self._matches_filter(row, normalized_filter)]
         return sorted(rows, key=lambda row: (row.character.lower(), row.phase.lower(), row.kind.lower(), row.label.lower()))
 
@@ -1281,8 +1611,23 @@ class StoryService:
         """Return whether one image reference row matches a text filter."""
         if not normalized_filter:
             return True
-        haystack = " ".join([row.tag, row.label, row.character, row.phase, row.kind, row.pipeline]).lower()
+        haystack = " ".join([
+            row.tag,
+            row.label,
+            row.character,
+            row.phase,
+            row.kind,
+            row.pipeline,
+            row.costume,
+            row.view,
+        ]).lower()
         return all(term in haystack for term in normalized_filter.split())
+
+    @staticmethod
+    def _normalize_costume(value: str) -> str:
+        return " ".join(
+            str(value or "").replace("-", " ").replace("_", " ").lower().split()
+        )
 
     def _aux_resource_rows(self, resource: AuxiliaryResource) -> list[ImageReferenceRow]:
         """Return picker rows for auxiliary resource images."""
@@ -1299,6 +1644,28 @@ class StoryService:
                 image_path=str(image_path),
                 thumbnail_path=str(image_path),
             ))
+        return rows
+
+    def _scene_reference_rows(self) -> list[ImageReferenceRow]:
+        """Return picker rows for rendered story scenes."""
+        rows = []
+        for story in self.list_stories():
+            for scene in self.list_scenes(story.slug):
+                image_path = self.scene_image_path(story.slug, scene.slug)
+                if not image_path.is_file():
+                    continue
+                rows.append(
+                    ImageReferenceRow(
+                        tag=f"{{{{SCENE:{story.slug}:{scene.slug}}}}}",
+                        label=f"{story.title} - {scene.title}",
+                        character="",
+                        phase="",
+                        kind="scene",
+                        pipeline="Rendered Scene",
+                        image_path=str(image_path),
+                        thumbnail_path=str(image_path),
+                    )
+                )
         return rows
 
     def _locked_assets(self, character: str, phase: str) -> list[Asset]:
@@ -1318,6 +1685,21 @@ class StoryService:
         except Exception:
             return []
 
+    def _turnarounds(self, character: str, phase: str) -> list[TurnaroundSheet]:
+        """List full turnaround sheets that have a stable descriptive tag."""
+        if self.turnaround_repository is None:
+            return []
+        try:
+            sheets = self.turnaround_repository.list_sheets(character, phase)
+        except Exception:
+            return []
+        return [
+            sheet
+            for sheet in sheets
+            if sheet.sheet_type == "full"
+            and sheet.source_asset_ids
+        ]
+
     def _asset_reference_row(self, asset: Asset) -> ImageReferenceRow:
         """Return one picker row for a locked asset."""
         label_parts = [asset.pipeline, asset.body_view]
@@ -1328,6 +1710,7 @@ class StoryService:
         if asset.expression:
             label_parts.append(asset.expression)
         image_path = self.path_service.locked_image_path(asset)
+        available = image_path.is_file()
         tag_parts = [self._asset_reference_pipeline_code(asset.pipeline), asset.body_view]
         if asset.pipeline == "Costume-Dressing" and asset.costume:
             tag_parts.append(asset.costume)
@@ -1342,6 +1725,33 @@ class StoryService:
             pipeline=asset.pipeline,
             image_path=str(image_path),
             thumbnail_path=str(image_path),
+            costume=asset.costume or "",
+            view=asset.body_view or "",
+            available=available,
+            disabled_reason="" if available else "Locked asset image is missing.",
+        )
+
+    def _turnaround_reference_row(self, sheet: TurnaroundSheet) -> ImageReferenceRow:
+        """Return one picker row for a full locked turnaround sheet."""
+        detail_parts = [self._asset_reference_pipeline_code(sheet.source_pipeline), "Turnaround"]
+        if sheet.costume:
+            detail_parts.append(sheet.costume)
+        if sheet.expression:
+            detail_parts.append(sheet.expression)
+        image_path = self.path_service.resolve_path(str(sheet.locked_image_path or ""))
+        available = image_path.is_file()
+        return ImageReferenceRow(
+            tag=f"{{{{ASSET:{sheet.character}:{sheet.phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail_parts)}}}}}",
+            label=" | ".join([sheet.source_pipeline, "Turnaround", *detail_parts[2:]]),
+            character=sheet.character,
+            phase=sheet.phase,
+            kind="locked-turnaround",
+            pipeline=sheet.source_pipeline,
+            image_path=str(image_path),
+            thumbnail_path=str(image_path),
+            costume=sheet.costume or "",
+            available=available,
+            disabled_reason="" if available else "Turnaround has no locked image.",
         )
 
     def _asset_reference_pipeline_code(self, pipeline: str) -> str:
@@ -1357,6 +1767,7 @@ class StoryService:
     def _identity_reference_row(self, identity_key: IdentityKey) -> ImageReferenceRow:
         """Return one picker row for an identity key."""
         image_path = self.path_service.resolve_path(identity_key.image_path)
+        available = image_path.is_file()
         return ImageReferenceRow(
             tag=f"{{{{IDENTITY:{identity_key.character}:{identity_key.phase}:{identity_key.identity_key_id}}}}}",
             label=identity_key.label,
@@ -1366,4 +1777,8 @@ class StoryService:
             pipeline="Identity Key",
             image_path=str(image_path),
             thumbnail_path=str(image_path),
+            costume=identity_key.source_costume or "",
+            view=identity_key.source_body_view or "",
+            available=available,
+            disabled_reason="" if available else "Identity Key image is missing.",
         )

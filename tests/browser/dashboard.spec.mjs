@@ -330,9 +330,24 @@ test("scene fullscreen navigation follows scene order and reports missing images
   await expect(imageDialog.locator(".fullscreen-image-empty")).toHaveText("No Image for Opening Scene");
 });
 
+test("View Story opens the selected story in scene order", async ({ page }) => {
+  await openPage(page, "stories");
+  await page.locator("#story-table .row-selection-button", { hasText: "Alpha Story" }).click();
+  await page.locator("#story-view").click();
+
+  const imageDialog = page.locator(".fullscreen-image-overlay");
+  await expect(imageDialog).toBeVisible();
+  await expect(imageDialog.getByRole("button", { name: "Previous scene" })).toBeDisabled();
+  await expect(imageDialog.getByRole("button", { name: "Next scene" })).toBeEnabled();
+  await expect(imageDialog.locator(":scope > img")).toHaveAttribute("src", /Closing-Scene\.png/);
+  await page.keyboard.press("ArrowRight");
+  await expect(imageDialog.locator(":scope > img")).toHaveAttribute("src", /Opening-Scene\.png/);
+  await page.keyboard.press("Escape");
+});
+
 test("scene render tasks open their scene in Scene Builder", async ({ page }) => {
   await openPage(page, "scenes");
-  await page.locator("#scene-table .row-selection-button", { hasText: "Opening Scene" }).click();
+  await page.locator("#scene-table tr", { has: page.getByText("Opening-Scene.md", { exact: true }) }).locator(".row-selection-button").click();
   await page.locator("#scene-stage-render").click();
   await expect(page.locator("#render-console-page")).toHaveClass(/active/);
   const sceneBuilder = page.locator("#render-console-scene-builder");
@@ -345,7 +360,7 @@ test("scene render tasks open their scene in Scene Builder", async ({ page }) =>
 
 test("scene prompts and Scene Builder show analysis in a dismissible popup", async ({ page }) => {
   await openPage(page, "scenes");
-  await page.locator("#scene-table .row-selection-button", { hasText: "Opening Scene" }).click();
+  await page.locator("#scene-table tr", { has: page.getByText("Opening-Scene.md", { exact: true }) }).locator(".row-selection-button").click();
   await page.locator("#scene-stage-render").click();
   await expect(page.locator("#render-console-scene-builder")).toBeVisible();
   await page.locator("#render-console-review-prompt").click();

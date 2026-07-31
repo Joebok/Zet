@@ -501,6 +501,7 @@
                 <th>title</th>
                 <th>slug</th>
                 <th>story file</th>
+                <th>order</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -520,6 +521,7 @@
               <h2 id="story-editor-title">Select a story</h2>
               <div class="button-row compact">
                 <span id="story-save-state" class="save-state" aria-live="polite"></span>
+                <button id="story-view" class="navigation-action" type="button" disabled>View Story</button>
                 <button id="story-delete" class="danger-action" type="button" disabled>Delete Story</button>
                 <button id="story-settings-load" class="navigation-action" type="button" disabled>Settings</button>
                 <button id="story-settings-save" class="primary-action" type="button" disabled>Save Settings</button>
@@ -527,6 +529,13 @@
               </div>
             </div>
             <div id="story-validation" class="action-message info" aria-label="Story markdown validation" hidden></div>
+          </div>
+          <div class="button-row compact management-row">
+            <label>
+              Story Title
+              <input id="story-rename-title" type="text">
+            </label>
+            <button id="story-rename" class="update-action" type="button" disabled>Rename</button>
           </div>
           <div class="button-row compact story-create-row">
             <label>
@@ -566,6 +575,7 @@
               <tr>
                 <th>scene</th>
                 <th>file</th>
+                <th>order</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -585,6 +595,18 @@
               </div>
             </div>
             <div id="scene-validation" class="action-message info" aria-label="Scene markdown validation" hidden></div>
+          </div>
+          <div class="button-row compact management-row">
+            <label>
+              Scene Title
+              <input id="scene-rename-title" type="text">
+            </label>
+            <button id="scene-rename" class="update-action" type="button" disabled>Rename</button>
+            <label>
+              Move To Story
+              <select id="scene-move-story"></select>
+            </label>
+            <button id="scene-move" class="navigation-action" type="button" disabled>Move Scene</button>
           </div>
           <div id="scene-image-panel" class="scene-image-panel" hidden>
             <img id="scene-image-preview" alt="Scene render">

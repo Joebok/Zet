@@ -6,6 +6,7 @@ import unittest
 from zet.models.asset import Asset
 from zet.services.config_service import Config
 from zet.models.identity_key import IdentityKey
+from zet.models.turnaround import TurnaroundSheet
 from zet.models import story as story_models
 from zet.services.path_service import PathService
 from zet.services.scene_document_service import SceneDocumentService
@@ -74,6 +75,17 @@ class FakeAssetRepository:
         raise KeyError(asset_id)
 
 
+class FakeTurnaroundRepository:
+    def __init__(self, sheets=None):
+        self.sheets = sheets or []
+
+    def list_sheets(self, character: str, phase: str):
+        return [
+            sheet for sheet in self.sheets
+            if sheet.character == character and sheet.phase == phase
+        ]
+
+
 class StoryServiceTests(unittest.TestCase):
     def test_story_service_reexports_story_models(self):
         for name in (
@@ -82,7 +94,14 @@ class StoryServiceTests(unittest.TestCase):
         ):
             self.assertIs(getattr(story_service_module, name), getattr(story_models, name))
 
-    def _service(self, root: Path, auxiliary_resource_repository=None, identity_key_repository=None, asset_repository=None) -> StoryService:
+    def _service(
+        self,
+        root: Path,
+        auxiliary_resource_repository=None,
+        identity_key_repository=None,
+        asset_repository=None,
+        turnaround_repository=None,
+    ) -> StoryService:
         config = Config(
             base_library_path=str(root),
             base_character_path=str(root / "Characters"),
@@ -95,6 +114,7 @@ class StoryServiceTests(unittest.TestCase):
             asset_repository or FakeAssetRepository(),
             auxiliary_resource_repository or FakeAuxiliaryResourceRepository(),
             identity_key_repository,
+            turnaround_repository,
         )
 
     def test_composes_scene_document_reference_and_render_services(self):
@@ -755,6 +775,116 @@ Morning light.
 
             self.assertEqual([25, 26, 27], [int(row.tag.split(":")[3]) for row in rows])
 
+    def test_image_reference_rows_exposes_only_full_locked_turnarounds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            phase_path = root / "Characters" / "Tsaeytte" / "Youth"
+            phase_path.mkdir(parents=True)
+            locked_path = root / "Assets" / "Tsaeytte" / "Youth" / "Turnarounds" / "Costume-Woodland-outfit.png"
+            locked_path.parent.mkdir(parents=True)
+            locked_path.write_bytes(b"image")
+            sheets = [
+                TurnaroundSheet(
+                    "Costume-Woodland-outfit",
+                    "Tsaeytte",
+                    "Youth",
+                    "Costume-Dressing",
+                    costume="Woodland outfit",
+                    sheet_type="full",
+                    status="RENDER_REVIEW",
+                    source_asset_ids=[26, 27],
+                    locked_image_path=str(locked_path),
+                ),
+                TurnaroundSheet(
+                    "Costume-Woodland-outfit__partial__head",
+                    "Tsaeytte",
+                    "Youth",
+                    "Costume-Dressing",
+                    costume="Woodland outfit",
+                    sheet_type="partial",
+                    parent_turnaround_id="Costume-Woodland-outfit",
+                    status="LOCKED",
+                    source_asset_ids=[26, 27],
+                    locked_image_path=str(locked_path),
+                ),
+            ]
+            service = self._service(root, turnaround_repository=FakeTurnaroundRepository(sheets))
+
+            rows = service.image_reference_rows(text_filter="Tsaeytte Youth Woodland outfit")
+
+            self.assertEqual(1, len(rows))
+            self.assertEqual(
+                "{{ASSET:Tsaeytte:Youth:26:Costume | Turnaround | Woodland outfit}}",
+                rows[0].tag,
+            )
+
+    def test_descriptive_turnaround_tag_resolves_locked_sheet(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            locked_path = root / "Assets" / "Tsaeytte" / "Youth" / "Turnarounds" / "Costume-Woodland-outfit.png"
+            locked_path.parent.mkdir(parents=True)
+            locked_path.write_bytes(b"image")
+            sheet = TurnaroundSheet(
+                "Costume-Woodland-outfit",
+                "Tsaeytte",
+                "Youth",
+                "Costume-Dressing",
+                costume="Woodland outfit",
+                label="Costume-Dressing | Woodland outfit",
+                status="RENDER_REVIEW",
+                source_asset_ids=[26, 27],
+                locked_image_path=str(locked_path),
+            )
+            service = self._service(root, turnaround_repository=FakeTurnaroundRepository([sheet]))
+            tag = "{{ASSET:Tsaeytte:Youth:26:Costume | Turnaround | Woodland outfit}}"
+
+            reference = service.story_reference_service.resolve_image_tag(tag)
+
+            self.assertEqual(str(locked_path), reference["path"])
+            self.assertEqual("turnaround", reference["kind"])
+            self.assertEqual("Costume-Woodland-outfit", reference["turnaround_id"])
+
+    def test_context_reference_filter_includes_disabled_matching_turnaround(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Characters" / "Tsaeytte" / "Youth").mkdir(parents=True)
+            sheets = [
+                TurnaroundSheet(
+                    "Costume-Woodland-outfit",
+                    "Tsaeytte",
+                    "Youth",
+                    "Costume-Dressing",
+                    costume="Woodland outfit",
+                    source_asset_ids=[26],
+                    locked_image_path=None,
+                ),
+                TurnaroundSheet(
+                    "Costume-Formal",
+                    "Tsaeytte",
+                    "Youth",
+                    "Costume-Dressing",
+                    costume="Formal",
+                    source_asset_ids=[27],
+                    locked_image_path=None,
+                ),
+            ]
+            service = self._service(
+                root,
+                turnaround_repository=FakeTurnaroundRepository(sheets),
+            )
+
+            rows = service.image_reference_rows(
+                character_filter="Tsaeytte",
+                phase_filter="Youth",
+                costume_filter="Woodland outfit",
+                scope="context",
+                include_unavailable=True,
+            )
+
+            self.assertEqual(1, len(rows))
+            self.assertFalse(rows[0].available)
+            self.assertEqual("Turnaround has no locked image.", rows[0].disabled_reason)
+
     def test_stage_scene_render_resolves_old_and_descriptive_asset_tags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1059,6 +1189,110 @@ ink wash
             validation = json.loads((root / "Pipelines" / "Stories" / "FirstDay" / "At-the-Arch" / "Scene_Render_Validation.json").read_text(encoding="utf-8"))
             self.assertTrue(any("gaze target references missing element missing" in warning for warning in validation["warnings"]))
             self.assertIn("No Story Beat specified.", validation["warnings"])
+
+    def test_story_and_scene_orders_are_persisted_independently_of_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            service = self._service(root)
+            for story_slug in ("Alpha", "Beta"):
+                folder = root / "Stories" / story_slug
+                folder.mkdir(parents=True)
+                story_path = folder / f"{story_slug}.md"
+                story_path.write_text(f"Title: `[{story_slug}]`\n", encoding="utf-8")
+                settings = service.create_default_story_settings(story_path)
+                settings["scene_index"] = []
+                service.save_story_settings(folder / f"{story_slug}.story.json", settings)
+            alpha = root / "Stories" / "Alpha"
+            for slug in ("First", "Second"):
+                (alpha / f"{slug}.md").write_text(f"Scene: `[{slug}]`\n", encoding="utf-8")
+
+            service.reorder_stories(["Beta", "Alpha"])
+            service.reorder_scenes("Alpha", ["Second", "First"])
+
+            self.assertEqual(["Beta", "Alpha"], [record.slug for record in service.list_stories()])
+            self.assertEqual(["Second", "First"], [record.slug for record in service.list_scenes("Alpha")])
+
+    def test_rename_updates_titles_without_changing_slugs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            service = self._service(root)
+            folder = root / "Stories" / "FirstDay"
+            folder.mkdir(parents=True)
+            story_path = folder / "FirstDay.md"
+            story_path.write_text(
+                "Title: `[First Day]`\n<!-- ZET:BEGIN STORY_TITLE -->\nFirst Day\n<!-- ZET:END STORY_TITLE -->\n",
+                encoding="utf-8",
+            )
+            service.save_story_settings(folder / "FirstDay.story.json", service.create_default_story_settings(story_path))
+            scene_path = folder / "Opening.md"
+            scene_path.write_text(
+                "Scene: `[Opening]`\n<!-- ZET:BEGIN SCENE_NAME -->\nOpening\n<!-- ZET:END SCENE_NAME -->\n",
+                encoding="utf-8",
+            )
+            (folder / "Opening.scene.json").write_text(
+                json.dumps({"schema_version": 3, "file_kind": "scene", "scene": {"slug": "Opening", "name": "Opening"}}),
+                encoding="utf-8",
+            )
+
+            story = service.rename_story("FirstDay", "A Better Day")
+            scene = service.rename_scene("FirstDay", "Opening", "At the Gate")
+
+            self.assertEqual("FirstDay", story.record.slug)
+            self.assertEqual("Opening", scene.record.slug)
+            self.assertIn("A Better Day", story_path.read_text(encoding="utf-8"))
+            self.assertIn("At the Gate", scene_path.read_text(encoding="utf-8"))
+            self.assertEqual("At the Gate", json.loads((folder / "Opening.scene.json").read_text(encoding="utf-8"))["scene"]["name"])
+
+    def test_move_scene_moves_artifacts_orders_and_structured_references(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            service = self._service(root)
+            for story_slug in ("Source", "Target"):
+                folder = root / "Stories" / story_slug
+                folder.mkdir(parents=True)
+                story_path = folder / f"{story_slug}.md"
+                story_path.write_text(f"Title: `[{story_slug}]`\n", encoding="utf-8")
+                settings = service.create_default_story_settings(story_path)
+                settings["scene_index"] = ["Opening"] if story_slug == "Source" else []
+                service.save_story_settings(folder / f"{story_slug}.story.json", settings)
+            source = root / "Stories" / "Source"
+            (source / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            (source / "Opening.png").write_bytes(b"image")
+            (source / "Opening.scene.json").write_text(
+                json.dumps({
+                    "schema_version": 3,
+                    "file_kind": "scene",
+                    "scene": {
+                        "slug": "Opening",
+                        "name": "Opening",
+                        "story_settings_path": "Stories/Source/Source.story.json",
+                        "associated_png_path": "Stories/Source/Opening.png",
+                    },
+                }),
+                encoding="utf-8",
+            )
+            pipeline = root / "Pipelines" / "Stories" / "Source" / "Opening"
+            pipeline.mkdir(parents=True)
+            (pipeline / "dependency_manifest.json").write_text(
+                json.dumps({"story_slug": "Source", "scene_slug": "Opening"}), encoding="utf-8"
+            )
+            zine = root / "Assets" / "Zines" / "Sample"
+            zine.mkdir(parents=True)
+            (zine / "Sample.json").write_text('{"front":"{{SCENE:Source:Opening}}"}', encoding="utf-8")
+
+            document = service.move_scene("Source", "Opening", "Target")
+
+            target = root / "Stories" / "Target"
+            self.assertEqual("Target", document.story.slug)
+            for suffix in (".md", ".png", ".scene.json"):
+                self.assertTrue((target / f"Opening{suffix}").exists())
+            self.assertFalse((source / "Opening.md").exists())
+            self.assertTrue((root / "Pipelines" / "Stories" / "Target" / "Opening").exists())
+            self.assertEqual([], [record.slug for record in service.list_scenes("Source")])
+            self.assertEqual(["Opening"], [record.slug for record in service.list_scenes("Target")])
+            scene_data = json.loads((target / "Opening.scene.json").read_text(encoding="utf-8"))
+            self.assertEqual("Stories/Target/Target.story.json", scene_data["scene"]["story_settings_path"])
+            self.assertIn("{{SCENE:Target:Opening}}", (zine / "Sample.json").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -8,12 +8,21 @@ from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_ta
 class StoryReferenceService:
     """Resolve persisted scene reference tags into render reference records."""
 
-    def __init__(self, path_service, asset_repository, auxiliary_resource_repository, identity_key_repository, error_type):
+    def __init__(
+        self,
+        path_service,
+        asset_repository,
+        auxiliary_resource_repository,
+        identity_key_repository,
+        error_type,
+        turnaround_repository=None,
+    ):
         self.path_service = path_service
         self.asset_repository = asset_repository
         self.auxiliary_resource_repository = auxiliary_resource_repository
         self.identity_key_repository = identity_key_repository
         self.error_type = error_type
+        self.turnaround_repository = turnaround_repository
 
     def resolve_aux_reference(self, tag: str) -> dict:
         try:
@@ -32,6 +41,11 @@ class StoryReferenceService:
         }
 
     def resolve_asset_reference(self, tag: str, character: str, phase: str, asset_id: str) -> dict:
+        descriptor = tag.removesuffix("}}").split(":", 4)
+        if len(descriptor) == 5 and "turnaround" in {
+            part.strip().lower() for part in descriptor[4].split("|")
+        }:
+            return self.resolve_turnaround_reference(tag, character, phase, asset_id)
         asset = self.asset_repository.get_asset(character, phase, int(asset_id))
         if asset.asset_state != "LOCKED" or asset.pipeline_stage != "LOCKED":
             raise self.error_type(f"Asset reference is not locked: {tag}")
@@ -49,6 +63,34 @@ class StoryReferenceService:
             "source_character": character,
             "source_phase": phase,
             "source_asset_id": asset.asset_id,
+        }
+
+    def resolve_turnaround_reference(self, tag: str, character: str, phase: str, asset_id: str) -> dict:
+        if self.turnaround_repository is None:
+            raise self.error_type(f"Turnaround repository is not configured: {tag}")
+        sheets = [
+            sheet
+            for sheet in self.turnaround_repository.list_sheets(character, phase)
+            if sheet.sheet_type == "full"
+            and int(asset_id) in sheet.source_asset_ids
+            and self.path_service.resolve_path(str(sheet.locked_image_path or "")).is_file()
+        ]
+        if len(sheets) != 1:
+            raise self.error_type(f"Locked turnaround reference not found: {tag}")
+        sheet = sheets[0]
+        path = self.path_service.resolve_path(str(sheet.locked_image_path or ""))
+        if not path.exists():
+            raise self.error_type(f"Turnaround reference image not found: {path}")
+        return {
+            "role": "story_reference",
+            "label": sheet.label or sheet.turnaround_id,
+            "tag": tag,
+            "path": str(path),
+            "kind": "turnaround",
+            "source_character": character,
+            "source_phase": phase,
+            "source_asset_id": int(asset_id),
+            "turnaround_id": sheet.turnaround_id,
         }
 
     def resolve_identity_reference(self, tag: str, character: str, phase: str, identity_key_id: str) -> dict:
