@@ -338,7 +338,7 @@ h3 {
 }
 
 .story-layout {
-  grid-template-columns: minmax(420px, 0.65fr) minmax(680px, 1.35fr);
+  grid-template-columns: minmax(460px, 0.7fr) minmax(640px, 1.3fr);
 }
 
 .asset-table-panel,
@@ -638,7 +638,23 @@ dl {
 }
 
 .scene-layout {
-  grid-template-columns: minmax(280px, 0.75fr) minmax(620px, 1.35fr) minmax(340px, 0.9fr);
+  grid-template-columns: minmax(380px, 0.7fr) minmax(620px, 1.3fr);
+}
+
+#story-table,
+#scene-table {
+  table-layout: fixed;
+}
+
+#story-table th:last-child,
+#scene-table th:last-child {
+  width: 86px;
+}
+
+#story-table td:first-child,
+#scene-table td:first-child {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .review-sidebar,
@@ -1967,7 +1983,7 @@ tr.auxiliary-row td:last-child {
 .queue-tables {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .mini-actions {
@@ -2239,9 +2255,12 @@ dd {
 
 @media (max-width: 1350px) {
   .review-layout,
-  .scene-layout,
   .manifest-layout {
     grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .scene-layout {
+    grid-template-columns: minmax(380px, 0.7fr) minmax(0, 1.3fr);
   }
 
   .review-layout.prompt-review-layout {

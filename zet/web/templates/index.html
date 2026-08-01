@@ -499,8 +499,6 @@
             <thead>
               <tr>
                 <th>title</th>
-                <th>slug</th>
-                <th>story file</th>
                 <th>order</th>
               </tr>
             </thead>
@@ -574,7 +572,6 @@
             <thead>
               <tr>
                 <th>scene</th>
-                <th>file</th>
                 <th>order</th>
               </tr>
             </thead>
@@ -613,7 +610,7 @@
           </div>
           <textarea id="scene-text" spellcheck="false" placeholder="Select or create a scene to edit its markdown."></textarea>
         </section>
-        <aside class="review-actions scene-picker-panel">
+        <aside class="review-actions scene-picker-panel" hidden>
           <h3>Image References</h3>
           <label>
             Character Filter
@@ -1227,12 +1224,12 @@
           <div id="queue-counts" class="summary-bar"></div>
           <div class="queue-tables">
             <section>
-              <h3>Ask</h3>
-              <table id="queue-ask-table"><tbody></tbody></table>
-            </section>
-            <section>
               <h3>Running</h3>
               <table id="queue-running-table"><tbody></tbody></table>
+            </section>
+            <section>
+              <h3>Ask</h3>
+              <table id="queue-ask-table"><tbody></tbody></table>
             </section>
             <section>
               <h3>Answer</h3>

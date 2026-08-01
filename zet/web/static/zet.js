@@ -2813,16 +2813,15 @@ function renderStoryTable() {
   // Render the shared stories list.
   storyTableBody.replaceChildren();
   if (!state.stories.length) {
-    renderEmptyRow(storyTableBody, 4, "No stories exist. Add a story to begin.");
+    renderEmptyRow(storyTableBody, 2, "No stories exist. Add a story to begin.");
     return;
   }
   state.stories.forEach((story, index) => {
     const row = document.createElement("tr");
-    for (const value of [story.title, story.slug, basename(story.story_file_path || "")]) {
-      const cell = document.createElement("td");
-      cell.textContent = value || "";
-      row.append(cell);
-    }
+    row.dataset.storySlug = story.slug;
+    const cell = document.createElement("td");
+    cell.textContent = story.title || "";
+    row.append(cell);
     row.append(orderControls(story.title || story.slug, index, state.stories.length, (offset) => reorderStory(index, offset)));
     makeSelectableRow(row, story.title || story.slug, story.slug === state.selectedStorySlug, () => selectStory(story.slug));
     storyTableBody.append(row);
@@ -3349,16 +3348,15 @@ function renderSceneTable() {
   // Render the scene list for the selected story.
   sceneTableBody.replaceChildren();
   if (!state.scenes.length) {
-    renderEmptyRow(sceneTableBody, 3, state.selectedStorySlug ? "No scenes exist in this story." : "Select a story to view scenes.");
+    renderEmptyRow(sceneTableBody, 2, state.selectedStorySlug ? "No scenes exist in this story." : "Select a story to view scenes.");
     return;
   }
   state.scenes.forEach((scene, index) => {
     const row = document.createElement("tr");
-    for (const value of [scene.title, basename(scene.path || "")]) {
-      const cell = document.createElement("td");
-      cell.textContent = value || "";
-      row.append(cell);
-    }
+    row.dataset.sceneSlug = scene.slug;
+    const cell = document.createElement("td");
+    cell.textContent = scene.title || "";
+    row.append(cell);
     row.append(orderControls(scene.title || scene.slug, index, state.scenes.length, (offset) => reorderScene(index, offset)));
     makeSelectableRow(row, scene.title || scene.slug, scene.slug === state.selectedSceneSlug, () => selectScene(scene.slug));
     sceneTableBody.append(row);
@@ -4105,7 +4103,7 @@ function builderApplyChange(event) {
     return;
   }
   builderSyncControls();
-  if (event?.target?.id === "builder-composition-element") {
+  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea")) {
     return;
   }
   renderSceneBuilder();
@@ -4589,6 +4587,7 @@ async function openSceneBuilder() {
   updateSceneBuilderNavigation();
   showSceneBuilderMessage("Loading Scene Builder...");
   try {
+    await loadSceneImageReferences();
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`);
     const document = payload.document || {};
     if (document.blocked) {
@@ -6459,7 +6458,6 @@ function renderAiControls(payload) {
   renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
   renderRows(queueRunningTableBody, payload.queue?.running || [], ["ask_id", "asset_id", "worker_type", "task_type"]);
   renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id"]);
-  renderRows(queueFailedTableBody, payload.queue?.failed || [], ["worker_id", "name"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
   renderProcessRows(payload.processes || []);

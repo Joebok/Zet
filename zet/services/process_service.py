@@ -5,6 +5,7 @@ import os
 import platform
 import signal
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,7 +55,6 @@ class ProcessService:
         self.project_root = project_root.resolve()
 
     def specs(self) -> list[ManagedProcessSpec]:
-        proxy_root = Path("C:/Users/Joe/Projects/AI_Proxy")
         return [
             ManagedProcessSpec(
                 process_id="zet_web",
@@ -62,13 +62,6 @@ class ProcessService:
                 match_terms=("zet.web.app",),
                 command="run_zet_web.bat",
                 cwd=self.project_root,
-            ),
-            ManagedProcessSpec(
-                process_id="proxy_worker",
-                label="File Proxy",
-                match_terms=("file_proxy.cli", "File_Proxy"),
-                command="run_file_proxy.bat",
-                cwd=proxy_root,
             ),
             ManagedProcessSpec(
                 process_id="auto_harvest",
@@ -208,6 +201,40 @@ class ProcessService:
         return len(matches)
 
     def restart(self, process_id: str) -> int:
+        spec = self._spec_by_id(process_id)
+        matches = [process for process in self.list_processes() if self._matches(process, spec)]
+        if process_id == "zet_web" and any(process.pid == os.getpid() for process in matches):
+            self._schedule_self_restart(spec, matches)
+            return len(matches)
         stopped = self.stop(process_id)
         self.start(process_id)
         return stopped
+
+    def _schedule_self_restart(self, spec: ManagedProcessSpec, matches: list[ProcessInfo]) -> None:
+        if spec.command is None or spec.cwd is None:
+            raise ValueError(f"{spec.label} has no configured start command.")
+        command = [
+            sys.executable,
+            "-B",
+            "-m",
+            "zet.scripts.restart_managed_process",
+            "--cwd",
+            str(spec.cwd),
+            "--command",
+            spec.command,
+        ]
+        for process in matches:
+            command.extend(["--pid", str(process.pid)])
+        kwargs = {
+            "cwd": str(self.project_root),
+            "env": os.environ.copy(),
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "close_fds": True,
+        }
+        if platform.system() == "Windows":
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+        subprocess.Popen(command, **kwargs)

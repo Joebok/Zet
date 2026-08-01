@@ -118,6 +118,19 @@ test("story changes autosave before selection changes", async ({ page }) => {
   expect((await saved.json()).document.text).toContain("Autosaved browser change.");
 });
 
+test("story and scene lists show titles with visible order controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openPage(page, "stories");
+  await expect(page.locator("#story-table th")).toHaveText(["Title", "Order"]);
+  await expect(page.locator("#story-table .order-controls").first()).toBeVisible();
+
+  await page.evaluate(() => window.activatePage("scenes", { skipAutosave: true }));
+  await expect(page.locator("#scenes-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-table th")).toHaveText(["Scene", "Order"]);
+  await expect(page.locator("#scene-table .order-controls").first()).toBeVisible();
+  await expect(page.locator(".scene-picker-panel")).toBeHidden();
+});
+
 test("failed and rapid story transitions preserve a current selection", async ({ page }) => {
   await openPage(page, "stories");
   const rows = page.locator("#story-table .row-selection-button");
@@ -146,16 +159,16 @@ test("scene and Scene Builder changes autosave on navigation", async ({ page }) 
   await openPage(page, "scenes");
   const rows = page.locator("#scene-table .row-selection-button");
   await expect(rows).toHaveCount(2);
-  const initialSceneSlug = (await page.locator("#scene-table tr.selected td").nth(1).innerText()).replace(/\.md$/, "");
+  const initialSceneSlug = await page.locator("#scene-table tr.selected").getAttribute("data-scene-slug");
   await page.locator("#scene-text").fill("Scene: `[Opening Scene]`\n\nAutosaved scene change.\n");
   await page.locator("#scene-table tr:not(.selected) .row-selection-button").click();
   await expect
-    .poll(async () => (await page.locator("#scene-table tr.selected td").nth(1).innerText()).replace(/\.md$/, ""))
+    .poll(() => page.locator("#scene-table tr.selected").getAttribute("data-scene-slug"))
     .not.toBe(initialSceneSlug);
   const saved = await page.request.get(`/api/stories/Alpha-Story/scenes/${initialSceneSlug}`);
   expect((await saved.json()).document.text).toContain("Autosaved scene change.");
 
-  const selectedSceneSlug = (await page.locator("#scene-table tr.selected td").nth(1).innerText()).replace(/\.md$/, "");
+  const selectedSceneSlug = await page.locator("#scene-table tr.selected").getAttribute("data-scene-slug");
   await page.route(`**/api/stories/Alpha-Story/scenes/${selectedSceneSlug}`, async (route) => {
     if (route.request().method() === "PUT") {
       await route.fulfill({ status: 500, contentType: "application/json", body: '{"detail":"Seeded scene save failure"}' });
@@ -166,12 +179,14 @@ test("scene and Scene Builder changes autosave on navigation", async ({ page }) 
   await page.locator("#scene-text").fill("Scene save must fail.");
   await page.locator("#scene-table tr:not(.selected) .row-selection-button").click();
   await expect(page.locator("#scene-save-state")).toContainText("Error");
-  await expect(page.locator("#scene-table tr.selected td").nth(1)).toContainText(selectedSceneSlug);
+  await expect(page.locator("#scene-table tr.selected")).toHaveAttribute("data-scene-slug", selectedSceneSlug);
   await page.unroute(`**/api/stories/Alpha-Story/scenes/${selectedSceneSlug}`);
   await page.locator("#scene-save").click();
 
   await rows.nth(0).click();
+  const referencesRefreshed = page.waitForResponse((response) => response.url().includes("/api/scene-image-picker"));
   await page.locator("#scene-builder-open").click();
+  await referencesRefreshed;
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
   const storyBeat = page.locator('[data-builder-field="scene.story_beat"]');
   await storyBeat.fill("Autosaved builder beat.");
@@ -192,6 +207,24 @@ test("scene and Scene Builder changes autosave on navigation", async ({ page }) 
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
   await expect(page.locator("#scene-builder-message")).toContainText("Seeded builder save failure");
   await page.unroute("**/api/stories/*/scenes/*/builder");
+});
+
+test("Scene Builder text changes do not consume the next control click", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  const storyBeat = page.locator('[data-builder-field="scene.story_beat"]');
+  const orientation = page.locator('[data-builder-field="setup.canvas.orientation"]');
+  await storyBeat.fill("Changed before selecting an orientation.");
+  await orientation.evaluate((control) => { window.sceneBuilderClickedControl = control; });
+  const box = await orientation.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(() => page.evaluate(() => window.sceneBuilderClickedControl.isConnected)).toBe(true);
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => (
+    window.sceneBuilderClickedControl === document.querySelector('[data-builder-field="setup.canvas.orientation"]')
+  ))).toBe(true);
 });
 
 test("source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
@@ -347,7 +380,7 @@ test("View Story opens the selected story in scene order", async ({ page }) => {
 
 test("scene render tasks open their scene in Scene Builder", async ({ page }) => {
   await openPage(page, "scenes");
-  await page.locator("#scene-table tr", { has: page.getByText("Opening-Scene.md", { exact: true }) }).locator(".row-selection-button").click();
+  await page.locator('#scene-table tr[data-scene-slug="Opening-Scene"] .row-selection-button').click();
   await page.locator("#scene-stage-render").click();
   await expect(page.locator("#render-console-page")).toHaveClass(/active/);
   const sceneBuilder = page.locator("#render-console-scene-builder");
@@ -360,7 +393,7 @@ test("scene render tasks open their scene in Scene Builder", async ({ page }) =>
 
 test("scene prompts and Scene Builder show analysis in a dismissible popup", async ({ page }) => {
   await openPage(page, "scenes");
-  await page.locator("#scene-table tr", { has: page.getByText("Opening-Scene.md", { exact: true }) }).locator(".row-selection-button").click();
+  await page.locator('#scene-table tr[data-scene-slug="Opening-Scene"] .row-selection-button').click();
   await page.locator("#scene-stage-render").click();
   await expect(page.locator("#render-console-scene-builder")).toBeVisible();
   await page.locator("#render-console-review-prompt").click();
@@ -466,4 +499,18 @@ test("scoped destructive confirmations cancel and complete explicitly", async ({
   if (await dialog.isVisible()) {
     await dialog.getByRole("button", { name: "Cancel" }).click();
   }
+});
+
+test("AI Controls stacks queue lists and manages Zet processes", async ({ page }) => {
+  await openPage(page, "ai-controls");
+  const queueSections = page.locator(".queue-tables > section");
+  await expect(queueSections.locator("h3")).toHaveText(["Running", "Ask", "Answer"]);
+  const widths = await queueSections.evaluateAll((sections) => sections.map((section) => section.getBoundingClientRect().width));
+  expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(1);
+
+  const processes = page.locator("#process-table tbody tr");
+  await expect(processes).toHaveCount(2);
+  await expect(processes.nth(0)).toContainText("Zet Web Dashboard");
+  await expect(processes.nth(1)).toContainText("Auto Harvester");
+  await expect(processes.locator("button")).toHaveCount(6);
 });
