@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from zet.models.asset import Asset
 from zet.services.config_service import Config
@@ -33,17 +33,30 @@ class PathService:
         """Return a path inside the configured library root."""
         return Path(self.config.base_library_path).joinpath(*parts)
 
+    def _path_parts(self, path: str | Path) -> tuple[str, ...]:
+        """Return path parts while accepting stored POSIX or Windows separators."""
+        text = str(path)
+        if "\\" in text:
+            return PureWindowsPath(text).parts
+        return Path(text).parts
+
     def resolve_path(self, path: str | Path) -> Path:
         """Resolve absolute, project-relative, and legacy _Lib paths."""
         raw_path = Path(path)
         if raw_path.is_absolute():
             return raw_path
-        parts = raw_path.parts
+        parts = self._path_parts(path)
+        if parts and parts[0].endswith(":\\"):
+            library_name = Path(self.config.base_library_path).name
+            for index, part in enumerate(parts):
+                if part == library_name:
+                    return self.library_path(*parts[index + 1:])
+            return Path(*parts)
         if parts and parts[0] == "_Lib":
             return self.library_path(*parts[1:])
         if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "Stories"}:
             return self.library_path(*parts)
-        return self.project_root / raw_path
+        return self.project_root.joinpath(*parts)
 
     def character_asset_path(self, character: str, phase: str) -> Path:
         """Return the character phase asset folder."""

@@ -62,7 +62,15 @@ class PathServiceTests(unittest.TestCase):
             self.assertEqual(service.resolve_path(absolute), absolute)
             self.assertEqual(service.resolve_path("Config/file.json"), project_root / "Config/file.json")
             self.assertEqual(service.resolve_path("_Lib/Stories/story.md"), library_root / "Stories/story.md")
+            self.assertEqual(
+                service.resolve_path(r"_Lib\Assets\Tsaeytte\Adult\IdentityKeys\IK.png"),
+                library_root / "Assets" / "Tsaeytte" / "Adult" / "IdentityKeys" / "IK.png",
+            )
             self.assertEqual(service.resolve_path("Characters/Zara"), library_root / "Characters/Zara")
+            self.assertEqual(
+                service.resolve_path(r"C:\Users\Joe\Projects\Library\Assets\Tsaeytte\Adult\source.png"),
+                library_root / "Assets" / "Tsaeytte" / "Adult" / "source.png",
+            )
             with patch.object(Library_Paths, "load_project_config", return_value=config):
                 self.assertEqual(
                     Library_Paths.resolve_library_path(project_root, "Config/file.json"),

@@ -184,9 +184,13 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     return data
 
 
-def _identity_key_payload(identity_key) -> dict[str, Any]:
+def _identity_key_payload(zet_app: ZetApp, identity_key) -> dict[str, Any]:
     """Serialize an identity key for dashboard views."""
-    return asdict(identity_key)
+    data = asdict(identity_key)
+    for key in ("image_path", "source_image_path", "analysis_path"):
+        if data.get(key):
+            data[key] = str(zet_app.path_service.resolve_path(data[key]))
+    return data
 
 
 def _identity_key_preview_payload(preview) -> dict[str, Any]:
@@ -1414,7 +1418,12 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         """List saved identity keys."""
         zet_app = _app(app.state.config_path)
         try:
-            return {"identity_keys": [_identity_key_payload(item) for item in zet_app.list_identity_keys(character, phase)]}
+            return {
+                "identity_keys": [
+                    _identity_key_payload(zet_app, item)
+                    for item in zet_app.list_identity_keys(character, phase)
+                ]
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1423,7 +1432,12 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         """Return one saved identity key."""
         zet_app = _app(app.state.config_path)
         try:
-            return {"identity_key": _identity_key_payload(zet_app.identity_key(character, phase, identity_key_id))}
+            return {
+                "identity_key": _identity_key_payload(
+                    zet_app,
+                    zet_app.identity_key(character, phase, identity_key_id),
+                )
+            }
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1458,8 +1472,11 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 str(payload.get("identity_key_id") or "") or None,
             )
             return {
-                "identity_key": _identity_key_payload(identity_key),
-                "identity_keys": [_identity_key_payload(item) for item in zet_app.list_identity_keys(character, phase)],
+                "identity_key": _identity_key_payload(zet_app, identity_key),
+                "identity_keys": [
+                    _identity_key_payload(zet_app, item)
+                    for item in zet_app.list_identity_keys(character, phase)
+                ],
                 "message": "Identity Key saved.",
             }
         except Exception as exc:
@@ -1472,7 +1489,10 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             zet_app.delete_identity_key(character, phase, identity_key_id)
             return {
-                "identity_keys": [_identity_key_payload(item) for item in zet_app.list_identity_keys(character, phase)],
+                "identity_keys": [
+                    _identity_key_payload(zet_app, item)
+                    for item in zet_app.list_identity_keys(character, phase)
+                ],
                 "message": "Identity Key deleted.",
             }
         except Exception as exc:
@@ -1545,7 +1565,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     for item in zet_app.list_expression_definitions(character, phase)
                 ],
                 "identity_keys": [
-                    _identity_key_payload(item)
+                    _identity_key_payload(zet_app, item)
                     for item in zet_app.list_identity_keys(character, phase)
                 ],
             }
@@ -1577,7 +1597,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     for item in zet_app.list_expression_definitions(character, phase)
                 ],
                 "identity_keys": [
-                    _identity_key_payload(item)
+                    _identity_key_payload(zet_app, item)
                     for item in zet_app.list_identity_keys(character, phase)
                 ],
                 "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
@@ -1618,7 +1638,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     for item in zet_app.list_expression_definitions(character, phase)
                 ],
                 "identity_keys": [
-                    _identity_key_payload(item)
+                    _identity_key_payload(zet_app, item)
                     for item in zet_app.list_identity_keys(character, phase)
                 ],
                 "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
