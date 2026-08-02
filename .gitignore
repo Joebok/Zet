@@ -1,8 +1,23 @@
+# Exclude all PNG/JPG/GIF/etc images except those in img/ directory
+**/*.png
+!**/img/**/*
+**/*.jpg
+!**/img/**/*
+**/*.jpeg
+!**/img/**/*
+**/*.gif
+!**/img/**/*
+**/*.webp
+!**/img/**/*
+**/*.bmp
+!**/img/**/*
+**/*.svg
+!**/img/**/*
+
+# Other exclusions
 _Lib/AI_Queue
 _Lib/Assets
 _Lib/Pipelines
-*.png
-!tests/browser/snapshots/**/*.png
 *.backup.*
 __pycache__/
 *.py[cod]
