@@ -86,6 +86,44 @@ test("Aux Images is accessible from the main button row", async ({ page }) => {
   await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
 });
 
+test("pipeline inspection filters pipelines and previews text and images", async ({ page }) => {
+  await openPage(page, "pipeline-inspection");
+  await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(3);
+  await page.locator("#pipeline-inspection-search").fill("Alpha-Story / Opening");
+  await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(1);
+  await page.locator("#pipeline-inspection-list button").click();
+  await page.getByRole("button", { name: "AI_Prompt_Analysis.md", exact: true }).click();
+  await expect(page.locator("#pipeline-inspection-text")).toContainText("Deterministic browser-test analysis");
+  await expect(page.locator("#pipeline-inspection-path")).toContainText("AI_Prompt_Analysis.md");
+  await expect(page.locator("#pipeline-inspection-copy")).toBeEnabled();
+  await expect(page.locator("#pipeline-inspection-open-folder")).toBeEnabled();
+
+  await page.locator("#pipeline-inspection-search").fill("Alpha-Story / Closing");
+  await page.locator("#pipeline-inspection-list button").click();
+  await page.getByRole("button", { name: "Candidate/Closing-Scene.png", exact: true }).click();
+  await expect(page.locator("#pipeline-inspection-image")).toBeVisible();
+});
+
+test("pipeline inspection ignores stale file-list responses", async ({ page }) => {
+  await page.route("**/api/pipeline-inspection/files?*", async (route) => {
+    const pipelineId = new URL(route.request().url()).searchParams.get("pipeline_id");
+    if (pipelineId === "Stories/Alpha-Story/Opening-Scene") {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    await route.continue();
+  });
+  await openPage(page, "pipeline-inspection");
+  const search = page.locator("#pipeline-inspection-search");
+  await search.fill("Alpha-Story / Opening");
+  await page.locator("#pipeline-inspection-list button").click();
+  await search.fill("Alpha-Story / Closing");
+  await page.locator("#pipeline-inspection-list button").click();
+  await expect(page.getByRole("button", { name: "Candidate/Closing-Scene.png", exact: true })).toBeVisible();
+  await page.waitForTimeout(400);
+  await expect(page.getByRole("button", { name: "Candidate/Closing-Scene.png", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "AI_Prompt_Analysis.md", exact: true })).toHaveCount(0);
+});
+
 test("To Do saves when dismissed", async ({ page }) => {
   let savedText = null;
   await page.route("**/api/todo", async (route) => {

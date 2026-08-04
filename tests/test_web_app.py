@@ -566,6 +566,11 @@ Backend = "manual_chatgpt"
             self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
             self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
             self.assertIn('id="character-assets-menu" class="tab active"', html)
+            self.assertIn('data-page="pipeline-inspection">Pipelines</button>', html)
+            self.assertLess(
+                html.index('id="character-assets-menu" class="tab active"'),
+                html.index('data-page="pipeline-inspection">Pipelines</button>'),
+            )
             self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
             self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
             self.assertIn('<option value="comfyui">ComfyUI</option>', html)
@@ -603,6 +608,11 @@ Backend = "manual_chatgpt"
 
             paths = client.get("/openapi.json").json()["paths"]
             self.assertIn("/api/assets/advance-all", paths)
+            self.assertIn("/api/pipeline-inspection", paths)
+            self.assertIn("/api/pipeline-inspection/files", paths)
+            self.assertIn("/api/pipeline-inspection/text", paths)
+            self.assertIn("/api/pipeline-inspection/file", paths)
+            self.assertIn("/api/pipeline-inspection/open-folder", paths)
             self.assertNotIn("/api/assets/advance-displayed", paths)
             self.assertNotIn("/api/assets/{asset_id}/retouch", paths)
             self.assertNotIn("/api/assets/{asset_id}/stage-ai-ask", paths)

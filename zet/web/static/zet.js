@@ -24,6 +24,11 @@ const state = {
   renderReviewDetail: null,
   aiControls: null,
   pipelineControls: null,
+  pipelineInspections: [],
+  pipelineInspectionFiles: [],
+  selectedPipelineInspectionId: null,
+  selectedPipelineInspectionFileId: null,
+  pipelineInspectionContent: "",
   renderConsoleTasks: [],
   selectedRenderConsoleAskId: null,
   renderConsoleDetail: null,
@@ -221,6 +226,18 @@ const manualRenderCount = document.querySelector("#manual-render-count");
 const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
 const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
 const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
+const pipelineInspectionStatus = document.querySelector("#pipeline-inspection-status");
+const pipelineInspectionMessage = document.querySelector("#pipeline-inspection-message");
+const pipelineInspectionSearch = document.querySelector("#pipeline-inspection-search");
+const pipelineInspectionList = document.querySelector("#pipeline-inspection-list");
+const pipelineInspectionFilesTitle = document.querySelector("#pipeline-inspection-files-title");
+const pipelineInspectionFiles = document.querySelector("#pipeline-inspection-files");
+const pipelineInspectionPath = document.querySelector("#pipeline-inspection-path");
+const pipelineInspectionCopy = document.querySelector("#pipeline-inspection-copy");
+const pipelineInspectionOpenFolder = document.querySelector("#pipeline-inspection-open-folder");
+const pipelineInspectionText = document.querySelector("#pipeline-inspection-text");
+const pipelineInspectionImage = document.querySelector("#pipeline-inspection-image");
+const pipelineInspectionEmpty = document.querySelector("#pipeline-inspection-empty");
 const automationForm = document.querySelector("#automation-form");
 const settingLocalRenderBackend = document.querySelector("#setting-local-render-backend");
 const stableMatrixSettings = document.querySelector("#stable-matrix-settings");
@@ -1393,7 +1410,7 @@ function renderOnboarding() {
   const ready = selectedPhaseReady();
   for (const button of document.querySelectorAll(".workflow-tab")) {
     const page = button.dataset.page || "";
-    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "zine", "ai-controls", "local-image-config", "pipeline-controls"].includes(page);
+    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "zine", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection"].includes(page);
   }
   const onboardingTab = document.querySelector('.tab[data-page="onboarding"]');
   onboardingTab.hidden = ready;
@@ -2082,7 +2099,7 @@ async function saveBeforePageNavigation(nextPage) {
 }
 
 async function activatePage(page, options = {}) {
-  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "prompt-review", "render-review", "ai-controls", "local-image-config", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
+  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "prompt-review", "render-review", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection"].includes(page) && !selectedPhaseReady()) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
@@ -2115,6 +2132,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
+  document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
   document.querySelector("#local-image-review-page").classList.toggle("active", page === "local-image-review");
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
@@ -2122,7 +2140,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "pipeline-controls", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection", "template-editor"].includes(page),
     );
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
@@ -2173,6 +2191,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "pipeline-controls") {
     await loadPipelineControls();
+  }
+  if (page === "pipeline-inspection") {
+    await loadPipelineInspections();
   }
   if (page === "local-image-config") {
     await loadPipelineControls();
@@ -6575,6 +6596,162 @@ async function runAiControlsAction(url) {
   }
 }
 
+function selectedPipelineInspectionFile() {
+  return state.pipelineInspectionFiles.find((item) => item.file_id === state.selectedPipelineInspectionFileId) || null;
+}
+
+function pipelineInspectionParams(fileId = "") {
+  const params = new URLSearchParams({ pipeline_id: state.selectedPipelineInspectionId || "" });
+  if (fileId) params.set("file_id", fileId);
+  return params;
+}
+
+function renderPipelineInspectionList() {
+  const search = pipelineInspectionSearch.value.trim().toLowerCase();
+  const visible = state.pipelineInspections.filter((item) => item.label.toLowerCase().includes(search));
+  pipelineInspectionList.replaceChildren();
+  for (const item of visible) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label;
+    button.title = item.path;
+    if (item.pipeline_id === state.selectedPipelineInspectionId) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", () => selectPipelineInspection(item.pipeline_id));
+    pipelineInspectionList.append(button);
+  }
+  if (!visible.length) pipelineInspectionList.textContent = "No matching pipelines.";
+}
+
+function clearPipelineInspectionPreview(message = "Select a file to preview its contents.") {
+  state.selectedPipelineInspectionFileId = null;
+  state.pipelineInspectionContent = "";
+  pipelineInspectionPath.textContent = "Select a file to inspect.";
+  pipelineInspectionText.hidden = true;
+  pipelineInspectionText.textContent = "";
+  pipelineInspectionImage.hidden = true;
+  pipelineInspectionImage.removeAttribute("src");
+  pipelineInspectionEmpty.hidden = false;
+  pipelineInspectionEmpty.textContent = message;
+  pipelineInspectionCopy.disabled = true;
+  pipelineInspectionOpenFolder.disabled = true;
+}
+
+function renderPipelineInspectionFiles() {
+  pipelineInspectionFiles.replaceChildren();
+  for (const item of state.pipelineInspectionFiles) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.file_id;
+    button.title = item.path;
+    if (item.file_id === state.selectedPipelineInspectionFileId) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", () => selectPipelineInspectionFile(item.file_id));
+    pipelineInspectionFiles.append(button);
+  }
+  if (!state.pipelineInspectionFiles.length) pipelineInspectionFiles.textContent = "This pipeline has no files.";
+}
+
+async function loadPipelineInspections() {
+  pipelineInspectionStatus.textContent = "Loading pipelines...";
+  try {
+    const payload = await fetchJson("/api/pipeline-inspection");
+    state.pipelineInspections = payload.pipelines || [];
+    if (!state.pipelineInspections.some((item) => item.pipeline_id === state.selectedPipelineInspectionId)) {
+      state.selectedPipelineInspectionId = null;
+    }
+    renderPipelineInspectionList();
+    pipelineInspectionStatus.textContent = `${state.pipelineInspections.length} pipeline(s)`;
+    if (state.selectedPipelineInspectionId) await selectPipelineInspection(state.selectedPipelineInspectionId);
+  } catch (error) {
+    pipelineInspectionStatus.textContent = "Unable to load pipelines";
+    showMessageElement(pipelineInspectionMessage, error.message, "error");
+  }
+}
+
+async function selectPipelineInspection(pipelineId) {
+  state.selectedPipelineInspectionId = pipelineId;
+  state.pipelineInspectionFiles = [];
+  renderPipelineInspectionList();
+  renderPipelineInspectionFiles();
+  clearPipelineInspectionPreview("Select a file to preview its contents.");
+  const pipeline = state.pipelineInspections.find((item) => item.pipeline_id === pipelineId);
+  pipelineInspectionFilesTitle.textContent = pipeline?.label || "Files";
+  try {
+    const payload = await fetchJson(`/api/pipeline-inspection/files?${pipelineInspectionParams().toString()}`);
+    if (state.selectedPipelineInspectionId !== pipelineId) return;
+    state.pipelineInspectionFiles = payload.files || [];
+    renderPipelineInspectionFiles();
+  } catch (error) {
+    showMessageElement(pipelineInspectionMessage, error.message, "error");
+  }
+}
+
+async function selectPipelineInspectionFile(fileId) {
+  state.selectedPipelineInspectionFileId = fileId;
+  state.pipelineInspectionContent = "";
+  renderPipelineInspectionFiles();
+  const file = selectedPipelineInspectionFile();
+  if (!file) return;
+  pipelineInspectionPath.textContent = file.path;
+  pipelineInspectionOpenFolder.disabled = false;
+  pipelineInspectionText.hidden = true;
+  pipelineInspectionImage.hidden = true;
+  pipelineInspectionEmpty.hidden = true;
+  pipelineInspectionCopy.disabled = file.kind === "other";
+  const params = pipelineInspectionParams(file.file_id);
+  try {
+    if (file.kind === "text") {
+      const payload = await fetchJson(`/api/pipeline-inspection/text?${params.toString()}`);
+      if (state.selectedPipelineInspectionId !== params.get("pipeline_id") || state.selectedPipelineInspectionFileId !== fileId) return;
+      state.pipelineInspectionContent = payload.content || "";
+      pipelineInspectionText.textContent = state.pipelineInspectionContent;
+      pipelineInspectionText.hidden = false;
+    } else if (file.kind === "image") {
+      pipelineInspectionImage.src = `/api/pipeline-inspection/file?${params.toString()}`;
+      pipelineInspectionImage.hidden = false;
+    } else {
+      pipelineInspectionEmpty.textContent = "Preview is available for Markdown, JSON, and image files.";
+      pipelineInspectionEmpty.hidden = false;
+    }
+  } catch (error) {
+    showMessageElement(pipelineInspectionMessage, error.message, "error");
+  }
+}
+
+async function copyPipelineInspectionFile() {
+  const file = selectedPipelineInspectionFile();
+  if (!file) return;
+  try {
+    if (file.kind === "text") {
+      await writeClipboardText(state.pipelineInspectionContent);
+    } else if (file.kind === "image") {
+      await pipelineInspectionImage.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = pipelineInspectionImage.naturalWidth;
+      canvas.height = pipelineInspectionImage.naturalHeight;
+      canvas.getContext("2d").drawImage(pipelineInspectionImage, 0, 0);
+      const blob = await canvasBlob(canvas);
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    }
+    showMessageElement(pipelineInspectionMessage, "File contents copied.", "success");
+  } catch (error) {
+    showMessageElement(pipelineInspectionMessage, `Unable to copy file: ${error.message}`, "error");
+  }
+}
+
+async function openPipelineInspectionFolder() {
+  const file = selectedPipelineInspectionFile();
+  if (!file) return;
+  try {
+    const payload = await fetchJson(
+      `/api/pipeline-inspection/open-folder?${pipelineInspectionParams(file.file_id).toString()}`,
+      { method: "POST" },
+    );
+    showMessageElement(pipelineInspectionMessage, `Opened ${payload.path}.`, "success");
+  } catch (error) {
+    showMessageElement(pipelineInspectionMessage, error.message, "error");
+  }
+}
+
 async function loadPipelineControls() {
   if (!state.character || !state.phase) {
     pipelineControlsStatus.textContent = "No character/phase selected.";
@@ -8320,6 +8497,9 @@ manifestNext.addEventListener("click", () => {
     selectManifestAsset(state.manifestTasks[index + 1].asset_id);
   }
 });
+pipelineInspectionSearch.addEventListener("input", renderPipelineInspectionList);
+pipelineInspectionCopy.addEventListener("click", copyPipelineInspectionFile);
+pipelineInspectionOpenFolder.addEventListener("click", openPipelineInspectionFolder);
 
 async function main() {
   for (const status of document.querySelectorAll(".status-text")) {
