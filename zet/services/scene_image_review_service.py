@@ -58,10 +58,12 @@ class SceneImageReviewService:
         candidate_path = self.path_service.scene_candidate_image_path(safe_story, safe_scene)
         comment_path = self.path_service.scene_render_review_comment_path(safe_story, safe_scene)
         title = safe_scene
-        try:
-            title = self.story_service.load_scene(safe_story, safe_scene).record.title
-        except Exception:
-            pass
+        scene = next(
+            (item for item in self.story_service.list_scenes(safe_story) if item.slug == safe_scene),
+            None,
+        )
+        if scene is not None:
+            title = scene.title
         return SceneImageReviewStatus(
             story_slug=safe_story,
             scene_slug=safe_scene,

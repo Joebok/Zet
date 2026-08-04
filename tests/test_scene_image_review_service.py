@@ -30,7 +30,7 @@ class _StoryService:
         return [SimpleNamespace(slug="story")]
 
     def list_scenes(self, story_slug: str):
-        return [SimpleNamespace(slug="scene")]
+        return [SimpleNamespace(slug="scene", title="Title scene")]
 
 
 class SceneImageReviewServiceTests(unittest.TestCase):
