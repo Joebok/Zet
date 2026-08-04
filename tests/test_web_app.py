@@ -631,7 +631,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(pipelines.status_code, 200)
             self.assertEqual(
                 [item["pipeline_id"] for item in pipelines.json()["pipelines"]],
-                ["Test/Adult/Body-Reference", "Stories/Demo/Opening"],
+                ["Test/Adult/Body-Reference/Front/_/Asset_1", "Stories/Demo/Opening"],
             )
 
             files = client.get(

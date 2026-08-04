@@ -97,6 +97,8 @@ for asset_id, name, size, color in (
         f"Deterministic prompt for Asset {asset_id}\n",
         encoding="utf-8",
     )
+    (workspace / "_stage.txt").write_text("RENDER\n", encoding="utf-8")
+    (workspace / "_history.log").write_text(f"Asset {asset_id} created\n", encoding="utf-8")
 
 local_images = pipeline_root / "Asset_1" / "Local_Test_Renders"
 local_images.mkdir(parents=True, exist_ok=True)

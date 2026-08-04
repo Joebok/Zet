@@ -6606,20 +6606,53 @@ function pipelineInspectionParams(fileId = "") {
   return params;
 }
 
-function renderPipelineInspectionList() {
-  const search = pipelineInspectionSearch.value.trim().toLowerCase();
-  const visible = state.pipelineInspections.filter((item) => item.label.toLowerCase().includes(search));
-  pipelineInspectionList.replaceChildren();
-  for (const item of visible) {
+function flattenPipelineInspections(nodes = state.pipelineInspections) {
+  return nodes.flatMap((node) => [node, ...flattenPipelineInspections(node.children || [])]);
+}
+
+function pipelineInspectionNodeMatches(node, search) {
+  return !search
+    || node.label.toLowerCase().includes(search)
+    || (node.children || []).some((child) => pipelineInspectionNodeMatches(child, search));
+}
+
+function pipelineInspectionNodeContains(node, pipelineId) {
+  return node.pipeline_id === pipelineId
+    || (node.children || []).some((child) => pipelineInspectionNodeContains(child, pipelineId));
+}
+
+function appendPipelineInspectionNodes(nodes, container, search, ancestorMatches = false) {
+  for (const item of nodes) {
+    const selfMatches = ancestorMatches || !search || item.label.toLowerCase().includes(search);
+    if (!selfMatches && !pipelineInspectionNodeMatches(item, search)) continue;
+    if (item.children?.length) {
+      const details = document.createElement("details");
+      details.className = "inspection-tree-node";
+      details.open = Boolean(search) || pipelineInspectionNodeContains(item, state.selectedPipelineInspectionId);
+      const summary = document.createElement("summary");
+      summary.textContent = item.label;
+      const children = document.createElement("div");
+      children.className = "inspection-tree-children";
+      appendPipelineInspectionNodes(item.children, children, search, selfMatches);
+      details.append(summary, children);
+      container.append(details);
+      continue;
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = item.label;
-    button.title = item.path;
+    button.title = item.path || "";
     if (item.pipeline_id === state.selectedPipelineInspectionId) button.setAttribute("aria-current", "true");
     button.addEventListener("click", () => selectPipelineInspection(item.pipeline_id));
-    pipelineInspectionList.append(button);
+    container.append(button);
   }
-  if (!visible.length) pipelineInspectionList.textContent = "No matching pipelines.";
+}
+
+function renderPipelineInspectionList() {
+  const search = pipelineInspectionSearch.value.trim().toLowerCase();
+  pipelineInspectionList.replaceChildren();
+  appendPipelineInspectionNodes(state.pipelineInspections, pipelineInspectionList, search);
+  if (!pipelineInspectionList.children.length) pipelineInspectionList.textContent = "No matching pipelines.";
 }
 
 function clearPipelineInspectionPreview(message = "Select a file to preview its contents.") {
@@ -6655,7 +6688,7 @@ async function loadPipelineInspections() {
   try {
     const payload = await fetchJson("/api/pipeline-inspection");
     state.pipelineInspections = payload.pipelines || [];
-    if (!state.pipelineInspections.some((item) => item.pipeline_id === state.selectedPipelineInspectionId)) {
+    if (!flattenPipelineInspections().some((item) => item.pipeline_id === state.selectedPipelineInspectionId)) {
       state.selectedPipelineInspectionId = null;
     }
     renderPipelineInspectionList();
@@ -6673,7 +6706,7 @@ async function selectPipelineInspection(pipelineId) {
   renderPipelineInspectionList();
   renderPipelineInspectionFiles();
   clearPipelineInspectionPreview("Select a file to preview its contents.");
-  const pipeline = state.pipelineInspections.find((item) => item.pipeline_id === pipelineId);
+  const pipeline = flattenPipelineInspections().find((item) => item.pipeline_id === pipelineId);
   pipelineInspectionFilesTitle.textContent = pipeline?.label || "Files";
   try {
     const payload = await fetchJson(`/api/pipeline-inspection/files?${pipelineInspectionParams().toString()}`);
@@ -6709,7 +6742,7 @@ async function selectPipelineInspectionFile(fileId) {
       pipelineInspectionImage.src = `/api/pipeline-inspection/file?${params.toString()}`;
       pipelineInspectionImage.hidden = false;
     } else {
-      pipelineInspectionEmpty.textContent = "Preview is available for Markdown, JSON, and image files.";
+      pipelineInspectionEmpty.textContent = "Preview is available for Markdown, JSON, TXT, LOG, and image files.";
       pipelineInspectionEmpty.hidden = false;
     }
   } catch (error) {
