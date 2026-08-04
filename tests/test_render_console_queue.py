@@ -86,7 +86,7 @@ An arch.
             self.assertFalse(answer_path.exists())
             self.assertTrue(Path(second.ask_path).exists())
 
-    def test_write_answer_image_copies_story_target_output_file(self) -> None:
+    def test_write_answer_image_defers_story_target_output_to_harvester(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Story_Test"
@@ -122,7 +122,9 @@ An arch.
 
             queue.write_answer_image(task, b"image bytes", "image/png")
 
-            self.assertEqual(b"image bytes", target_path.read_bytes())
+            self.assertFalse(target_path.exists())
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test"
+            self.assertEqual(b"image bytes", (answer_path / "At-the-Arch.png").read_bytes())
             self.assertEqual(b"image bytes", (root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test" / "At-the-Arch.png").read_bytes())
 
     def test_harvester_applies_story_target_output_answer(self) -> None:

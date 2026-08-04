@@ -600,6 +600,7 @@
           </div>
           <div id="scene-image-panel" class="scene-image-panel" hidden>
             <img id="scene-image-preview" alt="Scene render">
+            <a id="scene-image-candidate-link" class="candidate-pending-overlay" hidden>Candidate Image Pending</a>
           </div>
           <textarea id="scene-text" spellcheck="false" placeholder="Select or create a scene to edit its markdown."></textarea>
         </section>
@@ -893,7 +894,7 @@
 
     <section id="render-review-page" class="page">
       <div class="page-title-row">
-        <h1>Render Review</h1>
+        <h1>Image Review</h1>
         <div id="render-review-status" class="status-text"></div>
       </div>
       <div class="review-layout render-review-layout">
@@ -905,8 +906,8 @@
           <table id="render-review-task-table">
             <thead>
               <tr>
-                <th>asset</th>
-                <th>view</th>
+                <th>item</th>
+                <th>type</th>
                 <th>image</th>
               </tr>
             </thead>

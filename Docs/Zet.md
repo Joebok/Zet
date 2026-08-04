@@ -224,12 +224,18 @@ Current dashboard pages:
 - `Assets`
 - `Manifest`
 - `Prompt Inspection`
-- `Render Review`
+- `Image Review`
 - `Render Console`
 - `AI Controls`
 - `Pipeline Controls`
 
 The Template Editor is intentionally deferred while the body-reference authoring workflow is reconsidered.
+
+### Scene Image Review
+
+The first successful image saved for a scene is published directly to `Stories/<story>/<scene>.png`. Local test renders do not count as published or candidate images. Later successful saves are written to `Pipelines/Stories/<story>/<scene>/Candidate/<scene>.png` and appear in Image Review beside the currently published image.
+
+Promoting a scene candidate backs up the current published image under `Locked_Backups`, publishes the candidate, and clears the pending review. Discarding removes only the candidate. Other dashboard pages always display the published image and link the `Candidate Image Pending` overlay to the matching scene in Image Review.
 
 ### Head-Fitment Pipeline
 

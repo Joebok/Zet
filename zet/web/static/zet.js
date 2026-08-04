@@ -20,7 +20,7 @@ const state = {
   selectedPromptReviewAskId: null,
   promptReviewDetail: null,
   renderReviewTasks: [],
-  selectedRenderReviewAssetId: null,
+  selectedRenderReviewKey: null,
   renderReviewDetail: null,
   aiControls: null,
   pipelineControls: null,
@@ -428,6 +428,7 @@ const sceneMove = document.querySelector("#scene-move");
 const sceneValidation = document.querySelector("#scene-validation");
 const sceneImagePanel = document.querySelector("#scene-image-panel");
 const sceneImagePreview = document.querySelector("#scene-image-preview");
+const sceneImageCandidateLink = document.querySelector("#scene-image-candidate-link");
 const zineStatus = document.querySelector("#zine-status");
 const zineMessage = document.querySelector("#zine-message");
 const zineTableBody = document.querySelector("#zine-table tbody");
@@ -513,6 +514,10 @@ fullscreenImageNext.hidden = true;
 const fullscreenImageEmpty = document.createElement("p");
 fullscreenImageEmpty.className = "fullscreen-image-empty";
 fullscreenImageEmpty.hidden = true;
+const fullscreenCandidateLink = document.createElement("a");
+fullscreenCandidateLink.className = "candidate-pending-overlay fullscreen-candidate-pending";
+fullscreenCandidateLink.textContent = "Candidate Image Pending";
+fullscreenCandidateLink.hidden = true;
 const fullscreenCropBox = document.createElement("div");
 fullscreenCropBox.className = "fullscreen-crop-box";
 fullscreenCropBox.hidden = true;
@@ -522,6 +527,7 @@ fullscreenImageOverlay.append(
   fullscreenImage,
   fullscreenImageEmpty,
   fullscreenImageNext,
+  fullscreenCandidateLink,
   fullscreenCropBox,
 );
 document.body.append(fullscreenImageOverlay);
@@ -605,6 +611,25 @@ function fileUrl(path, cacheKey = "") {
     params.set("v", cacheKey);
   }
   return `/api/file?${params.toString()}`;
+}
+
+function sceneImageReviewUrl(storySlug, sceneSlug) {
+  return `?${new URLSearchParams({
+    page: "render-review",
+    review_kind: "scene",
+    story_slug: storySlug,
+    scene_slug: sceneSlug,
+  }).toString()}`;
+}
+
+function setCandidatePendingLink(link, document) {
+  const pending = Boolean(document?.candidate_pending && document?.image_exists !== false);
+  link.hidden = !pending;
+  if (pending) {
+    link.href = sceneImageReviewUrl(document.story?.slug, document.scene?.slug);
+  } else {
+    link.removeAttribute("href");
+  }
 }
 
 function downloadFileUrl(path) {
@@ -975,6 +1000,8 @@ function closeFullscreenImage() {
   }
   fullscreenImage.removeAttribute("src");
   fullscreenImage.alt = "";
+  fullscreenCandidateLink.hidden = true;
+  fullscreenCandidateLink.removeAttribute("href");
 }
 
 let fullscreenSceneNavigation = null;
@@ -1012,6 +1039,7 @@ function showFullscreenSceneDocument(document, scene) {
     fullscreenImageEmpty.textContent = `No Image for ${sceneName}`;
     fullscreenImageEmpty.hidden = false;
   }
+  setCandidatePendingLink(fullscreenCandidateLink, document);
 }
 
 async function navigateFullscreenScene(offset) {
@@ -1063,8 +1091,13 @@ function openFullscreenImage(src, alt = "", options = {}) {
     return;
   }
   resetFullscreenNavigation();
+  fullscreenCandidateLink.hidden = true;
+  fullscreenCandidateLink.removeAttribute("href");
   fullscreenImage.src = src;
   fullscreenImage.alt = alt;
+  if (options.document) {
+    setCandidatePendingLink(fullscreenCandidateLink, options.document);
+  }
   const sceneIndex = options.scenes?.findIndex((scene) => scene.slug === options.sceneSlug) ?? -1;
   if (options.storySlug && sceneIndex >= 0) {
     fullscreenSceneNavigation = {
@@ -2042,7 +2075,7 @@ async function saveBeforePageNavigation(nextPage) {
 }
 
 async function activatePage(page, options = {}) {
-  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "prompt-review", "ai-controls", "local-image-config", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
+  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "prompt-review", "render-review", "ai-controls", "local-image-config", "pipeline-controls"].includes(page) && !selectedPhaseReady()) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
@@ -2093,7 +2126,7 @@ async function activatePage(page, options = {}) {
     await loadManifestTasks();
   }
   if (page === "render-review") {
-    await loadRenderReviewTasks();
+    await loadRenderReviewTasks(options.preferredReviewKey || null);
   }
   if (page === "turnarounds") {
     await loadTurnarounds();
@@ -3260,6 +3293,8 @@ function clearSceneEditor() {
   setSaveState(sceneSaveState, "");
   sceneImagePanel.hidden = true;
   sceneImagePreview.removeAttribute("src");
+  sceneImageCandidateLink.hidden = true;
+  sceneImageCandidateLink.removeAttribute("href");
   closeSceneBuilder();
   renderValidationBox(sceneValidation, [], "Select a story, then create or open a scene.");
 }
@@ -3267,6 +3302,7 @@ function clearSceneEditor() {
 function updateSceneImageToggle() {
   const imagePath = state.sceneDetail?.image_path || "";
   const hasImage = Boolean(state.sceneDetail?.image_exists && imagePath);
+  setCandidatePendingLink(sceneImageCandidateLink, state.sceneDetail);
   sceneToggleImage.disabled = !hasImage;
   if (!hasImage) {
     sceneImagePanel.hidden = true;
@@ -3620,6 +3656,7 @@ function toggleSceneImage() {
   }
   if (sceneImagePanel.hidden) {
     sceneImagePreview.src = fileUrl(imagePath, Date.now().toString());
+    setCandidatePendingLink(sceneImageCandidateLink, state.sceneDetail);
     sceneImagePanel.hidden = false;
   } else {
     sceneImagePanel.hidden = true;
@@ -4319,7 +4356,7 @@ function builderRenderElementEditor() {
   const referenceTag = element.reference_images?.[0]?.tag || "";
   const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
   const referenceThumbnail = reference?.thumbnail_path
-    ? `<img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}">`
+    ? `<span class="scene-builder-reference-preview"><img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}" data-story-slug="${escapeHtml(reference.story_slug || "")}" data-scene-slug="${escapeHtml(reference.scene_slug || "")}" data-candidate-pending="${reference.candidate_pending ? "true" : "false"}">${reference.candidate_pending ? `<a class="candidate-pending-overlay" href="${sceneImageReviewUrl(reference.story_slug, reference.scene_slug)}">Candidate Image Pending</a>` : ""}</span>`
     : "";
   return `
     <div class="scene-builder-card">
@@ -4774,7 +4811,14 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   if (referenceImage) {
     event.preventDefault();
     event.stopPropagation();
-    openFullscreenImage(referenceImage.src, referenceImage.alt || "Reference image");
+    openFullscreenImage(referenceImage.src, referenceImage.alt || "Reference image", {
+      document: {
+        candidate_pending: referenceImage.dataset.candidatePending === "true",
+        image_exists: true,
+        story: { slug: referenceImage.dataset.storySlug || "" },
+        scene: { slug: referenceImage.dataset.sceneSlug || "" },
+      },
+    });
     return;
   }
   const helpTarget = event.target.closest("[data-builder-help]");
@@ -5799,24 +5843,20 @@ async function copyText(value, label = "Copied.") {
   showPromptMessage(label);
 }
 
-async function loadRenderReviewTasks(preferredAssetId = null) {
-  if (!state.character || !state.phase) {
-    renderReviewStatus.textContent = "No character/phase selected.";
-    return;
-  }
+async function loadRenderReviewTasks(preferredReviewKey = null) {
   renderReviewStatus.textContent = "Loading render reviews...";
   const payload = await fetchJson(`/api/render-review/tasks?${currentQuery().toString()}`);
   state.renderReviewTasks = payload.tasks || [];
-  const taskIds = new Set(state.renderReviewTasks.map((task) => task.asset_id));
-  state.selectedRenderReviewAssetId =
-    preferredAssetId || state.selectedRenderReviewAssetId || state.renderReviewTasks[0]?.asset_id || null;
-  if (state.selectedRenderReviewAssetId && !taskIds.has(state.selectedRenderReviewAssetId)) {
-    state.selectedRenderReviewAssetId = state.renderReviewTasks[0]?.asset_id || null;
+  const taskKeys = new Set(state.renderReviewTasks.map((task) => task.review_key));
+  state.selectedRenderReviewKey =
+    preferredReviewKey || state.selectedRenderReviewKey || state.renderReviewTasks[0]?.review_key || null;
+  if (state.selectedRenderReviewKey && !taskKeys.has(state.selectedRenderReviewKey)) {
+    state.selectedRenderReviewKey = state.renderReviewTasks[0]?.review_key || null;
   }
   renderRenderReviewTaskTable();
-  renderReviewStatus.textContent = `${state.renderReviewTasks.length} render(s) waiting`;
-  if (state.selectedRenderReviewAssetId) {
-    await selectRenderReviewAsset(state.selectedRenderReviewAssetId);
+  renderReviewStatus.textContent = `${state.renderReviewTasks.length} image(s) waiting`;
+  if (state.selectedRenderReviewKey) {
+    await selectRenderReview(state.selectedRenderReviewKey);
   } else {
     clearRenderReview();
   }
@@ -5830,22 +5870,39 @@ function renderRenderReviewTaskTable() {
   }
   for (const task of state.renderReviewTasks) {
     const row = document.createElement("tr");
-    row.dataset.assetId = task.asset_id;
-    row.classList.toggle("selected", task.asset_id === state.selectedRenderReviewAssetId);
-    for (const value of [task.asset_id, task.body_view, task.candidate_image_exists ? "CAMERA" : ""]) {
+    row.dataset.reviewKey = task.review_key;
+    row.classList.toggle("selected", task.review_key === state.selectedRenderReviewKey);
+    const isScene = task.review_kind === "scene";
+    const label = isScene ? `${task.story_slug}/${task.scene_slug}` : task.asset_id;
+    const candidateExists = isScene ? task.candidate_exists : task.candidate_image_exists;
+    for (const value of [label, isScene ? "Scene" : task.body_view, candidateExists ? "CAMERA" : ""]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);
     }
-    makeSelectableRow(row, `Asset ${task.asset_id}`, task.asset_id === state.selectedRenderReviewAssetId, () => selectRenderReviewAsset(task.asset_id));
+    makeSelectableRow(row, isScene ? `Scene ${label}` : `Asset ${task.asset_id}`, task.review_key === state.selectedRenderReviewKey, () => selectRenderReview(task.review_key));
     renderReviewTaskBody.append(row);
   }
 }
 
-async function selectRenderReviewAsset(assetId) {
-  state.selectedRenderReviewAssetId = Number(assetId);
-  updateSelectableRows(renderReviewTaskBody, (row) => Number(row.dataset.assetId) === state.selectedRenderReviewAssetId);
-  const detail = await fetchJson(`/api/render-review/${state.selectedRenderReviewAssetId}?${currentQuery().toString()}`);
+function selectedRenderReviewTask() {
+  return state.renderReviewTasks.find((task) => task.review_key === state.selectedRenderReviewKey) || null;
+}
+
+function renderReviewEndpoint(task, action = "") {
+  const suffix = action ? `/${action}` : "";
+  if (task.review_kind === "scene") {
+    return `/api/render-review/scenes/${encodeURIComponent(task.story_slug)}/${encodeURIComponent(task.scene_slug)}${suffix}`;
+  }
+  return `/api/render-review/${task.asset_id}${suffix}?${currentQuery().toString()}`;
+}
+
+async function selectRenderReview(reviewKey) {
+  state.selectedRenderReviewKey = reviewKey;
+  updateSelectableRows(renderReviewTaskBody, (row) => row.dataset.reviewKey === state.selectedRenderReviewKey);
+  const task = selectedRenderReviewTask();
+  if (!task) return;
+  const detail = await fetchJson(renderReviewEndpoint(task));
   renderRenderReview(detail);
 }
 
@@ -5864,34 +5921,45 @@ function clearRenderReview() {
   renderPromoteButton.disabled = true;
   renderFailRenderButton.disabled = true;
   renderFailRegenerateButton.disabled = true;
+  renderFailRenderButton.textContent = "Fail to RENDER";
+  renderFailRegenerateButton.hidden = false;
+  renderStageText.closest("section").hidden = false;
+  renderHistoryText.closest("section").hidden = false;
 }
 
 function renderRenderReview(detail) {
   state.renderReviewDetail = detail;
-  const asset = detail.asset;
-  renderReviewTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view}`;
+  const isScene = detail.review_kind === "scene";
+  const asset = detail.asset || {};
+  renderReviewTitle.textContent = isScene
+    ? `${detail.title || detail.scene_slug} | ${detail.story_slug}`
+    : `Asset ${asset.asset_id} | ${asset.body_view}`;
   renderReviewPath.textContent = detail.candidate_image_path || "";
   renderReviewComment.value = detail.render_review_comment || "";
   renderStageText.textContent = detail.stage_text || "No stage marker found.";
   renderHistoryText.textContent = detail.history_text || "No history found.";
   renderCandidateImage(detail);
   renderLockedImage(detail);
-  renderPromoteButton.disabled = !detail.is_reviewable || !detail.exists?.candidate_image;
+  const candidateExists = isScene ? detail.candidate_exists : detail.exists?.candidate_image;
+  renderPromoteButton.disabled = !detail.is_reviewable || !candidateExists;
   renderFailRenderButton.disabled = !detail.is_reviewable;
   renderFailRegenerateButton.disabled = !detail.is_reviewable;
+  renderFailRenderButton.textContent = isScene ? "Discard Candidate" : "Fail to RENDER";
+  renderFailRegenerateButton.hidden = isScene;
+  renderStageText.closest("section").hidden = isScene;
+  renderHistoryText.closest("section").hidden = isScene;
   renderCommentSave.disabled = !detail.is_reviewable;
   updateRenderReviewNavigation();
 }
 
 async function saveRenderReviewComment() {
-  if (!state.selectedRenderReviewAssetId) {
-    return;
-  }
+  const task = selectedRenderReviewTask();
+  if (!task) return;
   renderCommentSave.disabled = true;
   showRenderMessage("Saving comment...");
   try {
     const payload = await fetchJson(
-      `/api/render-review/${state.selectedRenderReviewAssetId}/comment?${currentQuery().toString()}`,
+      renderReviewEndpoint(task, "comment"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -5927,10 +5995,11 @@ function renderReviewImage(container, path, exists, emptyText, altText, cacheKey
 }
 
 function renderCandidateImage(detail) {
+  const isScene = detail.review_kind === "scene";
   renderReviewImage(
     candidateRender,
     detail.candidate_image_path,
-    detail.exists?.candidate_image,
+    isScene ? detail.candidate_exists : detail.exists?.candidate_image,
     "No candidate image.",
     "Candidate render",
     detail.asset?.updated_at || "",
@@ -5938,10 +6007,11 @@ function renderCandidateImage(detail) {
 }
 
 function renderLockedImage(detail) {
+  const isScene = detail.review_kind === "scene";
   renderReviewImage(
     lockedRender,
     detail.locked_image_path,
-    detail.exists?.locked_image,
+    isScene ? detail.locked_exists : detail.exists?.locked_image,
     "No locked image.",
     "Locked render",
     detail.asset?.updated_at || "",
@@ -5949,19 +6019,19 @@ function renderLockedImage(detail) {
 }
 
 function updateRenderReviewNavigation() {
-  const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
+  const index = state.renderReviewTasks.findIndex((task) => task.review_key === state.selectedRenderReviewKey);
   renderReviewPrev.disabled = index <= 0;
   renderReviewNext.disabled = index < 0 || index >= state.renderReviewTasks.length - 1;
 }
 
 async function runRenderReviewAction(action) {
-  if (!state.selectedRenderReviewAssetId) {
-    return;
-  }
+  const task = selectedRenderReviewTask();
+  if (!task) return;
+  const resolvedAction = task.review_kind === "scene" ? "discard-candidate" : action;
   showRenderMessage("Working...");
   try {
     const payload = await fetchJson(
-      `/api/render-review/${state.selectedRenderReviewAssetId}/${action}?${currentQuery().toString()}`,
+      renderReviewEndpoint(task, resolvedAction),
       { method: "POST" },
     );
     showRenderMessage(payload.message || "Review action complete.");
@@ -5973,10 +6043,9 @@ async function runRenderReviewAction(action) {
 }
 
 async function promoteRenderReview() {
-  if (!state.selectedRenderReviewAssetId) {
-    return;
-  }
-  const replacingLockedImage = Boolean(state.renderReviewDetail?.exists?.locked_image);
+  const task = selectedRenderReviewTask();
+  if (!task) return;
+  const replacingLockedImage = task.review_kind === "asset" && Boolean(state.renderReviewDetail?.exists?.locked_image);
   const params = currentQuery();
   if (replacingLockedImage) {
     const confirmed = window.confirm("A locked image already exists for this asset. Replace it with the candidate image?");
@@ -5988,7 +6057,9 @@ async function promoteRenderReview() {
   showRenderMessage("Working...");
   try {
     const payload = await fetchJson(
-      `/api/render-review/${state.selectedRenderReviewAssetId}/promote-to-locked?${params.toString()}`,
+      task.review_kind === "scene"
+        ? renderReviewEndpoint(task, "promote-to-locked")
+        : `/api/render-review/${task.asset_id}/promote-to-locked?${params.toString()}`,
       { method: "POST" },
     );
     showRenderMessage(payload.message || "Render approved.");
@@ -7402,7 +7473,11 @@ async function saveRenderConsoleImage() {
       await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
     } else {
       clearRenderConsole();
-      activatePage("render-review");
+      activatePage("render-review", {
+        preferredReviewKey: payload.scene_image_review?.candidate_exists
+          ? payload.scene_image_review.review_key
+          : null,
+      });
     }
     renderConsoleStatus.textContent = `${state.renderConsoleTasks.length} manual render task(s) waiting`;
     await loadAiControls().catch(() => {});
@@ -7628,7 +7703,7 @@ characterSelect.addEventListener("change", async () => {
   saveStoredContext();
   state.selectedAssetId = null;
   state.selectedPromptReviewAskId = null;
-  state.selectedRenderReviewAssetId = null;
+  state.selectedRenderReviewKey = null;
   state.selectedRenderConsoleAskId = null;
   state.selectedLocalImageReviewAskId = null;
   state.selectedTurnaroundId = null;
@@ -7697,7 +7772,7 @@ phaseSelect.addEventListener("change", async () => {
   updateHeaderFitmentPreview();
   state.selectedAssetId = null;
   state.selectedPromptReviewAskId = null;
-  state.selectedRenderReviewAssetId = null;
+  state.selectedRenderReviewKey = null;
   state.selectedRenderConsoleAskId = null;
   state.selectedLocalImageReviewAskId = null;
   state.selectedTurnaroundId = null;
@@ -7860,6 +7935,7 @@ enableFullscreenImage(sceneImagePreview, () => ({
   sceneSlug: state.selectedSceneSlug,
   scenes: state.scenes,
   storySlug: state.selectedStorySlug,
+  document: state.sceneDetail,
 }));
 zineNew.addEventListener("click", () => runGuardedTransition(clearZineEditor));
 zineEdit.addEventListener("click", () => zineName.focus());
@@ -7898,6 +7974,8 @@ fullscreenImageOverlay.addEventListener("close", () => {
   resetFullscreenNavigation();
   fullscreenImage.removeAttribute("src");
   fullscreenImage.alt = "";
+  fullscreenCandidateLink.hidden = true;
+  fullscreenCandidateLink.removeAttribute("href");
 });
 fullscreenImageOverlay.addEventListener("contextmenu", (event) => {
   event.preventDefault();
@@ -8081,15 +8159,15 @@ renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction
 renderCommentSave.addEventListener("click", saveRenderReviewComment);
 turnaroundSavePartial.addEventListener("click", savePartialTurnaround);
 renderReviewPrev.addEventListener("click", () => {
-  const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
+  const index = state.renderReviewTasks.findIndex((task) => task.review_key === state.selectedRenderReviewKey);
   if (index > 0) {
-    selectRenderReviewAsset(state.renderReviewTasks[index - 1].asset_id);
+    selectRenderReview(state.renderReviewTasks[index - 1].review_key);
   }
 });
 renderReviewNext.addEventListener("click", () => {
-  const index = state.renderReviewTasks.findIndex((task) => task.asset_id === state.selectedRenderReviewAssetId);
+  const index = state.renderReviewTasks.findIndex((task) => task.review_key === state.selectedRenderReviewKey);
   if (index >= 0 && index < state.renderReviewTasks.length - 1) {
-    selectRenderReviewAsset(state.renderReviewTasks[index + 1].asset_id);
+    selectRenderReview(state.renderReviewTasks[index + 1].review_key);
   }
 });
 refreshAiControlsButton.addEventListener("click", async () => {
@@ -8253,6 +8331,13 @@ async function main() {
   try {
     await loadContext();
     await loadAssets();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("page") === "render-review") {
+      const preferredReviewKey = params.get("review_kind") === "scene"
+        ? `scene:${params.get("story_slug") || ""}:${params.get("scene_slug") || ""}`
+        : null;
+      await activatePage("render-review", { skipAutosave: true, preferredReviewKey });
+    }
   } catch (error) {
     assetStatus.textContent = error.message;
   }

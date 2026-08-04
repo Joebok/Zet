@@ -140,6 +140,10 @@ for story_slug in ("Alpha-Story", "Beta-Story", "Gamma-Story"):
             zet_app.story_service.create_default_scene_builder_data(story_slug, scene_slug),
         )
 
+scene_candidate = zet_app.path_service.scene_candidate_image_path("Alpha-Story", "Closing-Scene")
+scene_candidate.parent.mkdir(parents=True, exist_ok=True)
+Image.new("RGB", (800, 600), "blue").save(scene_candidate)
+
 analysis_path = zet_app.story_service.scene_pipeline_path("Alpha-Story", "Opening-Scene") / "AI_Prompt_Analysis.md"
 analysis_path.parent.mkdir(parents=True, exist_ok=True)
 analysis_path.write_text("# Prompt Analysis\n\nDeterministic browser-test analysis.\n", encoding="utf-8")

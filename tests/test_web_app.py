@@ -133,6 +133,42 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         (ask_path / "Final_Image_Prompt.md").write_text("manual render prompt\n", encoding="utf-8")
         return ask_path
 
+    def _write_story_render_ask(self, root: Path, suffix: str) -> Path:
+        story_dir = root / "Stories" / "demo"
+        story_dir.mkdir(parents=True, exist_ok=True)
+        (story_dir / "demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+        (story_dir / "scene.md").write_text("Scene: `[Scene]`\n", encoding="utf-8")
+        ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / f"Ask_Story_demo_scene_RENDER_{suffix}"
+        ask_path.mkdir(parents=True)
+        (ask_path / "ask_manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "ask_id": ask_path.name,
+                    "asset_id": None,
+                    "character": "",
+                    "phase": "",
+                    "pipeline": "Story",
+                    "pipeline_stage": "RENDER",
+                    "story_slug": "demo",
+                    "scene_slug": "scene",
+                    "ollama_attempt_id": suffix,
+                    "worker_type": "manual_chatgpt_render",
+                    "prompt_file": "Final_Image_Prompt.md",
+                    "expected_output": "scene.png",
+                    "candidate_output_file": "scene.png",
+                    "task_type": "render",
+                    "manual": True,
+                    "target_output_file": str(story_dir / "scene.png"),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (ask_path / "Final_Image_Prompt.md").write_text("scene render prompt\n", encoding="utf-8")
+        return ask_path
+
     def _write_head_fitment_fixture(self, root: Path) -> Path:
         character_dir = root / "Characters" / "Test" / "Adult"
         asset_dir = root / "Assets" / "Test" / "Adult"
@@ -616,6 +652,12 @@ Backend = "manual_chatgpt"
             self.assertLess(builder_index, render_index)
             self.assertLess(render_index, save_index)
             self.assertLess(save_index, delete_index)
+            self.assertIn('id="scene-image-candidate-link"', html)
+            self.assertIn("Candidate Image Pending", html)
+            javascript = (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8")
+            self.assertIn('page: "render-review"', javascript)
+            self.assertIn('review_kind: "scene"', javascript)
+            self.assertIn("reference.candidate_pending", javascript)
 
     def test_asset_regenerate_advances_only_the_selected_asset(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -934,6 +976,83 @@ Backend = "manual_chatgpt"
             self.assertEqual(detail.json()["prompt"], "scene line one\nscene line two\n")
             self.assertEqual(detail.json()["manifest"]["scene_slug"], "scene")
             self.assertTrue(detail.json()["prompt_path"].endswith("Final_Image_Prompt.md"))
+
+    def test_scene_render_answers_use_locked_candidate_review_lifecycle(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            local_image = root / "Pipelines" / "Stories" / "demo" / "scene" / "Local_Test_Renders" / "test_1.png"
+            local_image.parent.mkdir(parents=True)
+            local_image.write_bytes(b"local")
+            first_ask = self._write_story_render_ask(root, "FIRST")
+            client = TestClient(create_app(config_path))
+
+            first = client.post(
+                f"/api/render-console/tasks/{first_ask.name}/answer-image",
+                content=b"first image",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(first.status_code, 200)
+            self.assertFalse(first.json()["scene_image_review"]["candidate_exists"])
+            locked = root / "Stories" / "demo" / "scene.png"
+            candidate = root / "Pipelines" / "Stories" / "demo" / "scene" / "Candidate" / "scene.png"
+            self.assertEqual(locked.read_bytes(), b"first image")
+            self.assertFalse(candidate.exists())
+
+            second_ask = self._write_story_render_ask(root, "SECOND")
+            second = client.post(
+                f"/api/render-console/tasks/{second_ask.name}/answer-image",
+                params={"render_comment": "Compare the lighting."},
+                content=b"second image",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(second.status_code, 200)
+            self.assertTrue(second.json()["scene_image_review"]["candidate_exists"])
+            self.assertEqual(locked.read_bytes(), b"first image")
+            self.assertEqual(candidate.read_bytes(), b"second image")
+
+            scene_document = client.get("/api/stories/demo/scenes/scene").json()["document"]
+            self.assertEqual(scene_document["image_path"], str(locked))
+            self.assertTrue(scene_document["candidate_pending"])
+            references = client.get("/api/scene-image-picker").json()["rows"]
+            scene_reference = next(row for row in references if row["kind"] == "scene")
+            self.assertEqual(scene_reference["thumbnail_path"], str(locked))
+            self.assertTrue(scene_reference["candidate_pending"])
+            self.assertEqual(scene_reference["image_review_key"], "scene:demo:scene")
+
+            tasks = client.get("/api/render-review/tasks")
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["review_key"], "scene:demo:scene")
+            detail = client.get("/api/render-review/scenes/demo/scene")
+            self.assertTrue(detail.json()["locked_exists"])
+            self.assertTrue(detail.json()["candidate_exists"])
+            self.assertEqual(detail.json()["render_review_comment"], "Compare the lighting.")
+
+            promoted = client.post("/api/render-review/scenes/demo/scene/promote-to-locked")
+            self.assertEqual(promoted.status_code, 200)
+            self.assertEqual(locked.read_bytes(), b"second image")
+            self.assertFalse(candidate.exists())
+            backups = list((root / "Pipelines" / "Stories" / "demo" / "scene" / "Locked_Backups").glob("*.png"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), b"first image")
+
+            third_ask = self._write_story_render_ask(root, "THIRD")
+            client.post(
+                f"/api/render-console/tasks/{third_ask.name}/answer-image",
+                content=b"third image",
+                headers={"content-type": "image/png"},
+            )
+            discarded = client.post("/api/render-review/scenes/demo/scene/discard-candidate")
+            self.assertEqual(discarded.status_code, 200)
+            self.assertEqual(locked.read_bytes(), b"second image")
+            self.assertFalse(candidate.exists())
 
     def test_render_console_local_test_render_api_params(self):
         with tempfile.TemporaryDirectory() as temp_dir:

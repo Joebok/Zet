@@ -66,6 +66,7 @@ class AIAnswerHarvester:
         self.state_machine = state_machine
         self.timestamp_provider = timestamp_provider
         self.ai_proxy_service = ai_proxy_service
+        self.scene_image_review_service = None
 
     def _copy_local_render_artifacts(self, answer_path: Path, output_dir: Path) -> None:
         metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
@@ -350,6 +351,30 @@ class AIAnswerHarvester:
         response_path = answer_path / answer.expected_output
         if not response_path.exists():
             raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
+        if (
+            self.scene_image_review_service is not None
+            and str(ask_manifest.get("story_slug") or "").strip()
+            and str(ask_manifest.get("scene_slug") or "").strip()
+        ):
+            disposition, target_path = self.scene_image_review_service.apply_answer(answer_path, response_path, ask_manifest)
+            pipeline_path = self.path_service.story_pipeline_path(
+                str(ask_manifest["story_slug"]),
+                str(ask_manifest["scene_slug"]),
+            )
+            api_call_path = answer_path / "Stable_Matrix_API_Call.json"
+            if api_call_path.exists():
+                pipeline_path.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(api_call_path, pipeline_path / api_call_path.name)
+            self._copy_local_render_artifacts(answer_path, pipeline_path)
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status=f"{task_type.upper()}_APPLIED",
+                message=f"Applied scene image as {disposition} output to {target_path}.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
         target_output_file = str(ask_manifest.get("target_output_file") or "").strip()
         if not target_output_file:
             raise AIAnswerHarvesterError(f"Target output answer {answer_path} is missing target_output_file.")
