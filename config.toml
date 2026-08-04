@@ -1,5 +1,5 @@
 [BaseFolders]
-BaseLibraryPath = "."
+BaseLibraryPath = "Zet_Library/"
 BaseCharacterPath = "Characters/"
 BaseAssetPath = "Assets/"
 BasePipelinePath = "Pipelines/"

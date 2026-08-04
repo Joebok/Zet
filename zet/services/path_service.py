@@ -42,9 +42,6 @@ class PathService:
 
     def resolve_path(self, path: str | Path) -> Path:
         """Resolve absolute, project-relative, and legacy _Lib paths."""
-        raw_path = Path(path)
-        if raw_path.is_absolute():
-            return raw_path
         parts = self._path_parts(path)
         if parts and parts[0].endswith(":\\"):
             library_name = Path(self.config.base_library_path).name
@@ -52,6 +49,9 @@ class PathService:
                 if part == library_name:
                     return self.library_path(*parts[index + 1:])
             return Path(*parts)
+        raw_path = Path(path)
+        if raw_path.is_absolute():
+            return raw_path
         if parts and parts[0] == "_Lib":
             return self.library_path(*parts[1:])
         if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "Stories"}:

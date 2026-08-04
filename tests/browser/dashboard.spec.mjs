@@ -160,7 +160,9 @@ test("scene and Scene Builder changes autosave on navigation", async ({ page }) 
   const rows = page.locator("#scene-table .row-selection-button");
   await expect(rows).toHaveCount(2);
   const initialSceneSlug = await page.locator("#scene-table tr.selected").getAttribute("data-scene-slug");
-  await page.locator("#scene-text").fill("Scene: `[Opening Scene]`\n\nAutosaved scene change.\n");
+  const initialSceneText = await page.locator("#scene-text").inputValue();
+  const initialSceneTitle = initialSceneText.split("\n", 1)[0];
+  await page.locator("#scene-text").fill(`${initialSceneTitle}\n\nAutosaved scene change.\n`);
   await page.locator("#scene-table tr:not(.selected) .row-selection-button").click();
   await expect
     .poll(() => page.locator("#scene-table tr.selected").getAttribute("data-scene-slug"))

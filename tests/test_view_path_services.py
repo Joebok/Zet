@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest.mock import patch
 
 from Scripts import Library_Paths
@@ -67,8 +67,16 @@ class PathServiceTests(unittest.TestCase):
                 library_root / "Assets" / "Tsaeytte" / "Adult" / "IdentityKeys" / "IK.png",
             )
             self.assertEqual(service.resolve_path("Characters/Zara"), library_root / "Characters/Zara")
+            legacy_library_path = (
+                PureWindowsPath("C:/Users/Test/Projects")
+                / library_root.name
+                / "Assets"
+                / "Tsaeytte"
+                / "Adult"
+                / "source.png"
+            )
             self.assertEqual(
-                service.resolve_path(r"C:\Users\Joe\Projects\Library\Assets\Tsaeytte\Adult\source.png"),
+                service.resolve_path(legacy_library_path),
                 library_root / "Assets" / "Tsaeytte" / "Adult" / "source.png",
             )
             with patch.object(Library_Paths, "load_project_config", return_value=config):

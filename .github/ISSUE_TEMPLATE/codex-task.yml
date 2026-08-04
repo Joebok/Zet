@@ -1,0 +1,45 @@
+name: Codex task
+description: Define an implementation-ready issue for the Codex work queue.
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: Add `codex-ready` only after every required field is complete and the issue is approved for immediate implementation.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this issue is complete?
+      placeholder: Describe the desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: List observable acceptance criteria.
+      placeholder: "- [ ] Expected behavior"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant context
+      description: Identify the affected feature, files, examples, or screenshots.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: State what must not change, including compatibility or scope limits.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification notes
+      description: Note expected tests, manual checks, or screenshots.
+    validations:
+      required: true
