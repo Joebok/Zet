@@ -171,9 +171,9 @@ class ZetApp:
             asset_repository,
             pipeline_repository,
         )
-        self.pipeline_inspection_service = PipelineInspectionService(config.base_pipeline_path)
+        self.pipeline_inspection_service = PipelineInspectionService(config.base_pipeline_path, asset_repository, path_service)
 
-    def list_pipeline_inspections(self) -> list[dict[str, str]]:
+    def list_pipeline_inspections(self) -> list[dict]:
         return self.pipeline_inspection_service.list_pipelines()
 
     def list_pipeline_files(self, pipeline_id: str) -> list[dict[str, str]]:

@@ -566,10 +566,10 @@ Backend = "manual_chatgpt"
             self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
             self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
             self.assertIn('id="character-assets-menu" class="tab active"', html)
-            self.assertIn('data-page="pipeline-inspection">Pipelines</button>', html)
+            self.assertIn('<option value="pipeline-inspection">Pipeline</option>', html)
             self.assertLess(
-                html.index('id="character-assets-menu" class="tab active"'),
-                html.index('data-page="pipeline-inspection">Pipelines</button>'),
+                html.index('<option value="phase-comparison">Phase Comparison</option>'),
+                html.index('<option value="pipeline-inspection">Pipeline</option>'),
             )
             self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
             self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
@@ -631,7 +631,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(pipelines.status_code, 200)
             self.assertEqual(
                 [item["pipeline_id"] for item in pipelines.json()["pipelines"]],
-                ["Test/Adult/Body-Reference", "Stories/Demo/Opening"],
+                ["Test/Adult/Body-Reference/Front/_/Asset_1", "Stories/Demo/Opening"],
             )
 
             files = client.get(
