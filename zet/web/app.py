@@ -2405,23 +2405,31 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         content_type = request.headers.get("content-type", "")
         try:
             answer_path = service.submit_image(task, image_bytes, content_type, render_comment)
-            review = None
-            if task.manifest.get("story_slug") and task.manifest.get("scene_slug"):
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        review = None
+        harvest_warning = ""
+        if task.manifest.get("story_slug") and task.manifest.get("scene_slug"):
+            try:
                 zet_app = _app(app.state.config_path)
                 zet_app.asset_service.ai_answer_harvester.apply_answer_folder(answer_path)
                 review = asdict(zet_app.scene_image_review_status(
                     str(task.manifest["story_slug"]),
                     str(task.manifest["scene_slug"]),
                 ))
+            except Exception as exc:
+                harvest_warning = f"Image answer was saved and is pending harvest: {exc}"
+        try:
             tasks = service.list_tasks(character, phase)
-            return {
-                "status": "SUCCESS",
-                "answer_path": str(answer_path),
-                "remaining_tasks": [item.to_dict() for item in tasks],
-                "scene_image_review": review,
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception:
+            tasks = []
+        return {
+            "status": "ACCEPTED" if harvest_warning else "SUCCESS",
+            "answer_path": str(answer_path),
+            "remaining_tasks": [item.to_dict() for item in tasks],
+            "scene_image_review": review,
+            "harvest_warning": harvest_warning,
+        }
 
     @app.post("/api/render-console/tasks/{ask_id}/fail")
     async def render_console_fail_task(

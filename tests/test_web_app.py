@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -1053,6 +1054,41 @@ Backend = "manual_chatgpt"
             self.assertEqual(discarded.status_code, 200)
             self.assertEqual(locked.read_bytes(), b"second image")
             self.assertFalse(candidate.exists())
+
+    def test_scene_render_answer_remains_accepted_when_immediate_harvest_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            ask_path = self._write_story_render_ask(root, "HARVEST_FAILURE")
+            client = TestClient(create_app(config_path))
+
+            with patch(
+                "zet.services.ai_answer_harvester.AIAnswerHarvester.apply_answer_folder",
+                side_effect=RuntimeError("temporary failure"),
+            ):
+                response = client.post(
+                    f"/api/render-console/tasks/{ask_path.name}/answer-image",
+                    content=b"saved image",
+                    headers={"content-type": "image/png"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "ACCEPTED")
+            self.assertIn("pending harvest", response.json()["harvest_warning"])
+            self.assertFalse(ask_path.exists())
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / ask_path.name
+            self.assertTrue((answer_path / "scene.png").exists())
+
+            harvested = client.post("/api/ai-controls/harvest")
+            self.assertEqual(harvested.status_code, 200)
+            self.assertEqual((root / "Stories" / "demo" / "scene.png").read_bytes(), b"saved image")
 
     def test_render_console_local_test_render_api_params(self):
         with tempfile.TemporaryDirectory() as temp_dir:

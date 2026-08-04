@@ -623,7 +623,7 @@ function sceneImageReviewUrl(storySlug, sceneSlug) {
 }
 
 function setCandidatePendingLink(link, document) {
-  const pending = Boolean(document?.candidate_pending && document?.image_exists !== false);
+  const pending = Boolean(document?.candidate_pending);
   link.hidden = !pending;
   if (pending) {
     link.href = sceneImageReviewUrl(document.story?.slug, document.scene?.slug);
@@ -1213,7 +1213,14 @@ function setSelectValueCaseInsensitive(select, value) {
 }
 
 function currentQuery() {
-  return new URLSearchParams({ character: state.character, phase: state.phase });
+  const params = new URLSearchParams();
+  if (state.character) {
+    params.set("character", state.character);
+  }
+  if (state.phase) {
+    params.set("phase", state.phase);
+  }
+  return params;
 }
 
 function loadStoredContext() {
@@ -7465,7 +7472,7 @@ async function saveRenderConsoleImage() {
       throw new Error(payload.detail || `${response.status} ${response.statusText}`);
     }
     const payload = await response.json();
-    showRenderConsoleMessage(`Saved answer: ${payload.answer_path}`);
+    showRenderConsoleMessage(payload.harvest_warning || `Saved answer: ${payload.answer_path}`);
     state.renderConsoleTasks = payload.remaining_tasks || [];
     state.selectedRenderConsoleAskId = state.renderConsoleTasks[0]?.ask_id || null;
     renderRenderConsoleTaskTable();
@@ -7473,11 +7480,11 @@ async function saveRenderConsoleImage() {
       await selectRenderConsoleTask(state.selectedRenderConsoleAskId);
     } else {
       clearRenderConsole();
-      activatePage("render-review", {
-        preferredReviewKey: payload.scene_image_review?.candidate_exists
-          ? payload.scene_image_review.review_key
-          : null,
-      });
+      if (payload.scene_image_review?.candidate_exists) {
+        activatePage("render-review", {
+          preferredReviewKey: payload.scene_image_review.review_key,
+        });
+      }
     }
     renderConsoleStatus.textContent = `${state.renderConsoleTasks.length} manual render task(s) waiting`;
     await loadAiControls().catch(() => {});
