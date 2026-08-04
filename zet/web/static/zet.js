@@ -2103,7 +2103,7 @@ async function activatePage(page, options = {}) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
-    characterAssetsMenu.value = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison"].includes(activePageName())
+    characterAssetsMenu.value = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison", "pipeline-inspection"].includes(activePageName())
       ? activePageName()
       : "";
     return false;
@@ -2111,7 +2111,7 @@ async function activatePage(page, options = {}) {
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
-  const characterAssetPages = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison"];
+  const characterAssetPages = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison", "pipeline-inspection"];
   characterAssetsMenu.classList.toggle("active", characterAssetPages.includes(page));
   characterAssetsMenu.value = characterAssetPages.includes(page) ? page : "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");

@@ -87,7 +87,9 @@ test("Aux Images is accessible from the main button row", async ({ page }) => {
 });
 
 test("pipeline inspection filters pipelines and previews text and images", async ({ page }) => {
-  await openPage(page, "pipeline-inspection");
+  await openPage(page, "assets");
+  await page.locator("#character-assets-menu").selectOption("pipeline-inspection");
+  await expect(page.locator("#pipeline-inspection-page")).toHaveClass(/active/);
   await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(3);
   await page.locator("#pipeline-inspection-search").fill("Alpha-Story / Opening");
   await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(1);
