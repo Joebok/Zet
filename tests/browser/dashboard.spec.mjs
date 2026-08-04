@@ -363,6 +363,21 @@ test("scene fullscreen navigation follows scene order and reports missing images
   await expect(imageDialog.locator(".fullscreen-image-empty")).toHaveText("No Image for Opening Scene");
 });
 
+test("pending scene image links open the matching side-by-side review", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator('#scene-table tr[data-scene-slug="Closing-Scene"] .row-selection-button').click();
+  await page.locator("#scene-toggle-image").click();
+  const pendingLink = page.locator("#scene-image-candidate-link");
+  await expect(pendingLink).toHaveText("Candidate Image Pending");
+  await expect(pendingLink).toHaveAttribute("href", /story_slug=Alpha-Story.*scene_slug=Closing-Scene/);
+  await pendingLink.click();
+
+  await expect(page.locator("#render-review-page")).toHaveClass(/active/);
+  await expect(page.locator("#render-review-title")).toContainText("Closing Scene");
+  await expect(page.locator("#candidate-render img")).toBeVisible();
+  await expect(page.locator("#locked-render img")).toBeVisible();
+});
+
 test("View Story opens the selected story in scene order", async ({ page }) => {
   await openPage(page, "stories");
   await page.locator("#story-table .row-selection-button", { hasText: "Alpha Story" }).click();

@@ -177,6 +177,22 @@ class PathService:
         """Return the pipeline work folder for one story scene."""
         return self.library_path("Pipelines", "Stories", story_slug, scene_slug)
 
+    def scene_locked_image_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the published image path for one story scene."""
+        return self.story_folder_path(story_slug) / f"{str(scene_slug or '').strip()}.png"
+
+    def scene_candidate_image_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the pending review image path for one story scene."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Candidate" / f"{str(scene_slug or '').strip()}.png"
+
+    def scene_locked_backups_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the locked-image backup folder for one story scene."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Locked_Backups"
+
+    def scene_render_review_comment_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the review comment path for one scene candidate."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Candidate" / "Render_Review_Comment.md"
+
     def zines_path(self) -> Path:
         """Return the generated zine asset folder."""
         return Path(self.config.base_asset_path) / "Zines"

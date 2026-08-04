@@ -68,6 +68,10 @@ class ImageReferenceRow:
     view: str = ""
     available: bool = True
     disabled_reason: str = ""
+    story_slug: str = ""
+    scene_slug: str = ""
+    candidate_pending: bool = False
+    image_review_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,21 @@ class StoryRenderTask:
     final_prompt_path: str
     expected_output: str
     reference_files: list[dict]
+
+
+@dataclass(frozen=True)
+class SceneImageReviewStatus:
+    """Describe the locked and candidate images for one story scene."""
+    story_slug: str
+    scene_slug: str
+    title: str
+    review_kind: str
+    review_key: str
+    locked_image_path: str
+    candidate_image_path: str
+    locked_exists: bool
+    candidate_exists: bool
+    comment: str
 
 
 @dataclass(frozen=True)

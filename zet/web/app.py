@@ -251,21 +251,24 @@ def _scene_record_payload(record) -> dict[str, Any]:
     return asdict(record)
 
 
-def _scene_document_payload(document) -> dict[str, Any]:
+def _scene_document_payload(zet_app: ZetApp, document) -> dict[str, Any]:
     """Serialize one scene document for dashboard editing."""
-    image_path = document.story.folder_path and str(Path(document.story.folder_path) / f"{document.record.slug}.png")
+    review = zet_app.scene_image_review_status(document.story.slug, document.record.slug)
     return {
         "story": _story_record_payload(document.story),
         "scene": _scene_record_payload(document.record),
         "text": document.text,
         "validation_errors": list(document.validation_errors),
-        "image_path": image_path,
-        "image_exists": bool(image_path and Path(image_path).exists()),
+        "image_path": review.locked_image_path,
+        "image_exists": review.locked_exists,
+        "candidate_pending": review.candidate_exists,
+        "image_review_key": review.review_key,
     }
 
 
-def _scene_builder_document_payload(document) -> dict[str, Any]:
+def _scene_builder_document_payload(zet_app: ZetApp, document) -> dict[str, Any]:
     """Serialize one Scene Builder document for dashboard editing."""
+    review = zet_app.scene_image_review_status(document.story.slug, document.scene.slug)
     return {
         "story": _story_record_payload(document.story),
         "scene": _scene_record_payload(document.scene),
@@ -275,6 +278,8 @@ def _scene_builder_document_payload(document) -> dict[str, Any]:
         "png_path": document.png_path,
         "json_exists": document.json_exists,
         "png_exists": document.png_exists,
+        "candidate_pending": review.candidate_exists,
+        "image_review_key": review.review_key,
         "validation_warnings": list(document.validation_warnings),
         "blocked": document.blocked,
         "error": document.error,
@@ -469,6 +474,9 @@ def _render_console_local_api_call_path(workspace: Path) -> Path:
 
 def _render_review_task_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     payload = _asset_payload(zet_app, asset)
+    payload["review_kind"] = "asset"
+    payload["review_key"] = f"asset:{asset.character}:{asset.phase}:{asset.asset_id}"
+    payload["title"] = f"{asset.pipeline} #{asset.asset_id}"
     try:
         candidate_image_path = zet_app.path_service.candidate_image_path(asset)
         locked_image_path = zet_app.path_service.locked_image_path(asset)
@@ -488,6 +496,8 @@ def _render_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
     detail = _asset_detail_payload(zet_app, character, phase, asset_id)
     asset = detail["asset"]
     return {
+        "review_kind": "asset",
+        "review_key": f"asset:{character}:{phase}:{asset_id}",
         "asset": asset,
         "is_reviewable": _is_render_review_asset(zet_app.asset(character, phase, asset_id).get()),
         "paths": detail["paths"],
@@ -497,6 +507,21 @@ def _render_review_context_payload(zet_app: ZetApp, character: str, phase: str, 
         "candidate_image_path": detail["paths"]["candidate_image_path"],
         "locked_image_path": detail["paths"]["locked_image_path"],
         "render_review_comment": zet_app.render_review_comment(character, phase, asset_id),
+    }
+
+
+def _scene_render_review_task_payload(status) -> dict[str, Any]:
+    return asdict(status)
+
+
+def _scene_render_review_context_payload(zet_app: ZetApp, story_slug: str, scene_slug: str) -> dict[str, Any]:
+    status = zet_app.scene_image_review_status(story_slug, scene_slug)
+    return {
+        **asdict(status),
+        "is_reviewable": status.candidate_exists,
+        "render_review_comment": status.comment,
+        "stage_text": "",
+        "history_text": "",
     }
 
 
@@ -1193,7 +1218,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             document = zet_app.create_scene(story_slug, scene_name)
             return {
                 "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
-                "document": _scene_document_payload(document),
+                "document": _scene_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Created scene {document.record.title}.",
             }
@@ -1205,7 +1230,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         """Load one story scene markdown document."""
         zet_app = _app(app.state.config_path)
         try:
-            return {"document": _scene_document_payload(zet_app.load_scene(story_slug, scene_slug))}
+            return {"document": _scene_document_payload(zet_app, zet_app.load_scene(story_slug, scene_slug))}
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1215,7 +1240,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         try:
             return {
-                "document": _scene_builder_document_payload(zet_app.load_scene_builder(story_slug, scene_slug)),
+                "document": _scene_builder_document_payload(zet_app, zet_app.load_scene_builder(story_slug, scene_slug)),
                 "options": zet_app.scene_builder_options(),
                 "references": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows()],
             }
@@ -1244,7 +1269,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             document = zet_app.rename_scene(story_slug, scene_slug, data.get("title"))
             return {
                 "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
-                "document": _scene_document_payload(document),
+                "document": _scene_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Renamed scene to {document.record.title}.",
             }
@@ -1261,7 +1286,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return {
                 "source_scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
                 "target_scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(target_story_slug)],
-                "document": _scene_document_payload(document),
+                "document": _scene_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Moved scene {document.record.title} to {document.story.title}.",
             }
@@ -1275,7 +1300,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             document = zet_app.save_scene_builder(story_slug, scene_slug, data)
             return {
-                "document": _scene_builder_document_payload(document),
+                "document": _scene_builder_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Saved Scene Builder data for {document.scene.title}.",
             }
@@ -1289,7 +1314,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             document = zet_app.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
             return {
-                "document": _scene_builder_document_payload(document),
+                "document": _scene_builder_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Continued from {source_scene_slug}.",
             }
@@ -1364,8 +1389,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             scene_document = zet_app.export_scene_builder_markdown(story_slug, scene_slug, data)
             builder_document = zet_app.load_scene_builder(story_slug, scene_slug)
             return {
-                "document": _scene_document_payload(scene_document),
-                "builder": _scene_builder_document_payload(builder_document),
+                "document": _scene_document_payload(zet_app, scene_document),
+                "builder": _scene_builder_document_payload(zet_app, builder_document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Exported Scene Builder sections for {scene_document.record.title}.",
             }
@@ -1381,7 +1406,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             document = zet_app.save_scene(story_slug, scene_slug, text)
             return {
                 "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(story_slug)],
-                "document": _scene_document_payload(document),
+                "document": _scene_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Saved scene {document.record.title}.",
             }
@@ -1701,11 +1726,59 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/render-review/tasks")
-    def render_review_tasks(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+    def render_review_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            assets = [asset for asset in zet_app.list_assets(character, phase) if _is_render_review_asset(asset)]
-            return {"tasks": [_render_review_task_payload(zet_app, asset) for asset in assets]}
+            tasks = []
+            if character and phase:
+                assets = [asset for asset in zet_app.list_assets(character, phase) if _is_render_review_asset(asset)]
+                tasks.extend(_render_review_task_payload(zet_app, asset) for asset in assets)
+            tasks.extend(_scene_render_review_task_payload(status) for status in zet_app.list_pending_scene_image_reviews())
+            return {"tasks": tasks}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-review/scenes/{story_slug}/{scene_slug}")
+    def scene_render_review_detail(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _scene_render_review_context_payload(zet_app, story_slug, scene_slug)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/promote-to-locked")
+    def scene_render_review_promote(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.promote_scene_image(story_slug, scene_slug)
+            return {
+                "message": f"Scene image approved for {status.story_slug}/{status.scene_slug}.",
+                "review": asdict(status),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/discard-candidate")
+    def scene_render_review_discard(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.discard_scene_image_candidate(story_slug, scene_slug)
+            return {
+                "message": f"Scene candidate discarded for {status.story_slug}/{status.scene_slug}.",
+                "review": asdict(status),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/comment")
+    async def scene_render_review_comment(story_slug: str, scene_slug: str, request: Request) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            payload = await request.json()
+            comment = zet_app.save_scene_image_review_comment(story_slug, scene_slug, str(payload.get("comment") or ""))
+            response = _scene_render_review_context_payload(zet_app, story_slug, scene_slug)
+            response["message"] = "Image review comment saved." if comment else "Image review comment cleared."
+            return response
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2332,14 +2405,31 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         content_type = request.headers.get("content-type", "")
         try:
             answer_path = service.submit_image(task, image_bytes, content_type, render_comment)
-            tasks = service.list_tasks(character, phase)
-            return {
-                "status": "SUCCESS",
-                "answer_path": str(answer_path),
-                "remaining_tasks": [item.to_dict() for item in tasks],
-            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        review = None
+        harvest_warning = ""
+        if task.manifest.get("story_slug") and task.manifest.get("scene_slug"):
+            try:
+                zet_app = _app(app.state.config_path)
+                zet_app.asset_service.ai_answer_harvester.apply_answer_folder(answer_path)
+                review = asdict(zet_app.scene_image_review_status(
+                    str(task.manifest["story_slug"]),
+                    str(task.manifest["scene_slug"]),
+                ))
+            except Exception as exc:
+                harvest_warning = f"Image answer was saved and is pending harvest: {exc}"
+        try:
+            tasks = service.list_tasks(character, phase)
+        except Exception:
+            tasks = []
+        return {
+            "status": "ACCEPTED" if harvest_warning else "SUCCESS",
+            "answer_path": str(answer_path),
+            "remaining_tasks": [item.to_dict() for item in tasks],
+            "scene_image_review": review,
+            "harvest_warning": harvest_warning,
+        }
 
     @app.post("/api/render-console/tasks/{ask_id}/fail")
     async def render_console_fail_task(

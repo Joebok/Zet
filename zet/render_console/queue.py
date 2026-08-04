@@ -149,10 +149,6 @@ class RenderConsoleQueue:
         output_path = answer_path / task.expected_output
         output_path.write_bytes(image_bytes)
         target_output = str(task.manifest.get("target_output_file") or "").strip()
-        if target_output:
-            target_path = Path(target_output)
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            target_path.write_bytes(image_bytes)
         comment = str(render_comment or "").strip()
         if comment:
             (answer_path / "Render_Review_Comment.md").write_text(comment + "\n", encoding="utf-8")

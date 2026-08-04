@@ -117,7 +117,8 @@ class StoryRenderService:
             "worker_type": "manual_chatgpt_render", "ollama_model": "", "prompt_file": "Final_Image_Prompt.md",
             "expected_output": expected_output, "candidate_output_file": expected_output, "task_type": "render",
             "render_preset": "chatgpt-manual", "manual": True,
-            "target_output_file": str(story.path_service.story_folder_path(safe_story_slug) / expected_output),
+            "target_output_file": str(story.path_service.scene_candidate_image_path(safe_story_slug, safe_scene_slug)),
+            "scene_image_review": True,
             "pipeline_path": str(pipeline_path), "reference_files": reference_files_payload(references),
             "aspect_ratio": str((ir.get("canvas") or {}).get("aspect_ratio") or ""),
         }

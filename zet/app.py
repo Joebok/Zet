@@ -29,6 +29,7 @@ from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
+from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
@@ -152,6 +153,8 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.scene_image_review_service = SceneImageReviewService(story_service)
+        self.asset_service.ai_answer_harvester.scene_image_review_service = self.scene_image_review_service
         self.character_source_service = CharacterSourceService(
             path_service,
             costume_service,
@@ -368,6 +371,21 @@ class ZetApp:
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""
         return self.story_service.scene_image_path(story_slug, scene_slug)
+
+    def scene_image_review_status(self, story_slug: str, scene_slug: str):
+        return self.scene_image_review_service.status(story_slug, scene_slug)
+
+    def list_pending_scene_image_reviews(self):
+        return self.scene_image_review_service.list_pending()
+
+    def promote_scene_image(self, story_slug: str, scene_slug: str):
+        return self.scene_image_review_service.promote(story_slug, scene_slug)
+
+    def discard_scene_image_candidate(self, story_slug: str, scene_slug: str):
+        return self.scene_image_review_service.discard(story_slug, scene_slug)
+
+    def save_scene_image_review_comment(self, story_slug: str, scene_slug: str, comment: str):
+        return self.scene_image_review_service.save_comment(story_slug, scene_slug, comment)
 
     def load_scene_builder(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         """Load Scene Builder JSON for one story scene."""

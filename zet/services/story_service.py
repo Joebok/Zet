@@ -589,6 +589,14 @@ class StoryService:
             builder_path.unlink()
         if legacy_builder_path.exists():
             legacy_builder_path.unlink()
+        candidate_path = self.path_service.scene_candidate_image_path(safe_story_slug, safe_scene_slug)
+        candidate_path.unlink(missing_ok=True)
+        self.path_service.scene_render_review_comment_path(safe_story_slug, safe_scene_slug).unlink(missing_ok=True)
+        if candidate_path.parent.exists():
+            try:
+                candidate_path.parent.rmdir()
+            except OSError:
+                pass
         self._save_scene_order(safe_story_slug, [record.slug for record in self.list_scenes(safe_story_slug)])
         return commit
 
@@ -752,7 +760,7 @@ class StoryService:
         """Return the expected rendered scene image path."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
-        return self.path_service.story_folder_path(safe_story_slug) / f"{safe_scene_slug}.png"
+        return self.path_service.scene_locked_image_path(safe_story_slug, safe_scene_slug)
 
     def scene_builder_json_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the canonical Scene Builder V3 JSON path for one story scene."""
@@ -1664,6 +1672,10 @@ class StoryService:
                         pipeline="Rendered Scene",
                         image_path=str(image_path),
                         thumbnail_path=str(image_path),
+                        story_slug=story.slug,
+                        scene_slug=scene.slug,
+                        candidate_pending=self.path_service.scene_candidate_image_path(story.slug, scene.slug).is_file(),
+                        image_review_key=f"scene:{story.slug}:{scene.slug}",
                     )
                 )
         return rows

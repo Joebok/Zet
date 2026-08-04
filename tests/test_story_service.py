@@ -530,6 +530,10 @@ Keep this manual note.
             (story_dir / "At-the-Arch.md").write_text("scene", encoding="utf-8")
             (story_dir / "At-the-Arch.png").write_bytes(b"image")
             (story_dir / "At-the-Arch.json").write_text('{"schema_version": 1}', encoding="utf-8")
+            candidate_dir = root / "Pipelines" / "Stories" / "FirstDay" / "At-the-Arch" / "Candidate"
+            candidate_dir.mkdir(parents=True)
+            (candidate_dir / "At-the-Arch.png").write_bytes(b"candidate")
+            (candidate_dir / "Render_Review_Comment.md").write_text("pending\n", encoding="utf-8")
             service = self._service(root)
             commits = []
             service.story_git_commit = lambda: commits.append(True) or StoryGitResult("", False)
@@ -540,6 +544,7 @@ Keep this manual note.
             self.assertFalse((story_dir / "At-the-Arch.md").exists())
             self.assertFalse((story_dir / "At-the-Arch.png").exists())
             self.assertFalse((story_dir / "At-the-Arch.json").exists())
+            self.assertFalse(candidate_dir.exists())
 
     def test_create_story_handles_story_heading_before_compiler_sections(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -648,6 +653,12 @@ Morning light.
             self.assertEqual(1, len(task.reference_files))
             self.assertTrue((Path(task.ask_path) / "ask_manifest.json").exists())
             self.assertEqual(prompt, (Path(task.ask_path) / "Final_Image_Prompt.md").read_text(encoding="utf-8"))
+            manifest = json.loads((Path(task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertTrue(manifest["scene_image_review"])
+            self.assertEqual(
+                str(root / "Pipelines" / "Stories" / "FirstDay" / "At-the-Arch" / "Candidate" / "At-the-Arch.png"),
+                manifest["target_output_file"],
+            )
 
     def test_stage_scene_render_resolves_identity_key_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1280,6 +1291,9 @@ ink wash
             (pipeline / "dependency_manifest.json").write_text(
                 json.dumps({"story_slug": "Source", "scene_slug": "Opening"}), encoding="utf-8"
             )
+            candidate_dir = pipeline / "Candidate"
+            candidate_dir.mkdir()
+            (candidate_dir / "Opening.png").write_bytes(b"candidate")
             zine = root / "Assets" / "Zines" / "Sample"
             zine.mkdir(parents=True)
             (zine / "Sample.json").write_text('{"front":"{{SCENE:Source:Opening}}"}', encoding="utf-8")
@@ -1292,6 +1306,10 @@ ink wash
                 self.assertTrue((target / f"Opening{suffix}").exists())
             self.assertFalse((source / "Opening.md").exists())
             self.assertTrue((root / "Pipelines" / "Stories" / "Target" / "Opening").exists())
+            self.assertEqual(
+                b"candidate",
+                (root / "Pipelines" / "Stories" / "Target" / "Opening" / "Candidate" / "Opening.png").read_bytes(),
+            )
             self.assertEqual([], [record.slug for record in service.list_scenes("Source")])
             self.assertEqual(["Opening"], [record.slug for record in service.list_scenes("Target")])
             scene_data = json.loads((target / "Opening.scene.json").read_text(encoding="utf-8"))

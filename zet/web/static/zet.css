@@ -791,12 +791,31 @@ summary:focus-visible {
   max-height: 520px;
   overflow: auto;
   padding: 8px;
+  position: relative;
 }
 
 .scene-image-panel img {
   display: block;
   cursor: zoom-in;
   max-width: 100%;
+}
+
+.candidate-pending-overlay {
+  background: rgba(20, 20, 20, 0.88);
+  color: #fff;
+  font-weight: 700;
+  left: 50%;
+  padding: 8px 12px;
+  position: absolute;
+  text-align: center;
+  text-decoration: underline;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+
+.candidate-pending-overlay[hidden] {
+  display: none;
 }
 
 .scene-builder-panel {
@@ -1086,6 +1105,12 @@ summary:focus-visible {
   margin: 0;
   padding: 24px;
   text-align: center;
+}
+
+.fullscreen-candidate-pending {
+  position: fixed;
+  top: 16px;
+  z-index: 10003;
 }
 
 .fullscreen-crop-box {
@@ -1661,6 +1686,19 @@ tr.auxiliary-row td:last-child {
   height: auto;
   max-height: 72px;
   width: auto;
+}
+
+.scene-builder-reference-preview {
+  display: inline-block;
+  position: relative;
+}
+
+.scene-builder-reference-preview .candidate-pending-overlay {
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 4px 6px;
+  top: 2px;
+  width: max-content;
 }
 
 .aux-resource-editor {
