@@ -394,11 +394,10 @@ const storyTableBody = document.querySelector("#story-table tbody");
 const storyEditorTitle = document.querySelector("#story-editor-title");
 const storySave = document.querySelector("#story-save");
 const storyView = document.querySelector("#story-view");
+const storyScenes = document.querySelector("#story-scenes");
 const storyRenameTitle = document.querySelector("#story-rename-title");
 const storyRename = document.querySelector("#story-rename");
 const storyDelete = document.querySelector("#story-delete");
-const storySettingsLoad = document.querySelector("#story-settings-load");
-const storySettingsSave = document.querySelector("#story-settings-save");
 const storyNewTitle = document.querySelector("#story-new-title");
 const storyCreate = document.querySelector("#story-create");
 const storyValidation = document.querySelector("#story-validation");
@@ -542,6 +541,7 @@ const auxResourceFileInput = document.querySelector("#aux-resource-file-input");
 const auxResourceImagePreview = document.querySelector("#aux-resource-image-preview");
 auxResourceImagePreview.classList.add("fullscreen-image-trigger");
 const auxResourceSave = document.querySelector("#aux-resource-save");
+const auxResourceDelete = document.querySelector("#aux-resource-delete");
 const auxResourceClear = document.querySelector("#aux-resource-clear");
 const auxResourceImageList = document.querySelector("#aux-resource-image-list");
 const auxResourceNewImage = document.querySelector("#aux-resource-new-image");
@@ -1999,32 +1999,7 @@ async function saveStoryBeforeNavigation() {
   if (!state.selectedStorySlug || !state.storyDetail) {
     return true;
   }
-  setSaveState(storySaveState, "Saving", "saving");
-  try {
-    await saveStorySettingsData(state.selectedStorySlug);
-    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/markdown; charset=utf-8" },
-      body: storyText.value || "",
-    });
-    state.stories = payload.stories || state.stories;
-    updateStoryGitWarning(payload.has_story_changes);
-    state.storyDetail = payload.document || null;
-    state.selectedStorySlug = state.storyDetail?.story?.slug || state.selectedStorySlug;
-    storyEditorTitle.textContent = state.storyDetail?.story?.title || "Story";
-    storyRenameTitle.value = state.storyDetail?.story?.title || "";
-    renderStoryTable();
-    renderSceneStoryOptions();
-    renderValidationBox(storyValidation, state.storyDetail?.validation_errors || [], "Story markdown is valid.");
-    showStoryMessage(payload.message || "Story saved.");
-    state.savedBaselines.story = storySnapshot();
-    setSaveState(storySaveState, "Saved", "saved");
-    return true;
-  } catch (error) {
-    showStoryMessage(error.message, "error");
-    setSaveState(storySaveState, "Error", "error");
-    return false;
-  }
+  return saveStory();
 }
 
 async function saveSceneBeforeNavigation() {
@@ -2878,10 +2853,9 @@ function clearStoryEditor() {
   storySettingsFields.replaceChildren();
   storySave.disabled = true;
   storyView.disabled = true;
+  storyScenes.disabled = true;
   storyRename.disabled = true;
   storyDelete.disabled = true;
-  storySettingsLoad.disabled = true;
-  storySettingsSave.disabled = true;
   state.savedBaselines.story = "";
   setSaveState(storySaveState, "");
   renderValidationBox(storyValidation, [], "Create or select a story to edit its markdown.");
@@ -2896,6 +2870,25 @@ function storySettingInputValue(value) {
   if (value === null) return "null";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
+}
+
+const readOnlyStorySettingPaths = new Set([
+  "schema_version",
+  "file_kind",
+  "story.id",
+  "story.title",
+  "story.slug",
+  "story.human_markdown_path",
+  "metadata.created_at",
+  "metadata.updated_at",
+  "metadata.created_by",
+]);
+
+function renderReadOnlyStorySetting(path, value) {
+  const field = document.createElement("div");
+  field.className = "story-setting-readonly";
+  field.textContent = `${storySettingPathLabel(path)}: ${storySettingInputValue(value)}`;
+  return field;
 }
 
 function isStorySettingCsvList(path, value) {
@@ -2922,7 +2915,11 @@ function renderStorySettingField(path, value) {
   return label;
 }
 
-function appendStorySettingFields(container, value, path = []) {
+function appendStorySettingFields(container, value, path = [], readOnlyFields = []) {
+  if (readOnlyStorySettingPaths.has(storySettingPathLabel(path))) {
+    readOnlyFields.push([path, value]);
+    return;
+  }
   if (Array.isArray(value)) {
     if (isStorySettingCsvList(path, value)) {
       container.append(renderStorySettingField(path, value));
@@ -2932,7 +2929,7 @@ function appendStorySettingFields(container, value, path = []) {
       container.append(renderStorySettingField(path, value));
       return;
     }
-    value.forEach((item, index) => appendStorySettingFields(container, item, [...path, index]));
+    value.forEach((item, index) => appendStorySettingFields(container, item, [...path, index], readOnlyFields));
     return;
   }
   if (value && typeof value === "object") {
@@ -2941,7 +2938,7 @@ function appendStorySettingFields(container, value, path = []) {
       container.append(renderStorySettingField(path, value));
       return;
     }
-    keys.forEach((key) => appendStorySettingFields(container, value[key], [...path, key]));
+    keys.forEach((key) => appendStorySettingFields(container, value[key], [...path, key], readOnlyFields));
     return;
   }
   container.append(renderStorySettingField(path, value));
@@ -2952,7 +2949,9 @@ function renderStorySettingsFields() {
   if (!state.storySettings) {
     return;
   }
-  appendStorySettingFields(storySettingsFields, state.storySettings);
+  const readOnlyFields = [];
+  appendStorySettingFields(storySettingsFields, state.storySettings, [], readOnlyFields);
+  readOnlyFields.forEach(([path, value]) => storySettingsFields.append(renderReadOnlyStorySetting(path, value)));
 }
 
 function storySettingControlValue(control) {
@@ -2988,7 +2987,6 @@ async function loadStorySettingsData(storySlug) {
   state.storySettings = payload.data || {};
   storySettingsJson.value = JSON.stringify(state.storySettings, null, 2);
   renderStorySettingsFields();
-  storySettingsSave.disabled = false;
 }
 
 async function saveStorySettingsData(storySlug) {
@@ -3026,10 +3024,9 @@ async function loadStoryDetail(storySlug) {
     storyText.hidden = false;
     storySave.disabled = !state.storyDetail;
     storyView.disabled = !state.storyDetail;
+    storyScenes.disabled = !state.storyDetail;
     storyRename.disabled = !state.storyDetail;
     storyDelete.disabled = !state.storyDetail;
-    storySettingsLoad.disabled = !state.storyDetail;
-    storySettingsSave.disabled = true;
     if (state.storyDetail) {
       await loadStorySettingsData(state.selectedStorySlug);
     }
@@ -3082,10 +3079,9 @@ async function createStory() {
       storyText.value = state.storyDetail.text || "";
       storySave.disabled = false;
       storyView.disabled = false;
+      storyScenes.disabled = false;
       storyRename.disabled = false;
       storyDelete.disabled = false;
-      storySettingsLoad.disabled = false;
-      storySettingsSave.disabled = true;
       await loadStorySettingsData(state.selectedStorySlug);
       renderValidationBox(storyValidation, state.storyDetail.validation_errors || [], "Story markdown is valid.");
       state.savedBaselines.story = storySnapshot();
@@ -3120,6 +3116,7 @@ async function renameStory() {
     storyEditorTitle.textContent = state.storyDetail?.story?.title || title;
     storyRenameTitle.value = state.storyDetail?.story?.title || title;
     storyText.value = state.storyDetail?.text || storyText.value;
+    await loadStorySettingsData(state.selectedStorySlug);
     renderStoryTable();
     renderSceneStoryOptions();
     renderZineStoryOptions();
@@ -3133,7 +3130,7 @@ async function renameStory() {
 }
 
 async function saveStory() {
-  // Save the current story markdown document.
+  // Save the current story markdown and settings documents.
   if (!state.selectedStorySlug) {
     showStoryMessage("Select a story first.", "error");
     return;
@@ -3170,36 +3167,9 @@ async function saveStory() {
   }
 }
 
-async function loadStorySettings() {
-  if (!state.selectedStorySlug) {
-    showStoryMessage("Select a story first.", "error");
-    return;
-  }
-  try {
-    await loadStorySettingsData(state.selectedStorySlug);
-    showStoryMessage("Story settings loaded.");
-  } catch (error) {
-    showStoryMessage(error.message, "error");
-  }
-}
-
-async function saveStorySettings() {
-  if (!state.selectedStorySlug) {
-    showStoryMessage("Select a story first.", "error");
-    return;
-  }
-  try {
-    const payload = await saveStorySettingsData(state.selectedStorySlug);
-    updateStoryGitWarning(payload?.has_story_changes);
-    showStoryMessage(payload?.message || "Story settings saved.", "success");
-    state.savedBaselines.story = storySnapshot();
-    setSaveState(storySaveState, "Saved", "saved");
-    return true;
-  } catch (error) {
-    showStoryMessage(error.message, "error");
-    setSaveState(storySaveState, "Error", "error");
-    return false;
-  }
+async function openStoryScenes() {
+  if (!state.selectedStorySlug) return;
+  await activatePage("scenes");
 }
 
 async function deleteStory() {
@@ -4983,6 +4953,7 @@ function clearAuxiliaryResourceForm() {
   auxResourceFormTitle.textContent = "Add Resource";
   auxResourceLabel.value = "";
   auxResourceEditTemplate.disabled = true;
+  auxResourceDelete.disabled = true;
   auxResourceImageLabel.value = "";
   auxResourceTag.textContent = "";
   auxResourceCopyTag.disabled = true;
@@ -5073,6 +5044,7 @@ function selectAuxiliaryResource(resourceId) {
   auxResourceFormTitle.textContent = "Update Resource";
   auxResourceLabel.value = resource.label || "";
   auxResourceEditTemplate.disabled = !resource.template_path;
+  auxResourceDelete.disabled = false;
   auxResourceSave.textContent = "Update Resource";
   auxResourceImageLabel.value = "";
   auxResourceTag.textContent = "";
@@ -5200,6 +5172,29 @@ async function saveAuxiliaryResource() {
     showAuxResourceMessage(error.message, "error");
   } finally {
     auxResourceSave.disabled = false;
+  }
+}
+
+async function deleteAuxiliaryResource() {
+  const resource = selectedAuxiliaryResource();
+  if (!resource || !window.confirm(`Delete ${resource.label || resource.resource_id} and all of its files and images?`)) {
+    return;
+  }
+  const params = new URLSearchParams({ category: auxResourceCategory.value || "person" });
+  auxResourceDelete.disabled = true;
+  showAuxResourceMessage("Deleting resource...");
+  try {
+    const payload = await fetchJson(
+      `/api/auxiliary-resources/${encodeURIComponent(resource.resource_id)}?${params.toString()}`,
+      { method: "DELETE" },
+    );
+    state.auxiliaryResources = payload.resources || [];
+    clearAuxiliaryResourceForm();
+    refreshAuxiliaryResourceTable();
+    showAuxResourceMessage(payload.message || "Resource deleted.");
+  } catch (error) {
+    auxResourceDelete.disabled = false;
+    showAuxResourceMessage(error.message, "error");
   }
 }
 
@@ -7833,9 +7828,8 @@ expressionCreate.addEventListener("click", saveExpression);
 storyCreate.addEventListener("click", createStory);
 storySave.addEventListener("click", saveStory);
 storyView.addEventListener("click", openStoryViewer);
+storyScenes.addEventListener("click", openStoryScenes);
 storyRename.addEventListener("click", renameStory);
-storySettingsLoad.addEventListener("click", loadStorySettings);
-storySettingsSave.addEventListener("click", saveStorySettings);
 storyDelete.addEventListener("click", deleteStory);
 storyGitStatus.addEventListener("click", () => runStoryGitAction("status"));
 storyGitPull.addEventListener("click", () => runStoryGitAction("pull"));
@@ -8004,6 +7998,7 @@ auxResourceFileInput.addEventListener("change", () => {
   setAuxiliaryResourceImageSelection(auxResourceFileInput.files?.[0]);
 });
 auxResourceSave.addEventListener("click", saveAuxiliaryResource);
+auxResourceDelete.addEventListener("click", deleteAuxiliaryResource);
 auxResourceNewImage.addEventListener("click", newAuxiliaryResourceImage);
 auxResourceSaveImage.addEventListener("click", saveAuxiliaryResourceImage);
 auxResourceClear.addEventListener("click", clearAuxiliaryResourceForm);

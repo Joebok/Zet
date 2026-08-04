@@ -913,6 +913,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.delete("/api/auxiliary-resources/{resource_id}")
+    def auxiliary_resource_delete(
+        resource_id: str,
+        category: str = Query(...),
+    ) -> dict[str, Any]:
+        """Delete a global auxiliary resource folder and its contents."""
+        zet_app = _app(app.state.config_path)
+        try:
+            resource = zet_app.delete_auxiliary_resource(resource_id)
+            return {
+                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
+                "message": f"Deleted auxiliary resource {resource.label}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/stories")
     def stories() -> dict[str, Any]:
         """List all stories in the shared stories library."""

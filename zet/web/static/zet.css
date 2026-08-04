@@ -680,16 +680,23 @@ dl {
   align-content: start;
 }
 
-.story-create-row {
+.story-create-row,
+.scene-create-row {
   align-items: end;
   justify-content: flex-start;
 }
 
-.story-create-row label {
+.story-layout > .control-panel .button-row.compact {
+  justify-content: flex-start;
+}
+
+.story-create-row label,
+.scene-create-row label {
   min-width: 320px;
 }
 
-.management-row {
+.story-layout .management-row,
+.scene-layout .management-row {
   align-items: end;
   justify-content: flex-start;
 }
@@ -768,6 +775,13 @@ summary:focus-visible {
 
 .story-settings-fields textarea {
   min-height: 84px;
+}
+
+.story-setting-readonly {
+  color: var(--muted);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .scene-image-panel {

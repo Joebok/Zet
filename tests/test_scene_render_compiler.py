@@ -173,6 +173,51 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertEqual(["satchel", "hero"], placed_ir["composition"]["left_to_right"])
         self.assertIn("**Satchel:** Stands in the left foreground.", placed_prompt)
 
+    def test_composition_visual_read_is_grouped_by_depth(self):
+        read_order = ["tsaeytte", "freydis", "galen", "rin", "peri", "blank", "none", "background", "backdrop"]
+        scene = {
+            "setup": {
+                "composition": {
+                    "focal_point": "Tsaeytte",
+                    "left_to_right": read_order,
+                    "composition_notes": "Keep the party separated by depth",
+                },
+            },
+            "scene_elements": [
+                {"id": element_id, "display_name": element_id.capitalize(), "element_type": "Character"}
+                for element_id in [*read_order, "not-listed"]
+            ],
+            "placements": [
+                {"scene_element_id": "tsaeytte", "position_within_cell": "left", "depth": "foreground"},
+                {"scene_element_id": "freydis", "position_within_cell": "right", "depth": "distant background"},
+                {"scene_element_id": "galen", "position_within_cell": "right", "depth": "distant background"},
+                {"scene_element_id": "peri", "position_within_cell": "right", "depth": "distant background"},
+                {"scene_element_id": "rin", "position_within_cell": "right", "depth": "distant background"},
+                {"scene_element_id": "blank", "position_within_cell": " ", "depth": "midground"},
+                {"scene_element_id": "none", "position_within_cell": "None", "depth": "midground"},
+                {"scene_element_id": "background", "position_within_cell": "BACKGROUND", "depth": "background"},
+                {"scene_element_id": "backdrop", "position_within_cell": "Backdrop", "depth": "background"},
+                {"scene_element_id": "not-listed", "position_within_cell": "center", "depth": "midground"},
+            ],
+        }
+
+        prompt = self._prompt(scene)
+        composition = prompt.split("# Composition\n\n", 1)[1].split("\n\n# ", 1)[0]
+
+        expected_foreground = "- Tsaeytte is in the left foreground."
+        expected_distant = "- In the distant background from left to right the viewer sees Freydis, then Galen, then Rin, then Peri."
+        self.assertIn(expected_foreground, composition)
+        self.assertIn(expected_distant, composition)
+        self.assertLess(composition.index(expected_foreground), composition.index(expected_distant))
+        self.assertNotIn("- From left to right the viewer sees:", composition)
+        self.assertNotIn("Blank", composition)
+        self.assertNotIn("None", composition)
+        self.assertNotIn("Background", composition)
+        self.assertNotIn("Backdrop", composition)
+        self.assertNotIn("Not-listed", composition)
+        self.assertLess(composition.index("Primary focal point"), composition.index(expected_foreground))
+        self.assertGreater(composition.index("Keep the party separated by depth"), composition.index(expected_distant))
+
     def test_fallback_visual_description_used_without_reference_tag(self):
         prompt = self._prompt({
             "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}, "environment": {}},

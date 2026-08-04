@@ -774,9 +774,26 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     composition_lines = []
     if clean_prompt_sentence(composition.get("focal_point")):
         composition_lines.append(f"- Primary focal point: {clean_prompt_sentence(composition.get('focal_point'))}.")
-    read_order = [get_element_display_name(element_id, elements_by_id) for element_id in _lines(composition.get("left_to_right"))]
-    if read_order:
-        composition_lines.append(f"- From left to right the viewer sees: {', then '.join(read_order)}.")
+    placements_by_element_id = {
+        _placement_element_id(placement): placement
+        for placement in ir.get("placements", [])
+        if _clean(placement.get("position_within_cell")).casefold() not in {"", "none", "background", "backdrop"}
+    }
+    read_order = _lines(composition.get("left_to_right"))
+    for depth in ("foreground", "midground", "background", "distant background"):
+        depth_element_ids = [
+            element_id for element_id in read_order
+            if element_id in placements_by_element_id
+            and _clean(placements_by_element_id[element_id].get("depth")).casefold() == depth
+        ]
+        if len(depth_element_ids) == 1:
+            element_id = depth_element_ids[0]
+            name = get_element_display_name(element_id, elements_by_id)
+            position = clean_prompt_sentence(placements_by_element_id[element_id].get("position_within_cell"))
+            composition_lines.append(f"- {name} is in the {position} {depth}.")
+        elif depth_element_ids:
+            names = [get_element_display_name(element_id, elements_by_id) for element_id in depth_element_ids]
+            composition_lines.append(f"- In the {depth} from left to right the viewer sees {', then '.join(names)}.")
     if clean_prompt_sentence(composition.get("composition_notes")):
         composition_lines.append(f"- {_sentence(composition.get('composition_notes'))}")
     if composition_lines:

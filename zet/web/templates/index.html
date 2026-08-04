@@ -319,6 +319,7 @@
           </label>
           <button id="aux-resource-edit-template" type="button" disabled>Edit Template</button>
           <button id="aux-resource-save" class="primary-action" type="button">Save Resource</button>
+          <button id="aux-resource-delete" class="danger-action" type="button" disabled>Delete Resource</button>
           <button id="aux-resource-clear" class="neutral-action" type="button">Clear Form</button>
           <div class="aux-resource-image-editor">
             <h3>Images</h3>
@@ -504,6 +505,13 @@
             </thead>
             <tbody></tbody>
           </table>
+          <div class="button-row compact story-create-row">
+            <label>
+              New Story Title
+              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
+            </label>
+            <button id="story-create" class="create-action" type="button">Add Story</button>
+          </div>
           <div class="story-git-panel">
             <div class="button-row compact">
               <button id="story-git-status" class="navigation-action" type="button">Show Git Status</button>
@@ -520,10 +528,9 @@
               <div class="button-row compact">
                 <span id="story-save-state" class="save-state" aria-live="polite"></span>
                 <button id="story-view" class="navigation-action" type="button" disabled>View Story</button>
-                <button id="story-delete" class="danger-action" type="button" disabled>Delete Story</button>
-                <button id="story-settings-load" class="navigation-action" type="button" disabled>Settings</button>
-                <button id="story-settings-save" class="primary-action" type="button" disabled>Save Settings</button>
                 <button id="story-save" class="primary-action" type="button" disabled>Save Story</button>
+                <button id="story-scenes" class="navigation-action" type="button" disabled>Scenes</button>
+                <button id="story-delete" class="danger-action" type="button" disabled>Delete Story</button>
               </div>
             </div>
             <div id="story-validation" class="action-message info" aria-label="Story markdown validation" hidden></div>
@@ -534,13 +541,6 @@
               <input id="story-rename-title" type="text">
             </label>
             <button id="story-rename" class="update-action" type="button" disabled>Rename</button>
-          </div>
-          <div class="button-row compact story-create-row">
-            <label>
-              New Story Title
-              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
-            </label>
-            <button id="story-create" class="create-action" type="button">Add Story</button>
           </div>
           <textarea id="story-text" spellcheck="false" placeholder="Select or create a story to edit its markdown."></textarea>
           <textarea id="story-settings-json" spellcheck="false" placeholder="Story settings JSON" hidden></textarea>
@@ -561,13 +561,6 @@
             Story
             <select id="scene-story-select"></select>
           </label>
-          <div class="button-row compact">
-            <label>
-              New Scene Name
-              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
-            </label>
-              <button id="scene-create" class="create-action" type="button">Add Scene</button>
-          </div>
           <table id="scene-table">
             <thead>
               <tr>
@@ -584,11 +577,11 @@
               <h2 id="scene-editor-title">Select a scene</h2>
               <div class="button-row compact">
                 <span id="scene-save-state" class="save-state" aria-live="polite"></span>
-                <button id="scene-stage-render" class="update-action" type="button" disabled>Render</button>
+                <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
                 <button id="scene-builder-open" class="navigation-action" type="button" disabled>Builder</button>
+                <button id="scene-stage-render" class="update-action" type="button" disabled>Render</button>
                 <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
                 <button id="scene-delete" class="danger-action" type="button" disabled>Delete Scene</button>
-                <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
               </div>
             </div>
             <div id="scene-validation" class="action-message info" aria-label="Scene markdown validation" hidden></div>
@@ -656,6 +649,13 @@
             </thead>
             <tbody></tbody>
           </table>
+          <div class="button-row compact scene-create-row">
+            <label>
+              New Scene Name
+              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
+            </label>
+            <button id="scene-create" class="create-action" type="button">Add Scene</button>
+          </div>
         </aside>
         <section class="review-main zine-main">
           <div class="review-header">

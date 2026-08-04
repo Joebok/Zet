@@ -571,6 +571,52 @@ Backend = "manual_chatgpt"
             self.assertNotIn("/api/assets/{asset_id}/stage-ai-ask", paths)
             self.assertNotIn("/api/assets/{asset_id}/retry-ai", paths)
 
+    def test_story_actions_are_consolidated(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            html = client.get("/").text
+            view_index = html.index('id="story-view"')
+            save_index = html.index('id="story-save"')
+            scenes_index = html.index('id="story-scenes"')
+            delete_index = html.index('id="story-delete"')
+
+            self.assertLess(view_index, save_index)
+            self.assertLess(save_index, scenes_index)
+            self.assertLess(scenes_index, delete_index)
+            self.assertNotIn('id="story-settings-load"', html)
+            self.assertNotIn('id="story-settings-save"', html)
+            self.assertLess(html.index('id="story-table"'), html.index('id="story-new-title"'))
+            self.assertLess(html.index('id="story-new-title"'), html.index('class="story-git-panel"'))
+
+            javascript = (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8")
+            autosave = javascript[javascript.index("async function saveStoryBeforeNavigation") : javascript.index("async function saveSceneBeforeNavigation")]
+            save_story = javascript[javascript.index("async function saveStory()") : javascript.index("async function openStoryScenes()")]
+            self.assertIn("return saveStory();", autosave)
+            self.assertIn("await saveStorySettingsData(state.selectedStorySlug);", save_story)
+            self.assertIn('await activatePage("scenes");', javascript)
+            self.assertIn('"story.title",', javascript)
+            self.assertIn("await loadStorySettingsData(state.selectedStorySlug);", javascript)
+
+    def test_scene_controls_are_positioned_and_ordered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            html = TestClient(create_app(config_path)).get("/").text
+
+            self.assertLess(html.index('id="scene-table"'), html.index('id="scene-new-name"'))
+            image_index = html.index('id="scene-toggle-image"')
+            builder_index = html.index('id="scene-builder-open"')
+            render_index = html.index('id="scene-stage-render"')
+            save_index = html.index('id="scene-save"')
+            delete_index = html.index('id="scene-delete"')
+            self.assertLess(image_index, builder_index)
+            self.assertLess(builder_index, render_index)
+            self.assertLess(render_index, save_index)
+            self.assertLess(save_index, delete_index)
+
     def test_asset_regenerate_advances_only_the_selected_asset(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

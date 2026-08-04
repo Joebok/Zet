@@ -1240,6 +1240,10 @@ ink wash
             self.assertEqual("FirstDay", story.record.slug)
             self.assertEqual("Opening", scene.record.slug)
             self.assertIn("A Better Day", story_path.read_text(encoding="utf-8"))
+            story_settings = json.loads((folder / "FirstDay.story.json").read_text(encoding="utf-8"))
+            self.assertEqual("A Better Day", story_settings["story"]["title"])
+            self.assertEqual("FirstDay", story_settings["story"]["slug"])
+            self.assertEqual("firstday", story_settings["story"]["id"])
             self.assertIn("At the Gate", scene_path.read_text(encoding="utf-8"))
             self.assertEqual("At the Gate", json.loads((folder / "Opening.scene.json").read_text(encoding="utf-8"))["scene"]["name"])
 

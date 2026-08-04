@@ -1,4 +1,5 @@
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -133,6 +134,17 @@ class AuxiliaryResourceService:
         resource.template_path = str(template_path)
         resource.updated_at = self._timestamp()
         self.repository.save_resource(resource)
+        return resource
+
+    def delete_resource(self, resource_id: str) -> AuxiliaryResource:
+        resource = self.repository.get_resource(resource_id)
+        folder, _ = self._resource_paths(resource.resource_id)
+        images_root = self.path_service.auxiliary_resource_root() / "Images"
+        if not resource.resource_id or folder.resolve().parent != images_root.resolve():
+            raise AuxiliaryResourceServiceError("Auxiliary resource folder is invalid.")
+        if folder.exists():
+            shutil.rmtree(folder)
+        self.repository.delete_resource(resource.resource_id)
         return resource
 
     def save_image(

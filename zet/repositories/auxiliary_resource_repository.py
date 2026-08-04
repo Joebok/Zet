@@ -98,3 +98,13 @@ class AuxiliaryResourceRepository:
             records.append(replacement)
         payload["resources"] = records
         self._write_payload(payload)
+
+    def delete_resource(self, resource_id: str) -> None:
+        """Delete one auxiliary resource record."""
+        payload = self._load_payload()
+        payload["resources"] = [
+            record
+            for record in payload["resources"]
+            if not isinstance(record, dict) or record.get("resource_id") != resource_id
+        ]
+        self._write_payload(payload)

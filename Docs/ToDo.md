@@ -1,12 +1,18 @@
 # To Do items
 
-Every time the Scene Builder is opened, run the function that the Refresh References button on the scene page invokes. It doesn't need a button, it should just run as a part of opening the scene builder.
+Pipeline Viewer - list of all pipelines (friendly names), click to see list of files, click file to see contents or image.
 
-On the Scenes page, we don't need the Image References column. Just have 2 columns, widen the left column so that the up and down arrows for re-ordering the scenes is visible.
+Color Theme
 
-On the Stories page, we don't need the slug or the story file in the list in the left column, should just be Title and the re-ordering arrows.
+UI Review
 
-List of all shared templates/.json files and ability to edit them.
+Create Matron Tsaeytte - streamline base image pipelines/templates.
+
+Save scene image history (allow delete of selected images). Or do the official "image review"?
+
+Comic Panel Create. Specify overall aspect ratio (default 8.5x11) and panel divisions. Select images to place, have zoom and crop controls for assembly.
+
+Augmented prompt for left-right read on scenes; incorporate depth.
 
 # Defer for now
 

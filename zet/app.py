@@ -521,6 +521,10 @@ class ZetApp:
         """Update a global auxiliary resource."""
         return self.auxiliary_resource_service.update_resource(resource_id, label)
 
+    def delete_auxiliary_resource(self, resource_id: str) -> AuxiliaryResource:
+        """Delete a global auxiliary resource and its files."""
+        return self.auxiliary_resource_service.delete_resource(resource_id)
+
     def save_auxiliary_resource_image(
         self,
         resource_id: str,

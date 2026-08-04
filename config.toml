@@ -56,5 +56,5 @@ IntervalSeconds = 60
 Backend = "manual_chatgpt"
 
 [AIPromptAnalysis]
-Model = "qwen3.5:9b"
+Model = "zet-image-analyst:latest"
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"
