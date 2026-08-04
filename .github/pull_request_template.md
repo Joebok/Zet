@@ -4,7 +4,7 @@ Closes #
 
 ## Summary
 
-- 
+-
 
 ## Verification
 

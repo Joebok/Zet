@@ -17,7 +17,7 @@ Codex selects the lowest `priority:<N>` value first, then the oldest eligible is
 | `needs-input` | Work is paused on one material decision. |
 | `needs-review` | Tests and CI passed; the pull request is ready for human review. |
 
-Codex removes the previous workflow label when applying the next one. A closed, unmerged pull request returns the issue to `codex-ready`. Merging a pull request with `Closes #<number>` closes the issue.
+Codex removes the previous workflow label when applying the next one. When a pull request is closed without merging, the person closing it removes `in-progress` or `needs-review` and restores `codex-ready`. Merging a pull request with `Closes #<number>` closes the issue.
 
 ## Clarification protocol
 
@@ -37,3 +37,5 @@ Answer in the Codex task, or answer on GitHub and return to the same task with `
 Codex opens a draft pull request early with `Closes #<number>`, runs the complete Python and browser suites, monitors CI, fixes failures, and performs a final review. Only then does it mark the pull request ready and replace `in-progress` with `needs-review`.
 
 The human reviewer owns merging. This private repository cannot currently enforce branch protection, so a green CI run and human approval are mandatory process rules.
+
+Only one issue may be in progress at a time. Do not run dashboard browser suites concurrently across worktrees because the local test server uses a fixed port and fixture directory.
