@@ -17,16 +17,33 @@ class PipelineControlServiceError(Exception):
 
 @dataclass(frozen=True)
 class AutomationSettings:
-    prompt_condense_enabled: bool
-    prompt_condense_model: str
-    prompt_condense_file: str
-    local_render_auto_queue_after_condense: bool
     local_render_preset: str
+    local_render_positive_prompt_globals: str
+    local_render_negative_prompt_globals: str
+    local_render_use_forge_couple: bool
+    local_render_checkpoint: str
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
-    ai_prompt_review_model: str = "qwen3.5:9b-instruct"
-    ai_prompt_review_instructions_file: str = "Config/AI_Prompt_Review_Instructions.md"
+    local_render_backend: str = "stable_matrix"
+    stable_matrix_profile: str = ""
+    stable_matrix_positive_prompt_globals: str = ""
+    stable_matrix_negative_prompt_globals: str = ""
+    stable_matrix_use_forge_couple: bool | None = None
+    stable_matrix_checkpoint: str = ""
+    comfyui_profile: str = "comfyui-core-preview"
+    comfyui_server_url: str = "http://127.0.0.1:8188"
+    comfyui_checkpoint: str = ""
+    comfyui_positive_prompt_globals: str = ""
+    comfyui_negative_prompt_globals: str = ""
+    comfyui_poll_seconds: float = 1.0
+    comfyui_timeout_seconds: float = 300.0
+    ai_prompt_analysis_model: str = "qwen3.5:9b-instruct"
+    ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
+    zine_print_scale: float = 0.978
+    zine_page_margin: int = 4
+    zine_width: int = 3300
+    turnaround_width: int = 3960
 
 
 @dataclass(frozen=True)
@@ -46,10 +63,12 @@ class PipelineControlSnapshot:
     automation: AutomationSettings
     pipeline_rows: list[PipelineStageControlRow]
     project_config_rows: list[dict]
+    render_profiles: dict[str, list[str]]
 
 
 class PipelineControlService:
     SAFE_RENDER_BACKENDS = {"local_image", "manual_chatgpt"}
+    SAFE_LOCAL_RENDER_BACKENDS = {"stable_matrix", "comfyui"}
 
     def __init__(
         self,
@@ -94,143 +113,158 @@ class PipelineControlService:
             automation=self.automation_settings(),
             pipeline_rows=pipeline_rows,
             project_config_rows=self.project_config_rows(),
+            render_profiles=self.render_profiles(),
         )
 
     def automation_settings(self) -> AutomationSettings:
         return AutomationSettings(
-            prompt_condense_enabled=bool(self.config.prompt_condense_enabled),
-            prompt_condense_model=str(self.config.prompt_condense_model),
-            prompt_condense_file=str(self.config.prompt_condense_file),
-            local_render_auto_queue_after_condense=bool(self.config.local_render_auto_queue_after_condense),
             local_render_preset=str(self.config.local_render_preset),
+            local_render_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
+            local_render_negative_prompt_globals=str(self.config.local_render_negative_prompt_globals),
+            local_render_use_forge_couple=str(self.config.local_render_layout_backend) == "forge_couple_basic",
+            local_render_checkpoint=str(self.config.local_render_checkpoint),
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
-            ai_prompt_review_model=str(self.config.ai_prompt_review_model),
-            ai_prompt_review_instructions_file=str(self.config.ai_prompt_review_instructions_file),
+            local_render_backend=str(self.config.local_render_backend),
+            stable_matrix_profile=str(self.config.local_render_preset),
+            stable_matrix_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
+            stable_matrix_negative_prompt_globals=str(self.config.local_render_negative_prompt_globals),
+            stable_matrix_use_forge_couple=str(self.config.local_render_layout_backend) == "forge_couple_basic",
+            stable_matrix_checkpoint=str(self.config.local_render_checkpoint),
+            comfyui_profile=str(self.config.comfyui_profile),
+            comfyui_server_url=str(self.config.comfyui_server_url),
+            comfyui_checkpoint=str(self.config.comfyui_checkpoint),
+            comfyui_positive_prompt_globals=str(self.config.comfyui_positive_prompt_globals),
+            comfyui_negative_prompt_globals=str(self.config.comfyui_negative_prompt_globals),
+            comfyui_poll_seconds=float(self.config.comfyui_poll_seconds),
+            comfyui_timeout_seconds=float(self.config.comfyui_timeout_seconds),
+            ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
+            ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
+            zine_print_scale=float(self.config.zine_print_scale),
+            zine_page_margin=int(self.config.zine_page_margin),
+            zine_width=int(self.config.zine_width),
+            turnaround_width=int(self.config.turnaround_width),
         )
+
+    def render_profiles(self) -> dict[str, list[str]]:
+        path = self.config_path.resolve().parent / "Config" / "Local_Render_Presets.json"
+        try:
+            profiles = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            profiles = {}
+        result = {"stable_matrix": [], "comfyui": []}
+        for name, profile in profiles.items() if isinstance(profiles, dict) else []:
+            backend = str(profile.get("backend") or "") if isinstance(profile, dict) else ""
+            if backend in result and profile.get("enabled", True):
+                result[backend].append(str(name))
+        return {backend: sorted(names) for backend, names in result.items()}
 
     def project_config_rows(self) -> list[dict]:
         return [
-            {"Scope": "Project config", "Setting": "PromptCondense.Enabled", "Value": self.config.prompt_condense_enabled},
-            {"Scope": "Project config", "Setting": "PromptCondense.Model", "Value": self.config.prompt_condense_model},
-            {"Scope": "Project config", "Setting": "PromptCondense.PromptFile", "Value": self.config.prompt_condense_file},
+            {"Scope": "Project config", "Setting": "LocalRender.Backend", "Value": self.config.local_render_backend},
+            {"Scope": "Project config", "Setting": "StableMatrix.Profile", "Value": self.config.local_render_preset},
             {
                 "Scope": "Project config",
-                "Setting": "LocalRender.AutoQueueAfterCondense",
-                "Value": self.config.local_render_auto_queue_after_condense,
+                "Setting": "StableMatrix.PositivePromptGlobals",
+                "Value": self.config.local_render_positive_prompt_globals,
             },
-            {"Scope": "Project config", "Setting": "LocalRender.Preset", "Value": self.config.local_render_preset},
+            {
+                "Scope": "Project config",
+                "Setting": "StableMatrix.NegativePromptGlobals",
+                "Value": self.config.local_render_negative_prompt_globals,
+            },
+            {"Scope": "Project config", "Setting": "StableMatrix.LayoutBackend", "Value": self.config.local_render_layout_backend},
+            {"Scope": "Project config", "Setting": "StableMatrix.Checkpoint", "Value": self.config.local_render_checkpoint},
+            {"Scope": "Project config", "Setting": "ComfyUI.Profile", "Value": self.config.comfyui_profile},
+            {"Scope": "Project config", "Setting": "ComfyUI.ServerURL", "Value": self.config.comfyui_server_url},
+            {"Scope": "Project config", "Setting": "ComfyUI.Checkpoint", "Value": self.config.comfyui_checkpoint},
+            {"Scope": "Project config", "Setting": "Zine.PrintScale", "Value": self.config.zine_print_scale},
+            {"Scope": "Project config", "Setting": "Zine.PageMargin", "Value": self.config.zine_page_margin},
+            {"Scope": "Project config", "Setting": "Zine.Width", "Value": self.config.zine_width},
+            {"Scope": "Project config", "Setting": "Turnaround.Width", "Value": self.config.turnaround_width},
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
-            {"Scope": "Project config", "Setting": "AIPromptReview.Model", "Value": self.config.ai_prompt_review_model},
-            {
-                "Scope": "Project config",
-                "Setting": "AIPromptReview.InstructionsFile",
-                "Value": self.config.ai_prompt_review_instructions_file,
-            },
+            {"Scope": "Project config", "Setting": "AIPromptAnalysis.Model", "Value": self.config.ai_prompt_analysis_model},
+            {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
 
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         """Persist project-level automation settings."""
         self._validate_settings(settings)
+        stable_profile = settings.stable_matrix_profile or settings.local_render_preset
+        stable_positive = settings.stable_matrix_positive_prompt_globals or settings.local_render_positive_prompt_globals
+        stable_negative = settings.stable_matrix_negative_prompt_globals or settings.local_render_negative_prompt_globals
+        stable_checkpoint = settings.stable_matrix_checkpoint or settings.local_render_checkpoint
+        stable_forge = (
+            settings.local_render_use_forge_couple
+            if settings.stable_matrix_use_forge_couple is None
+            else settings.stable_matrix_use_forge_couple
+        )
         updates = {
-            ("PromptCondense", "Enabled"): settings.prompt_condense_enabled,
-            ("PromptCondense", "Model"): settings.prompt_condense_model,
-            ("PromptCondense", "PromptFile"): settings.prompt_condense_file,
-            ("LocalRender", "AutoQueueAfterCondense"): settings.local_render_auto_queue_after_condense,
-            ("LocalRender", "Preset"): settings.local_render_preset,
+            ("LocalRender", "Backend"): settings.local_render_backend,
+            ("StableMatrix", "Profile"): stable_profile,
+            ("StableMatrix", "PositivePromptGlobals"): stable_positive,
+            ("StableMatrix", "NegativePromptGlobals"): stable_negative,
+            ("StableMatrix", "LayoutBackend"): "forge_couple_basic" if stable_forge else "plain_txt2img",
+            ("StableMatrix", "Checkpoint"): stable_checkpoint,
+            ("ComfyUI", "Profile"): settings.comfyui_profile,
+            ("ComfyUI", "ServerURL"): settings.comfyui_server_url,
+            ("ComfyUI", "Checkpoint"): settings.comfyui_checkpoint,
+            ("ComfyUI", "PositivePromptGlobals"): settings.comfyui_positive_prompt_globals,
+            ("ComfyUI", "NegativePromptGlobals"): settings.comfyui_negative_prompt_globals,
+            ("ComfyUI", "PollSeconds"): settings.comfyui_poll_seconds,
+            ("ComfyUI", "TimeoutSeconds"): settings.comfyui_timeout_seconds,
+            ("Zine", "PrintScale"): settings.zine_print_scale,
+            ("Zine", "PageMargin"): settings.zine_page_margin,
+            ("Zine", "Width"): settings.zine_width,
+            ("Turnaround", "Width"): settings.turnaround_width,
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
-            ("AIPromptReview", "Model"): settings.ai_prompt_review_model,
-            ("AIPromptReview", "InstructionsFile"): settings.ai_prompt_review_instructions_file,
+            ("AIPromptAnalysis", "Model"): settings.ai_prompt_analysis_model,
+            ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
         self._update_config_values(updates)
         ConfigService.load(self.config_path)
-
-    def prompt_review_mode(self, pipeline_row: dict) -> str:
-        """Return the configured prompt review mode for one pipeline definition."""
-        stages = list(pipeline_row.get("stages") or [])
-        if "PROMPT_REVIEW" not in stages:
-            return "OFF"
-        actor = str((pipeline_row.get("actor_by_stage") or {}).get("PROMPT_REVIEW") or "")
-        worker = str((pipeline_row.get("worker_by_stage") or {}).get("PROMPT_REVIEW") or "")
-        if actor == "PYTHON" and worker == "zet.workers.ai_prompt_review_worker":
-            return "AI"
-        return "HUMAN"
-
-    def set_prompt_review_mode(self, character: str, phase: str, pipeline_name: str, mode: str) -> None:
-        """Set PROMPT_REVIEW to HUMAN, AI, or OFF for one character phase pipeline."""
-        normalized_mode = mode.strip().upper()
-        if normalized_mode not in {"HUMAN", "AI", "OFF"}:
-            raise PipelineControlServiceError("Prompt review mode must be HUMAN, AI, or OFF.")
-        try:
-            assets = self.asset_repository.list_assets(character, phase)
-        except AssetRepositoryError:
-            assets = []
-        assets_in_prompt_review = [
-            asset for asset in assets if asset.pipeline == pipeline_name and asset.pipeline_stage == "PROMPT_REVIEW"
-        ]
-        if normalized_mode == "OFF" and assets_in_prompt_review:
-            raise PipelineControlServiceError("Cannot disable PROMPT_REVIEW while assets are currently in that stage.")
-        path = Path(self.config.base_character_path) / character / phase / "Pipelines.json"
-        if not path.exists():
-            raise PipelineControlServiceError(f"Pipelines.json not found: {path}")
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        pipelines = payload.get("pipelines")
-        if not isinstance(pipelines, dict):
-            raise PipelineControlServiceError("Pipelines.json must contain a pipelines object.")
-        pipeline = pipelines.get(pipeline_name)
-        if not isinstance(pipeline, dict):
-            raise PipelineControlServiceError(f"Pipeline not found: {pipeline_name}")
-        stages = list(pipeline.get("stages") or [])
-        if normalized_mode in {"HUMAN", "AI"}:
-            if "PROMPT_REVIEW" not in stages:
-                if "PROMPT" not in stages:
-                    raise PipelineControlServiceError(f"Pipeline {pipeline_name} has no PROMPT stage.")
-                stages.insert(stages.index("PROMPT") + 1, "PROMPT_REVIEW")
-            actor_by_stage = pipeline.setdefault("actor_by_stage", {})
-            worker_by_stage = pipeline.setdefault("worker_by_stage", {})
-            if isinstance(actor_by_stage, dict):
-                actor_by_stage["PROMPT_REVIEW"] = "PYTHON" if normalized_mode == "AI" else "HUMAN_AGENT"
-            if isinstance(worker_by_stage, dict):
-                worker_by_stage["PROMPT_REVIEW"] = (
-                    "zet.workers.ai_prompt_review_worker" if normalized_mode == "AI" else "zet.workers.noop_worker"
-                )
-        else:
-            stages = [stage for stage in stages if stage != "PROMPT_REVIEW"]
-            if isinstance(pipeline.get("actor_by_stage"), dict):
-                pipeline["actor_by_stage"].pop("PROMPT_REVIEW", None)
-            if isinstance(pipeline.get("worker_by_stage"), dict):
-                pipeline["worker_by_stage"].pop("PROMPT_REVIEW", None)
-        pipeline["stages"] = stages
-        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-    def set_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
-        """Enable or disable the PROMPT_REVIEW stage for one character phase pipeline."""
-        self.set_prompt_review_mode(character, phase, pipeline_name, "HUMAN" if enabled else "OFF")
 
     def _validate_settings(self, settings: AutomationSettings) -> None:
         render_backend = settings.render_backend.strip()
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))
             raise PipelineControlServiceError(f"Render backend must be one of: {choices}.")
-        if not settings.prompt_condense_model.strip():
-            raise PipelineControlServiceError("Prompt condense model cannot be blank.")
-        if not settings.prompt_condense_file.strip():
-            raise PipelineControlServiceError("Prompt condense file cannot be blank.")
-        if not settings.local_render_preset.strip():
-            raise PipelineControlServiceError("Local render preset cannot be blank.")
+        local_backend = settings.local_render_backend.strip()
+        if local_backend not in self.SAFE_LOCAL_RENDER_BACKENDS:
+            choices = ", ".join(sorted(self.SAFE_LOCAL_RENDER_BACKENDS))
+            raise PipelineControlServiceError(f"Local render backend must be one of: {choices}.")
+        if not (settings.stable_matrix_profile or settings.local_render_preset).strip():
+            raise PipelineControlServiceError("Stable Matrix profile cannot be blank.")
+        if not settings.comfyui_profile.strip():
+            raise PipelineControlServiceError("ComfyUI profile cannot be blank.")
+        if not settings.comfyui_server_url.strip():
+            raise PipelineControlServiceError("ComfyUI server URL cannot be blank.")
+        if settings.comfyui_poll_seconds < 0 or settings.comfyui_timeout_seconds <= 0:
+            raise PipelineControlServiceError("ComfyUI polling must be non-negative and timeout must be positive.")
         if settings.ai_harvest_interval_seconds < 0:
             raise PipelineControlServiceError("Auto harvest interval cannot be negative.")
         if settings.ai_harvest_interval_seconds > 86400:
             raise PipelineControlServiceError("Auto harvest interval must be 86400 seconds or less.")
-        if not settings.ai_prompt_review_model.strip():
-            raise PipelineControlServiceError("AI prompt review model cannot be blank.")
-        if not settings.ai_prompt_review_instructions_file.strip():
-            raise PipelineControlServiceError("AI prompt review instructions file cannot be blank.")
+        if settings.zine_print_scale <= 0 or settings.zine_print_scale > 1:
+            raise PipelineControlServiceError("Zine print scale must be greater than 0 and no greater than 1.")
+        if settings.zine_width <= 0 or settings.zine_width % 44:
+            raise PipelineControlServiceError("Zine width must be a positive multiple of 44 pixels.")
+        if settings.turnaround_width <= 0 or settings.turnaround_width % 44:
+            raise PipelineControlServiceError("Turnaround width must be a positive multiple of 44 pixels.")
+        max_page_margin = (settings.zine_width // 4 - 1) // 2
+        if settings.zine_page_margin < 0 or settings.zine_page_margin > max_page_margin:
+            raise PipelineControlServiceError(
+                f"Zine page margin must be between 0 and {max_page_margin} pixels."
+            )
+        if not settings.ai_prompt_analysis_model.strip():
+            raise PipelineControlServiceError("AI prompt analysis model cannot be blank.")
+        if not settings.ai_prompt_analysis_instructions_file.strip():
+            raise PipelineControlServiceError("AI prompt analysis instructions file cannot be blank.")
 
     def _update_config_values(self, updates: dict[tuple[str, str], object]) -> None:
         if not self.config_path.exists():
@@ -267,7 +301,7 @@ class PipelineControlService:
         section_body = match.group(2)
         key_pattern = re.compile(rf"(?m)^({re.escape(key)}\s*=\s*).*$")
         if key_pattern.search(section_body):
-            new_body = key_pattern.sub(rf"\g<1>{rendered_value}", section_body, count=1)
+            new_body = key_pattern.sub(lambda match: f"{match.group(1)}{rendered_value}", section_body, count=1)
         else:
             body_suffix = "" if section_body.endswith("\n") or not section_body else "\n"
             new_body = f"{section_body}{body_suffix}{key} = {rendered_value}\n"
@@ -277,5 +311,7 @@ class PipelineControlService:
         if isinstance(value, bool):
             return "true" if value else "false"
         if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
             return str(value)
         return json.dumps(str(value))

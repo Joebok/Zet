@@ -12,9 +12,9 @@ Zet currently supports:
 - FastAPI dashboard controls
 - service-layer asset state transitions
 - body-reference prompt compilation
-- human prompt review
-- optional AI prompt condensing before prompt review
-- optional local prompt-review image previews
+- render-queue prompt inspection
+- optional AI prompt condensing before render
+- optional local prompt-inspection image previews
 - filesystem AI proxy ask/answer flow
 - local image rendering through a backend-neutral render worker
 - ComfyUI as the first local image render backend
@@ -25,7 +25,7 @@ The current first working end-to-end path is:
 
 ```text
 Body-Reference asset
-MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW -> LOCKED
+MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
 ```
 
 The current mature test asset is `asset_id = 1` for `Tsaeytte / Adult / Body-Reference / Front`.
@@ -61,7 +61,7 @@ PipelineBasePath   = BasePipelinePath / Character / Phase
 PipelinePath       = PipelineBasePath / Pipeline / BodyView / HeadView-or-_ / Asset_{AssetID}
 CandidateImagePath = PipelinePath / FinalImageOutput
 LockedImagePath    = CharacterAssetPath / FinalImageOutput
-AIProxyRoot        = BaseAIQueuePath / Ollama_Proxy
+AIProxyRoot        = BaseAIQueuePath / File_Proxy
 ```
 
 For assets without `HeadView`, Zet uses `_` in the pipeline path.
@@ -124,7 +124,6 @@ Current stages used by the configured pipelines:
 
 - `MANIFEST`
 - `PROMPT`
-- `PROMPT_REVIEW`
 - `RENDER`
 - `RENDER_REVIEW`
 - `LOCKED`
@@ -133,7 +132,7 @@ Current stages used by the configured pipelines:
 The standard configured flow is:
 
 ```text
-MANIFEST -> PROMPT -> PROMPT_REVIEW -> RENDER -> RENDER_REVIEW
+MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW
 ```
 
 Approved render reviews promote the asset into:
@@ -164,10 +163,9 @@ The dashboard exposes actions such as `Run Current Worker`, `Run Housekeeping`, 
 
 Currently implemented human review points:
 
-- `PROMPT_REVIEW`
 - `RENDER_REVIEW`
 
-Prompt review and render review both have dedicated FastAPI dashboard pages. Render review handles promotion to `LOCKED` and supports fail paths back to `RENDER` or full regeneration.
+Render review has a dedicated FastAPI dashboard page. It handles promotion to `LOCKED` and supports fail paths back to `RENDER` or full regeneration.
 
 ### `AI_AGENT`
 
@@ -209,12 +207,6 @@ The primary dashboard is implemented in FastAPI at `zet/web/app.py`.
 
 The old Streamlit dashboard has been retired. New dashboard work belongs in `zet/web/` and should call backend services rather than owning workflow logic directly.
 
-A detailed inventory of current dashboard behavior and UI direction is maintained in:
-
-```text
-Docs/Dashboard_Functionality_and_UI_Direction.md
-```
-
 The FastAPI dashboard lives under:
 
 ```text
@@ -231,13 +223,19 @@ Current dashboard pages:
 
 - `Assets`
 - `Manifest`
-- `Prompt Review`
-- `Render Review`
+- `Prompt Inspection`
+- `Image Review`
 - `Render Console`
 - `AI Controls`
 - `Pipeline Controls`
 
 The Template Editor is intentionally deferred while the body-reference authoring workflow is reconsidered.
+
+### Scene Image Review
+
+The first successful image saved for a scene is published directly to `Stories/<story>/<scene>.png`. Local test renders do not count as published or candidate images. Later successful saves are written to `Pipelines/Stories/<story>/<scene>/Candidate/<scene>.png` and appear in Image Review beside the currently published image.
+
+Promoting a scene candidate backs up the current published image under `Locked_Backups`, publishes the candidate, and clears the pending review. Discarding removes only the candidate. Other dashboard pages always display the published image and link the `Candidate Image Pending` overlay to the matching scene in Image Review.
 
 ### Head-Fitment Pipeline
 
@@ -252,7 +250,7 @@ The active stage path is:
 MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
 ```
 
-Head-Fitment does not use Prompt Review or ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character_Image_Template.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
+Head-Fitment does not use ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character_Image_Template.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
 
 ### Assets Page
 
@@ -260,7 +258,7 @@ The Assets page shows asset records for the selected character and phase.
 
 Implemented controls include:
 
-- `Open Prompt Review`
+- `Open Prompt Inspection`
 - `Stage AI Ask`
 - `Run Current Worker`
 - `Run Housekeeping`
@@ -282,37 +280,9 @@ The page also shows:
 
 `Regenerate` is treated as a fresh start for that asset. It clears the asset pipeline working folder, removes stale proxy queue items for the asset, and removes known generated Body-Reference artifacts such as `Final_Image_Prompt.md`, `Condensed_Image_Prompt.md`, review files, dependency manifests, and local test renders before returning the asset to `MANIFEST`.
 
-### Prompt Review Page
+### Prompt Inspection Page
 
-The Prompt Review page is active for assets at:
-
-```text
-pipeline_stage = PROMPT_REVIEW
-actor = HUMAN_AGENT
-```
-
-Implemented features:
-
-- prompt display with readable contrast
-- prompt copy control
-- prompt search
-- two-column layout
-- Previous / Next navigation across assets waiting for prompt review
-- optional local test image generation
-- latest local test render display
-- Approve
-- Fail
-
-Approve advances the asset. If the next stage is `AI_AGENT`, the proxy ask is staged automatically.
-
-Fail currently blocks the asset by setting:
-
-```text
-asset_state = BLOCKED
-pipeline_stage = ERROR
-actor = HUMAN_AGENT
-error_code = PROMPT_REVIEW_FAILED
-```
+Prompt Inspection displays and recompiles prompts from queued `RENDER` tasks. It supports prompt copy/search, source attribution, Previous/Next navigation, and optional local test renders. It does not represent a pipeline stage or advance asset state.
 
 ### Template Editor
 
@@ -325,18 +295,14 @@ It currently works with config-driven prompt task bundles and template section m
 AI Controls shows the filesystem proxy queue status:
 
 - Ask
-- Claimed
+- Running
 - Answer
-- Failed
 
 Harvested answer folders are no longer counted as pending answers.
 
 AI Controls also supports:
 
 - Harvest AI Answers
-- Stop Proxy
-- Resume Proxy
-- Send Monitor Test
 
 When `AIHarvest.AutoEnabled` is true, `run_auto_harvest.bat` starts a separate background harvester loop that runs at `AIHarvest.IntervalSeconds`. The dashboard does not refresh itself to harvest.
 
@@ -367,7 +333,7 @@ actor = AI_AGENT
 ai_state = ASKED
 ```
 
-The batch reset clears stale proxy queue items for each affected asset, removes old candidate render outputs and local render metadata, and stages fresh render asks. Locked assets are skipped unless `Include locked assets` is enabled. This is not a full regeneration; compiled prompts and prompt-review artifacts are preserved.
+The batch reset clears stale proxy queue items for each affected asset, removes old candidate render outputs and local render metadata, and stages fresh render asks. Locked assets are skipped unless `Include locked assets` is enabled. This is not a full regeneration; compiled prompts and prompt-inspection artifacts are preserved.
 
 ## Body-Reference Prompt Pipeline
 
@@ -417,14 +383,17 @@ PromptFile = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
 
 [LocalRender]
 AutoQueueAfterCondense = true
-Preset = "body-reference-preview"
+Backend = "stable_matrix"
+
+[StableMatrix]
+Profile = "body-reference-preview"
 
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 300
 ```
 
-When enabled, moving a Body-Reference asset from `PROMPT` to `PROMPT_REVIEW` stages an auxiliary proxy ask with:
+When enabled, moving a Body-Reference asset from `PROMPT` to `RENDER` stages an auxiliary proxy ask with:
 
 ```text
 worker_type = ollama_generate
@@ -446,7 +415,7 @@ The harvester copies successful condense output to:
 Condensed_Image_Prompt.md
 ```
 
-This task does not advance the asset, change `Final_Image_Prompt.md`, approve prompt review, or block prompt review if it fails.
+This task does not advance the asset or change `Final_Image_Prompt.md` if it fails.
 
 When `LocalRender.AutoQueueAfterCondense` is true, harvesting a successful `prompt_condense` answer queues a review-only `local_image_render` ask. That ask writes a test image into `Local_Test_Renders/` and does not advance the asset.
 
@@ -456,88 +425,28 @@ Manual ChatGPT final render tasks always use `Final_Image_Prompt.md`. The conden
 
 ## Local Rendering
 
-Zet has a backend-neutral local render layer under:
+Zet supports Stable Matrix and ComfyUI behind a backend-neutral local render request/result contract. Scene previews use `Scene_Render_IR.json` as the canonical structured input; prompt-only asset previews use their labeled prompt.
 
-```text
-Scripts/Local_Render_Adapters/
-```
+Local test renders remain review aids. They do not modify prompts, advance a pipeline stage, or overwrite final output.
 
-Current files:
-
-- `common.py`
-- `local_render.py`
-- `comfyui_adapter.py`
-- `__init__.py`
-
-`local_render.render_image(...)` is the generic dispatch point.
-
-ComfyUI is currently the only implemented backend. It is selected through `Config/Local_Render_Presets.json`:
-
-```json
-{
-  "body-reference-preview": {
-    "backend": "comfyui"
-  }
-}
-```
-
-The current ComfyUI workflow file is:
-
-```text
-Config/Local_Render_Workflows/body_reference_preview_comfyui-api.json
-```
-
-The local render adapter:
-
-- reads `Final_Image_Prompt.md`
-- splits positive prompt and `Negative constraints:`
-- loads workflow JSON
-- injects prompt/settings where supported
-- queues ComfyUI via local API
-- downloads the generated image
-- writes PNG and JSON metadata
-
-## Review-Only Local Test Renders
-
-Prompt review can generate optional local test images.
-
-These are saved under the job output directory:
-
-```text
-Local_Test_Renders/test_YYYYMMDD_HHMMSS.png
-Local_Test_Renders/test_YYYYMMDD_HHMMSS.json
-```
-
-This is only a review aid.
-
-It does not:
-
-- modify `Final_Image_Prompt.md`
-- approve prompt review
-- advance the job
-- overwrite final body-reference output
-- require ComfyUI for normal prompt compilation
+See [Local Image Generation](Local_Image_Generation.md) for complete configuration, compilation, backend, queue, CLI, artifact, troubleshooting, and example documentation.
 
 ## Filesystem AI Proxy
 
-Zet uses a filesystem proxy for asynchronous AI and local render work.
+Zet is a subscriber to the standalone filesystem proxy for asynchronous AI and local render work.
 
 Queue root:
 
 ```text
-BaseAIQueuePath / Ollama_Proxy
+BaseAIQueuePath / File_Proxy
 ```
 
 Current queue folders:
 
 ```text
-Ask/
-Claims/
-Claimed/
-Answer/
-Failed/
-Control/
-Monitor/
+Ask/zet/
+Running/zet/
+Answer/zet/
 ```
 
 Ask folders contain:
@@ -555,11 +464,12 @@ Answer folders contain:
 
 ### Ask Types
 
-Current worker types:
+Current standalone-proxy worker types:
 
 - `ollama_generate`
 - `local_image_render`
-- `manual_chatgpt_render`
+
+Manual ChatGPT renders use the separate `BaseAIQueuePath / Manual_Render_Queue` workflow.
 
 `local_image_render` is backend-neutral. The concrete backend is selected by `render_preset`.
 
@@ -567,24 +477,17 @@ The earlier `comfyui_render` name is kept only for compatibility in the local im
 
 ## Proxy Workers
 
-Current worker scripts:
+Zet provides these one-job worker executables:
 
-- `AI_Manager/proxy_worker.py`
 - `AI_Manager/ollama_proxy_worker.py`
 - `AI_Manager/local_image_proxy_worker.py`
-- `AI_Manager/comfyui_proxy_worker.py`
 
-`proxy_worker.py` is the preferred worker entry point. It claims one supported ask at a time and dispatches either `ollama_generate` or `local_image_render` work on the same machine, preventing concurrent condense/render jobs from competing for local resources.
-
-`comfyui_proxy_worker.py` is now only a compatibility wrapper around `local_image_proxy_worker.py`.
-
-The individual Ollama and local image workers remain useful for diagnostics, but should not both be run on the same machine when serialized local work is desired.
+The standalone proxy owns polling, claiming, retries, and queue transitions. It invokes one Zet worker with `--job-dir`; the worker reads inputs and writes outputs without moving the job folder.
 
 The local image handler:
 
-- claims `local_image_render` asks
 - calls the backend-neutral local render dispatcher
-- writes the expected image output into the Answer folder
+- writes the expected image output into the supplied job folder
 - writes `LOCAL_RENDER_METADATA.json`
 - does not modify Zet asset state
 
@@ -629,7 +532,7 @@ Platform-specific config overrides are supported through:
 
 The main known cross-machine path is the external Dropbox AI queue. Project-local `_Lib/...` paths should remain relative and portable.
 
-Standalone worker deployments outside the repo, such as `C:/Users/Joe/Ollama`, must be kept in sync manually for now. The batch files there should point at the same `Ollama_Proxy` path resolved by Zet.
+The standalone proxy is maintained in `C:/Users/Joe/Projects/AI_Proxy` and uses the same `BaseAIQueuePath / File_Proxy` queue as Zet.
 
 HTTPS over Tailscale for the Render Console is intentionally on hold. The current practical deployment is localhost or plain HTTP over the private Tailscale network.
 
@@ -640,7 +543,7 @@ AI Controls includes a process-management section for the local Zet service set.
 Current tracked processes:
 
 - Zet Web Dashboard
-- Unified Proxy Worker
+- File Proxy
 - Auto Harvester
 
 The primary dashboard and service processes can be started, stopped, or restarted from AI Controls. Duplicate process counts are shown so accidental multiple workers or harvesters are easier to spot. The Render Console is integrated into the main FastAPI dashboard and no longer has a standalone server.

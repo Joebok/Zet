@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
+from zet.models.reference import ReferenceFile
+
 
 @dataclass
 class Asset:
@@ -21,7 +23,7 @@ class Asset:
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     updated_at: Optional[str] = None
-    reference_files: list[dict] = field(default_factory=list)
+    reference_files: list[dict | ReferenceFile] = field(default_factory=list)
     identity_key_id: Optional[str] = None
     expression_definition_path: Optional[str] = None
     costume_path: Optional[str] = None

@@ -1,15 +1,8 @@
 from pathlib import Path
-import sys
 
 from zet.models.worker import WorkerResult
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
-if str(SCRIPTS_PATH) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_PATH))
-
-from Compile_Character_Template import TemplateCompileError
-from Run_Head_Fitment_Jobs import compile_head_fitment_job
+from Scripts.Compile_Character_Template import TemplateCompileError
+from Scripts.Run_Head_Fitment_Jobs import PROJECT_ROOT, compile_head_fitment_job
 
 
 def run(asset, context) -> WorkerResult:

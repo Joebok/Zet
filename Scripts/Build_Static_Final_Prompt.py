@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import re
 
-from Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
-from Library_Paths import library_root
+from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
+from Scripts.Library_Paths import library_root
+from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE, auxiliary_resource_image_for_tag
 
 
 SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
@@ -14,7 +14,6 @@ RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
 COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{SECTION:[A-Z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^}]+(?:}[^}]*)?\}\}")
 SINGLE_BRACE_TOKEN_RE = re.compile(r"(?<!\{)\{([A-Z0-9_]+)\}(?!\})")
-AUXILIARY_RESOURCE_RE = re.compile(r"\{\{AUX:([a-z]+):([a-z0-9-]+)\}\}")
 
 
 def _line_count(text: str) -> int:
@@ -183,51 +182,48 @@ def _auxiliary_inventory_path(template_path: Path) -> Path:
     return library_root(_project_root_for_template(template_path)) / "AuxiliaryResources" / "AuxiliaryResources.json"
 
 
-def _load_auxiliary_resources(template_path: Path) -> dict[tuple[str, str], dict]:
-    """Load global auxiliary resources keyed by category and id."""
+def _load_auxiliary_resources(template_path: Path) -> list[dict]:
+    """Load global auxiliary resource records."""
     path = _auxiliary_inventory_path(template_path)
     if not path.exists():
-        return {}
+        return []
     try:
+        import json
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {}
+        return []
     records = payload.get("resources", []) if isinstance(payload, dict) else []
     if not isinstance(records, list):
-        return {}
-    resources = {}
+        return []
+    resources = []
     for record in records:
         if not isinstance(record, dict):
             continue
-        category = str(record.get("category") or "").strip().lower()
-        resource_id = str(record.get("resource_id") or "").strip()
-        if category and resource_id:
-            resources[(category, resource_id)] = record
+        resources.append(record)
     return resources
 
 
-def _auxiliary_resource_text(resource: dict) -> str:
+def _auxiliary_resource_text(resource: dict, image: dict) -> str:
     """Render an auxiliary resource record into prompt-readable text."""
     category = str(resource.get("category") or "")
     resource_id = str(resource.get("resource_id") or "")
     label = str(resource.get("label") or resource_id)
-    image_path = str(resource.get("image_path") or "")
+    image_path = str(image.get("image_path") or "")
     return f"Auxiliary reference ({category}/{resource_id}): {label}. Image file: {image_path}."
 
 
-def _replace_auxiliary_resource_tags(text: str, template_path: Path, resources: dict[tuple[str, str], dict] | None = None) -> str:
+def _replace_auxiliary_resource_tags(text: str, template_path: Path, resources: list[dict] | None = None) -> str:
     """Replace auxiliary resource tags with prompt-readable text."""
     resource_index = resources if resources is not None else _load_auxiliary_resources(template_path)
 
     def replace(match: re.Match) -> str:
-        category = match.group(1)
-        resource_id = match.group(2)
-        resource = resource_index.get((category, resource_id))
-        if resource is None:
+        try:
+            resource, image = auxiliary_resource_image_for_tag(resource_index, match.group(0))
+        except LookupError:
             raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {match.group(0)}")
-        return _auxiliary_resource_text(resource)
+        return _auxiliary_resource_text(resource, image)
 
-    return AUXILIARY_RESOURCE_RE.sub(replace, text)
+    return AUXILIARY_RESOURCE_TAG_RE.sub(replace, text)
 
 
 def render_static_prompt(
@@ -305,7 +301,7 @@ def render_static_prompt_with_source_map(
         single_brace_values,
     )
     required_set = {resolve_section_name(name, view_token) for name in required_section_names}
-    token_re = re.compile(r"\{\{AUX:[a-z]+:[a-z0-9-]+\}\}|\{\{SECTION:[A-Z0-9_{}]+\}\}|\{\{[A-Za-z0-9_{}]+\}\}")
+    token_re = re.compile(rf"{AUXILIARY_RESOURCE_TAG_RE.pattern}|\{{\{{SECTION:[A-Z0-9_{{}}]+\}}\}}|\{{\{{[A-Za-z0-9_{{}}]+\}}\}}")
     pieces: list[dict] = []
     cursor = 0
     auxiliary_resources = _load_auxiliary_resources(template_path)
@@ -338,17 +334,17 @@ def render_static_prompt_with_source_map(
             text = _replace_auxiliary_resource_tags(text, template_path, auxiliary_resources)
             source = section_source(name)
         elif inner.startswith("AUX:"):
-            _, category, resource_id = inner.split(":", 2)
-            resource = auxiliary_resources.get((category, resource_id))
-            if resource is None:
+            try:
+                resource, image = auxiliary_resource_image_for_tag(auxiliary_resources, placeholder)
+            except LookupError:
                 raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {placeholder}")
-            text = _auxiliary_resource_text(resource)
+            text = _auxiliary_resource_text(resource, image)
             source = {
                 "source_kind": "auxiliary_resource",
                 "source_path": str(_auxiliary_inventory_path(template_path)),
-                "source_label": f"Auxiliary resource: {resource.get('label') or resource_id}",
-                "resource_id": resource_id,
-                "category": category,
+                "source_label": f"Auxiliary resource: {resource.get('label') or resource.get('resource_id')}",
+                "resource_id": resource.get("resource_id"),
+                "category": resource.get("category"),
                 "editable": True,
             }
         else:
@@ -420,6 +416,10 @@ def write_compiled_sections(
     lines.extend(f"- {name}" for name in selection.included_optional)
     lines.extend(["", "## Missing Optional Sections", ""])
     lines.extend(f"- {name}" for name in selection.missing_optional)
+    suppressed = job_metadata.get("suppressed_sections", {})
+    if isinstance(suppressed, dict) and suppressed:
+        lines.extend(["", "## Suppressed Sections", ""])
+        lines.extend(f"- {name}: {reason}" for name, reason in suppressed.items())
     lines.extend(["", "---", ""])
 
     for name in selection.included_required + selection.included_optional:

@@ -1,159 +1,112 @@
-FULL-BODY COSTUME DRESSING IMAGE
+# Render Task
 
-Character: {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
-Canonical Art Style: {{CANONICAL_ART_STYLE}}
-Costume: {{COSTUME_NAME}}.
-Requested body view: {{BODY_VIEW_TOKEN}}.
-Requested head view: {{HEAD_VIEW_TOKEN}}.
-Purpose: single full-body turnaround-source image in a neutral pose.
+Create one finished full-body technical costume-dressing image of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, wearing the {{COSTUME_NAME}}.
 
-IMAGE EDITING INSTRUCTIONS
+Requested body view: {{BODY_VIEW_DISPLAY}}.
+Requested head view: {{HEAD_VIEW_DISPLAY}}.
 
-The supplied image is the authoritative Assembled Character source.
-Edit that image directly.
-Preserve all pixels and forms that do not belong to the replaced fitment costume.
-Replace only the fitment clothing, jewelry, equipment, and footwear required by the specified costume.
+Use the supplied Character-Assembly image as the locked source.
+Preserve the character exactly as supplied and replace only the generic fitment clothing, jewelry, equipment, and footwear required by the costume.
 
-PRIMARY OBJECTIVE
+Produce one character, one view, and one finished image.
 
-Create one complete full-body character render by dressing the Assembled Character source in the specified costume.
+# Locked Source
 
-The body, face, hair, ears, neck, pose, anatomy, proportions, lighting, camera position, framing, and requested view are already correct.
-Do not regenerate them.
-Only replace the clothing, jewelry, equipment, and {{footwear}} required by the costume.
+The supplied Character-Assembly image already defines the correct:
 
-Do not redesign the character.
-Do not change the pose.
-Do not change the camera angle.
-Do not rotate the head or body.
+- character identity;
+- face, hair, ears, neck, age, and species;
+- body proportions and anatomy;
+- body pose and stance;
+- body orientation and head orientation;
+- camera angle and perspective;
+- full-body framing and crop;
+- lighting and rendering style.
+
+Preserve these elements exactly as shown.
+
+Change only the clothing, jewelry, equipment, and footwear specified by the costume.
+The costume must conform to the existing body. Do not alter the body to fit the costume.
+
+# Costume Replacement Rule
+
+The supplied Character-Assembly image is the finished character image.
+
+Do not redraw or reinterpret the character.
+
+Treat the task as replacing clothing on the existing body.
+
+Fit the specified costume onto the supplied body exactly as it stands.
+
+# Orientation Lock
+
+The supplied body is the final body.
+
+Do not rotate, turn, twist, mirror, or reinterpret any part of the body.
+
+The body, head, neck, shoulders, torso, hips, arms, legs, hands, feet, face, eyes, and camera view remain exactly as shown.
+
+Only replace the clothing, jewelry, footwear, and equipment.
+
+The supplied image already shows the correct view.
+Preserve that view exactly.
+
+Do not rotate the head toward the viewer.
+Do not twist the neck or torso.
 Do not mirror the image.
-Do not create a multi-view sheet, layout page, labeled diagram, collage, or narrative scene.
+Do not reinterpret the requested view.
+Only replace the costume.
+The costume adapts to the body. The body never adapts to the costume.
 
-SOURCE AUTHORITY RULES
+# Pose and Camera Lock
 
-The Assembled Character source is the locked full-body identity source. It controls:
-- body proportions
-- pose and stance
-- camera angle
-- full-body framing
-- head, face, hair, ears, neck, and identity
-- requested view
+Preserve the supplied pose exactly.
 
-The costume file controls:
-- clothing design
-- jewelry
-- equipment
-- material and color rules
-- left/right equipment placement
-- view-specific costume visibility
+Do not change:
 
-Do not treat either source as loose inspiration.
-The final image should look like the same assembled character in the same neutral turnaround pose, now naturally dressed in the specified costume.
+- arm or hand position;
+- leg or foot position;
+- weight distribution;
+- hip, shoulder, or spine alignment;
+- camera distance;
+- lens perspective;
+- crop or full-body framing.
 
-BACKGROUND TREATMENT
+Do not convert the technical stance into a fashion pose, action pose, contrapposto, walking pose, or narrative gesture.
+
+{{FOOTWEAR_CONTACT}}
+
+# Background
 
 {{BACKGROUND_TREATMENT}}
 
-POSE AND CAMERA PRESERVATION
-
-This is a technical turnaround source image.
-Do not convert the pose into a fashion pose.
-Do not tilt the hips.
-Do not arch the back.
-Do not angle the shoulders.
-Do not shift weight onto one leg.
-
-COSTUME REPLACEMENT RULES
-
-Fully cover or replace the simple fitment garments with the costume garments.
-No fitment clothing remains visible.
-Clothing must appear naturally worn on the body, not pasted on top of the image.
-Do not reconstruct the body or over-focus on removing clothing.
-Change only the clothing, jewelry, belt equipment, and {{footwear}} required by the costume.
-The costume must follow the underlying anatomy naturally.
-Do not distort the character's body to fit the clothing.
-The clothing fits the character, not vice versa.
-
-STANCE AND FOOT PLACEMENT
-
-{{NEUTRAL_POSE_STANCE}}
-{{NEUTRAL_POSE_STANCE_VIEW_{VIEW}}}
-
-BODY VIEW INSTRUCTION
-
-{{BODY_VIEW_INSTRUCTION}}
-
-THREE-QUARTER ORIENTATION LOCK
-
-If the requested view is a three-quarter view, preserve the supplied Assembled Character source as one locked physical orientation.
-The head, neck, shoulders, torso, hips, knees, feet, face direction, and gaze direction must all remain aligned to the same requested three-quarter direction.
-Do not repaint the head toward the viewer.
-Do not create sidelong eye contact.
-Do not twist the neck.
-Do not rotate the torso.
-Do not mirror the image.
-Only change the costume.
-
-ANATOMICAL LEFT AND RIGHT
-
-Use anatomical left and right.
-Anatomical right means the character's own right side.
-Anatomical left means the character's own left side.
-
-In front-facing views, the character's anatomical right appears on the viewer's left, and the character's anatomical left appears on the viewer's right.
-Do not swap left and right equipment.
-
-COSTUME DESIGN
+# Costume Design
 
 {{SECTION:COSTUME_DESCRIPTION_FACTS}}
 
+{{COSTUME_VIEW_HEADING}}
+
 {{SECTION:COSTUME_DESCRIPTION_VIEW_{VIEW}}}
 
-EQUIPMENT, JEWELRY, AND PROPS
+{{EQUIPMENT_HEADING}}
 
 {{SECTION:EQUIPMENT_DESCRIPTION_FACTS}}
 
+{{EQUIPMENT_VIEW_HEADING}}
+
 {{SECTION:EQUIPMENT_DESCRIPTION_VIEW_{VIEW}}}
 
-IDENTITY PRESERVATION
+# Identity Preservation
 
-{{SECTION:IDENTITY_PRESERVATION_CORE}}
+Preserve the exact character from the supplied Character-Assembly source, including face, age, species, hair, ears, body proportions, and rendering style. Do not substitute a generic fantasy or anime face.
 
-{{SECTION:IDENTITY_PRESERVATION_FACE}}
+# Final Constraints
 
-{{SECTION:IDENTITY_PRESERVATION_HAIR}}
+Produce one complete full-body character image in the supplied view.
 
-{{SECTION:IDENTITY_PRESERVATION_EARS}}
+Do not change identity, anatomy, pose, orientation, camera, framing, lighting, or rendering style.
 
-{{SECTION:IDENTITY_PRESERVATION_COSTUME}}
-
-GOOD OUTPUT
-
-- One complete full-body character image.
-- Same body proportions, pose, stance, camera angle, and requested view as the Assembled Character source.
-- Same face, hair, ears, neck, species, and adult identity as the Assembled Character source.
-- Costume, jewelry, equipment, materials, and colors match the costume file.
-- The entire body remains visible; footwear and hem visibility follow the costume file.
-- Clothing appears naturally worn on the body.
-- The costume appears naturally tailored to the existing body rather than pasted over it.
-- Equipment stays on the correct anatomical side.
-
-BAD OUTPUT
-
-- Character identity changes.
-- Body pose, body type, camera angle, view, or framing changes.
-- Head is rotated, mirrored, replaced, or redesigned.
-- Costume is simplified into generic fantasy clothing.
-- Equipment moves to the wrong side.
-- Fitment clothing remains visible.
-- The image becomes a portrait, bust shot, waist-up shot, collage, split image, multi-view sheet, layout page, labeled diagram, or narrative scene.
-
-NEGATIVE CONSTRAINTS
-
-{{SECTION:NEGATIVE_GUIDANCE_GENERAL}}
-
-{{SECTION:NEGATIVE_GUIDANCE_JOB_SPECIFIC}}
-
-Do not render: mannequin, gray head, generic replacement face, wrong eye color, wrong hair silhouette, changed body type, changed camera angle, portrait crop, bust shot, waist-up framing, missing feet, cut-off feet, narrative scene, dramatic lighting, armor redesign, modern clothing, random cape, extra weapons, swapped left/right equipment, pasted outfit, collage, split image, multi-view sheet, layout page, labeled diagram.
-
-The final image should look like the selected assembled character in the requested view, now wearing the specified costume.
+Do not leave generic fitment clothing visible.
+Do not redesign or simplify the specified costume.
+Do not add unlisted clothing, jewelry, equipment, weapons, or props.
+Do not create a portrait crop, narrative scene, collage, split image, labeled diagram, or multi-view sheet.

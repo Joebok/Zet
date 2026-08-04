@@ -8,12 +8,13 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
-from zet.services.asset_service import AssetService, BatchRenderResetResult
+from zet.services.asset_service import AssetService, BatchRenderResetPreviewResult, BatchRenderResetResult
 from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
+from zet.services.character_source_service import CharacterSourceService
 from zet.services.config_service import ConfigService
 from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
@@ -24,11 +25,15 @@ from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseCo
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
+from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.reference_service import ReferenceService
-from zet.services.story_service import ImageReferenceRow, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
+from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
+from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
+from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
+from zet.services.zine_service import ZineService
 
 
 class AssetRef:
@@ -58,12 +63,6 @@ class AssetRef:
     def move_next(self) -> Asset:
         return self._app.asset_service.move_next(self._character, self._phase, self._asset_id)
 
-    def approve_prompt_review(self) -> Asset:
-        return self._app.prompt_review_service.approve(self._character, self._phase, self._asset_id)
-
-    def fail_prompt_review(self, reason: str = "") -> Asset:
-        return self._app.prompt_review_service.fail(self._character, self._phase, self._asset_id, reason)
-
     def prompt_review_context(self) -> PromptReviewContext:
         return self._app.prompt_review_service.get_context(self._character, self._phase, self._asset_id)
 
@@ -84,8 +83,8 @@ class AssetRef:
     def regenerate(self) -> Asset:
         return self._app.asset_service.regenerate(self._character, self._phase, self._asset_id)
 
-    def retry_ai(self) -> Asset:
-        return self._app.asset_service.retry_ai(self._character, self._phase, self._asset_id)
+    def regenerate_and_advance(self):
+        return self._app.asset_service.regenerate_and_advance(self._character, self._phase, self._asset_id)
 
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
@@ -105,10 +104,6 @@ class AssetRef:
             self._asset_id,
             reason,
         )
-
-    def start_retouch_render(self) -> Asset:
-        """Move this asset to RENDER and stage a manual render ask for retouch upload."""
-        return self._app.asset_service.start_retouch_render(self._character, self._phase, self._asset_id)
 
     def run_current_worker(self) -> Asset:
         return self._app.asset_service.run_current_worker(self._character, self._phase, self._asset_id)
@@ -158,6 +153,16 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.scene_image_review_service = SceneImageReviewService(story_service)
+        self.asset_service.ai_answer_harvester.scene_image_review_service = self.scene_image_review_service
+        self.character_source_service = CharacterSourceService(
+            path_service,
+            costume_service,
+            story_service,
+            Path(__file__).resolve().parents[1],
+        )
+        self.zine_service = ZineService(path_service, story_service)
+        self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -169,7 +174,7 @@ class ZetApp:
     @classmethod
     def from_config(cls, config_path: str | Path) -> "ZetApp":
         config = ConfigService.load(config_path)
-        path_service = PathService(config)
+        path_service = PathService(config, Path(config_path).resolve().parent)
         asset_repository = AssetRepository(path_service)
         auxiliary_resource_repository = AuxiliaryResourceRepository(path_service)
         pipeline_repository = PipelineRepository(path_service)
@@ -178,11 +183,13 @@ class ZetApp:
         state_machine = StateMachine()
         housekeeping_service = HousekeepingService(path_service)
         worker_service = WorkerService(asset_repository, pipeline_repository, path_service)
+        prompt_artifact_service = PromptArtifactService(asset_repository, path_service)
         ai_proxy_path_service = AIProxyPathService(config)
         ai_proxy_service = AIProxyService(
             asset_repository,
             pipeline_repository,
             path_service,
+            prompt_artifact_service,
             ai_proxy_path_service,
             housekeeping_service,
         )
@@ -202,13 +209,16 @@ class ZetApp:
             state_machine,
             housekeeping_service,
             path_service,
+            prompt_artifact_service,
             worker_service,
             ai_proxy_service,
             ai_answer_harvester,
         )
         prompt_review_service = PromptReviewService(
             asset_repository,
-            asset_service,
+            pipeline_repository,
+            prompt_artifact_service,
+            worker_service,
             path_service,
         )
         reference_service = ReferenceService(asset_repository, path_service)
@@ -233,8 +243,13 @@ class ZetApp:
             path_service,
             Path(__file__).resolve().parents[1],
         )
-        story_service = StoryService(path_service, asset_repository, auxiliary_resource_repository)
-        ai_proxy_service.prompt_review_service = prompt_review_service
+        story_service = StoryService(
+            path_service,
+            asset_repository,
+            auxiliary_resource_repository,
+            identity_key_repository,
+            turnaround_repository,
+        )
         app = cls(
             config,
             asset_repository,
@@ -280,6 +295,31 @@ class ZetApp:
         """Save one story markdown document."""
         return self.story_service.save_story(story_slug, text)
 
+    def rename_story(self, story_slug: str, title: str) -> StoryDocument:
+        """Rename one story without changing its stable slug."""
+        return self.story_service.rename_story(story_slug, title)
+
+    def reorder_stories(self, story_slugs: list[str]) -> list[StoryRecord]:
+        """Persist the display order for all stories."""
+        return self.story_service.reorder_stories(story_slugs)
+
+    def load_story_settings(self, story_slug: str) -> dict:
+        """Load one story settings JSON document."""
+        path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
+        if not path.exists():
+            self.story_service.save_story_settings(path, self.story_service.create_default_story_settings(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug))))
+        return self.story_service.load_story_settings(path)
+
+    def save_story_settings(self, story_slug: str, data: dict) -> dict:
+        """Save one story settings JSON document."""
+        path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
+        self.story_service.save_story_settings(path, data)
+        return self.story_service.load_story_settings(path)
+
+    def delete_story(self, story_slug: str) -> StoryGitResult:
+        """Commit and delete one story folder."""
+        return self.story_service.delete_story(story_slug)
+
     def story_git_has_changes(self) -> bool:
         """Return whether the Stories folder has uncommitted changes."""
         return self.story_service.story_git_has_changes()
@@ -312,17 +352,153 @@ class ZetApp:
         """Save one scene markdown document."""
         return self.story_service.save_scene(story_slug, scene_slug, text)
 
+    def rename_scene(self, story_slug: str, scene_slug: str, title: str) -> SceneDocument:
+        """Rename one scene without changing its stable slug."""
+        return self.story_service.rename_scene(story_slug, scene_slug, title)
+
+    def reorder_scenes(self, story_slug: str, scene_slugs: list[str]) -> list[SceneRecord]:
+        """Persist the display order for one story's scenes."""
+        return self.story_service.reorder_scenes(story_slug, scene_slugs)
+
+    def move_scene(self, story_slug: str, scene_slug: str, target_story_slug: str) -> SceneDocument:
+        """Move one scene and its artifacts to another story."""
+        return self.story_service.move_scene(story_slug, scene_slug, target_story_slug)
+
+    def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
+        """Commit and delete one scene markdown and image."""
+        return self.story_service.delete_scene(story_slug, scene_slug)
+
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""
         return self.story_service.scene_image_path(story_slug, scene_slug)
+
+    def scene_image_review_status(self, story_slug: str, scene_slug: str):
+        return self.scene_image_review_service.status(story_slug, scene_slug)
+
+    def list_pending_scene_image_reviews(self):
+        return self.scene_image_review_service.list_pending()
+
+    def promote_scene_image(self, story_slug: str, scene_slug: str):
+        return self.scene_image_review_service.promote(story_slug, scene_slug)
+
+    def discard_scene_image_candidate(self, story_slug: str, scene_slug: str):
+        return self.scene_image_review_service.discard(story_slug, scene_slug)
+
+    def save_scene_image_review_comment(self, story_slug: str, scene_slug: str, comment: str):
+        return self.scene_image_review_service.save_comment(story_slug, scene_slug, comment)
+
+    def load_scene_builder(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
+        """Load Scene Builder JSON for one story scene."""
+        return self.story_service.load_scene_builder_data(story_slug, scene_slug)
+
+    def save_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
+        """Save Scene Builder JSON for one story scene."""
+        return self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
+
+    def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
+        """Copy reusable visual setup from another scene in the same story."""
+        return self.story_service.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
+
+    def generate_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> dict:
+        """Generate Scene Builder outputs without saving."""
+        return self.story_service.generate_scene_builder_outputs(story_slug, scene_slug, data)
+
+    def export_scene_builder_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
+        """Export Scene Builder-managed markdown into the scene file."""
+        return self.story_service.export_scene_markdown(story_slug, scene_slug, data)
+
+    def scene_builder_options(self) -> dict:
+        """Return Scene Builder option lists."""
+        return self.story_service.scene_builder_options()
 
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""
         return self.story_service.stage_scene_render(story_slug, scene_slug)
 
+    def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str) -> dict:
+        return self.scene_prompt_analysis_service.queue(story_slug, scene_slug)
+
+    def scene_prompt_analysis_status(self, story_slug: str, scene_slug: str) -> dict:
+        return self.scene_prompt_analysis_service.status(story_slug, scene_slug)
+
     def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
         """List copyable image references for the scene editor."""
         return self.story_service.image_reference_rows(character, text_filter)
+
+    def character_source_options(self, character: str = "", phase: str = "") -> dict:
+        """Return safe dropdown options for a character-source consumer."""
+        return self.character_source_service.options(character, phase)
+
+    def image_reference_rows(
+        self,
+        character: str = "",
+        phase: str = "",
+        costume: str = "",
+        text_filter: str = "",
+        scope: str = "context",
+        include_unavailable: bool = True,
+    ) -> list[ImageReferenceRow]:
+        """List reusable image-reference tags with contextual filters."""
+        return self.story_service.image_reference_rows(
+            character,
+            text_filter,
+            phase,
+            costume,
+            scope,
+            include_unavailable,
+        )
+
+    def resolve_image_reference_tag(self, tag: str) -> dict:
+        """Resolve one exact Zet image-reference tag."""
+        return self.story_service.story_reference_service.resolve_image_tag(tag)
+
+    def compile_character_source(
+        self,
+        *,
+        character: str,
+        phase: str,
+        costume_slug: str | None,
+        view_token: str,
+        selected_sections: tuple[str, ...],
+        reference_tags: tuple[str, ...],
+    ) -> dict:
+        """Compile one immutable character-source snapshot."""
+        return self.character_source_service.compile(
+            character=character,
+            phase=phase,
+            costume_slug=costume_slug,
+            view_token=view_token,
+            selected_sections=selected_sections,
+            reference_tags=reference_tags,
+        )
+
+    def list_zines(self):
+        """List saved zines."""
+        return self.zine_service.list_zines()
+
+    def load_zine(self, slug: str):
+        """Load one saved zine."""
+        return self.zine_service.load_zine(slug)
+
+    def zine_story_scene_sources(self, story_slug: str):
+        """List readable story scene images for zine auto-fill."""
+        return self.zine_service.story_scene_sources(story_slug)
+
+    def create_zine(self, payload: dict):
+        """Create and render a zine."""
+        return self.zine_service.create_zine(payload)
+
+    def update_zine(self, slug: str, payload: dict):
+        """Update, optionally rename, and render a zine."""
+        return self.zine_service.update_zine(slug, payload)
+
+    def regenerate_zine(self, slug: str):
+        """Regenerate a zine from its saved image tags."""
+        return self.zine_service.regenerate_zine(slug)
+
+    def delete_zine(self, slug: str) -> None:
+        """Delete one saved zine folder."""
+        self.zine_service.delete_zine(slug)
 
     def phase_comparison(
         self,
@@ -351,21 +527,32 @@ class ZetApp:
         self,
         category: str,
         label: str,
-        image_bytes: bytes,
-        content_type: str,
     ) -> AuxiliaryResource:
         """Create a global auxiliary resource."""
-        return self.auxiliary_resource_service.create_resource(category, label, image_bytes, content_type)
+        return self.auxiliary_resource_service.create_resource(category, label)
 
     def update_auxiliary_resource(
         self,
         resource_id: str,
         label: str,
-        image_bytes: bytes | None = None,
-        content_type: str = "",
     ) -> AuxiliaryResource:
         """Update a global auxiliary resource."""
-        return self.auxiliary_resource_service.update_resource(resource_id, label, image_bytes, content_type)
+        return self.auxiliary_resource_service.update_resource(resource_id, label)
+
+    def delete_auxiliary_resource(self, resource_id: str) -> AuxiliaryResource:
+        """Delete a global auxiliary resource and its files."""
+        return self.auxiliary_resource_service.delete_resource(resource_id)
+
+    def save_auxiliary_resource_image(
+        self,
+        resource_id: str,
+        image_label: str,
+        image_bytes: bytes,
+        content_type: str,
+        original_image_id: str = "",
+    ) -> AuxiliaryResource:
+        """Save or update one image inside an auxiliary resource."""
+        return self.auxiliary_resource_service.save_image(resource_id, image_label, image_bytes, content_type, original_image_id)
 
     def character_onboarding_options(self):
         """Return options used by new character and phase onboarding."""
@@ -397,20 +584,14 @@ class ZetApp:
     def prompt_review_context(self, character: str, phase: str, asset_id: int) -> PromptReviewContext:
         return self.prompt_review_service.get_context(character, phase, asset_id)
 
-    def approve_prompt_review(self, character: str, phase: str, asset_id: int) -> Asset:
-        return self.prompt_review_service.approve(character, phase, asset_id)
-
-    def fail_prompt_review(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
-        return self.prompt_review_service.fail(character, phase, asset_id, reason)
-
     def generate_local_test_render(self, character: str, phase: str, asset_id: int):
         return self.prompt_review_service.generate_local_test_render(character, phase, asset_id)
 
     def stage_prompt_condense_ask(self, character: str, phase: str, asset_id: int, force: bool = False):
         return self.ai_proxy_service.stage_prompt_condense_ask_if_enabled(character, phase, asset_id, force)
 
-    def stage_prompt_review_render_ask(self, character: str, phase: str, asset_id: int):
-        return self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(character, phase, asset_id)
+    def stage_prompt_inspection_render_ask(self, character: str, phase: str, asset_id: int):
+        return self.ai_proxy_service.stage_prompt_inspection_render_ask_if_enabled(character, phase, asset_id)
 
     def stage_render_task_prompt_condense_ask(
         self,
@@ -420,6 +601,42 @@ class ZetApp:
         force: bool = False,
     ):
         return self.ai_proxy_service.stage_render_task_prompt_condense_ask_if_enabled(manifest, prompt_path, target_output_dir, force)
+
+    def stage_render_task_local_render_ask(
+        self,
+        manifest: dict,
+        prompt_path: Path,
+        target_output_dir: Path,
+        *,
+        allow_parallel: bool = False,
+        seed: int | None = None,
+        checkpoint: str | None = None,
+    ):
+        return self.ai_proxy_service.stage_render_task_local_render_ask(
+            manifest,
+            prompt_path,
+            target_output_dir,
+            allow_parallel=allow_parallel,
+            seed=seed,
+            checkpoint=checkpoint,
+        )
+
+    def stage_scene_local_render_ask(
+        self,
+        manifest: dict,
+        workspace: Path,
+        *,
+        allow_parallel: bool = False,
+        seed: int | None = None,
+        checkpoint: str | None = None,
+    ):
+        return self.ai_proxy_service.stage_scene_local_render_ask(
+            manifest,
+            workspace,
+            allow_parallel=allow_parallel,
+            seed=seed,
+            checkpoint=checkpoint,
+        )
 
     def recompile_prompt_review(
         self,
@@ -487,6 +704,15 @@ class ZetApp:
     ) -> list[BatchRenderResetResult]:
         return self.asset_service.reset_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
 
+    def preview_pipeline_assets_to_render(
+        self,
+        character: str,
+        phase: str,
+        pipeline_name: str,
+        include_locked: bool = False,
+    ) -> list[BatchRenderResetPreviewResult]:
+        return self.asset_service.preview_pipeline_assets_to_render(character, phase, pipeline_name, include_locked)
+
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         return self.asset_service.fail_render_review_to_render(character, phase, asset_id, reason)
 
@@ -498,22 +724,6 @@ class ZetApp:
         """Save the render-review comment for an asset."""
         return self.asset_service.save_render_review_comment(character, phase, asset_id, comment)
 
-    def start_retouch_render(self, character: str, phase: str, asset_id: int) -> Asset:
-        """Move an asset to RENDER and stage the render-console ask for retouch work."""
-        return self.asset_service.start_retouch_render(character, phase, asset_id)
-
-    def issue_monitor_test(self, instruction: str = ""):
-        return self.ai_proxy_service.issue_monitor_test(instruction)
-
-    def activate_proxy_stop(self):
-        return self.ai_proxy_service.activate_stop()
-
-    def resume_proxy_stop(self):
-        return self.ai_proxy_service.resume_stop()
-
-    def proxy_stop_state(self):
-        return self.ai_proxy_service.stop_state()
-
     def queue_snapshot(self):
         return self.ai_proxy_service.queue_snapshot()
 
@@ -521,12 +731,8 @@ class ZetApp:
         """Archive harvested AI answer folders."""
         return self.ai_proxy_service.archive_harvested_answers()
 
-    def dump_pending_ai_queue(self):
-        """Clear pending AI queue ask and claimed task folders."""
-        return self.ai_proxy_service.dump_pending_queue()
-
-    def list_monitor_responses(self):
-        return self.ai_proxy_service.list_monitor_responses()
+    def harvested_answer_count(self) -> int:
+        return self.ai_proxy_service.harvested_answer_count()
 
     def process_statuses(self):
         return self.process_service.statuses()
@@ -557,14 +763,6 @@ class ZetApp:
         path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-
-    def set_pipeline_prompt_review_mode(self, character: str, phase: str, pipeline_name: str, mode: str) -> None:
-        """Set PROMPT_REVIEW mode for one character phase pipeline."""
-        self.pipeline_control_service.set_prompt_review_mode(character, phase, pipeline_name, mode)
-
-    def set_pipeline_prompt_review_enabled(self, character: str, phase: str, pipeline_name: str, enabled: bool) -> None:
-        """Enable or disable PROMPT_REVIEW for one character phase pipeline."""
-        self.pipeline_control_service.set_prompt_review_enabled(character, phase, pipeline_name, enabled)
 
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_fitment_context(character, phase, asset_id)

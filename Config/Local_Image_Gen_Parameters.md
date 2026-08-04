@@ -1,0 +1,17 @@
+prompt:
+negative_prompt:
+denoising_strength:
+steps:
+cfg_scale:
+seed:
+s_noise:
+sd_model_checkpoint:
+sampler_name:
+scheduler:
+enable_hr:
+hr_upscaler:
+hr_second_pass_steps:
+hr_scale:
+width:
+height:
+restore_faces:

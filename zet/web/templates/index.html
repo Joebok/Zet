@@ -29,32 +29,38 @@
         Phase
         <select id="phase-select"></select>
       </label>
-      <button id="new-character" type="button">New Character</button>
-      <button id="new-phase" type="button">New Phase</button>
+      <button id="new-character" class="create-action" type="button">New Character</button>
+      <button id="new-phase" class="create-action" type="button">New Phase</button>
     </div>
   </header>
 
   <nav class="tabs" aria-label="Dashboard sections">
     <button class="tab onboarding-tab" data-page="onboarding">Onboarding</button>
-    <button class="tab active workflow-tab" data-page="assets">Assets</button>
-    <button class="tab workflow-tab" data-page="manifest">Manifest</button>
-    <button class="tab workflow-tab" data-page="prompt-review">Prompt Review</button>
-    <button class="tab workflow-tab" data-page="render-console">Render Console</button>
+    <select id="character-assets-menu" class="tab active" aria-label="Character Assets">
+      <option value="" selected>Character Assets</option>
+      <option value="assets">Assets</option>
+      <option value="manifest">Manifest</option>
+      <option value="costumes">Costumes</option>
+      <option value="expressions">Expressions</option>
+      <option value="turnarounds">Turnarounds</option>
+      <option value="identity-keys">Identity Keys</option>
+      <option value="phase-comparison">Phase Comparison</option>
+    </select>
+    <button class="tab workflow-tab" data-page="prompt-review">Prompts</button>
+    <button class="tab workflow-tab" data-page="render-console">Render</button>
+    <button class="tab workflow-tab" data-page="local-image-review">Local Images</button>
     <button class="tab workflow-tab" data-page="render-review">Image Review</button>
-    <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
-    <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
-    <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Resources</button>
-    <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
-    <button class="tab workflow-tab" data-page="costumes">Costumes</button>
-    <button class="tab workflow-tab" data-page="expressions">Expressions</button>
     <button class="tab workflow-tab" data-page="stories">Stories</button>
     <button class="tab workflow-tab" data-page="scenes">Scenes</button>
+    <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Images</button>
+    <button class="tab workflow-tab" data-page="zine">Zines</button>
     <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
     <div class="toolbar-menu">
-      <button id="toolbar-todo-button" class="toolbar-settings-button" type="button" title="To Do">☑</button>
-      <button id="toolbar-settings-button" class="toolbar-settings-button" type="button" aria-haspopup="true" aria-expanded="false" title="Controls">⚙</button>
+      <button id="toolbar-todo-button" class="toolbar-settings-button navigation-action" type="button" aria-label="Open To Do" title="To Do">☑</button>
+      <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu" aria-label="Open dashboard controls" title="Controls">⚙</button>
       <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
+        <button class="tab workflow-tab" data-page="local-image-config">Image Config</button>
         <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
         <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
       </div>
@@ -92,7 +98,7 @@
             <textarea id="onboarding-art-style" rows="4"></textarea>
           </label>
           <div class="button-row compact">
-            <button id="onboarding-save-draft" type="button">Save Draft</button>
+            <button id="onboarding-save-draft" class="primary-action" type="button">Save Draft</button>
             <a id="onboarding-download-template" class="button-link" href="#" download hidden>Download Template</a>
             <button id="onboarding-copy-gpt-prompt" type="button" disabled>Copy ChatGPT Prompt</button>
           </div>
@@ -137,6 +143,7 @@
               <input id="asset-filter-hide-base" type="checkbox">
               Hide Base Images
             </label>
+            <button id="advance-all" data-action="advance-all" disabled>Advance All</button>
             <label>
               Pipeline
               <select id="asset-filter-pipeline">
@@ -172,17 +179,13 @@
           <div id="detail-summary" class="summary-bar"></div>
           <div id="action-message" class="action-message" hidden></div>
           <div class="asset-detail-toggle" role="group" aria-label="Asset detail display">
-            <button id="asset-detail-status-mode" class="selected" type="button">Status</button>
-            <button id="asset-detail-image-mode" type="button">Locked Image</button>
+            <button id="asset-detail-status-mode" class="navigation-action selected" type="button">Show Status</button>
+            <button id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>
           </div>
           <div class="button-row">
-            <button id="run-current-worker" data-action="run-current-worker" disabled>Advance</button>
-            <button id="regenerate" data-action="regenerate" disabled>Regenerate</button>
-            <button id="retouch" data-action="retouch" disabled>Retouch</button>
-            <button id="stage-ai-ask" data-action="stage-ai-ask" disabled>Stage AI Ask</button>
-            <button id="retry-ai" data-action="retry-ai" disabled>Retry AI</button>
-            <button id="promote-to-locked" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
-            <button id="create-identity-from-asset" type="button" disabled>Identity Key</button>
+            <button id="regenerate" class="update-action" data-action="regenerate" disabled>Regenerate</button>
+            <button id="promote-to-locked" class="primary-action" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
+            <button id="create-identity-from-asset" class="create-action" type="button" disabled>Create Identity Key</button>
           </div>
           <div class="button-row compact">
             <button id="open-character-template" type="button" disabled>Character Template</button>
@@ -228,7 +231,7 @@
       <div class="identity-layout">
         <section class="control-panel">
           <div class="button-row compact">
-            <button id="identity-key-show-list" type="button">List</button>
+            <button id="identity-key-show-list" class="navigation-action" type="button">Back to Identity Key List</button>
           </div>
           <table id="identity-key-table">
             <thead>
@@ -255,8 +258,8 @@
               Percent
               <input id="identity-key-percent" type="number" min="1" max="100" step="1" value="100">
             </label>
-            <button id="identity-key-create-preview" type="button" disabled>Create Identity Key</button>
-            <button id="identity-key-save" type="button" disabled>Save</button>
+            <button id="identity-key-create-preview" class="create-action" type="button" disabled>Create Identity Key</button>
+            <button id="identity-key-save" class="primary-action" type="button" disabled>Save Identity Key</button>
           </div>
           <div class="render-comparison identity-comparison">
             <section class="render-comparison-panel">
@@ -293,25 +296,19 @@
               Search Label
               <input id="aux-resource-search" type="search" placeholder="contains...">
             </label>
-            <label class="checkbox-label">
-              <input id="aux-resource-show-thumbnails" type="checkbox">
-              Thumbnails
-            </label>
           </div>
           <table id="aux-resource-table">
             <thead>
               <tr>
-                <th class="aux-thumbnail-col">image</th>
                 <th>label</th>
-                <th>tag</th>
-                <th></th>
+                <th>folder</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </section>
         <aside class="review-actions aux-resource-editor">
-          <button id="aux-resource-add" type="button">Add Resource</button>
+          <button id="aux-resource-add" class="create-action" type="button">Add Resource</button>
           <h3 id="aux-resource-form-title">Add Resource</h3>
           <p class="category-context">
             Category: <strong id="aux-resource-form-category">Person</strong>
@@ -320,15 +317,27 @@
             Label
             <input id="aux-resource-label" type="text" placeholder="Old wizard">
           </label>
-          <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
-            <p>Click here, then press Ctrl+V to paste an image.</p>
-            <p class="status-text">Drag/drop and file picker also work.</p>
-            <input id="aux-resource-file-input" type="file" accept="image/*">
+          <button id="aux-resource-edit-template" type="button" disabled>Edit Template</button>
+          <button id="aux-resource-save" class="primary-action" type="button">Save Resource</button>
+          <button id="aux-resource-delete" class="danger-action" type="button" disabled>Delete Resource</button>
+          <button id="aux-resource-clear" class="neutral-action" type="button">Clear Form</button>
+          <div class="aux-resource-image-editor">
+            <h3>Images</h3>
+            <div id="aux-resource-image-list" class="aux-resource-image-list">No images.</div>
+            <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
+            <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
+              <p>Click here, then press Ctrl+V to paste an image.</p>
+              <p class="status-text">Drag/drop and file picker also work.</p>
+              <input id="aux-resource-file-input" type="file" accept="image/*">
+            </div>
+            <button id="aux-resource-new-image" class="create-action" type="button">New Image</button>
+            <label>
+              Image Name
+              <input id="aux-resource-image-label" type="text" placeholder="Front view">
+            </label>
+            <button id="aux-resource-save-image" class="primary-action" type="button">Save Image</button>
           </div>
-          <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
-          <button id="aux-resource-save" type="button">Save Resource</button>
-          <button id="aux-resource-clear" type="button">Clear</button>
-          <h3>Selected Tag</h3>
+          <h3>Selected Image Tag</h3>
           <code id="aux-resource-tag" class="copyable-tag"></code>
           <button id="aux-resource-copy-tag" type="button" disabled>Copy Tag</button>
         </aside>
@@ -353,8 +362,8 @@
           </label>
         </div>
         <div class="button-row compact">
-          <button id="phase-comparison-prev" type="button">Previous</button>
-          <button id="phase-comparison-next" type="button">Next</button>
+          <button id="phase-comparison-prev" class="navigation-action" type="button">Previous</button>
+          <button id="phase-comparison-next" class="navigation-action" type="button">Next</button>
         </div>
       </section>
       <div id="phase-comparison-meta" class="summary-bar"></div>
@@ -413,7 +422,7 @@
           </table>
         </section>
         <aside class="review-actions item-editor">
-          <button id="costume-add-new" type="button">Add New</button>
+          <button id="costume-add-new" class="create-action" type="button">Add New</button>
           <h3 id="costume-form-title">Add Costume</h3>
           <label>
             Costume Name
@@ -423,7 +432,7 @@
             Costume Markdown
             <input id="costume-template-file" type="file" accept=".md,text/markdown,text/plain">
           </label>
-          <button id="costume-create" type="button">Save Costume</button>
+          <button id="costume-create" class="primary-action" type="button">Save Costume</button>
           <section id="costume-preview-section" class="item-preview-section" hidden>
             <h3>Locked Turnaround</h3>
             <div id="costume-preview" class="render-image-viewer small-preview">No locked turnaround.</div>
@@ -456,7 +465,7 @@
           </table>
         </section>
         <aside class="review-actions item-editor">
-          <button id="expression-add-new" type="button">Add New</button>
+          <button id="expression-add-new" class="create-action" type="button">Add New</button>
           <h3 id="expression-form-title">Add Expression</h3>
           <label>
             Label
@@ -470,7 +479,7 @@
             Definition Markdown
             <input id="expression-definition-file" type="file" accept=".md,text/markdown,text/plain">
           </label>
-          <button id="expression-create" type="button">Save Expression</button>
+          <button id="expression-create" class="primary-action" type="button">Save Expression</button>
           <section id="expression-preview-section" class="item-preview-section" hidden>
             <h3>Locked Expression</h3>
             <div id="expression-preview" class="render-image-viewer small-preview">No locked expression.</div>
@@ -491,15 +500,21 @@
             <thead>
               <tr>
                 <th>title</th>
-                <th>slug</th>
-                <th>story file</th>
+                <th>order</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
+          <div class="button-row compact story-create-row">
+            <label>
+              New Story Title
+              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
+            </label>
+            <button id="story-create" class="create-action" type="button">Add Story</button>
+          </div>
           <div class="story-git-panel">
             <div class="button-row compact">
-              <button id="story-git-status" type="button">Status</button>
+              <button id="story-git-status" class="navigation-action" type="button">Show Git Status</button>
               <button id="story-git-pull" type="button">Pull</button>
               <button id="story-git-commit" type="button">Commit</button>
             </div>
@@ -507,19 +522,29 @@
           </div>
         </section>
         <section class="review-main">
-          <div class="review-header">
-            <h2 id="story-editor-title">Select a story</h2>
-            <button id="story-save" type="button" disabled>Save Story</button>
+          <div class="editor-sticky-header">
+            <div class="review-header">
+              <h2 id="story-editor-title">Select a story</h2>
+              <div class="button-row compact">
+                <span id="story-save-state" class="save-state" aria-live="polite"></span>
+                <button id="story-view" class="navigation-action" type="button" disabled>View Story</button>
+                <button id="story-save" class="primary-action" type="button" disabled>Save Story</button>
+                <button id="story-scenes" class="navigation-action" type="button" disabled>Scenes</button>
+                <button id="story-delete" class="danger-action" type="button" disabled>Delete Story</button>
+              </div>
+            </div>
+            <div id="story-validation" class="action-message info" aria-label="Story markdown validation" hidden></div>
           </div>
-          <div class="button-row compact story-create-row">
+          <div class="button-row compact management-row">
             <label>
-              New Story Title
-              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
+              Story Title
+              <input id="story-rename-title" type="text">
             </label>
-            <button id="story-create" type="button">Add Story</button>
+            <button id="story-rename" class="update-action" type="button" disabled>Rename</button>
           </div>
-          <div id="story-validation" class="action-message info" hidden></div>
           <textarea id="story-text" spellcheck="false" placeholder="Select or create a story to edit its markdown."></textarea>
+          <textarea id="story-settings-json" spellcheck="false" placeholder="Story settings JSON" hidden></textarea>
+          <div id="story-settings-fields" class="story-settings-fields"></div>
         </section>
       </div>
     </section>
@@ -536,39 +561,50 @@
             Story
             <select id="scene-story-select"></select>
           </label>
-          <div class="button-row compact">
-            <label>
-              New Scene Name
-              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
-            </label>
-            <button id="scene-create" type="button">Add Scene</button>
-          </div>
           <table id="scene-table">
             <thead>
               <tr>
                 <th>scene</th>
-                <th>file</th>
+                <th>order</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </aside>
         <section class="review-main">
-          <div class="review-header">
-            <h2 id="scene-editor-title">Select a scene</h2>
-            <div class="button-row compact">
-              <button id="scene-stage-render" type="button" disabled>Stage Render</button>
-              <button id="scene-save" type="button" disabled>Save Scene</button>
-              <button id="scene-toggle-image" type="button" disabled>Toggle Image</button>
+          <div class="editor-sticky-header">
+            <div class="review-header">
+              <h2 id="scene-editor-title">Select a scene</h2>
+              <div class="button-row compact">
+                <span id="scene-save-state" class="save-state" aria-live="polite"></span>
+                <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
+                <button id="scene-builder-open" class="navigation-action" type="button" disabled>Builder</button>
+                <button id="scene-stage-render" class="update-action" type="button" disabled>Render</button>
+                <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
+                <button id="scene-delete" class="danger-action" type="button" disabled>Delete Scene</button>
+              </div>
             </div>
+            <div id="scene-validation" class="action-message info" aria-label="Scene markdown validation" hidden></div>
           </div>
-          <div id="scene-validation" class="action-message info" hidden></div>
+          <div class="button-row compact management-row">
+            <label>
+              Scene Title
+              <input id="scene-rename-title" type="text">
+            </label>
+            <button id="scene-rename" class="update-action" type="button" disabled>Rename</button>
+            <label>
+              Move To Story
+              <select id="scene-move-story"></select>
+            </label>
+            <button id="scene-move" class="navigation-action" type="button" disabled>Move Scene</button>
+          </div>
           <div id="scene-image-panel" class="scene-image-panel" hidden>
             <img id="scene-image-preview" alt="Scene render">
+            <a id="scene-image-candidate-link" class="candidate-pending-overlay" hidden>Candidate Image Pending</a>
           </div>
           <textarea id="scene-text" spellcheck="false" placeholder="Select or create a scene to edit its markdown."></textarea>
         </section>
-        <aside class="review-actions scene-picker-panel">
+        <aside class="review-actions scene-picker-panel" hidden>
           <h3>Image References</h3>
           <label>
             Character Filter
@@ -594,6 +630,166 @@
       </div>
     </section>
 
+    <section id="zine-page" class="page">
+      <div class="page-title-row">
+        <h1>Zine Maker</h1>
+        <div id="zine-status" class="status-text"></div>
+      </div>
+      <div id="zine-message" class="action-message" hidden></div>
+      <div class="zine-layout">
+        <aside class="control-panel">
+          <div class="button-row compact">
+              <button id="zine-new" class="create-action" type="button">New Zine</button>
+          </div>
+          <table id="zine-table">
+            <thead>
+              <tr>
+                <th>zine</th>
+                <th>slug</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="button-row compact scene-create-row">
+            <label>
+              New Scene Name
+              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
+            </label>
+            <button id="scene-create" class="create-action" type="button">Add Scene</button>
+          </div>
+        </aside>
+        <section class="review-main zine-main">
+          <div class="review-header">
+            <h2 id="zine-editor-title">New Zine</h2>
+            <div class="button-row compact">
+              <button id="zine-edit" type="button" disabled>Edit</button>
+              <button id="zine-regenerate" class="update-action" type="button" disabled>Regenerate Print Layout</button>
+              <button id="zine-delete" class="danger-action" type="button" disabled>Delete Zine</button>
+              <button id="zine-save" class="primary-action" type="button">Create Zine</button>
+            </div>
+          </div>
+          <div class="zine-source-controls">
+            <label>
+              Story
+              <select id="zine-story-select"></select>
+            </label>
+            <button id="zine-fill-story" type="button">Fill from Story</button>
+          </div>
+          <label>
+            Zine Name
+            <input id="zine-name" type="text" placeholder="First Day">
+          </label>
+          <datalist id="zine-scene-options"></datalist>
+          <div class="zine-slot-groups">
+            <section class="zine-cover-slot"><h3>Front</h3><label>Scene<input id="zine-front" type="text" list="zine-scene-options"></label></section>
+            <section class="zine-page-pair">
+              <h3>Pages 1–2</h3>
+              <label>Page 1<input id="zine-page-1" type="text" list="zine-scene-options"></label>
+              <label>Page 2<input id="zine-page-2" type="text" list="zine-scene-options"><small>Blank when Page 1 is a spread.</small></label>
+              <label class="zine-spread-toggle"><input id="zine-spread-1" type="checkbox"> Use Page 1 as a two-page spread</label>
+            </section>
+            <section class="zine-page-pair">
+              <h3>Pages 3–4</h3>
+              <label>Page 3<input id="zine-page-3" type="text" list="zine-scene-options"></label>
+              <label>Page 4<input id="zine-page-4" type="text" list="zine-scene-options"><small>Blank when Page 3 is a spread.</small></label>
+              <label class="zine-spread-toggle"><input id="zine-spread-3" type="checkbox"> Use Page 3 as a two-page spread</label>
+            </section>
+            <section class="zine-page-pair">
+              <h3>Pages 5–6</h3>
+              <label>Page 5<input id="zine-page-5" type="text" list="zine-scene-options"></label>
+              <label>Page 6<input id="zine-page-6" type="text" list="zine-scene-options"><small>Blank when Page 5 is a spread.</small></label>
+              <label class="zine-spread-toggle"><input id="zine-spread-5" type="checkbox"> Use Page 5 as a two-page spread</label>
+            </section>
+            <section class="zine-cover-slot"><h3>Back</h3><label>Scene<input id="zine-back" type="text" list="zine-scene-options"></label></section>
+          </div>
+          <section id="zine-preview-section" class="zine-preview-section" hidden>
+            <h3>Print Layout</h3>
+            <img id="zine-preview" alt="Zine print layout">
+          </section>
+        </section>
+      </div>
+    </section>
+
+    <section id="scene-builder-page" class="page">
+      <div class="page-title-row">
+        <h1>Scene Builder</h1>
+        <div class="scene-builder-navigation">
+          <button id="scene-builder-previous" type="button" class="glyph-action" aria-label="Previous scene" title="Previous scene" disabled>&lt;</button>
+          <div id="scene-builder-status" class="status-text"></div>
+          <button id="scene-builder-next" type="button" class="glyph-action" aria-label="Next scene" title="Next scene" disabled>&gt;</button>
+        </div>
+      </div>
+      <div id="scene-builder-message" class="action-message" hidden></div>
+      <div id="scene-builder-panel" class="scene-builder-panel"></div>
+      <dialog id="builder-element-modal" class="image-picker-modal" aria-labelledby="builder-element-modal-title">
+        <div class="image-picker-dialog">
+          <div class="review-header">
+            <h2 id="builder-element-modal-title">New Element</h2>
+          </div>
+          <label>
+            Resource Type
+            <select id="builder-element-resource-type"></select>
+          </label>
+          <section id="builder-element-character-section">
+            <h3>Character</h3>
+            <label>Character<select id="builder-element-character"></select></label>
+            <label>Phase<select id="builder-element-phase"></select></label>
+            <label>Costume<select id="builder-element-costume"></select></label>
+          </section>
+          <section id="builder-element-aux-section">
+            <h3>Aux Resource</h3>
+            <label>Resource<select id="builder-element-aux"></select></label>
+          </section>
+          <section id="builder-element-scene-section">
+            <h3>Scene-Only</h3>
+            <label>Display Name<input id="builder-element-scene-name" type="text"></label>
+          </section>
+          <div class="button-row compact">
+            <button id="builder-element-cancel" type="button">Cancel</button>
+            <button id="builder-element-add" type="button">Add</button>
+          </div>
+        </div>
+      </dialog>
+      <dialog id="builder-continue-modal" class="image-picker-modal" aria-labelledby="builder-continue-modal-title">
+        <div class="image-picker-dialog">
+          <div class="review-header">
+            <h2 id="builder-continue-modal-title">Continue from...</h2>
+          </div>
+          <label>Scene<select id="builder-continue-scene"></select></label>
+          <div class="button-row compact">
+            <button id="builder-continue-cancel" type="button">Cancel</button>
+            <button id="builder-continue-confirm" type="button">Continue...</button>
+          </div>
+        </div>
+      </dialog>
+      <dialog id="builder-image-picker-modal" class="image-picker-modal" aria-labelledby="builder-image-picker-modal-title">
+        <div class="image-picker-dialog">
+          <div class="review-header">
+            <h2 id="builder-image-picker-modal-title">Image References</h2>
+            <button id="builder-image-picker-close" type="button">Close</button>
+          </div>
+          <label>
+            Character Filter
+            <select id="builder-image-picker-character"></select>
+          </label>
+          <label>
+            Search
+            <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
+          </label>
+          <button id="builder-image-picker-refresh" type="button">Refresh References</button>
+          <div id="builder-image-picker-status" class="status-text"></div>
+          <table id="builder-image-picker-table">
+            <thead>
+              <tr>
+                <th>label</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </dialog>
+    </section>
+
     <section id="manifest-page" class="page">
       <div class="page-title-row">
         <h1>Manifest</h1>
@@ -602,8 +798,8 @@
       <div class="review-layout manifest-layout">
         <aside class="review-sidebar">
           <div class="button-row two">
-            <button id="manifest-prev">Previous</button>
-            <button id="manifest-next">Next</button>
+            <button id="manifest-prev" class="navigation-action">Previous</button>
+            <button id="manifest-next" class="navigation-action">Next</button>
           </div>
           <table id="manifest-task-table">
             <thead>
@@ -645,21 +841,20 @@
 
     <section id="prompt-review-page" class="page">
       <div class="page-title-row">
-        <h1>Prompt Review</h1>
+        <h1>Prompt Inspection</h1>
         <div id="prompt-review-status" class="status-text"></div>
       </div>
-      <div class="review-layout">
-        <aside class="review-sidebar">
+      <div class="review-layout prompt-review-layout">
+        <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">
-            <button id="prompt-review-prev">Previous</button>
-            <button id="prompt-review-next">Next</button>
+            <button id="prompt-review-prev" class="navigation-action">Previous</button>
+            <button id="prompt-review-next" class="navigation-action">Next</button>
           </div>
-          <table id="prompt-review-task-table">
+          <button id="prompt-review-refresh" type="button">Refresh</button>
+          <table id="prompt-review-task-table" class="asset-task-table">
             <thead>
               <tr>
                 <th>asset</th>
-                <th>view</th>
-                <th>condense</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -669,8 +864,10 @@
           <div class="review-header">
             <h2 id="prompt-review-title">Select a prompt</h2>
             <div class="button-row compact">
+              <button id="prompt-review-scene-builder" class="navigation-action" hidden>Scene Builder</button>
               <button id="copy-prompt">Copy Prompt</button>
-              <button id="view-condensed">View Condensed</button>
+              <button id="analyze-prompt" type="button" disabled>Analyze Prompt</button>
+              <button id="view-prompt-analysis" class="scene-builder-analysis-view" type="button" aria-label="View prompt analysis" title="View prompt analysis" disabled>&#128065;</button>
             </div>
           </div>
           <div id="prompt-review-message" class="action-message" hidden></div>
@@ -684,10 +881,6 @@
           <div id="prompt-text" class="prompt-text"></div>
         </section>
         <aside class="review-actions">
-          <button id="generate-local-test" hidden>Generate Local Test Image</button>
-          <div id="local-test-render" class="image-placeholder">No local test render.</div>
-          <button id="prompt-approve" class="primary-action">Approve</button>
-          <button id="prompt-fail">Fail</button>
           <section class="source-inspector">
             <h3>Source Inspector</h3>
             <div id="source-inspector-empty" class="status-text">Select a source badge.</div>
@@ -701,20 +894,20 @@
 
     <section id="render-review-page" class="page">
       <div class="page-title-row">
-        <h1>Render Review</h1>
+        <h1>Image Review</h1>
         <div id="render-review-status" class="status-text"></div>
       </div>
       <div class="review-layout render-review-layout">
         <aside class="review-sidebar">
           <div class="button-row two">
-            <button id="render-review-prev">Previous</button>
-            <button id="render-review-next">Next</button>
+            <button id="render-review-prev" class="navigation-action">Previous</button>
+            <button id="render-review-next" class="navigation-action">Next</button>
           </div>
           <table id="render-review-task-table">
             <thead>
               <tr>
-                <th>asset</th>
-                <th>view</th>
+                <th>item</th>
+                <th>type</th>
                 <th>image</th>
               </tr>
             </thead>
@@ -747,8 +940,8 @@
         </section>
         <aside class="review-actions">
           <button id="render-promote" class="primary-action">Promote to LOCKED</button>
-          <button id="render-fail-render">Fail to RENDER</button>
-          <button id="render-fail-regenerate">Fail to REGENERATE</button>
+          <button id="render-fail-render" class="danger-action">Fail to RENDER</button>
+          <button id="render-fail-regenerate" class="danger-action">Fail to REGENERATE</button>
           <section>
             <h3>Stage Marker</h3>
             <pre id="render-stage-text"></pre>
@@ -767,17 +960,16 @@
         <div id="render-console-status" class="status-text"></div>
       </div>
       <div class="render-console-layout">
-        <aside class="review-sidebar">
+        <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">
-            <button id="render-console-prev">Previous</button>
-            <button id="render-console-next">Next</button>
+            <button id="render-console-prev" class="navigation-action">Previous</button>
+            <button id="render-console-next" class="navigation-action">Next</button>
           </div>
           <button id="render-console-refresh">Refresh</button>
-          <table id="render-console-task-table">
+          <table id="render-console-task-table" class="asset-task-table">
             <thead>
               <tr>
                 <th>asset</th>
-                <th>ask</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -786,7 +978,11 @@
         <section class="review-main">
           <div class="review-header">
             <h2 id="render-console-title">Select a render task</h2>
-            <button id="render-console-copy-prompt">Copy Prompt</button>
+            <div class="button-row compact">
+              <button id="render-console-scene-builder" class="navigation-action" hidden>Scene Builder</button>
+              <button id="render-console-review-prompt" disabled>Review Prompt</button>
+              <button id="render-console-copy-prompt" disabled>Copy Prompt</button>
+            </div>
           </div>
           <div id="render-console-message" class="action-message" hidden></div>
           <div class="details-grid compact-details">
@@ -805,15 +1001,9 @@
             </div>
             <textarea id="render-console-helper-text" spellcheck="false"></textarea>
           </div>
-          <textarea id="render-console-prompt" spellcheck="false"></textarea>
+          <textarea id="render-console-prompt" spellcheck="false" readonly></textarea>
         </section>
         <aside class="review-actions render-console-actions">
-          <div class="button-row compact">
-            <button id="render-console-condense-prompt" type="button" disabled>Generate Image Prompt</button>
-            <button id="render-console-local-test" type="button" disabled>Generate Local Test Image</button>
-          </div>
-          <p id="render-console-local-status" class="status-text"></p>
-          <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
           <h2>Returned Image</h2>
           <div id="render-console-paste-zone" class="paste-zone" tabindex="0">
             <p>Click here, then press Ctrl+V to paste the rendered image.</p>
@@ -830,9 +1020,76 @@
           <div id="render-console-reference-files" class="reference-preview-list"></div>
           <h2>Fail Task</h2>
           <textarea id="render-console-fail-reason" placeholder="Reason for failure"></textarea>
-          <button id="render-console-fail-task">Fail Task</button>
+          <button id="render-console-fail-task" class="danger-action">Fail Task</button>
           <p id="render-console-fail-status" class="status-text"></p>
+          <section class="render-console-local-panel">
+            <h2>Local Image</h2>
+            <div class="button-row compact">
+              <button id="render-console-local-test" type="button" disabled>Gen Local Image</button>
+              <button id="render-console-copy-local-api-params" type="button" title="Copy render API parameters" disabled>⧉</button>
+              <button id="render-console-clear-local-test" type="button" disabled>Clear</button>
+            </div>
+            <div id="render-console-local-api-popover" class="render-console-api-popover" hidden>
+              <textarea id="render-console-local-api-text" readonly></textarea>
+              <button id="render-console-local-api-copy" type="button">Copy</button>
+            </div>
+            <p id="render-console-local-status" class="status-text"></p>
+            <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
+          </section>
         </aside>
+      </div>
+    </section>
+
+    <section id="local-image-review-page" class="page">
+      <div class="page-title-row">
+        <h1>Local Image Review</h1>
+        <div id="local-image-review-status" class="status-text"></div>
+      </div>
+      <div class="local-image-review-layout">
+        <aside class="review-sidebar asset-task-sidebar">
+          <div class="button-row two">
+            <button id="local-image-review-prev" class="navigation-action" type="button">Previous</button>
+            <button id="local-image-review-next" class="navigation-action" type="button">Next</button>
+          </div>
+          <button id="local-image-review-refresh" type="button">Refresh</button>
+          <table id="local-image-review-task-table" class="asset-task-table">
+            <thead>
+              <tr>
+                <th>asset</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+        <section class="review-main local-image-review-main">
+          <div class="review-header">
+            <h2 id="local-image-review-title">Select a render task</h2>
+            <div class="local-image-review-controls">
+              <button id="local-image-review-clear" class="danger-action" type="button" disabled>Clear Local Images</button>
+              <label>
+                Images
+                <select id="local-image-review-count">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
+                </select>
+              </label>
+              <button id="local-image-review-generate" class="primary-action" type="button" disabled>Gen Local Image(s)</button>
+              <button id="local-image-review-generate-all-models" type="button" disabled>Gen All Models</button>
+            </div>
+          </div>
+          <p id="local-image-review-message" class="status-text"></p>
+          <div id="local-image-review-gallery" class="local-image-review-gallery">
+            <div class="image-placeholder">No local images.</div>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -888,7 +1145,7 @@
             Percent
             <input id="turnaround-partial-percent" type="number" min="1" max="100" step="1" value="45">
           </label>
-          <button id="turnaround-save-partial" type="button" disabled>Save Partial</button>
+          <button id="turnaround-save-partial" class="primary-action" type="button" disabled>Save Partial</button>
           <h3>Auxiliary Sheets</h3>
           <table id="turnaround-aux-table">
             <thead>
@@ -915,41 +1172,27 @@
       </div>
       <div id="ai-controls-message" class="action-message" hidden></div>
       <div class="ai-controls-grid">
-        <section class="control-panel">
+        <section class="control-panel ai-actions-panel">
           <h2>Actions</h2>
-          <div id="proxy-stop-state" class="summary-bar"></div>
           <div class="button-row two">
-            <button id="harvest-ai">Harvest AI Answers</button>
-            <button id="archive-harvested-ai">Clean Harvested Answers</button>
-            <button id="refresh-ai-controls">Refresh</button>
-            <button id="activate-proxy-stop">Activate Stop</button>
-            <button id="resume-proxy-stop">Resume</button>
-            <button id="dump-ai-queue">Dump Queue</button>
+            <button id="harvest-ai" class="update-action">Harvest AI Answers</button>
+            <button id="archive-harvested-ai" class="danger-action">Archive Harvested Answers</button>
+            <button id="refresh-ai-controls" class="navigation-action">Refresh</button>
           </div>
-          <label>
-            Monitor note
-            <input id="monitor-instruction" type="text" placeholder="Optional note for workers">
-          </label>
-          <button id="send-monitor-test">Send Monitor Test</button>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-automation-panel local-image-config-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
-            <label><input id="setting-prompt-condense-enabled" type="checkbox"> Prompt condense enabled</label>
-            <label>Prompt condense model<input id="setting-prompt-condense-model" type="text"></label>
-            <label>Prompt condense task file<input id="setting-prompt-condense-file" type="text"></label>
-            <label><input id="setting-local-render-auto" type="checkbox"> Auto preview render after condense</label>
-            <label>
-              Image generation
-              <select id="setting-local-render-preset">
-                <option value="body-reference-preview">ComfyUI</option>
-                <option value="body-reference-preview-stable-matrix">Stable Matrix</option>
-              </select>
-            </label>
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
             <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
-            <label>AI prompt review model<input id="setting-ai-prompt-review-model" type="text"></label>
-            <label>AI prompt review instructions<input id="setting-ai-prompt-review-file" type="text"></label>
+            <label>
+              AI prompt analysis model
+              <span class="inline-field">
+                <select id="setting-ai-prompt-analysis-model"></select>
+                <button id="refresh-ollama-models" type="button">Refresh Models</button>
+              </span>
+            </label>
+            <label>AI prompt analysis instructions<input id="setting-ai-prompt-analysis-file" type="text"></label>
             <label>
               Final render backend
               <select id="setting-render-backend">
@@ -960,7 +1203,7 @@
             <button class="primary-action" type="submit">Save Project Settings</button>
           </form>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-processes-panel">
           <h2>Processes</h2>
           <table id="process-table">
             <thead>
@@ -976,40 +1219,119 @@
           </table>
         </section>
         <section class="control-panel queue-panel">
-          <h2>Queue</h2>
+          <div class="page-title-row">
+            <h2>Queue</h2>
+          </div>
           <div id="queue-counts" class="summary-bar"></div>
           <div class="queue-tables">
+            <section>
+              <h3>Running</h3>
+              <table id="queue-running-table"><tbody></tbody></table>
+            </section>
             <section>
               <h3>Ask</h3>
               <table id="queue-ask-table"><tbody></tbody></table>
             </section>
             <section>
-              <h3>Claimed</h3>
-              <table id="queue-claimed-table"><tbody></tbody></table>
-            </section>
-            <section>
               <h3>Answer</h3>
               <table id="queue-answer-table"><tbody></tbody></table>
             </section>
-            <section>
-              <h3>Failed</h3>
-              <table id="queue-failed-table"><tbody></tbody></table>
-            </section>
           </div>
         </section>
-        <section class="control-panel">
+        <section class="control-panel ai-render-console-panel">
           <h2>Render Console</h2>
-          <button id="open-render-console-tab">Open Render Console</button>
+          <button id="open-render-console-tab" class="navigation-action">Open Render Console</button>
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
         </section>
+      </div>
+    </section>
+
+    <section id="local-image-config-page" class="page">
+      <div class="page-title-row">
+        <h1>Image Config</h1>
+        <div id="local-image-config-status" class="status-text"></div>
+      </div>
+      <div id="local-image-config-message" class="action-message" hidden></div>
+      <div class="button-row compact settings-save-bar">
+        <button class="primary-action" type="submit" form="automation-form">Save Project Settings</button>
+        <span id="settings-save-state" class="save-state" aria-live="polite"></span>
+      </div>
+      <div class="ai-controls-grid">
         <section class="control-panel">
-          <h2>Monitor Tests</h2>
-          <table id="monitor-request-table"><tbody></tbody></table>
+          <h2>Image Generation</h2>
+          <div class="settings-form">
+            <label>
+              Image generation
+              <select id="setting-local-render-backend" form="automation-form">
+                <option value="stable_matrix">Stable Matrix</option>
+                <option value="comfyui">ComfyUI</option>
+              </select>
+            </label>
+            <fieldset id="stable-matrix-settings">
+              <legend>Stable Matrix</legend>
+              <label>
+                Render profile
+                <select id="setting-local-render-preset" form="automation-form"></select>
+              </label>
+              <label><input id="setting-local-render-forge-couple" type="checkbox" form="automation-form"> Use Forge Couple</label>
+              <label>
+                Checkpoint
+                <select id="setting-local-render-checkpoint" form="automation-form"></select>
+              </label>
+              <button id="refresh-local-render-checkpoints" type="button">Refresh Stable Matrix Checkpoints</button>
+              <label>Positive prompt globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
+              <label>Negative prompt globals<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
+            </fieldset>
+            <fieldset id="comfyui-settings" hidden>
+              <legend>ComfyUI</legend>
+              <label>
+                Render profile
+                <select id="setting-comfyui-profile" form="automation-form"></select>
+              </label>
+              <label>
+                Server URL
+                <input id="setting-comfyui-server-url" type="url" form="automation-form">
+              </label>
+              <label>
+                Checkpoint
+                <select id="setting-comfyui-checkpoint" form="automation-form"></select>
+              </label>
+              <button id="refresh-comfyui-checkpoints" type="button">Refresh ComfyUI Checkpoints</button>
+              <label>Positive prompt globals<textarea id="setting-comfyui-positive-globals" form="automation-form"></textarea></label>
+              <label>Negative prompt globals<textarea id="setting-comfyui-negative-globals" form="automation-form"></textarea></label>
+              <label>
+                Poll seconds
+                <input id="setting-comfyui-poll-seconds" type="number" min="0" step="0.1" form="automation-form">
+              </label>
+              <label>
+                Timeout seconds
+                <input id="setting-comfyui-timeout-seconds" type="number" min="1" step="1" form="automation-form">
+              </label>
+            </fieldset>
+          </div>
         </section>
         <section class="control-panel">
-          <h2>Monitor Responses</h2>
-          <table id="monitor-response-table"><tbody></tbody></table>
+          <h2>Zines</h2>
+          <div class="settings-form">
+            <label>
+              Zine Print Scale (0–1)
+              <input id="setting-zine-print-scale" type="number" min="0.0001" max="1" step="0.0001" value="0.9780" form="automation-form">
+            </label>
+            <label>
+              Zine Page Margin (pixels)
+              <input id="setting-zine-page-margin" type="number" min="0" max="412" step="1" value="4" form="automation-form" aria-describedby="zine-margin-help">
+              <small id="zine-margin-help">Maximum depends on Zine Width.</small>
+            </label>
+            <label>
+              Zine Width (pixels; multiple of 44)
+              <input id="setting-zine-width" type="number" min="44" step="44" value="3300" form="automation-form">
+            </label>
+            <label>
+              Turnaround Width (pixels; multiple of 44)
+              <input id="setting-turnaround-width" type="number" min="44" step="44" value="3960" form="automation-form">
+            </label>
+          </div>
         </section>
       </div>
     </section>
@@ -1028,21 +1350,6 @@
         </section>
         <section class="control-panel pipeline-wide">
           <h2>Character / Phase Pipeline Config</h2>
-          <div class="batch-controls">
-            <label>
-              Pipeline
-              <select id="prompt-review-pipeline"></select>
-            </label>
-            <label>
-              Prompt review
-              <select id="prompt-review-mode">
-                <option value="HUMAN">Human</option>
-                <option value="AI">AI</option>
-                <option value="OFF">Off</option>
-              </select>
-            </label>
-            <button id="prompt-review-save" type="button">Save Prompt Review Mode</button>
-          </div>
           <table id="pipeline-stage-table">
             <thead>
               <tr>
@@ -1057,7 +1364,7 @@
             <tbody></tbody>
           </table>
         </section>
-        <section class="control-panel pipeline-wide">
+        <section class="control-panel pipeline-wide batch-reset-panel">
           <h2>Batch Render Reset</h2>
           <div class="batch-controls">
             <label>
@@ -1065,7 +1372,7 @@
               <select id="batch-render-pipeline"></select>
             </label>
             <label class="checkbox-row"><input id="batch-include-locked" type="checkbox"> Include locked assets</label>
-            <button id="batch-render-reset">Set Pipeline Assets Back To Render</button>
+            <button id="batch-render-reset" class="danger-action">Set Pipeline Assets Back To Render</button>
           </div>
           <table id="batch-render-result-table"><tbody></tbody></table>
         </section>
@@ -1082,15 +1389,11 @@
       <div class="source-editor-layout">
         <section class="review-main">
           <div class="review-header">
-            <h2 id="source-editor-title">Select a source from Prompt Review</h2>
+            <h2 id="source-editor-title">Select a source from Prompt Inspection</h2>
           </div>
-          <div class="source-editor-toolbar">
+          <div class="source-editor-toolbar editor-sticky-header">
             <button id="source-editor-save" class="primary-action" disabled>Save Source</button>
-            <button id="source-editor-recompile" disabled>Recompile Current Prompt</button>
-            <label class="checkbox-row source-editor-option">
-              <input id="source-editor-clear-review-aids" type="checkbox" checked>
-              Clear condensed prompt and local test renders
-            </label>
+            <span id="source-editor-save-state" class="save-state" aria-live="polite"></span>
           </div>
           <section class="source-editor-help">
             <h3>Prompt Inserts</h3>
@@ -1155,6 +1458,36 @@ Add prompt language here.
           <button id="todo-save" type="submit">Save</button>
         </div>
         <textarea id="todo-text" spellcheck="false"></textarea>
+      </form>
+    </dialog>
+    <dialog id="prompt-analysis-dialog" class="prompt-analysis-dialog" aria-labelledby="prompt-analysis-title">
+      <div class="prompt-analysis-dialog-content">
+        <div class="review-header">
+          <h2 id="prompt-analysis-title">Prompt Analysis</h2>
+          <button id="prompt-analysis-close" type="button">Close</button>
+        </div>
+        <iframe id="prompt-analysis-frame" title="Prompt Analysis"></iframe>
+      </div>
+    </dialog>
+    <dialog id="unsaved-changes-dialog" aria-labelledby="unsaved-changes-title">
+      <form method="dialog">
+        <h2 id="unsaved-changes-title">Unsaved changes</h2>
+        <p id="unsaved-changes-message"></p>
+        <div class="button-row compact">
+          <button value="cancel">Cancel</button>
+          <button value="discard" class="danger-action">Discard</button>
+          <button value="save" class="primary-action">Save</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="confirmation-dialog" aria-labelledby="confirmation-title">
+      <form method="dialog">
+        <h2 id="confirmation-title">Confirm action</h2>
+        <p id="confirmation-message"></p>
+        <div class="button-row compact">
+          <button value="cancel">Cancel</button>
+          <button id="confirmation-confirm" value="confirm" class="danger-action">Confirm</button>
+        </div>
       </form>
     </dialog>
   </main>

@@ -9,14 +9,14 @@ import re
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
-from Compile_Character_Template import TemplateCompileError, select_sections
-from Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Library_Paths import character_root, pipeline_root
-from Run_Body_Reference_Jobs import (
+from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, write_json_file
+from Scripts.Library_Paths import character_root, pipeline_root
+from zet.services.pipeline_compiler_support import (
     job_get,
     load_bundle,
     load_body_reference_section_data,
@@ -25,8 +25,10 @@ from Run_Body_Reference_Jobs import (
     resolve_project_path,
     template_metadata,
     template_path_for_job,
+    reference_by_role,
+    reference_files_for_job,
+    validate_reference,
 )
-from Run_Head_Fitment_Jobs import reference_by_role, reference_files_for_job, validate_reference
 
 PROMPT_INSERT_RE = re.compile(r"\{\{PROMPT_INSERT\}\}(.*?)\{\{/PROMPT_INSERT\}\}", re.DOTALL)
 SECTION_MARKER_RE = re.compile(r"^~?\{\{SECTION:([A-Z0-9_{}]+)\}\}$")
@@ -49,8 +51,7 @@ def now_iso() -> str:
 
 def safe_name(value: str) -> str:
     """Return a filesystem-safe name fragment."""
-    text = str(value or "").strip()
-    return "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in text).strip("-") or "Expression"
+    return safe_filename_fragment(value, "Expression")
 
 
 def expression_definition_path_for_job(project_root: Path, job: dict, character: str, phase: str) -> Path:
@@ -169,7 +170,7 @@ def write_dependency_manifest(path: Path, metadata: dict, reference_files: list[
             "The Identity Key controls identity, framing, view angle, visible costume, lighting, and style.",
         ],
     }
-    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_json_file(path, manifest)
 
 
 def write_prompt_review(path: Path, metadata: dict, prompt_path: Path) -> None:
@@ -251,17 +252,23 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     identity_key = reference_by_role(references, "identity_key")
     validate_reference(identity_key, "identity_key")
     output_dir = output_dir_for_job(project_root, job, character, phase, expression_label)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
     selection = select_sections(sections, bundle, "EXPRESSION", section_sources)
-    files = output_files(bundle)
-    prompt_path = output_dir / files.get("final_prompt", "Final_Image_Prompt.md")
-    compiled_sections_path = output_dir / files.get("compiled_sections", "Compiled_Sections.md")
-    manifest_path = output_dir / files.get("dependency_manifest", "dependency_manifest.json")
-    prompt_review_path = output_dir / files.get("prompt_review", "Prompt_Review.md")
-    image_review_path = output_dir / files.get("image_review", "Image_Review.md")
-    source_map_path = output_dir / files.get("source_map", "Prompt_Source_Map.json")
+    paths = bundle_output_paths(output_dir, output_files(bundle), {
+        "final_prompt": "Final_Image_Prompt.md",
+        "compiled_sections": "Compiled_Sections.md",
+        "dependency_manifest": "dependency_manifest.json",
+        "prompt_review": "Prompt_Review.md",
+        "image_review": "Image_Review.md",
+        "source_map": "Prompt_Source_Map.json",
+    })
+    prompt_path = paths["final_prompt"]
+    compiled_sections_path = paths["compiled_sections"]
+    manifest_path = paths["dependency_manifest"]
+    prompt_review_path = paths["prompt_review"]
+    image_review_path = paths["image_review"]
+    source_map_path = paths["source_map"]
 
     metadata = {
         "job_id": job_get(job, "Job", "job") or f"Expression_{safe_name(expression_label)}",
@@ -302,25 +309,25 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
             "source_label": f"Expression prompt insert after {section}",
             "editable": True,
         }
-    template_file = prompt_template_path(project_root, str(bundle.get("static_prompt_template", "")))
-    prompt_text, source_map = render_static_prompt_with_source_map(
-        template_file.read_text(encoding="utf-8"),
-        template_path=template_file,
-        metadata=metadata_values,
+    prompt_text = render_static_prompt_artifacts(
+        project_root=project_root,
+        bundle=bundle,
+        final_prompt_path=prompt_path,
+        source_map_path=source_map_path,
+        compiled_sections_path=compiled_sections_path,
+        metadata=metadata,
+        metadata_values=metadata_values,
         metadata_sources=metadata_sources,
         selection=selection,
         required_section_names=list(bundle.get("required_sections", [])),
         view_token="EXPRESSION",
-        final_prompt_name=prompt_path.name,
+        ensure_ascii_source_map=True,
     )
     references = auxiliary_references_for_texts(
         project_root,
-        [prompt_text],
+        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
         references,
     )
-    prompt_path.write_text(prompt_text, encoding="utf-8")
-    source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2) + "\n", encoding="utf-8")
-    write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token="EXPRESSION", selection=selection)
     write_dependency_manifest(manifest_path, metadata, references)
     write_prompt_review(prompt_review_path, metadata, prompt_path)
     write_image_review(image_review_path, metadata, expected_output)
@@ -332,8 +339,8 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "image_review": str(image_review_path),
         "source_map": str(source_map_path),
         "expected_output": expected_output,
-        "status": str(bundle.get("next_status", "READY_FOR_PROMPT_REVIEW")),
-        "next_actor": str(bundle.get("next_actor", "HUMAN_AGENT")),
+        "status": str(bundle.get("next_status", "READY_FOR_RENDER")),
+        "next_actor": str(bundle.get("next_actor", "AI_AGENT")),
         "reference_files": references,
     }
 

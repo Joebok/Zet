@@ -1,11 +1,15 @@
-import dataclasses
 import json
 import shutil
-from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from zet.models.turnaround import TurnaroundSheet
+from zet.repositories.json_storage import (
+    MissingDataclassFieldsError,
+    dataclass_from_record,
+    dataclass_to_record,
+    write_json_atomic,
+)
 from zet.services.path_service import PathService
 
 
@@ -51,28 +55,16 @@ class TurnaroundRepository:
 
     def _sheet_from_dict(self, record: dict) -> TurnaroundSheet:
         """Convert a JSON record into a turnaround model."""
-        model_fields = list(fields(TurnaroundSheet))
-        required = [
-            field.name
-            for field in model_fields
-            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
-        ]
-        missing = sorted(set(required) - set(record))
-        if missing:
-            raise TurnaroundRepositoryError(f"Turnaround record is missing required fields: {', '.join(missing)}")
-        values = {}
-        for field in model_fields:
-            if field.name in record:
-                values[field.name] = record[field.name]
-            elif field.default is not dataclasses.MISSING:
-                values[field.name] = field.default
-            elif field.default_factory is not dataclasses.MISSING:
-                values[field.name] = field.default_factory()
-        return TurnaroundSheet(**values)
+        try:
+            return dataclass_from_record(TurnaroundSheet, record)
+        except MissingDataclassFieldsError as exc:
+            raise TurnaroundRepositoryError(
+                f"Turnaround record is missing required fields: {', '.join(exc.missing_fields)}"
+            ) from None
 
     def _serialize_sheet(self, sheet: TurnaroundSheet) -> dict:
         """Convert a turnaround model into a JSON record."""
-        return {field.name: getattr(sheet, field.name) for field in fields(TurnaroundSheet)}
+        return dataclass_to_record(sheet)
 
     def _write_payload(self, character: str, phase: str, payload: dict) -> None:
         """Write turnaround storage atomically with a timestamped backup."""
@@ -84,12 +76,7 @@ class TurnaroundRepository:
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, backup_dir / f"TurnaroundSheets.backup.{timestamp}.json")
         temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
-        serialized = json.dumps(payload, indent=2)
-        if not serialized.endswith("\n"):
-            serialized += "\n"
-        temp_path.write_text(serialized, encoding="utf-8")
-        json.loads(temp_path.read_text(encoding="utf-8"))
-        temp_path.replace(path)
+        write_json_atomic(path, temp_path, payload)
 
     def list_sheets(self, character: str, phase: str) -> list[TurnaroundSheet]:
         """List all tracked turnaround sheets for a character phase."""

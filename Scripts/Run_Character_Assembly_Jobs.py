@@ -8,14 +8,14 @@ from pathlib import Path
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
-from Compile_Character_Template import TemplateCompileError, select_sections
-from Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Library_Paths import pipeline_root
-from Run_Body_Reference_Jobs import (
+from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
+from Scripts.Library_Paths import pipeline_root
+from zet.services.pipeline_compiler_support import (
     expected_output_for_job,
     job_get,
     load_bundle,
@@ -31,8 +31,10 @@ from Run_Body_Reference_Jobs import (
     template_metadata,
     template_path_for_job,
     view_instruction,
+    reference_by_role,
+    reference_files_for_job,
+    validate_reference,
 )
-from Run_Head_Fitment_Jobs import reference_by_role, reference_files_for_job, validate_reference
 
 
 def now_iso() -> str:
@@ -77,7 +79,7 @@ def write_dependency_manifest(
             "Prompt text describes reference usage; image file selection is stored in asset.reference_files and ask manifest.",
         ],
     }
-    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_json_file(path, manifest)
 
 
 def write_image_review(path: Path, metadata: dict[str, str], expected_output: str) -> None:
@@ -146,13 +148,18 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
     if selection.forbidden_matches:
         raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    files = output_files(bundle)
-    final_prompt_path = output_dir / files.get("final_prompt", "Final_Image_Prompt.md")
-    compiled_sections_path = output_dir / files.get("compiled_sections", "Compiled_Sections.md")
-    source_map_path = output_dir / files.get("source_map", "Prompt_Source_Map.json")
-    manifest_path = output_dir / files.get("dependency_manifest", "dependency_manifest.json")
-    image_review_path = output_dir / files.get("image_review", "Image_Review.md")
+    paths = bundle_output_paths(output_dir, output_files(bundle), {
+        "final_prompt": "Final_Image_Prompt.md",
+        "compiled_sections": "Compiled_Sections.md",
+        "source_map": "Prompt_Source_Map.json",
+        "dependency_manifest": "dependency_manifest.json",
+        "image_review": "Image_Review.md",
+    })
+    final_prompt_path = paths["final_prompt"]
+    compiled_sections_path = paths["compiled_sections"]
+    source_map_path = paths["source_map"]
+    manifest_path = paths["dependency_manifest"]
+    image_review_path = paths["image_review"]
 
     metadata = {
         "job_id": job_id,
@@ -162,7 +169,6 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
     }
-    template_file = prompt_template_path(project_root, str(bundle.get("static_prompt_template", "")))
     metadata_values = {
             "CHARACTER_NAME": character,
             "CHARACTER_PHASE": phase,
@@ -188,24 +194,24 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "HEAD_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Head view label", "json_pointer": f"/views/{head_view_token}/label", "editable": True},
         "HEAD_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "character-assembly head view instruction", "json_pointer": f"/views/{head_view_token}/head_instructions/{task}", "editable": True},
     }
-    prompt_text, source_map = render_static_prompt_with_source_map(
-        template_file.read_text(encoding="utf-8"),
-        template_path=template_file,
-        metadata=metadata_values,
+    prompt_text = render_static_prompt_artifacts(
+        project_root=project_root,
+        bundle=bundle,
+        final_prompt_path=final_prompt_path,
+        source_map_path=source_map_path,
+        compiled_sections_path=compiled_sections_path,
+        metadata=metadata,
+        metadata_values=metadata_values,
         metadata_sources=metadata_sources,
         selection=selection,
         required_section_names=list(bundle.get("required_sections", [])),
         view_token=body_view_token,
-        final_prompt_name=final_prompt_path.name,
     )
     references = auxiliary_references_for_texts(
         project_root,
-        [prompt_text],
+        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
         references,
     )
-    final_prompt_path.write_text(prompt_text, encoding="utf-8")
-    source_map_path.write_text(json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token=body_view_token, selection=selection)
     write_dependency_manifest(
         manifest_path,
         job_id,

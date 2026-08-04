@@ -1,0 +1,54 @@
+{
+  "story_slug": "FirstDay",
+  "scene_slug": "Chapter-03-Collision",
+  "reference_files": [
+    {
+      "role": "story_reference",
+      "label": "Valindia - Costume",
+      "tag": "{{AUX:person:valindia:costume}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\valindia\\costume.png",
+      "kind": "aux:person",
+      "version": 1,
+      "type": "reference_file"
+    },
+    {
+      "role": "story_reference",
+      "label": "Kaeldor - Kaeldor Uniform",
+      "tag": "{{AUX:person:kaeldor:kaeldor-uniform}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\kaeldor\\kaeldor-uniform.png",
+      "kind": "aux:person",
+      "version": 1,
+      "type": "reference_file"
+    },
+    {
+      "role": "story_reference",
+      "label": "School Boys - Schoolboys",
+      "tag": "{{AUX:person:school-boys:schoolboys}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\school-boys\\schoolboys.png",
+      "kind": "aux:person",
+      "version": 1,
+      "type": "reference_file"
+    },
+    {
+      "role": "story_reference",
+      "label": "Spire - Archway - Spire Archway",
+      "tag": "{{AUX:place:spire-archway:spire-archway}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\AuxiliaryResources\\Images\\spire-archway\\spire-archway.png",
+      "kind": "aux:place",
+      "version": 1,
+      "type": "reference_file"
+    },
+    {
+      "role": "story_reference",
+      "label": "Tsaeytte Youth Costume-Dressing Front-Left-3-4",
+      "tag": "{{ASSET:Tsaeytte:Youth:26:Costume | Front-Left-3-4 | Woodland outfit}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library\\Assets\\Tsaeytte\\Youth\\Costume-Dressing_Front-Left-3-4_Front-Left-3-4_Woodland-outfit.png",
+      "kind": "asset",
+      "source_character": "Tsaeytte",
+      "source_phase": "Youth",
+      "source_asset_id": 26,
+      "version": 1,
+      "type": "reference_file"
+    }
+  ]
+}

@@ -1,11 +1,18 @@
+# To Do items
 
-Rearrange AI Controls Page
+Pipeline Viewer - list of all pipelines (friendly names), click to see list of files, click file to see contents or image.
 
-Scenes - Toggle Image - image doens't change when you select a new scene in the list on the left.
+Color Theme
 
-Color-code buttons:
-Distinguish save ones, navigate ones, "redo" ones.
+UI Review
 
-.json inspector
+Create Matron Tsaeytte - streamline base image pipelines/templates.
 
-More control over local rendering parameters.
+Comic Panel Create. Specify overall aspect ratio (default 8.5x11) and panel divisions. Select images to place, have zoom and crop controls for assembly.
+
+Augmented prompt for left-right read on scenes; incorporate depth.
+
+# Defer for now
+
+Setting up HTTPS://
+

@@ -1,11 +1,15 @@
-import dataclasses
 import json
 import shutil
-from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from zet.models.auxiliary_resource import AuxiliaryResource
+from zet.repositories.json_storage import (
+    MissingDataclassFieldsError,
+    dataclass_from_record,
+    dataclass_to_record,
+    write_json_atomic,
+)
 from zet.services.path_service import PathService
 
 
@@ -43,28 +47,16 @@ class AuxiliaryResourceRepository:
 
     def _resource_from_dict(self, record: dict) -> AuxiliaryResource:
         """Convert a JSON record into an auxiliary resource model."""
-        model_fields = list(fields(AuxiliaryResource))
-        required = [
-            field.name
-            for field in model_fields
-            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
-        ]
-        missing = sorted(set(required) - set(record))
-        if missing:
-            raise AuxiliaryResourceRepositoryError(f"Auxiliary resource is missing required fields: {', '.join(missing)}")
-        values = {}
-        for field in model_fields:
-            if field.name in record:
-                values[field.name] = record[field.name]
-            elif field.default is not dataclasses.MISSING:
-                values[field.name] = field.default
-            elif field.default_factory is not dataclasses.MISSING:
-                values[field.name] = field.default_factory()
-        return AuxiliaryResource(**values)
+        try:
+            return dataclass_from_record(AuxiliaryResource, record)
+        except MissingDataclassFieldsError as exc:
+            raise AuxiliaryResourceRepositoryError(
+                f"Auxiliary resource is missing required fields: {', '.join(exc.missing_fields)}"
+            ) from None
 
     def _serialize_resource(self, resource: AuxiliaryResource) -> dict:
         """Convert an auxiliary resource model into a JSON record."""
-        return {field.name: getattr(resource, field.name) for field in fields(AuxiliaryResource)}
+        return dataclass_to_record(resource)
 
     def _write_payload(self, payload: dict) -> None:
         """Write the auxiliary resource inventory atomically."""
@@ -76,9 +68,7 @@ class AuxiliaryResourceRepository:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             shutil.copy2(path, backup_dir / f"AuxiliaryResources.backup.{timestamp}.json")
         temp_path = path.with_name(f"{path.name}.tmp")
-        temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        json.loads(temp_path.read_text(encoding="utf-8"))
-        temp_path.replace(path)
+        write_json_atomic(path, temp_path, payload)
 
     def list_resources(self) -> list[AuxiliaryResource]:
         """List all global auxiliary resources."""
@@ -107,4 +97,14 @@ class AuxiliaryResourceRepository:
         if not replaced:
             records.append(replacement)
         payload["resources"] = records
+        self._write_payload(payload)
+
+    def delete_resource(self, resource_id: str) -> None:
+        """Delete one auxiliary resource record."""
+        payload = self._load_payload()
+        payload["resources"] = [
+            record
+            for record in payload["resources"]
+            if not isinstance(record, dict) or record.get("resource_id") != resource_id
+        ]
         self._write_payload(payload)

@@ -42,6 +42,15 @@ class CostumeService:
         """Return an ISO timestamp for generated assets."""
         return datetime.now().isoformat(timespec="seconds")
 
+    def _write_text_atomic(self, path: Path, contents: str) -> None:
+        """Replace a text file without exposing a partial write."""
+        temp_path = path.with_name(f"{path.name}.tmp")
+        try:
+            temp_path.write_text(contents, encoding="utf-8")
+            temp_path.replace(path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
     def safe_costume_slug(self, costume_name: str) -> str:
         """Return the canonical costume filename slug."""
         text = str(costume_name or "").strip()
@@ -126,7 +135,6 @@ class CostumeService:
         if existing:
             raise CostumeServiceError(f"Costume-Dressing assets already exist for {display_name}.")
         source_markdown = str(markdown or "").strip() or self._default_costume_markdown()
-        costume_path.write_text(self._sync_costume_name(source_markdown, display_name), encoding="utf-8")
         assets = []
         for view in TURNAROUND_VIEW_ORDER:
             output_name = f"Costume-Dressing_{view}_{view}_{costume_slug.replace('_', '-')}.png"
@@ -147,7 +155,13 @@ class CostumeService:
                 updated_at=self._timestamp(),
                 costume_path=str(costume_path),
             )
-            assets.append(self.asset_repository.create_asset(asset))
+            assets.append(asset)
+        self._write_text_atomic(costume_path, self._sync_costume_name(source_markdown, display_name))
+        try:
+            assets = self.asset_repository.create_assets(assets)
+        except Exception:
+            costume_path.unlink(missing_ok=True)
+            raise
         return CostumeCreateResult(
             costume=self._costume_from_path(character, phase, costume_path),
             assets=assets,
@@ -173,14 +187,9 @@ class CostumeService:
         if old_path != new_path and new_path.exists():
             raise CostumeServiceError(f"Costume template already exists: {new_path.name}")
 
-        contents = old_path.read_text(encoding="utf-8") if old_path.exists() else self._default_costume_markdown()
+        old_path_existed = old_path.exists()
+        contents = old_path.read_text(encoding="utf-8") if old_path_existed else self._default_costume_markdown()
         updated_contents = self._sync_costume_name(contents, display_name)
-        if old_path != new_path:
-            new_path.write_text(updated_contents, encoding="utf-8")
-            old_path.unlink(missing_ok=True)
-        else:
-            old_path.write_text(updated_contents, encoding="utf-8")
-
         updated_assets = []
         for asset in self.asset_repository.list_assets(character, phase):
             if asset.pipeline != "Costume-Dressing":
@@ -193,8 +202,29 @@ class CostumeService:
             updated_asset.costume_path = str(new_path)
             updated_asset.final_image_output = f"Costume-Dressing_{asset.body_view}_{asset.body_view}_{new_slug.replace('_', '-')}.png"
             updated_asset.updated_at = self._timestamp()
-            self.asset_repository.save_asset(updated_asset)
             updated_assets.append(updated_asset)
+
+        if old_path != new_path:
+            self._write_text_atomic(new_path, updated_contents)
+            try:
+                old_path.unlink(missing_ok=True)
+            except Exception:
+                new_path.unlink(missing_ok=True)
+                raise
+        else:
+            self._write_text_atomic(old_path, updated_contents)
+        try:
+            self.asset_repository.save_assets(updated_assets)
+        except Exception:
+            if old_path != new_path:
+                if old_path_existed:
+                    self._write_text_atomic(old_path, contents)
+                new_path.unlink(missing_ok=True)
+            elif not old_path_existed:
+                old_path.unlink(missing_ok=True)
+            else:
+                self._write_text_atomic(old_path, contents)
+            raise
 
         return CostumeUpdateResult(
             costume=self._costume_from_path(character, phase, new_path),

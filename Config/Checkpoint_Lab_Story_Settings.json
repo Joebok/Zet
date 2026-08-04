@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "file_kind": "story_settings",
+  "story": {
+    "id": "checkpoint_lab",
+    "title": "Checkpoint Lab",
+    "slug": "checkpoint_lab",
+    "premise": "",
+    "notes": ""
+  },
+  "style_defaults": {
+    "canonical_art_style": {
+      "id": "checkpoint_lab_neutral",
+      "short_label": "",
+      "full_prompt_text": "",
+      "negative_style_notes": ""
+    },
+    "visual_continuity": {
+      "rules": [],
+      "notes": ""
+    }
+  },
+  "dialogue_styles": [],
+  "compiler_profiles": {
+    "final_image_prompt": {
+      "include_story_premise": false,
+      "include_visual_continuity": false,
+      "include_dialogue_when_scene_has_dialogue": false,
+      "include_reference_assignments": true,
+      "notes": ""
+    },
+    "local_render": {
+      "purpose": "composition preview only",
+      "include_dialogue": false,
+      "include_reference_tags": false,
+      "negative_text_terms": [
+        "text",
+        "letters",
+        "caption",
+        "speech bubble",
+        "watermark"
+      ],
+      "notes": ""
+    }
+  },
+  "scene_index": []
+}

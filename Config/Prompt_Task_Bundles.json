@@ -38,11 +38,10 @@
         "compiled_sections": "Compiled_Sections.md",
         "final_prompt": "Final_Image_Prompt.md",
         "dependency_manifest": "dependency_manifest.json",
-        "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md"
       },
-      "next_status": "READY_FOR_PROMPT_REVIEW",
-      "next_actor": "HUMAN"
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     },
     "head-fitment": {
       "description": "Static head-fitment prompt using selected body-reference and headshot image references. No prompt review and no local preview render.",
@@ -98,16 +97,11 @@
         "HEAD_DESCRIPTION_VIEW_{VIEW}",
         "HAIR_DESCRIPTION_FACTS",
         "HAIR_DESCRIPTION_VIEW_{VIEW}",
-        "COSTUME_DESCRIPTION_FACTS",
-        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "EQUIPMENT_DESCRIPTION_FACTS",
-        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}",
         "IDENTITY_PRESERVATION_CORE",
         "IDENTITY_PRESERVATION_FACE",
         "IDENTITY_PRESERVATION_HAIR",
         "IDENTITY_PRESERVATION_EARS",
         "IDENTITY_PRESERVATION_BODY",
-        "IDENTITY_PRESERVATION_COSTUME",
         "TECHNICAL_MODESTY_LAYER",
         "NEUTRAL_POSE_STANCE",
         "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
@@ -139,21 +133,12 @@
       "description": "Static costume dressing prompt using a locked assembled character reference and a selected costume markdown file.",
       "prompt_builder": "static",
       "required_sections": [
-        "NEUTRAL_POSE_STANCE",
-        "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
-        "COSTUME_DESCRIPTION_FACTS",
-        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "EQUIPMENT_DESCRIPTION_FACTS",
-        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_CORE",
-        "IDENTITY_PRESERVATION_FACE",
-        "IDENTITY_PRESERVATION_HAIR",
-        "IDENTITY_PRESERVATION_EARS",
-        "IDENTITY_PRESERVATION_COSTUME",
-        "NEGATIVE_GUIDANCE_GENERAL"
+        "COSTUME_DESCRIPTION_FACTS"
       ],
       "optional_sections": [
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
+        "EQUIPMENT_DESCRIPTION_FACTS",
+        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}"
       ],
       "forbidden_sections": [
         "*_PICARESQUE"
@@ -168,11 +153,10 @@
         "compiled_sections": "Compiled_Sections.md",
         "final_prompt": "Final_Image_Prompt.md",
         "dependency_manifest": "dependency_manifest.json",
-        "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md"
       },
-      "next_status": "READY_FOR_PROMPT_REVIEW",
-      "next_actor": "HUMAN_AGENT"
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     },
     "expression": {
       "description": "Static standalone expression prompt using a selected Identity Key and one expression definition markdown file.",
@@ -207,11 +191,10 @@
         "compiled_sections": "Compiled_Sections.md",
         "final_prompt": "Final_Image_Prompt.md",
         "dependency_manifest": "dependency_manifest.json",
-        "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md"
       },
-      "next_status": "READY_FOR_PROMPT_REVIEW",
-      "next_actor": "HUMAN_AGENT"
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
     }
   }
 }

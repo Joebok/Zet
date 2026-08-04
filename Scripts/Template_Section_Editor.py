@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from Compile_Character_Template import MARKER_RE, TemplateCompileError, load_template_sections, resolve_section_name
+from Scripts.Compile_Character_Template import MARKER_RE, TemplateCompileError, load_template_sections, resolve_section_name
 
 
 @dataclass

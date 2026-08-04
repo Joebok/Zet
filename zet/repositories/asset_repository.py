@@ -1,11 +1,15 @@
-import dataclasses
 import json
 import shutil
-from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from zet.models.asset import Asset
+from zet.repositories.json_storage import (
+    MissingDataclassFieldsError,
+    dataclass_from_record,
+    dataclass_to_record,
+    write_json_atomic,
+)
 from zet.services.path_service import PathService
 
 
@@ -45,28 +49,16 @@ class AssetRepository:
 
     def _asset_from_dict(self, record: dict) -> Asset:
         """Convert a JSON record into an Asset model."""
-        model_fields = list(fields(Asset))
-        required = [
-            field.name
-            for field in model_fields
-            if field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
-        ]
-        missing = sorted(set(required) - set(record))
-        if missing:
-            raise AssetRepositoryError(f"Asset record is missing required fields: {', '.join(missing)}")
-        values = {}
-        for field in model_fields:
-            if field.name in record:
-                values[field.name] = record[field.name]
-            elif field.default is not dataclasses.MISSING:
-                values[field.name] = field.default
-            elif field.default_factory is not dataclasses.MISSING:
-                values[field.name] = field.default_factory()
-        return Asset(**values)
+        try:
+            return dataclass_from_record(Asset, record)
+        except MissingDataclassFieldsError as exc:
+            raise AssetRepositoryError(
+                f"Asset record is missing required fields: {', '.join(exc.missing_fields)}"
+            ) from None
 
     def _serialize_asset(self, asset: Asset) -> dict:
         """Convert an Asset model into a JSON record."""
-        return {field.name: getattr(asset, field.name) for field in fields(Asset)}
+        return dataclass_to_record(asset)
 
     def _write_payload(self, character: str, phase: str, payload: dict) -> None:
         """Write asset storage atomically with a timestamped backup."""
@@ -77,21 +69,13 @@ class AssetRepository:
         backup_path = backup_dir / f"Assets.backup.{timestamp}.json"
         temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
 
-        serialized = json.dumps(payload, indent=2)
-        if not serialized.endswith("\n"):
-            serialized += "\n"
-
-        shutil.copy2(path, backup_path)
-        try:
-            with temp_path.open("w", encoding="utf-8") as handle:
-                handle.write(serialized)
-            with temp_path.open("r", encoding="utf-8") as handle:
-                json.load(handle)
-            temp_path.replace(path)
-        except Exception:
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
+        write_json_atomic(
+            path,
+            temp_path,
+            payload,
+            before_write=lambda: shutil.copy2(path, backup_path),
+            cleanup_temp_on_error=True,
+        )
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         """List all assets for a character phase."""
@@ -115,42 +99,76 @@ class AssetRepository:
 
     def save_asset(self, asset: Asset) -> None:
         """Replace an existing asset record."""
-        payload = self._load_payload(asset.character, asset.phase)
+        self.save_assets([asset])
+
+    def save_assets(self, assets: list[Asset]) -> None:
+        """Replace existing asset records in one storage write."""
+        if not assets:
+            return
+        character = assets[0].character
+        phase = assets[0].phase
+        if any(asset.character != character or asset.phase != phase for asset in assets):
+            raise AssetRepositoryError("Batch assets must belong to the same character phase")
+        replacements = {asset.asset_id: self._serialize_asset(asset) for asset in assets}
+        if len(replacements) != len(assets):
+            raise AssetRepositoryError("Batch assets must have unique asset ids")
+
+        payload = self._load_payload(character, phase)
         records = payload.get("assets")
         if not isinstance(records, list):
             raise AssetRepositoryError("Assets.json must contain an 'assets' list")
 
-        replacement = self._serialize_asset(asset)
-        found = False
+        found = set()
         updated_records = []
         for record in records:
             if not isinstance(record, dict):
                 raise AssetRepositoryError("Each asset record in Assets.json must be an object")
-            if record.get("asset_id") == asset.asset_id:
-                updated_records.append(replacement)
-                found = True
+            asset_id = record.get("asset_id")
+            if asset_id in replacements:
+                updated_records.append(replacements[asset_id])
+                found.add(asset_id)
             else:
                 updated_records.append(record)
 
-        if not found:
-            raise AssetRepositoryError(f"Asset {asset.asset_id} not found for {asset.character}/{asset.phase}")
+        missing = sorted(set(replacements) - found)
+        if missing:
+            raise AssetRepositoryError(f"Assets {', '.join(str(asset_id) for asset_id in missing)} not found for {character}/{phase}")
 
         payload["assets"] = updated_records
-        self._write_payload(asset.character, asset.phase, payload)
+        self._write_payload(character, phase, payload)
 
     def create_asset(self, asset: Asset) -> Asset:
         """Append a new asset and advance next_asset_id."""
-        payload = self._load_payload(asset.character, asset.phase)
+        return self.create_assets([asset])[0]
+
+    def create_assets(self, assets: list[Asset]) -> list[Asset]:
+        """Append assets and advance next_asset_id in one storage write."""
+        if not assets:
+            return []
+        character = assets[0].character
+        phase = assets[0].phase
+        if any(asset.character != character or asset.phase != phase for asset in assets):
+            raise AssetRepositoryError("Batch assets must belong to the same character phase")
+
+        payload = self._load_payload(character, phase)
         records = payload.get("assets")
         if not isinstance(records, list):
             raise AssetRepositoryError("Assets.json must contain an 'assets' list")
         next_asset_id = int(payload.get("next_asset_id") or 1)
-        if asset.asset_id <= 0:
-            asset.asset_id = next_asset_id
-        if any(isinstance(record, dict) and record.get("asset_id") == asset.asset_id for record in records):
-            raise AssetRepositoryError(f"Asset {asset.asset_id} already exists for {asset.character}/{asset.phase}")
-        payload["next_asset_id"] = max(next_asset_id, asset.asset_id + 1)
-        records.append(self._serialize_asset(asset))
+        used_ids = {
+            record.get("asset_id")
+            for record in records
+            if isinstance(record, dict)
+        }
+        for asset in assets:
+            if asset.asset_id <= 0:
+                asset.asset_id = next_asset_id
+            if asset.asset_id in used_ids:
+                raise AssetRepositoryError(f"Asset {asset.asset_id} already exists for {character}/{phase}")
+            used_ids.add(asset.asset_id)
+            next_asset_id = max(next_asset_id, asset.asset_id + 1)
+            records.append(self._serialize_asset(asset))
+        payload["next_asset_id"] = next_asset_id
         payload["assets"] = records
-        self._write_payload(asset.character, asset.phase, payload)
-        return asset
+        self._write_payload(character, phase, payload)
+        return assets

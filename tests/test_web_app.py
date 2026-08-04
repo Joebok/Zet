@@ -1,7 +1,9 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -102,7 +104,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         return config_path
 
     def _write_manual_render_ask(self, root: Path) -> Path:
-        ask_path = root / "Queue" / "Ollama_Proxy" / "Ask" / "Ask_Asset_1_RENDER_TEST"
+        ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Asset_1_RENDER_TEST"
         ask_path.mkdir(parents=True, exist_ok=True)
         (ask_path / "ask_manifest.json").write_text(
             json.dumps(
@@ -130,6 +132,42 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             encoding="utf-8",
         )
         (ask_path / "Final_Image_Prompt.md").write_text("manual render prompt\n", encoding="utf-8")
+        return ask_path
+
+    def _write_story_render_ask(self, root: Path, suffix: str) -> Path:
+        story_dir = root / "Stories" / "demo"
+        story_dir.mkdir(parents=True, exist_ok=True)
+        (story_dir / "demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+        (story_dir / "scene.md").write_text("Scene: `[Scene]`\n", encoding="utf-8")
+        ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / f"Ask_Story_demo_scene_RENDER_{suffix}"
+        ask_path.mkdir(parents=True)
+        (ask_path / "ask_manifest.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "ask_id": ask_path.name,
+                    "asset_id": None,
+                    "character": "",
+                    "phase": "",
+                    "pipeline": "Story",
+                    "pipeline_stage": "RENDER",
+                    "story_slug": "demo",
+                    "scene_slug": "scene",
+                    "ollama_attempt_id": suffix,
+                    "worker_type": "manual_chatgpt_render",
+                    "prompt_file": "Final_Image_Prompt.md",
+                    "expected_output": "scene.png",
+                    "candidate_output_file": "scene.png",
+                    "task_type": "render",
+                    "manual": True,
+                    "target_output_file": str(story_dir / "scene.png"),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (ask_path / "Final_Image_Prompt.md").write_text("scene render prompt\n", encoding="utf-8")
         return ask_path
 
     def _write_head_fitment_fixture(self, root: Path) -> Path:
@@ -513,25 +551,151 @@ Backend = "manual_chatgpt"
             self.assertIn("Finished at RENDER", payload["message"])
             self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
 
-    def test_prompt_review_api_serves_tasks_detail_and_fail(self):
+    def test_assets_page_shows_advance_all_and_removes_retired_actions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            config_path = self._write_fixture(root, stage="PROMPT_REVIEW", actor="HUMAN_AGENT")
+            config_path = self._write_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            response = client.get("/")
+
+            self.assertEqual(response.status_code, 200)
+            html = response.text
+            self.assertIn('data-action="advance-all" disabled>Advance All</button>', html)
+            self.assertGreater(html.index('data-action="advance-all"'), html.index('id="asset-filter-hide-base"'))
+            self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
+            self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
+            self.assertIn('id="character-assets-menu" class="tab active"', html)
+            self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
+            self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
+            self.assertIn('<option value="comfyui">ComfyUI</option>', html)
+            self.assertIn('data-page="prompt-review">Prompts</button>', html)
+            self.assertIn('data-page="render-console">Render</button>', html)
+            self.assertIn('data-page="local-image-review">Local Images</button>', html)
+            self.assertLess(
+                html.index('data-page="render-console">Render</button>'),
+                html.index('data-page="local-image-review">Local Images</button>'),
+            )
+            self.assertLess(
+                html.index('data-page="local-image-review">Local Images</button>'),
+                html.index('data-page="render-review">Image Review</button>'),
+            )
+            self.assertLess(
+                html.index('data-page="scenes">Scenes</button>'),
+                html.index('data-page="auxiliary-resources">Aux Images</button>'),
+            )
+            self.assertLess(
+                html.index('data-page="auxiliary-resources">Aux Images</button>'),
+                html.index('data-page="zine">Zines</button>'),
+            )
+            self.assertIn('id="local-image-review-count"', html)
+            self.assertIn('id="local-image-review-generate-all-models"', html)
+            self.assertIn('id="local-image-review-gallery"', html)
+            self.assertIn('id="stable-matrix-settings"', html)
+            self.assertIn('id="comfyui-settings" hidden', html)
+            self.assertIn('id="setting-comfyui-checkpoint"', html)
+            self.assertNotIn('data-page="turnarounds">Turnarounds</button>', html)
+            self.assertIn('class="control-panel ai-automation-panel local-image-config-panel"', html)
+            self.assertIn('document.querySelectorAll("button.tab")', (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8"))
+            self.assertNotIn('data-action="retouch"', html)
+            self.assertNotIn('data-action="stage-ai-ask"', html)
+            self.assertNotIn('data-action="retry-ai"', html)
+
+            paths = client.get("/openapi.json").json()["paths"]
+            self.assertIn("/api/assets/advance-all", paths)
+            self.assertNotIn("/api/assets/advance-displayed", paths)
+            self.assertNotIn("/api/assets/{asset_id}/retouch", paths)
+            self.assertNotIn("/api/assets/{asset_id}/stage-ai-ask", paths)
+            self.assertNotIn("/api/assets/{asset_id}/retry-ai", paths)
+
+    def test_story_actions_are_consolidated(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            client = TestClient(create_app(config_path))
+
+            html = client.get("/").text
+            view_index = html.index('id="story-view"')
+            save_index = html.index('id="story-save"')
+            scenes_index = html.index('id="story-scenes"')
+            delete_index = html.index('id="story-delete"')
+
+            self.assertLess(view_index, save_index)
+            self.assertLess(save_index, scenes_index)
+            self.assertLess(scenes_index, delete_index)
+            self.assertNotIn('id="story-settings-load"', html)
+            self.assertNotIn('id="story-settings-save"', html)
+            self.assertLess(html.index('id="story-table"'), html.index('id="story-new-title"'))
+            self.assertLess(html.index('id="story-new-title"'), html.index('class="story-git-panel"'))
+
+            javascript = (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8")
+            autosave = javascript[javascript.index("async function saveStoryBeforeNavigation") : javascript.index("async function saveSceneBeforeNavigation")]
+            save_story = javascript[javascript.index("async function saveStory()") : javascript.index("async function openStoryScenes()")]
+            self.assertIn("return saveStory();", autosave)
+            self.assertIn("await saveStorySettingsData(state.selectedStorySlug);", save_story)
+            self.assertIn('await activatePage("scenes");', javascript)
+            self.assertIn('"story.title",', javascript)
+            self.assertIn("await loadStorySettingsData(state.selectedStorySlug);", javascript)
+
+    def test_scene_controls_are_positioned_and_ordered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            html = TestClient(create_app(config_path)).get("/").text
+
+            self.assertLess(html.index('id="scene-table"'), html.index('id="scene-new-name"'))
+            image_index = html.index('id="scene-toggle-image"')
+            builder_index = html.index('id="scene-builder-open"')
+            render_index = html.index('id="scene-stage-render"')
+            save_index = html.index('id="scene-save"')
+            delete_index = html.index('id="scene-delete"')
+            self.assertLess(image_index, builder_index)
+            self.assertLess(builder_index, render_index)
+            self.assertLess(render_index, save_index)
+            self.assertLess(save_index, delete_index)
+            self.assertIn('id="scene-image-candidate-link"', html)
+            self.assertIn("Candidate Image Pending", html)
+            javascript = (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8")
+            self.assertIn('page: "render-review"', javascript)
+            self.assertIn('review_kind: "scene"', javascript)
+            self.assertIn("reference.candidate_pending", javascript)
+
+    def test_asset_regenerate_advances_only_the_selected_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            second = dict(payload["assets"][0])
+            second.update({"asset_id": 2, "pipeline_stage": "MANIFEST", "actor": "PYTHON", "final_image_output": "second.png"})
+            payload["assets"].append(second)
+            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            pipelines_path = root / "Characters" / "Test" / "Adult" / "Pipelines.json"
+            pipelines = json.loads(pipelines_path.read_text(encoding="utf-8"))
+            body_pipeline = pipelines["pipelines"]["Body-Reference"]
+            body_pipeline["stages"] = ["MANIFEST", "LOCKED"]
+            body_pipeline["actor_by_stage"] = {"MANIFEST": "PYTHON", "LOCKED": "HUMAN_AGENT"}
+            pipelines_path.write_text(json.dumps(pipelines, indent=2) + "\n", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            response = client.post("/api/assets/1/regenerate", params={"character": "Test", "phase": "Adult"})
+
+            self.assertEqual(response.status_code, 200)
+            result = response.json()
+            self.assertIn("regenerated and advanced to LOCKED", result["message"])
+            self.assertEqual(result["detail"]["asset"]["pipeline_stage"], "LOCKED")
+            assets = {asset["asset_id"]: asset for asset in result["assets"]}
+            self.assertEqual(assets[2]["pipeline_stage"], "MANIFEST")
+
+    def test_retired_prompt_review_api_is_not_registered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
             client = TestClient(create_app(config_path))
 
             tasks = client.get("/api/prompt-review/tasks", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(tasks.status_code, 200)
-            self.assertEqual(tasks.json()["tasks"][0]["asset_id"], 1)
-
-            detail = client.get("/api/prompt-review/1", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(detail.status_code, 200)
-            self.assertTrue(detail.json()["is_reviewable"])
-            self.assertEqual(detail.json()["prompt_text"], "full final prompt\n")
-
-            failed = client.post("/api/prompt-review/1/fail", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(failed.status_code, 200)
-            self.assertIn("Prompt failed", failed.json()["message"])
-            self.assertEqual(failed.json()["asset"]["pipeline_stage"], "ERROR")
+            self.assertEqual(tasks.status_code, 404)
+            self.assertFalse(any(path.startswith("/api/prompt-review") for path in client.get("/openapi.json").json()["paths"]))
 
     def test_render_review_api_serves_tasks_detail_and_promotes_to_locked(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -594,30 +758,9 @@ Backend = "manual_chatgpt"
             self.assertEqual(payload["asset"]["actor"], "AI_AGENT")
             self.assertEqual(payload["asset"]["ai_state"], "ASKED")
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
-            self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+            self.assertTrue(any((root / "Queue" / "File_Proxy" / "Ask" / "zet").iterdir()))
 
-    def test_asset_action_api_stages_retouch_as_manual_render(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config_path = self._write_fixture(root, stage="LOCKED", actor="HUMAN_AGENT")
-            client = TestClient(create_app(config_path))
-
-            response = client.post("/api/assets/1/retouch", params={"character": "Test", "phase": "Adult"})
-
-            self.assertEqual(response.status_code, 200)
-            payload = response.json()
-            self.assertIn("Retouch render staged", payload["message"])
-            self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
-            self.assertEqual(payload["detail"]["asset"]["actor"], "AI_AGENT")
-            self.assertEqual(payload["detail"]["asset"]["ai_state"], "ASKED")
-            self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
-            self.assertEqual(len(ask_dirs), 1)
-            manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
-            self.assertTrue(manifest["manual"])
-
-    def test_ai_controls_api_serves_snapshot_and_monitor_test(self):
+    def test_ai_controls_api_serves_queue_and_managed_processes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
@@ -626,21 +769,18 @@ Backend = "manual_chatgpt"
             snapshot = client.get("/api/ai-controls")
             self.assertEqual(snapshot.status_code, 200)
             self.assertIn("queue_counts", snapshot.json())
-            self.assertIn("processes", snapshot.json())
-
-            monitor = client.post(
-                "/api/ai-controls/monitor-test",
-                params={"instruction": "ping"},
-            )
-            self.assertEqual(monitor.status_code, 200)
-            self.assertIn("Monitor test sent", monitor.json()["message"])
-            self.assertEqual(monitor.json()["monitor_requests"][0]["instruction"], "ping")
+            self.assertEqual(set(snapshot.json()["queue_counts"]), {"ask", "running", "answer"})
+            processes = snapshot.json()["processes"]
+            self.assertEqual([item["process_id"] for item in processes], ["zet_web", "auto_harvest"])
+            self.assertTrue(all(item["manageable"] == "yes" for item in processes))
 
     def test_pipeline_controls_api_serves_snapshot_and_saves_automation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
-            client = TestClient(create_app(config_path))
+            web_app = create_app(config_path)
+            original_zet_app = web_app.state.zet_app
+            client = TestClient(web_app)
 
             snapshot = client.get("/api/pipeline-controls", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(snapshot.status_code, 200)
@@ -650,20 +790,36 @@ Backend = "manual_chatgpt"
                 "/api/pipeline-controls/automation",
                 params={"character": "Test", "phase": "Adult"},
                 json={
-                    "prompt_condense_enabled": True,
-                    "prompt_condense_model": "vision-test",
-                    "prompt_condense_file": "Config/Prompt_Condense_Tasks/body_reference_condense.md",
-                    "local_render_auto_queue_after_condense": True,
+                    "local_render_backend": "comfyui",
                     "local_render_preset": "body-reference-preview",
+                    "local_render_positive_prompt_globals": "masterpiece",
+                    "local_render_negative_prompt_globals": "blurry",
+                    "local_render_use_forge_couple": True,
+                    "local_render_checkpoint": "test-checkpoint",
+                    "stable_matrix_profile": "body-reference-preview",
+                    "stable_matrix_checkpoint": "test-checkpoint",
+                    "comfyui_profile": "comfyui-core-preview",
+                    "comfyui_server_url": "http://127.0.0.1:8188",
+                    "comfyui_checkpoint": "comfy-checkpoint.safetensors",
+                    "comfyui_positive_prompt_globals": "comfy positive",
+                    "comfyui_negative_prompt_globals": "comfy negative",
+                    "comfyui_poll_seconds": 0.5,
+                    "comfyui_timeout_seconds": 120,
                     "ai_harvest_auto_enabled": True,
                     "ai_harvest_interval_seconds": 600,
                     "render_backend": "manual_chatgpt",
                 },
             )
             self.assertEqual(saved.status_code, 200)
-            self.assertTrue(saved.json()["automation"]["prompt_condense_enabled"])
+            self.assertEqual(saved.json()["automation"]["local_render_positive_prompt_globals"], "masterpiece")
+            self.assertTrue(saved.json()["automation"]["local_render_use_forge_couple"])
+            self.assertEqual(saved.json()["automation"]["local_render_checkpoint"], "test-checkpoint")
+            self.assertEqual(saved.json()["automation"]["local_render_backend"], "comfyui")
+            self.assertEqual(saved.json()["automation"]["comfyui_checkpoint"], "comfy-checkpoint.safetensors")
             self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
-            self.assertIn("[PromptCondense]", config_path.read_text(encoding="utf-8"))
+            self.assertIn('Checkpoint = "test-checkpoint"', config_path.read_text(encoding="utf-8"))
+            self.assertIn('[ComfyUI]', config_path.read_text(encoding="utf-8"))
+            self.assertIsNot(web_app.state.zet_app, original_zet_app)
 
     def test_pipeline_controls_api_can_batch_reset_to_render(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -684,7 +840,57 @@ Backend = "manual_chatgpt"
             self.assertEqual(reset.status_code, 200)
             self.assertIn("1 reset", reset.json()["message"])
             self.assertEqual(reset.json()["batch_results"][0]["status"], "RESET")
-            self.assertTrue(any((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir()))
+            self.assertTrue(any((root / "Queue" / "File_Proxy" / "Ask" / "zet").iterdir()))
+
+    def test_pipeline_controls_batch_reset_preview_does_not_mutate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="LOCKED", actor="HUMAN_AGENT")
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            assets_payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            assets_payload["assets"][0]["asset_state"] = "LOCKED"
+            assets_path.write_text(json.dumps(assets_payload, indent=2) + "\n", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            preview = client.get(
+                "/api/pipeline-controls/batch-render-reset/preview",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "false",
+                },
+            )
+
+            self.assertEqual(preview.status_code, 200)
+            self.assertEqual(preview.json()["counts"], {"affected": 0, "skipped": 1, "locked": 1})
+            self.assertEqual(preview.json()["items"][0]["preview_status"], "SKIPPED")
+            asset = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(asset.json()["asset"]["pipeline_stage"], "LOCKED")
+            ask_dir = root / "Queue" / "File_Proxy" / "Ask" / "zet"
+            self.assertFalse(ask_dir.exists() and any(ask_dir.iterdir()))
+
+            included_preview = client.get(
+                "/api/pipeline-controls/batch-render-reset/preview",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "true",
+                },
+            ).json()
+            reset = client.post(
+                "/api/pipeline-controls/batch-render-reset",
+                params={
+                    "character": "Test",
+                    "phase": "Adult",
+                    "pipeline_name": "Body-Reference",
+                    "include_locked": "true",
+                },
+            ).json()
+            actual_reset_count = sum(item["status"] == "RESET" for item in reset["batch_results"])
+            self.assertEqual(included_preview["counts"]["affected"], actual_reset_count)
+            self.assertEqual(included_preview["items"][0]["previous_stage"], "LOCKED")
 
     def test_render_console_api_lists_task_detail_and_saves_image_answer(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -696,6 +902,7 @@ Backend = "manual_chatgpt"
             tasks = client.get("/api/render-console/tasks")
             self.assertEqual(tasks.status_code, 200)
             self.assertEqual(tasks.json()["tasks"][0]["ask_id"], "Ask_Asset_1_RENDER_TEST")
+            self.assertEqual(tasks.json()["tasks"][0]["display_label"], "Asset 1")
 
             detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
             self.assertEqual(detail.status_code, 200)
@@ -714,12 +921,11 @@ Backend = "manual_chatgpt"
                 "Keep this front view absolutely square to the viewer.",
             )
             self.assertEqual(saved_helper.json()["gpt_helper_prompt"]["source"], "pipeline:Body-Reference")
-            helper_config = json.loads((root / "Config" / "GPT_Helper_Prompts.json").read_text(encoding="utf-8"))
+            helper_config = json.loads((root / "Characters" / "Test" / "Adult" / "GPT_Helper_Prompts.json").read_text(encoding="utf-8"))
             self.assertEqual(
                 helper_config["pipelines"]["Body-Reference"]["FRONT"],
                 "Keep this front view absolutely square to the viewer.",
             )
-
             saved = client.post(
                 "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
                 params={"render_comment": "First render has strong silhouette."},
@@ -729,7 +935,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(saved.status_code, 200)
             self.assertEqual(saved.json()["status"], "SUCCESS")
             self.assertFalse(ask_path.exists())
-            answer_path = root / "Queue" / "Ollama_Proxy" / "Answer" / "Ask_Asset_1_RENDER_TEST"
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Asset_1_RENDER_TEST"
             self.assertTrue((answer_path / "front.png").exists())
             self.assertEqual(
                 (answer_path / "Render_Review_Comment.md").read_text(encoding="utf-8").strip(),
@@ -739,11 +945,271 @@ Backend = "manual_chatgpt"
             self.assertEqual(manifest["status"], "SUCCESS")
             self.assertEqual(manifest["render_comment"], "First render has strong silhouette.")
 
+    def test_render_console_detail_supports_story_prompt_review(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Story_demo_scene_RENDER_TEST"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "ask_id": ask_path.name,
+                        "asset_id": None,
+                        "character": "",
+                        "phase": "",
+                        "pipeline": "Story",
+                        "pipeline_stage": "RENDER",
+                        "worker_type": "manual_chatgpt_render",
+                        "prompt_file": "Final_Image_Prompt.md",
+                        "expected_output": "scene.png",
+                        "story_slug": "demo",
+                        "scene_slug": "scene",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (ask_path / "Final_Image_Prompt.md").write_text("scene line one\nscene line two\n", encoding="utf-8")
+
+            detail = TestClient(create_app(config_path)).get(f"/api/render-console/tasks/{ask_path.name}")
+
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(detail.json()["prompt"], "scene line one\nscene line two\n")
+            self.assertEqual(detail.json()["manifest"]["scene_slug"], "scene")
+            self.assertTrue(detail.json()["prompt_path"].endswith("Final_Image_Prompt.md"))
+
+    def test_scene_render_answers_use_locked_candidate_review_lifecycle(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            local_image = root / "Pipelines" / "Stories" / "demo" / "scene" / "Local_Test_Renders" / "test_1.png"
+            local_image.parent.mkdir(parents=True)
+            local_image.write_bytes(b"local")
+            first_ask = self._write_story_render_ask(root, "FIRST")
+            client = TestClient(create_app(config_path))
+
+            first = client.post(
+                f"/api/render-console/tasks/{first_ask.name}/answer-image",
+                content=b"first image",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(first.status_code, 200)
+            self.assertFalse(first.json()["scene_image_review"]["candidate_exists"])
+            locked = root / "Stories" / "demo" / "scene.png"
+            candidate = root / "Pipelines" / "Stories" / "demo" / "scene" / "Candidate" / "scene.png"
+            self.assertEqual(locked.read_bytes(), b"first image")
+            self.assertFalse(candidate.exists())
+
+            second_ask = self._write_story_render_ask(root, "SECOND")
+            second = client.post(
+                f"/api/render-console/tasks/{second_ask.name}/answer-image",
+                params={"render_comment": "Compare the lighting."},
+                content=b"second image",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(second.status_code, 200)
+            self.assertTrue(second.json()["scene_image_review"]["candidate_exists"])
+            self.assertEqual(locked.read_bytes(), b"first image")
+            self.assertEqual(candidate.read_bytes(), b"second image")
+
+            scene_document = client.get("/api/stories/demo/scenes/scene").json()["document"]
+            self.assertEqual(scene_document["image_path"], str(locked))
+            self.assertTrue(scene_document["candidate_pending"])
+            references = client.get("/api/scene-image-picker").json()["rows"]
+            scene_reference = next(row for row in references if row["kind"] == "scene")
+            self.assertEqual(scene_reference["thumbnail_path"], str(locked))
+            self.assertTrue(scene_reference["candidate_pending"])
+            self.assertEqual(scene_reference["image_review_key"], "scene:demo:scene")
+
+            tasks = client.get("/api/render-review/tasks")
+            self.assertEqual(tasks.status_code, 200)
+            self.assertEqual(tasks.json()["tasks"][0]["review_key"], "scene:demo:scene")
+            detail = client.get("/api/render-review/scenes/demo/scene")
+            self.assertTrue(detail.json()["locked_exists"])
+            self.assertTrue(detail.json()["candidate_exists"])
+            self.assertEqual(detail.json()["render_review_comment"], "Compare the lighting.")
+
+            promoted = client.post("/api/render-review/scenes/demo/scene/promote-to-locked")
+            self.assertEqual(promoted.status_code, 200)
+            self.assertEqual(locked.read_bytes(), b"second image")
+            self.assertFalse(candidate.exists())
+            backups = list((root / "Pipelines" / "Stories" / "demo" / "scene" / "Locked_Backups").glob("*.png"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), b"first image")
+
+            third_ask = self._write_story_render_ask(root, "THIRD")
+            client.post(
+                f"/api/render-console/tasks/{third_ask.name}/answer-image",
+                content=b"third image",
+                headers={"content-type": "image/png"},
+            )
+            discarded = client.post("/api/render-review/scenes/demo/scene/discard-candidate")
+            self.assertEqual(discarded.status_code, 200)
+            self.assertEqual(locked.read_bytes(), b"second image")
+            self.assertFalse(candidate.exists())
+
+    def test_scene_render_answer_remains_accepted_when_immediate_harvest_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            ask_path = self._write_story_render_ask(root, "HARVEST_FAILURE")
+            client = TestClient(create_app(config_path))
+
+            with patch(
+                "zet.services.ai_answer_harvester.AIAnswerHarvester.apply_answer_folder",
+                side_effect=RuntimeError("temporary failure"),
+            ):
+                response = client.post(
+                    f"/api/render-console/tasks/{ask_path.name}/answer-image",
+                    content=b"saved image",
+                    headers={"content-type": "image/png"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["status"], "ACCEPTED")
+            self.assertIn("pending harvest", response.json()["harvest_warning"])
+            self.assertFalse(ask_path.exists())
+            answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / ask_path.name
+            self.assertTrue((answer_path / "scene.png").exists())
+
+            harvested = client.post("/api/ai-controls/harvest")
+            self.assertEqual(harvested.status_code, 200)
+            self.assertEqual((root / "Stories" / "demo" / "scene.png").read_bytes(), b"saved image")
+
+    def test_render_console_local_test_render_api_params(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            self._write_manual_render_ask(root)
+            (root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front" / "Condensed_Image_Prompt.md").write_text(
+                "condensed prompt\n",
+                encoding="utf-8",
+            )
+            local_render_dir = root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front" / "Local_Test_Renders"
+            local_render_dir.mkdir()
+            (local_render_dir / "Stable_Matrix_API_Call.json").write_text('{"prompt": "rendered"}\n', encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            response = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render/api-params")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["text"], '{"prompt": "rendered"}\n')
+            self.assertEqual(response.json()["path"], str(local_render_dir / "Stable_Matrix_API_Call.json"))
+
+    def test_render_console_clear_removes_only_images_and_fail_preserves_them(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            self._write_manual_render_ask(root)
+            render_dir = root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front" / "Local_Test_Renders"
+            render_dir.mkdir()
+            (render_dir / "test_1.png").write_bytes(b"image")
+            (render_dir / "test_1.json").write_text("{}", encoding="utf-8")
+            (render_dir / "Stable_Matrix_API_Call.json").write_text("{}", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            cleared = client.delete("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/local-test-render")
+            self.assertEqual(cleared.status_code, 200)
+            self.assertTrue(render_dir.exists())
+            self.assertFalse((render_dir / "test_1.png").exists())
+            self.assertTrue((render_dir / "test_1.json").exists())
+            self.assertTrue((render_dir / "Stable_Matrix_API_Call.json").exists())
+
+            (render_dir / "test_2.png").write_bytes(b"image")
+            (render_dir / "test_2.json").write_text("{}", encoding="utf-8")
+            failed = client.post(
+                "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/fail",
+                json={"reason": "Test failure"},
+            )
+            self.assertEqual(failed.status_code, 200)
+            self.assertTrue((render_dir / "test_2.png").exists())
+            self.assertTrue((render_dir / "test_2.json").exists())
+
+    def test_local_image_review_lists_clears_and_queues_distinct_seed_images(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            self._write_manual_render_ask(root)
+            workspace = root / "Characters" / "Test" / "Adult" / "Body_Reference" / "Front"
+            (workspace / "Condensed_Image_Prompt.md").write_text("prompt: test\nnegative: bad\n", encoding="utf-8")
+            render_dir = workspace / "Local_Test_Renders"
+            render_dir.mkdir()
+            older = render_dir / "test_old.png"
+            newer = render_dir / "test_new.png"
+            older.write_bytes(b"old")
+            newer.write_bytes(b"new")
+            os.utime(older, (100, 100))
+            os.utime(newer, (200, 200))
+            (render_dir / "test_new.json").write_text(
+                json.dumps(
+                    {
+                        "image_generation": "comfyui",
+                        "render_profile": "portrait-preview",
+                        "checkpoint": "portrait.safetensors",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            client = TestClient(create_app(config_path))
+
+            detail = client.get("/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST")
+
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(["test_new.png", "test_old.png"], [item["name"] for item in detail.json()["images"]])
+            self.assertEqual(
+                {
+                    "image_generation": "comfyui",
+                    "render_profile": "portrait-preview",
+                    "checkpoint": "portrait.safetensors",
+                },
+                {
+                    key: detail.json()["images"][0][key]
+                    for key in ("image_generation", "render_profile", "checkpoint")
+                },
+            )
+
+            generated = client.post(
+                "/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST/images",
+                params={"count": 3},
+            )
+
+            self.assertEqual(generated.status_code, 200)
+            self.assertEqual(3, len(generated.json()["queued"]))
+            seeds = [item["seed"] for item in generated.json()["queued"]]
+            self.assertEqual(3, len(set(seeds)))
+            queued_manifests = [
+                json.loads(path.read_text(encoding="utf-8"))
+                for path in (root / "Queue" / "File_Proxy" / "Ask" / "zet").glob("Ask_Render_Task_*/ask_manifest.json")
+            ]
+            self.assertEqual(3, len(queued_manifests))
+            self.assertEqual(set(seeds), {item["seed"] for item in queued_manifests})
+
+            cleared = client.delete("/api/local-image-review/tasks/Ask_Asset_1_RENDER_TEST/images")
+
+            self.assertEqual(cleared.status_code, 200)
+            self.assertEqual(2, cleared.json()["removed_count"])
+            self.assertEqual([], cleared.json()["images"])
+            self.assertTrue((render_dir / "test_new.json").exists())
+
     def test_harvest_continues_after_malformed_answer_folder(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root, stage="RENDER", actor="AI_AGENT")
-            queue_root = root / "Queue" / "Ollama_Proxy" / "Answer"
+            queue_root = root / "Queue" / "Manual_Render_Queue" / "Answer"
             malformed = queue_root / "Ask_Asset_1_RENDER_A_MALFORMED"
             malformed.mkdir(parents=True)
             (malformed / "answer_manifest.json").write_text(
@@ -848,7 +1314,7 @@ Backend = "manual_chatgpt"
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
-            answer_root = root / "Queue" / "Ollama_Proxy" / "Answer"
+            answer_root = root / "Queue" / "File_Proxy" / "Answer" / "zet"
             harvested = answer_root / "Ask_Harvested"
             pending = answer_root / "Ask_Pending"
             harvested.mkdir(parents=True)
@@ -858,6 +1324,10 @@ Backend = "manual_chatgpt"
             (pending / "answer_manifest.json").write_text("{}\n", encoding="utf-8")
             client = TestClient(create_app(config_path))
 
+            controls = client.get("/api/ai-controls")
+            self.assertEqual(controls.status_code, 200)
+            self.assertEqual(controls.json()["harvested_answer_count"], 1)
+
             response = client.post("/api/ai-controls/archive-harvested")
 
             self.assertEqual(response.status_code, 200)
@@ -865,7 +1335,7 @@ Backend = "manual_chatgpt"
             self.assertIn("Archived 1 harvested", payload["message"])
             self.assertFalse(harvested.exists())
             self.assertTrue(pending.exists())
-            archive_matches = list((root / "Queue" / "Ollama_Proxy" / "Archive" / "Harvested").glob("*/*Ask_Harvested"))
+            archive_matches = list((root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested").glob("*/*Ask_Harvested"))
             self.assertEqual(len(archive_matches), 1)
 
     def test_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
@@ -901,36 +1371,6 @@ Backend = "manual_chatgpt"
             self.assertEqual(len(saved.json()["reference_files"]), 2)
             self.assertEqual(saved.json()["reference_files"][0]["role"], "body_reference")
 
-    def test_head_fitment_render_ask_includes_reference_files(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config_path = self._write_head_fitment_fixture(root)
-            client = TestClient(create_app(config_path))
-
-            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"})
-            body_path = detail.json()["body_reference_options"][0]["path"]
-            headshot_path = detail.json()["headshot_options"][0]["path"]
-            client.post(
-                "/api/head-fitment-manifest/2/references",
-                params={"character": "Test", "phase": "Adult"},
-                json={"body_reference_path": body_path, "headshot_path": headshot_path},
-            )
-
-            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
-            payload = json.loads(assets_path.read_text(encoding="utf-8"))
-            payload["assets"][1]["pipeline_stage"] = "RENDER"
-            payload["assets"][1]["actor"] = "AI_AGENT"
-            payload["assets"][1]["ai_state"] = "ASKED"
-            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-            staged = client.post("/api/assets/2/stage-ai-ask", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual(staged.status_code, 200)
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
-            manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["worker_type"], "manual_chatgpt_render")
-            self.assertEqual(manifest["prompt_file"], "Final_Image_Prompt.md")
-            self.assertEqual([item["role"] for item in manifest["reference_files"]], ["body_reference", "headshot"])
-
     def test_head_fitment_prompt_worker_compiles_prompt_and_stages_render_ask(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -961,7 +1401,7 @@ Backend = "manual_chatgpt"
             self.assertIn("The output must be a standalone head-and-neck module.", prompt_text)
             self.assertIn("Use the Reference Body as a direct front-view neck-fitment source.", prompt_text)
             self.assertIn("Render the Character Head and fitted neck from a direct front view", prompt_text)
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
 
@@ -1061,12 +1501,69 @@ Backend = "manual_chatgpt"
             self.assertIn("shared_template_section", source_kinds)
             self.assertIn("config_view_instruction", source_kinds)
 
-            ask_dirs = list((root / "Queue" / "Ollama_Proxy" / "Ask").iterdir())
+            ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").iterdir())
             self.assertEqual(len(ask_dirs), 1)
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(ask_manifest["worker_type"], "manual_chatgpt_render")
             self.assertEqual(ask_manifest["prompt_file"], "Final_Image_Prompt.md")
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "head_fitment"])
+
+    def test_story_management_api_renames_reorders_and_moves(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            for story_slug in ("Alpha", "Beta"):
+                folder = root / "Stories" / story_slug
+                folder.mkdir(parents=True)
+                (folder / f"{story_slug}.md").write_text(f"Title: `[{story_slug}]`\n", encoding="utf-8")
+                (folder / f"{story_slug}.story.json").write_text(
+                    json.dumps({
+                        "schema_version": 1,
+                        "file_kind": "story_settings",
+                        "story": {"slug": story_slug, "title": story_slug},
+                        "scene_index": ["Opening"] if story_slug == "Alpha" else [],
+                        "metadata": {},
+                    }),
+                    encoding="utf-8",
+                )
+            alpha = root / "Stories" / "Alpha"
+            (alpha / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            (alpha / "Opening.scene.json").write_text(
+                json.dumps({"schema_version": 3, "file_kind": "scene", "scene": {"slug": "Opening", "name": "Opening"}}),
+                encoding="utf-8",
+            )
+            client = TestClient(create_app(config_path))
+
+            response = client.put("/api/stories/order", json={"slugs": ["Beta", "Alpha"]})
+            self.assertEqual(200, response.status_code, response.text)
+            self.assertEqual(["Beta", "Alpha"], [item["slug"] for item in response.json()["stories"]])
+
+            response = client.patch("/api/stories/Alpha", json={"title": "Renamed Alpha"})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual("Renamed Alpha", response.json()["document"]["story"]["title"])
+
+            response = client.put("/api/stories/Alpha/scenes/order", json={"slugs": ["Opening"]})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(["Opening"], [item["slug"] for item in response.json()["scenes"]])
+
+            response = client.patch("/api/stories/Alpha/scenes/Opening", json={"title": "New Opening"})
+            self.assertEqual(200, response.status_code)
+            self.assertEqual("New Opening", response.json()["document"]["scene"]["title"])
+
+            response = client.post(
+                "/api/stories/Alpha/scenes/Opening/move",
+                json={"target_story_slug": "Beta"},
+            )
+            self.assertEqual(200, response.status_code)
+            self.assertEqual([], response.json()["source_scenes"])
+            self.assertEqual(["Opening"], [item["slug"] for item in response.json()["target_scenes"]])
 
 
 if __name__ == "__main__":

@@ -17,6 +17,35 @@ class AIAnswerHarvesterError(Exception):
     pass
 
 
+REQUIRED_CONDENSE_NEGATIVE_PROMPT = (
+    "low quality, blurry, bad anatomy, bad hands, extra fingers, missing fingers, "
+    "extra limbs, malformed limbs, distorted face, wrong view, cropped, out of frame, text, watermark"
+)
+
+
+def ensure_condensed_negative_prompt(prompt_text: str) -> str:
+    required = [part.strip() for part in REQUIRED_CONDENSE_NEGATIVE_PROMPT.split(",")]
+    lines = prompt_text.splitlines()
+    negative_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().lower().startswith(("negative:", "negative_prompt:"))
+        ),
+        None,
+    )
+    if negative_index is None:
+        suffix = "\n" if prompt_text.endswith("\n") or not prompt_text else "\n\n"
+        return f"{prompt_text}{suffix}Negative: {REQUIRED_CONDENSE_NEGATIVE_PROMPT}\n"
+
+    existing = lines[negative_index].split(":", 1)[1].strip()
+    existing_lower = existing.lower()
+    missing = [term for term in required if term.lower() not in existing_lower]
+    if missing:
+        lines[negative_index] = f"{lines[negative_index]}, {', '.join(missing)}"
+    return "\n".join(lines) + ("\n" if prompt_text.endswith("\n") else "")
+
+
 class AIAnswerHarvester:
     def __init__(
         self,
@@ -37,9 +66,35 @@ class AIAnswerHarvester:
         self.state_machine = state_machine
         self.timestamp_provider = timestamp_provider
         self.ai_proxy_service = ai_proxy_service
+        self.scene_image_review_service = None
+
+    def _copy_local_render_artifacts(self, answer_path: Path, output_dir: Path) -> None:
+        metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
+        if not metadata_path.exists():
+            return
+        metadata = self._read_json(metadata_path)
+        artifact_files = metadata.get("artifact_files")
+        if not isinstance(artifact_files, list):
+            return
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for value in artifact_files:
+            name = Path(str(value)).name
+            if not name or name != str(value):
+                continue
+            source = answer_path / name
+            if source.exists() and source.is_file():
+                shutil.copy2(source, output_dir / name)
 
     def _harvest_manifest_path(self, answer_path: Path) -> Path:
         return answer_path / "harvest_manifest.json"
+
+    def _has_external_consumer(self, answer_path: Path) -> bool:
+        try:
+            ask_manifest = self._read_json(answer_path / "ask_manifest.json")
+        except AIAnswerHarvesterError:
+            return False
+        consumer = str(ask_manifest.get("consumer") or "zet").strip().lower()
+        return consumer != "zet"
 
     def _read_json(self, path: Path) -> dict:
         try:
@@ -52,9 +107,28 @@ class AIAnswerHarvester:
 
     def _load_answer(self, answer_path: Path) -> AIProxyAnswer:
         manifest_path = answer_path / "answer_manifest.json"
-        if not manifest_path.exists():
+        proxy_result_path = answer_path / "proxy_result.json"
+        proxy_result = self._read_json(proxy_result_path) if proxy_result_path.exists() else {}
+        if manifest_path.exists():
+            data = self._read_json(manifest_path)
+        elif proxy_result:
+            ask = self._load_ask_manifest(answer_path)
+            data = {
+                "ask_id": ask.get("ask_id") or answer_path.name,
+                "asset_id": ask.get("asset_id"),
+                "ollama_attempt_id": ask.get("ollama_attempt_id") or "",
+                "worker_id": proxy_result.get("worker") or "file-proxy",
+                "status": "ERROR",
+                "expected_output": ask.get("expected_output") or "",
+                "error_type": proxy_result.get("error_type") or proxy_result.get("status"),
+                "error_message": proxy_result.get("error_message") or "File proxy job failed.",
+            }
+        else:
             raise AIAnswerHarvesterError(f"Missing answer_manifest.json in {answer_path}")
-        data = self._read_json(manifest_path)
+        if proxy_result.get("status") in {"FAILED", "INVALID"}:
+            data["status"] = "ERROR"
+            data["error_type"] = proxy_result.get("error_type") or proxy_result["status"]
+            data["error_message"] = proxy_result.get("error_message") or "File proxy job failed."
         try:
             asset_id = data.get("asset_id")
             if asset_id == "":
@@ -77,7 +151,9 @@ class AIAnswerHarvester:
         manifest_path = answer_path / "ask_manifest.json"
         if not manifest_path.exists():
             raise AIAnswerHarvesterError(f"Missing ask_manifest.json in {answer_path}")
-        return self._read_json(manifest_path)
+        manifest = self._read_json(manifest_path)
+        manifest.update(self.ai_proxy_path_service.file_proxy_client.load_route(answer_path.name))
+        return manifest
 
     def _render_review_comment_path(self, asset) -> Path:
         """Return the render-review comment sidecar path for an asset."""
@@ -90,12 +166,19 @@ class AIAnswerHarvester:
         return None
 
     def _write_harvest_manifest(self, answer_path: Path, result: HarvestResult) -> None:
+        local_render_metadata = {}
+        metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
+        if metadata_path.exists():
+            local_render_metadata = self._read_json(metadata_path)
         payload = {
             "version": 1,
             "ask_id": result.ask_id,
             "asset_id": result.asset_id,
             "status": result.status,
             "message": result.message,
+            "render_preset": local_render_metadata.get("preset"),
+            "workflow_kind": local_render_metadata.get("workflow_kind"),
+            "seed": local_render_metadata.get("seed"),
             "harvested_at": self.timestamp_provider(),
         }
         self._harvest_manifest_path(answer_path).write_text(
@@ -111,6 +194,7 @@ class AIAnswerHarvester:
             suffix = datetime.now().strftime("%H%M%S_%f")
             dest_path = archive_root / f"{answer_path.name}.{suffix}"
         shutil.move(str(answer_path), str(dest_path))
+        self.ai_proxy_path_service.file_proxy_client.remove_route(answer_path.name)
 
     def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
@@ -132,7 +216,7 @@ class AIAnswerHarvester:
             shutil.copy2(comment_source_path, comment_dest_path)
         else:
             comment_dest_path.unlink(missing_ok=True)
-        for metadata_name in ("LOCAL_RENDER_METADATA.json", "COMFYUI_RENDER_METADATA.json"):
+        for metadata_name in ("LOCAL_RENDER_METADATA.json",):
             metadata_path = answer_path / metadata_name
             if metadata_path.exists():
                 shutil.copy2(metadata_path, pipeline_path / metadata_path.name)
@@ -186,21 +270,40 @@ class AIAnswerHarvester:
         target_output_dir = Path(target_output_dir_text)
         target_output_file = str(ask_manifest.get("target_output_file") or answer.expected_output)
         target_output_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(response_path, target_output_dir / target_output_file)
+        target_path = target_output_dir / target_output_file
+        if task_type == "prompt_condense":
+            target_path.write_text(
+                ensure_condensed_negative_prompt(response_path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+        else:
+            shutil.copy2(response_path, target_path)
+            metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
+            if task_type == "local_test_render" and metadata_path.exists():
+                metadata = self._read_json(metadata_path)
+                (target_path.with_suffix(".json")).write_text(
+                    json.dumps(metadata, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            api_call_path = answer_path / "Stable_Matrix_API_Call.json"
+            if api_call_path.exists():
+                shutil.copy2(api_call_path, target_output_dir / "Stable_Matrix_API_Call.json")
+            artifact_output_dir = Path(str(ask_manifest.get("artifact_output_dir") or target_output_dir))
+            self._copy_local_render_artifacts(answer_path, artifact_output_dir)
 
         result = HarvestResult(
             answer_path=answer_path,
             ask_id=answer.ask_id,
             asset_id=answer.asset_id,
             status=f"{task_type.upper()}_APPLIED",
-            message=f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}.",
+            message=f"Applied auxiliary task {task_type} output to {target_path}.",
         )
         self._write_harvest_manifest(answer_path, result)
         if task_type == "prompt_condense" and self.ai_proxy_service is not None:
             character = str(ask_manifest.get("character") or "")
             phase = str(ask_manifest.get("phase") or "")
             try:
-                render_ask_path = self.ai_proxy_service.stage_prompt_review_render_ask_if_enabled(
+                render_ask_path = self.ai_proxy_service.stage_prompt_inspection_render_ask_if_enabled(
                     character,
                     phase,
                     answer.asset_id,
@@ -213,7 +316,7 @@ class AIAnswerHarvester:
                         status=f"{task_type.upper()}_APPLIED",
                         message=(
                             f"Applied auxiliary task {task_type} output to {target_output_dir / target_output_file}. "
-                            f"Queued prompt review render ask at {render_ask_path}."
+                            f"Queued prompt inspection render ask at {render_ask_path}."
                         ),
                     )
                     self._write_harvest_manifest(answer_path, result)
@@ -248,13 +351,40 @@ class AIAnswerHarvester:
         response_path = answer_path / answer.expected_output
         if not response_path.exists():
             raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
+        if (
+            self.scene_image_review_service is not None
+            and str(ask_manifest.get("story_slug") or "").strip()
+            and str(ask_manifest.get("scene_slug") or "").strip()
+        ):
+            disposition, target_path = self.scene_image_review_service.apply_answer(answer_path, response_path, ask_manifest)
+            pipeline_path = self.path_service.story_pipeline_path(
+                str(ask_manifest["story_slug"]),
+                str(ask_manifest["scene_slug"]),
+            )
+            api_call_path = answer_path / "Stable_Matrix_API_Call.json"
+            if api_call_path.exists():
+                pipeline_path.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(api_call_path, pipeline_path / api_call_path.name)
+            self._copy_local_render_artifacts(answer_path, pipeline_path)
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status=f"{task_type.upper()}_APPLIED",
+                message=f"Applied scene image as {disposition} output to {target_path}.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
         target_output_file = str(ask_manifest.get("target_output_file") or "").strip()
         if not target_output_file:
             raise AIAnswerHarvesterError(f"Target output answer {answer_path} is missing target_output_file.")
         target_path = Path(target_output_file)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(response_path, target_path)
-
+        api_call_path = answer_path / "Stable_Matrix_API_Call.json"
+        if api_call_path.exists():
+            shutil.copy2(api_call_path, target_path.parent / "Stable_Matrix_API_Call.json")
+        self._copy_local_render_artifacts(answer_path, target_path.parent)
         result = HarvestResult(
             answer_path=answer_path,
             ask_id=answer.ask_id,
@@ -403,12 +533,10 @@ class AIAnswerHarvester:
         raise AIAnswerHarvesterError(f"Unsupported answer status {answer.status} in {answer_path}")
 
     def harvest_once(self) -> list[HarvestResult]:
-        answer_root = self.ai_proxy_path_service.answer_root()
-        if not answer_root.exists():
-            return []
-
         results: list[HarvestResult] = []
-        for answer_path in sorted(path for path in answer_root.iterdir() if path.is_dir()):
+        for answer_path in self.ai_proxy_path_service.task_paths("answer"):
+            if self._has_external_consumer(answer_path):
+                continue
             try:
                 result = self.apply_answer_folder(answer_path)
                 if result.status.startswith("ALREADY_"):

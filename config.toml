@@ -7,20 +7,46 @@ BaseAIQueuePath = "AI_Queue/"
 
 [BaseFoldersByPlatform.Windows]
 BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
-BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
+BaseAIQueuePath = "C:/Users/Joe/Dropbox/AI_Queue"
 
 [BaseFoldersByPlatform.Darwin]
 BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
-Enabled = true
+Enabled = false
 Model = "qwen2.5vl:3b"
 PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 
 [LocalRender]
 AutoQueueAfterCondense = false
-Preset = "body-reference-preview-stable-matrix"
+Backend = "comfyui"
+
+[StableMatrix]
+Profile = "scene-preview-sd15"
+PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
+NegativePromptGlobals = "EasyNegative"
+LayoutBackend = "forge_couple_basic"
+StrictPrimarySubjectCount = true
+ForgeCoupleDebugBasePass = true
+Checkpoint = "sd\\perfectdeliberate_v90.safetensors [aea4ec6c4d]"
+
+[ComfyUI]
+Profile = "comfyui-ipadapter-preview"
+ServerURL = "http://127.0.0.1:8188"
+Checkpoint = "perfectdeliberate_v90.safetensors"
+PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
+NegativePromptGlobals = ""
+PollSeconds = 1.0
+TimeoutSeconds = 300.0
+
+[Zine]
+PrintScale = 0.97
+PageMargin = 4
+Width = 3300
+
+[Turnaround]
+Width = 3960
 
 [AIHarvest]
 AutoEnabled = true
@@ -29,6 +55,6 @@ IntervalSeconds = 60
 [Render]
 Backend = "manual_chatgpt"
 
-[AIPromptReview]
-Model = "qwen2.5vl:3b"
-InstructionsFile = "Config/AI_Prompt_Review_Instructions.md"
+[AIPromptAnalysis]
+Model = "zet-image-analyst:latest"
+InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

@@ -48,6 +48,15 @@ class ExpressionService:
         """Return an ISO timestamp for generated assets."""
         return datetime.now().isoformat(timespec="seconds")
 
+    def _write_text_atomic(self, path: Path, contents: str) -> None:
+        """Replace a text file without exposing a partial write."""
+        temp_path = path.with_name(f"{path.name}.tmp")
+        try:
+            temp_path.write_text(contents, encoding="utf-8")
+            temp_path.replace(path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
     def safe_expression_slug(self, label: str) -> str:
         """Return the canonical expression filename slug."""
         text = str(label or "").strip()
@@ -147,7 +156,7 @@ class ExpressionService:
             raise ExpressionServiceError(f"Expression asset already exists for {display_label} with this Identity Key.")
 
         cleaned_markdown = str(markdown or "").strip() or self._default_expression_markdown()
-        definition_path.write_text(self._sync_expression_label(cleaned_markdown, display_label, definition_path).rstrip() + "\n", encoding="utf-8")
+        contents = self._sync_expression_label(cleaned_markdown, display_label, definition_path).rstrip() + "\n"
         output_name = f"Expression_{slug}.png"
         asset = Asset(
             asset_id=0,
@@ -167,7 +176,12 @@ class ExpressionService:
             identity_key_id=identity_key.identity_key_id,
             expression_definition_path=str(definition_path),
         )
-        created = self.asset_repository.create_asset(asset)
+        self._write_text_atomic(definition_path, contents)
+        try:
+            created = self.asset_repository.create_assets([asset])[0]
+        except Exception:
+            definition_path.unlink(missing_ok=True)
+            raise
         return ExpressionCreateResult(
             expression=self._definition_from_path(character, phase, definition_path),
             asset=created,
@@ -203,14 +217,9 @@ class ExpressionService:
         if old_path != new_path and new_path.exists():
             raise ExpressionServiceError(f"Expression definition already exists: {new_path.name}")
 
-        contents = old_path.read_text(encoding="utf-8") if old_path.exists() else self._default_expression_markdown()
+        old_path_existed = old_path.exists()
+        contents = old_path.read_text(encoding="utf-8") if old_path_existed else self._default_expression_markdown()
         updated_contents = self._sync_expression_label(contents, display_label, new_path)
-        if old_path != new_path:
-            new_path.write_text(updated_contents.rstrip() + "\n", encoding="utf-8")
-            old_path.unlink(missing_ok=True)
-        else:
-            old_path.write_text(updated_contents.rstrip() + "\n", encoding="utf-8")
-
         updated_asset = replace(asset)
         updated_asset.expression = display_label
         updated_asset.identity_key_id = identity_key.identity_key_id
@@ -220,7 +229,28 @@ class ExpressionService:
         updated_asset.expression_definition_path = str(new_path)
         updated_asset.final_image_output = f"Expression_{new_slug}.png"
         updated_asset.updated_at = self._timestamp()
-        self.asset_repository.save_asset(updated_asset)
+        new_contents = updated_contents.rstrip() + "\n"
+        if old_path != new_path:
+            self._write_text_atomic(new_path, new_contents)
+            try:
+                old_path.unlink(missing_ok=True)
+            except Exception:
+                new_path.unlink(missing_ok=True)
+                raise
+        else:
+            self._write_text_atomic(old_path, new_contents)
+        try:
+            self.asset_repository.save_assets([updated_asset])
+        except Exception:
+            if old_path != new_path:
+                if old_path_existed:
+                    self._write_text_atomic(old_path, contents)
+                new_path.unlink(missing_ok=True)
+            elif not old_path_existed:
+                old_path.unlink(missing_ok=True)
+            else:
+                self._write_text_atomic(old_path, contents)
+            raise
 
         return ExpressionUpdateResult(
             expression=self._definition_from_path(character, phase, new_path),

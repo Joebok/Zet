@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION, AIProxyAskManifest
+from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
 
 
@@ -29,8 +31,17 @@ class ManualRenderTask:
     manifest: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
+        story_slug = str(self.manifest.get("story_slug") or "")
+        scene_slug = str(self.manifest.get("scene_slug") or "")
+        if story_slug or scene_slug:
+            display_label = " / ".join(value for value in [story_slug, scene_slug] if value)
+        elif self.asset_id is not None:
+            display_label = f"Asset {self.asset_id}"
+        else:
+            display_label = self.ask_id
         return {
             "ask_id": self.ask_id,
+            "display_label": display_label,
             "ask_path": str(self.ask_path),
             "asset_id": self.asset_id,
             "character": self.character,
@@ -47,18 +58,19 @@ class ManualRenderTask:
 class RenderConsoleQueue:
     def __init__(self, config: Config):
         self.config = config
+        self.path_service = AIProxyPathService(config)
 
     @property
     def proxy_root(self) -> Path:
-        return Path(self.config.base_ai_queue_path) / "Ollama_Proxy"
+        return self.path_service.manual_root()
 
     @property
     def ask_root(self) -> Path:
-        return self.proxy_root / "Ask"
+        return self.path_service.manual_ask_root()
 
     @property
     def answer_root(self) -> Path:
-        return self.proxy_root / "Answer"
+        return self.path_service.manual_answer_root()
 
     def _timestamp(self) -> str:
         return datetime.now().isoformat(timespec="seconds")
@@ -73,7 +85,7 @@ class RenderConsoleQueue:
         return data if isinstance(data, dict) else {}
 
     def _task_from_ask_path(self, ask_path: Path) -> ManualRenderTask | None:
-        manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
+        manifest = AIProxyAskManifest.from_dict(self._read_json_if_exists(ask_path / "ask_manifest.json")).to_dict()
         if manifest.get("worker_type") != MANUAL_CHATGPT_WORKER_TYPE:
             return None
 
@@ -137,17 +149,13 @@ class RenderConsoleQueue:
         output_path = answer_path / task.expected_output
         output_path.write_bytes(image_bytes)
         target_output = str(task.manifest.get("target_output_file") or "").strip()
-        if target_output:
-            target_path = Path(target_output)
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            target_path.write_bytes(image_bytes)
         comment = str(render_comment or "").strip()
         if comment:
             (answer_path / "Render_Review_Comment.md").write_text(comment + "\n", encoding="utf-8")
 
         completed_at = self._timestamp()
         answer_manifest = {
-            "version": 1,
+            "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": task.ask_id,
             "asset_id": task.asset_id,
             "ollama_attempt_id": str(task.manifest.get("ollama_attempt_id") or ""),
@@ -180,7 +188,7 @@ class RenderConsoleQueue:
         completed_at = self._timestamp()
         message = reason.strip() or "Manual ChatGPT render failed from Render Console."
         answer_manifest = {
-            "version": 1,
+            "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": task.ask_id,
             "asset_id": task.asset_id,
             "ollama_attempt_id": str(task.manifest.get("ollama_attempt_id") or ""),

@@ -1,0 +1,50 @@
+{
+  "schema_version": 3,
+  "file_kind": "scene",
+  "scene": {
+    "id": "checkpoint_lab",
+    "name": "Checkpoint Lab",
+    "slug": "CheckpointLab",
+    "story_beat": "",
+    "story_settings_path": ""
+  },
+  "setup": {
+    "canvas": {
+      "orientation": "portrait",
+      "aspect_ratio": "3:4",
+      "width": null,
+      "height": null
+    },
+    "composition": {
+      "focal_point": "",
+      "left_to_right": [],
+      "composition_notes": ""
+    },
+    "environment": {
+      "location": "",
+      "lighting": "",
+      "mood": "",
+      "weather_or_atmosphere": "",
+      "general_background_notes": "neutral gray",
+      "general_foreground_notes": ""
+    }
+  },
+  "scene_elements": [],
+  "placements": [],
+  "props_and_states": [],
+  "interactions": [],
+  "custom_interactions": "",
+  "dialogue": [],
+  "reference_assignments": [],
+  "final_image_prompt_overrides": {
+    "anatomical_requirements": "",
+    "avoid": "",
+    "high_risk_elements": "",
+    "final_verification": ""
+  },
+  "depth_lanes": {
+    "foreground": [],
+    "midground": [],
+    "background": []
+  }
+}

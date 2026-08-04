@@ -27,9 +27,14 @@ VIEWS = [
 
 
 class TurnaroundServiceTests(unittest.TestCase):
-    def _write_png(self, path: Path, height: int) -> None:
-        """Write a gray-background test character image."""
-        image = Image.new("RGBA", (120, 180), (128, 128, 128, 255))
+    def _write_png(
+        self,
+        path: Path,
+        height: int,
+        background: tuple[int, int, int] = (128, 128, 128),
+    ) -> None:
+        """Write a solid-background test character image."""
+        image = Image.new("RGBA", (120, 180), (*background, 255))
         draw = ImageDraw.Draw(image)
         top = 160 - height
         middle = top + max(12, height // 2)
@@ -37,7 +42,13 @@ class TurnaroundServiceTests(unittest.TestCase):
         draw.rectangle((35, middle, 85, 160), fill=(20, 20, 20, 255))
         image.save(path)
 
-    def _write_fixture(self, root: Path, *, include_images: bool = True) -> Path:
+    def _write_fixture(
+        self,
+        root: Path,
+        *,
+        include_images: bool = True,
+        background: tuple[int, int, int] = (128, 128, 128),
+    ) -> Path:
         """Create a temporary character fixture with eight locked body-reference assets."""
         character_dir = root / "Characters" / "Test" / "Adult"
         asset_dir = root / "Assets" / "Test" / "Adult"
@@ -49,7 +60,7 @@ class TurnaroundServiceTests(unittest.TestCase):
         for index, view in enumerate(VIEWS, start=1):
             output = f"Body-Reference_{view}.png"
             if include_images:
-                self._write_png(asset_dir / output, 80 + index)
+                self._write_png(asset_dir / output, 80 + index, background)
             records.append(
                 {
                     "asset_id": index,
@@ -136,10 +147,9 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertTrue(Path(row["analysis_path"]).exists())
             self.assertEqual(row["status"], "candidate ready for review")
             with Image.open(row["candidate_image_path"]) as image:
-                self.assertLess(image.width, 900)
-                cell_width = (image.width - 210) // 4
-                gap_x = 60 + cell_width + 15
-                self.assertEqual(image.getpixel((gap_x, 90))[:3], (128, 128, 128))
+                self.assertEqual((3960, 3060), image.size)
+                self.assertEqual((255, 255, 255), image.getpixel((0, 0))[:3])
+                self.assertEqual((128, 128, 128), image.getpixel((100, 100))[:3])
 
             promoted = client.post(
                 "/api/turnarounds/Body-Reference/promote",
@@ -149,6 +159,22 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             locked_path = Path(promoted.json()["row"]["locked_image_path"])
             self.assertTrue(locked_path.exists())
             self.assertEqual(locked_path.parent.name, "Turnarounds")
+
+    @unittest.skipUnless(Image is not None, "Pillow is required for image assembly tests.")
+    def test_turnaround_panels_retain_original_background_around_centered_character(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, background=(40, 80, 120))
+            client = TestClient(create_app(config_path))
+
+            generated = client.post(
+                "/api/turnarounds/Body-Reference/generate",
+                params={"character": "Test", "phase": "Adult"},
+            )
+
+            self.assertEqual(generated.status_code, 200)
+            with Image.open(generated.json()["row"]["candidate_image_path"]) as image:
+                self.assertEqual((40, 80, 120), image.getpixel((100, 100))[:3])
 
     @unittest.skipUnless(Image is not None, "Pillow is required for image assembly tests.")
     def test_partial_turnaround_can_update_percent_and_delete(self):
@@ -172,16 +198,15 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             with Image.open(aux["candidate_image_path"]) as image:
                 first_height = image.height
                 first_width = image.width
-                cell_width = (image.width - 210) // 4
-                gap_x = 60 + cell_width + 15
-                self.assertEqual(image.getpixel((gap_x, 60))[:3], (128, 128, 128))
+                self.assertEqual((3960, 3060), image.size)
+                self.assertEqual((128, 128, 128), image.getpixel((100, 100))[:3])
             full = client.post(
                 "/api/turnarounds/Body-Reference/generate",
                 params={"character": "Test", "phase": "Adult"},
             )
             self.assertEqual(full.status_code, 200)
             with Image.open(full.json()["row"]["candidate_image_path"]) as image:
-                self.assertLess(first_width, image.width)
+                self.assertEqual((first_width, first_height), image.size)
 
             updated = client.put(
                 f"/api/turnarounds/partials/{aux['turnaround_id']}",
@@ -195,7 +220,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual(updated_aux["label"], "Head and upper chest")
             self.assertEqual(updated_aux["crop_percent"], 60.0)
             with Image.open(updated_aux["candidate_image_path"]) as image:
-                self.assertGreater(image.height, first_height)
+                self.assertEqual((first_width, first_height), image.size)
 
             promoted = client.post(
                 f"/api/turnarounds/{updated_aux['turnaround_id']}/promote",

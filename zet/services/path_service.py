@@ -1,13 +1,17 @@
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from zet.models.asset import Asset
 from zet.services.config_service import Config
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 class PathService:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, project_root: str | Path = PROJECT_ROOT):
         """Create a path service from loaded configuration."""
         self.config = config
+        self.project_root = Path(project_root)
 
     def character_path(self, character: str, phase: str) -> Path:
         """Return the character phase folder."""
@@ -29,17 +33,30 @@ class PathService:
         """Return a path inside the configured library root."""
         return Path(self.config.base_library_path).joinpath(*parts)
 
+    def _path_parts(self, path: str | Path) -> tuple[str, ...]:
+        """Return path parts while accepting stored POSIX or Windows separators."""
+        text = str(path)
+        if "\\" in text:
+            return PureWindowsPath(text).parts
+        return Path(text).parts
+
     def resolve_path(self, path: str | Path) -> Path:
         """Resolve absolute, project-relative, and legacy _Lib paths."""
         raw_path = Path(path)
         if raw_path.is_absolute():
             return raw_path
-        parts = raw_path.parts
+        parts = self._path_parts(path)
+        if parts and parts[0].endswith(":\\"):
+            library_name = Path(self.config.base_library_path).name
+            for index, part in enumerate(parts):
+                if part == library_name:
+                    return self.library_path(*parts[index + 1:])
+            return Path(*parts)
         if parts and parts[0] == "_Lib":
             return self.library_path(*parts[1:])
         if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "Stories"}:
             return self.library_path(*parts)
-        return raw_path
+        return self.project_root.joinpath(*parts)
 
     def character_asset_path(self, character: str, phase: str) -> Path:
         """Return the character phase asset folder."""
@@ -100,6 +117,19 @@ class PathService:
         """Return the image path for a global auxiliary resource."""
         return self.auxiliary_resource_root() / "Images" / category / f"{resource_id}{extension}"
 
+    def auxiliary_resource_folder_path(self, resource_id: str) -> Path:
+        """Return one auxiliary resource folder path."""
+        return self.auxiliary_resource_root() / "Images" / str(resource_id or "").strip()
+
+    def auxiliary_resource_template_source_path(self) -> Path:
+        """Return the shared auxiliary resource template path."""
+        return self.auxiliary_resource_root() / "_Shared" / "AuxResource_Template.md"
+
+    def auxiliary_resource_folder_image_path(self, resource_id: str, image_label: str, extension: str = ".png") -> Path:
+        """Return an image path inside one auxiliary resource folder."""
+        safe = str(image_label or "").strip()
+        return self.auxiliary_resource_folder_path(resource_id) / f"{safe}{extension}"
+
     def costume_template_path(self, character: str, phase: str, costume_name: str) -> Path:
         """Return the markdown template path for a costume name."""
         safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(costume_name).strip())
@@ -126,6 +156,10 @@ class PathService:
         """Return the shared scene markdown template path."""
         return self.stories_path() / "_Scene_Template.md"
 
+    def story_index_path(self) -> Path:
+        """Return the persisted story ordering index path."""
+        return self.stories_path() / "_Story_Index.json"
+
     def story_folder_path(self, story_slug: str) -> Path:
         """Return the folder path for one story slug."""
         return self.stories_path() / str(story_slug or "").strip()
@@ -142,3 +176,23 @@ class PathService:
     def story_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the pipeline work folder for one story scene."""
         return self.library_path("Pipelines", "Stories", story_slug, scene_slug)
+
+    def scene_locked_image_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the published image path for one story scene."""
+        return self.story_folder_path(story_slug) / f"{str(scene_slug or '').strip()}.png"
+
+    def scene_candidate_image_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the pending review image path for one story scene."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Candidate" / f"{str(scene_slug or '').strip()}.png"
+
+    def scene_locked_backups_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the locked-image backup folder for one story scene."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Locked_Backups"
+
+    def scene_render_review_comment_path(self, story_slug: str, scene_slug: str) -> Path:
+        """Return the review comment path for one scene candidate."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Candidate" / "Render_Review_Comment.md"
+
+    def zines_path(self) -> Path:
+        """Return the generated zine asset folder."""
+        return Path(self.config.base_asset_path) / "Zines"
