@@ -24,6 +24,7 @@ from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
+from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
@@ -745,6 +746,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             _jsonable,
         )
     )
+    app.include_router(create_pipeline_inspection_router(lambda: _app(app.state.config_path)))
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
     app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")

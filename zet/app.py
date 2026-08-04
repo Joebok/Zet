@@ -24,6 +24,7 @@ from zet.services.path_service import PathService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
+from zet.services.pipeline_inspection_service import PipelineInspectionService
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.reference_service import ReferenceService
@@ -170,6 +171,22 @@ class ZetApp:
             asset_repository,
             pipeline_repository,
         )
+        self.pipeline_inspection_service = PipelineInspectionService(config.base_pipeline_path)
+
+    def list_pipeline_inspections(self) -> list[dict[str, str]]:
+        return self.pipeline_inspection_service.list_pipelines()
+
+    def list_pipeline_files(self, pipeline_id: str) -> list[dict[str, str]]:
+        return self.pipeline_inspection_service.list_files(pipeline_id)
+
+    def read_pipeline_file(self, pipeline_id: str, file_id: str) -> str:
+        return self.pipeline_inspection_service.read_text(pipeline_id, file_id)
+
+    def pipeline_file_path(self, pipeline_id: str, file_id: str) -> Path:
+        return self.pipeline_inspection_service.file_path(pipeline_id, file_id)
+
+    def open_pipeline_folder(self, pipeline_id: str, file_id: str) -> Path:
+        return self.pipeline_inspection_service.open_folder(pipeline_id, file_id)
 
     @classmethod
     def from_config(cls, config_path: str | Path) -> "ZetApp":

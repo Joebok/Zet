@@ -566,6 +566,11 @@ Backend = "manual_chatgpt"
             self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
             self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
             self.assertIn('id="character-assets-menu" class="tab active"', html)
+            self.assertIn('data-page="pipeline-inspection">Pipelines</button>', html)
+            self.assertLess(
+                html.index('id="character-assets-menu" class="tab active"'),
+                html.index('data-page="pipeline-inspection">Pipelines</button>'),
+            )
             self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
             self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
             self.assertIn('<option value="comfyui">ComfyUI</option>', html)
@@ -603,10 +608,44 @@ Backend = "manual_chatgpt"
 
             paths = client.get("/openapi.json").json()["paths"]
             self.assertIn("/api/assets/advance-all", paths)
+            self.assertIn("/api/pipeline-inspection", paths)
+            self.assertIn("/api/pipeline-inspection/files", paths)
+            self.assertIn("/api/pipeline-inspection/text", paths)
+            self.assertIn("/api/pipeline-inspection/file", paths)
+            self.assertIn("/api/pipeline-inspection/open-folder", paths)
             self.assertNotIn("/api/assets/advance-displayed", paths)
             self.assertNotIn("/api/assets/{asset_id}/retouch", paths)
             self.assertNotIn("/api/assets/{asset_id}/stage-ai-ask", paths)
             self.assertNotIn("/api/assets/{asset_id}/retry-ai", paths)
+
+    def test_pipeline_inspection_api_lists_and_reads_pipeline_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            pipeline = root / "Pipelines" / "Stories" / "Demo" / "Opening"
+            pipeline.mkdir(parents=True)
+            (pipeline / "Scene.json").write_text('{"scene": "Opening"}\n', encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            pipelines = client.get("/api/pipeline-inspection")
+            self.assertEqual(pipelines.status_code, 200)
+            self.assertEqual(
+                [item["pipeline_id"] for item in pipelines.json()["pipelines"]],
+                ["Test/Adult/Body-Reference", "Stories/Demo/Opening"],
+            )
+
+            files = client.get(
+                "/api/pipeline-inspection/files",
+                params={"pipeline_id": "Stories/Demo/Opening"},
+            )
+            self.assertEqual(files.status_code, 200)
+            self.assertEqual(files.json()["files"][0]["file_id"], "Scene.json")
+
+            content = client.get(
+                "/api/pipeline-inspection/text",
+                params={"pipeline_id": "Stories/Demo/Opening", "file_id": "Scene.json"},
+            )
+            self.assertEqual(content.json()["content"], '{"scene": "Opening"}\n')
 
     def test_story_actions_are_consolidated(self):
         with tempfile.TemporaryDirectory() as temp_dir:

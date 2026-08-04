@@ -46,6 +46,7 @@
       <option value="identity-keys">Identity Keys</option>
       <option value="phase-comparison">Phase Comparison</option>
     </select>
+    <button class="tab workflow-tab" data-page="pipeline-inspection">Pipelines</button>
     <button class="tab workflow-tab" data-page="prompt-review">Prompts</button>
     <button class="tab workflow-tab" data-page="render-console">Render</button>
     <button class="tab workflow-tab" data-page="local-image-review">Local Images</button>
@@ -1332,6 +1333,39 @@
               <input id="setting-turnaround-width" type="number" min="44" step="44" value="3960" form="automation-form">
             </label>
           </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="pipeline-inspection-page" class="page">
+      <div class="page-title-row">
+        <h1>Pipeline Inspection</h1>
+        <div id="pipeline-inspection-status" class="status-text"></div>
+      </div>
+      <div id="pipeline-inspection-message" class="action-message" hidden></div>
+      <div class="pipeline-inspection-layout">
+        <aside class="control-panel pipeline-inspection-sidebar">
+          <label>
+            Filter pipelines
+            <input id="pipeline-inspection-search" type="search" placeholder="Character, phase, pipeline, or scene">
+          </label>
+          <div id="pipeline-inspection-list" class="inspection-list" aria-label="Pipelines"></div>
+        </aside>
+        <aside class="control-panel">
+          <h2 id="pipeline-inspection-files-title">Files</h2>
+          <div id="pipeline-inspection-files" class="inspection-list" aria-label="Pipeline files"></div>
+        </aside>
+        <section class="control-panel pipeline-inspection-preview">
+          <div class="review-header">
+            <code id="pipeline-inspection-path">Select a file to inspect.</code>
+            <div class="mini-actions">
+              <button id="pipeline-inspection-copy" type="button" disabled>Copy</button>
+              <button id="pipeline-inspection-open-folder" type="button" disabled>Open folder</button>
+            </div>
+          </div>
+          <pre id="pipeline-inspection-text" class="inspection-text" hidden></pre>
+          <img id="pipeline-inspection-image" class="inspection-image" alt="Selected pipeline file" hidden>
+          <p id="pipeline-inspection-empty" class="status-text">Select a pipeline and file to preview its contents.</p>
         </section>
       </div>
     </section>
