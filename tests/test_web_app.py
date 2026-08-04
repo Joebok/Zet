@@ -608,6 +608,35 @@ Backend = "manual_chatgpt"
             self.assertNotIn("/api/assets/{asset_id}/stage-ai-ask", paths)
             self.assertNotIn("/api/assets/{asset_id}/retry-ai", paths)
 
+    def test_pipeline_inspection_api_lists_and_reads_pipeline_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            pipeline = root / "Pipelines" / "Stories" / "Demo" / "Opening"
+            pipeline.mkdir(parents=True)
+            (pipeline / "Scene.json").write_text('{"scene": "Opening"}\n', encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            pipelines = client.get("/api/pipeline-inspection")
+            self.assertEqual(pipelines.status_code, 200)
+            self.assertEqual(
+                [item["pipeline_id"] for item in pipelines.json()["pipelines"]],
+                ["Test/Adult/Body-Reference", "Stories/Demo/Opening"],
+            )
+
+            files = client.get(
+                "/api/pipeline-inspection/files",
+                params={"pipeline_id": "Stories/Demo/Opening"},
+            )
+            self.assertEqual(files.status_code, 200)
+            self.assertEqual(files.json()["files"][0]["file_id"], "Scene.json")
+
+            content = client.get(
+                "/api/pipeline-inspection/text",
+                params={"pipeline_id": "Stories/Demo/Opening", "file_id": "Scene.json"},
+            )
+            self.assertEqual(content.json()["content"], '{"scene": "Opening"}\n')
+
     def test_story_actions_are_consolidated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
