@@ -1480,7 +1480,7 @@ Backend = "manual_chatgpt"
             manifest_done = client.post("/api/assets/3/run-current-worker", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(manifest_done.status_code, 200)
             manifest_asset = manifest_done.json()["detail"]["asset"]
-            self.assertEqual(manifest_asset["pipeline_stage"], "RENDER")
+            self.assertEqual(manifest_asset["pipeline_stage"], "RENDER", manifest_asset)
             self.assertEqual(manifest_asset["actor"], "AI_AGENT")
             self.assertEqual(manifest_asset["ai_state"], "ASKED")
             self.assertEqual(
