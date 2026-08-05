@@ -44,7 +44,7 @@ config_text = config_path.read_text(encoding="utf-8").replace(
 )
 config_path.write_text(config_text, encoding="utf-8")
 
-auxiliary_template = root / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md"
+auxiliary_template = root / "Shared_Library" / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md"
 auxiliary_template.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(project_root / "Shared_Library" / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md", auxiliary_template)
 

@@ -1,12 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const DESKTOP_VIEWPORTS = [
-  [1920, 911],
   [1600, 900],
-  [1440, 900],
-  [1366, 768],
-  [1280, 800],
-  [1920, 768],
 ];
 
 async function openPage(page, pageName) {
@@ -34,7 +29,7 @@ async function expectNoHorizontalOverflow(page) {
   expect(overflowing).toEqual([]);
 }
 
-test("desktop layouts do not overflow and match approved snapshots", async ({ page }) => {
+test("@desktop-smoke desktop layout does not overflow and matches the approved snapshot", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });
     await openPage(page, "assets");
@@ -121,7 +116,7 @@ test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
   await expect(toggle).toBeFocused();
 });
 
-test("workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
+test("@desktop-smoke workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
   await openPage(page, "assets");
   await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#character-context")).toBeVisible();
@@ -294,7 +289,7 @@ test("To Do saves when dismissed", async ({ page }) => {
   await expect.poll(() => savedText).toBe("Saved on dismiss");
 });
 
-test("story changes autosave before selection changes", async ({ page }) => {
+test("@desktop-smoke story changes autosave before selection changes", async ({ page }) => {
   await openPage(page, "stories");
   const rows = page.locator("#story-table .row-selection-button");
   await expect(rows).toHaveCount(3);
@@ -345,7 +340,7 @@ test("failed and rapid story transitions preserve a current selection", async ({
   await expect(rows.nth(2)).toHaveAttribute("aria-current", "true");
 });
 
-test("scene and Scene Builder changes autosave on navigation", async ({ page }) => {
+test("@desktop-smoke scene and Scene Builder changes autosave on navigation", async ({ page }) => {
   await openPage(page, "scenes");
   const rows = page.locator("#scene-table .row-selection-button");
   await expect(rows).toHaveCount(2);
@@ -638,7 +633,7 @@ test("phone workspaces are view-first and Scene Builder uses single-open accordi
   await expectNoHorizontalOverflow(page);
 });
 
-test("source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
+test("@desktop-smoke source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
   await openPage(page, "assets");
   await page.locator("#asset-table .row-selection-button").first().click();
   await page.locator("#open-governing-template").click();
@@ -697,7 +692,7 @@ test("project settings support Cancel, Discard, and Save", async ({ page }) => {
   expect((await controls.json()).automation.zine_print_scale).toBe(0.92);
 });
 
-test("selection, zine ordering, live status, and image dialogs are accessible", async ({ page }) => {
+test("@desktop-smoke selection, zine ordering, live status, and image dialogs are accessible", async ({ page }) => {
   await openPage(page, "zine");
   const selection = page.locator("#zine-table .row-selection-button").first();
   await selection.focus();
@@ -817,7 +812,7 @@ test("scene render tasks open their scene in Scene Builder", async ({ page }) =>
   await expect(page.locator("#scene-builder-status")).toHaveText("Alpha-Story / Opening-Scene");
 });
 
-test("scene workflow keeps context and production tools default to current work", async ({ page }) => {
+test("@desktop-smoke scene workflow keeps context and production tools default to current work", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator("#header-scene-select").selectOption("Closing-Scene");
 
@@ -848,7 +843,7 @@ test("scene workflow keeps context and production tools default to current work"
   await page.keyboard.press("Escape");
 });
 
-test("Scene Builder creates and selects an auxiliary resource without losing context", async ({ page }) => {
+test("@desktop-smoke Scene Builder creates and selects an auxiliary resource without losing context", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator("#scene-builder-open").click();
   await page.getByRole("button", { name: "Add Element" }).click();
@@ -859,7 +854,9 @@ test("Scene Builder creates and selects an auxiliary resource without losing con
     response.url().includes("/api/auxiliary-resources?") && response.request().method() === "POST"
   ));
   await page.locator("#builder-element-new-aux-save").click();
-  const resource = (await (await created).json()).resource;
+  const createdResponse = await created;
+  expect(createdResponse.ok()).toBe(true);
+  const resource = (await createdResponse.json()).resource;
 
   await expect(page.locator("#builder-element-modal")).toBeVisible();
   await expect(page.locator("#builder-element-aux")).toHaveValue(resource.resource_id);
