@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, write_json_file
 from Scripts.Library_Paths import character_root, pipeline_root
@@ -61,6 +61,18 @@ def expression_definition_path_for_job(project_root: Path, job: dict, character:
         return resolve_project_path(project_root, explicit)
     expression_label = job_get(job, "Expression Label", "Expression", "expression") or "Expression"
     return character_root(project_root) / character / phase / "Expressions" / f"{safe_name(expression_label)}.md"
+
+
+def costume_path_for_job(project_root: Path, job: dict, character: str, phase: str) -> Path | None:
+    """Return the selected costume template path when the expression uses one."""
+    explicit = job_get(job, "Costume Path", "costume_path")
+    if explicit:
+        return resolve_project_path(project_root, explicit)
+    costume = job_get(job, "Costume", "costume")
+    if not costume:
+        return None
+    path = character_root(project_root) / character / phase / f"Costume_{safe_name(costume).replace('-', '_')}.md"
+    return path if path.is_file() else None
 
 
 def output_dir_for_job(project_root: Path, job: dict, character: str, phase: str, expression_label: str) -> Path:
@@ -244,6 +256,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     expected_output = job_get(job, "Expected Output", "expected_output") or f"Expression_{safe_name(expression_label)}.png"
     template_path = template_path_for_job(project_root, job, character, phase)
     definition_path = expression_definition_path_for_job(project_root, job, character, phase)
+    costume_path = costume_path_for_job(project_root, job, character, phase)
     definition_source_text = definition_path.read_text(encoding="utf-8") if definition_path.exists() else ""
     definition_text = expression_definition_text(definition_path)
     prompt_inserts = prompt_inserts_by_section(definition_source_text)
@@ -254,6 +267,17 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     output_dir = output_dir_for_job(project_root, job, character, phase, expression_label)
 
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
+    if costume_path is not None:
+        if not costume_path.is_file():
+            raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")
+        costume_sections, costume_sources = load_template_sections_with_sources(
+            costume_path,
+            source_kind="costume_template_section",
+            source_label=f"Costume template: {costume_path.name}",
+        )
+        if "IDENTITY_PRESERVATION_COSTUME" in costume_sections:
+            sections["IDENTITY_PRESERVATION_COSTUME"] = costume_sections["IDENTITY_PRESERVATION_COSTUME"]
+            section_sources["IDENTITY_PRESERVATION_COSTUME"] = costume_sources["IDENTITY_PRESERVATION_COSTUME"]
     selection = select_sections(sections, bundle, "EXPRESSION", section_sources)
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",

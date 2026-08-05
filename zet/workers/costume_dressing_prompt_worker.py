@@ -28,7 +28,7 @@ def run(asset, context) -> WorkerResult:
         "Costume": costume_name,
         "Expected Output": asset.final_image_output or "",
         "Output Directory": str(context.pipeline_path),
-        "Template Path": str(context.character_path / "Character_Image_Template.md"),
+        "Template Path": str(context.character_path / "Character.md"),
         "Costume Path": costume_path,
         "Reference Files": asset.reference_files or [],
     }

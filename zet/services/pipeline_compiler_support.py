@@ -364,7 +364,7 @@ def template_path_for_job(project_root: Path, job: dict, character: str, phase: 
     explicit = job_get(job, "Template Path", "template_path", "character_image_template")
     if explicit:
         return resolve_project_path(project_root, explicit)
-    return character_root(project_root) / character / phase / "Character_Image_Template.md"
+    return character_root(project_root) / character / phase / "Character.md"
 
 
 def expected_output_for_job(job: dict, view_data: dict) -> str:

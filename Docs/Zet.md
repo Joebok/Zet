@@ -72,7 +72,7 @@ For a character phase, such as `_Lib/Characters/Tsaeytte/Adult/`, the important 
 
 - `Assets.json`
 - `Pipelines.json`
-- `Character_Image_Template.md`
+- `Character.md`
 - generated prompt/compiler outputs under pipeline-specific folders, such as `Body_Reference/Front/`
 
 `Assets.json` stores asset records and mutable progress state.
@@ -250,7 +250,7 @@ The active stage path is:
 MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
 ```
 
-Head-Fitment does not use ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character_Image_Template.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
+Head-Fitment does not use ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
 
 ### Assets Page
 

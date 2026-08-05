@@ -116,7 +116,7 @@ class StoryService:
             costume = str(element.get("costume") or "").strip()
             if not character or not phase:
                 return {}
-            character_template = self.path_service.character_path(character, phase) / "Character_Image_Template.md"
+            character_template = self.path_service.character_template_path(character, phase)
             costume_template = self.path_service.costume_template_path(character, phase, costume) if costume else Path()
             return {
                 "identity_preservation_core": self._source_section(character_template, "IDENTITY_PRESERVATION_SCENE"),

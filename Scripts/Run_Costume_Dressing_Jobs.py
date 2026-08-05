@@ -473,7 +473,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    character_template_path = character_root(project_root) / character / phase / "Character_Image_Template.md"
+    character_template_path = character_root(project_root) / character / phase / "Character.md"
     costume_path = costume_path_for_job(project_root, job, character, phase)
     if not costume_path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")

@@ -167,10 +167,10 @@
         "IDENTITY_PRESERVATION_FACE",
         "IDENTITY_PRESERVATION_HAIR",
         "IDENTITY_PRESERVATION_EARS",
-        "IDENTITY_PRESERVATION_COSTUME",
         "NEGATIVE_GUIDANCE_GENERAL"
       ],
       "optional_sections": [
+        "IDENTITY_PRESERVATION_COSTUME",
         "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
       ],
       "forbidden_sections": [

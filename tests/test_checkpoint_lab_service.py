@@ -31,7 +31,7 @@ def _write_fixture(tmp_path: Path) -> tuple[ZetApp, CheckpointLabService, Path]:
             "final_image_output": image.name,
         }],
     }), encoding="utf-8")
-    (character / "Character_Image_Template.md").write_text(
+    (character / "Character.md").write_text(
         "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\n"
         "Ada has unmistakable silver hair and green eyes.\n"
         "<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",

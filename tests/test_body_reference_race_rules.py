@@ -53,7 +53,7 @@ BaseAIQueuePath = "_Lib/AI_Queue"
 
             character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
             character_dir.mkdir(parents=True)
-            (character_dir / "Character_Image_Template.md").write_text(
+            (character_dir / "Character.md").write_text(
                 """# Character Image Template
 
 Character Name: `[Testa]`
@@ -140,7 +140,7 @@ Gender Presentation: `[Feminine adult woman]`
 
             character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
             character_dir.mkdir(parents=True)
-            (character_dir / "Character_Image_Template.md").write_text(
+            (character_dir / "Character.md").write_text(
                 """# Character Image Template
 
 Character Name: `[Testa]`
@@ -196,7 +196,7 @@ Gender Presentation: `[Feminine adult woman]`
 
             character_dir = root / "_Lib" / "Characters" / "Mystery" / "Adult"
             character_dir.mkdir(parents=True)
-            (character_dir / "Character_Image_Template.md").write_text(
+            (character_dir / "Character.md").write_text(
                 """# Character Image Template
 
 Character Name: `[Mystery]`

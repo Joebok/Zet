@@ -48,7 +48,7 @@ class CharacterSourceServiceTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         phase = self.root / "Characters" / "Hero" / "Adult"
         phase.mkdir(parents=True)
-        (phase / "Character_Image_Template.md").write_text(
+        (phase / "Character.md").write_text(
             _section("GENERAL_DESCRIPTION_FACTS", "adult elf")
             + _section("IDENTITY_PRESERVATION_CORE", "preserve identity")
             + _section("BODY_DESCRIPTION_FACTS", "petite proportions")

@@ -8,7 +8,7 @@
       "View": "front",
       "Status": "READY_FOR_COMPILE",
       "Next Actor": "PYTHON",
-      "Template Path": "Characters/Tsaeytte/Adult/Character_Image_Template.md"
+      "Template Path": "Characters/Tsaeytte/Adult/Character.md"
     }
   ]
 }

@@ -33,8 +33,10 @@ def run(asset, context) -> WorkerResult:
         "Identity Key Label": _identity_key_label(asset),
         "Expected Output": asset.final_image_output or "",
         "Output Directory": str(context.pipeline_path),
-        "Template Path": str(context.character_path / "Character_Image_Template.md"),
+        "Template Path": str(context.character_path / "Character.md"),
         "Expression Definition Path": asset.expression_definition_path or "",
+        "Costume": asset.costume or "",
+        "Costume Path": asset.costume_path or "",
         "Reference Files": asset.reference_files or [],
     }
 

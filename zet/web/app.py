@@ -127,7 +127,7 @@ def _header_preview_payload(zet_app: ZetApp, character: str, phase: str) -> dict
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     """Serialize an asset for dashboard tables and detail panels."""
     data = asdict(asset)
-    character_template = zet_app.path_service.character_path(asset.character, asset.phase) / "Character_Image_Template.md"
+    character_template = zet_app.path_service.character_template_path(asset.character, asset.phase)
     data["character_template_source"] = {
         "source_kind": "character_image_template",
         "source_label": "Character Image Template",
@@ -846,7 +846,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     "template_path": draft.template_path,
                     "status": _onboarding_status_payload(draft.status),
                 },
-                "message": "Draft Character_Image_Template.md saved.",
+                "message": "Draft Character.md saved.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

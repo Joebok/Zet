@@ -1819,11 +1819,11 @@ function onboardingHelperPrompt(templatePath = "") {
   return `I am building a structured Zet character image template for ${character}, phase ${phase}.
 
 I will attach:
-- The draft markdown file named Character_Image_Template.md${templatePath ? ` from ${templatePath}` : ""}
+- The draft markdown file named Character.md${templatePath ? ` from ${templatePath}` : ""}
 - One or more reference images for the character/phase
 
 Your task:
-Fill out the Character_Image_Template.md using the attached reference image(s) and the metadata below, then return the completed template as a downloadable markdown file named Character_Image_Template.md.
+Fill out Character.md using the attached reference image(s) and the metadata below, then return the completed template as a downloadable markdown file named Character.md.
 
 Metadata to preserve exactly:
 - Character Name: ${character}
@@ -1839,7 +1839,7 @@ Hard rules:
 - Do not delete empty sections; fill useful sections, but leave uncertain sections empty rather than inventing facts.
 - Do not add markdown fences around the final file.
 - Do not summarize the file in the final answer.
-- Return the completed markdown file itself, suitable for saving directly as Character_Image_Template.md.
+- Return the completed markdown file itself, suitable for saving directly as Character.md.
 - Keep prompt language factual, visual, and render-facing.
 - Avoid story, personality, mood, scene action, or narrative unless the section explicitly asks for picaresque/flavor text.
 - Preserve the template's existing structure, headings, bullet style, and metadata fields.
@@ -1883,7 +1883,7 @@ function renderOnboarding() {
   onboardingDownloadTemplate.hidden = !status?.template_path;
   if (status?.template_path) {
     onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
-    onboardingDownloadTemplate.download = "Character_Image_Template.md";
+    onboardingDownloadTemplate.download = "Character.md";
   }
   updateOnboardingHelperPrompt(status?.template_path || "");
   onboardingStatusList.replaceChildren();
@@ -1990,7 +1990,7 @@ async function saveOnboardingDraft() {
     const templatePath = payload.draft?.template_path;
     if (templatePath) {
       onboardingDownloadTemplate.href = downloadFileUrl(templatePath);
-      onboardingDownloadTemplate.download = "Character_Image_Template.md";
+      onboardingDownloadTemplate.download = "Character.md";
       onboardingDownloadTemplate.hidden = false;
       updateOnboardingHelperPrompt(templatePath);
     }
@@ -2002,7 +2002,7 @@ async function saveOnboardingDraft() {
 async function uploadOnboardingTemplate() {
   const file = onboardingTemplateFile.files?.[0];
   if (!file) {
-    showOnboardingMessage("Choose a Character_Image_Template.md file first.", "error");
+    showOnboardingMessage("Choose a Character.md file first.", "error");
     return;
   }
   try {

@@ -45,7 +45,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         )
         self.character_dir = self.library / "Characters" / "Tsaeytte" / "Youth"
         self.character_dir.mkdir(parents=True)
-        self.character_dir.joinpath("Character_Image_Template.md").write_text(
+        self.character_dir.joinpath("Character.md").write_text(
             "Character Name: `Tsaeytte`\nCharacter Phase: `Youth`\nCanonical Art Style: `Painterly animation`\n",
             encoding="utf-8",
         )

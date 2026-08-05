@@ -19,7 +19,7 @@ from zet.services.path_service import PathService
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 
-from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections, select_sections
 from zet.services.pipeline_compiler_support import extract_template_field, load_body_reference_section_data, load_bundle
 
 
@@ -32,6 +32,21 @@ FOUNDATION_VIEWS = [
     "Back-Left-3-4",
     "Back-Right-3-4",
     "Back",
+]
+
+CHARACTER_CONTENT_SECTIONS = [
+    "GENERAL_DESCRIPTION_FACTS",
+    "BODY_DESCRIPTION_FACTS",
+    "HEAD_DESCRIPTION_FACTS",
+    "HAIR_DESCRIPTION_FACTS",
+    "EXPRESSION_DESCRIPTION_FACTS",
+    "IDENTITY_PRESERVATION_CORE",
+    "IDENTITY_PRESERVATION_FACE",
+    "IDENTITY_PRESERVATION_EYES",
+    "IDENTITY_PRESERVATION_HAIR",
+    "IDENTITY_PRESERVATION_EARS",
+    "IDENTITY_PRESERVATION_BODY",
+    "IDENTITY_PRESERVATION_SCENE",
 ]
 
 
@@ -66,7 +81,7 @@ class CharacterOnboardingService:
     def status(self, character: str, phase: str) -> CharacterOnboardingStatus:
         """Return onboarding status for one character phase."""
         phase_path = self.path_service.character_path(character, phase)
-        template_path = phase_path / "Character_Image_Template.md"
+        template_path = self.path_service.character_template_path(character, phase)
         assets_path = phase_path / "Assets.json"
         pipelines_path = phase_path / "Pipelines.json"
         messages: list[str] = []
@@ -81,7 +96,7 @@ class CharacterOnboardingService:
         if not exists:
             messages.append("Phase folder has not been created.")
         if exists and not template_path.exists():
-            messages.append("Character_Image_Template.md is waiting to be saved or uploaded.")
+            messages.append("Character.md is waiting to be saved or uploaded.")
         if exists and template_path.exists():
             metadata = self._template_metadata(template_path)
             errors = self.validate_template(template_path)
@@ -108,7 +123,7 @@ class CharacterOnboardingService:
     def prefill(self, character: str, source_phase: str = "") -> dict[str, str]:
         """Return metadata defaults for a new character or phase."""
         if source_phase:
-            template = self.path_service.character_path(character, source_phase) / "Character_Image_Template.md"
+            template = self.path_service.character_template_path(character, source_phase)
             if template.exists():
                 return {
                     "character": extract_template_field(template, ["Character Name"]) or character,
@@ -124,7 +139,7 @@ class CharacterOnboardingService:
         }
 
     def save_draft(self, payload: dict[str, Any]) -> CharacterOnboardingDraft:
-        """Create or update a draft Character_Image_Template.md for onboarding."""
+        """Create or update a draft Character.md for onboarding."""
         character = self._clean_folder_name(payload.get("character"), "Character")
         phase = self._clean_folder_name(payload.get("phase"), "Phase")
         if not character or not phase:
@@ -132,7 +147,7 @@ class CharacterOnboardingService:
         phase_path = self.path_service.character_path(character, phase)
         phase_path.mkdir(parents=True, exist_ok=True)
         self._ensure_phase_scaffold(character, phase, payload.get("source_phase") or "")
-        template_path = phase_path / "Character_Image_Template.md"
+        template_path = self.path_service.character_template_path(character, phase)
         template_path.write_text(self._render_template(payload, character, phase), encoding="utf-8")
         return CharacterOnboardingDraft(character, phase, str(template_path), self.status(character, phase))
 
@@ -143,12 +158,12 @@ class CharacterOnboardingService:
         phase_path = self.path_service.character_path(character, phase)
         phase_path.mkdir(parents=True, exist_ok=True)
         self._ensure_phase_scaffold(character, phase, "")
-        template_path = phase_path / "Character_Image_Template.md"
+        template_path = self.path_service.character_template_path(character, phase)
         if template_path.exists():
             backup_dir = self.path_service.character_backup_path(character, phase)
             backup_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            shutil.copy2(template_path, backup_dir / f"Character_Image_Template.backup.{stamp}.md")
+            shutil.copy2(template_path, backup_dir / f"Character.backup.{stamp}.md")
         template_path.write_text(contents, encoding="utf-8")
         errors = self.validate_template(template_path)
         if errors:
@@ -159,9 +174,10 @@ class CharacterOnboardingService:
     def initialize_foundation(self, character: str, phase: str) -> None:
         """Create foundation Assets.json and support folders for an onboarded phase."""
         phase_path = self.path_service.character_path(character, phase)
-        if not (phase_path / "Character_Image_Template.md").exists():
-            raise CharacterOnboardingError("Character_Image_Template.md must exist before initialization.")
-        errors = self.validate_template(phase_path / "Character_Image_Template.md")
+        template_path = self.path_service.character_template_path(character, phase)
+        if not template_path.exists():
+            raise CharacterOnboardingError("Character.md must exist before initialization.")
+        errors = self.validate_template(template_path)
         if errors:
             raise CharacterOnboardingError("; ".join(errors))
         self._ensure_phase_scaffold(character, phase, "")
@@ -177,7 +193,7 @@ class CharacterOnboardingService:
         )
 
     def validate_template(self, template_path: Path) -> list[str]:
-        """Validate a Character_Image_Template.md against foundation compiler requirements."""
+        """Validate Character.md against active compiler requirements."""
         if not template_path.exists():
             return [f"Template file not found: {template_path}"]
         errors: list[str] = []
@@ -186,6 +202,17 @@ class CharacterOnboardingService:
             if not value or self._looks_placeholder(value):
                 errors.append(f"{label} must be filled in.")
         try:
+            template_sections = load_template_sections(template_path)
+            shared_sections = load_template_sections(self.path_service.shared_character_path() / "Character_Template.md")
+            character_sections = list(CHARACTER_CONTENT_SECTIONS)
+            for prefix in ["BODY_DESCRIPTION_VIEW_", "HEAD_DESCRIPTION_VIEW_", "HAIR_DESCRIPTION_VIEW_"]:
+                character_sections.extend(f"{prefix}{view}" for view in self._view_tokens())
+            for name in character_sections:
+                value = str(template_sections.get(name) or "").strip()
+                if not value:
+                    errors.append(f"{name} must be filled in.")
+                elif value == str(shared_sections.get(name) or "").strip():
+                    errors.append(f"{name} still contains shared template placeholder text.")
             sections, sources = load_body_reference_section_data(self.project_root, template_path)
             for bundle_name in ["body-reference", "head-fitment", "character-assembly"]:
                 bundle = load_bundle(self.project_root, bundle_name)
@@ -195,11 +222,14 @@ class CharacterOnboardingService:
                         errors.append(f"{bundle_name} {view} missing: {', '.join(selection.missing_required)}")
                     if selection.forbidden_matches:
                         errors.append(f"{bundle_name} {view} includes forbidden sections: {', '.join(selection.forbidden_matches)}")
+            expression = select_sections(sections, load_bundle(self.project_root, "expression"), "EXPRESSION", sources)
+            if expression.missing_required:
+                errors.append(f"expression missing: {', '.join(expression.missing_required)}")
         except TemplateCompileError as exc:
             errors.append(str(exc))
         except Exception as exc:
             errors.append(f"Template validation failed: {exc}")
-        return errors
+        return list(dict.fromkeys(errors))
 
     def _ensure_phase_scaffold(self, character: str, phase: str, source_phase: str) -> None:
         """Create non-asset support files and folders for a character phase."""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tempfile
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from zet.models.expression import ExpressionDefinition
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.path_service import PathService
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 
 
 @dataclass(frozen=True)
@@ -90,18 +92,40 @@ class ExpressionService:
             raise ExpressionServiceError(f"Shared expression template is missing: {template_path}")
         return template_path.read_text(encoding="utf-8")
 
-    def _sync_expression_label(self, markdown: str, label: str, path: Path) -> str:
+    def _sync_expression_label(self, markdown: str, label: str, path: Path, character: str, phase: str) -> str:
         """Return markdown with basic expression metadata set to the dashboard values."""
         text = str(markdown or "")
+        try:
+            definition_path = path.relative_to(self.path_service.library_path()).as_posix()
+        except ValueError:
+            definition_path = str(path)
         replacements = {
+            r"^\s*Character\s*:\s*.+?\s*$": f"Character: {character}, {phase}.",
             r"^\s*Expression label\s*:\s*.+?\s*$": f"Expression label: {label}.",
-            r"^\s*Expression definition\s*:\s*.+?\s*$": f"Expression definition: {path}.",
+            r"^\s*Expression definition\s*:\s*.+?\s*$": f"Expression definition: {definition_path}.",
         }
         for pattern, replacement in replacements.items():
             compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
             if compiled.search(text):
                 text = compiled.sub(lambda _match, value=replacement: value, text, count=1)
         return text
+
+    def _validate_expression_markdown(self, markdown: str) -> None:
+        """Require uploaded expression markdown to follow the shared definition structure."""
+        template_path = self.path_service.shared_expression_template_path()
+        try:
+            expected = set(load_template_sections(template_path))
+            with tempfile.TemporaryDirectory() as temp_dir:
+                upload_path = Path(temp_dir) / "Expression.md"
+                upload_path.write_text(markdown, encoding="utf-8")
+                actual = set(load_template_sections(upload_path))
+        except TemplateCompileError as exc:
+            raise ExpressionServiceError(str(exc)) from exc
+        missing = sorted(expected - actual)
+        if missing:
+            raise ExpressionServiceError(f"Expression definition missing sections: {', '.join(missing)}")
+        if not re.search(r"(?im)^EXPRESSION TARGET\s*$", markdown):
+            raise ExpressionServiceError("Expression definition must contain an EXPRESSION TARGET section.")
 
     def list_expression_assets(self, character: str, phase: str) -> list[Asset]:
         """List Expression assets for a character phase."""
@@ -155,8 +179,11 @@ class ExpressionService:
         if existing:
             raise ExpressionServiceError(f"Expression asset already exists for {display_label} with this Identity Key.")
 
-        cleaned_markdown = str(markdown or "").strip() or self._default_expression_markdown()
-        contents = self._sync_expression_label(cleaned_markdown, display_label, definition_path).rstrip() + "\n"
+        uploaded_markdown = str(markdown or "").strip()
+        cleaned_markdown = uploaded_markdown or self._default_expression_markdown()
+        if uploaded_markdown:
+            self._validate_expression_markdown(cleaned_markdown)
+        contents = self._sync_expression_label(cleaned_markdown, display_label, definition_path, character, phase).rstrip() + "\n"
         output_name = f"Expression_{slug}.png"
         asset = Asset(
             asset_id=0,
@@ -219,7 +246,7 @@ class ExpressionService:
 
         old_path_existed = old_path.exists()
         contents = old_path.read_text(encoding="utf-8") if old_path_existed else self._default_expression_markdown()
-        updated_contents = self._sync_expression_label(contents, display_label, new_path)
+        updated_contents = self._sync_expression_label(contents, display_label, new_path, character, phase)
         updated_asset = replace(asset)
         updated_asset.expression = display_label
         updated_asset.identity_key_id = identity_key.identity_key_id

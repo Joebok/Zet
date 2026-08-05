@@ -17,7 +17,7 @@ Use this file as the source document for a swappable costume.
 
 Recommended usage:
 
-* Keep character body, face, hair, race, age, and canonical art style in `Character_Image_Template.md`.
+* Keep character body, face, hair, race, age, and canonical art style in `Character.md`.
 * Put stable clothing, jewelry, equipment, material, color, and placement rules in this costume file.
 * Use short declarative instructions.
 * Use anatomical left and right for equipment placement.

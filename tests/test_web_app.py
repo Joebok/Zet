@@ -183,7 +183,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         (asset_dir / "body_front.png").write_bytes(b"body")
         (headshot_dir / "head_front.png").write_bytes(b"head")
         (prompt_dir / "Final_Image_Prompt.md").write_text("head fitment final prompt\n", encoding="utf-8")
-        (character_dir / "Character_Image_Template.md").write_text(
+        (character_dir / "Character.md").write_text(
             """
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 Test character general facts.
@@ -325,7 +325,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         (root / "Queue").mkdir()
         (asset_dir / "body_front.png").write_bytes(b"body")
         (asset_dir / "head_fitment_front.png").write_bytes(b"head")
-        (character_dir / "Character_Image_Template.md").write_text(
+        (character_dir / "Character.md").write_text(
             """
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 Test character general facts.

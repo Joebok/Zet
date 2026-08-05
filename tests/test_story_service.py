@@ -1056,7 +1056,7 @@ Two students meet at the arch.
             (story_dir / "FirstDay.md").write_text("Title: `[FirstDay]`\n", encoding="utf-8")
             service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
             (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
-            (character_dir / "Character_Image_Template.md").write_text(
+            (character_dir / "Character.md").write_text(
                 "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\ncore identity from character\n<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
                 encoding="utf-8",
             )
@@ -1102,7 +1102,7 @@ Two students meet at the arch.
             (story_dir / "FirstDay.md").write_text("Title: `[FirstDay]`\n", encoding="utf-8")
             service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
             (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
-            (character_dir / "Character_Image_Template.md").write_text(
+            (character_dir / "Character.md").write_text(
                 "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\ncore identity from character\n<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
                 encoding="utf-8",
             )

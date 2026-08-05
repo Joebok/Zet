@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tempfile
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from zet.models.costume import Costume
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.path_service import PathService
 from zet.services.turnaround_service import TURNAROUND_VIEW_ORDER
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,30 @@ class CostumeService:
             return "\n".join(lines) + ("\n" if markdown.endswith("\n") else "")
         return f"{replacement}\n\n{markdown}"
 
+    def _sync_costume_metadata(self, markdown: str, costume_name: str, character: str, phase: str) -> str:
+        """Return costume markdown with canonical identifying metadata."""
+        text = self._sync_costume_name(markdown, costume_name)
+        for label, value in {"Character Name": character, "Character Phase": phase}.items():
+            pattern = re.compile(rf"^\s*{re.escape(label)}\s*:\s*.+?\s*$", re.IGNORECASE | re.MULTILINE)
+            if pattern.search(text):
+                text = pattern.sub(f"{label}: `[{value}]`", text, count=1)
+        return text
+
+    def _validate_costume_markdown(self, markdown: str) -> None:
+        """Require uploaded costume markdown to follow the shared template structure."""
+        template_path = self.path_service.shared_costume_template_path()
+        try:
+            expected = set(load_template_sections(template_path))
+            with tempfile.TemporaryDirectory() as temp_dir:
+                upload_path = Path(temp_dir) / "Costume.md"
+                upload_path.write_text(markdown, encoding="utf-8")
+                actual = set(load_template_sections(upload_path))
+        except TemplateCompileError as exc:
+            raise CostumeServiceError(str(exc)) from exc
+        missing = sorted(expected - actual)
+        if missing:
+            raise CostumeServiceError(f"Costume template missing sections: {', '.join(missing)}")
+
     def _default_costume_markdown(self) -> str:
         """Return the shared costume template contents."""
         template_path = self.path_service.shared_costume_template_path()
@@ -134,7 +160,10 @@ class CostumeService:
         ]
         if existing:
             raise CostumeServiceError(f"Costume-Dressing assets already exist for {display_name}.")
-        source_markdown = str(markdown or "").strip() or self._default_costume_markdown()
+        uploaded_markdown = str(markdown or "").strip()
+        source_markdown = uploaded_markdown or self._default_costume_markdown()
+        if uploaded_markdown:
+            self._validate_costume_markdown(source_markdown)
         assets = []
         for view in TURNAROUND_VIEW_ORDER:
             output_name = f"Costume-Dressing_{view}_{view}_{costume_slug.replace('_', '-')}.png"
@@ -156,7 +185,8 @@ class CostumeService:
                 costume_path=str(costume_path),
             )
             assets.append(asset)
-        self._write_text_atomic(costume_path, self._sync_costume_name(source_markdown, display_name))
+        contents = self._sync_costume_metadata(source_markdown, display_name, character, phase).rstrip() + "\n"
+        self._write_text_atomic(costume_path, contents)
         try:
             assets = self.asset_repository.create_assets(assets)
         except Exception:

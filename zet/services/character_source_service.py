@@ -87,10 +87,7 @@ class CharacterSourceService:
         character_rows = []
         for value in characters:
             ready = any(
-                self._template_readiness(
-                    self.path_service.character_path(value, candidate)
-                    / "Character_Image_Template.md"
-                )[0]
+                self._template_readiness(self.path_service.character_template_path(value, candidate))[0]
                 for candidate in self.discovery.list_phases(value)
             )
             character_rows.append(
@@ -104,10 +101,7 @@ class CharacterSourceService:
         phases = self.discovery.list_phases(character) if character in characters else []
         phase_rows = []
         for value in phases:
-            template = (
-                self.path_service.character_path(character, value)
-                / "Character_Image_Template.md"
-            )
+            template = self.path_service.character_template_path(character, value)
             available, reason = self._template_readiness(template)
             phase_rows.append(self._option(value, value, available, reason))
 
@@ -159,10 +153,7 @@ class CharacterSourceService:
                 if item["slug"] == costume_slug
             )
 
-        character_path = (
-            self.path_service.character_path(character, phase)
-            / "Character_Image_Template.md"
-        )
+        character_path = self.path_service.character_template_path(character, phase)
         sections, sources = self._load_sections(
             character_path,
             "character_template_section",
@@ -333,7 +324,7 @@ class CharacterSourceService:
     @staticmethod
     def _template_readiness(path: Path) -> tuple[bool, str]:
         if not path.is_file():
-            return False, "Character image template is missing."
+            return False, "Character.md is missing."
         try:
             load_template_sections_with_sources(
                 path,

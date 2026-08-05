@@ -49,7 +49,7 @@ auxiliary_template.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(project_root / "Shared_Library" / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md", auxiliary_template)
 
 character_dir = root / "Characters" / "Test" / "Adult"
-(character_dir / "Character_Image_Template.md").write_text(
+(character_dir / "Character.md").write_text(
     "\n".join(
         [
             "Character Name: Test",

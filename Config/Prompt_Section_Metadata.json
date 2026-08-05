@@ -21,6 +21,14 @@
       "label": "Identity Preservation - Body",
       "description": "Rules for preserving the character's body proportions and physical type."
     },
+    "IDENTITY_PRESERVATION_EYES": {
+      "label": "Identity Preservation - Eyes",
+      "description": "Rules for preserving the character's eye shape, color, spacing, and gaze characteristics."
+    },
+    "EXPRESSION_DESCRIPTION_FACTS": {
+      "label": "Expression Description - Just the Facts",
+      "description": "Technical expression rules that apply across the character phase."
+    },
     "BODY_REFERENCE_RENDERING_RULES": {
       "label": "Body-Reference Rendering Rules",
       "description": "Rules for neutral technical full-body reference rendering."

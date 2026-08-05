@@ -17,6 +17,10 @@ class PathService:
         """Return the character phase folder."""
         return Path(self.config.base_character_path) / character / phase
 
+    def character_template_path(self, character: str, phase: str) -> Path:
+        """Return the canonical character markdown path for a phase."""
+        return self.character_path(character, phase) / "Character.md"
+
     def shared_library_path(self, *parts: str) -> Path:
         """Return a path inside the source-controlled shared library."""
         return self.project_root.joinpath("Shared_Library", *parts)

@@ -446,6 +446,34 @@ Example stub:
 
 ---
 
+# Expression and Emotional Range
+
+## Expression — Just the Facts
+
+<!-- ZET:BEGIN EXPRESSION_DESCRIPTION_FACTS -->
+
+[Technical expression rules that apply across this character phase.]
+
+Suggested fields:
+
+* Neutral expression:
+* Eye and brow behavior:
+* Mouth behavior:
+* Expression intensity limits:
+* Forbidden expression drift:
+
+<!-- ZET:END EXPRESSION_DESCRIPTION_FACTS -->
+
+## Expression — Picaresque
+
+<!-- ZET:BEGIN EXPRESSION_DESCRIPTION_PICARESQUE -->
+
+[Flavor description of the character's characteristic emotional range.]
+
+<!-- ZET:END EXPRESSION_DESCRIPTION_PICARESQUE -->
+
+---
+
 # Pose and Gesture
 
 ## Pose and Gesture — Just the Facts
@@ -517,6 +545,18 @@ Face preservation rules:
 * Do not replace the face with a generic fantasy/anime face.
 
 <!-- ZET:END IDENTITY_PRESERVATION_FACE -->
+
+## Identity Preservation — Eyes
+
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_EYES -->
+
+Eye preservation rules:
+
+* Preserve `[specific eye shape and color]`.
+* Preserve `[iris, pupil, highlight, and eyelid characteristics]`.
+* Do not change eye size, spacing, color, or characteristic gaze unless the task explicitly requires it.
+
+<!-- ZET:END IDENTITY_PRESERVATION_EYES -->
 
 ## Identity Preservation — Hair
 
