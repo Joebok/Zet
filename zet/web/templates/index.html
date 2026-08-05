@@ -44,6 +44,18 @@
           Scene
           <select id="header-scene-select"></select>
         </label>
+        <label>
+          Workflow
+          <select id="scene-workflow-menu" aria-label="Scene workflow">
+            <option value="">Scene workflow...</option>
+            <option value="scene-builder">Builder</option>
+            <option value="prompt-review">Prompt / Analysis</option>
+            <option value="render-console">Render Task</option>
+            <option value="local-image-review">Local Variants</option>
+            <option value="render-review">Candidate Review</option>
+            <option value="locked-image">Locked Image</option>
+          </select>
+        </label>
       </div>
       <div class="header-menu">
         <button id="new-menu-button" class="create-action" type="button" aria-expanded="false" aria-controls="new-menu">New ▾</button>
@@ -800,6 +812,15 @@
           <section id="builder-element-aux-section">
             <h3>Aux Resource</h3>
             <label>Resource<select id="builder-element-aux"></select></label>
+            <button id="builder-element-new-aux" type="button">New Resource</button>
+            <div id="builder-element-new-aux-form" class="inline-create-form" hidden>
+              <label>Resource label<input id="builder-element-new-aux-label" type="text"></label>
+              <div class="button-row compact">
+                <button id="builder-element-new-aux-cancel" type="button">Cancel</button>
+                <button id="builder-element-new-aux-save" class="primary-action" type="button">Create</button>
+              </div>
+              <div id="builder-element-new-aux-status" class="status-text" role="status"></div>
+            </div>
           </section>
           <section id="builder-element-scene-section">
             <h3>Scene-Only</h3>
@@ -905,6 +926,7 @@
         <h1>Prompt Inspection</h1>
         <div id="prompt-review-status" class="status-text"></div>
       </div>
+      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="review-layout prompt-review-layout">
         <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">
@@ -958,6 +980,7 @@
         <h1>Image Review</h1>
         <div id="render-review-status" class="status-text"></div>
       </div>
+      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="review-layout render-review-layout">
         <aside class="review-sidebar">
           <div class="button-row two">
@@ -1020,6 +1043,7 @@
         <h1>Render Console</h1>
         <div id="render-console-status" class="status-text"></div>
       </div>
+      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="render-console-layout">
         <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">
@@ -1106,6 +1130,7 @@
         <h1>Local Image Review</h1>
         <div id="local-image-review-status" class="status-text"></div>
       </div>
+      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="local-image-review-layout">
         <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">

@@ -686,6 +686,58 @@ test("scene render tasks open their scene in Scene Builder", async ({ page }) =>
   await expect(page.locator("#scene-builder-status")).toHaveText("Alpha-Story / Opening-Scene");
 });
 
+test("scene workflow keeps context and production tools default to current work", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#header-scene-select").selectOption("Closing-Scene");
+
+  const scopedRequest = page.waitForRequest((request) => request.url().includes("/api/render-console/tasks?"));
+  await page.locator("#scene-workflow-menu").selectOption("render-console");
+  const scopedUrl = new URL((await scopedRequest).url());
+  expect(scopedUrl.searchParams.get("story_slug")).toBe("Alpha-Story");
+  expect(scopedUrl.searchParams.get("scene_slug")).toBe("Closing-Scene");
+  await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
+  await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
+  await expect(page.locator("#render-console-page .production-scope-label")).toContainText("Alpha-Story / Closing-Scene");
+
+  const allRequest = page.waitForRequest((request) => request.url().includes("/api/render-console/tasks?"));
+  await page.locator("#render-console-page .production-scope-toggle").click();
+  const allUrl = new URL((await allRequest).url());
+  expect(allUrl.searchParams.has("story_slug")).toBe(false);
+  expect(allUrl.searchParams.has("scene_slug")).toBe(false);
+  await expect(page.locator("#render-console-page .production-scope-label")).toHaveText("All work");
+
+  await page.locator("#scene-workflow-menu").selectOption("prompt-review");
+  await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
+  await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
+  await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
+
+  await page.locator("#scene-workflow-menu").selectOption("locked-image");
+  await expect(page.locator(".fullscreen-image-overlay")).toBeVisible();
+  await expect(page.locator(".fullscreen-image-overlay > img")).toHaveAttribute("src", /Closing-Scene\.png/);
+  await page.keyboard.press("Escape");
+});
+
+test("Scene Builder creates and selects an auxiliary resource without losing context", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await page.getByRole("button", { name: "Add Element" }).click();
+  await page.locator("#builder-element-resource-type").selectOption("Object");
+  await page.locator("#builder-element-new-aux").click();
+  await page.locator("#builder-element-new-aux-label").fill("Story Lantern");
+  const created = page.waitForResponse((response) => (
+    response.url().includes("/api/auxiliary-resources?") && response.request().method() === "POST"
+  ));
+  await page.locator("#builder-element-new-aux-save").click();
+  const resource = (await (await created).json()).resource;
+
+  await expect(page.locator("#builder-element-modal")).toBeVisible();
+  await expect(page.locator("#builder-element-aux")).toHaveValue(resource.resource_id);
+  await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
+  await expect(page.locator("#header-scene-select")).not.toHaveValue("");
+  await page.locator("#builder-element-add").click();
+  await expect(page.locator(".scene-builder-element-list")).toContainText("Story Lantern");
+});
+
 test("scene prompts and Scene Builder show analysis in a dismissible popup", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator('#scene-table tr[data-scene-slug="Opening-Scene"] .row-selection-button').click();
@@ -737,7 +789,8 @@ test("zine changes support Cancel, Discard, and Save", async ({ page }) => {
 });
 
 test("local image previews use the full fixed review region", async ({ page }) => {
-  await openPage(page, "local-image-review");
+  await openPage(page, "assets");
+  await page.evaluate(() => window.activatePage("local-image-review", { skipAutosave: true }));
   await page.locator("#local-image-review-task-table .row-selection-button").first().click();
   const previews = page.locator(".local-image-review-preview");
   await expect(previews).toHaveCount(3);
@@ -772,7 +825,8 @@ test("Prompts, Render, and Local Images share the same asset sidebar", async ({ 
 });
 
 test("scoped destructive confirmations cancel and complete explicitly", async ({ page }) => {
-  await openPage(page, "local-image-review");
+  await openPage(page, "assets");
+  await page.evaluate(() => window.activatePage("local-image-review", { skipAutosave: true }));
   await page.locator("#local-image-review-task-table .row-selection-button").first().click();
   await page.locator("#local-image-review-clear").click();
   const dialog = page.locator("#confirmation-dialog");

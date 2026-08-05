@@ -1,5 +1,6 @@
 const state = {
   workspace: "character",
+  showAllProductionWork: false,
   workspaceSummary: { character: null, story: null },
   lastWorkspacePages: { character: "onboarding", story: "scenes" },
   characters: [],
@@ -131,6 +132,7 @@ const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
 const headerStorySelect = document.querySelector("#header-story-select");
 const headerSceneSelect = document.querySelector("#header-scene-select");
+const sceneWorkflowMenu = document.querySelector("#scene-workflow-menu");
 const characterContext = document.querySelector("#character-context");
 const storyContext = document.querySelector("#story-context");
 const workspaceCharacter = document.querySelector("#workspace-character");
@@ -522,6 +524,12 @@ const builderElementPhase = document.querySelector("#builder-element-phase");
 const builderElementCostume = document.querySelector("#builder-element-costume");
 const builderElementAuxSection = document.querySelector("#builder-element-aux-section");
 const builderElementAux = document.querySelector("#builder-element-aux");
+const builderElementNewAux = document.querySelector("#builder-element-new-aux");
+const builderElementNewAuxForm = document.querySelector("#builder-element-new-aux-form");
+const builderElementNewAuxLabel = document.querySelector("#builder-element-new-aux-label");
+const builderElementNewAuxCancel = document.querySelector("#builder-element-new-aux-cancel");
+const builderElementNewAuxSave = document.querySelector("#builder-element-new-aux-save");
+const builderElementNewAuxStatus = document.querySelector("#builder-element-new-aux-status");
 const builderElementSceneSection = document.querySelector("#builder-element-scene-section");
 const builderElementSceneName = document.querySelector("#builder-element-scene-name");
 const builderElementCancel = document.querySelector("#builder-element-cancel");
@@ -1272,6 +1280,40 @@ function currentQuery() {
   return params;
 }
 
+function productionQuery() {
+  const params = new URLSearchParams();
+  if (state.showAllProductionWork) return params;
+  if (state.workspace === "story") {
+    if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
+    if (state.selectedSceneSlug) params.set("scene_slug", state.selectedSceneSlug);
+  } else {
+    if (state.character) params.set("character", state.character);
+    if (state.phase) params.set("phase", state.phase);
+  }
+  return params;
+}
+
+function renderProductionScope() {
+  let label = "All work";
+  if (!state.showAllProductionWork) {
+    label = state.workspace === "story"
+      ? `Showing ${state.selectedStorySlug || "current story"} / ${state.selectedSceneSlug || "all scenes"}`
+      : `Showing ${state.character || "current character"} / ${state.phase || "current phase"}`;
+  }
+  for (const item of document.querySelectorAll(".production-scope-label")) item.textContent = label;
+  for (const button of document.querySelectorAll(".production-scope-toggle")) {
+    button.textContent = state.showAllProductionWork ? "Use current context" : "Show all work";
+  }
+}
+
+async function reloadActiveProductionPage() {
+  const page = activePageName();
+  if (page === "prompt-review") await loadPromptReviewTasks();
+  if (page === "render-review") await loadRenderReviewTasks();
+  if (page === "render-console") await loadRenderConsoleTasks();
+  if (page === "local-image-review") await loadLocalImageReviewTasks();
+}
+
 function loadStoredContext() {
   try {
     const raw = window.localStorage.getItem(LAST_CONTEXT_STORAGE_KEY);
@@ -1374,6 +1416,7 @@ function renderHeaderStoryContext() {
   headerSceneSelect.replaceChildren(...sceneOptions);
   headerSceneSelect.value = state.selectedSceneSlug || "";
   headerSceneSelect.disabled = !state.selectedStorySlug || !sceneRows.length;
+  sceneWorkflowMenu.disabled = !state.selectedStorySlug || !state.selectedSceneSlug;
 }
 
 function applyWorkspaceChrome() {
@@ -1389,6 +1432,7 @@ function applyWorkspaceChrome() {
     item.hidden = item.dataset.workspaceItem !== state.workspace;
   }
   renderHeaderStoryContext();
+  renderProductionScope();
 }
 
 function rememberPage(page) {
@@ -1408,11 +1452,32 @@ async function switchWorkspace(workspace) {
   if (workspace === state.workspace) return true;
   return runGuardedTransition(async () => {
     state.workspace = workspace;
+    state.showAllProductionWork = false;
     applyWorkspaceChrome();
     if (workspace === "story" && !state.stories.length) await loadStories();
     const fallback = workspace === "character" ? "onboarding" : (state.selectedStorySlug ? "scenes" : "stories");
     const target = state.lastWorkspacePages[workspace] || fallback;
     await activatePage(target, { skipAutosave: true });
+  });
+}
+
+async function navigateSceneWorkflow(destination) {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  if (destination === "locked-image") {
+    const detail = await fetchJson(
+      `/api/render-review/scenes/${encodeURIComponent(state.selectedStorySlug)}/${encodeURIComponent(state.selectedSceneSlug)}`,
+    );
+    if (!detail.locked_exists || !detail.locked_image_path) {
+      throw new Error("This scene does not have a locked image yet.");
+    }
+    openFullscreenImage(fileUrl(detail.locked_image_path, Date.now().toString()), `${detail.title || state.selectedSceneSlug} locked image`);
+    return;
+  }
+  await activatePage(destination, {
+    skipAutosave: true,
+    preferredReviewKey: destination === "render-review"
+      ? `scene:${state.selectedStorySlug}:${state.selectedSceneSlug}`
+      : null,
   });
 }
 
@@ -4577,6 +4642,35 @@ async function builderLoadElementAuxResources() {
   setSelectOptionsWithLabels(builderElementAux, state.builderElementAuxResources[category].map((item) => ({ value: item.resource_id, label: item.label || item.resource_id })));
 }
 
+function closeBuilderElementAuxForm() {
+  builderElementNewAuxForm.hidden = true;
+  builderElementNewAuxLabel.value = "";
+  builderElementNewAuxStatus.textContent = "";
+}
+
+async function createBuilderElementAuxResource() {
+  const category = builderAuxCategoryForResourceType(builderElementResourceType.value || "");
+  const label = builderElementNewAuxLabel.value.trim();
+  if (!category || !label) {
+    builderElementNewAuxStatus.textContent = "Resource label is required.";
+    return;
+  }
+  builderElementNewAuxSave.disabled = true;
+  builderElementNewAuxStatus.textContent = "Creating resource...";
+  try {
+    const params = new URLSearchParams({ category, label });
+    const payload = await fetchJson(`/api/auxiliary-resources?${params.toString()}`, { method: "POST" });
+    state.builderElementAuxResources[category] = payload.resources || [];
+    await builderLoadElementAuxResources();
+    builderElementAux.value = payload.resource?.resource_id || "";
+    closeBuilderElementAuxForm();
+  } catch (error) {
+    builderElementNewAuxStatus.textContent = error.message;
+  } finally {
+    builderElementNewAuxSave.disabled = false;
+  }
+}
+
 async function openBuilderElementDialog() {
   setSelectOptionsWithLabels(builderElementResourceType, (state.sceneBuilderOptions.resource_type || []).map((item) => ({ value: item.value, label: item.label })));
   builderElementResourceType.value = "Character";
@@ -4585,6 +4679,7 @@ async function openBuilderElementDialog() {
   setSelectOptions(builderElementPhase, state.phasesByCharacter[builderElementCharacter.value] || []);
   builderElementPhase.value = state.phase || builderElementPhase.options[0]?.value || "";
   builderElementSceneName.value = "";
+  closeBuilderElementAuxForm();
   builderUpdateElementModalSections();
   await builderLoadElementCostumes();
   await builderLoadElementAuxResources();
@@ -5843,7 +5938,7 @@ function movePhaseComparison(delta) {
 
 async function loadPromptReviewTasks(preferredAskId = null) {
   promptReviewStatus.textContent = "Loading prompt reviews...";
-  const payload = await fetchJson(`/api/render-console/tasks?${currentQuery().toString()}`);
+  const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
   state.promptReviewTasks = payload.tasks || [];
   const taskIds = new Set(state.promptReviewTasks.map((task) => task.ask_id));
   state.selectedPromptReviewAskId =
@@ -5873,7 +5968,7 @@ function renderPromptReviewTaskTable() {
 async function selectPromptReviewTask(askId) {
   state.selectedPromptReviewAskId = askId;
   updateSelectableRows(promptReviewTaskBody, (row) => row.dataset.askId === state.selectedPromptReviewAskId);
-  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`);
+  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`);
   renderPromptReview(detail);
 }
 
@@ -6268,7 +6363,7 @@ async function copyText(value, label = "Copied.") {
 
 async function loadRenderReviewTasks(preferredReviewKey = null) {
   renderReviewStatus.textContent = "Loading render reviews...";
-  const payload = await fetchJson(`/api/render-review/tasks?${currentQuery().toString()}`);
+  const payload = await fetchJson(`/api/render-review/tasks?${productionQuery().toString()}`);
   state.renderReviewTasks = payload.tasks || [];
   const taskKeys = new Set(state.renderReviewTasks.map((task) => task.review_key));
   state.selectedRenderReviewKey =
@@ -6317,7 +6412,7 @@ function renderReviewEndpoint(task, action = "") {
   if (task.review_kind === "scene") {
     return `/api/render-review/scenes/${encodeURIComponent(task.story_slug)}/${encodeURIComponent(task.scene_slug)}${suffix}`;
   }
-  return `/api/render-review/${task.asset_id}${suffix}?${currentQuery().toString()}`;
+  return `/api/render-review/${task.asset_id}${suffix}?${productionQuery().toString()}`;
 }
 
 async function selectRenderReview(reviewKey) {
@@ -6469,7 +6564,7 @@ async function promoteRenderReview() {
   const task = selectedRenderReviewTask();
   if (!task) return;
   const replacingLockedImage = task.review_kind === "asset" && Boolean(state.renderReviewDetail?.exists?.locked_image);
-  const params = currentQuery();
+  const params = productionQuery();
   if (replacingLockedImage) {
     const confirmed = window.confirm("A locked image already exists for this asset. Replace it with the candidate image?");
     if (!confirmed) {
@@ -7442,7 +7537,7 @@ async function runBatchRenderReset() {
 
 async function loadRenderConsoleTasks(preferredAskId = null) {
   renderConsoleStatus.textContent = "Loading render tasks...";
-  const payload = await fetchJson(`/api/render-console/tasks?${currentQuery().toString()}`);
+  const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
   state.renderConsoleTasks = payload.tasks || [];
   const askIds = new Set(state.renderConsoleTasks.map((task) => task.ask_id));
   state.selectedRenderConsoleAskId =
@@ -7472,7 +7567,7 @@ function renderRenderConsoleTaskTable() {
 async function selectRenderConsoleTask(askId) {
   state.selectedRenderConsoleAskId = askId;
   updateSelectableRows(renderConsoleTaskBody, (row) => row.dataset.askId === state.selectedRenderConsoleAskId);
-  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`);
+  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`);
   renderRenderConsoleDetail(detail);
 }
 
@@ -7624,7 +7719,7 @@ async function saveRenderConsoleHelperPrompt() {
   renderConsoleSaveHelper.disabled = true;
   try {
     const payload = await fetchJson(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/gpt-helper-prompt?${currentQuery().toString()}`,
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/gpt-helper-prompt?${productionQuery().toString()}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7651,7 +7746,7 @@ async function runRenderConsoleLocalAction(action) {
   renderConsoleClearLocalTest.disabled = true;
   try {
     const payload = await fetchJson(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/${action}?${currentQuery().toString()}`,
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/${action}?${productionQuery().toString()}`,
       { method: "POST" },
     );
     renderRenderConsoleDetail(payload);
@@ -7713,7 +7808,7 @@ async function clearRenderConsoleLocalTest() {
   renderConsoleClearLocalTest.disabled = true;
   try {
     const payload = await fetchJson(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render?${currentQuery().toString()}`,
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render?${productionQuery().toString()}`,
       { method: "DELETE" },
     );
     renderRenderConsoleDetail(payload);
@@ -7726,7 +7821,7 @@ async function clearRenderConsoleLocalTest() {
 
 async function loadLocalImageReviewTasks(preferredAskId = null) {
   localImageReviewStatus.textContent = "Loading render tasks...";
-  const payload = await fetchJson(`/api/render-console/tasks?${currentQuery().toString()}`);
+  const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
   state.localImageReviewTasks = payload.tasks || [];
   const askIds = new Set(state.localImageReviewTasks.map((task) => task.ask_id));
   state.selectedLocalImageReviewAskId =
@@ -7757,7 +7852,7 @@ async function selectLocalImageReviewTask(askId) {
   state.selectedLocalImageReviewAskId = askId;
   updateSelectableRows(localImageReviewTaskBody, (row) => row.dataset.askId === askId);
   const detail = await fetchJson(
-    `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${currentQuery().toString()}`,
+    `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`,
   );
   renderLocalImageReviewDetail(detail);
 }
@@ -7844,7 +7939,7 @@ async function generateLocalImageReviewImages() {
   localImageReviewGenerate.disabled = true;
   localImageReviewClear.disabled = true;
   localImageReviewMessage.textContent = "Queueing local images...";
-  const params = currentQuery();
+  const params = productionQuery();
   params.set("count", localImageReviewCount.value || "1");
   try {
     const payload = await fetchJson(
@@ -7870,7 +7965,7 @@ async function generateLocalImageReviewImagesForAllModels() {
   localImageReviewGenerateAllModels.disabled = true;
   localImageReviewClear.disabled = true;
   localImageReviewMessage.textContent = "Refreshing checkpoints and queueing local images...";
-  const params = currentQuery();
+  const params = productionQuery();
   params.set("count", localImageReviewCount.value || "1");
   try {
     if (settingLocalRenderBackend.value === "comfyui") {
@@ -7916,7 +8011,7 @@ async function clearLocalImageReviewImages() {
   localImageReviewMessage.textContent = "Clearing local images...";
   try {
     const payload = await fetchJson(
-      `/api/local-image-review/tasks/${encodeURIComponent(state.selectedLocalImageReviewAskId)}/images?${currentQuery().toString()}`,
+      `/api/local-image-review/tasks/${encodeURIComponent(state.selectedLocalImageReviewAskId)}/images?${productionQuery().toString()}`,
       { method: "DELETE" },
     );
     renderLocalImageReviewDetail(payload);
@@ -8028,7 +8123,7 @@ async function copyRenderConsoleLocalApiParams() {
   renderConsoleCopyLocalApiParams.disabled = true;
   try {
     const payload = await fetchJson(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render/api-params?${currentQuery().toString()}`,
+      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/local-test-render/api-params?${productionQuery().toString()}`,
     );
     renderConsoleLocalApiText.value = payload.text || "";
     renderConsoleLocalApiPopover.hidden = false;
@@ -8062,7 +8157,7 @@ async function saveRenderConsoleImage() {
   renderConsoleSaveImage.disabled = true;
   renderConsoleSaveStatus.textContent = "Saving image answer...";
   try {
-    const params = currentQuery();
+    const params = productionQuery();
     params.set("render_comment", renderConsoleAnswerComment.value || "");
     const response = await fetch(
       `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/answer-image?${params.toString()}`,
@@ -8109,7 +8204,7 @@ async function failRenderConsoleTask() {
   renderConsoleFailTask.disabled = true;
   renderConsoleFailStatus.textContent = "Writing failed answer...";
   try {
-    const response = await fetch(`/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/fail?${currentQuery().toString()}`, {
+    const response = await fetch(`/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/fail?${productionQuery().toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: renderConsoleFailReason.value || "" }),
@@ -8444,6 +8539,23 @@ for (const button of actionButtons) {
 
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
+sceneWorkflowMenu.addEventListener("change", async () => {
+  const destination = sceneWorkflowMenu.value;
+  sceneWorkflowMenu.value = "";
+  if (!destination) return;
+  try {
+    await runGuardedTransition(() => navigateSceneWorkflow(destination));
+  } catch (error) {
+    window.alert(error.message);
+  }
+});
+for (const button of document.querySelectorAll(".production-scope-toggle")) {
+  button.addEventListener("click", async () => {
+    state.showAllProductionWork = !state.showAllProductionWork;
+    renderProductionScope();
+    await reloadActiveProductionPage();
+  });
+}
 newMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleNewMenu();
@@ -8474,6 +8586,7 @@ headerStorySelect.addEventListener("change", async () => {
   }
   state.selectedStorySlug = requestedStory;
   state.selectedSceneSlug = null;
+  state.showAllProductionWork = false;
   state.scenes = [];
   await loadStories(requestedStory);
   const scenes = state.workspaceSummary.story?.scenes || [];
@@ -8483,6 +8596,7 @@ headerStorySelect.addEventListener("change", async () => {
   renderStoryOverview();
   if (activePageName() === "scenes") await loadScenesPage();
   if (activePageName() === "scene-builder" && state.selectedSceneSlug) await openSceneBuilder();
+  if (PRODUCTION_PAGES.has(activePageName())) await reloadActiveProductionPage();
 });
 headerSceneSelect.addEventListener("change", async () => {
   const requestedScene = headerSceneSelect.value || null;
@@ -8493,11 +8607,13 @@ headerSceneSelect.addEventListener("change", async () => {
     return;
   }
   state.selectedSceneSlug = requestedScene;
+  state.showAllProductionWork = false;
   saveStoredStoryContext();
   renderHeaderStoryContext();
   renderStoryOverview();
   if (activePageName() === "scenes" && requestedScene) await loadSceneDetail(state.selectedStorySlug, requestedScene);
   if (activePageName() === "scene-builder" && requestedScene) await openSceneBuilder();
+  if (PRODUCTION_PAGES.has(activePageName())) await reloadActiveProductionPage();
 });
 characterRecommendedAction.addEventListener("click", () => runGuardedTransition(async () => {
   const destination = characterRecommendedAction.dataset.destination || "onboarding";
@@ -8735,6 +8851,12 @@ builderElementCancel.addEventListener("click", () => {
   builderElementModal.close();
 });
 builderElementAdd.addEventListener("click", builderAddElementFromDialog);
+builderElementNewAux.addEventListener("click", () => {
+  builderElementNewAuxForm.hidden = false;
+  builderElementNewAuxLabel.focus();
+});
+builderElementNewAuxCancel.addEventListener("click", closeBuilderElementAuxForm);
+builderElementNewAuxSave.addEventListener("click", createBuilderElementAuxResource);
 auxResourceCategory.addEventListener("change", () => {
   clearAuxiliaryResourceForm();
   loadAuxiliaryResources();

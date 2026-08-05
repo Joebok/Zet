@@ -148,6 +148,10 @@ body {
   gap: 8px;
 }
 
+#scene-workflow-menu {
+  min-width: 148px;
+}
+
 .context-controls label {
   color: #ffffff;
 }
@@ -1398,6 +1402,37 @@ summary:focus-visible {
   max-width: 920px;
   overflow: auto;
   padding: 12px;
+}
+
+.inline-create-form {
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+}
+
+.production-scope {
+  align-items: center;
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.production-scope-label {
+  color: var(--text-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.production-scope-toggle {
+  flex: 0 0 auto;
 }
 
 .scene-builder-table {
