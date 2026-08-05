@@ -87,6 +87,7 @@ const state = {
   selectedBuilderPlacementId: null,
   selectedBuilderElementId: null,
   sceneBuilderRendering: false,
+  builderResponsiveSection: "elements",
   builderImagePickerReferences: [],
   builderImagePickerSearch: "",
   builderElementAuxResources: {},
@@ -139,6 +140,7 @@ const workspaceCharacter = document.querySelector("#workspace-character");
 const workspaceStory = document.querySelector("#workspace-story");
 const characterNavigation = document.querySelector("#character-navigation");
 const storyNavigation = document.querySelector("#story-navigation");
+const responsiveSectionMenu = document.querySelector("#responsive-section-menu");
 const characterProductionMenu = document.querySelector("#character-production-menu");
 const storyProductionMenu = document.querySelector("#story-production-menu");
 const newMenuButton = document.querySelector("#new-menu-button");
@@ -173,6 +175,7 @@ const characterOverviewMetrics = document.querySelector("#character-overview-met
 const characterRecommendedLabel = document.querySelector("#character-recommended-label");
 const characterRecommendedAction = document.querySelector("#character-recommended-action");
 const characterSetupDetails = document.querySelector("#character-setup-details");
+const characterPhoneViewer = document.querySelector("#character-phone-viewer");
 const assetFilterTodo = document.querySelector("#asset-filter-todo");
 const assetFilterHideBase = document.querySelector("#asset-filter-hide-base");
 const assetFilterPipeline = document.querySelector("#asset-filter-pipeline");
@@ -438,6 +441,13 @@ const expressionPreview = document.querySelector("#expression-preview");
 const storyStatus = document.querySelector("#story-status");
 const storyOverviewMetrics = document.querySelector("#story-overview-metrics");
 const storyOverviewScenes = document.querySelector("#story-overview-scenes");
+const storyPhoneViewer = document.querySelector("#story-phone-viewer");
+const storyPhoneViewerTitle = document.querySelector("#story-phone-viewer-title");
+const storyPhoneViewerState = document.querySelector("#story-phone-viewer-state");
+const storyPhoneViewerImage = document.querySelector("#story-phone-viewer-image");
+const storyPhonePrevious = document.querySelector("#story-phone-previous");
+const storyPhoneNext = document.querySelector("#story-phone-next");
+const storyPhonePosition = document.querySelector("#story-phone-position");
 const storyRecommendedLabel = document.querySelector("#story-recommended-label");
 const storyRecommendedAction = document.querySelector("#story-recommended-action");
 const storyMessage = document.querySelector("#story-message");
@@ -1419,6 +1429,45 @@ function renderHeaderStoryContext() {
   sceneWorkflowMenu.disabled = !state.selectedStorySlug || !state.selectedSceneSlug;
 }
 
+const RESPONSIVE_WORKSPACE_PAGES = {
+  character: [
+    ["onboarding", "Overview"], ["assets", "Assets"], ["identity-keys", "Identity Keys"],
+    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["expressions", "Expressions"],
+    ["phase-comparison", "Phase Comparison"], ["manifest", "Manifest"], ["prompt-review", "Prompts"],
+    ["render-console", "Render"], ["local-image-review", "Local Images"], ["render-review", "Image Review"],
+  ],
+  story: [
+    ["stories", "Overview"], ["scenes", "Scenes"], ["scene-builder", "Scene Builder"],
+    ["auxiliary-resources", "Aux Images"], ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
+    ["render-console", "Render Console"], ["local-image-review", "Local Variants"], ["render-review", "Image Review"],
+  ],
+};
+
+const RESPONSIVE_TOOL_PAGES = [
+  ["template-editor", "Template Editor"], ["ai-controls", "AI Controls"],
+  ["local-image-config", "Image Config"], ["pipeline-inspection", "Pipeline Inspection"],
+  ["pipeline-controls", "Pipeline Controls"],
+];
+
+function renderResponsiveSectionMenu(selectedPage = activePageName() || state.lastWorkspacePages[state.workspace]) {
+  responsiveSectionMenu.replaceChildren();
+  const sectionGroup = document.createElement("optgroup");
+  sectionGroup.label = state.workspace === "story" ? "Story Telling" : "Character Development";
+  for (const [value, label] of RESPONSIVE_WORKSPACE_PAGES[state.workspace]) {
+    sectionGroup.append(option(value, label));
+  }
+  const toolsGroup = document.createElement("optgroup");
+  toolsGroup.label = "Tools";
+  for (const [value, label] of RESPONSIVE_TOOL_PAGES) toolsGroup.append(option(value, label));
+  responsiveSectionMenu.append(sectionGroup, toolsGroup);
+  responsiveSectionMenu.value = Array.from(responsiveSectionMenu.options).some((item) => item.value === selectedPage) ? selectedPage : "";
+}
+
+function syncResponsiveChrome() {
+  toolbarSettingsButton.textContent = window.matchMedia("(max-width: 600px)").matches ? "More ▾" : "Tools ▾";
+  renderResponsiveSectionMenu();
+}
+
 function applyWorkspaceChrome() {
   const storyActive = state.workspace === "story";
   workspaceCharacter.setAttribute("aria-pressed", storyActive ? "false" : "true");
@@ -1433,6 +1482,7 @@ function applyWorkspaceChrome() {
   }
   renderHeaderStoryContext();
   renderProductionScope();
+  syncResponsiveChrome();
 }
 
 function rememberPage(page) {
@@ -1494,6 +1544,7 @@ function overviewMetric(value, label) {
 
 function renderCharacterOverview() {
   const summary = state.workspaceSummary.character;
+  renderCharacterPhoneViewer();
   characterWorkflow.replaceChildren();
   characterOverviewMetrics.replaceChildren();
   if (!summary) {
@@ -1527,16 +1578,96 @@ function renderCharacterOverview() {
   characterRecommendedAction.dataset.destination = summary.recommended_destination;
 }
 
+function renderCharacterPhoneViewer() {
+  characterPhoneViewer.replaceChildren();
+  const preview = state.headerPreviews?.[state.character]?.[state.phase] || null;
+  const heading = document.createElement("div");
+  heading.className = "phone-viewer-heading";
+  const title = document.createElement("h2");
+  title.textContent = [state.character, state.phase].filter(Boolean).join(" · ") || "Character references";
+  heading.append(title);
+  const imageHost = document.createElement("div");
+  imageHost.className = "phone-viewer-image";
+  if (preview?.image_path) {
+    const image = document.createElement("img");
+    image.src = fileUrl(preview.image_path, preview.updated_at || Date.now().toString());
+    image.alt = `${title.textContent} reference`;
+    imageHost.append(enableFullscreenImage(image));
+  } else {
+    imageHost.textContent = "No locked character reference yet.";
+  }
+  const navigation = document.createElement("div");
+  navigation.className = "phone-viewer-navigation character-phone-links";
+  for (const [page, label] of [["assets", "References"], ["costumes", "Costumes"], ["turnarounds", "Turnarounds"]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "navigation-action";
+    button.dataset.characterViewPage = page;
+    button.textContent = label;
+    navigation.append(button);
+  }
+  characterPhoneViewer.append(heading, imageHost, navigation);
+}
+
+function selectedStoryOverviewScene() {
+  const scenes = state.workspaceSummary.story?.scenes || [];
+  return scenes.find((scene) => scene.slug === state.selectedSceneSlug) || scenes[0] || null;
+}
+
+function renderStoryPhoneViewer() {
+  const scenes = state.workspaceSummary.story?.scenes || [];
+  const scene = selectedStoryOverviewScene();
+  storyPhoneViewerImage.replaceChildren();
+  storyPhoneViewerTitle.textContent = scene?.title || "No scene selected";
+  storyPhoneViewerState.textContent = scene?.image_state || "Not rendered";
+  storyPhoneViewerState.className = `status-badge ${scene?.candidate_pending ? "review" : scene?.image_path ? "ready" : ""}`;
+  const index = scene ? scenes.findIndex((item) => item.slug === scene.slug) : -1;
+  storyPhonePosition.textContent = index >= 0 ? `${index + 1} of ${scenes.length}` : "No scenes";
+  storyPhonePrevious.disabled = index <= 0;
+  storyPhoneNext.disabled = index < 0 || index >= scenes.length - 1;
+  if (!scene?.image_path) {
+    storyPhoneViewerImage.textContent = scene ? "No image has been rendered for this scene." : "Add a scene to begin.";
+    return;
+  }
+  const image = document.createElement("img");
+  image.src = fileUrl(scene.image_path, `${scene.slug}|${scene.image_state}`);
+  image.alt = `${scene.title} ${scene.image_state.toLowerCase()} image`;
+  storyPhoneViewerImage.append(enableFullscreenImage(image, () => ({
+    storySlug: state.selectedStorySlug,
+    sceneSlug: scene.slug,
+    scenes,
+    document: {
+      candidate_pending: scene.candidate_pending,
+      story: { slug: state.selectedStorySlug },
+      scene: { slug: scene.slug },
+    },
+  })));
+}
+
+function moveStoryPhoneScene(delta) {
+  const scenes = state.workspaceSummary.story?.scenes || [];
+  const current = selectedStoryOverviewScene();
+  const index = scenes.findIndex((scene) => scene.slug === current?.slug);
+  const next = scenes[index + delta];
+  if (!next) return;
+  state.selectedSceneSlug = next.slug;
+  saveStoredStoryContext();
+  renderHeaderStoryContext();
+  renderStoryOverview();
+}
+
 function renderStoryOverview() {
   const summary = state.workspaceSummary.story;
   storyOverviewMetrics.replaceChildren();
   storyOverviewScenes.replaceChildren();
   if (!summary?.story_slug) {
+    renderStoryPhoneViewer();
     storyOverviewMetrics.append(overviewMetric(0, "Scenes"));
     storyRecommendedLabel.textContent = "Create a story";
     storyRecommendedAction.dataset.destination = "stories";
     return;
   }
+  renderStoryPhoneViewer();
   storyOverviewMetrics.append(
     overviewMetric(summary.scene_count, "Scenes"),
     overviewMetric(summary.locked_count, "Locked images"),
@@ -2040,6 +2171,7 @@ async function selectAsset(assetId) {
   state.selectedAssetId = Number(assetId);
   updateSelectableRows(assetTableBody, (row) => Number(row.dataset.assetId) === state.selectedAssetId);
   const detail = await fetchJson(`/api/assets/${state.selectedAssetId}?${currentQuery().toString()}`);
+  if (window.matchMedia("(max-width: 600px)").matches) state.assetDetailMode = "locked";
   renderDetail(detail);
 }
 
@@ -2507,6 +2639,7 @@ async function activatePage(page, options = {}) {
       "active",
       !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection", "template-editor"].includes(page),
     );
+  renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   if (page === "prompt-review") {
@@ -5021,8 +5154,10 @@ function builderRenderMoreMenu() {
     : "analyze-prompt";
   return `
     <details class="scene-builder-more">
-      <summary>More</summary>
+      <summary><span class="builder-more-desktop-label">More</span><span class="builder-more-responsive-label">Actions</span></summary>
       <div class="scene-builder-menu-panel">
+        <button type="button" class="builder-responsive-action" data-builder-action="save">Save</button>
+        <button type="button" class="builder-responsive-action primary-action" data-builder-action="render">Render</button>
         <button type="button" data-builder-action="continue-from">Continue From…</button>
         <button type="button" data-builder-action="${analysisAction}">Prompt Analysis</button>
         <button type="button" data-builder-action="open-page" data-builder-page="scenes">Scene Management</button>
@@ -5032,6 +5167,35 @@ function builderRenderMoreMenu() {
       </div>
     </details>
   `;
+}
+
+const BUILDER_RESPONSIVE_SECTIONS = [
+  ["scene", "Scene"],
+  ["elements", "Elements"],
+  ["dialogue", "Dialogue"],
+  ["environment", "Environment"],
+  ["advanced", "Advanced"],
+];
+
+function builderRenderSectionSwitcher() {
+  return `<div class="builder-section-switcher" role="tablist" aria-label="Builder section">${BUILDER_RESPONSIVE_SECTIONS.map(([value, label]) => `<button type="button" role="tab" aria-selected="${value === state.builderResponsiveSection}" data-builder-action="builder-section" data-builder-section="${value}">${label}</button>`).join("")}</div>`;
+}
+
+function builderPhoneSectionToggle(value, label) {
+  const expanded = value === state.builderResponsiveSection;
+  return `<button type="button" class="builder-phone-section-toggle" aria-expanded="${expanded}" aria-controls="builder-panel-${value}" data-builder-action="builder-section" data-builder-section="${value}">${label}<span aria-hidden="true">${expanded ? "−" : "+"}</span></button>`;
+}
+
+function setBuilderResponsiveSection(section) {
+  if (!BUILDER_RESPONSIVE_SECTIONS.some(([value]) => value === section)) return;
+  state.builderResponsiveSection = section;
+  sceneBuilderPanel.dataset.builderResponsiveSection = section;
+  for (const button of sceneBuilderPanel.querySelectorAll('[data-builder-action="builder-section"]')) {
+    const selected = button.dataset.builderSection === section;
+    button.setAttribute(button.getAttribute("role") === "tab" ? "aria-selected" : "aria-expanded", selected ? "true" : "false");
+    const indicator = button.querySelector("span[aria-hidden]");
+    if (indicator) indicator.textContent = selected ? "−" : "+";
+  }
 }
 
 function builderRenderDatalists() {
@@ -5063,8 +5227,10 @@ function renderSceneBuilder() {
         ${builderRenderMoreMenu()}
       </div>
     </div>
+    ${builderRenderSectionSwitcher()}
     <div class="scene-builder-grid">
-      <section class="scene-builder-section scene-builder-foundation" aria-label="Scene foundation">
+      ${builderPhoneSectionToggle("scene", "Scene")}
+      <section id="builder-panel-scene" class="scene-builder-section scene-builder-foundation" data-builder-section-panel="scene" aria-label="Scene foundation">
         <div class="scene-builder-card scene-builder-story-beat">
           <span class="eyebrow">Scene foundation</span>
           <h3>Story Beat</h3>
@@ -5081,19 +5247,28 @@ function renderSceneBuilder() {
           </div>
         </div>
         ${builderRenderComposition()}
-        ${builderRenderEnvironment()}
       </section>
-      <section class="scene-builder-section scene-builder-elements" aria-label="Element workspace">
+      ${builderPhoneSectionToggle("elements", "Elements")}
+      <section id="builder-panel-elements" class="scene-builder-section scene-builder-elements" data-builder-section-panel="elements" aria-label="Element workspace">
         ${builderRenderElements()}
         ${builderRenderElementWorkspace()}
       </section>
-      <section class="scene-builder-section scene-builder-relationships" aria-label="Relationships">
+      ${builderPhoneSectionToggle("dialogue", "Dialogue")}
+      <section id="builder-panel-dialogue" class="scene-builder-section scene-builder-relationships" data-builder-section-panel="dialogue" aria-label="Dialogue and relationships">
         ${builderRenderDialogueEditor()}
         ${builderRenderInteractions()}
+      </section>
+      ${builderPhoneSectionToggle("environment", "Environment")}
+      <section id="builder-panel-environment" class="scene-builder-section scene-builder-environment" data-builder-section-panel="environment" aria-label="Environment">
+        ${builderRenderEnvironment()}
+      </section>
+      ${builderPhoneSectionToggle("advanced", "Advanced")}
+      <section id="builder-panel-advanced" class="scene-builder-section scene-builder-advanced-panel" data-builder-section-panel="advanced" aria-label="Advanced overrides">
         ${builderRenderOverrides()}
       </section>
     </div>
   `;
+  setBuilderResponsiveSection(state.builderResponsiveSection);
   state.sceneBuilderRendering = false;
   updateDirtyIndicators();
 }
@@ -5121,6 +5296,7 @@ async function openSceneBuilder() {
     state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis`);
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
+    state.builderResponsiveSection = "elements";
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes();
     renderSceneBuilder();
@@ -5360,6 +5536,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     builderLoadSelectedElementCostumes().then(() => renderSceneBuilder()).catch((error) => showSceneBuilderMessage(error.message, "error"));
   } else {
     const action = target.dataset.builderAction;
+    if (action === "builder-section") setBuilderResponsiveSection(target.dataset.builderSection);
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
@@ -7004,6 +7181,7 @@ async function promoteTurnaround(target = null) {
 
 function renderRows(tbody, rows, columns) {
   tbody.replaceChildren();
+  tbody.closest("table")?.classList.add("responsive-list-table");
   if (!rows || rows.length === 0) {
     renderEmptyRow(tbody, Math.max(1, columns.length), "No items.");
     return;
@@ -7012,6 +7190,7 @@ function renderRows(tbody, rows, columns) {
     const row = document.createElement("tr");
     for (const column of columns) {
       const cell = document.createElement("td");
+      cell.dataset.label = humanizeHeading(column);
       const value = item[column] ?? "";
       if (/(?:^|_)(?:created|updated|responded)_at$/.test(column) && value !== "") {
         const time = document.createElement("time");
@@ -8539,6 +8718,21 @@ for (const button of actionButtons) {
 
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
+responsiveSectionMenu.addEventListener("change", async () => {
+  const page = responsiveSectionMenu.value;
+  if (!page) return;
+  if (!(await runGuardedTransition(() => activatePage(page, { skipAutosave: true })))) {
+    renderResponsiveSectionMenu();
+  }
+});
+characterPhoneViewer.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-character-view-page]");
+  if (!button) return;
+  await runGuardedTransition(() => activatePage(button.dataset.characterViewPage, { skipAutosave: true }));
+});
+storyPhonePrevious.addEventListener("click", () => moveStoryPhoneScene(-1));
+storyPhoneNext.addEventListener("click", () => moveStoryPhoneScene(1));
+window.matchMedia("(max-width: 600px)").addEventListener("change", syncResponsiveChrome);
 sceneWorkflowMenu.addEventListener("change", async () => {
   const destination = sceneWorkflowMenu.value;
   sceneWorkflowMenu.value = "";
@@ -9128,6 +9322,19 @@ pipelineInspectionSearch.addEventListener("input", renderPipelineInspectionList)
 pipelineInspectionCopy.addEventListener("click", copyPipelineInspectionFile);
 pipelineInspectionOpenFolder.addEventListener("click", openPipelineInspectionFolder);
 
+function annotateResponsiveTables(root = document) {
+  for (const table of root.querySelectorAll("table")) {
+    const labels = Array.from(table.querySelectorAll(":scope > thead th"), (heading) => heading.textContent.trim());
+    if (!labels.length) continue;
+    table.classList.add("responsive-list-table");
+    for (const row of table.querySelectorAll(":scope > tbody > tr")) {
+      for (const [index, cell] of Array.from(row.children).entries()) {
+        cell.dataset.label = labels[index] || "Item";
+      }
+    }
+  }
+}
+
 async function main() {
   for (const status of document.querySelectorAll(".status-text")) {
     status.setAttribute("role", "status");
@@ -9139,6 +9346,11 @@ async function main() {
     heading.title = raw;
     heading.textContent = humanizeHeading(raw);
   }
+  annotateResponsiveTables();
+  new MutationObserver(() => annotateResponsiveTables()).observe(document.querySelector("main"), {
+    childList: true,
+    subtree: true,
+  });
   sourceEditorText.placeholder = "Open an editable source from Prompt Inspection.";
   setupTabs();
   loadStoredAssetFilters();

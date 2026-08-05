@@ -84,9 +84,21 @@ assets["assets"].extend(
             "actor": "PYTHON",
             "final_image_output": "square.png",
         },
+        {
+            **assets["assets"][0],
+            "asset_id": 4,
+            "pipeline": "Head-Fitment",
+            "body_view": "Front-Left-3-4",
+            "head_view": "Front-Left-3-4",
+            "asset_state": "LOCKED",
+            "pipeline_stage": "LOCKED",
+            "actor": "HUMAN_AGENT",
+            "final_image_output": "head-preview.png",
+        },
     ]
 )
 assets_path.write_text(json.dumps(assets, indent=2) + "\n", encoding="utf-8")
+Image.new("RGB", (600, 900), "goldenrod").save(root / "Assets" / "Test" / "Adult" / "head-preview.png")
 
 pipeline_root = root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_"
 for asset_id, name, size, color in (

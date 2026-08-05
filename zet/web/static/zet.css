@@ -263,6 +263,15 @@ button:not(:disabled):hover,
   white-space: nowrap;
 }
 
+.responsive-section-menu,
+.phone-workspace-viewer,
+.builder-section-switcher,
+.builder-phone-section-toggle,
+.builder-more-responsive-label,
+.builder-responsive-action {
+  display: none;
+}
+
 .workspace-navigation {
   align-items: center;
   display: flex;
@@ -485,6 +494,34 @@ main {
 .story-overview-scene strong,
 .story-overview-scene span {
   overflow-wrap: anywhere;
+}
+
+.phone-viewer-heading,
+.phone-viewer-navigation {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.phone-viewer-image {
+  align-items: center;
+  background: var(--chrome);
+  border-radius: 8px;
+  color: #ffffff;
+  display: flex;
+  justify-content: center;
+  min-height: 260px;
+  overflow: hidden;
+  text-align: center;
+}
+
+.phone-viewer-image .fullscreen-image-button,
+.phone-viewer-image img {
+  height: 100%;
+  max-height: 440px;
+  object-fit: contain;
+  width: 100%;
 }
 
 .story-overview-scene span {
@@ -1195,7 +1232,30 @@ summary:focus-visible {
 .scene-builder-grid {
   display: grid;
   gap: 12px;
+  grid-template-areas:
+    "scene elements dialogue"
+    "environment elements advanced";
   grid-template-columns: minmax(280px, 0.85fr) minmax(400px, 1.25fr) minmax(300px, 0.9fr);
+}
+
+.scene-builder-foundation {
+  grid-area: scene;
+}
+
+.scene-builder-elements {
+  grid-area: elements;
+}
+
+.scene-builder-relationships {
+  grid-area: dialogue;
+}
+
+.scene-builder-environment {
+  grid-area: environment;
+}
+
+.scene-builder-advanced-panel {
+  grid-area: advanced;
 }
 
 .scene-builder-section {
@@ -1450,7 +1510,12 @@ summary:focus-visible {
 
 @media (max-width: 1200px) {
   .scene-builder-grid {
+    grid-template-areas: none;
     grid-template-columns: 1fr;
+  }
+
+  .scene-builder-grid > .scene-builder-section {
+    grid-area: auto;
   }
 }
 
@@ -2815,7 +2880,50 @@ dd {
 }
 
 @media (max-width: 1100px) {
+  button,
+  select,
+  input:not([type="checkbox"]),
+  .button-link,
+  summary {
+    min-height: 44px;
+  }
+
+  select,
+  input,
+  textarea,
+  pre,
+  code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    white-space: pre-wrap;
+  }
+
+  table {
+    table-layout: fixed;
+  }
+
+  th,
+  td {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .asset-table-panel,
+  .asset-detail-panel,
+  .review-sidebar,
+  .review-main,
+  .review-actions,
+  .control-panel {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
   .asset-layout,
+  .onboarding-layout,
   .identity-layout,
   .costume-layout,
   .story-layout,
@@ -2877,7 +2985,108 @@ dd {
   }
 
   .workspace-navigation {
-    flex-wrap: wrap;
+    display: none;
+  }
+
+  .responsive-section-menu {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .tabs {
+    flex-wrap: nowrap;
+  }
+
+  .toolbar-menu {
+    flex: 0 0 auto;
+  }
+
+  .builder-section-switcher {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .builder-section-switcher button[aria-selected="true"] {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary-hover);
+    font-weight: 700;
+  }
+
+  .scene-builder-grid {
+    display: block;
+  }
+
+  .scene-builder-grid > .scene-builder-section {
+    display: none;
+  }
+
+  .scene-builder-panel[data-builder-responsive-section="scene"] [data-builder-section-panel="scene"],
+  .scene-builder-panel[data-builder-responsive-section="elements"] [data-builder-section-panel="elements"],
+  .scene-builder-panel[data-builder-responsive-section="dialogue"] [data-builder-section-panel="dialogue"],
+  .scene-builder-panel[data-builder-responsive-section="environment"] [data-builder-section-panel="environment"],
+  .scene-builder-panel[data-builder-responsive-section="advanced"] [data-builder-section-panel="advanced"] {
+    display: grid;
+  }
+
+  .scene-builder-elements {
+    grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
+  }
+
+  .scene-builder-element-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-controls-grid .queue-panel,
+  .ai-actions-panel,
+  .ai-automation-panel,
+  .ai-processes-panel,
+  .ai-render-console-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .ai-controls-grid .queue-panel {
+    grid-row: 1;
+  }
+
+  .ai-actions-panel {
+    grid-row: 2;
+  }
+
+  .ai-processes-panel {
+    grid-row: 3;
+  }
+
+  .ai-automation-panel {
+    grid-row: 4;
+  }
+
+  .ai-render-console-panel {
+    grid-row: 5;
+  }
+
+  .scene-builder-primary-actions > .scene-builder-save,
+  .scene-builder-primary-actions > .scene-builder-render,
+  .builder-more-desktop-label {
+    display: none;
+  }
+
+  .builder-more-responsive-label {
+    display: inline;
+  }
+
+  .builder-responsive-action {
+    display: block;
+  }
+
+  .scene-builder-more > summary,
+  .scene-builder-element-menu > summary,
+  .field-help-button {
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .workflow-progress {
@@ -2890,6 +3099,15 @@ dd {
 }
 
 @media (max-width: 600px) {
+  main,
+  .page,
+  .workspace-overview,
+  .scene-builder-panel,
+  .scene-builder-card {
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .app-header {
     align-items: stretch;
   }
@@ -2927,15 +3145,10 @@ dd {
 
   .tabs {
     align-items: stretch;
-  }
-
-  .workspace-navigation {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .workspace-navigation .tab,
   .toolbar-menu,
   .toolbar-settings-button {
     min-height: 44px;
@@ -2945,6 +3158,154 @@ dd {
 
   .toolbar-menu {
     margin-left: 0;
+  }
+
+  .responsive-section-menu {
+    width: 100%;
+  }
+
+  .phone-workspace-viewer {
+    display: grid;
+    gap: 10px;
+  }
+
+  .phone-viewer-navigation button,
+  .character-phone-links button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .character-phone-links button {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .story-overview-scenes {
+    grid-template-columns: 1fr;
+  }
+
+  .story-overview-scenes .story-overview-scene:not(.selected) {
+    display: none;
+  }
+
+  .asset-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .asset-detail-panel {
+    max-height: none;
+    order: -1;
+  }
+
+  .asset-locked-image-viewer {
+    min-height: 320px;
+  }
+
+  .asset-table-panel {
+    max-height: none;
+  }
+
+  .builder-section-switcher {
+    display: none;
+  }
+
+  .scene-builder-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .builder-phone-section-toggle {
+    align-items: center;
+    display: flex;
+    font-weight: 700;
+    justify-content: space-between;
+    text-align: left;
+    width: 100%;
+  }
+
+  .builder-phone-section-toggle[aria-expanded="true"] {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary-hover);
+  }
+
+  .scene-builder-elements,
+  .scene-builder-element-editor,
+  .scene-builder-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .scene-builder-toolbar {
+    align-items: stretch;
+  }
+
+  .scene-builder-primary-actions,
+  .scene-builder-more,
+  .scene-builder-more > summary {
+    width: 100%;
+  }
+
+  .scene-builder-menu-panel {
+    max-width: calc(100vw - 32px);
+    min-width: min(280px, calc(100vw - 32px));
+  }
+
+  .responsive-list-table,
+  .responsive-list-table tbody,
+  .responsive-list-table tr,
+  .responsive-list-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-list-table thead {
+    display: none;
+  }
+
+  .responsive-list-table tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  .responsive-list-table tbody tr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 6px;
+  }
+
+  .responsive-list-table tbody td {
+    border: 0;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(84px, 0.4fr) minmax(0, 1fr);
+    padding: 6px;
+    white-space: normal;
+  }
+
+  .responsive-list-table tbody td::before {
+    color: var(--text-muted);
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .responsive-list-table .empty-table-cell {
+    display: block;
+    text-align: left;
+  }
+
+  .responsive-list-table .empty-table-cell::before,
+  .responsive-list-table tbody td:empty {
+    display: none;
+  }
+
+  .responsive-list-table .row-selection-button {
+    min-height: 44px;
   }
 
   .workflow-progress {

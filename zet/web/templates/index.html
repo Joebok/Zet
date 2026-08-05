@@ -70,6 +70,7 @@
   </header>
 
   <nav class="tabs" aria-label="Dashboard sections">
+    <select id="responsive-section-menu" class="responsive-section-menu" aria-label="Current workspace section"></select>
     <div id="character-navigation" class="workspace-navigation">
       <button class="tab onboarding-tab" data-page="onboarding">Overview</button>
       <button class="tab workflow-tab" data-page="assets">Assets</button>
@@ -123,6 +124,7 @@
       </div>
       <div id="onboarding-message" class="action-message" hidden></div>
       <section class="workspace-overview" aria-label="Character development progress">
+        <section id="character-phone-viewer" class="phone-workspace-viewer" aria-label="Selected character reference"></section>
         <ol id="character-workflow" class="workflow-progress"></ol>
         <div id="character-overview-metrics" class="overview-metrics"></div>
         <div class="overview-recommendation">
@@ -557,6 +559,18 @@
       </div>
       <div id="story-message" class="action-message" hidden></div>
       <section class="workspace-overview story-overview" aria-label="Story progress">
+        <section id="story-phone-viewer" class="phone-workspace-viewer" aria-label="Selected scene image">
+          <div class="phone-viewer-heading">
+            <div><span class="eyebrow">Selected scene</span><h2 id="story-phone-viewer-title"></h2></div>
+            <span id="story-phone-viewer-state" class="status-badge"></span>
+          </div>
+          <div id="story-phone-viewer-image" class="phone-viewer-image"></div>
+          <div class="phone-viewer-navigation">
+            <button id="story-phone-previous" class="navigation-action" type="button">Previous</button>
+            <span id="story-phone-position" class="status-text"></span>
+            <button id="story-phone-next" class="navigation-action" type="button">Next</button>
+          </div>
+        </section>
         <div id="story-overview-metrics" class="overview-metrics"></div>
         <div class="overview-recommendation">
           <div>
