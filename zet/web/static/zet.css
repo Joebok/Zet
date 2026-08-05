@@ -3175,6 +3175,11 @@ dd {
     min-width: 0;
   }
 
+  .character-phone-links button {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
   .story-overview-scenes {
     grid-template-columns: 1fr;
   }

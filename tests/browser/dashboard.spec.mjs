@@ -620,6 +620,9 @@ test("phone workspaces are view-first and Scene Builder uses single-open accordi
   await page.locator("#responsive-section-menu").selectOption("onboarding");
   await expect(page.locator("#character-phone-viewer")).toBeVisible();
   await expect(page.locator("#character-phone-viewer img")).toBeVisible();
+  expect(await page.locator(".character-phone-links button").evaluateAll((buttons) => (
+    buttons.every((button) => button.scrollWidth <= button.clientWidth + 1)
+  ))).toBe(true);
   await expectNoHorizontalOverflow(page);
 });
 
