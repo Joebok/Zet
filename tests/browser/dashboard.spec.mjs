@@ -393,6 +393,120 @@ test("Scene Builder text changes do not consume the next control click", async (
   ))).toBe(true);
 });
 
+test("Scene Builder hierarchy streamlines authoring and preserves hidden legacy notes", async ({ page }) => {
+  await openPage(page, "scenes");
+  let savedBuilder = null;
+  await page.route("**/api/stories/*/scenes/*/builder", async (route) => {
+    if (route.request().method() === "GET") {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.document.data.scene.author_notes = "Preserve private scene note";
+      payload.document.data.scene_elements = [{
+        id: "Lantern",
+        display_name: "Lantern",
+        resource_type: "Scene-Only",
+        element_type: "Prop",
+        reference_images: [],
+        element_visual_override: "",
+        fallback_visual_description: "brass lantern",
+        notes: "Preserve private element note",
+      }];
+      payload.document.data.placements = [{
+        id: "placement_lantern",
+        scene_element_id: "Lantern",
+        position_within_cell: "center",
+        depth: "foreground",
+        world_position: "beside the doorway",
+        pose: {},
+        motion: { state: "stationary", direction_screen: "", cue: "" },
+        placement_notes: "Warm light spills across the threshold",
+      }];
+      payload.document.data.dialogue = [{
+        id: "dialogue_lantern",
+        speaker_element_id: "Lantern",
+        target_element_id: "",
+        text: "Light the way.",
+        pointer_target: "speaker mouth",
+        max_lines: 3,
+        notes: "Keep dialogue special instructions",
+      }];
+      payload.document.data.interactions = [{
+        subject_element_id: "Lantern",
+        relationship: "illuminates",
+        target_element_id: "",
+        note: "Keep interaction note",
+      }];
+      await route.fulfill({ response, json: payload });
+      return;
+    }
+    if (route.request().method() === "PUT") {
+      savedBuilder = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          document: { data: savedBuilder, validation_warnings: [] },
+          has_story_changes: true,
+          message: "Scene Builder saved.",
+        }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.locator("#scene-builder-open").click();
+  const columns = page.locator(".scene-builder-grid > .scene-builder-section");
+  await expect(columns).toHaveCount(3);
+  await expect(columns.nth(0).locator(".scene-builder-card").first()).toContainText("Story Beat");
+  await expect(columns.nth(1).locator(".scene-builder-card").first()).toContainText("Scene Elements");
+  await expect(columns.nth(2).locator(".scene-builder-card").first()).toContainText("Dialogue");
+  await expect(page.locator(".scene-builder-element-workspace")).toContainText("Identity and reference");
+  await expect(page.locator(".scene-builder-element-workspace")).toContainText("Placement and acting");
+  await expect(page.locator(".scene-builder-element-row")).toContainText("Prop");
+  await expect(page.locator(".scene-builder-element-row")).toContainText("No reference");
+  await expect(page.locator(".scene-builder-element-row")).toContainText("Position: center · Depth: foreground");
+  await expect(page.locator(".scene-builder-advanced")).not.toHaveAttribute("open", "");
+  await expect(columns.nth(1).getByRole("button", { name: "Add Element" })).toBeVisible();
+  await page.locator(".scene-builder-element-menu > summary").click();
+  const elementMenu = page.locator(".scene-builder-element-menu");
+  await expect(elementMenu.getByRole("button", { name: "Duplicate", exact: true })).toBeVisible();
+  await expect(elementMenu.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+  await page.locator(".scene-builder-element-menu > summary").click();
+
+  await expect(page.locator('[data-builder-field="scene.author_notes"]')).toHaveCount(0);
+  await expect(page.locator('[data-builder-element-field="notes"]')).toHaveCount(0);
+  await expect(page.locator('[data-builder-field="setup.environment.general_foreground_notes"]')).toBeVisible();
+  await expect(page.locator('[data-builder-field="setup.environment.general_background_notes"]')).toBeVisible();
+  await expect(page.locator('[data-builder-dialogue-field="notes"]')).toHaveValue("Keep dialogue special instructions");
+  await expect(page.locator('[data-builder-interaction-field="note"]')).toHaveValue("Keep interaction note");
+  await expect(page.locator('[data-builder-field="scene.story_settings_path"]')).toHaveCount(0);
+  await expect(page.locator('[data-builder-field="scene.associated_png_path"]')).toHaveCount(0);
+  await expect(page.locator("#scene-builder-panel")).not.toContainText("Render Settings / Validation");
+  await expect(page.locator("#scene-builder-panel")).not.toContainText("JSON Preview");
+  await expect(page.getByText("Placement instructions — included in prompt", { exact: true })).toBeVisible();
+  await expect(page.locator("#scene-builder-save-state")).toHaveText("Saved");
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Render", exact: true })).toBeVisible();
+  await expect(page.getByText("Save JSON", { exact: true })).toHaveCount(0);
+
+  const placementInstructions = page.locator('[data-builder-placement-field="placement_notes"]');
+  await placementInstructions.fill("Lantern light defines the foreground edge");
+  await expect(page.locator("#scene-builder-save-state")).toHaveText("Dirty");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => savedBuilder).not.toBeNull();
+  expect(savedBuilder.scene.author_notes).toBe("Preserve private scene note");
+  expect(savedBuilder.scene_elements[0].notes).toBe("Preserve private element note");
+  expect(savedBuilder.placements[0].placement_notes).toBe("Lantern light defines the foreground edge");
+  await expect(page.locator("#scene-builder-save-state")).toHaveText("Saved");
+
+  await page.locator(".scene-builder-more > summary").click();
+  await expect(page.getByText("Technical Details", { exact: true })).toBeVisible();
+  await page.getByText("Technical Details", { exact: true }).click();
+  await expect(page.locator(".scene-builder-technical-details")).toContainText("Story settings");
+  await expect(page.locator(".scene-builder-technical-details")).toContainText("Scene image");
+});
+
 test("source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
   await openPage(page, "assets");
   await page.locator("#asset-table .row-selection-button").first().click();
@@ -593,6 +707,7 @@ test("scene prompts and Scene Builder show analysis in a dismissible popup", asy
 
   await sceneBuilder.click();
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await page.locator(".scene-builder-more > summary").click();
   const builderEye = page.locator('[data-builder-action="view-analysis"]');
   await expect(builderEye).toBeVisible();
   await expect(page.locator('[data-builder-action="analyze-prompt"]')).toHaveCount(0);
