@@ -6,6 +6,7 @@ import process from "node:process";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const OUTPUT_ROOT = path.join(ROOT, "Docs", "UI");
 const BASE_URL = process.env.ZET_DASHBOARD_URL || "http://127.0.0.1:8080/";
+const EXPECTED_PAGE_COUNT = 22;
 const VIEWPORTS = [
   { folder: "Desktop", width: 1920, height: 911 },
   { folder: "Ipad", width: 1024, height: 768 },
@@ -31,6 +32,7 @@ async function openDashboard(page) {
     );
   }
   await page.waitForFunction(() => typeof window.activatePage === "function");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
 }
 
 async function discoverPages(page) {
@@ -78,12 +80,25 @@ async function captureViewport(browser, viewport, expectedPages) {
   const page = await context.newPage();
   await openDashboard(page);
   const pages = await discoverPages(page);
+  if (pages.length !== EXPECTED_PAGE_COUNT) {
+    throw new Error(`Expected ${EXPECTED_PAGE_COUNT} dashboard pages, found ${pages.length}.`);
+  }
   if (expectedPages && pages.join("\n") !== expectedPages.join("\n")) {
     throw new Error("Dashboard page discovery changed between viewport captures.");
   }
 
   for (const [index, pageName] of pages.entries()) {
     await activateDashboardPage(page, pageName);
+    const overflow = await page.evaluate(() => {
+      const activePage = document.querySelector("main > .page.active");
+      return {
+        document: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        page: Boolean(activePage && activePage.scrollWidth > activePage.clientWidth),
+      };
+    });
+    if (overflow.document || overflow.page) {
+      throw new Error(`${pageName} overflows horizontally at ${viewport.width}x${viewport.height}.`);
+    }
     const filename = `${String(index + 1).padStart(2, "0")}-${pageName}.png`;
     await page.screenshot({
       path: path.join(outputFolder, filename),

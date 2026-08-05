@@ -16,52 +16,87 @@
     <div class="brand">
       <img src="/img/Zet.png" alt="Zet logo">
     </div>
+    <div class="workspace-switch" role="group" aria-label="Workspace">
+      <button id="workspace-character" class="workspace-option" type="button" aria-pressed="true">Character Development</button>
+      <button id="workspace-story" class="workspace-option" type="button" aria-pressed="false">Story Telling</button>
+    </div>
     <div class="header-middle">
       <span id="story-git-warning" class="story-git-warning" hidden>Uncommitted story changes</span>
       <img id="header-fitment-preview" alt="Locked front-left three-quarter head fitment" hidden>
     </div>
     <div class="context-controls">
-      <label>
-        Character
-        <select id="character-select"></select>
-      </label>
-      <label>
-        Phase
-        <select id="phase-select"></select>
-      </label>
-      <button id="new-character" class="create-action" type="button">New Character</button>
-      <button id="new-phase" class="create-action" type="button">New Phase</button>
+      <div id="character-context" class="workspace-context">
+        <label>
+          Character
+          <select id="character-select"></select>
+        </label>
+        <label>
+          Phase
+          <select id="phase-select"></select>
+        </label>
+      </div>
+      <div id="story-context" class="workspace-context" hidden>
+        <label>
+          Story
+          <select id="header-story-select"></select>
+        </label>
+        <label>
+          Scene
+          <select id="header-scene-select"></select>
+        </label>
+      </div>
+      <div class="header-menu">
+        <button id="new-menu-button" class="create-action" type="button" aria-expanded="false" aria-controls="new-menu">New ▾</button>
+        <div id="new-menu" class="header-popup-menu" hidden>
+          <button id="new-character" type="button" data-workspace-item="character">Character</button>
+          <button id="new-phase" type="button" data-workspace-item="character">Phase</button>
+          <button id="new-story" type="button" data-workspace-item="story">Story</button>
+          <button id="new-scene" type="button" data-workspace-item="story">Scene</button>
+        </div>
+      </div>
     </div>
   </header>
 
   <nav class="tabs" aria-label="Dashboard sections">
-    <button class="tab onboarding-tab" data-page="onboarding">Onboarding</button>
-    <select id="character-assets-menu" class="tab active" aria-label="Character Assets">
-      <option value="" selected>Character Assets</option>
-      <option value="assets">Assets</option>
-      <option value="manifest">Manifest</option>
-      <option value="costumes">Costumes</option>
-      <option value="expressions">Expressions</option>
-      <option value="turnarounds">Turnarounds</option>
-      <option value="identity-keys">Identity Keys</option>
-      <option value="phase-comparison">Phase Comparison</option>
-      <option value="pipeline-inspection">Pipeline</option>
-    </select>
-    <button class="tab workflow-tab" data-page="prompt-review">Prompts</button>
-    <button class="tab workflow-tab" data-page="render-console">Render</button>
-    <button class="tab workflow-tab" data-page="local-image-review">Local Images</button>
-    <button class="tab workflow-tab" data-page="render-review">Image Review</button>
-    <button class="tab workflow-tab" data-page="stories">Stories</button>
-    <button class="tab workflow-tab" data-page="scenes">Scenes</button>
-    <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Images</button>
-    <button class="tab workflow-tab" data-page="zine">Zines</button>
-    <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
+    <div id="character-navigation" class="workspace-navigation">
+      <button class="tab onboarding-tab" data-page="onboarding">Overview</button>
+      <button class="tab workflow-tab" data-page="assets">Assets</button>
+      <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
+      <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
+      <button class="tab workflow-tab" data-page="costumes">Costumes</button>
+      <button class="tab workflow-tab" data-page="expressions">Expressions</button>
+      <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
+      <select id="character-production-menu" class="tab" aria-label="Character production tools">
+        <option value="" selected>Production ▾</option>
+        <option value="manifest">Manifest</option>
+        <option value="prompt-review">Prompts</option>
+        <option value="render-console">Render</option>
+        <option value="local-image-review">Local Images</option>
+        <option value="render-review">Image Review</option>
+      </select>
+    </div>
+    <div id="story-navigation" class="workspace-navigation" hidden>
+      <button class="tab workflow-tab" data-page="stories">Overview</button>
+      <button class="tab workflow-tab" data-page="scenes">Scenes</button>
+      <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
+      <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Images</button>
+      <button class="tab workflow-tab" data-page="zine">Zines</button>
+      <select id="story-production-menu" class="tab" aria-label="Story production tools">
+        <option value="" selected>Production ▾</option>
+        <option value="prompt-review">Prompt / Analysis</option>
+        <option value="render-console">Render Console</option>
+        <option value="local-image-review">Local Variants</option>
+        <option value="render-review">Image Review</option>
+      </select>
+    </div>
     <div class="toolbar-menu">
-      <button id="toolbar-todo-button" class="toolbar-settings-button navigation-action" type="button" aria-label="Open To Do" title="To Do">☑</button>
-      <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu" aria-label="Open dashboard controls" title="Controls">⚙</button>
+      <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
       <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+        <button id="toolbar-todo-button" type="button">To Do</button>
+        <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
         <button class="tab workflow-tab" data-page="local-image-config">Image Config</button>
+        <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
         <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
         <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
       </div>
@@ -71,11 +106,24 @@
   <main>
     <section id="onboarding-page" class="page">
       <div class="page-title-row">
-        <h1>Onboarding</h1>
+        <h1>Character Overview</h1>
         <div id="onboarding-status" class="status-text"></div>
       </div>
       <div id="onboarding-message" class="action-message" hidden></div>
-      <div class="onboarding-layout">
+      <section class="workspace-overview" aria-label="Character development progress">
+        <ol id="character-workflow" class="workflow-progress"></ol>
+        <div id="character-overview-metrics" class="overview-metrics"></div>
+        <div class="overview-recommendation">
+          <div>
+            <span class="eyebrow">Recommended next</span>
+            <strong id="character-recommended-label">Edit character setup</strong>
+          </div>
+          <button id="character-recommended-action" class="primary-action" type="button">Continue</button>
+        </div>
+      </section>
+      <details id="character-setup-details" class="overview-details">
+        <summary>Edit character setup</summary>
+        <div class="onboarding-layout">
         <section class="control-panel">
           <h3>Interview</h3>
           <label>
@@ -125,7 +173,8 @@
             <pre id="onboarding-validation"></pre>
           </section>
         </section>
-      </div>
+        </div>
+      </details>
     </section>
 
     <section id="assets-page" class="page active">
@@ -491,10 +540,21 @@
 
     <section id="stories-page" class="page">
       <div class="page-title-row">
-        <h1>Stories</h1>
+        <h1>Story Overview</h1>
         <div id="story-status" class="status-text"></div>
       </div>
       <div id="story-message" class="action-message" hidden></div>
+      <section class="workspace-overview story-overview" aria-label="Story progress">
+        <div id="story-overview-metrics" class="overview-metrics"></div>
+        <div class="overview-recommendation">
+          <div>
+            <span class="eyebrow">Recommended next</span>
+            <strong id="story-recommended-label">Create a story</strong>
+          </div>
+          <button id="story-recommended-action" class="primary-action" type="button">Continue</button>
+        </div>
+        <div id="story-overview-scenes" class="story-overview-scenes"></div>
+      </section>
       <div class="costume-layout story-layout">
         <section class="control-panel">
           <table id="story-table">

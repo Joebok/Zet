@@ -516,6 +516,14 @@ Backend = "manual_chatgpt"
             self.assertEqual(context.status_code, 200)
             self.assertEqual(context.json()["default_character"], "Test")
 
+            summary = client.get(
+                "/api/workspace-summary",
+                params={"character": "Test", "phase": "Adult"},
+            )
+            self.assertEqual(summary.status_code, 200)
+            self.assertEqual(summary.json()["character"]["character"], "Test")
+            self.assertEqual(summary.json()["character"]["phase"], "Adult")
+
             assets = client.get("/api/assets", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(assets.status_code, 200)
             self.assertEqual(assets.json()["assets"][0]["asset_id"], 1)
@@ -565,25 +573,25 @@ Backend = "manual_chatgpt"
             self.assertGreater(html.index('data-action="advance-all"'), html.index('id="asset-filter-hide-base"'))
             self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
             self.assertIn('id="view-prompt-analysis" class="scene-builder-analysis-view"', html)
-            self.assertIn('id="character-assets-menu" class="tab active"', html)
-            self.assertIn('<option value="pipeline-inspection">Pipeline</option>', html)
+            self.assertIn('id="workspace-character" class="workspace-option"', html)
+            self.assertIn('data-page="pipeline-inspection">Pipeline Inspection</button>', html)
             self.assertLess(
-                html.index('<option value="phase-comparison">Phase Comparison</option>'),
-                html.index('<option value="pipeline-inspection">Pipeline</option>'),
+                html.index('data-page="phase-comparison">Phase Comparison</button>'),
+                html.index('data-page="pipeline-inspection">Pipeline Inspection</button>'),
             )
-            self.assertIn('<option value="phase-comparison">Phase Comparison</option>', html)
+            self.assertIn('data-page="phase-comparison">Phase Comparison</button>', html)
             self.assertIn('<option value="stable_matrix">Stable Matrix</option>', html)
             self.assertIn('<option value="comfyui">ComfyUI</option>', html)
-            self.assertIn('data-page="prompt-review">Prompts</button>', html)
-            self.assertIn('data-page="render-console">Render</button>', html)
-            self.assertIn('data-page="local-image-review">Local Images</button>', html)
+            self.assertIn('<option value="prompt-review">Prompts</option>', html)
+            self.assertIn('<option value="render-console">Render</option>', html)
+            self.assertIn('<option value="local-image-review">Local Images</option>', html)
             self.assertLess(
-                html.index('data-page="render-console">Render</button>'),
-                html.index('data-page="local-image-review">Local Images</button>'),
+                html.index('<option value="render-console">Render</option>'),
+                html.index('<option value="local-image-review">Local Images</option>'),
             )
             self.assertLess(
-                html.index('data-page="local-image-review">Local Images</button>'),
-                html.index('data-page="render-review">Image Review</button>'),
+                html.index('<option value="local-image-review">Local Images</option>'),
+                html.index('<option value="render-review">Image Review</option>'),
             )
             self.assertLess(
                 html.index('data-page="scenes">Scenes</button>'),
@@ -599,7 +607,6 @@ Backend = "manual_chatgpt"
             self.assertIn('id="stable-matrix-settings"', html)
             self.assertIn('id="comfyui-settings" hidden', html)
             self.assertIn('id="setting-comfyui-checkpoint"', html)
-            self.assertNotIn('data-page="turnarounds">Turnarounds</button>', html)
             self.assertIn('class="control-panel ai-automation-panel local-image-config-panel"', html)
             self.assertIn('document.querySelectorAll("button.tab")', (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8"))
             self.assertNotIn('data-action="retouch"', html)

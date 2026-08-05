@@ -1,4 +1,7 @@
 const state = {
+  workspace: "character",
+  workspaceSummary: { character: null, story: null },
+  lastWorkspacePages: { character: "onboarding", story: "scenes" },
   characters: [],
   phasesByCharacter: {},
   onboardingStatuses: {},
@@ -115,13 +118,33 @@ const state = {
 };
 
 const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
+const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
+const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
+
+const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "expressions", "phase-comparison"]);
+const STORY_PAGES = new Set(["stories", "scenes", "scene-builder", "auxiliary-resources", "zine"]);
+const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
+const GLOBAL_PAGES = new Set(["template-editor", "ai-controls", "local-image-config", "pipeline-inspection", "pipeline-controls"]);
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
+const headerStorySelect = document.querySelector("#header-story-select");
+const headerSceneSelect = document.querySelector("#header-scene-select");
+const characterContext = document.querySelector("#character-context");
+const storyContext = document.querySelector("#story-context");
+const workspaceCharacter = document.querySelector("#workspace-character");
+const workspaceStory = document.querySelector("#workspace-story");
+const characterNavigation = document.querySelector("#character-navigation");
+const storyNavigation = document.querySelector("#story-navigation");
+const characterProductionMenu = document.querySelector("#character-production-menu");
+const storyProductionMenu = document.querySelector("#story-production-menu");
+const newMenuButton = document.querySelector("#new-menu-button");
+const newMenu = document.querySelector("#new-menu");
 const newCharacterButton = document.querySelector("#new-character");
 const newPhaseButton = document.querySelector("#new-phase");
-const characterAssetsMenu = document.querySelector("#character-assets-menu");
+const newStoryButton = document.querySelector("#new-story");
+const newSceneButton = document.querySelector("#new-scene");
 const headerFitmentPreview = document.querySelector("#header-fitment-preview");
 const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
@@ -143,6 +166,11 @@ const onboardingUploadTemplate = document.querySelector("#onboarding-upload-temp
 const onboardingTitle = document.querySelector("#onboarding-title");
 const onboardingStatusList = document.querySelector("#onboarding-status-list");
 const onboardingValidation = document.querySelector("#onboarding-validation");
+const characterWorkflow = document.querySelector("#character-workflow");
+const characterOverviewMetrics = document.querySelector("#character-overview-metrics");
+const characterRecommendedLabel = document.querySelector("#character-recommended-label");
+const characterRecommendedAction = document.querySelector("#character-recommended-action");
+const characterSetupDetails = document.querySelector("#character-setup-details");
 const assetFilterTodo = document.querySelector("#asset-filter-todo");
 const assetFilterHideBase = document.querySelector("#asset-filter-hide-base");
 const assetFilterPipeline = document.querySelector("#asset-filter-pipeline");
@@ -406,6 +434,10 @@ const expressionCreate = document.querySelector("#expression-create");
 const expressionPreviewSection = document.querySelector("#expression-preview-section");
 const expressionPreview = document.querySelector("#expression-preview");
 const storyStatus = document.querySelector("#story-status");
+const storyOverviewMetrics = document.querySelector("#story-overview-metrics");
+const storyOverviewScenes = document.querySelector("#story-overview-scenes");
+const storyRecommendedLabel = document.querySelector("#story-recommended-label");
+const storyRecommendedAction = document.querySelector("#story-recommended-action");
 const storyMessage = document.querySelector("#story-message");
 const storyTableBody = document.querySelector("#story-table tbody");
 const storyEditorTitle = document.querySelector("#story-editor-title");
@@ -1267,6 +1299,241 @@ function saveStoredContext() {
   }
 }
 
+function loadStoredStoryContext() {
+  try {
+    const data = JSON.parse(window.localStorage.getItem(LAST_STORY_CONTEXT_STORAGE_KEY) || "{}");
+    return {
+      story: String(data?.story || ""),
+      scene: String(data?.scene || ""),
+    };
+  } catch {
+    return { story: "", scene: "" };
+  }
+}
+
+function saveStoredStoryContext() {
+  try {
+    window.localStorage.setItem(
+      LAST_STORY_CONTEXT_STORAGE_KEY,
+      JSON.stringify({ story: state.selectedStorySlug || "", scene: state.selectedSceneSlug || "" }),
+    );
+  } catch {
+    // Ignore storage failures and keep the app usable.
+  }
+}
+
+function loadStoredWorkspacePreferences() {
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return {
+      workspace: data?.workspace === "story" ? "story" : "character",
+      pages: {
+        character: CHARACTER_PAGES.has(data?.pages?.character) || PRODUCTION_PAGES.has(data?.pages?.character)
+          ? data.pages.character
+          : "onboarding",
+        story: STORY_PAGES.has(data?.pages?.story) || PRODUCTION_PAGES.has(data?.pages?.story)
+          ? data.pages.story
+          : "scenes",
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveWorkspacePreferences() {
+  try {
+    window.localStorage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({ workspace: state.workspace, pages: state.lastWorkspacePages }),
+    );
+  } catch {
+    // Ignore storage failures and keep the app usable.
+  }
+}
+
+function pageWorkspace(page) {
+  if (CHARACTER_PAGES.has(page)) return "character";
+  if (STORY_PAGES.has(page)) return "story";
+  return null;
+}
+
+function renderHeaderStoryContext() {
+  const storyOptions = state.stories.map((story) => option(story.slug, story.title || story.slug));
+  if (!storyOptions.length) storyOptions.push(option("", "No stories"));
+  headerStorySelect.replaceChildren(...storyOptions);
+  headerStorySelect.value = state.selectedStorySlug || "";
+  const summaryScenes = state.workspaceSummary.story?.story_slug === state.selectedStorySlug
+    ? state.workspaceSummary.story.scenes || []
+    : [];
+  const sceneRows = summaryScenes.length ? summaryScenes : state.scenes;
+  const sceneOptions = sceneRows.map((scene) => option(scene.slug, scene.title || scene.slug));
+  if (!sceneOptions.length) sceneOptions.push(option("", state.selectedStorySlug ? "No scenes" : "Select a story"));
+  headerSceneSelect.replaceChildren(...sceneOptions);
+  headerSceneSelect.value = state.selectedSceneSlug || "";
+  headerSceneSelect.disabled = !state.selectedStorySlug || !sceneRows.length;
+}
+
+function applyWorkspaceChrome() {
+  const storyActive = state.workspace === "story";
+  workspaceCharacter.setAttribute("aria-pressed", storyActive ? "false" : "true");
+  workspaceStory.setAttribute("aria-pressed", storyActive ? "true" : "false");
+  characterContext.hidden = storyActive;
+  storyContext.hidden = !storyActive;
+  characterNavigation.hidden = storyActive;
+  storyNavigation.hidden = !storyActive;
+  headerFitmentPreview.hidden = storyActive || !headerFitmentPreview.getAttribute("src");
+  for (const item of newMenu.querySelectorAll("[data-workspace-item]")) {
+    item.hidden = item.dataset.workspaceItem !== state.workspace;
+  }
+  renderHeaderStoryContext();
+}
+
+function rememberPage(page) {
+  const workspace = pageWorkspace(page);
+  if (workspace) {
+    state.workspace = workspace;
+    state.lastWorkspacePages[workspace] = page;
+  } else if (PRODUCTION_PAGES.has(page)) {
+    state.lastWorkspacePages[state.workspace] = page;
+  }
+  saveStoredStoryContext();
+  saveWorkspacePreferences();
+  applyWorkspaceChrome();
+}
+
+async function switchWorkspace(workspace) {
+  if (workspace === state.workspace) return true;
+  return runGuardedTransition(async () => {
+    state.workspace = workspace;
+    applyWorkspaceChrome();
+    if (workspace === "story" && !state.stories.length) await loadStories();
+    const fallback = workspace === "character" ? "onboarding" : (state.selectedStorySlug ? "scenes" : "stories");
+    const target = state.lastWorkspacePages[workspace] || fallback;
+    await activatePage(target, { skipAutosave: true });
+  });
+}
+
+function overviewMetric(value, label) {
+  const item = document.createElement("div");
+  item.className = "overview-metric";
+  const strong = document.createElement("strong");
+  strong.textContent = String(value);
+  const caption = document.createElement("span");
+  caption.textContent = label;
+  item.append(strong, caption);
+  return item;
+}
+
+function renderCharacterOverview() {
+  const summary = state.workspaceSummary.character;
+  characterWorkflow.replaceChildren();
+  characterOverviewMetrics.replaceChildren();
+  if (!summary) {
+    characterRecommendedLabel.textContent = "Edit character setup";
+    characterRecommendedAction.dataset.destination = "onboarding";
+    return;
+  }
+  for (const step of summary.steps || []) {
+    const item = document.createElement("li");
+    item.classList.toggle("complete", Boolean(step.complete));
+    const label = document.createElement("span");
+    label.className = "step-label";
+    label.textContent = step.label;
+    const progress = document.createElement("span");
+    progress.className = "step-state";
+    progress.textContent = step.complete
+      ? "✓ Complete"
+      : step.total > 0 ? `○ ${step.current} of ${step.total}` : "○ Not started";
+    item.append(label, progress);
+    characterWorkflow.append(item);
+  }
+  characterOverviewMetrics.append(
+    overviewMetric(`${summary.base_reference_locked}/${summary.base_reference_total}`, "Base references locked"),
+    overviewMetric(`${summary.assembly_locked}/${summary.assembly_total}`, "Assembly views locked"),
+    overviewMetric(summary.identity_count, "Identity keys"),
+    overviewMetric(summary.turnaround_count, "Locked turnarounds"),
+    overviewMetric(summary.costume_count, "Costumes"),
+    overviewMetric(summary.expression_count, "Expressions"),
+  );
+  characterRecommendedLabel.textContent = summary.recommended_action;
+  characterRecommendedAction.dataset.destination = summary.recommended_destination;
+}
+
+function renderStoryOverview() {
+  const summary = state.workspaceSummary.story;
+  storyOverviewMetrics.replaceChildren();
+  storyOverviewScenes.replaceChildren();
+  if (!summary?.story_slug) {
+    storyOverviewMetrics.append(overviewMetric(0, "Scenes"));
+    storyRecommendedLabel.textContent = "Create a story";
+    storyRecommendedAction.dataset.destination = "stories";
+    return;
+  }
+  storyOverviewMetrics.append(
+    overviewMetric(summary.scene_count, "Scenes"),
+    overviewMetric(summary.locked_count, "Locked images"),
+    overviewMetric(summary.candidate_count, "Candidates to review"),
+    overviewMetric(summary.unrendered_count, "Not rendered"),
+  );
+  storyRecommendedLabel.textContent = summary.recommended_action;
+  storyRecommendedAction.dataset.destination = summary.recommended_destination;
+  storyRecommendedAction.dataset.sceneSlug = summary.recommended_scene_slug || "";
+  for (const scene of summary.scenes || []) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "story-overview-scene";
+    card.classList.toggle("selected", scene.slug === state.selectedSceneSlug);
+    card.dataset.sceneSlug = scene.slug;
+    if (scene.image_path) {
+      const image = document.createElement("img");
+      image.src = fileUrl(scene.image_path, `${scene.slug}|${scene.image_state}`);
+      image.alt = `${scene.title} ${scene.image_state.toLowerCase()} image`;
+      card.append(image);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "story-overview-scene-empty";
+      empty.textContent = "No image";
+      card.append(empty);
+    }
+    const title = document.createElement("strong");
+    title.textContent = scene.title;
+    const imageState = document.createElement("span");
+    imageState.textContent = scene.candidate_pending ? `● ${scene.image_state}` : scene.image_state;
+    card.append(title, imageState);
+    card.addEventListener("click", () => runGuardedTransition(async () => {
+      state.selectedSceneSlug = scene.slug;
+      saveStoredStoryContext();
+      renderHeaderStoryContext();
+      renderStoryOverview();
+    }));
+    storyOverviewScenes.append(card);
+  }
+}
+
+async function loadWorkspaceSummary() {
+  const params = currentQuery();
+  if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
+  const payload = await fetchJson(`/api/workspace-summary?${params.toString()}`);
+  state.workspaceSummary = {
+    character: payload.character || null,
+    story: payload.story || null,
+  };
+  const summaryScenes = state.workspaceSummary.story?.scenes || [];
+  if (
+    state.workspaceSummary.story?.story_slug === state.selectedStorySlug
+    && !summaryScenes.some((scene) => scene.slug === state.selectedSceneSlug)
+  ) {
+    state.selectedSceneSlug = state.workspaceSummary.story.recommended_scene_slug || summaryScenes[0]?.slug || null;
+    saveStoredStoryContext();
+  }
+  renderCharacterOverview();
+  renderStoryOverview();
+  renderHeaderStoryContext();
+}
+
 function loadStoredAssetFilters() {
   // Keep the base-image visibility preference across browser sessions.
   state.assetFilters.hideBaseImages = window.localStorage.getItem(HIDE_BASE_IMAGES_STORAGE_KEY) === "true";
@@ -1305,6 +1572,7 @@ async function loadContext() {
   updatePhaseSelect();
   saveStoredContext();
   renderOnboarding();
+  applyWorkspaceChrome();
 }
 
 function updateHeaderFitmentPreview() {
@@ -1319,7 +1587,7 @@ function updateHeaderFitmentPreview() {
       Date.now().toString(),
     ].join("|");
     headerFitmentPreview.src = fileUrl(preview.image_path, cacheKey);
-    headerFitmentPreview.hidden = false;
+    headerFitmentPreview.hidden = state.workspace === "story";
   } else {
     headerFitmentPreview.hidden = true;
     headerFitmentPreview.removeAttribute("src");
@@ -1408,16 +1676,12 @@ function updateOnboardingHelperPrompt(templatePath = "") {
 function renderOnboarding() {
   const status = selectedOnboardingStatus();
   const ready = selectedPhaseReady();
-  for (const button of document.querySelectorAll(".workflow-tab")) {
+  for (const button of characterNavigation.querySelectorAll(".workflow-tab")) {
     const page = button.dataset.page || "";
-    button.disabled = !ready && !["auxiliary-resources", "phase-comparison", "stories", "scenes", "zine", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection"].includes(page);
+    button.disabled = !ready && page !== "phase-comparison";
   }
-  const onboardingTab = document.querySelector('.tab[data-page="onboarding"]');
-  onboardingTab.hidden = ready;
-  if (!ready && !document.querySelector("#onboarding-page").classList.contains("active")) {
-    activatePage("onboarding");
-  }
-  onboardingStatus.textContent = ready ? "Complete" : "Waiting for setup";
+  characterProductionMenu.disabled = !ready;
+  onboardingStatus.textContent = ready ? "Ready for character production" : "Setup incomplete";
   const characterName = status?.character_name || state.character || "";
   const phaseName = state.phase || "";
   onboardingTitle.textContent = characterName && phaseName ? `${characterName} / ${phaseName}` : "Character Setup";
@@ -1452,6 +1716,7 @@ function renderOnboarding() {
   } else {
     onboardingValidation.textContent = "Create a new character or phase to begin.";
   }
+  renderCharacterOverview();
 }
 
 async function refreshCurrentContext() {
@@ -1459,6 +1724,7 @@ async function refreshCurrentContext() {
   if (selectedPhaseReady()) {
     await loadAssets();
   }
+  await loadWorkspaceSummary();
 }
 
 async function prefillOnboarding(character, sourcePhase = "") {
@@ -1471,15 +1737,20 @@ async function prefillOnboarding(character, sourcePhase = "") {
   onboardingArtStyle.value = prefill.canonical_art_style || onboardingArtStyle.value;
 }
 
-function startNewPhase() {
+async function startNewPhase() {
+  state.workspace = "character";
+  await activatePage("onboarding", { skipAutosave: true });
+  characterSetupDetails.open = true;
   onboardingCharacter.value = state.character || "";
   onboardingPhase.value = "";
   onboardingArtStyle.value = "";
   prefillOnboarding(state.character || "", state.phase || "").catch((error) => showOnboardingMessage(error.message, "error"));
-  activatePage("onboarding");
 }
 
-function startNewCharacter() {
+async function startNewCharacter() {
+  state.workspace = "character";
+  await activatePage("onboarding", { skipAutosave: true });
+  characterSetupDetails.open = true;
   onboardingCharacter.value = "";
   onboardingPhase.value = "Adult";
   onboardingArtStyle.value = "";
@@ -1489,7 +1760,23 @@ function startNewCharacter() {
   if (onboardingGender.options.length) {
     onboardingGender.selectedIndex = 0;
   }
-  activatePage("onboarding");
+}
+
+async function startNewStory() {
+  state.workspace = "story";
+  await activatePage("stories", { skipAutosave: true });
+  storyNewTitle.focus();
+}
+
+async function startNewScene() {
+  state.workspace = "story";
+  if (!state.selectedStorySlug) {
+    await activatePage("stories", { skipAutosave: true });
+    storyNewTitle.focus();
+    return;
+  }
+  await activatePage("scenes", { skipAutosave: true });
+  sceneNewName.focus();
 }
 
 async function saveOnboardingDraft() {
@@ -2099,21 +2386,26 @@ async function saveBeforePageNavigation(nextPage) {
 }
 
 async function activatePage(page, options = {}) {
-  if (!["onboarding", "auxiliary-resources", "phase-comparison", "stories", "scenes", "scene-builder", "prompt-review", "render-review", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection"].includes(page) && !selectedPhaseReady()) {
+  if (
+    !selectedPhaseReady()
+    && state.workspace === "character"
+    && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page))
+  ) {
     page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
-    characterAssetsMenu.value = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison", "pipeline-inspection"].includes(activePageName())
-      ? activePageName()
-      : "";
+    characterProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
+    storyProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     return false;
   }
+  rememberPage(page);
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
-  const characterAssetPages = ["assets", "manifest", "costumes", "expressions", "turnarounds", "identity-keys", "phase-comparison", "pipeline-inspection"];
-  characterAssetsMenu.classList.toggle("active", characterAssetPages.includes(page));
-  characterAssetsMenu.value = characterAssetPages.includes(page) ? page : "";
+  characterProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "character");
+  storyProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "story");
+  characterProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "character" ? page : "";
+  storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
   document.querySelector("#assets-page").classList.toggle("active", page === "assets");
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
@@ -2206,18 +2498,20 @@ async function activatePage(page, options = {}) {
   }
   if (page === "onboarding") {
     renderOnboarding();
+    await loadWorkspaceSummary();
   }
   return true;
 }
 
 function setupTabs() {
-  characterAssetsMenu.addEventListener("change", async () => {
-    const page = characterAssetsMenu.value;
-    if (page === "identity-keys") {
-      state.identityKeyMode = "list";
-    }
-    await runGuardedTransition(() => activatePage(page, { skipAutosave: true }));
-  });
+  for (const menu of [characterProductionMenu, storyProductionMenu]) {
+    menu.addEventListener("change", async () => {
+      const page = menu.value;
+      if (!page) return;
+      const changed = await runGuardedTransition(() => activatePage(page, { skipAutosave: true }));
+      if (!changed) menu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
+    });
+  }
   for (const button of document.querySelectorAll("button.tab")) {
     button.addEventListener("click", async () => {
       if (button.dataset.page === "identity-keys") {
@@ -2248,6 +2542,20 @@ function closeToolbarSettingsMenu(returnFocus = false) {
   if (returnFocus && wasOpen) toolbarSettingsButton.focus();
 }
 
+function toggleNewMenu() {
+  const isHidden = newMenu.hidden;
+  newMenu.hidden = !isHidden;
+  newMenuButton.setAttribute("aria-expanded", isHidden ? "true" : "false");
+  if (isHidden) newMenu.querySelector("button:not([hidden])")?.focus();
+}
+
+function closeNewMenu(returnFocus = false) {
+  const wasOpen = !newMenu.hidden;
+  newMenu.hidden = true;
+  newMenuButton.setAttribute("aria-expanded", "false");
+  if (returnFocus && wasOpen) newMenuButton.focus();
+}
+
 async function openTodoDialog() {
   closeToolbarSettingsMenu();
   const payload = await fetchJson("/api/todo");
@@ -2276,12 +2584,12 @@ async function harvestAiFromToolbar() {
   // Run the AI harvest action without navigating away from the current page.
   closeToolbarSettingsMenu();
   toolbarHarvestAi.disabled = true;
-  toolbarSettingsButton.textContent = "...";
+  toolbarSettingsButton.textContent = "Working…";
   try {
     await runAiControlsAction("/api/ai-controls/harvest");
   } finally {
     toolbarHarvestAi.disabled = false;
-    toolbarSettingsButton.textContent = "⚙";
+    toolbarSettingsButton.textContent = "Tools ▾";
   }
 }
 
@@ -2833,12 +3141,15 @@ async function loadStories(selectSlug = state.selectedStorySlug) {
     }
     renderStoryTable();
     renderSceneStoryOptions();
+    saveStoredStoryContext();
+    renderHeaderStoryContext();
     storyStatus.textContent = `${state.stories.length} stor${state.stories.length === 1 ? "y" : "ies"}`;
     if (document.querySelector("#stories-page").classList.contains("active") && state.selectedStorySlug) {
       await loadStoryDetail(state.selectedStorySlug);
     } else if (!state.selectedStorySlug) {
       clearStoryEditor();
     }
+    await loadWorkspaceSummary();
   } catch (error) {
     storyStatus.textContent = "Load failed.";
     showStoryMessage(error.message, "error");
@@ -3077,6 +3388,8 @@ async function loadStoryDetail(storySlug) {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}`);
     state.storyDetail = payload.document || null;
     state.selectedStorySlug = state.storyDetail?.story?.slug || storySlug;
+    saveStoredStoryContext();
+    renderHeaderStoryContext();
     renderStoryTable();
     storyEditorTitle.textContent = state.storyDetail?.story?.title || "Story";
     storyRenameTitle.value = state.storyDetail?.story?.title || "";
@@ -3105,6 +3418,9 @@ async function selectStory(storySlug) {
   if (storySlug === state.selectedStorySlug) return;
   await runGuardedTransition(async () => {
     state.selectedStorySlug = storySlug;
+    state.selectedSceneSlug = null;
+    state.scenes = [];
+    saveStoredStoryContext();
     renderStoryTable();
     renderSceneStoryOptions();
     if (document.querySelector("#stories-page").classList.contains("active")) {
@@ -3112,6 +3428,8 @@ async function selectStory(storySlug) {
     }
     if (document.querySelector("#scenes-page").classList.contains("active")) {
       await loadScenesPage();
+    } else {
+      await loadWorkspaceSummary();
     }
   });
 }
@@ -3149,6 +3467,7 @@ async function createStory() {
       setSaveState(storySaveState, "Saved", "saved");
     }
     showStoryMessage(payload.message || "Story created.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showStoryMessage(error.message, "error");
   } finally {
@@ -3183,6 +3502,7 @@ async function renameStory() {
     renderZineStoryOptions();
     state.savedBaselines.story = storySnapshot();
     showStoryMessage(payload.message || "Story renamed.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showStoryMessage(error.message, "error");
   } finally {
@@ -3256,6 +3576,7 @@ async function deleteStory() {
       applyStoryGitPayload(payload.git);
     }
     showStoryMessage(payload.message || "Story deleted.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showStoryMessage(error.message, "error");
   } finally {
@@ -3299,6 +3620,8 @@ function renderSceneStoryOptions() {
   const destinations = state.stories.filter((story) => story.slug !== state.selectedStorySlug);
   sceneMoveStory.replaceChildren(...destinations.map((story) => option(story.slug, story.title || story.slug)));
   sceneMove.disabled = !state.sceneDetail || !destinations.length;
+  saveStoredStoryContext();
+  renderHeaderStoryContext();
 }
 
 function clearSceneEditor() {
@@ -3362,6 +3685,8 @@ async function loadScenesPage() {
     if (!state.selectedSceneSlug && state.scenes.length) {
       state.selectedSceneSlug = state.scenes[0].slug;
     }
+    saveStoredStoryContext();
+    renderHeaderStoryContext();
     renderSceneTable();
     sceneStatus.textContent = `${state.scenes.length} scene(s)`;
     if (state.selectedSceneSlug) {
@@ -3371,6 +3696,7 @@ async function loadScenesPage() {
       renderSceneTable();
     }
     await loadSceneImageReferences();
+    await loadWorkspaceSummary();
   } catch (error) {
     clearSceneEditor();
     sceneStatus.textContent = "Load failed.";
@@ -3428,6 +3754,8 @@ async function loadSceneDetail(storySlug, sceneSlug) {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}`);
     state.sceneDetail = payload.document || null;
     state.selectedSceneSlug = state.sceneDetail?.scene?.slug || sceneSlug;
+    saveStoredStoryContext();
+    renderHeaderStoryContext();
     renderSceneTable();
     sceneEditorTitle.textContent = state.sceneDetail?.scene?.title || "Scene";
     sceneRenameTitle.value = state.sceneDetail?.scene?.title || "";
@@ -3501,6 +3829,7 @@ async function createScene() {
       setSaveState(sceneSaveState, "Saved", "saved");
     }
     showSceneMessage(payload.message || "Scene created.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
@@ -3535,6 +3864,7 @@ async function renameScene() {
     renderSceneTable();
     state.savedBaselines.scene = sceneSnapshot();
     showSceneMessage(payload.message || "Scene renamed.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
@@ -3568,6 +3898,7 @@ async function moveScene() {
     renderSceneTable();
     await loadSceneDetail(targetStorySlug, sceneSlug);
     showSceneMessage(payload.message || "Scene moved.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
@@ -3640,6 +3971,7 @@ async function deleteScene() {
       renderSceneTable();
     }
     showSceneMessage(payload.message || "Scene deleted.");
+    await loadWorkspaceSummary();
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
@@ -7971,6 +8303,7 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#local-image-review-page").classList.contains("active")) {
     await loadLocalImageReviewTasks();
   }
+  await loadWorkspaceSummary();
 });
 
 phaseSelect.addEventListener("change", async () => {
@@ -8039,14 +8372,86 @@ phaseSelect.addEventListener("change", async () => {
   if (document.querySelector("#local-image-review-page").classList.contains("active")) {
     await loadLocalImageReviewTasks();
   }
+  await loadWorkspaceSummary();
 });
 
 for (const button of actionButtons) {
   button.addEventListener("click", () => runAssetAction(button.dataset.action));
 }
 
-newCharacterButton.addEventListener("click", startNewCharacter);
-newPhaseButton.addEventListener("click", startNewPhase);
+workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
+workspaceStory.addEventListener("click", () => switchWorkspace("story"));
+newMenuButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleNewMenu();
+});
+newCharacterButton.addEventListener("click", () => runGuardedTransition(async () => {
+  closeNewMenu();
+  await startNewCharacter();
+}));
+newPhaseButton.addEventListener("click", () => runGuardedTransition(async () => {
+  closeNewMenu();
+  await startNewPhase();
+}));
+newStoryButton.addEventListener("click", () => runGuardedTransition(async () => {
+  closeNewMenu();
+  await startNewStory();
+}));
+newSceneButton.addEventListener("click", () => runGuardedTransition(async () => {
+  closeNewMenu();
+  await startNewScene();
+}));
+headerStorySelect.addEventListener("change", async () => {
+  const requestedStory = headerStorySelect.value || null;
+  const previousStory = state.selectedStorySlug;
+  const allowed = await guardCurrentEditor();
+  if (!allowed) {
+    headerStorySelect.value = previousStory || "";
+    return;
+  }
+  state.selectedStorySlug = requestedStory;
+  state.selectedSceneSlug = null;
+  state.scenes = [];
+  await loadStories(requestedStory);
+  const scenes = state.workspaceSummary.story?.scenes || [];
+  state.selectedSceneSlug = scenes[0]?.slug || null;
+  saveStoredStoryContext();
+  renderHeaderStoryContext();
+  renderStoryOverview();
+  if (activePageName() === "scenes") await loadScenesPage();
+  if (activePageName() === "scene-builder" && state.selectedSceneSlug) await openSceneBuilder();
+});
+headerSceneSelect.addEventListener("change", async () => {
+  const requestedScene = headerSceneSelect.value || null;
+  const previousScene = state.selectedSceneSlug;
+  const allowed = await guardCurrentEditor();
+  if (!allowed) {
+    headerSceneSelect.value = previousScene || "";
+    return;
+  }
+  state.selectedSceneSlug = requestedScene;
+  saveStoredStoryContext();
+  renderHeaderStoryContext();
+  renderStoryOverview();
+  if (activePageName() === "scenes" && requestedScene) await loadSceneDetail(state.selectedStorySlug, requestedScene);
+  if (activePageName() === "scene-builder" && requestedScene) await openSceneBuilder();
+});
+characterRecommendedAction.addEventListener("click", () => runGuardedTransition(async () => {
+  const destination = characterRecommendedAction.dataset.destination || "onboarding";
+  await activatePage(destination, { skipAutosave: true });
+  if (destination === "onboarding") characterSetupDetails.open = true;
+}));
+storyRecommendedAction.addEventListener("click", () => runGuardedTransition(async () => {
+  const destination = storyRecommendedAction.dataset.destination || "stories";
+  state.selectedSceneSlug = storyRecommendedAction.dataset.sceneSlug || state.selectedSceneSlug;
+  saveStoredStoryContext();
+  await activatePage(destination, {
+    skipAutosave: true,
+    preferredReviewKey: destination === "render-review" && state.selectedSceneSlug
+      ? `scene:${state.selectedStorySlug}:${state.selectedSceneSlug}`
+      : null,
+  });
+}));
 toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -8060,10 +8465,14 @@ document.addEventListener("click", (event) => {
   if (!toolbarSettingsMenu.hidden && !toolbarSettingsMenu.contains(event.target) && event.target !== toolbarSettingsButton) {
     closeToolbarSettingsMenu(true);
   }
+  if (!newMenu.hidden && !newMenu.contains(event.target) && event.target !== newMenuButton) {
+    closeNewMenu();
+  }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeToolbarSettingsMenu(true);
+    closeNewMenu(true);
   }
 });
 todoForm.addEventListener("submit", saveTodo);
@@ -8549,17 +8958,39 @@ async function main() {
   setupTabs();
   loadStoredAssetFilters();
   try {
+    const workspacePreferences = loadStoredWorkspacePreferences();
+    const storyContext = loadStoredStoryContext();
+    if (workspacePreferences) {
+      state.workspace = workspacePreferences.workspace;
+      state.lastWorkspacePages = workspacePreferences.pages;
+    }
+    state.selectedStorySlug = storyContext.story || null;
+    state.selectedSceneSlug = storyContext.scene || null;
     await loadContext();
     await loadAssets();
+    await loadStories(state.selectedStorySlug);
     const params = new URLSearchParams(window.location.search);
     if (params.get("page") === "render-review") {
       const preferredReviewKey = params.get("review_kind") === "scene"
         ? `scene:${params.get("story_slug") || ""}:${params.get("scene_slug") || ""}`
         : null;
       await activatePage("render-review", { skipAutosave: true, preferredReviewKey });
+    } else if (workspacePreferences) {
+      await activatePage(state.lastWorkspacePages[state.workspace], { skipAutosave: true });
+    } else if (!selectedPhaseReady()) {
+      state.workspace = "character";
+      await activatePage("onboarding", { skipAutosave: true });
+    } else if (!storyContext.story) {
+      state.workspace = "story";
+      await activatePage("stories", { skipAutosave: true });
+    } else {
+      state.workspace = "story";
+      await activatePage(storyContext.scene ? "scenes" : "stories", { skipAutosave: true });
     }
   } catch (error) {
     assetStatus.textContent = error.message;
+  } finally {
+    document.body.dataset.dashboardReady = "true";
   }
 }
 

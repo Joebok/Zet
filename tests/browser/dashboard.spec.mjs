@@ -14,6 +14,7 @@ async function openPage(page, pageName) {
   await page.goto("/");
   await page.waitForFunction(() => typeof window.activatePage === "function");
   await contextResponse;
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await expect(page.locator("#character-select option")).not.toHaveCount(0);
   await page.evaluate(async (name) => window.activatePage(name, { skipAutosave: true }), pageName);
   await expect(page.locator(`#${pageName}-page`)).toHaveClass(/active/);
@@ -106,15 +107,104 @@ test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
   await expect(toggle).toBeFocused();
 });
 
+test("workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
+  await openPage(page, "assets");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#character-context")).toBeVisible();
+  await expect(page.locator("#story-context")).toBeHidden();
+
+  await page.locator("#workspace-story").click();
+  await expect(page.locator("#workspace-story")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#story-context")).toBeVisible();
+  await expect(page.locator("#character-context")).toBeHidden();
+  await page.locator("#story-navigation button[data-page='scenes']").click();
+  await expect(page.locator("#scenes-page")).toHaveClass(/active/);
+
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await expect(page.locator("#workspace-story")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#scenes-page")).toHaveClass(/active/);
+
+  await page.locator("#workspace-character").click();
+  await expect(page.locator("#assets-page")).toHaveClass(/active/);
+});
+
+test("first visit chooses Story Overview for a ready character and Character Overview when setup is incomplete", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await expect(page.locator("#workspace-story")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+
+  await page.context().clearCookies();
+  await page.evaluate(() => window.localStorage.clear());
+  await page.route("**/api/context", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.onboarding_statuses.Test.Adult.complete = false;
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#onboarding-page")).toHaveClass(/active/);
+});
+
+test("workspace overviews show readiness, image states, and recommended continuation", async ({ page }) => {
+  await openPage(page, "onboarding");
+  await expect(page.locator("#character-workflow > li")).toHaveCount(5);
+  await expect(page.locator("#character-overview-metrics .overview-metric")).toHaveCount(6);
+  await expect(page.locator("#character-recommended-label")).not.toBeEmpty();
+
+  await page.locator("#workspace-story").click();
+  await expect(page.locator("#story-overview-scenes .story-overview-scene")).toHaveCount(2);
+  await expect(page.locator("#story-overview-scenes")).toContainText("Candidate ready");
+  await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
+  await expect(page.locator("#header-scene-select option")).toHaveCount(2);
+});
+
+test("adaptive context and workspace changes preserve dirty story edits", async ({ page }) => {
+  await openPage(page, "stories");
+  await page.locator("#story-text").fill("Title: `[Alpha Story]`\n\nSaved from adaptive context.\n");
+  const contextSave = page.waitForResponse((response) => response.url().endsWith("/api/stories/Alpha-Story") && response.request().method() === "PUT");
+  await page.locator("#header-story-select").selectOption("Beta-Story");
+  await contextSave;
+  const savedByContext = await page.request.get("/api/stories/Alpha-Story");
+  expect((await savedByContext.json()).document.text).toContain("Saved from adaptive context.");
+  await expect(page.locator("#header-story-select")).toHaveValue("Beta-Story");
+
+  await page.locator("#story-text").fill("Title: `[Beta Story]`\n\nSaved on workspace switch.\n");
+  const workspaceSave = page.waitForResponse((response) => response.url().endsWith("/api/stories/Beta-Story") && response.request().method() === "PUT");
+  await page.locator("#workspace-character").click();
+  await workspaceSave;
+  const savedByWorkspace = await page.request.get("/api/stories/Beta-Story");
+  expect((await savedByWorkspace.json()).document.text).toContain("Saved on workspace switch.");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("New menu follows the active workspace", async ({ page }) => {
+  await openPage(page, "assets");
+  await page.locator("#new-menu-button").click();
+  await expect(page.locator("#new-character")).toBeVisible();
+  await expect(page.locator("#new-story")).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  await page.locator("#workspace-story").click();
+  await page.locator("#new-menu-button").click();
+  await expect(page.locator("#new-character")).toBeHidden();
+  await expect(page.locator("#new-story")).toBeVisible();
+});
+
 test("Aux Images is accessible from the main button row", async ({ page }) => {
   await openPage(page, "assets");
+  await page.locator("#workspace-story").click();
   await page.getByRole("button", { name: "Aux Images" }).click();
   await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
 });
 
 test("pipeline inspection filters pipelines and previews text and images", async ({ page }) => {
   await openPage(page, "assets");
-  await page.locator("#character-assets-menu").selectOption("pipeline-inspection");
+  await page.locator("#toolbar-settings-button").click();
+  await page.locator("#toolbar-settings-menu button[data-page='pipeline-inspection']").click();
   await expect(page.locator("#pipeline-inspection-page")).toHaveClass(/active/);
   await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(5);
   await page.locator("#pipeline-inspection-search").fill("Alpha-Story / Opening");
@@ -170,6 +260,7 @@ test("To Do saves when dismissed", async ({ page }) => {
     }
   });
   await openPage(page, "assets");
+  await page.locator("#toolbar-settings-button").click();
   await page.locator("#toolbar-todo-button").click();
   await page.locator("#todo-text").fill("Saved on dismiss");
   await page.keyboard.press("Escape");
@@ -308,12 +399,12 @@ test("source editor guards dirty navigation with Cancel and Discard", async ({ p
   await page.locator("#open-governing-template").click();
   await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
   await page.locator("#source-editor-text").fill("Unsaved source editor change");
-  await page.locator("button[data-page='stories']").click();
+  await page.locator("#workspace-story").click();
   const dialog = page.locator("#unsaved-changes-dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
-  await page.locator("button[data-page='stories']").click();
+  await page.locator("#workspace-story").click();
   await dialog.getByRole("button", { name: "Discard" }).click();
   await expect(page.locator("#stories-page")).toHaveClass(/active/);
 
@@ -321,7 +412,7 @@ test("source editor guards dirty navigation with Cancel and Discard", async ({ p
   await page.locator("#asset-table .row-selection-button").first().click();
   await page.locator("#open-governing-template").click();
   await page.locator("#source-editor-text").fill("Saved source editor change");
-  await page.locator("button[data-page='stories']").click();
+  await page.locator("#workspace-story").click();
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#stories-page")).toHaveClass(/active/);
 });
