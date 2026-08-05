@@ -59,6 +59,14 @@ class PathServiceTests(unittest.TestCase):
             )
             service = PathService(config, project_root)
             absolute = root / "outside.json"
+            shared_root = project_root / "Shared_Library"
+            self.assertEqual(service.shared_character_path(), shared_root / "Characters" / "_Shared")
+            self.assertEqual(
+                service.auxiliary_resource_inventory_default_path(),
+                shared_root / "AuxiliaryResources" / "AuxiliaryResources.json",
+            )
+            self.assertEqual(service.shared_story_template_path(), shared_root / "Stories" / "_Story_Template.md")
+            self.assertEqual(service.story_index_path(), library_root / "Stories" / "_Story_Index.json")
             self.assertEqual(service.resolve_path(absolute), absolute)
             self.assertEqual(service.resolve_path("Config/file.json"), project_root / "Config/file.json")
             self.assertEqual(service.resolve_path("_Lib/Stories/story.md"), library_root / "Stories/story.md")

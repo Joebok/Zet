@@ -110,7 +110,7 @@ class StoryServiceTests(unittest.TestCase):
             base_ai_queue_path=str(root / "Queue"),
         )
         return StoryService(
-            PathService(config),
+            PathService(config, root),
             asset_repository or FakeAssetRepository(),
             auxiliary_resource_repository or FakeAuxiliaryResourceRepository(),
             identity_key_repository,
@@ -551,7 +551,9 @@ Keep this manual note.
             root = Path(temp_dir)
             stories = root / "Stories"
             stories.mkdir(parents=True)
-            (stories / "_Story_Template.md").write_text(
+            shared_stories = root / "Shared_Library" / "Stories"
+            shared_stories.mkdir(parents=True)
+            (shared_stories / "_Story_Template.md").write_text(
                 """Title: `[story title]`
 Canonical Art Style: `[Painterly semi-realistic, anime-influenced facial proportions, etc.]`
 

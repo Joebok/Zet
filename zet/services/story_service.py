@@ -291,7 +291,9 @@ class StoryService:
     def _load_story_order(self) -> list[str]:
         path = self.path_service.story_index_path()
         if not path.exists():
-            return []
+            path = self.path_service.shared_story_index_path()
+            if not path.exists():
+                return []
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:

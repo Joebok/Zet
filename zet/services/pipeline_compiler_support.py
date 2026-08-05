@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources
-from Scripts.Library_Paths import character_root, resolve_library_path
+from Scripts.Library_Paths import character_root, resolve_library_path, shared_library_root
 from zet.services.view_service import UnknownViewError, ViewService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -302,7 +302,7 @@ def load_body_reference_sections(project_root: Path, template_path: Path) -> dic
 
 
 def load_body_reference_section_data(project_root: Path, template_path: Path) -> tuple[dict[str, str], dict[str, dict]]:
-    shared_path = character_root(project_root) / "_Shared" / "Character_Template.md"
+    shared_path = shared_library_root(project_root) / "Characters" / "_Shared" / "Character_Template.md"
     sections, sources = load_template_sections_with_sources(
         template_path,
         source_kind="character_template_section",

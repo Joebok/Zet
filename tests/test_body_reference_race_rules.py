@@ -25,7 +25,7 @@ BaseAIQueuePath = "_Lib/AI_Queue"
         )
 
     def _write_shared_stance_sections(self, root: Path, extra_sections: str = "") -> None:
-        shared_dir = root / "_Lib" / "Characters" / "_Shared"
+        shared_dir = root / "Shared_Library" / "Characters" / "_Shared"
         shared_dir.mkdir(parents=True, exist_ok=True)
         (shared_dir / "Character_Template.md").write_text(
             f"""# Shared Character Template

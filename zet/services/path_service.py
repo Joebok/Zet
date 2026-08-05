@@ -17,9 +17,13 @@ class PathService:
         """Return the character phase folder."""
         return Path(self.config.base_character_path) / character / phase
 
+    def shared_library_path(self, *parts: str) -> Path:
+        """Return a path inside the source-controlled shared library."""
+        return self.project_root.joinpath("Shared_Library", *parts)
+
     def shared_character_path(self) -> Path:
         """Return the shared character template folder."""
-        return Path(self.config.base_character_path) / "_Shared"
+        return self.shared_library_path("Characters", "_Shared")
 
     def shared_costume_template_path(self) -> Path:
         """Return the shared costume markdown template path."""
@@ -113,6 +117,10 @@ class PathService:
         """Return the global auxiliary resource inventory path."""
         return self.auxiliary_resource_root() / "AuxiliaryResources.json"
 
+    def auxiliary_resource_inventory_default_path(self) -> Path:
+        """Return the source-controlled default auxiliary resource inventory."""
+        return self.shared_library_path("AuxiliaryResources", "AuxiliaryResources.json")
+
     def auxiliary_resource_image_path(self, category: str, resource_id: str, extension: str = ".png") -> Path:
         """Return the image path for a global auxiliary resource."""
         return self.auxiliary_resource_root() / "Images" / category / f"{resource_id}{extension}"
@@ -123,7 +131,7 @@ class PathService:
 
     def auxiliary_resource_template_source_path(self) -> Path:
         """Return the shared auxiliary resource template path."""
-        return self.auxiliary_resource_root() / "_Shared" / "AuxResource_Template.md"
+        return self.shared_library_path("AuxiliaryResources", "_Shared", "AuxResource_Template.md")
 
     def auxiliary_resource_folder_image_path(self, resource_id: str, image_label: str, extension: str = ".png") -> Path:
         """Return an image path inside one auxiliary resource folder."""
@@ -150,11 +158,15 @@ class PathService:
 
     def shared_story_template_path(self) -> Path:
         """Return the shared story markdown template path."""
-        return self.stories_path() / "_Story_Template.md"
+        return self.shared_library_path("Stories", "_Story_Template.md")
 
     def shared_scene_template_path(self) -> Path:
         """Return the shared scene markdown template path."""
-        return self.stories_path() / "_Scene_Template.md"
+        return self.shared_library_path("Stories", "_Scene_Template.md")
+
+    def shared_story_index_path(self) -> Path:
+        """Return the source-controlled default story ordering index."""
+        return self.shared_library_path("Stories", "_Story_Index.json")
 
     def story_index_path(self) -> Path:
         """Return the persisted story ordering index path."""

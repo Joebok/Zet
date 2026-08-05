@@ -19,6 +19,11 @@ def library_root(project_root: Path = PROJECT_ROOT) -> Path:
     return Path(load_project_config(project_root).base_library_path)
 
 
+def shared_library_root(project_root: Path = PROJECT_ROOT) -> Path:
+    """Return the source-controlled shared library root."""
+    return project_root / "Shared_Library"
+
+
 def character_root(project_root: Path = PROJECT_ROOT) -> Path:
     """Return the configured character library root."""
     return Path(load_project_config(project_root).base_character_path)

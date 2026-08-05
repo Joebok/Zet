@@ -32,7 +32,9 @@ class AuxiliaryResourceRepository:
         """Load the auxiliary resource inventory."""
         path = self.path_service.auxiliary_resource_inventory_path()
         if not path.exists():
-            return self._empty_payload()
+            path = self.path_service.auxiliary_resource_inventory_default_path()
+            if not path.exists():
+                return self._empty_payload()
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:

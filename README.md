@@ -48,6 +48,8 @@ mkdir Zet_Library
 python3 -B -m zet.web.app
 ```
 
+`BaseLibraryPath` is user storage and may point anywhere. Shared templates and default JSON files are read from the source-controlled project directory `Shared_Library/`.
+
 ### 2. Configuration
 
 Edit `config.toml` to set up paths:
@@ -135,6 +137,7 @@ Zet/
 │   ├── Run_Body_Reference_Jobs.py
 │   ├── Compile_Character_Template.py
 │   └── Validate_Render_Output.py
+├── Shared_Library/              # Source-controlled templates and default JSON files
 ├── zet/                         # Main application code
 │   ├── models/                  # Data models (Asset, Costume, Expression)
 │   ├── services/                # Business logic for each pipeline stage

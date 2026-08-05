@@ -19,7 +19,7 @@ class AuxiliaryResourceServiceTests(unittest.TestCase):
                 base_pipeline_path=str(root / "Pipelines"),
                 base_ai_queue_path=str(root / "Queue"),
             )
-            paths = PathService(config)
+            paths = PathService(config, root)
             repository = AuxiliaryResourceRepository(paths)
             service = AuxiliaryResourceService(repository, paths)
             template = paths.auxiliary_resource_template_source_path()
