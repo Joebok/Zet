@@ -857,7 +857,6 @@ Example stub:
 
 Avoid:
 
-* Do not replace the intended task-specific head treatment.
 * Wrong age phase.
 * Wrong species markers.
 * Incorrect body type.
