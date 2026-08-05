@@ -77,10 +77,16 @@ class SceneImageReviewService:
             comment=comment_path.read_text(encoding="utf-8").strip() if comment_path.is_file() else "",
         )
 
-    def list_pending(self) -> list[SceneImageReviewStatus]:
+    def list_pending(self, story_slug: str = "", scene_slug: str = "") -> list[SceneImageReviewStatus]:
+        safe_story = self.story_service.safe_slug(story_slug) if story_slug else ""
+        safe_scene = self.story_service.safe_slug(scene_slug) if scene_slug else ""
         rows: list[SceneImageReviewStatus] = []
         for story in self.story_service.list_stories():
+            if safe_story and story.slug != safe_story:
+                continue
             for scene in self.story_service.list_scenes(story.slug):
+                if safe_scene and scene.slug != safe_scene:
+                    continue
                 status = self.status(story.slug, scene.slug)
                 if status.candidate_exists:
                     rows.append(status)

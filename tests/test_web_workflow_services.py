@@ -69,11 +69,26 @@ class WebWorkflowServiceTests(unittest.TestCase):
             self.assertEqual(json.loads(phase_path.read_text(encoding="utf-8"))["pipelines"]["Body"]["FRONT"], "updated prompt")
 
     def test_manual_render_submission_delegates_protocol_transitions(self) -> None:
-        matching = SimpleNamespace(ask_id="one", character="Zara", phase="Adult", ask_path=Path("ask"), prompt_file="prompt.md")
+        matching = SimpleNamespace(
+            ask_id="one",
+            character="Zara",
+            phase="Adult",
+            ask_path=Path("ask"),
+            prompt_file="prompt.md",
+            manifest={"story_slug": "story", "scene_slug": "scene"},
+        )
 
         class Queue:
             def list_tasks(self):
-                return [matching, SimpleNamespace(ask_id="two", character="Other", phase="Adult")]
+                return [
+                    matching,
+                    SimpleNamespace(
+                        ask_id="two",
+                        character="Other",
+                        phase="Adult",
+                        manifest={"story_slug": "other", "scene_slug": "other-scene"},
+                    ),
+                ]
 
             def get_task(self, ask_id):
                 return matching if ask_id == "one" else None
@@ -87,7 +102,10 @@ class WebWorkflowServiceTests(unittest.TestCase):
         service = ManualRenderSubmissionService(Queue())
 
         self.assertEqual(service.list_tasks("Zara", "Adult"), [matching])
+        self.assertEqual(service.list_tasks(story_slug="story", scene_slug="scene"), [matching])
         self.assertIs(service.get_task("one", "Zara", "Adult"), matching)
+        self.assertIs(service.get_task("one", story_slug="story", scene_slug="scene"), matching)
+        self.assertIsNone(service.get_task("one", story_slug="other"))
         self.assertEqual(service.submit_image(matching, b"image"), Path("answer"))
         self.assertEqual(service.submit_failure(matching, "reason"), Path("failed"))
 

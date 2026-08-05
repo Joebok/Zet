@@ -1023,6 +1023,15 @@ Backend = "manual_chatgpt"
             self.assertEqual(detail.json()["prompt"], "scene line one\nscene line two\n")
             self.assertEqual(detail.json()["manifest"]["scene_slug"], "scene")
             self.assertTrue(detail.json()["prompt_path"].endswith("Final_Image_Prompt.md"))
+            client = TestClient(create_app(config_path))
+            scoped = client.get(
+                "/api/render-console/tasks",
+                params={"story_slug": "demo", "scene_slug": "scene"},
+            ).json()["tasks"]
+            self.assertEqual([task["ask_id"] for task in scoped], [ask_path.name])
+            self.assertEqual(scoped[0]["story_slug"], "demo")
+            self.assertEqual(scoped[0]["scene_slug"], "scene")
+            self.assertEqual(client.get("/api/render-console/tasks", params={"story_slug": "other"}).json()["tasks"], [])
 
     def test_scene_render_answers_use_locked_candidate_review_lifecycle(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1077,6 +1086,15 @@ Backend = "manual_chatgpt"
             tasks = client.get("/api/render-review/tasks")
             self.assertEqual(tasks.status_code, 200)
             self.assertEqual(tasks.json()["tasks"][0]["review_key"], "scene:demo:scene")
+            scoped_tasks = client.get(
+                "/api/render-review/tasks",
+                params={"story_slug": "demo", "scene_slug": "scene"},
+            )
+            self.assertEqual(scoped_tasks.json()["tasks"][0]["review_key"], "scene:demo:scene")
+            self.assertEqual(
+                client.get("/api/render-review/tasks", params={"story_slug": "other"}).json()["tasks"],
+                [],
+            )
             detail = client.get("/api/render-review/scenes/demo/scene")
             self.assertTrue(detail.json()["locked_exists"])
             self.assertTrue(detail.json()["candidate_exists"])

@@ -46,6 +46,8 @@ class ManualRenderTask:
             "asset_id": self.asset_id,
             "character": self.character,
             "phase": self.phase,
+            "story_slug": story_slug,
+            "scene_slug": scene_slug,
             "pipeline": self.pipeline,
             "pipeline_stage": self.pipeline_stage,
             "prompt_file": self.prompt_file,

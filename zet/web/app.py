@@ -1746,14 +1746,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/render-review/tasks")
-    def render_review_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+    def render_review_tasks(
+        character: str = Query(""),
+        phase: str = Query(""),
+        story_slug: str = Query(""),
+        scene_slug: str = Query(""),
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
             tasks = []
             if character and phase:
                 assets = [asset for asset in zet_app.list_assets(character, phase) if _is_render_review_asset(asset)]
                 tasks.extend(_render_review_task_payload(zet_app, asset) for asset in assets)
-            tasks.extend(_scene_render_review_task_payload(status) for status in zet_app.list_pending_scene_image_reviews())
+            tasks.extend(
+                _scene_render_review_task_payload(status)
+                for status in zet_app.list_pending_scene_image_reviews(story_slug, scene_slug)
+            )
             return {"tasks": tasks}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2182,12 +2190,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=503, detail=f"Unable to load Ollama models: {exc}") from exc
 
     @app.get("/api/render-console/tasks")
-    def render_console_tasks(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
-        """List manual render tasks for the selected character phase."""
+    def render_console_tasks(
+        character: str = Query(""),
+        phase: str = Query(""),
+        story_slug: str = Query(""),
+        scene_slug: str = Query(""),
+    ) -> dict[str, Any]:
+        """List manual render tasks for the selected workspace context."""
         queue = _render_console_queue(app.state.config_path)
         service = ManualRenderSubmissionService(queue)
         try:
-            return {"tasks": [task.to_dict() for task in service.list_tasks(character, phase)]}
+            return {
+                "tasks": [
+                    task.to_dict()
+                    for task in service.list_tasks(character, phase, story_slug, scene_slug)
+                ]
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

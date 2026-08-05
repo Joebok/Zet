@@ -411,8 +411,8 @@ class ZetApp:
     def scene_image_review_status(self, story_slug: str, scene_slug: str):
         return self.scene_image_review_service.status(story_slug, scene_slug)
 
-    def list_pending_scene_image_reviews(self):
-        return self.scene_image_review_service.list_pending()
+    def list_pending_scene_image_reviews(self, story_slug: str = "", scene_slug: str = ""):
+        return self.scene_image_review_service.list_pending(story_slug, scene_slug)
 
     def promote_scene_image(self, story_slug: str, scene_slug: str):
         return self.scene_image_review_service.promote(story_slug, scene_slug)

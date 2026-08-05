@@ -44,6 +44,10 @@ config_text = config_path.read_text(encoding="utf-8").replace(
 )
 config_path.write_text(config_text, encoding="utf-8")
 
+auxiliary_template = root / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md"
+auxiliary_template.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(project_root / "Zet_Library" / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md", auxiliary_template)
+
 character_dir = root / "Characters" / "Test" / "Adult"
 (character_dir / "Character_Image_Template.md").write_text(
     "\n".join(
