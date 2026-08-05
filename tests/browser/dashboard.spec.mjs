@@ -163,17 +163,21 @@ test("first visit chooses Story Overview for a ready character and Character Ove
   await expect(page.locator("#onboarding-page")).toHaveClass(/active/);
 });
 
-test("workspace overviews show readiness, image states, and recommended continuation", async ({ page }) => {
+test("workspace overviews show readiness, image states, and scene navigation", async ({ page }) => {
   await openPage(page, "onboarding");
   await expect(page.locator("#character-workflow > li")).toHaveCount(5);
   await expect(page.locator("#character-overview-metrics .overview-metric")).toHaveCount(6);
   await expect(page.locator("#character-recommended-label")).not.toBeEmpty();
 
   await page.locator("#workspace-story").click();
+  await expect(page.locator("#stories-page .overview-recommendation")).toHaveCount(0);
   await expect(page.locator("#story-overview-scenes .story-overview-scene")).toHaveCount(2);
   await expect(page.locator("#story-overview-scenes")).toContainText("Candidate ready");
   await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
   await expect(page.locator("#header-scene-select option")).toHaveCount(2);
+  await page.locator("#story-overview-scenes .story-overview-scene").first().click();
+  await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
 });
 
 test("adaptive context and workspace changes preserve dirty story edits", async ({ page }) => {
@@ -213,6 +217,12 @@ test("Aux Images is accessible from the main button row", async ({ page }) => {
   await page.locator("#workspace-story").click();
   await page.getByRole("button", { name: "Aux Images" }).click();
   await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
+  const thumbnailFit = await page.evaluate(() => {
+    const image = document.body.appendChild(document.createElement("img"));
+    image.className = "aux-resource-thumb";
+    return getComputedStyle(image).objectFit;
+  });
+  expect(thumbnailFit).toBe("contain");
 });
 
 test("pipeline inspection filters pipelines and previews text and images", async ({ page }) => {
@@ -220,6 +230,8 @@ test("pipeline inspection filters pipelines and previews text and images", async
   await page.locator("#toolbar-settings-button").click();
   await page.locator("#toolbar-settings-menu button[data-page='pipeline-inspection']").click();
   await expect(page.locator("#pipeline-inspection-page")).toHaveClass(/active/);
+  const previewHeight = await page.locator(".pipeline-inspection-preview").evaluate((element) => element.getBoundingClientRect().height);
+  expect(previewHeight).toBeGreaterThan(page.viewportSize().height - 150);
   await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(5);
   await page.locator("#pipeline-inspection-search").fill("Alpha-Story / Opening");
   await expect(page.locator("#pipeline-inspection-list button")).toHaveCount(1);
@@ -862,7 +874,7 @@ test("scene prompts and Scene Builder show analysis in a dismissible popup", asy
   await page.locator('#scene-table tr[data-scene-slug="Opening-Scene"] .row-selection-button').click();
   await page.locator("#scene-stage-render").click();
   await expect(page.locator("#render-console-scene-builder")).toBeVisible();
-  await page.locator("#render-console-review-prompt").click();
+  await page.locator("#story-production-menu").selectOption("prompt-review");
   await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
 
   const sceneBuilder = page.locator("#prompt-review-scene-builder");
@@ -886,6 +898,21 @@ test("scene prompts and Scene Builder show analysis in a dismissible popup", asy
   await expect(analysisDialog).toBeVisible();
   await page.mouse.click(1, 1);
   await expect(analysisDialog).not.toBeVisible();
+
+  await page.locator("#story-production-menu").selectOption("render-console");
+  const queued = page.waitForRequest((request) => (
+    request.method() === "POST" && request.url().includes("/prompt-analysis")
+  ));
+  await page.locator("#render-console-review-prompt").click();
+  await queued;
+  await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
+  await expect(promptEye).toHaveClass(/pending/);
+  await expect(promptEye).toHaveAttribute("title", "Prompt analysis pending");
+  await expect(promptEye).toHaveAttribute("aria-label", "Prompt analysis pending");
+  const promptActions = await page.locator("#prompt-review-title + .button-row button").allTextContents();
+  expect(promptActions.slice(0, 3)).toEqual(["Scene Builder", "Render Console", "Copy Prompt"]);
+  await page.locator("#prompt-review-render-console").click();
+  await expect(page.locator("#render-console-page")).toHaveClass(/active/);
 });
 
 test("zine changes support Cancel, Discard, and Save", async ({ page }) => {

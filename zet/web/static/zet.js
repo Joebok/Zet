@@ -213,6 +213,7 @@ const promptSearch = document.querySelector("#prompt-search");
 const promptPath = document.querySelector("#prompt-path");
 const promptText = document.querySelector("#prompt-text");
 const promptReviewSceneBuilder = document.querySelector("#prompt-review-scene-builder");
+const promptReviewRenderConsole = document.querySelector("#prompt-review-render-console");
 const copyPromptButton = document.querySelector("#copy-prompt");
 const analyzePromptButton = document.querySelector("#analyze-prompt");
 const viewPromptAnalysisButton = document.querySelector("#view-prompt-analysis");
@@ -448,8 +449,6 @@ const storyPhoneViewerImage = document.querySelector("#story-phone-viewer-image"
 const storyPhonePrevious = document.querySelector("#story-phone-previous");
 const storyPhoneNext = document.querySelector("#story-phone-next");
 const storyPhonePosition = document.querySelector("#story-phone-position");
-const storyRecommendedLabel = document.querySelector("#story-recommended-label");
-const storyRecommendedAction = document.querySelector("#story-recommended-action");
 const storyMessage = document.querySelector("#story-message");
 const storyTableBody = document.querySelector("#story-table tbody");
 const storyEditorTitle = document.querySelector("#story-editor-title");
@@ -1663,8 +1662,6 @@ function renderStoryOverview() {
   if (!summary?.story_slug) {
     renderStoryPhoneViewer();
     storyOverviewMetrics.append(overviewMetric(0, "Scenes"));
-    storyRecommendedLabel.textContent = "Create a story";
-    storyRecommendedAction.dataset.destination = "stories";
     return;
   }
   renderStoryPhoneViewer();
@@ -1674,9 +1671,6 @@ function renderStoryOverview() {
     overviewMetric(summary.candidate_count, "Candidates to review"),
     overviewMetric(summary.unrendered_count, "Not rendered"),
   );
-  storyRecommendedLabel.textContent = summary.recommended_action;
-  storyRecommendedAction.dataset.destination = summary.recommended_destination;
-  storyRecommendedAction.dataset.sceneSlug = summary.recommended_scene_slug || "";
   for (const scene of summary.scenes || []) {
     const card = document.createElement("button");
     card.type = "button";
@@ -1703,7 +1697,7 @@ function renderStoryOverview() {
       state.selectedSceneSlug = scene.slug;
       saveStoredStoryContext();
       renderHeaderStoryContext();
-      renderStoryOverview();
+      await activatePage("scene-builder", { skipAutosave: true });
     }));
     storyOverviewScenes.append(card);
   }
@@ -6160,8 +6154,12 @@ function clearPromptReview() {
   copyPromptButton.disabled = true;
   promptReviewSceneBuilder.hidden = true;
   promptReviewSceneBuilder.disabled = true;
+  promptReviewRenderConsole.disabled = true;
   analyzePromptButton.disabled = true;
   viewPromptAnalysisButton.disabled = true;
+  viewPromptAnalysisButton.classList.remove("complete", "pending");
+  viewPromptAnalysisButton.title = "View prompt analysis";
+  viewPromptAnalysisButton.setAttribute("aria-label", "View prompt analysis");
 }
 
 function renderPromptReview(detail) {
@@ -6176,9 +6174,16 @@ function renderPromptReview(detail) {
   copyPromptButton.disabled = !detail.prompt;
   promptReviewSceneBuilder.hidden = !storyLabel;
   promptReviewSceneBuilder.disabled = !storyLabel;
+  promptReviewRenderConsole.disabled = !task.ask_id;
   analyzePromptButton.disabled = !storyLabel;
   viewPromptAnalysisButton.disabled = !storyLabel || !(detail.prompt_analysis?.pending || detail.prompt_analysis?.complete);
   viewPromptAnalysisButton.classList.toggle("complete", Boolean(detail.prompt_analysis?.complete));
+  viewPromptAnalysisButton.classList.toggle("pending", Boolean(detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete));
+  const analysisLabel = detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete
+    ? "Prompt analysis pending"
+    : "View prompt analysis";
+  viewPromptAnalysisButton.title = analysisLabel;
+  viewPromptAnalysisButton.setAttribute("aria-label", analysisLabel);
   clearSourceInspector();
   updatePromptReviewNavigation();
 }
@@ -8814,17 +8819,6 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
   await activatePage(destination, { skipAutosave: true });
   if (destination === "onboarding") characterSetupDetails.open = true;
 }));
-storyRecommendedAction.addEventListener("click", () => runGuardedTransition(async () => {
-  const destination = storyRecommendedAction.dataset.destination || "stories";
-  state.selectedSceneSlug = storyRecommendedAction.dataset.sceneSlug || state.selectedSceneSlug;
-  saveStoredStoryContext();
-  await activatePage(destination, {
-    skipAutosave: true,
-    preferredReviewKey: destination === "render-review" && state.selectedSceneSlug
-      ? `scene:${state.selectedStorySlug}:${state.selectedSceneSlug}`
-      : null,
-  });
-}));
 toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -9146,6 +9140,12 @@ promptReviewSceneBuilder.addEventListener("click", async () => {
   state.selectedSceneSlug = scene.sceneSlug;
   await activatePage("scene-builder", { skipAutosave: true });
 });
+promptReviewRenderConsole.addEventListener("click", async () => {
+  const askId = state.promptReviewDetail?.task?.ask_id;
+  if (!askId) return;
+  await activatePage("render-console", { skipAutosave: true });
+  await loadRenderConsoleTasks(askId);
+});
 copyCondensedButton.addEventListener("click", () => copyText(condensedText.value, "Condensed prompt copied."));
 analyzePromptButton.addEventListener("click", analyzePromptReview);
 viewPromptAnalysisButton.addEventListener("click", viewPromptReviewAnalysis);
@@ -9212,6 +9212,10 @@ renderConsoleSceneBuilder.addEventListener("click", async () => {
 renderConsoleReviewPrompt.addEventListener("click", async () => {
   const askId = state.renderConsoleDetail?.task?.ask_id;
   if (!askId) return;
+  const manifest = state.renderConsoleDetail?.manifest || {};
+  if (manifest.story_slug && manifest.scene_slug) {
+    await fetchJson(`/api/stories/${encodeURIComponent(manifest.story_slug)}/scenes/${encodeURIComponent(manifest.scene_slug)}/prompt-analysis`, { method: "POST" });
+  }
   await activatePage("prompt-review", { skipAutosave: true });
   await loadPromptReviewTasks(askId);
 });
