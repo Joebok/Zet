@@ -27,10 +27,11 @@ class _StoryService:
         return SimpleNamespace(record=SimpleNamespace(title=f"Title {scene_slug}"))
 
     def list_stories(self):
-        return [SimpleNamespace(slug="story")]
+        return [SimpleNamespace(slug="story"), SimpleNamespace(slug="other-story")]
 
     def list_scenes(self, story_slug: str):
-        return [SimpleNamespace(slug="scene", title="Title scene")]
+        slug = "scene" if story_slug == "story" else "other-scene"
+        return [SimpleNamespace(slug=slug, title=f"Title {slug}")]
 
 
 class SceneImageReviewServiceTests(unittest.TestCase):
@@ -92,6 +93,18 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             self.assertTrue(status.locked_exists)
             self.assertFalse(status.candidate_exists)
             self.assertEqual(Path(status.locked_image_path).read_bytes(), b"replacement")
+
+    def test_list_pending_filters_by_story_and_scene(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = SceneImageReviewService(_StoryService(Path(temp_dir)))
+            for story_slug, scene_slug in (("story", "scene"), ("other-story", "other-scene")):
+                candidate = service.path_service.scene_candidate_image_path(story_slug, scene_slug)
+                candidate.parent.mkdir(parents=True)
+                candidate.write_bytes(b"candidate")
+
+            self.assertEqual(len(service.list_pending()), 2)
+            filtered = service.list_pending("story", "scene")
+            self.assertEqual([(item.story_slug, item.scene_slug) for item in filtered], [("story", "scene")])
 
     def test_promote_backs_up_locked_and_discard_preserves_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
