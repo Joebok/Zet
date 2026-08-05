@@ -5028,8 +5028,9 @@ async function openSceneBuilder() {
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes();
-    state.savedBaselines.sceneBuilder = JSON.stringify(state.sceneBuilder || null);
     renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    updateDirtyIndicators();
     updateSceneBuilderNavigation();
     showSceneBuilderMessage(state.sceneBuilder._migrated_from_schema_version ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file." : "Scene Builder loaded.", "success");
   } catch (error) {
@@ -5061,8 +5062,9 @@ async function saveSceneBuilder(autosave = false) {
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
     state.sceneBuilder._validation_warnings = payload.document?.validation_warnings || state.sceneBuilder._validation_warnings || [];
     updateStoryGitWarning(payload.has_story_changes);
-    state.savedBaselines.sceneBuilder = JSON.stringify(state.sceneBuilder || null);
     renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    updateDirtyIndicators();
     if (!autosave) {
       showSceneBuilderMessage(payload.message || "Scene Builder saved.", "success");
     }

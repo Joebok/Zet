@@ -172,6 +172,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
         placed_prompt = final_image_prompt_text(placed_ir)
         self.assertEqual(["satchel", "hero"], placed_ir["composition"]["left_to_right"])
         self.assertIn("**Satchel:** Stands in the left foreground.", placed_prompt)
+        self.assertIn("beside the doorway", placed_prompt.lower())
 
     def test_composition_visual_read_is_grouped_by_depth(self):
         read_order = ["tsaeytte", "freydis", "galen", "rin", "peri", "blank", "none", "background", "backdrop"]
