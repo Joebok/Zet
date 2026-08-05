@@ -34,6 +34,7 @@ from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.worker_service import WorkerService
+from zet.services.workspace_summary_service import WorkspaceSummaryService
 from zet.services.zine_service import ZineService
 
 
@@ -155,6 +156,16 @@ class ZetApp:
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
         self.scene_image_review_service = SceneImageReviewService(story_service)
+        self.workspace_summary_service = WorkspaceSummaryService(
+            character_onboarding_service,
+            asset_repository,
+            identity_key_service,
+            turnaround_service,
+            costume_service,
+            expression_service,
+            story_service,
+            path_service,
+        )
         self.asset_service.ai_answer_harvester.scene_image_review_service = self.scene_image_review_service
         self.character_source_service = CharacterSourceService(
             path_service,
@@ -291,6 +302,14 @@ class ZetApp:
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return self.asset_repository.list_assets(character, phase)
+
+    def character_workspace_summary(self, character: str, phase: str):
+        """Return Character Development readiness for one phase."""
+        return self.workspace_summary_service.character_summary(character, phase)
+
+    def story_workspace_summary(self, story_slug: str):
+        """Return Story Telling progress for one story."""
+        return self.workspace_summary_service.story_summary(story_slug)
 
     def list_auxiliary_resources(self, category: str) -> list[AuxiliaryResource]:
         """List global auxiliary resources by category."""

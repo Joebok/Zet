@@ -797,6 +797,24 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/workspace-summary")
+    def workspace_summary(
+        character: str = Query(""),
+        phase: str = Query(""),
+        story_slug: str = Query(""),
+    ) -> dict[str, Any]:
+        """Return overview data for the active dashboard workspaces."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "character": asdict(zet_app.character_workspace_summary(character, phase))
+                if character and phase
+                else None,
+                "story": asdict(zet_app.story_workspace_summary(story_slug)),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/todo")
     def save_todo(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
