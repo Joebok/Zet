@@ -2,8 +2,6 @@
 
 This document describes Zet's complete local image generation process: configuration, scene compilation, backend dispatch, ComfyUI and Stable Matrix execution, filesystem queue processing, artifact harvesting, direct CLI use, and troubleshooting.
 
-The checked-in reference snapshot is in [`Docs/Old/ComfyUI_Example`](Old/ComfyUI_Example/README.md). It is a real successful preview of the `FirstDay` story scene `Chapter-03-Collision`.
-
 ## Purpose and boundaries
 
 Local image generation produces review images from Zet prompts and scene data. It is separate from the final story-image workflow:
@@ -443,55 +441,6 @@ Options:
 | `--seed INTEGER` | Force a reproducible seed |
 | `--output-dir PATH` | Override the IR's parent output folder |
 | `--compile-only` | Write the workflow without contacting ComfyUI |
-
-Examples:
-
-```powershell
-# Deterministic compile and render
-python3 -m zet.scripts.render_comfyui_preview `
-  .\Docs\Old\ComfyUI_Example\Scene_Render_IR.json `
-  --config .\Docs\Old\ComfyUI_Example\Config_Example.toml `
-  --seed 8343556516923134802 `
-  --output-dir .\.codex_tmp\comfyui-example
-
-# Inspect the generated API graph without running it
-python3 -m zet.scripts.render_comfyui_preview `
-  .\Docs\Old\ComfyUI_Example\Scene_Render_IR.json `
-  --config .\Docs\Old\ComfyUI_Example\Config_Example.toml `
-  --compile-only `
-  --output-dir .\.codex_tmp\comfyui-compile
-```
-
-The example config is documentation-only. Adjust its checkpoint to an installed ComfyUI checkpoint before rendering.
-
-## Example: FirstDay / Chapter-03-Collision
-
-The example snapshot was generated on July 24, 2026.
-
-Key facts:
-
-| Property | Value |
-| --- | --- |
-| Story | `FirstDay` |
-| Scene | `Chapter-03-Collision` |
-| IR schema | 3 |
-| Canvas | portrait `4:5` |
-| Scene elements | 5 |
-| Placed primary characters | 4 |
-| Profile | `comfyui-core-preview` |
-| Checkpoint | `waiNTRMIXIllustrious_v11.safetensors` |
-| Output size | `640 × 800` |
-| Steps / CFG | `28 / 7.0` |
-| Sampler / scheduler | `dpmpp_2m / karras` |
-| Seed | `8343556516923134802` |
-| ComfyUI elapsed time | `37.618` seconds |
-| Status | `SUCCESS` |
-
-The snapshot remains useful as a regression fixture because it contains four placed characters, shared left-foreground lanes, mixed depths, explicit gaze targets, and five resolved references. It records the earlier horizontal-layout result; recompiling the IR now gives shared-lane subjects distinct boxes, depth-specific geometry, explicit gaze wording, and inspectable layout metadata.
-
-![Chapter-03-Collision local ComfyUI preview](Old/ComfyUI_Example/Local_Test_Render.png)
-
-The bundle's queue files demonstrate the exact successful ask → answer → harvest lifecycle. Absolute paths in those snapshots record the machine and queue locations used during the run; they are provenance, not portable configuration.
 
 ## Output-folder reference
 

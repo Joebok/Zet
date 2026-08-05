@@ -65,7 +65,7 @@ The sequence skips `18-ai-controls.png`. AI Controls was reviewed from source on
 - `zet/web/app.py` and `zet/web/pipeline_controls_router.py`: route/API surface and service boundaries where UI recommendations may affect behavior.
 - `Scripts/capture-dashboard-ui.mjs` and `package.json`: current capture process and viewport set.
 - `tests/test_web_app.py`, `tests/test_zine_web.py`, and related web/service tests: current regression scope.
-- `Docs/UI/README.md`, `Docs/Old/Dashboard_Functionality_and_UI_Direction.md`, and `Docs/Old/FastAPI_Dashboard_Migration_Plan.md`: desktop intent, service boundary, and the “one click should do one predictable thing” direction.
+- `Docs/UI/README.md`: viewport baselines and dashboard capture coverage.
 
 ### Evidence limitations
 

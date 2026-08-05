@@ -16,9 +16,13 @@
 
 # Other exclusions
 .venv/
+.codex_tmp/
 _Lib/AI_Queue
 _Lib/Assets
 _Lib/Pipelines
+Logs/
+*.egg-info/
+.pytest_cache/
 *.backup.*
 __pycache__/
 *.py[cod]
@@ -26,4 +30,6 @@ __pycache__/
 !logo.png
 node_modules/
 test-results/
+playwright-report/
+Condensed_Image_Prompt.md
 .DS_Store

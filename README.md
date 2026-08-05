@@ -1,261 +1,144 @@
-# Zet - Character Image Creation Pipeline
+# Zet
 
-Zet is a Python-based pipeline and asset management tool for image generation, particularly aimed at identity preservation of main characters and scene building for use in comic/graphic novel type presentations. 
+Zet is a local, file-backed production dashboard for building consistent character art, composing illustrated scenes, and arranging finished scenes into zines. It combines reusable character information and image references into render prompts, then guides each image through review and approval.
 
-Zet combines text information from templates and .json files to compile "final image prompts" and marshall resources for final image rendering in an image generation tool such as ChatGPT. Zet does have some meager local image generation features, but at the time of this writing those are largely experimental.
+Zet is designed primarily for a personal creative workflow using ChatGPT for final images, with optional Ollama, Stable Matrix, ComfyUI, and [AI Proxy](https://github.com/Joebok/AI_Proxy) integrations for local automation.
 
-Zet is a personal project whose primary use is for the author, me, to generate images from my D&D sessions and create Zines of my character's backstory. Zet currently goes hand in hand with a ChatGPT plus subscription. Local AI and Image generation is done via a file proxy app (https://github.com/Joebok/AI_Proxy) to throttle requests and not overwhelm my local capacity.
+## Key features
 
-This project has been developed with CODEX and OpenAI models. I would consider it half vibe-coded, but now that I am using it more than developing it, I am back-filling better coding.
+- Guided character onboarding and life-phase management
+- Character-development pipelines for body references, head fitment, costumes, and expressions
+- Reusable identity keys, turnarounds, and auxiliary image references
+- Prompt inspection, source editing, AI analysis, and manual or local rendering
+- Side-by-side candidate review, approval, regeneration, and asset history
+- Story and scene authoring with a structured scene builder
+- Scene image-reference selection and render staging
+- Zine layout creation from finished story scenes
+- Queue, process, image-backend, and pipeline administration in one dashboard
 
-## Features
+See [Tutorial.md](Tutorial.md) for a brief guide to every dashboard feature.
 
-- **Character Onboarding**: Create new characters from onboarding options
-- **Multi-phase Rendering Pipeline**: Body Reference → Head Fitment → Costume Dressing → Expressions
-- **Prompt Inspection**: Inspect and refine queued render prompts, analyze with local LLM vision models.
-- **Asset Management**: Organized storage for character assets, costumes, expressions, references
-- **Render Console**: Manage rendering tasks with priority queuing, one-stop copy & paste interface for tools such as ChatGPT rendering.
-- **Local Image Backends**: Stable Matrix and core-node ComfyUI preview workflows share the local render queue
-- **Scene Builder**: Parameterized input wizard for scene layout using existing characters and assets; validation of elements and key inputs, compilation of prompt for final image generation. 
+## Requirements
 
-## System Requirements
+- Windows 10/11 or macOS
+- Python 3.11 or newer
+- Git
 
-### Operating Systems
-- Windows 10/11 or macOS (Darwin)
-- Python 3.11+
+Optional integrations are only needed for their related features:
 
-### Dependencies
-Zet should run in its project-local `.venv`, not the system Python environment.
+- ChatGPT for the manual final-render workflow
+- [AI Proxy](https://github.com/Joebok/AI_Proxy) for filesystem-based AI and render queues
+- Ollama for local prompt analysis or condensation
+- Stable Matrix or [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for local image generation
 
-For a new Windows deployment, clone the repository, open PowerShell in the project root, and run:
+## Install
+
+Clone the repository and enter it:
+
+```bash
+git clone https://github.com/Joebok/Zet.git
+cd Zet
+```
+
+### Windows
+
+From PowerShell in the project root:
 
 ```powershell
 python3 --version
 .\setup_venv.bat
 ```
 
-This creates `.venv`, upgrades its copy of `pip`, and installs `requirements.txt`. Run
-`setup_venv.bat` again whenever the requirements change. The `.venv` directory is local to the
-deployment and excluded from Git.
+The setup script creates `.venv`, upgrades pip, and installs `requirements.txt`. Run it again after dependencies change. It also avoids PowerShell activation-policy issues by activating the environment through its batch script.
 
-To set up manually instead:
-
-```powershell
-python3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-If PowerShell blocks `Activate.ps1`, use `setup_venv.bat`; it uses the batch activation script and
-does not require changing the PowerShell execution policy.
-
-For a new macOS deployment:
+### macOS
 
 ```bash
+python3 --version
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
-python3 -B -m zet.web.app
 ```
 
-**Core packages:**
-- `fastapi` - Web API server for dashboard and management endpoints
-- `numpy`, `pillow` - Image processing utilities
-- `uvicorn` - ASGI web server for running the FastAPI app
-- `opencv-python` - Computer vision operations (pose detection, image analysis)
+## Configure
 
-### Optional: ComfyUI Integration
-To use local ComfyUI previews:
-1. Install [ComfyUI](https://github.com/comfyanonymous/comfyui) separately
-2. Start its local server, normally at `http://127.0.0.1:8188`
-3. Select ComfyUI and configure its profile, checkpoint, and prompt globals on the Image Config page
-4. Install [AI_Proxy](https://github.com/Joebok/AI_Proxy) separately
-5. Configure AI_Proxy for your situation. Zet's BaseAIQueuePath and AI_Proxy's AI_QUEUE_ROOT must point to the same location.
-4. Start AI_Proxy; it is preconfigured with Zet registrations for prompt analysis and local image generation.
-
-## Quick Start
-
-### 1. Initial Setup
-
-```bash
-# Create library folder for output assets
-mkdir Zet_Library
-
-# Run the web dashboard to manage characters and scenes
-run_zet_web.bat
-```
-
-`BaseLibraryPath` is user storage and may point anywhere. Shared templates and default JSON files are read from the source-controlled project directory `Shared_Library/`.
-
-### 2. Configuration
-
-Edit `config.toml` to set up paths:
+Before the first launch, edit the section for your operating system in `config.toml`:
 
 ```toml
 [BaseFoldersByPlatform.Windows]
 BaseLibraryPath = "C:/Users/<username>/Projects/Zet_Library/"
-BaseAIQueuePath = "C:/Users/<username>/Library/CloudStorage/Dropbox/AI_Queue/"
+BaseAIQueuePath = "C:/Users/<username>/Projects/Zet_AI_Queue/"
 
-[PromptCondense]
-Enabled = false  # Set to true for automatic prompt condensation with Qwen model
-Model = "qwen3.5:4b-condenser"
-
-[LocalRender]
-Backend = "stable_matrix" # stable_matrix or comfyui
-
-[StableMatrix]
-Profile = "body-reference-preview"
-Checkpoint = "stable-matrix-checkpoint"
-
-[ComfyUI]
-Profile = "comfyui-core-preview"
-ServerURL = "http://127.0.0.1:8188"
-Checkpoint = "checkpoint.safetensors"
-PositivePromptGlobals = "masterpiece, best quality"
-NegativePromptGlobals = "EasyNegative"
+[BaseFoldersByPlatform.Darwin]
+BaseLibraryPath = "/Users/<username>/Projects/Zet_Library/"
+BaseAIQueuePath = "/Users/<username>/Projects/Zet_AI_Queue/"
 ```
 
-### Local ComfyUI Scene Preview
+`BaseLibraryPath` holds your creative work. `BaseAIQueuePath` is used for render and AI jobs; if you use AI Proxy on another machine, both applications must use the same queue location.
 
-`Scene_Render_IR.json` is the canonical local scene-render input. Compile and run it directly with:
+The dashboard's **Tools > Image Config** and **Tools > AI Controls** pages manage most optional image-generation and automation settings after startup.
+
+## Run
+
+### Windows
 
 ```powershell
-.\.venv\Scripts\python.exe -m zet.scripts.render_comfyui_preview C:\path\to\Scene_Render_IR.json --config config.toml
+.\run_zet_web.bat
 ```
 
-Add `--compile-only` to write the API workflow without submitting it. The command writes
-`ComfyUI_Workflow_API.json` to the pipeline output folder and stores the generated image and
-`ComfyUI_Render_Metadata.json` under `Local_Test_Renders`.
+### macOS
 
-The initial ComfyUI workflow uses built-in txt2img and area-conditioning nodes. Dialogue,
-reference-image conditioning, ControlNet, IP-Adapter, and custom nodes are not part of this baseline.
-
-### 3. Running the Pipeline
-
-**Option A - Interactive Dashboard:**
 ```bash
-run_zet_web.bat                 ; Activates .venv and starts the web app
-.\.venv\Scripts\python.exe -B -m zet.web.app  ; Direct execution
+source .venv/bin/activate
+./run_zet_web.command
 ```
 
-**Option B - Automated Processing:**
-```powershell
-# Harvest queued jobs from AI_Queue folder
-.\run_auto_harvest.bat
+Open [http://localhost:8080](http://localhost:8080). Use **New > Character** to begin character development or **New > Story** to begin a story.
 
-# Run specific render stages (requires ComfyUI running)
-.\.venv\Scripts\python.exe .\Scripts\Run_Body_Reference_Jobs.py
-.\.venv\Scripts\python.exe .\Scripts\Run_Character_Assembly_Jobs.py
-.\.venv\Scripts\python.exe .\Scripts\Run_Costume_Dressing_Jobs.py
-```
+To stop Zet, press `Ctrl+C` in the terminal running the server.
 
-### 4. Adding a New Character
+## Optional services
 
-1. Place character config in `Characters/` folder with:
-   - Base image references
-   - Costume definitions (`Costumes.json`)
-   - Expression templates
-2. Use dashboard or run:
-   ```powershell
-   C:\Users\Joe\Projects\AI_Proxy\run_file_proxy.bat    ; Start the standalone file proxy
-   run_zet_web.bat                              ; Activates .venv and starts the pipeline app
-   ```
+Zet can run without every optional integration, but automated queue processing and local image generation require the corresponding service.
 
-## Project Structure
+- Configure AI Proxy to share Zet's `BaseAIQueuePath`.
+- Start Ollama before refreshing or selecting local analysis models.
+- Start Stable Matrix or ComfyUI before requesting local images.
+- In Zet, open **Tools > Image Config** to select the backend, render profile, checkpoint, and prompt globals.
+- Open **Tools > AI Controls** to configure harvesting, choose the final-render backend, and inspect service status.
 
-```
-Zet/
-├── Config/                      # Prompt templates, review checklists, render presets
-│   ├── AI_Prompt_Analysis_Instructions.md
-│   ├── Character_Onboarding_Options.json
-│   ├── Local_Render_Presets.json # Configured local render backends
-│   └── ...
-├── Scripts/                     # Standalone Python scripts for pipeline stages
-│   ├── Run_Body_Reference_Jobs.py
-│   ├── Compile_Character_Template.py
-│   └── Validate_Render_Output.py
-├── Shared_Library/              # Source-controlled templates and default JSON files
-├── zet/                         # Main application code
-│   ├── models/                  # Data models (Asset, Costume, Expression)
-│   ├── services/                # Business logic for each pipeline stage
-│   ├── repositories/            # Database/file storage accessors
-│   ├── app.py                   # Reusable application facade
-│   └── web/app.py               # FastAPI web server entry point
-├── tests/                       # Unit tests for core functionality
-├── AI_Manager/                  # One-job Ollama and local-image worker executables
-├── Logs/                        # Pipeline execution logs
-├── Logs/Source_Edits.jsonl     # Versioned prompt/source edits history
-└── config.toml                 # Configuration file
-```
+## Troubleshooting
 
-## API Endpoints
+### `No module named 'zet'`
 
-The FastAPI server exposes these representative endpoints (when running `run_zet_web.bat`):
+Run commands from the repository root. On Windows, rerun `setup_venv.bat`; on macOS, activate `.venv` before launching Zet.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/context` | GET | Dashboard character and phase context |
-| `/api/assets` | GET | List assets for a character and phase |
-| `/api/render-console/tasks` | GET | List queued manual render tasks |
-| `/api/stories/{story_slug}/scenes/{scene_slug}/stage-render` | POST | Stage a V3 scene render |
+### The dashboard does not start
 
-## Help & Troubleshooting
+Check whether another process already uses port 8080. The Windows launcher reports an existing Zet listener instead of starting a duplicate.
 
-### Common Issues
+### Local models or checkpoints are missing
 
-**"No module named 'zet'" error:**
-```bash
-setup_venv.bat    ; Run from the project root
-```
+Confirm the selected Ollama, Stable Matrix, or ComfyUI service is running, then use the corresponding refresh control in **AI Controls** or **Image Config**.
 
-**ComfyUI proxy not connecting:**
-- Ensure ComfyUI server is running on default port 8188
-- Confirm the ComfyUI server URL and checkpoint on the Image Config page
-- Confirm the configured checkpoint filename matches ComfyUI's checkpoint list
+### Render jobs are not moving
 
-**Prompt condensation model errors (Qwen):**
-- Verify Ollama or local LLM is accessible at configured endpoint
-- See `Config/AI_Prompt_Analysis_Instructions.md` for prompt-analysis instructions
+Open **Tools > AI Controls** and check the process state and Ask, Running, and Answer queues. Verify Zet and AI Proxy share the same queue location.
 
-### Logs Location
+## Documentation
 
-Pipeline logs are written to the `Logs/` directory. Check recent entries when debugging rendering failures.
+- [Tutorial.md](Tutorial.md) — feature-oriented usage guide
+- [Docs/Zet.md](Docs/Zet.md) — implementation and pipeline details
+- [Docs/Local_Image_Generation.md](Docs/Local_Image_Generation.md) — local rendering configuration and operation
+- [Docs/Zet_Data_Schema_Object_Model_Decisions.md](Docs/Zet_Data_Schema_Object_Model_Decisions.md) — data-model decisions
 
-## Authors
+## Status
 
-Contributors and maintainers (add your name here):
-- Joe - Project maintainer, pipeline architecture
-
-## Version History
-
-* 1.0 (2026)
-    * Initial release with character onboarding, multi-phase rendering pipeline
-    * ComfyUI proxy integration for Stable Diffusion workflows
-    * AI prompt analysis using LLM models
-    * Integration with AI_Proxy
-* 2.0 (2026)
-    * Separate Character Development and Story Telling interfaces
+Zet is a personal project under active development. Workflows and dashboard controls may change as the production process evolves.
 
 ## License
 
-No license file is currently included in this repository.
+Zet is licensed under the [MIT License](LICENSE).
 
-## Acknowledgments
-
-- [ComfyUI](https://github.com/comfyanonymous/comfyui) for the underlying image generation workflows
-- [Qwen models](https://ollama.com/library/qwen) via Ollama for prompt analysis and condensation
-- Stable Diffusion community for base model support (SD1.5, SDXL)
-
-## Additional Resources
-
-- **Dashboard and workflows**: See `Docs/Zet.md`
-- **Data Schema**: Object model decisions documented in `Docs/Zet_Data_Schema_Object_Model_Decisions.md`
-
-## Contributing
-
-
----
-
-*For more information, see [AGENTS.md](./AGENTS.md) for automation workflows and subagent capabilities.*
+Copyright &copy; 2026 Joe Schonbok.
