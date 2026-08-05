@@ -16,7 +16,6 @@ from zet.render_console.queue import RenderConsoleQueue
 from zet.services.config_service import ConfigService
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
-from zet.services.gpt_helper_prompt_service import GptHelperPromptService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
@@ -66,14 +65,6 @@ def _render_console_reference_files(zet_app: ZetApp, task) -> list[dict]:
     if asset is not None and asset.reference_files:
         return asset.reference_files
     return task.manifest.get("reference_files") or []
-
-
-def _gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task) -> dict[str, str]:
-    return GptHelperPromptService(zet_app, PROJECT_ROOT).get(task)
-
-
-def _save_gpt_helper_prompt(zet_app: ZetApp, config_path: str | Path, task, text: str) -> dict[str, str]:
-    return GptHelperPromptService(zet_app, PROJECT_ROOT).save(task, text)
 
 
 def _format_value(value: Any) -> str:
@@ -379,7 +370,7 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     }
 
 
-def _render_console_detail_payload(zet_app: ZetApp, config_path: str | Path, queue: RenderConsoleQueue, task) -> dict[str, Any]:
+def _render_console_detail_payload(zet_app: ZetApp, queue: RenderConsoleQueue, task) -> dict[str, Any]:
     """Return render-task prompt review data for assets and story scenes."""
     prompt = queue.read_prompt(task)
     source_map_path = None
@@ -414,7 +405,6 @@ def _render_console_detail_payload(zet_app: ZetApp, config_path: str | Path, que
         "source_map_path": str(source_map_path) if source_map_path else None,
         "source_map": _jsonable(source_map),
         "prompt_analysis": _jsonable(prompt_analysis),
-        "gpt_helper_prompt": _gpt_helper_prompt(zet_app, config_path, task),
         "local_prompt": _render_console_local_prompt_payload(zet_app, task),
     }
 
@@ -2217,7 +2207,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         if task is None:
             raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
         zet_app = _app(app.state.config_path)
-        return _render_console_detail_payload(zet_app, app.state.config_path, queue, task)
+        return _render_console_detail_payload(zet_app, queue, task)
 
     @app.get("/api/local-image-review/tasks/{ask_id}")
     def local_image_review_task(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
@@ -2320,32 +2310,9 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             if context.prompt_text is None:
                 raise ValueError(f"No Final_Image_Prompt.md found for Asset {task.asset_id}.")
             service.replace_prompt(task, context.prompt_text)
-            payload = _render_console_detail_payload(zet_app, app.state.config_path, queue, task)
+            payload = _render_console_detail_payload(zet_app, queue, task)
             payload["message"] = f"Prompt recompiled for Asset {task.asset_id}."
             return payload
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/render-console/tasks/{ask_id}/gpt-helper-prompt")
-    async def render_console_save_gpt_helper_prompt(
-        ask_id: str,
-        request: Request,
-        character: str = Query(""),
-        phase: str = Query(""),
-    ) -> dict[str, Any]:
-        """Save the editable GPT helper prompt for a render-console task."""
-        queue = _render_console_queue(app.state.config_path)
-        task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
-        if task is None:
-            raise HTTPException(status_code=404, detail=f"Manual render task not found: {ask_id}")
-        try:
-            payload = await request.json()
-            zet_app = _app(app.state.config_path)
-            prompt = _save_gpt_helper_prompt(zet_app, app.state.config_path, task, str(payload.get("text") or ""))
-            return {
-                "message": f"Saved GPT helper prompt for {prompt.get('pipeline')} / {prompt.get('view')}.",
-                "gpt_helper_prompt": prompt,
-            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2371,7 +2338,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),
                 "prompt": queue.read_prompt(task),
-                "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
                 "local_prompt": _render_console_local_prompt_payload(zet_app, task),
             }
             payload["message"] = f"Local test render queued: {ask_path}" if ask_path else "Local test render already queued."
@@ -2418,7 +2384,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),
                 "prompt": queue.read_prompt(task),
-                "gpt_helper_prompt": _gpt_helper_prompt(zet_app, app.state.config_path, task),
                 "local_prompt": _render_console_local_prompt_payload(zet_app, task),
                 "message": f"Cleared {removed} local image(s).",
             }

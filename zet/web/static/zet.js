@@ -345,10 +345,6 @@ const consoleAskId = document.querySelector("#console-ask-id");
 const consoleAssetLabel = document.querySelector("#console-asset-label");
 const consolePipelineLabel = document.querySelector("#console-pipeline-label");
 const consoleExpectedOutput = document.querySelector("#console-expected-output");
-const renderConsoleHelperPanel = document.querySelector("#render-console-helper-panel");
-const renderConsoleHelperText = document.querySelector("#render-console-helper-text");
-const renderConsoleSaveHelper = document.querySelector("#render-console-save-helper");
-const renderConsoleCopyHelper = document.querySelector("#render-console-copy-helper");
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
 const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
 const renderConsoleCopyLocalApiParams = document.querySelector("#render-console-copy-local-api-params");
@@ -7763,10 +7759,6 @@ function clearRenderConsole() {
   consoleAssetLabel.textContent = "";
   consolePipelineLabel.textContent = "";
   consoleExpectedOutput.textContent = "";
-  renderConsoleHelperPanel.hidden = true;
-  renderConsoleHelperText.value = "";
-  renderConsoleSaveHelper.disabled = true;
-  renderConsoleCopyHelper.disabled = true;
   renderConsolePrompt.value = "";
   renderConsoleLocalTest.disabled = true;
   renderConsoleCopyLocalApiParams.disabled = true;
@@ -7802,11 +7794,6 @@ function renderRenderConsoleDetail(detail) {
   consoleAssetLabel.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.character} / ${task.phase}`;
   consolePipelineLabel.textContent = `${task.pipeline} | ${task.pipeline_stage}`;
   consoleExpectedOutput.textContent = task.expected_output || "";
-  const helperText = detail.gpt_helper_prompt?.text || "";
-  renderConsoleHelperText.value = helperText;
-  renderConsoleHelperPanel.hidden = !detail.gpt_helper_prompt?.source;
-  renderConsoleSaveHelper.disabled = !detail.gpt_helper_prompt?.source;
-  renderConsoleCopyHelper.disabled = !helperText;
   renderConsolePrompt.value = detail.prompt || "";
   const isScene = Boolean(detail.manifest?.story_slug && detail.manifest?.scene_slug);
   renderConsoleSceneBuilder.hidden = !isScene;
@@ -7894,31 +7881,6 @@ function setRenderConsoleImageSelection(blob) {
   renderConsoleImagePreview.hidden = false;
   renderConsoleSaveImage.disabled = false;
   renderConsoleSaveStatus.textContent = `Ready to save ${Math.round(blob.size / 1024)} KB image.`;
-}
-
-async function saveRenderConsoleHelperPrompt() {
-  if (!state.selectedRenderConsoleAskId) {
-    return;
-  }
-  renderConsoleSaveHelper.disabled = true;
-  try {
-    const payload = await fetchJson(
-      `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/gpt-helper-prompt?${productionQuery().toString()}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: renderConsoleHelperText.value || "" }),
-      },
-    );
-    state.renderConsoleDetail.gpt_helper_prompt = payload.gpt_helper_prompt;
-    renderConsoleHelperText.value = payload.gpt_helper_prompt?.text || "";
-    renderConsoleCopyHelper.disabled = !renderConsoleHelperText.value;
-    showRenderConsoleMessage(payload.message || "GPT helper prompt saved.");
-  } catch (error) {
-    showRenderConsoleMessage(error.message, "error");
-  } finally {
-    renderConsoleSaveHelper.disabled = false;
-  }
 }
 
 async function runRenderConsoleLocalAction(action) {
@@ -9222,14 +9184,6 @@ renderConsoleReviewPrompt.addEventListener("click", async () => {
 renderConsoleCopyPrompt.addEventListener("click", async () => {
   await writeClipboardText(state.renderConsoleDetail?.prompt || "");
   showRenderConsoleMessage("Prompt copied.");
-});
-renderConsoleSaveHelper.addEventListener("click", saveRenderConsoleHelperPrompt);
-renderConsoleHelperText.addEventListener("input", () => {
-  renderConsoleCopyHelper.disabled = !renderConsoleHelperText.value;
-});
-renderConsoleCopyHelper.addEventListener("click", async () => {
-  await writeClipboardText(renderConsoleHelperText.value || "");
-  showRenderConsoleMessage("GPT helper prompt copied.");
 });
 renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
 renderConsoleCopyLocalApiParams.addEventListener("click", copyRenderConsoleLocalApiParams);

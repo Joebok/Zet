@@ -152,10 +152,6 @@ class PathService:
         """Return the expression definition folder for a character phase."""
         return self.character_path(character, phase) / "Expressions"
 
-    def gpt_helper_prompt_path(self, character: str, phase: str) -> Path:
-        """Return the GPT helper prompt config path for a character phase."""
-        return self.character_path(character, phase) / "GPT_Helper_Prompts.json"
-
     def stories_path(self) -> Path:
         """Return the stories library root."""
         return self.library_path("Stories")

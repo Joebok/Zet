@@ -21,20 +21,6 @@ class WebAppTests(unittest.TestCase):
         (root / "Assets" / "Test" / "Adult").mkdir(parents=True)
         (root / "Queue").mkdir()
         (root / "Config").mkdir()
-        (root / "Config" / "GPT_Helper_Prompts.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "defaults": {
-                        "FRONT": "The character must face directly toward the viewer, just like the reference image."
-                    },
-                    "pipelines": {},
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
         (prompt_dir / "Final_Image_Prompt.md").write_text("full final prompt\n", encoding="utf-8")
         (pipeline_dir / "front.png").write_bytes(b"test image")
         (character_dir / "Assets.json").write_text(
@@ -953,24 +939,10 @@ Backend = "manual_chatgpt"
             detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
             self.assertEqual(detail.status_code, 200)
             self.assertEqual(detail.json()["prompt"], "manual render prompt\n")
+            self.assertNotIn("gpt_helper_prompt", detail.json())
             self.assertEqual(
-                detail.json()["gpt_helper_prompt"]["text"],
-                "The character must face directly toward the viewer, just like the reference image.",
-            )
-            saved_helper = client.post(
-                "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/gpt-helper-prompt",
-                json={"text": "Keep this front view absolutely square to the viewer."},
-            )
-            self.assertEqual(saved_helper.status_code, 200)
-            self.assertEqual(
-                saved_helper.json()["gpt_helper_prompt"]["text"],
-                "Keep this front view absolutely square to the viewer.",
-            )
-            self.assertEqual(saved_helper.json()["gpt_helper_prompt"]["source"], "pipeline:Body-Reference")
-            helper_config = json.loads((root / "Characters" / "Test" / "Adult" / "GPT_Helper_Prompts.json").read_text(encoding="utf-8"))
-            self.assertEqual(
-                helper_config["pipelines"]["Body-Reference"]["FRONT"],
-                "Keep this front view absolutely square to the viewer.",
+                client.post("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/gpt-helper-prompt").status_code,
+                404,
             )
             saved = client.post(
                 "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",

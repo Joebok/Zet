@@ -38,7 +38,7 @@ Prompt Inspection is a review tool; opening or reading a prompt does not advance
 
 The Render Console is the handoff point for manual image generation. Copy the prompt and reference images into your image tool, then return the generated image to Zet with an optional note.
 
-You can also edit the GPT helper prompt, generate a local test image when a backend is configured, or fail the task with a reason when it cannot be completed.
+You can also generate a local test image when a backend is configured or fail the task with a reason when it cannot be completed.
 
 ### Image Review
 

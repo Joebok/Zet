@@ -5,7 +5,6 @@ import tempfile
 import unittest
 
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
-from zet.services.gpt_helper_prompt_service import GptHelperPromptService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.source_editor_service import SourceEditorService
 
@@ -43,30 +42,6 @@ class WebWorkflowServiceTests(unittest.TestCase):
             self.assertEqual(json.loads(source.read_text(encoding="utf-8"))["nested"]["value"], "new")
             with self.assertRaises(ValueError):
                 service.resolve_path(str(root.parent / "outside.json"))
-
-    def test_gpt_helper_prompt_migrates_legacy_defaults_and_round_trips(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config_dir = root / "Config"
-            config_dir.mkdir()
-            (config_dir / "Prompt_View_Text.json").write_text('{"views": {"FRONT": {}}}', encoding="utf-8")
-            (config_dir / "GPT_Helper_Prompts.json").write_text(
-                '{"defaults": {"FRONT": "legacy prompt"}}', encoding="utf-8"
-            )
-            phase_path = root / "Characters" / "Zara" / "Adult" / "Config" / "GPT_Helper_Prompts.json"
-            asset = SimpleNamespace(character="Zara", phase="Adult", pipeline="Body", body_view="Front")
-            app = SimpleNamespace(
-                config_path=root / "config.toml",
-                asset=lambda *_: SimpleNamespace(get=lambda: asset),
-                path_service=SimpleNamespace(gpt_helper_prompt_path=lambda *_: phase_path),
-                pipeline_repository=SimpleNamespace(list_pipelines=lambda *_: [SimpleNamespace(name="Body")]),
-            )
-            task = SimpleNamespace(asset_id=1, character="Zara", phase="Adult")
-            service = GptHelperPromptService(app, root)
-
-            self.assertEqual(service.get(task)["text"], "legacy prompt")
-            self.assertEqual(service.save(task, "updated prompt")["text"], "updated prompt")
-            self.assertEqual(json.loads(phase_path.read_text(encoding="utf-8"))["pipelines"]["Body"]["FRONT"], "updated prompt")
 
     def test_manual_render_submission_delegates_protocol_transitions(self) -> None:
         matching = SimpleNamespace(

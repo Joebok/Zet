@@ -2322,13 +2322,6 @@ tr.auxiliary-row td:last-child {
   overflow-wrap: anywhere;
 }
 
-.helper-panel {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  margin-bottom: 10px;
-  padding: 10px;
-}
-
 .helper-panel-header {
   align-items: center;
   display: flex;
@@ -2342,17 +2335,6 @@ tr.auxiliary-row td:last-child {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
-}
-
-.helper-panel textarea {
-  min-height: 62px;
-}
-
-.helper-panel p,
-.helper-panel textarea {
-  font-size: 15px;
-  line-height: 1.45;
-  margin: 0;
 }
 
 #render-console-prompt {

@@ -7,9 +7,9 @@ Scope: current working tree, all Python packages/scripts, FastAPI/HTML/JavaScrip
 
 The backend has a sound intended boundary—repositories persist file-backed models, services own workflows, and FastAPI presents them—but three transitions are incomplete:
 
-1. **P0 — establish a green behavioral baseline.** `python3 -m pytest -q` currently reports **16 failed, 85 passed**. Failures cluster around the new config-root contract, the Scene Builder V3 requirement, changed prompt text, story rendering, and phase-local GPT helper prompts. Several tests still assert retired behavior, while others expose uncharacterized behavior changes. Refactoring on this baseline would make regressions hard to distinguish from intentional migration.
+1. **P0 — establish a green behavioral baseline.** `python3 -m pytest -q` currently reports **16 failed, 85 passed**. Failures cluster around the new config-root contract, the Scene Builder V3 requirement, changed prompt text, and story rendering. Several tests still assert retired behavior, while others expose uncharacterized behavior changes. Refactoring on this baseline would make regressions hard to distinguish from intentional migration.
 2. **P0 — finish or explicitly preserve the `PROMPT_REVIEW` compatibility lane.** New onboarding removes the stage and every configured pipeline in the active library bypasses it, but stage-specific routes, services, an AI worker, config, facade methods, tests, and documentation remain. The current browser “Prompt Review” page already reads Render Console tasks instead of the old prompt-review API. This is a confirmed split between current behavior and compatibility code; removal still requires a human decision about external clients and other libraries.
-3. **P1 — move reusable mutations out of `zet/web`.** The web module owns helper-prompt migration/persistence, arbitrary source editing, queue-answer writes, prompt-file replacement, queue filtering, filesystem discovery, and backend HTTP discovery. These are reusable workflows and directly violate the documented boundary.
+3. **P1 — move reusable mutations out of `zet/web`.** The web module owns arbitrary source editing, queue-answer writes, prompt-file replacement, queue filtering, filesystem discovery, and backend HTTP discovery. These are reusable workflows and directly violate the documented boundary.
 4. **P1 — break the `AssetService` / `AIProxyService` / `PromptReviewService` dependency cycle.** `ZetApp.from_config()` constructs an incomplete proxy service, builds services around it, then mutates `ai_proxy_service.prompt_review_service`. `PromptReviewService` also reaches through `AssetService` into private `WorkerService` methods. This makes construction order and private implementation details part of runtime behavior.
 5. **P1 — split the story/render and web monoliths after behavior is characterized.** `StoryService` combines document CRUD, Git, three schemas, migration/defaulting, prompt generation, reference resolution, queue cleanup, and render staging. `zet/web/app.py`, `zet/web/static/zet.js`, and the single HTML template similarly aggregate every page. Their physical sizes (1,765, 2,742, 6,598, and 1,268 lines respectively) are symptoms; the mixed responsibilities are the maintenance problem.
 6. **P2 — consolidate repeated infrastructure.** AI queue paths/state scanning, JSON repository serialization/atomic writes, stage compiler scaffolding, view normalization, and worker filesystem primitives are independently implemented in several places.
@@ -176,17 +176,16 @@ Risk scale: **High** means persisted state or cross-process queue behavior can c
 **Priority/status:** P1, confirmed boundary violation.  
 **Evidence:**
 
-- GPT helper config migration, seeding, atomic write, and update: `_write_gpt_helper_prompt_config`, `_seed_phase_gpt_helper_prompt_config`, `_ensure_phase_gpt_helper_prompt_config`, `_save_gpt_helper_prompt` (`zet/web/app.py:99-224`).
 - Character/phase filesystem discovery: `_discover_characters`, `_discover_phases` (`:233-245`).
 - Editable source authorization, JSON Pointer parsing/mutation, markdown-section extraction, persistence, and audit logging: `_record_source_edit` through `_save_edit_source` (`:864-1014`). The module mutates `sys.path` to import compiler/editor internals from `Scripts` (`:26-34`).
 - Render backend configuration and network discovery: `_local_render_preset`, `_local_render_checkpoints` (`:1052-1083`).
 - Render prompt replacement and queue transitions: direct task prompt write (`:2487`), `queue.write_answer_image` (`:2609`), and `queue.write_failed_answer` (`:2636`).
 
-**Call trace:** FastAPI routes call these helpers directly; no `ZetApp`, focused service, or repository exposes the same workflow. Consequently scripts/other interfaces cannot reuse helper-prompt editing, source editing, or render-answer submission without importing the web module.
+**Call trace:** FastAPI routes call these helpers directly; no `ZetApp`, focused service, or repository exposes the same workflow. Consequently scripts/other interfaces cannot reuse source editing or render-answer submission without importing the web module.
 
 **Cost:** HTTP concerns, filesystem policy, migration, protocol transitions, and error translation cannot be tested or reused independently.  
 **Refactoring risk:** High for source editing and queue writes; Medium for discovery/config reads.  
-**Tests before change:** service-level path authorization and JSON Pointer tests; helper-prompt migration/round-trip; render answer/failure protocol; route tests that assert delegation rather than filesystem details.
+**Tests before change:** service-level path authorization and JSON Pointer tests; render answer/failure protocol; route tests that assert delegation rather than filesystem details.
 
 ### A2. Core services form a construction cycle and cross private boundaries
 
@@ -248,7 +247,6 @@ Risk scale: **High** means persisted state or cross-process queue behavior can c
 - Three Body Reference race-rule tests build `Config/` and `_Lib/` fixtures without `config.toml`; the compiler now reloads config through `Scripts.Library_Paths` and fails before the behavior under test.
 - Story tests still expect Markdown-only render staging, V1 migration, and “v2” outputs, while `StoryService.stage_scene_render` now requires `.scene.json` V3.
 - Costume prompt tests assert exact old orientation text after configuration/compiler changes.
-- `test_render_console_api_lists_task_detail_and_saves_image_answer` expects the legacy global GPT helper file to be updated, while current web code seeds/writes a phase-local file.
 - `test_stage_scene_render_with_builder_writes_v2_artifacts` asserts exact sentence casing rather than semantic placement; current output contains the same fact with capitalization after the bullet label.
 
 **Cost:** failures do not cleanly distinguish regression from intentional migration, and exact prose assertions inhibit safe prompt compiler refactoring.  
@@ -262,7 +260,7 @@ Risk scale: **High** means persisted state or cross-process queue behavior can c
 3. **Define persisted protocol types (P1).** Version and type reference records, scene schemas, and queue manifests with tolerant readers. Do this before moving code so structural refactors do not silently change persisted formats.
 4. **Centralize queue protocol paths and scanning (P1).** Extend `AIProxyPathService` or a focused queue repository; make Story, analysis, prompt artifact, Render Console, and proxy workers consume the same protocol primitives. Preserve the on-disk layout.
 5. **Break the service cycle (P1).** Extract prompt artifact resolution/compilation and a public named-worker execution API. Remove post-construction mutation and private-method calls.
-6. **Extract web-owned workflows (P1).** In order: character/phase discovery; local backend discovery; helper-prompt repository/migration; source editor service; manual render submission service. Routes should validate HTTP input, call `ZetApp`/services, and serialize results.
+6. **Extract web-owned workflows (P1).** In order: character/phase discovery; local backend discovery; source editor service; manual render submission service. Routes should validate HTTP input, call `ZetApp`/services, and serialize results.
 7. **Make compound writes recoverable (P1).** Add batch repository operations and staged writes/rollback for costume and expression commands.
 8. **Split story responsibilities (P1/P2).** Separate story document/Git operations, V3 scene document normalization/migration, reference resolution, render compilation, and render-task staging. Delete the confirmed legacy helpers after characterization.
 9. **Consolidate compiler and repository infrastructure (P2).** Extract shared compiler orchestration, dataclass codecs, atomic JSON writer, view resolver, and worker protocol utilities one at a time behind existing behavior.
@@ -281,7 +279,7 @@ Before implementation approval, add or repair these suites:
 5. **Scene migrations:** real V1/V2/V3 fixtures, load-only behavior, normalized V3 output, unknown fields, backups, and failed migration rollback.
 6. **Prompt compiler goldens:** all five asset pipelines plus scene final/local/Forge Couple prompts, source maps, dependency manifests, and validation outputs. Mark which prose is contractual and which assertions should be semantic.
 7. **Compound command failures:** injected failures at every costume/expression template and asset write; retry and recovery.
-8. **Web boundary contracts:** routes mock public facade/service methods only; source-edit authorization; helper-prompt migration; render answer/failure; live config reload.
+8. **Web boundary contracts:** routes mock public facade/service methods only; source-edit authorization; render answer/failure; live config reload.
 9. **Documentation smoke checks:** supported launcher, configured route inventory, referenced files, and schema field inventory.
 10. **Cross-platform paths/imports:** run from outside the checkout with absolute/project/library/legacy paths on Windows and macOS.
 
@@ -341,7 +339,7 @@ There are no untracked personal scripts.
 - Revalidated the P1 findings against the current repository before editing; the documented boundary violations, service cycle, protocol duplication, story ownership, and compound-write risks still matched.
 - Added typed/versioned queue and reference protocols with clear unsupported-version errors, and centralized queue paths and state scanning without changing the on-disk layout.
 - Removed the Asset/AI proxy/prompt service construction cycle and private worker calls through an injected prompt-artifact service and public named-worker API.
-- Extracted reusable discovery, backend lookup, helper-prompt, source-edit, and manual-render workflows from `zet/web`; routes now delegate to backend services.
+- Extracted reusable discovery, backend lookup, source-edit, and manual-render workflows from `zet/web`; routes now delegate to backend services.
 - Split V3 scene normalization, story reference resolution, and render staging from `StoryService` behind compatibility-preserving delegation.
 - Added batch asset persistence plus atomic costume/expression writes and rollback behavior.
 - Corrected obsolete launcher, route, file, repository, and schema documentation.
