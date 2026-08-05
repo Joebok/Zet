@@ -2241,7 +2241,7 @@ tr.auxiliary-row td:last-child {
   border: 1px solid var(--line);
   border-radius: 6px;
   height: 72px;
-  object-fit: cover;
+  object-fit: contain;
   width: 72px;
 }
 
@@ -2535,6 +2535,10 @@ tr.auxiliary-row td:last-child {
   height: calc(100vh - 170px);
 }
 
+.pipeline-inspection-layout > .pipeline-inspection-preview {
+  height: calc(100vh - 128px);
+}
+
 .pipeline-inspection-sidebar label {
   margin-bottom: 10px;
 }
@@ -2577,6 +2581,12 @@ tr.auxiliary-row td:last-child {
 .pipeline-inspection-preview {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+.scene-builder-analysis-view.pending {
+  background: #fffaeb;
+  border-color: #f79009;
+  color: #b54708;
 }
 
 .pipeline-inspection-preview .review-header {
