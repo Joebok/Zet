@@ -551,6 +551,28 @@ test("iPad uses compact navigation and a two-pane sectioned Scene Builder", asyn
     expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
   }
   await expectNoHorizontalOverflow(page);
+  await page.locator("#responsive-section-menu").selectOption("ai-controls");
+  const queueBox = await page.locator("#ai-controls-page .queue-panel").boundingBox();
+  const controlsBox = await page.locator("#ai-controls-page").boundingBox();
+  expect(queueBox.width / controlsBox.width).toBeGreaterThan(0.9);
+  await expectNoHorizontalOverflow(page);
+});
+
+test("responsive navigation restores its selection when dirty navigation is canceled", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openPage(page, "assets");
+  await page.locator("#asset-table .row-selection-button").first().click();
+  await page.locator("#open-governing-template").click();
+  await page.locator("#source-editor-text").fill("Unsaved responsive editor change");
+  await page.locator("#responsive-section-menu").selectOption("assets");
+  const dialog = page.locator("#unsaved-changes-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator("#responsive-section-menu")).toHaveValue("template-editor");
+  await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
+  await page.locator("#responsive-section-menu").selectOption("assets");
+  await dialog.getByRole("button", { name: "Discard" }).click();
+  await expect(page.locator("#assets-page")).toHaveClass(/active/);
 });
 
 test("phone workspaces are view-first and Scene Builder uses single-open accordions", async ({ page }) => {
@@ -587,6 +609,12 @@ test("phone workspaces are view-first and Scene Builder uses single-open accordi
   await expect(page.locator("#scene-table thead")).toBeHidden();
   await expect(page.locator("#scene-table tbody tr").first()).toHaveCSS("display", "block");
   await expect(page.locator("#scene-table tbody td").first()).toHaveAttribute("data-label", "Scene");
+
+  await page.locator("#responsive-section-menu").selectOption("ai-controls");
+  await expect(page.locator("#queue-ask-table")).toHaveClass(/responsive-list-table/);
+  await expect(page.locator("#queue-ask-table tbody td").first()).toHaveAttribute("data-label", "Ask ID");
+  await expect(page.locator("#queue-ask-table tbody tr").first()).toHaveCSS("display", "block");
+  await expectNoHorizontalOverflow(page);
 
   await page.locator("#workspace-character").click();
   await page.locator("#responsive-section-menu").selectOption("onboarding");

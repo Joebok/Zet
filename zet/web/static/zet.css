@@ -3039,6 +3039,35 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  .ai-controls-grid .queue-panel,
+  .ai-actions-panel,
+  .ai-automation-panel,
+  .ai-processes-panel,
+  .ai-render-console-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .ai-controls-grid .queue-panel {
+    grid-row: 1;
+  }
+
+  .ai-actions-panel {
+    grid-row: 2;
+  }
+
+  .ai-processes-panel {
+    grid-row: 3;
+  }
+
+  .ai-automation-panel {
+    grid-row: 4;
+  }
+
+  .ai-render-console-panel {
+    grid-row: 5;
+  }
+
   .scene-builder-primary-actions > .scene-builder-save,
   .scene-builder-primary-actions > .scene-builder-render,
   .builder-more-desktop-label {

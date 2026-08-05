@@ -1449,7 +1449,7 @@ const RESPONSIVE_TOOL_PAGES = [
   ["pipeline-controls", "Pipeline Controls"],
 ];
 
-function renderResponsiveSectionMenu() {
+function renderResponsiveSectionMenu(selectedPage = activePageName() || state.lastWorkspacePages[state.workspace]) {
   responsiveSectionMenu.replaceChildren();
   const sectionGroup = document.createElement("optgroup");
   sectionGroup.label = state.workspace === "story" ? "Story Telling" : "Character Development";
@@ -1460,8 +1460,7 @@ function renderResponsiveSectionMenu() {
   toolsGroup.label = "Tools";
   for (const [value, label] of RESPONSIVE_TOOL_PAGES) toolsGroup.append(option(value, label));
   responsiveSectionMenu.append(sectionGroup, toolsGroup);
-  const page = state.lastWorkspacePages[state.workspace];
-  responsiveSectionMenu.value = Array.from(responsiveSectionMenu.options).some((item) => item.value === page) ? page : "";
+  responsiveSectionMenu.value = Array.from(responsiveSectionMenu.options).some((item) => item.value === selectedPage) ? selectedPage : "";
 }
 
 function syncResponsiveChrome() {
@@ -2640,6 +2639,7 @@ async function activatePage(page, options = {}) {
       "active",
       !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection", "template-editor"].includes(page),
     );
+  renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   if (page === "prompt-review") {
@@ -7181,6 +7181,7 @@ async function promoteTurnaround(target = null) {
 
 function renderRows(tbody, rows, columns) {
   tbody.replaceChildren();
+  tbody.closest("table")?.classList.add("responsive-list-table");
   if (!rows || rows.length === 0) {
     renderEmptyRow(tbody, Math.max(1, columns.length), "No items.");
     return;
@@ -7189,6 +7190,7 @@ function renderRows(tbody, rows, columns) {
     const row = document.createElement("tr");
     for (const column of columns) {
       const cell = document.createElement("td");
+      cell.dataset.label = humanizeHeading(column);
       const value = item[column] ?? "";
       if (/(?:^|_)(?:created|updated|responded)_at$/.test(column) && value !== "") {
         const time = document.createElement("time");
@@ -8719,7 +8721,9 @@ workspaceStory.addEventListener("click", () => switchWorkspace("story"));
 responsiveSectionMenu.addEventListener("change", async () => {
   const page = responsiveSectionMenu.value;
   if (!page) return;
-  await runGuardedTransition(() => activatePage(page, { skipAutosave: true }));
+  if (!(await runGuardedTransition(() => activatePage(page, { skipAutosave: true })))) {
+    renderResponsiveSectionMenu();
+  }
 });
 characterPhoneViewer.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-character-view-page]");
