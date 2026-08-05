@@ -15,6 +15,7 @@
 !**/img/**/*
 
 # Other exclusions
+.venv/
 _Lib/AI_Queue
 _Lib/Assets
 _Lib/Pipelines

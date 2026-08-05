@@ -16,11 +16,42 @@ Zet is a Python-based pipeline for creating character images, managing assets, a
 
 ### Operating Systems
 - Windows 10/11 or macOS (Darwin)
-- Python 3.8+
+- Python 3.11+
 
 ### Dependencies
+Zet should run in its project-local `.venv`, not the system Python environment.
+
+For a new Windows deployment, clone the repository, open PowerShell in the project root, and run:
+
+```powershell
+python3 --version
+.\setup_venv.bat
+```
+
+This creates `.venv`, upgrades its copy of `pip`, and installs `requirements.txt`. Run
+`setup_venv.bat` again whenever the requirements change. The `.venv` directory is local to the
+deployment and excluded from Git.
+
+To set up manually instead:
+
+```powershell
+python3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+If PowerShell blocks `Activate.ps1`, use `setup_venv.bat`; it uses the batch activation script and
+does not require changing the PowerShell execution policy.
+
+For a new macOS deployment:
+
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+python3 -B -m zet.web.app
 ```
 
 **Core packages:**
@@ -45,7 +76,7 @@ To use local ComfyUI previews:
 mkdir Zet_Library
 
 # Run the web dashboard to manage characters and scenes
-python3 -B -m zet.web.app
+run_zet_web.bat
 ```
 
 `BaseLibraryPath` is user storage and may point anywhere. Shared templates and default JSON files are read from the source-controlled project directory `Shared_Library/`.
@@ -83,7 +114,7 @@ NegativePromptGlobals = "EasyNegative"
 `Scene_Render_IR.json` is the canonical local scene-render input. Compile and run it directly with:
 
 ```powershell
-python3 -m zet.scripts.render_comfyui_preview C:\path\to\Scene_Render_IR.json --config config.toml
+.\.venv\Scripts\python.exe -m zet.scripts.render_comfyui_preview C:\path\to\Scene_Render_IR.json --config config.toml
 ```
 
 Add `--compile-only` to write the API workflow without submitting it. The command writes
@@ -97,8 +128,8 @@ reference-image conditioning, ControlNet, IP-Adapter, and custom nodes are not p
 
 **Option A - Interactive Dashboard:**
 ```bash
-run_zet_web.bat                 ; Windows batch script to start web app
-python3 -B -m zet.web.app       ; Direct Python execution
+run_zet_web.bat                 ; Activates .venv and starts the web app
+.\.venv\Scripts\python.exe -B -m zet.web.app  ; Direct execution
 ```
 
 **Option B - Automated Processing:**
@@ -107,9 +138,9 @@ python3 -B -m zet.web.app       ; Direct Python execution
 .\run_auto_harvest.bat
 
 # Run specific render stages (requires ComfyUI running)
-.\Scripts\Run_Body_Reference_Jobs.py
-.\Scripts\Run_Character_Assembly_Jobs.py
-.\Scripts\Run_Costume_Dressing_Jobs.py
+.\.venv\Scripts\python.exe .\Scripts\Run_Body_Reference_Jobs.py
+.\.venv\Scripts\python.exe .\Scripts\Run_Character_Assembly_Jobs.py
+.\.venv\Scripts\python.exe .\Scripts\Run_Costume_Dressing_Jobs.py
 ```
 
 ### 4. Adding a New Character
@@ -121,7 +152,7 @@ python3 -B -m zet.web.app       ; Direct Python execution
 2. Use dashboard or run:
    ```powershell
    C:\Users\Joe\Projects\AI_Proxy\run_file_proxy.bat    ; Start the standalone file proxy
-   python3 -B -m zet.web.app            ; Then start the pipeline app
+   run_zet_web.bat                              ; Activates .venv and starts the pipeline app
    ```
 
 ## Project Structure
@@ -153,7 +184,7 @@ Zet/
 
 ## API Endpoints
 
-The FastAPI server exposes these representative endpoints (when running `python3 -B -m zet.web.app`):
+The FastAPI server exposes these representative endpoints (when running `run_zet_web.bat`):
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -168,7 +199,7 @@ The FastAPI server exposes these representative endpoints (when running `python3
 
 **"No module named 'zet'" error:**
 ```bash
-python3 -m pip install -r requirements.txt    ; Run from the project root
+setup_venv.bat    ; Run from the project root
 ```
 
 **ComfyUI proxy not connecting:**
