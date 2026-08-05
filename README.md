@@ -1,16 +1,22 @@
 # Zet - Character Image Creation Pipeline
 
-Zet is a Python-based pipeline for creating character images, managing assets, and assembling scenes using AI workflows. It integrates with Stable Diffusion models via ComfyUI proxies to automate the generation of consistent character renders across multiple phases (body reference, head fitment, costume dressing, expressions).
+Zet is a Python-based pipeline and asset management tool for image generation, particularly aimed at identity preservation of main characters and scene building for use in comic/graphic novel type presentations. 
+
+Zet combines text information from templates and .json files to compile "final image prompts" and marshall resources for final image rendering in an image generation tool such as ChatGPT. Zet does have some meager local image generation features, but at the time of this writing those are largely experimental.
+
+Zet is a personal project whose primary use is for the author, me, to generate images from my D&D sessions and create Zines of my character's backstory. Zet currently goes hand in hand with a ChatGPT plus subscription. Local AI and Image generation is done via a file proxy app (https://github.com/Joebok/AI_Proxy) to throttle requests and not overwhelm my local capacity.
+
+This project has been developed with CODEX and OpenAI models. I would consider it half vibe-coded, but now that I am using it more than developing it, I am back-filling better coding.
 
 ## Features
 
 - **Character Onboarding**: Create new characters from onboarding options
 - **Multi-phase Rendering Pipeline**: Body Reference → Head Fitment → Costume Dressing → Expressions
-- **Prompt Inspection**: Inspect and refine queued render prompts, with optional Qwen condensation
+- **Prompt Inspection**: Inspect and refine queued render prompts, analyze with local LLM vision models.
 - **Asset Management**: Organized storage for character assets, costumes, expressions, references
-- **Auto-Harvest**: Automatically process queued jobs from external sources (Dropbox sync)
-- **Render Console Queue**: Manage rendering tasks with priority queuing
+- **Render Console**: Manage rendering tasks with priority queuing, one-stop copy & paste interface for tools such as ChatGPT rendering.
 - **Local Image Backends**: Stable Matrix and core-node ComfyUI preview workflows share the local render queue
+- **Scene Builder**: Parameterized input wizard for scene layout using existing characters and assets; validation of elements and key inputs, compilation of prompt for final image generation. 
 
 ## System Requirements
 
@@ -65,7 +71,9 @@ To use local ComfyUI previews:
 1. Install [ComfyUI](https://github.com/comfyanonymous/comfyui) separately
 2. Start its local server, normally at `http://127.0.0.1:8188`
 3. Select ComfyUI and configure its profile, checkpoint, and prompt globals on the Image Config page
-4. Start `C:\Users\Joe\Projects\AI_Proxy\run_file_proxy.bat`; it invokes Zet's one-job local-image worker for queued previews
+4. Install [AI_Proxy](https://github.com/Joebok/AI_Proxy) separately
+5. Configure AI_Proxy for your situation. Zet's BaseAIQueuePath and AI_Proxy's AI_QUEUE_ROOT must point to the same location.
+4. Start AI_Proxy; it is preconfigured with Zet registrations for prompt analysis and local image generation.
 
 ## Quick Start
 
@@ -87,8 +95,8 @@ Edit `config.toml` to set up paths:
 
 ```toml
 [BaseFoldersByPlatform.Windows]
-BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
-BaseAIQueuePath = "C:/Users/Joe/Library/CloudStorage/Dropbox/AI_Queue/"
+BaseLibraryPath = "C:/Users/<username>/Projects/Zet_Library/"
+BaseAIQueuePath = "C:/Users/<username>/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
 Enabled = false  # Set to true for automatic prompt condensation with Qwen model
@@ -225,8 +233,10 @@ Contributors and maintainers (add your name here):
 * 1.0 (2026)
     * Initial release with character onboarding, multi-phase rendering pipeline
     * ComfyUI proxy integration for Stable Diffusion workflows
-    * AI prompt condensation using Qwen models
-    * Auto-harvest from Dropbox queue folder
+    * AI prompt analysis using LLM models
+    * Integration with AI_Proxy
+* 2.0 (2026)
+    * Separate Character Development and Story Telling interfaces
 
 ## License
 
@@ -245,11 +255,6 @@ No license file is currently included in this repository.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ---
 
