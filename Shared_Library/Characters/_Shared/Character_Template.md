@@ -613,15 +613,7 @@ Body preservation rules:
 
 Rendering priorities:
 
-* Full-body technical body-reference image.
-* Entire body visible from top of head to soles of feet.
-* Feet fully visible.
-* Clear silhouette.
-* Preserve requested body view.
-* Render in the Canonical Art Style.
-* No dramatic lighting.
-* No narrative scene.
-* No acting.
+* `[Body-only art style without face or head traits.]`
 
 <!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
 
@@ -754,7 +746,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK -->
 
-For body-reference, use simple neutral form-fitting clothing.
+Use simple neutral fitment clothing.
 
 ## Technical Modesty / Safety Layer
 
@@ -764,51 +756,47 @@ Clothing rules:
 
 * neutral tan sleeveless tank top.
 * neutral tan compression shorts.
-* Minimal detail.
-* no additional garments
-* Readable body silhouette.
+* Minimal detail and no additional garments.
+* Keep the body silhouette readable.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_FEMININE -->
 
-For body-reference, use simple neutral fitment clothing.
+Use simple neutral fitment clothing.
 
 Clothing rules:
 
 * neutral tan tube top.
 * neutral tan compression shorts.
-* Minimal detail.
-* no additional garments
-* Readable body silhouette.
+* Minimal detail and no additional garments.
+* Keep the body silhouette readable.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_FEMININE -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_MASCULINE -->
 
-For body-reference, use simple neutral form-fitting clothing.
+Use simple neutral fitment clothing.
 
 Clothing rules:
 
 * neutral tan compression shorts.
 * No shirt.
-* Minimal detail.
-* no additional garments
-* Readable body silhouette.
+* Minimal detail and no additional garments.
+* Keep the body silhouette readable.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_MASCULINE -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_YOUTH -->
 
-For body-reference, use simple neutral form-fitting clothing.
+Use simple neutral fitment clothing.
 
 Clothing rules:
 
 * neutral tan shorts.
 * neutral tan t-shirt.
-* Minimal detail.
-* no additional garments
-* Readable body silhouette.
+* Minimal detail and no additional garments.
+* Keep the body silhouette readable.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_YOUTH -->
 
@@ -896,7 +884,6 @@ Examples:
 
 Recommended sections for body-reference:
 
-* GENERAL_DESCRIPTION_FACTS
 * BODY_DESCRIPTION_FACTS
 * BODY_DESCRIPTION_VIEW_[REQUESTED_VIEW]
 * IDENTITY_PRESERVATION_BODY
@@ -904,7 +891,6 @@ Recommended sections for body-reference:
 * TECHNICAL_MODESTY_LAYER
 * NEUTRAL_POSE_STANCE
 * NEUTRAL_POSE_STANCE_VIEW_[REQUESTED_VIEW]
-* NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_BODY_REFERENCE -->
 

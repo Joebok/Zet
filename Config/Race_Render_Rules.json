@@ -7,12 +7,10 @@
       "aliases": [],
       "body_reference": {
         "positive": [
-          "Use a simplified human mannequin head.",
-          "Keep the head plain and anatomical enough to show neck fit and body alignment."
+          "Human ears rendered as neutral mannequin geometry."
         ],
         "negative": [
-          "Do not render detailed facial identity, hair, expression, makeup, or eye detail.",
-          "Do not add fantasy-species features unless the character race rules require them."
+          "Fantasy-species features."
         ]
       }
     },
@@ -25,14 +23,10 @@
       ],
       "body_reference": {
         "positive": [
-          "Use a simplified elf mannequin head.",
-          "Long pointed elf ears should be visible as neutral mannequin geometry.",
-          "Ear angle should preserve the character's species silhouette without adding facial identity detail."
+          "Long pointed elf ears rendered as neutral mannequin geometry."
         ],
         "negative": [
-          "Do not use human rounded ears.",
-          "Do not hide or omit the ears.",
-          "Do not render detailed facial identity, eyes, nose, mouth, hair, expression, makeup, or character-specific likeness."
+          "Missing, hidden, rounded, or human ears."
         ]
       }
     }

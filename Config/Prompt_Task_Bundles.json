@@ -5,18 +5,15 @@
       "description": "Static technical full-body reference prompt. No AI prompt finalizer.",
       "prompt_builder": "static",
         "required_sections": [
-          "GENERAL_DESCRIPTION_FACTS",
           "BODY_DESCRIPTION_FACTS",
           "IDENTITY_PRESERVATION_BODY",
           "BODY_REFERENCE_RENDERING_RULES",
           "TECHNICAL_MODESTY_LAYER",
           "NEUTRAL_POSE_STANCE",
-          "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
-          "NEGATIVE_GUIDANCE_GENERAL"
+          "NEUTRAL_POSE_STANCE_VIEW_{VIEW}"
       ],
       "optional_sections": [
-        "BODY_DESCRIPTION_VIEW_{VIEW}",
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+        "BODY_DESCRIPTION_VIEW_{VIEW}"
       ],
       "forbidden_sections": [
         "*_PICARESQUE",

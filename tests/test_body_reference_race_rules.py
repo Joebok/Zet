@@ -9,6 +9,7 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
+from zet.services.pipeline_compiler_support import load_view_data, view_instruction
 
 
 class BodyReferenceRaceRulesTests(unittest.TestCase):
@@ -64,6 +65,7 @@ Gender Presentation: `[Feminine adult woman]`
 
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
 * Adult high-elf woman.
+* Finished portrait markers: amber eyes, blue skin, braided hair, and elaborate age lines.
 <!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_FACTS -->
@@ -75,16 +77,20 @@ Gender Presentation: `[Feminine adult woman]`
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
 <!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
-* Render as a technical fitment image.
+* Painterly semi-realistic fantasy illustration.
 <!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
-* Plain tank top and shorts.
+* Use simple neutral fitment clothing: a plain tank top and shorts.
 <!-- ZET:END TECHNICAL_MODESTY_LAYER -->
 
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
-* No costume.
+* Preserve the finished face and braided hair.
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
+
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+* Preserve amber eyes and elaborate age lines.
+<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 """,
                 encoding="utf-8",
             )
@@ -107,13 +113,24 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertIn("For FRONT view.", prompt)
             self.assertNotIn("{VIEW}", prompt)
             self.assertIn("Shared front stance.", prompt)
-            self.assertIn("Character race/species for mannequin silhouette: elf.", prompt)
-            self.assertIn("Use a simplified elf mannequin head.", prompt)
-            self.assertIn("Long pointed elf ears should be visible", prompt)
-            self.assertIn("Do not use human rounded ears.", prompt)
-            self.assertIn("HEAD REQUIREMENTS — ABSOLUTE PRIORITY", prompt)
-            self.assertIn("A generic mannequin head is REQUIRED.", prompt)
+            self.assertIn("The mannequin head must face the same direct FRONT view as the body.", prompt)
+            self.assertIn("Use a simplified neutral light-gray elf mannequin head.", prompt)
+            self.assertIn("Long pointed elf ears rendered as neutral mannequin geometry.", prompt)
+            self.assertIn("Missing, hidden, rounded, or human ears.", prompt)
+            self.assertEqual(prompt.count("MANNEQUIN HEAD — REQUIRED"), 1)
+            self.assertIn("Painterly semi-realistic fantasy illustration.", prompt)
+            self.assertIn("simple neutral fitment clothing", prompt)
+            self.assertIn("Lithe body proportions.", prompt)
+            self.assertIn("Preserve body proportions only.", prompt)
             self.assertNotIn("Generic replacement face.", prompt)
+            self.assertNotIn("Finished portrait markers", prompt)
+            self.assertNotIn("amber eyes", prompt)
+            self.assertNotIn("blue skin", prompt)
+            self.assertNotIn("braided hair", prompt)
+            self.assertNotIn("elaborate age lines", prompt)
+            self.assertNotIn("CRITICAL OVERRIDE", prompt)
+            self.assertNotIn("HEAD REQUIREMENTS", prompt)
+            self.assertNotIn("HEAD OVERRIDE", prompt)
             self.assertNotIn("THREE-QUARTER ORIENTATION LOCK", prompt)
             self.assertNotIn("{{", prompt)
 
@@ -175,6 +192,74 @@ Species / Ancestry: `[High elf]`
 
             prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
             self.assertEqual(prompt.count("THREE-QUARTER ORIENTATION LOCK"), 1)
+            self.assertIn(
+                "The mannequin head must face the same FRONT-LEFT THREE-QUARTER view as the body.",
+                prompt,
+            )
+
+    def test_body_reference_view_orientation_details_match_configured_view(self) -> None:
+        expected = {
+            "FRONT": (
+                "The head, torso, and feet all point directly toward the viewer.",
+                "",
+            ),
+            "FRONT_LEFT_3_4": (
+                "The head, torso, and feet all point toward the right side of the image.",
+                "The camera is positioned in front of and to the character's anatomical left.",
+            ),
+            "LEFT_PROFILE": (
+                "The head, torso, and feet all point directly toward the right side of the image.",
+                "",
+            ),
+            "BACK_LEFT_3_4": (
+                "The head, torso, and feet all point toward the right side of the image.",
+                "The camera is positioned behind and to the character's anatomical left.",
+            ),
+            "BACK": (
+                "The head, torso, and feet all point directly away from the viewer.",
+                "",
+            ),
+            "BACK_RIGHT_3_4": (
+                "The head, torso, and feet all point toward the left side of the image.",
+                "The camera is positioned behind and to the character's anatomical right.",
+            ),
+            "RIGHT_PROFILE": (
+                "The head, torso, and feet all point directly toward the left side of the image.",
+                "",
+            ),
+            "FRONT_RIGHT_3_4": (
+                "The head, torso, and feet all point toward the left side of the image.",
+                "The camera is positioned in front of and to the character's anatomical right.",
+            ),
+        }
+
+        for view_token, (orientation, camera_position) in expected.items():
+            with self.subTest(view=view_token):
+                instruction = view_instruction(
+                    load_view_data(PROJECT_ROOT, view_token),
+                    "body",
+                    "body-reference",
+                    include_intro=True,
+                )
+                self.assertIn(orientation, instruction)
+                self.assertIn("Do not rotate the head independently of the body.", instruction)
+                if camera_position:
+                    self.assertIn(camera_position, instruction)
+                else:
+                    self.assertNotIn("The camera is positioned", instruction)
+
+    def test_body_reference_includes_camera_position_for_any_view_when_configured(self) -> None:
+        view_data = load_view_data(PROJECT_ROOT, "FRONT")
+        view_data["camera_position"] = "The camera is positioned at a configured front-view location."
+
+        instruction = view_instruction(
+            view_data,
+            "body",
+            "body-reference",
+            include_intro=True,
+        )
+
+        self.assertIn("The camera is positioned at a configured front-view location.", instruction)
 
     def test_shared_feminine_modesty_layer_is_used_when_character_section_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

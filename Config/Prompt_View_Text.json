@@ -3,6 +3,7 @@
   "views": {
     "FRONT": {
       "label": "front view",
+      "orientation_sentence": "The head, torso, and feet all point directly toward the viewer.",
       "costume_dressing_orientation_lock": "Preserve a true direct front orientation, square to the camera. Keep the body and face front-facing and the stance symmetrical. Do not add a three-quarter turn.",
       "folder_name": "Front",
       "output_name_fragment": "Front",
@@ -20,6 +21,8 @@
     },
     "FRONT_LEFT_3_4": {
       "label": "front-left three-quarter view",
+      "orientation_sentence": "The head, torso, and feet all point toward the right side of the image.",
+      "camera_position": "The camera is positioned in front of and to the character's anatomical left.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied front-left three-quarter angle. Do not repaint the face into a direct front view or create independent eye contact.",
       "folder_name": "Front_Left_3_4",
       "output_name_fragment": "Front-Left-3-4",
@@ -37,6 +40,8 @@
     },
     "FRONT_RIGHT_3_4": {
       "label": "front-right three-quarter view",
+      "orientation_sentence": "The head, torso, and feet all point toward the left side of the image.",
+      "camera_position": "The camera is positioned in front of and to the character's anatomical right.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied front-right three-quarter angle. Do not repaint the face into a direct front view or create independent eye contact.",
       "folder_name": "Front_Right_3_4",
       "output_name_fragment": "Front-Right-3-4",
@@ -54,6 +59,7 @@
     },
     "LEFT_PROFILE": {
       "label": "left profile view",
+      "orientation_sentence": "The head, torso, and feet all point directly toward the right side of the image.",
       "costume_dressing_orientation_lock": "Preserve a true left-facing profile. Do not rotate the face or torso toward the camera.",
       "folder_name": "Left_Profile",
       "output_name_fragment": "Left-Profile",
@@ -71,6 +77,7 @@
     },
     "RIGHT_PROFILE": {
       "label": "right profile view",
+      "orientation_sentence": "The head, torso, and feet all point directly toward the left side of the image.",
       "costume_dressing_orientation_lock": "Preserve a true right-facing profile. Do not rotate the face or torso toward the camera.",
       "folder_name": "Right_Profile",
       "output_name_fragment": "Right-Profile",
@@ -88,6 +95,8 @@
     },
     "BACK_LEFT_3_4": {
       "label": "back-left three-quarter view",
+      "orientation_sentence": "The head, torso, and feet all point toward the right side of the image.",
+      "camera_position": "The camera is positioned behind and to the character's anatomical left.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied away-facing back-left three-quarter angle. The back remains the dominant body surface. Do not rotate the head or torso toward the viewer, and reveal the face only to the degree already present in the Character-Assembly source.",
       "folder_name": "Back_Left_3_4",
       "output_name_fragment": "Back-Left-3-4",
@@ -105,6 +114,8 @@
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
+      "orientation_sentence": "The head, torso, and feet all point toward the left side of the image.",
+      "camera_position": "The camera is positioned behind and to the character's anatomical right.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied away-facing back-right three-quarter angle. The back remains the dominant body surface. Do not rotate the head or torso toward the viewer, and reveal the face only to the degree already present in the Character-Assembly source.",
       "folder_name": "Back_Right_3_4",
       "output_name_fragment": "Back-Right-3-4",
@@ -122,6 +133,7 @@
     },
     "BACK": {
       "label": "back view",
+      "orientation_sentence": "The head, torso, and feet all point directly away from the viewer.",
       "costume_dressing_orientation_lock": "Preserve a true direct back orientation with the body and head facing away. Do not reveal more face than the supplied source or turn the character toward the viewer.",
       "folder_name": "Back",
       "output_name_fragment": "Back",

@@ -50,7 +50,7 @@ def load_view_data(project_root: Path, view_token: str) -> dict:
         raise TemplateCompileError("UNKNOWN_VIEW", str(exc)) from None
 
 
-def view_orientation_intro(view_data: dict) -> str:
+def view_orientation_intro(view_data: dict, include_orientation_details: bool = False) -> str:
     """Return the shared anatomical side instruction for one view."""
     token = str(view_data.get("_view_token") or "").strip().upper()
     label = str(view_data.get("label") or token.lower().replace("_", " ")).strip()
@@ -60,35 +60,69 @@ def view_orientation_intro(view_data: dict) -> str:
         lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical left side.")
     elif token in {"FRONT_RIGHT_3_4", "BACK_RIGHT_3_4"}:
         lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical right side.")
+    if include_orientation_details:
+        orientation = str(view_data.get("orientation_sentence") or "").strip()
+        camera_position = str(view_data.get("camera_position") or "").strip()
+        details = [value for value in (orientation, "Do not rotate the head independently of the body.", camera_position) if value]
+        if orientation:
+            if len(lines) > 1:
+                lines[-1] = f"{lines[-1]} {' '.join(details)}"
+            else:
+                lines.append(" ".join(details))
     return "\n".join(lines)
 
 
-def with_view_orientation_intro(instruction: str, view_data: dict, include_intro: bool) -> str:
+def with_view_orientation_intro(
+    instruction: str,
+    view_data: dict,
+    include_intro: bool,
+    include_orientation_details: bool = False,
+) -> str:
     """Prefix view instructions with anatomical side guidance when requested."""
     if not include_intro:
         return instruction
-    return f"{view_orientation_intro(view_data)}\n\n{instruction}"
+    return f"{view_orientation_intro(view_data, include_orientation_details)}\n\n{instruction}"
+
+
+def body_reference_head_facing_rule(view_data: dict) -> str:
+    """Return a mannequin head/body orientation lock for one body-reference view."""
+    label = str(view_data.get("label") or view_data.get("_view_token") or "").strip()
+    direction = re.sub(r"\s+view$", "", label, flags=re.IGNORECASE).strip().upper()
+    qualifier = "" if "three-quarter" in label.lower() else "direct "
+    return f"The mannequin head must face the same {qualifier}{direction} view as the body."
 
 
 def view_instruction(view_data: dict, role: str, task: str, include_intro: bool = False) -> str:
     """Return task-specific view instruction text with optional shared intro."""
     role_key = f"{role}_instructions"
     task_key = str(task or "").strip()
+
+    def finalize(value: str) -> str:
+        instruction = value
+        if role == "body" and task_key == "body-reference":
+            instruction = f"{instruction}\n\n{body_reference_head_facing_rule(view_data)}"
+        return with_view_orientation_intro(
+            instruction,
+            view_data,
+            include_intro,
+            include_orientation_details=role == "body" and task_key == "body-reference",
+        )
+
     role_instructions = view_data.get(role_key)
     if isinstance(role_instructions, dict):
         value = role_instructions.get(task_key)
         if isinstance(value, str) and value.strip():
-            return with_view_orientation_intro(value, view_data, include_intro)
+            return finalize(value)
 
     task_instructions = view_data.get("instructions_by_task")
     if isinstance(task_instructions, dict):
         value = task_instructions.get(task_key)
         if isinstance(value, str) and value.strip():
-            return with_view_orientation_intro(value, view_data, include_intro)
+            return finalize(value)
 
     value = view_data.get("instruction")
     if isinstance(value, str) and value.strip():
-        return with_view_orientation_intro(value, view_data, include_intro)
+        return finalize(value)
 
     raise TemplateCompileError(
         "MISSING_VIEW_INSTRUCTION",

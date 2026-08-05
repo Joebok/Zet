@@ -7,7 +7,7 @@
         "plain smooth neutral light gray studio background",
         "Even studio lighting",
         "Entire body visible",
-        "tank top and shorts"
+        "simple neutral fitment clothing"
       ],
       "forbidden_phrases": [
         "picaresque",
@@ -18,9 +18,9 @@
         "spellcasting"
       ],
       "required_sections": [
-        "GENERAL_DESCRIPTION_FACTS",
         "BODY_DESCRIPTION_FACTS",
         "IDENTITY_PRESERVATION_BODY",
+        "BODY_REFERENCE_RENDERING_RULES",
         "TECHNICAL_MODESTY_LAYER"
       ],
       "forbidden_section_patterns": [
