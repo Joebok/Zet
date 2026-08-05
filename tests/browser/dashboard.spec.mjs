@@ -32,7 +32,7 @@ test("desktop layouts do not overflow and match approved snapshots", async ({ pa
   }
 });
 
-test("shared action and disabled styles remain distinguishable", async ({ page }) => {
+test("shared action roles and control states use the semantic design system", async ({ page }) => {
   await openPage(page, "assets");
   const classes = ["primary-action", "update-action", "create-action", "navigation-action", "neutral-action", "danger-action"];
   const styles = await page.evaluate((actionClasses) => {
@@ -40,22 +40,48 @@ test("shared action and disabled styles remain distinguishable", async ({ page }
     return actionClasses.map((className) => {
       const button = host.appendChild(document.createElement("button"));
       button.className = className;
+      const enabledStyle = getComputedStyle(button);
+      const enabled = {
+        background: enabledStyle.backgroundColor,
+        border: enabledStyle.borderColor,
+        color: enabledStyle.color,
+        minHeight: enabledStyle.minHeight,
+      };
       button.disabled = true;
-      const style = getComputedStyle(button);
+      const disabledStyle = getComputedStyle(button);
       return {
         className,
-        display: style.display,
-        cursor: style.cursor,
-        opacity: Number(style.opacity),
-        background: style.backgroundColor,
+        enabled,
+        disabled: {
+          background: disabledStyle.backgroundColor,
+          cursor: disabledStyle.cursor,
+          display: disabledStyle.display,
+          opacity: Number(disabledStyle.opacity),
+        },
       };
     });
   }, classes);
+  const byClass = Object.fromEntries(styles.map((style) => [style.className, style]));
+  expect(byClass["primary-action"].enabled.background).toBe(byClass["update-action"].enabled.background);
+  expect(byClass["primary-action"].enabled.background).toBe(byClass["create-action"].enabled.background);
+  expect(byClass["navigation-action"].enabled.background).toBe(byClass["neutral-action"].enabled.background);
+  expect(byClass["danger-action"].enabled.background).not.toBe(byClass["primary-action"].enabled.background);
+  expect(new Set(styles.map((style) => style.disabled.background)).size).toBe(1);
   for (const style of styles) {
-    expect(style.display).not.toBe("none");
-    expect(style.cursor).toBe("not-allowed");
-    expect(style.opacity).toBeLessThan(1);
+    expect(style.enabled.minHeight).toBe("36px");
+    expect(style.disabled.display).not.toBe("none");
+    expect(style.disabled.cursor).toBe("not-allowed");
+    expect(style.disabled.opacity).toBeLessThan(1);
   }
+  const chrome = await page.evaluate(() => ({
+    focus: getComputedStyle(document.documentElement).getPropertyValue("--focus").trim(),
+    headerImage: getComputedStyle(document.querySelector(".header-middle")).backgroundImage,
+    headerBackground: getComputedStyle(document.querySelector(".header-middle")).backgroundColor,
+    tabsBackground: getComputedStyle(document.querySelector(".tabs")).backgroundColor,
+  }));
+  expect(chrome.focus).toBe("#7c3aed");
+  expect(chrome.headerImage).toBe("none");
+  expect(chrome.headerBackground).not.toBe(chrome.tabsBackground);
   await expect(page.locator("#source-editor-recompile")).toHaveCount(0);
   await expect(page.locator("#source-editor-clear-review-aids")).toHaveCount(0);
   await expect(page.locator(".fullscreen-image-overlay")).not.toHaveAttribute("open", "");
