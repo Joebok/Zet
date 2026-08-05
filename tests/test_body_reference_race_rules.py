@@ -111,7 +111,70 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertIn("Use a simplified elf mannequin head.", prompt)
             self.assertIn("Long pointed elf ears should be visible", prompt)
             self.assertIn("Do not use human rounded ears.", prompt)
+            self.assertIn("HEAD REQUIREMENTS — ABSOLUTE PRIORITY", prompt)
+            self.assertIn("A generic mannequin head is REQUIRED.", prompt)
+            self.assertNotIn("Generic replacement face.", prompt)
+            self.assertNotIn("THREE-QUARTER ORIENTATION LOCK", prompt)
             self.assertNotIn("{{", prompt)
+
+    def test_three_quarter_orientation_lock_only_appears_for_three_quarter_view(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            self._write_config(root)
+            self._write_shared_stance_sections(
+                root,
+                """
+<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
+* Shared front-left stance.
+<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
+""",
+            )
+
+            character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
+            character_dir.mkdir(parents=True)
+            (character_dir / "Character.md").write_text(
+                """# Character Image Template
+
+Character Name: `[Testa]`
+Character Phase: `[Adult]`
+Species / Ancestry: `[High elf]`
+
+<!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
+* Adult high-elf woman.
+<!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN BODY_DESCRIPTION_FACTS -->
+* Lithe body proportions.
+<!-- ZET:END BODY_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_BODY -->
+* Preserve body proportions only.
+<!-- ZET:END IDENTITY_PRESERVATION_BODY -->
+<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
+* Render as a technical fitment image.
+<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
+* Plain tank top and shorts.
+<!-- ZET:END TECHNICAL_MODESTY_LAYER -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
+* No costume.
+<!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
+""",
+                encoding="utf-8",
+            )
+
+            result = compile_body_reference_job(
+                {
+                    "Job": "test-body-front-left",
+                    "Task": "body-reference",
+                    "Character": "Testa",
+                    "Phase": "Adult",
+                    "Body View": "front-left-3-4",
+                },
+                root,
+            )
+
+            prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+            self.assertEqual(prompt.count("THREE-QUARTER ORIENTATION LOCK"), 1)
 
     def test_shared_feminine_modesty_layer_is_used_when_character_section_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

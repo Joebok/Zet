@@ -16,14 +16,6 @@ This is a sober technical reference image, not a narrative scene.
 
 Prioritize readable proportions, clean silhouette, and accurate view angle.
 
-THREE-QUARTER ORIENTATION LOCK
-
-If the requested view is a three-quarter view, the body must use one unified camera angle.
-The torso, shoulders, neck, mannequin head, face direction, hips, knees, and feet all point in the same requested three-quarter direction.
-Do not combine a front-facing head with an angled body.
-Do not combine a profile head with a three-quarter body.
-Do not twist the neck, turn the eyes toward the viewer, rotate the torso separately, mirror the view, or reinterpret the requested direction.
-
 STANCE AND FOOT PLACEMENT — CRITICAL
 
 {{NEUTRAL_POSE_STANCE}}
@@ -36,6 +28,14 @@ Render the body in the Canonical Art Style listed above.
 The Canonical Art Style describes how the new image should be rendered.
 The Canonical Art Style must not change the requested view, camera angle, clothing, identity, expression, age, or species.
 
+CRITICAL OVERRIDE
+
+The head is a neutral mannequin.
+
+If any later instruction describes facial appearance, ignore those instructions.
+
+The mannequin specification takes precedence over all later text.
+
 {{SECTION:TECHNICAL_MODESTY_LAYER}}
 
 {{SECTION:BODY_REFERENCE_RENDERING_RULES}}
@@ -46,14 +46,39 @@ The Canonical Art Style must not change the requested view, camera angle, clothi
 
 Character race/species for mannequin silhouette: {{CHARACTER_RACE}}.
 
-Use a simplified neutral mannequin head for the character head.
-
 Place the mannequin head so the lower head/upper neck connection is centered halfway along the visible neck column, between the underside of the jaw/skull and the base of the neck where the neck begins to widen into the shoulders.
 
-The mannequin head is neutral light gray.
-The mannequin head may have thin marking lines for feature placement.
-The mannequin head meets the body in a clean line.
-The mannequin head always faces the same direction as the body.
+HEAD REQUIREMENTS — ABSOLUTE PRIORITY
+
+This image is a BODY REFERENCE SHEET.
+
+The head MUST be a simplified neutral mannequin head.
+
+Render:
+
+* smooth neutral light-gray mannequin material
+* no skin
+* no hair
+* no eyebrows
+* no eyelashes
+* no eyes
+* no iris color
+* no nose detail
+* no lips
+* no facial expression
+* no makeup
+* no age detail
+* no character likeness
+
+The head exists ONLY to establish scale, neck attachment, and viewing angle.
+
+The mannequin head should have only minimal construction lines indicating facial feature placement.
+
+The mannequin head MUST remain completely generic.
+
+Do not render any facial identity.
+
+Only preserve the species silhouette:
 
 Race-specific mannequin silhouette rules:
 {{RACE_BODY_REFERENCE_POSITIVE}}
@@ -64,6 +89,15 @@ Mannequin head negative rules:
 {{SECTION:BODY_DESCRIPTION_VIEW_{VIEW}}}
 
 {{SECTION:IDENTITY_PRESERVATION_BODY}}
+
+HEAD OVERRIDE
+
+A generic mannequin head is REQUIRED.
+
+It is incorrect to replace the mannequin with the character's actual face.
+
+The mannequin is not a placeholder to be upgraded.
+It is the desired final result.
 
 Negative constraints:
 

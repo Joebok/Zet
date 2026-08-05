@@ -857,7 +857,6 @@ Example stub:
 
 Avoid:
 
-* Generic replacement face.
 * Wrong age phase.
 * Wrong species markers.
 * Incorrect body type.
