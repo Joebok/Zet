@@ -69,7 +69,6 @@ async function activateDashboardPage(page, pageName) {
 
 async function captureViewport(browser, viewport, expectedPages) {
   const outputFolder = path.join(OUTPUT_ROOT, viewport.folder);
-  await prepareOutputFolder(outputFolder);
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     deviceScaleFactor: 1,
@@ -106,6 +105,10 @@ async function captureViewport(browser, viewport, expectedPages) {
   await context.close();
   return pages;
 }
+
+await Promise.all(
+  VIEWPORTS.map((viewport) => prepareOutputFolder(path.join(OUTPUT_ROOT, viewport.folder))),
+);
 
 const browser = await chromium.launch();
 try {
