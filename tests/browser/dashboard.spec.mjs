@@ -20,6 +20,20 @@ async function openPage(page, pageName) {
   await expect(page.locator(`#${pageName}-page`)).toHaveClass(/active/);
 }
 
+async function expectNoHorizontalOverflow(page) {
+  const overflowing = await page.evaluate(() => {
+    const selectors = [
+      "html", "body", "main", ".page.active", ".page.active .scene-builder-card",
+      ".page.active .review-main", ".page.active .review-sidebar", ".page.active .asset-table-panel",
+      ".page.active table", ".page.active form",
+    ];
+    return selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+      .filter((element) => element.getClientRects().length > 0 && element.scrollWidth > element.clientWidth + 1)
+      .map((element) => element.id || element.className || element.tagName);
+  });
+  expect(overflowing).toEqual([]);
+}
+
 test("desktop layouts do not overflow and match approved snapshots", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });
@@ -457,17 +471,17 @@ test("Scene Builder hierarchy streamlines authoring and preserves hidden legacy 
 
   await page.locator("#scene-builder-open").click();
   const columns = page.locator(".scene-builder-grid > .scene-builder-section");
-  await expect(columns).toHaveCount(3);
-  await expect(columns.nth(0).locator(".scene-builder-card").first()).toContainText("Story Beat");
-  await expect(columns.nth(1).locator(".scene-builder-card").first()).toContainText("Scene Elements");
-  await expect(columns.nth(2).locator(".scene-builder-card").first()).toContainText("Dialogue");
+  await expect(columns).toHaveCount(5);
+  await expect(page.locator('[data-builder-section-panel="scene"] .scene-builder-card').first()).toContainText("Story Beat");
+  await expect(page.locator('[data-builder-section-panel="elements"] .scene-builder-card').first()).toContainText("Scene Elements");
+  await expect(page.locator('[data-builder-section-panel="dialogue"] .scene-builder-card').first()).toContainText("Dialogue");
   await expect(page.locator(".scene-builder-element-workspace")).toContainText("Identity and reference");
   await expect(page.locator(".scene-builder-element-workspace")).toContainText("Placement and acting");
   await expect(page.locator(".scene-builder-element-row")).toContainText("Prop");
   await expect(page.locator(".scene-builder-element-row")).toContainText("No reference");
   await expect(page.locator(".scene-builder-element-row")).toContainText("Position: center · Depth: foreground");
   await expect(page.locator(".scene-builder-advanced")).not.toHaveAttribute("open", "");
-  await expect(columns.nth(1).getByRole("button", { name: "Add Element" })).toBeVisible();
+  await expect(page.locator('[data-builder-section-panel="elements"]').getByRole("button", { name: "Add Element" })).toBeVisible();
   await page.locator(".scene-builder-element-menu > summary").click();
   const elementMenu = page.locator(".scene-builder-element-menu");
   await expect(elementMenu.getByRole("button", { name: "Duplicate", exact: true })).toBeVisible();
@@ -505,6 +519,80 @@ test("Scene Builder hierarchy streamlines authoring and preserves hidden legacy 
   await page.getByText("Technical Details", { exact: true }).click();
   await expect(page.locator(".scene-builder-technical-details")).toContainText("Story settings");
   await expect(page.locator(".scene-builder-technical-details")).toContainText("Scene image");
+});
+
+test("iPad uses compact navigation and a two-pane sectioned Scene Builder", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openPage(page, "scenes");
+  await expect(page.locator("#responsive-section-menu")).toBeVisible();
+  await expect(page.locator("#story-navigation")).toBeHidden();
+  await expect(page.locator("#story-context")).toBeVisible();
+
+  await page.locator("#responsive-section-menu").selectOption("scene-builder");
+  await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  const switcher = page.locator(".builder-section-switcher");
+  await expect(switcher).toBeVisible();
+  await expect(switcher.getByRole("tab", { name: "Elements" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator('[data-builder-section-panel="elements"]')).toBeVisible();
+  await expect(page.locator('[data-builder-section-panel="scene"]')).toBeHidden();
+  const elementColumns = await page.locator('[data-builder-section-panel="elements"]').evaluate((element) => (
+    getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length
+  ));
+  expect(elementColumns).toBe(2);
+
+  await expect(page.locator(".scene-builder-primary-actions > .scene-builder-save")).toBeHidden();
+  await page.locator(".scene-builder-more > summary").click();
+  await expect(page.locator(".scene-builder-menu-panel").getByRole("button", { name: "Save", exact: true })).toBeVisible();
+  await expect(page.locator(".scene-builder-menu-panel").getByRole("button", { name: "Render", exact: true })).toBeVisible();
+  await expect(page.locator(".scene-builder-menu-panel").getByRole("button", { name: "Continue From…" })).toBeVisible();
+  await expect(page.locator(".scene-builder-menu-panel").getByRole("button", { name: "Prompt Analysis" })).toBeVisible();
+  await expect(page.locator(".scene-builder-menu-panel").getByRole("button", { name: "Candidate Review" })).toBeVisible();
+  for (const control of await page.locator("#responsive-section-menu, .builder-section-switcher button, .scene-builder-more > summary").all()) {
+    expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  }
+  await expectNoHorizontalOverflow(page);
+});
+
+test("phone workspaces are view-first and Scene Builder uses single-open accordions", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPage(page, "stories");
+  await expect(page.locator("#responsive-section-menu")).toBeVisible();
+  await expect(page.locator("#toolbar-settings-button")).toHaveText("More ▾");
+  const viewer = page.locator("#story-phone-viewer");
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator("img")).toBeVisible();
+  const viewerBox = await viewer.boundingBox();
+  const editorBox = await page.locator("#stories-page .story-layout").boundingBox();
+  expect(viewerBox.y).toBeLessThan(editorBox.y);
+  expect(viewerBox.y).toBeLessThan(844);
+  await viewer.locator(".fullscreen-image-button").click();
+  await expect(page.locator(".fullscreen-image-overlay")).toBeVisible();
+  await page.keyboard.press("Escape");
+  const initialTitle = await page.locator("#story-phone-viewer-title").textContent();
+  const navigationButton = await page.locator("#story-phone-next:not(:disabled), #story-phone-previous:not(:disabled)").first();
+  await navigationButton.click();
+  await expect(page.locator("#story-phone-viewer-title")).not.toHaveText(initialTitle);
+
+  await page.locator("#responsive-section-menu").selectOption("scene-builder");
+  const toggles = page.locator(".builder-phone-section-toggle");
+  await expect(toggles).toHaveCount(5);
+  await expect(toggles.filter({ hasText: "Elements" })).toHaveAttribute("aria-expanded", "true");
+  await toggles.filter({ hasText: "Dialogue" }).click();
+  await expect(page.locator('.builder-phone-section-toggle[aria-expanded="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-builder-section-panel="dialogue"]')).toBeVisible();
+  await expect(page.locator('[data-builder-section-panel="elements"]')).toBeHidden();
+
+  await page.locator("#responsive-section-menu").selectOption("scenes");
+  await expect(page.locator("#scene-table")).toHaveCSS("display", "block");
+  await expect(page.locator("#scene-table thead")).toBeHidden();
+  await expect(page.locator("#scene-table tbody tr").first()).toHaveCSS("display", "block");
+  await expect(page.locator("#scene-table tbody td").first()).toHaveAttribute("data-label", "Scene");
+
+  await page.locator("#workspace-character").click();
+  await page.locator("#responsive-section-menu").selectOption("onboarding");
+  await expect(page.locator("#character-phone-viewer")).toBeVisible();
+  await expect(page.locator("#character-phone-viewer img")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
 });
 
 test("source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
