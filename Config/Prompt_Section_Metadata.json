@@ -37,6 +37,18 @@
       "label": "Head-Fitment Rendering Rules",
       "description": "Rules for neutral technical head-and-neck fitment rendering."
     },
+    "HEAD_IMAGE_REFERENCE_RULES": {
+      "label": "Head-Image Reference Rules",
+      "description": "Rules defining how an optional source image contributes identity and which target-phase changes override it."
+    },
+    "HEAD_IMAGE_REFERENCE_INSTRUCTIONS": {
+      "label": "Head-Image Reference Instructions",
+      "description": "Optional character- or phase-specific instructions for interpreting an attached Head Image Source."
+    },
+    "HEAD_IMAGE_RENDERING_RULES": {
+      "label": "Head-Image Rendering Rules",
+      "description": "Loose rendering requirements for a reusable head reference image."
+    },
     "TECHNICAL_MODESTY_LAYER": {
       "label": "Technical Modesty / Safety Layer",
       "description": "Instructions for the neutral technical fitment shell or equivalent non-sensual reference covering."

@@ -20,6 +20,7 @@ Recommended usage:
 * Use `*_PICARESQUE` sections for narrative, expressive, cinematic, or scene-based jobs.
 * Use `IDENTITY_PRESERVATION` sections whenever the character’s likeness must remain stable.
 * Use view-specific subsections when the task requests a specific camera/view angle.
+* Use `HEAD_IMAGE_REFERENCE_RULES` to define how an optional source image contributes identity and which phase changes are intentional.
 * If a view-specific subsection is empty, fall back to the general section above it.
 
 <!-- ZET:END COMPILER_NOTES -->
@@ -514,9 +515,9 @@ Example stub:
 
 ## Identity Preservation — Core Rules
 
-<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->
-
 These rules should be included whenever the image must preserve character identity.
+
+<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->
 
 Core identity anchors:
 
@@ -606,6 +607,44 @@ Body preservation rules:
 ---
 
 # Technical Fitment / Reference-Only Rendering
+
+## Head-Image Reference Instructions
+
+Optional character- or phase-specific instructions in this section are injected immediately after the Head Image Source attachment notice.
+
+<!-- ZET:BEGIN HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->
+
+<!-- ZET:END HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->
+
+## Head-Image Reference Rules
+
+<!-- ZET:BEGIN HEAD_IMAGE_REFERENCE_RULES -->
+
+Optional source-image contract:
+
+* Source identity authority: `[What likeness or design information should be taken from a supplied source image.]`
+* Preserve from source: `[Identity-defining shapes, proportions, expression, tilt, or other stable traits.]`
+* Intentional target-phase changes: `[Age, hair, species, condition, or other changes required by this Character.md.]`
+* Template precedence: the target-phase Character.md overrides the source only for explicitly described changes; preserve all other identity-defining source traits.
+* Without a source image: construct the character from the factual, identity-preservation, and requested-view sections in this Character.md.
+* The requested target view always overrides the source image's camera angle or head orientation.
+
+<!-- ZET:END HEAD_IMAGE_REFERENCE_RULES -->
+
+## Head-Image Rendering Rules
+
+<!-- ZET:BEGIN HEAD_IMAGE_RENDERING_RULES -->
+
+Rendering priorities:
+
+* Render one clear image of the character's head in the requested view.
+* Use the Canonical Art Style.
+* Head-only, head-and-shoulders, bust, or a small amount of upper torso are all acceptable when they support a natural result.
+* Use a simple, unobtrusive background and clear readable lighting.
+* Do not impose head-fitment neck geometry, a fixed neck cut, transparency, or shoulder-removal requirements.
+* Do not add a narrative scene, prominent props, or unrelated characters.
+
+<!-- ZET:END HEAD_IMAGE_RENDERING_RULES -->
 
 ## Body Reference Rendering Rules
 
@@ -911,6 +950,27 @@ Recommended sections for head-fitment:
 * NEGATIVE_GUIDANCE_GENERAL
 
 <!-- ZET:END COMPILER_BUNDLE_HEAD_FITMENT -->
+
+<!-- ZET:BEGIN COMPILER_BUNDLE_HEAD_IMAGE -->
+
+Use for Head-Image rotation jobs:
+
+* `GENERAL_DESCRIPTION_FACTS`
+* `HEAD_DESCRIPTION_FACTS`
+* `HEAD_DESCRIPTION_VIEW_{VIEW}`
+* `HAIR_DESCRIPTION_FACTS`
+* `HAIR_DESCRIPTION_VIEW_{VIEW}`
+* `IDENTITY_PRESERVATION_CORE`
+* `IDENTITY_PRESERVATION_FACE`
+* `IDENTITY_PRESERVATION_EYES`
+* `IDENTITY_PRESERVATION_HAIR`
+* `IDENTITY_PRESERVATION_EARS`
+* `HEAD_IMAGE_REFERENCE_INSTRUCTIONS` (optional; used only when a source image is attached)
+* `HEAD_IMAGE_REFERENCE_RULES`
+* `HEAD_IMAGE_RENDERING_RULES`
+* `NEGATIVE_GUIDANCE_GENERAL`
+
+<!-- ZET:END COMPILER_BUNDLE_HEAD_IMAGE -->
 
 <!-- ZET:BEGIN COMPILER_BUNDLE_COSTUME_FITMENT -->
 

@@ -8,7 +8,12 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
-from zet.services.asset_service import AssetService, BatchRenderResetPreviewResult, BatchRenderResetResult
+from zet.services.asset_service import (
+    AssetService,
+    BatchRenderResetPreviewResult,
+    BatchRenderResetResult,
+    asset_sort_key,
+)
 from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
@@ -87,6 +92,9 @@ class AssetRef:
 
     def regenerate_and_advance(self):
         return self._app.asset_service.regenerate_and_advance(self._character, self._phase, self._asset_id)
+
+    def regenerate_and_clear_references(self) -> Asset:
+        return self._app.asset_service.regenerate_and_clear_references(self._character, self._phase, self._asset_id)
 
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
@@ -304,7 +312,7 @@ class ZetApp:
         return app
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
-        return self.asset_repository.list_assets(character, phase)
+        return sorted(self.asset_repository.list_assets(character, phase), key=asset_sort_key)
 
     def character_workspace_summary(self, character: str, phase: str):
         """Return Character Development readiness for one phase."""
@@ -617,6 +625,9 @@ class ZetApp:
         """Create foundation assets for a validated character phase."""
         self.character_onboarding_service.initialize_foundation(character, phase)
 
+    def add_missing_head_image_foundation(self, character: str, phase: str):
+        return self.character_onboarding_service.add_missing_head_image_foundation(character, phase)
+
     def asset(self, character: str, phase: str, asset_id: int) -> AssetRef:
         return AssetRef(self, character, phase, asset_id)
 
@@ -806,6 +817,18 @@ class ZetApp:
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_fitment_context(character, phase, asset_id)
 
+    def head_image_reference_context(self, character: str, phase: str, asset_id: int):
+        return self.reference_service.head_image_context(character, phase, asset_id)
+
+    def character_assembly_reference_context(self, character: str, phase: str, asset_id: int):
+        return self.reference_service.character_assembly_context(character, phase, asset_id)
+
+    def save_head_image_source(self, character: str, phase: str, asset_id: int, source_path: str):
+        return self.reference_service.save_head_image_source(character, phase, asset_id, source_path)
+
+    def upload_head_image_source(self, character: str, phase: str, filename: str, contents: bytes):
+        return self.reference_service.upload_head_image_source(character, phase, filename, contents)
+
     def save_head_fitment_references(
         self,
         character: str,
@@ -820,6 +843,22 @@ class ZetApp:
             asset_id,
             body_reference_path,
             headshot_path,
+        )
+
+    def save_character_assembly_references(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        body_reference_path: str,
+        head_fitment_path: str,
+    ) -> Asset:
+        return self.reference_service.save_character_assembly_references(
+            character,
+            phase,
+            asset_id,
+            body_reference_path,
+            head_fitment_path,
         )
 
     def upload_headshot_reference(self, character: str, phase: str, filename: str, contents: bytes) -> Path:

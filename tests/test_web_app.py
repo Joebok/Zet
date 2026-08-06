@@ -519,6 +519,7 @@ Backend = "manual_chatgpt"
             assets = client.get("/api/assets", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(assets.status_code, 200)
             self.assertEqual(assets.json()["assets"][0]["asset_id"], 1)
+            self.assertIn("costume_or_expression", assets.json()["assets"][0])
 
             detail = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(detail.status_code, 200)
@@ -561,6 +562,7 @@ Backend = "manual_chatgpt"
 
             self.assertEqual(response.status_code, 200)
             html = response.text
+            self.assertIn("<th>Costume/Expression</th>", html)
             self.assertIn('data-action="advance-all" disabled>Advance All</button>', html)
             self.assertGreater(html.index('data-action="advance-all"'), html.index('id="asset-filter-hide-base"'))
             self.assertIn('id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>', html)
@@ -724,6 +726,40 @@ Backend = "manual_chatgpt"
             self.assertEqual(result["detail"]["asset"]["pipeline_stage"], "LOCKED")
             assets = {asset["asset_id"]: asset for asset in result["assets"]}
             self.assertEqual(assets[2]["pipeline_stage"], "MANIFEST")
+
+    def test_asset_regenerate_and_clear_references_stops_at_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root)
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            payload["assets"][0]["reference_files"] = [{"role": "head_image_source", "path": "old.png"}]
+            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            client = TestClient(create_app(config_path))
+
+            response = client.post(
+                "/api/assets/1/regenerate-and-clear-references",
+                params={"character": "Test", "phase": "Adult"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            asset = response.json()["detail"]["asset"]
+            self.assertEqual(asset["pipeline_stage"], "MANIFEST")
+            self.assertEqual(asset["actor"], "PYTHON")
+            self.assertEqual(asset["reference_files"], [])
+
+    def test_asset_actions_include_regen_and_clear_references_before_promote(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = self._write_fixture(Path(temp_dir))
+            html = TestClient(create_app(config_path)).get("/").text
+
+            regen_index = html.index('data-action="regenerate"')
+            clear_index = html.index('data-action="regenerate-and-clear-references"')
+            promote_index = html.index('data-action="promote-to-locked"')
+            self.assertLess(regen_index, clear_index)
+            self.assertLess(clear_index, promote_index)
+            self.assertIn('disabled>Regen</button>', html)
+            self.assertIn('disabled>Regen &amp; clear refs</button>', html)
 
     def test_retired_prompt_review_api_is_not_registered(self):
         with tempfile.TemporaryDirectory() as temp_dir:

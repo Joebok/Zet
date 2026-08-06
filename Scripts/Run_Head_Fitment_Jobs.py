@@ -72,7 +72,7 @@ def write_dependency_manifest(
         "head_view_token": head_view_token,
         "resources_allowed": True,
         "resources": reference_files,
-        "required_reference_roles": ["body_reference", "headshot"],
+        "required_reference_roles": ["body_reference", "head_image"],
         "notes": [
             "Head-fitment uses explicit structured reference slots from asset.reference_files.",
             "Prompt text describes reference usage; image file selection is stored in the asset and ask manifest.",
@@ -100,7 +100,7 @@ Reviewed At:
 ## Checklist
 
 - [ ] Body/reference pose and costume are preserved from the body-reference image.
-- [ ] Head, face, hair, ears, and identity match the headshot reference.
+- [ ] Head, face, hair, ears, and identity match the Head-Image or explicit legacy headshot source.
 - [ ] Head scale, neck alignment, and perspective fit the body.
 - [ ] Facial identity is not generic.
 - [ ] Hair silhouette and elf ears remain visible and correct.
@@ -135,9 +135,12 @@ def compile_head_fitment_job(job: dict, project_root: Path = PROJECT_ROOT) -> di
 
     references = reference_files_for_job(job)
     body_reference = reference_by_role(references, "body_reference")
-    headshot = reference_by_role(references, "headshot")
+    try:
+        head_image = reference_by_role(references, "head_image")
+    except TemplateCompileError:
+        head_image = reference_by_role(references, "headshot")
     validate_reference(body_reference, "body_reference")
-    validate_reference(headshot, "headshot")
+    validate_reference(head_image, str(head_image.get("role") or "head_image"))
 
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
     selection = select_sections(all_sections, bundle, head_view_token, section_sources)

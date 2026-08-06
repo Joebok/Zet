@@ -129,6 +129,28 @@ test("uploading a manifest headshot preserves the selected body reference", asyn
   await expect(page.locator("#headshot-reference-select")).toHaveValue("new-head.png");
 });
 
+test("head-image manifest selection shows only the optional source image", async ({ page }) => {
+  await page.route("**/api/head-image-manifest/tasks?*", (route) => route.fulfill({
+    json: { tasks: [{ asset_id: 53, pipeline: "Head-Image", body_view: "Front", head_view: "Front" }] },
+  }));
+  await page.route("**/api/head-fitment-manifest/tasks?*", (route) => route.fulfill({ json: { tasks: [] } }));
+  await page.route("**/api/head-image-manifest/53?*", (route) => route.fulfill({
+    json: {
+      asset: { asset_id: 53, pipeline: "Head-Image", body_view: "Front", head_view: "Front" },
+      source_options: [],
+      selected_source: {},
+      reference_files: [],
+      is_manifest_editable: true,
+    },
+  }));
+
+  await openPage(page, "manifest");
+
+  await expect(page.locator("#manifest-task-table tbody td")).toHaveText(["53", "Head-Image", "Front"]);
+  await expect(page.locator("#manifest-body-section")).toBeHidden();
+  await expect(page.locator("#manifest-head-heading")).toHaveText("Optional Source Image");
+});
+
 test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
   await openPage(page, "assets");
   const toggle = page.locator("#toolbar-settings-button");

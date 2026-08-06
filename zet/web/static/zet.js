@@ -167,6 +167,7 @@ const onboardingCopyGptPrompt = document.querySelector("#onboarding-copy-gpt-pro
 const onboardingGptPrompt = document.querySelector("#onboarding-gpt-prompt");
 const onboardingTemplateFile = document.querySelector("#onboarding-template-file");
 const onboardingUploadTemplate = document.querySelector("#onboarding-upload-template");
+const onboardingAddHeadImages = document.querySelector("#onboarding-add-head-images");
 const onboardingTitle = document.querySelector("#onboarding-title");
 const onboardingStatusList = document.querySelector("#onboarding-status-list");
 const onboardingValidation = document.querySelector("#onboarding-validation");
@@ -383,6 +384,8 @@ const manifestNext = document.querySelector("#manifest-next");
 const manifestTitle = document.querySelector("#manifest-title");
 const manifestMessage = document.querySelector("#manifest-message");
 const saveManifestReferencesButton = document.querySelector("#save-manifest-references");
+const manifestBodySection = document.querySelector("#manifest-body-section");
+const manifestHeadHeading = document.querySelector("#manifest-head-heading");
 const bodyReferenceSelect = document.querySelector("#body-reference-select");
 const headshotReferenceSelect = document.querySelector("#headshot-reference-select");
 const headshotUpload = document.querySelector("#headshot-upload");
@@ -1564,6 +1567,7 @@ function renderCharacterOverview() {
   }
   characterOverviewMetrics.append(
     overviewMetric(`${summary.base_reference_locked}/${summary.base_reference_total}`, "Base references locked"),
+    overviewMetric(`${summary.head_image_locked}/${summary.head_image_total}`, "Head images locked"),
     overviewMetric(`${summary.assembly_locked}/${summary.assembly_total}`, "Assembly views locked"),
     overviewMetric(summary.identity_count, "Identity keys"),
     overviewMetric(summary.turnaround_count, "Locked turnarounds"),
@@ -1878,6 +1882,7 @@ function renderOnboarding() {
   setSelectValueCaseInsensitive(onboardingGender, status?.gender_presentation || onboardingGender.value);
   onboardingArtStyle.value = status?.canonical_art_style || onboardingArtStyle.value || "";
   onboardingDownloadTemplate.hidden = !status?.template_path;
+  onboardingAddHeadImages.disabled = !status?.assets_exists || !status?.pipelines_exists;
   if (status?.template_path) {
     onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
     onboardingDownloadTemplate.download = "Character.md";
@@ -2022,6 +2027,17 @@ async function uploadOnboardingTemplate() {
   }
 }
 
+async function addMissingHeadImages() {
+  if (!state.character || !state.phase) return;
+  try {
+    const payload = await fetchJson(`/api/onboarding/head-images?${currentQuery().toString()}`, { method: "POST" });
+    showOnboardingMessage(payload.message || "Head-Image foundation updated.");
+    await refreshCurrentContext();
+  } catch (error) {
+    showOnboardingMessage(error.message, "error");
+  }
+}
+
 async function loadAssets(preferredAssetId = null) {
   if (!state.character || !state.phase) {
     assetStatus.textContent = "No character/phase selected.";
@@ -2067,7 +2083,7 @@ function filteredAssets() {
 
 function isBaseImageAsset(asset) {
   return (
-    ["Body-Reference", "Head-Fitment", "Character-Assembly"].includes(asset?.pipeline || "") &&
+    ["Body-Reference", "Head-Image", "Head-Fitment", "Character-Assembly"].includes(asset?.pipeline || "") &&
     asset?.asset_state === "LOCKED"
   );
 }
@@ -2103,7 +2119,7 @@ function renderAssetTable() {
       asset.asset_id,
       asset.pipeline,
       asset.body_view,
-      asset.costume,
+      asset.costume_or_expression,
       asset.asset_state,
       asset.pipeline_stage_display,
       asset.actor,
@@ -8389,8 +8405,12 @@ async function loadManifestTasks(preferredAssetId = null) {
     return;
   }
   manifestStatus.textContent = "Loading manifest tasks...";
-  const payload = await fetchJson(`/api/head-fitment-manifest/tasks?${currentQuery().toString()}`);
-  state.manifestTasks = payload.tasks || [];
+  const [headImagePayload, fitmentPayload, assemblyPayload] = await Promise.all([
+    fetchJson(`/api/head-image-manifest/tasks?${currentQuery().toString()}`),
+    fetchJson(`/api/head-fitment-manifest/tasks?${currentQuery().toString()}`),
+    fetchJson(`/api/character-assembly-manifest/tasks?${currentQuery().toString()}`),
+  ]);
+  state.manifestTasks = [...(headImagePayload.tasks || []), ...(fitmentPayload.tasks || []), ...(assemblyPayload.tasks || [])];
   const taskIds = new Set(state.manifestTasks.map((task) => task.asset_id));
   state.selectedManifestAssetId = preferredAssetId || state.selectedManifestAssetId || state.manifestTasks[0]?.asset_id || null;
   if (state.selectedManifestAssetId && !taskIds.has(state.selectedManifestAssetId)) {
@@ -8415,9 +8435,7 @@ function renderManifestTaskTable() {
     const row = document.createElement("tr");
     row.dataset.assetId = task.asset_id;
     row.classList.toggle("selected", task.asset_id === state.selectedManifestAssetId);
-    const bodyState = task.has_body_reference ? "yes" : (task.pipeline_stage === "ADD_REF" ? "missing" : "");
-    const headshotState = task.has_headshot ? "yes" : (task.pipeline_stage === "ADD_REF" ? "missing" : "");
-    for (const value of [task.asset_id, bodyState, headshotState]) {
+    for (const value of [task.asset_id, task.pipeline, task.body_view]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);
@@ -8430,7 +8448,14 @@ function renderManifestTaskTable() {
 async function selectManifestAsset(assetId) {
   state.selectedManifestAssetId = Number(assetId);
   updateSelectableRows(manifestTaskBody, (row) => Number(row.dataset.assetId) === state.selectedManifestAssetId);
-  const detail = await fetchJson(`/api/head-fitment-manifest/${state.selectedManifestAssetId}?${currentQuery().toString()}`);
+  const task = state.manifestTasks.find((item) => item.asset_id === state.selectedManifestAssetId);
+  const route = task?.pipeline === "Head-Image"
+    ? "head-image-manifest"
+    : (task?.pipeline === "Character-Assembly" ? "character-assembly-manifest" : "head-fitment-manifest");
+  const detail = await fetchJson(`/api/${route}/${state.selectedManifestAssetId}?${currentQuery().toString()}`);
+  if (state.selectedManifestAssetId !== Number(assetId)) {
+    return;
+  }
   renderManifest(detail);
 }
 
@@ -8442,6 +8467,8 @@ function clearManifest() {
   bodyReferencePreview.textContent = "No body reference selected.";
   headshotReferencePreview.textContent = "No headshot selected.";
   manifestReferenceJson.textContent = "";
+  manifestBodySection.hidden = false;
+  headshotUpload.hidden = false;
   saveManifestReferencesButton.disabled = true;
   manifestPrev.disabled = true;
   manifestNext.disabled = true;
@@ -8451,8 +8478,19 @@ function renderManifest(detail) {
   state.manifestDetail = detail;
   const asset = detail.asset;
   manifestTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view} / ${asset.head_view}`;
+  const isHeadImage = asset.pipeline === "Head-Image";
+  const isCharacterAssembly = asset.pipeline === "Character-Assembly";
+  manifestBodySection.hidden = isHeadImage;
+  manifestHeadHeading.textContent = isHeadImage ? "Optional Source Image" : (isCharacterAssembly ? "Head Fitment" : "Head Image");
+  headshotUpload.hidden = isCharacterAssembly;
   fillReferenceSelect(bodyReferenceSelect, detail.body_reference_options || [], detail.selected_body_reference?.path || "");
-  fillReferenceSelect(headshotReferenceSelect, detail.headshot_options || [], detail.selected_headshot?.path || "");
+  const headOptions = isHeadImage
+    ? (detail.source_options || [])
+    : (isCharacterAssembly ? (detail.head_fitment_options || []) : (detail.headshot_options || []));
+  const selectedHeadPath = isHeadImage
+    ? (detail.selected_source?.path || "")
+    : (isCharacterAssembly ? (detail.selected_head_fitment?.path || "") : (detail.selected_headshot?.path || ""));
+  fillReferenceSelect(headshotReferenceSelect, headOptions, selectedHeadPath);
   manifestReferenceJson.textContent = JSON.stringify(detail.reference_files || [], null, 2);
   saveManifestReferencesButton.disabled = !detail.is_manifest_editable;
   updateManifestPreviews();
@@ -8485,7 +8523,7 @@ function renderImagePreview(container, path, emptyText) {
 
 function updateManifestPreviews() {
   renderImagePreview(bodyReferencePreview, bodyReferenceSelect.value, "No body reference selected.");
-  renderImagePreview(headshotReferencePreview, headshotReferenceSelect.value, "No headshot selected.");
+  renderImagePreview(headshotReferencePreview, headshotReferenceSelect.value, "No head image selected.");
 }
 
 function updateManifestNavigation() {
@@ -8500,14 +8538,26 @@ async function saveManifestReferences() {
   }
   showManifestMessage("Saving...");
   try {
+    const isHeadImage = state.manifestDetail?.asset?.pipeline === "Head-Image";
+    const isCharacterAssembly = state.manifestDetail?.asset?.pipeline === "Character-Assembly";
+    const route = isHeadImage
+      ? `/api/head-image-manifest/${state.selectedManifestAssetId}/source`
+      : (isCharacterAssembly
+        ? `/api/character-assembly-manifest/${state.selectedManifestAssetId}/references`
+        : `/api/head-fitment-manifest/${state.selectedManifestAssetId}/references`);
     const payload = await fetchJson(
-      `/api/head-fitment-manifest/${state.selectedManifestAssetId}/references?${currentQuery().toString()}`,
+      `${route}?${currentQuery().toString()}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(isHeadImage ? {
+          source_path: headshotReferenceSelect.value,
+        } : isCharacterAssembly ? {
           body_reference_path: bodyReferenceSelect.value,
-          headshot_path: headshotReferenceSelect.value,
+          head_fitment_path: headshotReferenceSelect.value,
+        } : {
+          body_reference_path: bodyReferenceSelect.value,
+          head_image_path: headshotReferenceSelect.value,
         }),
       },
     );
@@ -8525,11 +8575,13 @@ async function uploadHeadshotReference() {
   if (!file) {
     return;
   }
-  showManifestMessage("Uploading headshot...");
+  const isHeadImage = state.manifestDetail?.asset?.pipeline === "Head-Image";
+  showManifestMessage(isHeadImage ? "Uploading Head-Image source..." : "Uploading legacy headshot override...");
   const params = currentQuery();
   params.set("filename", file.name);
   try {
-    const payload = await fetchJson(`/api/head-fitment-manifest/headshots?${params.toString()}`, {
+    const uploadRoute = isHeadImage ? "/api/head-image-sources" : "/api/head-fitment-manifest/headshots";
+    const payload = await fetchJson(`${uploadRoute}?${params.toString()}`, {
       method: "POST",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,
@@ -8839,6 +8891,7 @@ onboardingSpecies.addEventListener("change", () => updateOnboardingHelperPrompt(
 onboardingGender.addEventListener("change", () => updateOnboardingHelperPrompt());
 onboardingArtStyle.addEventListener("input", () => updateOnboardingHelperPrompt());
 onboardingUploadTemplate.addEventListener("click", uploadOnboardingTemplate);
+onboardingAddHeadImages.addEventListener("click", addMissingHeadImages);
 assetFilterTodo.addEventListener("change", applyAssetFilters);
 assetFilterHideBase.addEventListener("change", applyAssetFilters);
 assetFilterPipeline.addEventListener("change", applyAssetFilters);

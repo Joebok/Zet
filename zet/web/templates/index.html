@@ -180,6 +180,7 @@
               <input id="onboarding-template-file" type="file" accept=".md,text/markdown,text/plain">
             </label>
             <button id="onboarding-upload-template" type="button">Upload Template</button>
+            <button id="onboarding-add-head-images" type="button">Add Missing Head Images</button>
           </div>
           <dl id="onboarding-status-list" class="status-list"></dl>
           <section>
@@ -213,6 +214,7 @@
               <select id="asset-filter-pipeline">
                 <option value="">All</option>
                 <option value="Body-Reference">Body-Reference</option>
+                <option value="Head-Image">Head-Image</option>
                 <option value="Head-Fitment">Head-Fitment</option>
                 <option value="Character-Assembly">Character-Assembly</option>
                 <option value="Costume-Dressing">Costume-Dressing</option>
@@ -226,7 +228,7 @@
                 <th>asset_id</th>
                 <th>pipeline</th>
                 <th>body_view</th>
-                <th>costume</th>
+                <th>Costume/Expression</th>
                 <th>asset_state</th>
                 <th>pipeline_stage</th>
                 <th>actor</th>
@@ -247,7 +249,8 @@
             <button id="asset-detail-image-mode" class="navigation-action" type="button">Show Locked Image</button>
           </div>
           <div class="button-row">
-            <button id="regenerate" class="update-action" data-action="regenerate" disabled>Regenerate</button>
+            <button id="regenerate" class="update-action" data-action="regenerate" disabled>Regen</button>
+            <button id="regenerate-clear-references" class="update-action" data-action="regenerate-and-clear-references" disabled>Regen &amp; clear refs</button>
             <button id="promote-to-locked" class="primary-action" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
             <button id="create-identity-from-asset" class="create-action" type="button" disabled>Create Identity Key</button>
           </div>
@@ -894,8 +897,8 @@
             <thead>
               <tr>
                 <th>asset</th>
-                <th>body</th>
-                <th>head</th>
+                <th>pipeline</th>
+                <th>body view</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -908,13 +911,13 @@
           </div>
           <div id="manifest-message" class="action-message" hidden></div>
           <div class="manifest-picker-grid">
-            <section>
+            <section id="manifest-body-section">
               <h3>Body Reference</h3>
               <select id="body-reference-select"></select>
               <div id="body-reference-preview" class="image-placeholder">No body reference selected.</div>
             </section>
             <section>
-              <h3>Headshot</h3>
+              <h3 id="manifest-head-heading">Head Image</h3>
               <select id="headshot-reference-select"></select>
               <input id="headshot-upload" type="file" accept="image/*">
               <div id="headshot-reference-preview" class="image-placeholder">No headshot selected.</div>

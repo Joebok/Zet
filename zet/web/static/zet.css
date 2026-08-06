@@ -930,7 +930,7 @@ dl {
 }
 
 .manifest-layout {
-  grid-template-columns: 260px minmax(620px, 1fr) 300px;
+  grid-template-columns: 360px minmax(620px, 1fr) 300px;
 }
 
 .scene-layout {
@@ -2854,6 +2854,10 @@ dd {
   .review-layout,
   .manifest-layout {
     grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .manifest-layout {
+    grid-template-columns: 360px minmax(0, 1fr);
   }
 
   .scene-layout {

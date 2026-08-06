@@ -1,17 +1,9 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from zet.models.worker import WorkerResult
-
-
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-
-
-def _view_key(value: str | None) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
 def _assets_payload(context) -> tuple[Path, dict]:
@@ -52,16 +44,21 @@ def _locked_body_reference(context, payload: dict, body_view: str) -> tuple[dict
     return None, None
 
 
-def _matching_headshot(context, head_view: str) -> Path | None:
-    headshot_dir = context.character_path / "Reference_Images" / "Headshots"
-    if not headshot_dir.exists():
-        return None
-    target = _view_key(head_view)
-    for path in sorted(item for item in headshot_dir.iterdir() if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS):
-        stem = _view_key(path.stem)
-        if stem == target:
-            return path
-    return None
+def _locked_head_image(context, payload: dict, head_view: str) -> tuple[dict | None, Path | None]:
+    for record in payload.get("assets", []):
+        if record.get("pipeline") != "Head-Image":
+            continue
+        if record.get("asset_state") != "LOCKED" or record.get("pipeline_stage") != "LOCKED":
+            continue
+        if (record.get("head_view") or record.get("body_view")) != head_view:
+            continue
+        final_image_output = str(record.get("final_image_output") or "").strip()
+        if not final_image_output:
+            continue
+        path = context.character_asset_path / final_image_output
+        if path.is_file():
+            return record, path
+    return None, None
 
 
 def _save_references(assets_path: Path, payload: dict, asset_id: int, references: list[dict]) -> bool:
@@ -85,7 +82,7 @@ def run(asset, context) -> WorkerResult:
 
     assets_path, payload = _assets_payload(context)
     existing_body_reference = _reference_by_role(asset, "body_reference")
-    existing_headshot = _reference_by_role(asset, "headshot")
+    existing_head_image = _reference_by_role(asset, "head_image") or _reference_by_role(asset, "headshot")
 
     body_record = None
     if _valid_reference(existing_body_reference):
@@ -108,30 +105,32 @@ def run(asset, context) -> WorkerResult:
             "body_view": body_record.get("body_view"),
         }
 
-    if _valid_reference(existing_headshot):
-        headshot_reference = dict(existing_headshot)
+    if _valid_reference(existing_head_image):
+        head_image_reference = dict(existing_head_image)
     else:
         head_view = asset.head_view or asset.body_view
-        headshot_path = _matching_headshot(context, head_view)
-        if headshot_path is None:
+        head_record, head_image_path = _locked_head_image(context, payload, head_view)
+        if head_record is None or head_image_path is None:
             _save_references(assets_path, payload, asset.asset_id, [body_reference])
             return WorkerResult(
                 success=False,
-                message=f"No headshot image found for head view {head_view}.",
+                message=f"No locked Head-Image found for head view {head_view}.",
                 advance_stage=False,
                 error_code="MISSING_HEADSHOT_REFERENCE",
                 error_message=(
-                    f"No headshot image found for head view {head_view}. "
-                    "Add or select a matching headshot before running the prompt worker."
+                    f"No locked Head-Image found for head view {head_view}. "
+                    "Lock a matching Head-Image or explicitly select a legacy headshot override."
                 ),
             )
-        headshot_reference = {
-            "role": "headshot",
-            "label": "Headshot reference image",
-            "path": str(headshot_path),
+        head_image_reference = {
+            "role": "head_image",
+            "label": "Locked Head-Image",
+            "path": str(head_image_path),
+            "source_asset_id": head_record.get("asset_id"),
+            "head_view": head_record.get("head_view") or head_record.get("body_view"),
         }
 
-    references = [body_reference, headshot_reference]
+    references = [body_reference, head_image_reference]
     if not _save_references(assets_path, payload, asset.asset_id, references):
         return WorkerResult(
             success=False,

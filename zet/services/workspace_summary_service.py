@@ -45,6 +45,7 @@ class WorkspaceSummaryService:
         status = self.onboarding_service.status(character, phase)
         assets = self.asset_repository.list_assets(character, phase) if status.assets_exists else []
         reference_locked, reference_total = self._locked_count(assets, "Body-Reference")
+        head_image_locked, head_image_total = self._locked_count(assets, "Head-Image")
         assembly_locked, assembly_total = self._locked_count(assets, "Character-Assembly")
         identity_count = len(self.identity_key_service.list_identity_keys(character, phase))
         turnaround_count = sum(
@@ -55,14 +56,19 @@ class WorkspaceSummaryService:
         costume_count = len(self.costume_service.list_costumes(character, phase))
         expression_count = len(self.expression_service.list_expression_definitions(character, phase))
         reference_complete = reference_total > 0 and reference_locked == reference_total
+        head_image_complete = head_image_total > 0 and head_image_locked == head_image_total
         assembly_complete = assembly_total > 0 and assembly_locked == assembly_total
         steps = [
             WorkspaceStep("setup", "Setup", status.complete, int(status.complete), 1, "onboarding"),
             WorkspaceStep("references", "References", reference_complete, reference_locked, reference_total, "assets"),
+        ]
+        if head_image_total:
+            steps.append(WorkspaceStep("head-images", "Head Images", head_image_complete, head_image_locked, head_image_total, "assets"))
+        steps.extend([
             WorkspaceStep("assembly", "Assembly", assembly_complete, assembly_locked, assembly_total, "assets"),
             WorkspaceStep("identity", "Identity", identity_count > 0, identity_count, 1, "identity-keys"),
             WorkspaceStep("costumes", "Costumes", costume_count > 0, costume_count, 1, "costumes"),
-        ]
+        ])
         recommendation = next((step for step in steps if not step.complete), None)
         if recommendation is None and turnaround_count == 0:
             destination, action = "turnarounds", "Create a locked turnaround"
@@ -73,6 +79,7 @@ class WorkspaceSummaryService:
             action = {
                 "setup": "Edit character setup",
                 "references": "Complete base references",
+                "head-images": "Complete head images",
                 "assembly": "Complete character assembly",
                 "identity": "Create an identity key",
                 "costumes": "Create the first costume",
@@ -84,6 +91,8 @@ class WorkspaceSummaryService:
             steps=steps,
             base_reference_locked=reference_locked,
             base_reference_total=reference_total,
+            head_image_locked=head_image_locked,
+            head_image_total=head_image_total,
             assembly_locked=assembly_locked,
             assembly_total=assembly_total,
             identity_count=identity_count,

@@ -154,7 +154,7 @@ class AIProxyService:
                 task_type="render",
                 render_preset=self._local_render_preset(),
             )
-        if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "RENDER":
+        if asset.pipeline in {"Head-Image", "Head-Fitment"} and asset.pipeline_stage == "RENDER":
             return self._build_manual_render_ask(asset, ask_id, attempt_id)
         if asset.pipeline == "Character-Assembly" and asset.pipeline_stage == "RENDER":
             return self._build_manual_render_ask(asset, ask_id, attempt_id)
@@ -242,7 +242,7 @@ class AIProxyService:
                 raise AIProxyServiceError(f"No render prompt found for Asset {asset.asset_id}.")
             return context.render_prompt_text
 
-        if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "RENDER":
+        if asset.pipeline in {"Head-Image", "Head-Fitment"} and asset.pipeline_stage == "RENDER":
             prompt_path = self.path_service.pipeline_path(asset) / "Final_Image_Prompt.md"
             if not prompt_path.exists():
                 raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")

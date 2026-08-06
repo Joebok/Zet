@@ -78,6 +78,20 @@ class WorkspaceSummaryServiceTests(unittest.TestCase):
         self.assertEqual(summary.recommended_destination, "render-review")
         self.assertEqual([scene.image_state for scene in summary.scenes], ["Locked", "Candidate ready"])
 
+    def test_character_summary_reports_head_image_progress(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assets = [
+                Asset(1, "Test", "Adult", "Body-Reference", "Front", asset_state="LOCKED"),
+                Asset(2, "Test", "Adult", "Head-Image", "Front", head_view="Front", asset_state="LOCKED"),
+                Asset(3, "Test", "Adult", "Head-Image", "Back", head_view="Back"),
+                Asset(4, "Test", "Adult", "Character-Assembly", "Front"),
+            ]
+            summary = self._service(Path(temp_dir), assets).character_summary("Test", "Adult")
+
+        self.assertEqual((summary.head_image_locked, summary.head_image_total), (1, 2))
+        self.assertEqual(summary.recommended_action, "Complete head images")
+        self.assertIn("head-images", [step.key for step in summary.steps])
+
 
 if __name__ == "__main__":
     unittest.main()

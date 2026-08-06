@@ -14,7 +14,8 @@ This is a technical fitment asset, not a portrait crop.
 
 Reference roles:
 
-- The attached headshot reference is the Character Head source.
+- The attached Head-Image reference, or explicit legacy headshot override, is the Character Head source.
+- The attached headshot reference is the Character Head source. This remains supported for backward-compatible legacy jobs.
 - The attached body-reference image is the Reference Body source.
 
 CANONICAL ART STYLE DIRECTIVE
@@ -96,7 +97,7 @@ Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drif
 
 Good output:
 - The image only has the Character Head and fitted character neck.
-- The Character Head matches the headshot source image except for small neck adjustment for smooth fitment.
+- The Character Head matches its source image except for small neck adjustment for smooth fitment.
 - Hair matches the source in shape, color, texture, orientation, and visibility.
 - Eyes match the source in shape, color, texture, orientation, and visibility where visible.
 - Ears match the source in shape, orientation, and visibility.

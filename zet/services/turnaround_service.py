@@ -272,7 +272,7 @@ class TurnaroundService:
         pipeline_names = [
             pipeline.name
             for pipeline in self.pipeline_repository.list_pipelines(character, phase)
-            if pipeline.name != "Expression"
+            if pipeline.name not in {"Expression", "Head-Image"}
         ]
         keys: set[tuple[str, Optional[str], Optional[str]]] = set()
         for asset in assets:

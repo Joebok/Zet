@@ -31,6 +31,8 @@ from pathlib import Path
 scripts_path = Path({str(PROJECT_ROOT / 'Scripts')!r}).resolve()
 import zet.workers.body_reference_prompt_worker
 import zet.workers.head_fitment_prompt_worker
+import zet.workers.head_image_manifest_worker
+import zet.workers.head_image_prompt_worker
 import zet.workers.character_assembly_prompt_worker
 import zet.workers.costume_dressing_prompt_worker
 import zet.workers.expression_prompt_worker

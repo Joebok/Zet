@@ -20,8 +20,39 @@ MISSING_REFERENCE_ERROR_CODES = {
     "MISSING_REFERENCE",
     "MISSING_BODY_REFERENCE",
     "MISSING_HEADSHOT_REFERENCE",
+    "MISSING_HEAD_IMAGE_REFERENCE",
     "MISSING_CHARACTER_ASSEMBLY",
 }
+ASSET_PIPELINE_ORDER = [
+    "Body-Reference",
+    "Head-Image",
+    "Head-Fitment",
+    "Character-Assembly",
+    "Costume-Dressing",
+    "Expression",
+]
+ASSET_VIEW_ORDER = [
+    "Front",
+    "Front-Left-3-4",
+    "Front-Right-3-4",
+    "Left-Profile",
+    "Right-Profile",
+    "Back-Left-3-4",
+    "Back-Right-3-4",
+    "Back",
+]
+_ASSET_PIPELINE_RANK = {name: index for index, name in enumerate(ASSET_PIPELINE_ORDER)}
+_ASSET_VIEW_RANK = {name: index for index, name in enumerate(ASSET_VIEW_ORDER)}
+
+
+def asset_sort_key(asset: Asset) -> tuple[int, int, str, int]:
+    costume_or_expression = asset.expression if asset.expression else asset.costume
+    return (
+        _ASSET_PIPELINE_RANK.get(asset.pipeline, len(_ASSET_PIPELINE_RANK)),
+        _ASSET_VIEW_RANK.get(asset.body_view, len(_ASSET_VIEW_RANK)),
+        str(costume_or_expression or "").casefold(),
+        asset.asset_id,
+    )
 
 
 class AssetServiceError(Exception):
@@ -335,7 +366,7 @@ class AssetService:
 
         return results
 
-    def regenerate(self, character: str, phase: str, asset_id: int) -> Asset:
+    def regenerate(self, character: str, phase: str, asset_id: int, clear_references: bool = False) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         manifest_actor = self._validate_actor(
@@ -352,6 +383,8 @@ class AssetService:
         updated_asset.ai_state = "ASKED" if manifest_actor == "AI_AGENT" else None
         updated_asset.error_code = None
         updated_asset.error_message = None
+        if clear_references:
+            updated_asset.reference_files = []
         updated_asset.updated_at = self._timestamp()
 
         self.asset_repository.save_asset(updated_asset)
@@ -420,6 +453,9 @@ class AssetService:
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
+
+    def regenerate_and_clear_references(self, character: str, phase: str, asset_id: int) -> Asset:
+        return self.regenerate(character, phase, asset_id, clear_references=True)
 
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)

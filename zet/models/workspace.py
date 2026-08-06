@@ -23,6 +23,8 @@ class CharacterWorkspaceSummary:
     steps: list[WorkspaceStep] = field(default_factory=list)
     base_reference_locked: int = 0
     base_reference_total: int = 0
+    head_image_locked: int = 0
+    head_image_total: int = 0
     assembly_locked: int = 0
     assembly_total: int = 0
     identity_count: int = 0

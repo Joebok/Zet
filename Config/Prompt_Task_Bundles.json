@@ -41,7 +41,7 @@
       "next_actor": "AI_AGENT"
     },
     "head-fitment": {
-      "description": "Static head-fitment prompt using selected body-reference and headshot image references. No prompt review and no local preview render.",
+      "description": "Static head-fitment prompt using a locked body-reference and same-view Head-Image, with explicit legacy headshot override support.",
       "prompt_builder": "static",
       "required_sections": [
         "GENERAL_DESCRIPTION_FACTS",
@@ -71,7 +71,52 @@
       "resources": {
         "required_reference_roles": [
           "body_reference",
-          "headshot"
+          "head_image"
+        ]
+      },
+      "output_files": {
+        "compiled_sections": "Compiled_Sections.md",
+        "final_prompt": "Final_Image_Prompt.md",
+        "dependency_manifest": "dependency_manifest.json",
+        "image_review": "Image_Review.md"
+      },
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
+    },
+    "head-image": {
+      "description": "Static head rotation prompt with an optional source image.",
+      "prompt_builder": "static",
+      "required_sections": [
+        "GENERAL_DESCRIPTION_FACTS",
+        "HEAD_DESCRIPTION_FACTS",
+        "HEAD_DESCRIPTION_VIEW_{VIEW}",
+        "HAIR_DESCRIPTION_FACTS",
+        "HAIR_DESCRIPTION_VIEW_{VIEW}",
+        "IDENTITY_PRESERVATION_CORE",
+        "IDENTITY_PRESERVATION_FACE",
+        "IDENTITY_PRESERVATION_EYES",
+        "IDENTITY_PRESERVATION_HAIR",
+        "IDENTITY_PRESERVATION_EARS",
+        "HEAD_IMAGE_REFERENCE_RULES",
+        "HEAD_IMAGE_RENDERING_RULES",
+        "NEGATIVE_GUIDANCE_GENERAL"
+      ],
+      "optional_sections": [
+        "HEAD_IMAGE_REFERENCE_INSTRUCTIONS",
+        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+      ],
+      "forbidden_sections": [
+        "*_PICARESQUE",
+        "BODY_DESCRIPTION_*",
+        "HEAD_FITMENT_RENDERING_RULES",
+        "COSTUME_DESCRIPTION_*",
+        "EQUIPMENT_DESCRIPTION_*",
+        "SCENE_RENDERING_*"
+      ],
+      "static_prompt_template": "head_image_v1",
+      "resources": {
+        "optional_reference_roles": [
+          "head_image_source"
         ]
       },
       "output_files": {
