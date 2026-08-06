@@ -464,8 +464,10 @@ def character_assembly_style_instruction(mode: str) -> str:
             "orientation, clothing, or background."
         )
     return (
-        "Preserve the rendering style of both supplied sources. Do not repaint or reinterpret the body or head. "
-        "Allow only seam blending and minor antialiasing at the neck connection."
+        "The supplied sources are already rendered in the same intended style. Preserve that style throughout "
+        "the image. Allow localized blending, antialiasing, shading adjustment, skin-transition harmonization, "
+        "edge cleanup, and limited reconstruction where needed to integrate the head, hair, neck, and shoulders. "
+        "Do not broadly repaint or reinterpret the character."
     )
 
 

@@ -2,7 +2,7 @@
   "schema_version": 2,
   "views": {
     "FRONT": {
-      "label": "front view",
+      "label": "direct front view",
       "orientation_sentence": "The head, torso, and feet all point directly toward the viewer.",
       "costume_dressing_orientation_lock": "Preserve a true direct front orientation, square to the camera. Keep the body and face front-facing and the stance symmetrical. Do not add a three-quarter turn.",
       "folder_name": "Front",

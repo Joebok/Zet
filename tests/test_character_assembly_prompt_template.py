@@ -111,11 +111,12 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         harmonized_prompt = Path(harmonized["final_prompt"]).read_text(encoding="utf-8")
 
         self.assertEqual("MATCHED_STYLE", matched["assembly_style_mode"])
-        self.assertIn("Allow only seam blending and minor antialiasing", matched_prompt)
+        self.assertIn("Allow localized blending, antialiasing, shading adjustment", matched_prompt)
+        self.assertIn("limited reconstruction", matched_prompt)
         self.assertNotIn("Harmonize the Character Head's line quality", matched_prompt)
         self.assertEqual("HARMONIZE_STYLE", harmonized["assembly_style_mode"])
         self.assertIn("Harmonize the Character Head's line quality, shading, and surface finish", harmonized_prompt)
-        self.assertNotIn("Allow only seam blending and minor antialiasing", harmonized_prompt)
+        self.assertNotIn("limited reconstruction", harmonized_prompt)
 
     def test_prompt_omits_superseded_generation_rules(self) -> None:
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
@@ -128,9 +129,64 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
             "THREE-QUARTER ORIENTATION LOCK",
             "Negative constraints:",
             "TECHNICAL_MODESTY_LAYER",
+            "adult identity",
+            "Tsaeytte",
+            "Elder Tsaeytte",
+            "Core identity anchors",
+            "Body preservation rules",
+            "when shoulders are not rendered",
         ):
             self.assertNotIn(omitted, prompt)
         self.assertEqual(1, prompt.count("fitment clothing"))
+
+    def test_prompt_uses_generic_source_controlled_identity_rules(self) -> None:
+        result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
+        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+
+        self.assertIn("Produce one coherent full-body character in one direct front view.", prompt)
+        self.assertIn("selected character-phase identity", prompt)
+        self.assertIn("age characteristics, species", prompt)
+        self.assertIn("Preserve the hairstyle's defining length, shape, part, asymmetry, volume, and identity", prompt)
+        self.assertIn("Adjust only local strand placement and overlap", prompt)
+        self.assertIn("Do not invent or expose an ear that is naturally occluded", prompt)
+        self.assertNotIn("Local skin-transition and shading harmonization", prompt)
+
+    def test_prompt_uses_adaptive_quality_first_assembly_region(self) -> None:
+        result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
+        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+
+        self.assertIn("adaptive assembly region rather than a rigid source boundary", prompt)
+        self.assertIn("Neither source is pixel-locked within this local region", prompt)
+        self.assertIn("Final anatomical continuity and visual integration", prompt)
+        self.assertIn("overall shoulder placement, width, and silhouette", prompt)
+        self.assertIn("Adjust the visible neck length only as needed", prompt)
+        self.assertIn("use enough of that region to produce natural anatomy and a seamless final result", prompt)
+        for omitted in (
+            "Use the smallest practical area of change",
+            "Preserve all other pixels",
+            "Everything below the replacement boundary",
+            "owns everything below the head-replacement boundary",
+            "fitted upper neck match",
+            "Preserve the fitted hair silhouette exactly",
+        ):
+            self.assertNotIn(omitted, prompt)
+
+    def test_character_template_is_not_loaded_or_parsed(self) -> None:
+        malformed_path = self.root / "Malformed.md"
+        malformed_path.write_text("<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->\n", encoding="utf-8")
+        missing_path = self.root / "Missing.md"
+
+        for template_path, output_name in (
+            (malformed_path, "malformed-template"),
+            (missing_path, "missing-template"),
+        ):
+            with self.subTest(template_path=template_path):
+                job = self._job(output_name=output_name)
+                job["Template Path"] = str(template_path)
+                result = compile_character_assembly_job(job, PROJECT_ROOT)
+                prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+                self.assertIn("selected character-phase identity", prompt)
+                self.assertNotIn("IDENTITY_PRESERVATION_CORE", prompt)
 
     def test_mismatched_job_views_fail_before_artifact_generation(self) -> None:
         with self.assertRaises(TemplateCompileError) as raised:

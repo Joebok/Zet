@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
+from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
 from Scripts.Library_Paths import pipeline_root
@@ -19,15 +19,11 @@ from zet.services.pipeline_compiler_support import (
     expected_output_for_job,
     job_get,
     load_bundle,
-    load_body_reference_section_data,
     load_view_data,
-    metadata_source_map,
     normalize_view,
     output_files,
     require_job_field,
     resolve_project_path,
-    template_metadata,
-    template_path_for_job,
     view_instruction,
     reference_by_role,
     reference_files_for_job,
@@ -105,9 +101,12 @@ Reviewed At:
 ## Checklist
 
 - [ ] Full body is visible, including feet.
-- [ ] Everything below the head-replacement boundary matches the Reference Body, including pose, framing, fitment clothing, exposed skin, and background.
-- [ ] Head, hair, ears, face, expression, gaze, and upper neck match the Character Head source.
-- [ ] Head and body join cleanly at the neck without a visible seam, floating head, or mannequin material.
+- [ ] The Reference Body's overall body, proportions, pose, stance, shoulder placement, framing, fitment clothing, exposed skin, background, and requested view are preserved.
+- [ ] The Character Head's identity, face, age phase, species, expression, gaze, hairstyle design, ears, and orientation are preserved.
+- [ ] Local strand placement and overlap let the defining hairstyle rest naturally around the assembled neck and shoulders.
+- [ ] Ear shape and visibility match the Character Head source; no occluded ear was invented or exposed.
+- [ ] Head and body skin transition naturally without broad recoloring or character-phase mismatch.
+- [ ] The head, neck, hair, shoulders, and exposed skin form one anatomically natural and visually continuous assembly without seams, mannequin residue, attachment artifacts, mismatched shading, a floating head, or a distorted neck.
 - [ ] Reference Body, Character Head, and final render preserve the same requested view.
 - [ ] Rendering changes comply with the selected assembly style mode.
 - [ ] No costume, prop, accessory, scene, or lighting changes were introduced.
@@ -137,7 +136,6 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
     )
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    template_path = template_path_for_job(project_root, job, character, phase)
     output_dir = output_dir_for_job(project_root, job, character, phase, body_view_token, head_view_token)
     expected_output = job_get(job, "Expected Output", "expected_output") or expected_output_for_job(job, body_view_data)
 
@@ -156,12 +154,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         head_fitment=head_fitment,
     )
 
-    all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    selection = select_sections(all_sections, bundle, body_view_token, section_sources)
-    if selection.missing_required:
-        raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
-    if selection.forbidden_matches:
-        raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
+    selection = CompiledSelection([], [], [], [], [], {})
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -199,10 +192,13 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
             "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
-            **template_metadata(template_path),
         }
     metadata_sources = {
-        **metadata_source_map(project_root, template_path, body_view_token, task, "body"),
+        "CHARACTER_NAME": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset character", "editable": False},
+        "CHARACTER_PHASE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset phase", "editable": False},
+        "VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Normalized view token", "editable": False},
+        "VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "View label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},
+        "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "character-assembly body view instruction", "json_pointer": f"/views/{body_view_token}/body_instructions/{task}", "editable": True},
         "ASSEMBLY_STYLE_MODE": {"source_kind": "asset_metadata", "source_path": "", "source_label": "Assembly style mode", "editable": True},
         "ASSEMBLY_STYLE_INSTRUCTION": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Assembly style instruction", "editable": False},
         "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
