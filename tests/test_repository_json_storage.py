@@ -81,6 +81,7 @@ class RepositoryJsonStorageTests(unittest.TestCase):
         asset = self.asset_repository.list_assets("Test", "Adult")[0]
         self.assertEqual("NEW", asset.asset_state)
         self.assertEqual([], asset.reference_files)
+        self.assertEqual("MATCHED_STYLE", asset.assembly_style_mode)
         self.asset_repository.save_asset(asset)
 
         payload = json.loads(path.read_text(encoding="utf-8"))

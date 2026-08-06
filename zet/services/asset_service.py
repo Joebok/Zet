@@ -393,6 +393,34 @@ class AssetService:
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
 
+    def discard_candidate(self, character: str, phase: str, asset_id: int) -> Asset:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        candidate_image_path = self.path_service.candidate_image_path(asset)
+        locked_image_path = self.path_service.locked_image_path(asset)
+
+        if asset.pipeline_stage != "RENDER_REVIEW" or asset.actor != "HUMAN_AGENT":
+            raise AssetServiceError("Candidate discard is only available at RENDER_REVIEW / HUMAN_AGENT.")
+        if not candidate_image_path.exists():
+            raise AssetServiceError("Cannot discard: candidate image does not exist.")
+        if not locked_image_path.exists():
+            raise AssetServiceError("Cannot discard: locked image does not exist.")
+
+        candidate_image_path.unlink()
+        self.render_review_comment_path(asset).unlink(missing_ok=True)
+
+        updated_asset = replace(asset)
+        updated_asset.asset_state = "LOCKED"
+        updated_asset.pipeline_stage = "LOCKED"
+        updated_asset.actor = "HUMAN_AGENT"
+        updated_asset.ai_state = None
+        updated_asset.error_code = None
+        updated_asset.error_message = None
+        updated_asset.updated_at = self._timestamp()
+
+        self.asset_repository.save_asset(updated_asset)
+        self.housekeeping_service.prepare_stage(updated_asset)
+        return updated_asset
+
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.pipeline_stage != "RENDER_REVIEW" or asset.actor != "HUMAN_AGENT":

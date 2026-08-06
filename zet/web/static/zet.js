@@ -238,6 +238,7 @@ const renderReviewMessage = document.querySelector("#render-review-message");
 const candidateRender = document.querySelector("#candidate-render");
 const lockedRender = document.querySelector("#locked-render");
 const renderPromoteButton = document.querySelector("#render-promote");
+const renderDiscardCandidateButton = document.querySelector("#render-discard-candidate");
 const renderFailRenderButton = document.querySelector("#render-fail-render");
 const renderFailRegenerateButton = document.querySelector("#render-fail-regenerate");
 const renderStageText = document.querySelector("#render-stage-text");
@@ -6615,6 +6616,8 @@ function clearRenderReview() {
   renderReviewPrev.disabled = true;
   renderReviewNext.disabled = true;
   renderPromoteButton.disabled = true;
+  renderDiscardCandidateButton.disabled = true;
+  renderDiscardCandidateButton.hidden = false;
   renderFailRenderButton.disabled = true;
   renderFailRegenerateButton.disabled = true;
   renderFailRenderButton.textContent = "Fail to RENDER";
@@ -6638,6 +6641,8 @@ function renderRenderReview(detail) {
   renderLockedImage(detail);
   const candidateExists = isScene ? detail.candidate_exists : detail.exists?.candidate_image;
   renderPromoteButton.disabled = !detail.is_reviewable || !candidateExists;
+  renderDiscardCandidateButton.disabled = !detail.is_reviewable || !candidateExists || !detail.exists?.locked_image;
+  renderDiscardCandidateButton.hidden = isScene;
   renderFailRenderButton.disabled = !detail.is_reviewable;
   renderFailRegenerateButton.disabled = !detail.is_reviewable;
   renderFailRenderButton.textContent = isScene ? "Discard Candidate" : "Fail to RENDER";
@@ -9123,6 +9128,7 @@ promptReviewNext.addEventListener("click", () => {
 });
 promptReviewRefresh.addEventListener("click", () => loadPromptReviewTasks());
 renderPromoteButton.addEventListener("click", promoteRenderReview);
+renderDiscardCandidateButton.addEventListener("click", () => runRenderReviewAction("discard-candidate"));
 renderFailRenderButton.addEventListener("click", () => runRenderReviewAction("fail-to-render"));
 renderFailRegenerateButton.addEventListener("click", () => runRenderReviewAction("fail-to-regenerate"));
 renderCommentSave.addEventListener("click", saveRenderReviewComment);

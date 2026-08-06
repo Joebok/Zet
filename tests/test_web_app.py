@@ -798,6 +798,27 @@ Backend = "manual_chatgpt"
             self.assertFalse((root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png").exists())
             self.assertTrue(any((root / "Queue" / "File_Proxy" / "Ask" / "zet").iterdir()))
 
+    def test_render_review_api_can_discard_candidate_and_keep_locked_image(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="RENDER_REVIEW", actor="HUMAN_AGENT")
+            locked_path = root / "Assets" / "Test" / "Adult" / "front.png"
+            locked_path.write_bytes(b"locked image")
+            candidate_path = root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png"
+            client = TestClient(create_app(config_path))
+
+            discarded = client.post(
+                "/api/render-review/1/discard-candidate",
+                params={"character": "Test", "phase": "Adult"},
+            )
+
+            self.assertEqual(discarded.status_code, 200)
+            payload = discarded.json()
+            self.assertEqual(payload["asset"]["asset_state"], "LOCKED")
+            self.assertEqual(payload["asset"]["pipeline_stage"], "LOCKED")
+            self.assertEqual(locked_path.read_bytes(), b"locked image")
+            self.assertFalse(candidate_path.exists())
+
     def test_ai_controls_api_serves_queue_and_managed_processes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1440,8 +1461,10 @@ Backend = "manual_chatgpt"
             self.assertIn("HEAD-FITMENT CHARACTER REFERENCE IMAGE", prompt_text)
             self.assertIn("The attached body-reference image is the Reference Body source.", prompt_text)
             self.assertIn("The attached headshot reference is the Character Head source.", prompt_text)
-            self.assertIn("The output must be a standalone head-and-neck module.", prompt_text)
-            self.assertIn("Use the Reference Body only to determine the fitted neck’s natural width, axis, and attachment position.", prompt_text)
+            self.assertIn("The output is a standalone head-and-neck module.", prompt_text)
+            self.assertIn("Use the Reference Body only to determine the fitted neck’s natural width, axis, and cut position.", prompt_text)
+            self.assertIn("Only the upper neck beneath the jaw is visible.", prompt_text)
+            self.assertIn("The output fails if any shoulder slope, trapezius, collarbone, chest, torso, or body geometry is visible", prompt_text)
             self.assertIn("extend below the neck cut into transparent space", prompt_text)
             self.assertIn("Use the Reference Body only to match the fitted neck’s width, axis, and cut position", prompt_text)
             self.assertIn("The Character Head source controls the head pose, face, hair, expression, and identity.", prompt_text)
@@ -1536,19 +1559,31 @@ Backend = "manual_chatgpt"
                 [item["role"] for item in manifest_asset["reference_files"]],
                 ["body_reference", "head_fitment"],
             )
+            self.assertEqual("MATCHED_STYLE", manifest_asset["assembly_style_mode"])
+            for reference in manifest_asset["reference_files"]:
+                self.assertEqual("Test", reference["character"])
+                self.assertEqual("Adult", reference["phase"])
 
             prompt_path = root / "Pipelines" / "Test" / "Adult" / "Character-Assembly" / "Front" / "Front" / "Asset_3" / "Final_Image_Prompt.md"
             prompt_text = prompt_path.read_text(encoding="utf-8")
-            self.assertIn("FULL-BODY HEAD-ASSEMBLY FITMENT IMAGE", prompt_text)
-            self.assertIn("Preserve the Reference Body as a direct front-view full-body source", prompt_text)
-            self.assertIn("The Character Head source is provided only as an identity reference.", prompt_text)
-            self.assertIn("Re-render the Character Head in the exact orientation of the Reference Body mannequin head.", prompt_text)
+            self.assertIn("# Render Task", prompt_text)
+            self.assertIn("Replace only the mannequin head and placeholder neck region", prompt_text)
+            self.assertIn("The Reference Body and Character Head already use the same direct front view.", prompt_text)
+            self.assertIn("Assembly style mode: MATCHED_STYLE", prompt_text)
+            self.assertNotIn("Re-render the Character Head", prompt_text)
             self.assertNotIn("{{", prompt_text)
             source_map = json.loads((prompt_path.parent / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
             source_kinds = {fragment["source_kind"] for fragment in source_map["fragments"]}
             self.assertIn("static_prompt_template", source_kinds)
-            self.assertIn("shared_template_section", source_kinds)
             self.assertIn("config_view_instruction", source_kinds)
+            self.assertIn("asset_metadata", source_kinds)
+
+            dependency_manifest = json.loads((prompt_path.parent / "dependency_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("MATCHED_STYLE", dependency_manifest["assembly_style_mode"])
+            image_review = (prompt_path.parent / "Image_Review.md").read_text(encoding="utf-8")
+            self.assertIn("fitment clothing, exposed skin, and background", image_review)
+            self.assertNotIn("Costume and equipment match", image_review)
+            self.assertNotIn("No mannequin, fitment shell, tank top, or compression shorts remain", image_review)
 
             ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").iterdir())
             self.assertEqual(len(ask_dirs), 1)

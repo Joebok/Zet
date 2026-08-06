@@ -1840,6 +1840,23 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/render-review/{asset_id}/discard-candidate")
+    def render_review_discard_candidate(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).discard_candidate()
+            return {
+                "message": f"Candidate discarded. Asset {updated.asset_id} moved to LOCKED.",
+                "asset": _asset_payload(zet_app, updated),
+                "tasks": [
+                    _render_review_task_payload(zet_app, asset)
+                    for asset in zet_app.list_assets(character, phase)
+                    if _is_render_review_asset(asset)
+                ],
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/render-review/{asset_id}/fail-to-render")
     def render_review_fail_to_render(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)

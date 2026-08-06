@@ -26,6 +26,7 @@ def run(asset, context) -> WorkerResult:
         "Output Directory": str(context.pipeline_path),
         "Template Path": str(context.character_path / "Character.md"),
         "Reference Files": asset.reference_files or [],
+        "Assembly Style Mode": asset.assembly_style_mode,
     }
 
     try:

@@ -22,9 +22,18 @@ class HeadFitmentPromptTemplateTests(unittest.TestCase):
         self.assertNotIn("petite frame", prompt.lower())
         self.assertNotIn("docking", prompt.lower())
         self.assertIn("NECK FITMENT", prompt)
-        self.assertIn("Use the Reference Body only to determine the fitted neck’s natural width, axis, and attachment position.", prompt)
-        self.assertIn("Show a short-to-average, naturally proportioned upper-neck segment beneath the jaw.", prompt)
-        self.assertIn("across the middle of the Reference Body’s natural neck segment", prompt)
+        self.assertIn("Use the Reference Body only to determine the fitted neck’s natural width, axis, and cut position.", prompt)
+        self.assertNotIn("attachment position", prompt)
+        self.assertIn("Cut the image across the upper neck, well above where the neck begins to widen", prompt)
+        self.assertIn("Only the upper neck beneath the jaw is visible.", prompt)
+        self.assertNotIn("middle of the Reference Body’s natural neck segment", prompt)
+        self.assertIn(
+            "The output fails if any shoulder slope, trapezius, collarbone, chest, torso, or body geometry is visible, "
+            "or if the neck widens into the shoulders.",
+            prompt,
+        )
+        self.assertEqual(1, prompt.count("shoulder slope"))
+        self.assertNotIn("bust wrap", prompt)
         self.assertIn("Do not lengthen the neck to create space beneath the hairstyle", prompt)
         self.assertIn("extend below the neck cut into transparent space", prompt)
         self.assertIn("The cut edge may remain visible where the hairstyle naturally leaves it uncovered.", prompt)

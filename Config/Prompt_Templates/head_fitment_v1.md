@@ -1,4 +1,4 @@
-Render a standalone head-and-neck fitment module matching the Character Head source, with only the neck adjusted to fit the Reference Body.
+Render a standalone head-and-neck fitment module matching the Character Head source, with no changes above the jawline other than art-style conversion if required. Only the neck geometry may change.
 
 {{VIEW_INSTRUCTION}}
 
@@ -11,12 +11,6 @@ The image should:
  * have transparent background
 
 This is a technical fitment asset, not a portrait crop.
-
-Do not compose the image using a conventional bust or shoulder framing.
-
-The image should NOT:
-
-* Have any part of the body below the neck
 
 Reference roles:
 
@@ -34,15 +28,15 @@ The art-style conversion must not change the head view, camera angle, face ident
 
 NECK FITMENT
 
-Use the Reference Body only to determine the fitted neck’s natural width, axis, and attachment position.
+Use the Reference Body only to determine the fitted neck’s natural width, axis, and cut position.
 
-Show a short-to-average, naturally proportioned upper-neck segment beneath the jaw. Cut the output across the middle of the Reference Body’s natural neck segment, clearly above the point where the neck begins to broaden toward the trapezius or shoulders.
+Cut the image across the upper neck, well above where the neck begins to widen into the trapezius or shoulders. Only the upper neck beneath the jaw is visible.
 
 Do not lengthen the neck to create space beneath the hairstyle, and do not move the neck cut downward to expose it.
 
 Preserve the complete hair silhouette from the Character Head source. Hair may overlap the neck, extend below the neck cut into transparent space, or obscure the cut edge. The cut edge may remain visible where the hairstyle naturally leaves it uncovered.
 
-Render no shoulder slope, trapezius, collarbones, upper back, chest, torso, clothing, mannequin body, or stand.
+The output fails if any shoulder slope, trapezius, collarbone, chest, torso, or body geometry is visible, or if the neck widens into the shoulders.
 
 CANONICAL ART STYLE REINFORCEMENT
 
@@ -75,35 +69,16 @@ Render all visible head-and-neck features in the Canonical Art Style listed abov
 
 The only allowed adjustment is to align the Character Head and Character Neck to the Reference Body neck connection point, then suppress the Reference Body and any body/torso material, leaving only a fitted character head-and-neck image.
 
-The output must be a standalone head-and-neck module.
-
-The image contains only the head and the visible portion of the neck.
-
-The visible neck terminates at the neck cut plane.
-
-No anatomy below the neck cut plane is rendered.
+The output is a standalone head-and-neck module. Only the head and upper neck are rendered. The image ends at the neck cut plane.
 
 Do not lengthen the neck merely to expose its lower cut edge beneath the hair. The cut edge may remain visible where the hairstyle naturally leaves it uncovered.
 
-The image is incorrect if the neck widens into the shoulders.
-
-The image is incorrect if any shoulder slope, trapezius, collarbone, upper back, chest, or torso is visible.
-
-The image is incorrect if the lower edge includes the beginning of the shoulder slope.
-
-The image is incorrect if the neck visibly flares into the trapezius or shoulder mass.
-
 Reference Body is alignment-only.
 
-Use the Reference Body only for fitment reference geometry:
-- neck width
-- neck axis
-- neck cut position
+Use the Reference Body only as geometric alignment data for neck width, neck axis, and neck cut position. Do not render any Reference Body geometry.
 
 Do not render any part of the Reference Body.
-Do not render any mannequin torso from the Reference Body.
 Do not render any mannequin stand.
-Remove any shoulders, chest, bust wrap, torso, body mannequin geometry, gray mannequin head, or body-source upper-body material from the final output.
 
 View-drift failure rule:
 
@@ -126,12 +101,10 @@ Good output:
 - Eyes match the source in shape, color, texture, orientation, and visibility where visible.
 - Ears match the source in shape, orientation, and visibility.
 - Nose matches the source in shape, orientation, and visibility where visible.
-- There is no part of a body, mannequin, torso, bust, shoulders, chest, fitment shell, clothing, costume, or stand.
 
 Bad output:
 - The image does not match the Character Head.
 - Any portion of the Reference Body or mannequin stand is present.
-- Any shoulders, torso, bust, bust wrap, chest, upper body, or body-source upper-body material is present.
 - The Character Head is rotated, re-posed, mirrored, or converted to a different view.
 - Hair, ears, face, skin tone, or camera orientation drift away from the Character Head source.
 

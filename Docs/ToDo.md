@@ -14,4 +14,6 @@ Head Generation Pipeline
 
 Species Template add/edit
 
-Harvest Final_Image_Prompts to store in pipeline folder for all jobs.
+with only the neck adjusted to fit the Reference Body.
+
+with no changes above the jawline other than art-style conversion if required. Only the neck geometry may change.

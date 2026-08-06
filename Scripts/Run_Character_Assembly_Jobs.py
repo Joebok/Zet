@@ -20,8 +20,6 @@ from zet.services.pipeline_compiler_support import (
     job_get,
     load_bundle,
     load_body_reference_section_data,
-    background_treatment_source_map,
-    load_background_treatment,
     load_view_data,
     metadata_source_map,
     normalize_view,
@@ -34,6 +32,9 @@ from zet.services.pipeline_compiler_support import (
     reference_by_role,
     reference_files_for_job,
     validate_reference,
+    validate_character_assembly_inputs,
+    normalize_assembly_style_mode,
+    character_assembly_style_instruction,
 )
 
 
@@ -62,6 +63,7 @@ def write_dependency_manifest(
     phase: str,
     body_view_token: str,
     head_view_token: str,
+    assembly_style_mode: str,
     reference_files: list[dict],
 ) -> None:
     manifest = {
@@ -71,6 +73,7 @@ def write_dependency_manifest(
         "phase": phase,
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
+        "assembly_style_mode": assembly_style_mode,
         "resources_allowed": True,
         "resources": reference_files,
         "required_reference_roles": ["body_reference", "head_fitment"],
@@ -92,6 +95,7 @@ Character: {metadata['character']}
 Phase: {metadata['phase']}
 Body View: {metadata['body_view_token']}
 Head View: {metadata['head_view_token']}
+Assembly Style Mode: {metadata['assembly_style_mode']}
 Image File: {expected_output}
 
 Review Status: PENDING
@@ -101,13 +105,12 @@ Reviewed At:
 ## Checklist
 
 - [ ] Full body is visible, including feet.
-- [ ] Body proportions and stance match the body-reference source.
-- [ ] Head, hair, ears, face, and neck match the head-fitment source.
-- [ ] Head and body join cleanly at the neck.
-- [ ] Costume and equipment match the character template.
-- [ ] No mannequin, fitment shell, tank top, or compression shorts remain.
-- [ ] Requested body/head view is preserved.
-- [ ] No narrative scene, extra props, or dramatic lighting was introduced.
+- [ ] Everything below the head-replacement boundary matches the Reference Body, including pose, framing, fitment clothing, exposed skin, and background.
+- [ ] Head, hair, ears, face, expression, gaze, and upper neck match the Character Head source.
+- [ ] Head and body join cleanly at the neck without a visible seam, floating head, or mannequin material.
+- [ ] Reference Body, Character Head, and final render preserve the same requested view.
+- [ ] Rendering changes comply with the selected assembly style mode.
+- [ ] No costume, prop, accessory, scene, or lighting changes were introduced.
 
 ## Notes
 """,
@@ -129,6 +132,9 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
     bundle = load_bundle(project_root, "character-assembly")
     body_view_token = normalize_view(project_root, raw_body_view)
     head_view_token = normalize_view(project_root, raw_head_view)
+    assembly_style_mode = normalize_assembly_style_mode(
+        job_get(job, "Assembly Style Mode", "assembly_style_mode")
+    )
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
     template_path = template_path_for_job(project_root, job, character, phase)
@@ -140,6 +146,15 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
     head_fitment = reference_by_role(references, "head_fitment")
     validate_reference(body_reference, "body_reference")
     validate_reference(head_fitment, "head_fitment")
+    validate_character_assembly_inputs(
+        project_root,
+        character=character,
+        phase=phase,
+        body_view_token=body_view_token,
+        head_view_token=head_view_token,
+        body_reference=body_reference,
+        head_fitment=head_fitment,
+    )
 
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
     selection = select_sections(all_sections, bundle, body_view_token, section_sources)
@@ -168,25 +183,28 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "phase": phase,
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
+        "assembly_style_mode": assembly_style_mode,
     }
     metadata_values = {
             "CHARACTER_NAME": character,
             "CHARACTER_PHASE": phase,
             "BODY_VIEW_TOKEN": body_view_token,
             "BODY_VIEW_LABEL": str(body_view_data["label"]),
-            "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
+            "BODY_VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
             "HEAD_VIEW_TOKEN": head_view_token,
             "HEAD_VIEW_LABEL": str(head_view_data["label"]),
             "HEAD_VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
             "VIEW_TOKEN": body_view_token,
             "VIEW_LABEL": str(body_view_data["label"]),
-            "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
-            "BACKGROUND_TREATMENT": load_background_treatment(project_root),
+            "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+            "ASSEMBLY_STYLE_MODE": assembly_style_mode,
+            "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
             **template_metadata(template_path),
         }
     metadata_sources = {
         **metadata_source_map(project_root, template_path, body_view_token, task, "body"),
-        **background_treatment_source_map(project_root),
+        "ASSEMBLY_STYLE_MODE": {"source_kind": "asset_metadata", "source_path": "", "source_label": "Assembly style mode", "editable": True},
+        "ASSEMBLY_STYLE_INSTRUCTION": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Assembly style instruction", "editable": False},
         "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
         "BODY_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Body view label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},
         "BODY_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "character-assembly body view instruction", "json_pointer": f"/views/{body_view_token}/body_instructions/{task}", "editable": True},
@@ -219,6 +237,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         phase,
         body_view_token,
         head_view_token,
+        assembly_style_mode,
         references,
     )
     write_image_review(image_review_path, metadata, expected_output)
@@ -234,6 +253,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
+        "assembly_style_mode": assembly_style_mode,
         "reference_files": references,
     }
 

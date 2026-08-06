@@ -91,6 +91,9 @@ class AssetRef:
     def promote_to_locked(self) -> Asset:
         return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
 
+    def discard_candidate(self) -> Asset:
+        return self._app.asset_service.discard_candidate(self._character, self._phase, self._asset_id)
+
     def render_review_comment(self) -> str:
         """Read the render-review comment for this asset."""
         return self._app.asset_service.get_render_review_comment(self._character, self._phase, self._asset_id)

@@ -441,3 +441,74 @@ def validate_reference(reference: dict, role: str, project_root: Path = PROJECT_
     if not path.exists() or not path.is_file():
         raise TemplateCompileError("MISSING_REFERENCE", f"Reference image for {role} was not found: {path}")
     return path
+
+
+ASSEMBLY_STYLE_MODES = {"MATCHED_STYLE", "HARMONIZE_STYLE"}
+
+
+def normalize_assembly_style_mode(raw_mode: str | None) -> str:
+    mode = re.sub(r"[^A-Z0-9]+", "_", str(raw_mode or "MATCHED_STYLE").strip().upper()).strip("_")
+    if mode not in ASSEMBLY_STYLE_MODES:
+        raise TemplateCompileError(
+            "INVALID_ASSEMBLY_STYLE_MODE",
+            f"Unsupported character-assembly style mode: {raw_mode}",
+        )
+    return mode
+
+
+def character_assembly_style_instruction(mode: str) -> str:
+    if mode == "HARMONIZE_STYLE":
+        return (
+            "Harmonize the Character Head's line quality, shading, and surface finish only as needed to match the "
+            "locked Reference Body. Do not repaint the Reference Body or change head identity, geometry, pose, "
+            "orientation, clothing, or background."
+        )
+    return (
+        "Preserve the rendering style of both supplied sources. Do not repaint or reinterpret the body or head. "
+        "Allow only seam blending and minor antialiasing at the neck connection."
+    )
+
+
+def validate_character_assembly_inputs(
+    project_root: Path,
+    *,
+    character: str,
+    phase: str,
+    body_view_token: str,
+    head_view_token: str,
+    body_reference: dict,
+    head_fitment: dict,
+) -> None:
+    if body_view_token != head_view_token:
+        raise TemplateCompileError(
+            "CHARACTER_ASSEMBLY_VIEW_MISMATCH",
+            f"Character-assembly body view {body_view_token} does not match head view {head_view_token}.",
+        )
+
+    expected_views = (
+        (body_reference, "body_reference", "body_view"),
+        (head_fitment, "head_fitment", "body_view"),
+        (head_fitment, "head_fitment", "head_view"),
+    )
+    for reference, role, field in expected_views:
+        raw_view = str(reference.get(field) or "").strip()
+        if not raw_view:
+            raise TemplateCompileError(
+                "MISSING_REFERENCE_VIEW",
+                f"Reference slot {role} is missing required {field} metadata.",
+            )
+        reference_view = normalize_view(project_root, raw_view)
+        if reference_view != body_view_token:
+            raise TemplateCompileError(
+                "CHARACTER_ASSEMBLY_VIEW_MISMATCH",
+                f"Reference slot {role} {field} {reference_view} does not match requested view {body_view_token}.",
+            )
+
+    for reference, role in ((body_reference, "body_reference"), (head_fitment, "head_fitment")):
+        for field, expected in (("character", character), ("phase", phase)):
+            value = str(reference.get(field) or "").strip()
+            if value and value != expected:
+                raise TemplateCompileError(
+                    "CHARACTER_ASSEMBLY_REFERENCE_MISMATCH",
+                    f"Reference slot {role} {field} {value} does not match requested {field} {expected}.",
+                )

@@ -80,6 +80,8 @@ def run(asset, context) -> WorkerResult:
             "label": "Locked body-reference image",
             "path": str(body_path),
             "source_asset_id": body_record.get("asset_id"),
+            "character": asset.character,
+            "phase": asset.phase,
             "body_view": body_record.get("body_view"),
         },
         {
@@ -87,6 +89,8 @@ def run(asset, context) -> WorkerResult:
             "label": "Locked head-fitment image",
             "path": str(head_path),
             "source_asset_id": head_record.get("asset_id"),
+            "character": asset.character,
+            "phase": asset.phase,
             "body_view": head_record.get("body_view"),
             "head_view": head_record.get("head_view"),
         },

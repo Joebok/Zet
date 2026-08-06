@@ -86,27 +86,8 @@
     "character-assembly": {
       "description": "Static full-character assembly prompt using locked body-reference and head-fitment image references. No prompt review.",
       "prompt_builder": "static",
-      "required_sections": [
-        "GENERAL_DESCRIPTION_FACTS",
-        "BODY_DESCRIPTION_FACTS",
-        "BODY_DESCRIPTION_VIEW_{VIEW}",
-        "HEAD_DESCRIPTION_FACTS",
-        "HEAD_DESCRIPTION_VIEW_{VIEW}",
-        "HAIR_DESCRIPTION_FACTS",
-        "HAIR_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_CORE",
-        "IDENTITY_PRESERVATION_FACE",
-        "IDENTITY_PRESERVATION_HAIR",
-        "IDENTITY_PRESERVATION_EARS",
-        "IDENTITY_PRESERVATION_BODY",
-        "TECHNICAL_MODESTY_LAYER",
-        "NEUTRAL_POSE_STANCE",
-        "NEUTRAL_POSE_STANCE_VIEW_{VIEW}",
-        "NEGATIVE_GUIDANCE_GENERAL"
-      ],
-      "optional_sections": [
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
-      ],
+      "required_sections": [],
+      "optional_sections": [],
       "forbidden_sections": [
         "*_PICARESQUE"
       ],
