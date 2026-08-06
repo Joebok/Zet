@@ -9,7 +9,7 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
-from zet.services.pipeline_compiler_support import load_view_data, view_instruction
+from zet.services.pipeline_compiler_support import load_race_render_rules, load_view_data, view_instruction
 
 
 class BodyReferenceRaceRulesTests(unittest.TestCase):
@@ -121,7 +121,7 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertIn("Painterly semi-realistic fantasy illustration.", prompt)
             self.assertIn("simple neutral fitment clothing", prompt)
             self.assertIn("Lithe body proportions.", prompt)
-            self.assertIn("Preserve body proportions only.", prompt)
+            self.assertNotIn("Preserve body proportions only.", prompt)
             self.assertNotIn("Generic replacement face.", prompt)
             self.assertNotIn("Finished portrait markers", prompt)
             self.assertNotIn("amber eyes", prompt)
@@ -196,6 +196,28 @@ Species / Ancestry: `[High elf]`
                 "The mannequin head must face the same FRONT-LEFT THREE-QUARTER view as the body.",
                 prompt,
             )
+            self.assertIn("The far side ear tip must be visible.", prompt)
+
+    def test_race_view_instruction_is_injected_only_for_configured_views(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
+            template_path = root / "Character.md"
+            template_path.write_text("Species / Ancestry: `[Elf]`\n", encoding="utf-8")
+
+            for view_token in ("FRONT_LEFT_3_4", "FRONT_RIGHT_3_4"):
+                with self.subTest(view=view_token):
+                    rules = load_race_render_rules(root, template_path, view_token)
+                    self.assertIn(
+                        "The far side ear tip must be visible.",
+                        rules["RACE_BODY_REFERENCE_POSITIVE"],
+                    )
+
+            front_rules = load_race_render_rules(root, template_path, "FRONT")
+            self.assertNotIn(
+                "The far side ear tip must be visible.",
+                front_rules["RACE_BODY_REFERENCE_POSITIVE"],
+            )
 
     def test_body_reference_view_orientation_details_match_configured_view(self) -> None:
         expected = {
@@ -204,15 +226,15 @@ Species / Ancestry: `[High elf]`
                 "",
             ),
             "FRONT_LEFT_3_4": (
-                "The head, torso, and feet all point toward the right side of the image.",
+                "The head, torso, and feet all point toward the left side of the image.",
                 "The camera is positioned in front of and to the character's anatomical left.",
             ),
             "LEFT_PROFILE": (
-                "The head, torso, and feet all point directly toward the right side of the image.",
+                "The head, torso, and feet all point directly toward the left side of the image.",
                 "",
             ),
             "BACK_LEFT_3_4": (
-                "The head, torso, and feet all point toward the right side of the image.",
+                "The head, torso, and feet all point toward the left side of the image.",
                 "The camera is positioned behind and to the character's anatomical left.",
             ),
             "BACK": (
@@ -220,15 +242,15 @@ Species / Ancestry: `[High elf]`
                 "",
             ),
             "BACK_RIGHT_3_4": (
-                "The head, torso, and feet all point toward the left side of the image.",
+                "The head, torso, and feet all point toward the right side of the image.",
                 "The camera is positioned behind and to the character's anatomical right.",
             ),
             "RIGHT_PROFILE": (
-                "The head, torso, and feet all point directly toward the left side of the image.",
+                "The head, torso, and feet all point directly toward the right side of the image.",
                 "",
             ),
             "FRONT_RIGHT_3_4": (
-                "The head, torso, and feet all point toward the left side of the image.",
+                "The head, torso, and feet all point toward the right side of the image.",
                 "The camera is positioned in front of and to the character's anatomical right.",
             ),
         }

@@ -281,7 +281,7 @@ def _format_rule_lines(values: object) -> str:
     return ""
 
 
-def load_race_render_rules(project_root: Path, template_path: Path) -> dict[str, str]:
+def load_race_render_rules(project_root: Path, template_path: Path, view_token: str = "") -> dict[str, str]:
     data = load_json(project_root / "Config" / "Race_Render_Rules.json")
     races = data.get("races", {})
     if not isinstance(races, dict) or not races:
@@ -311,11 +311,19 @@ def load_race_render_rules(project_root: Path, template_path: Path) -> dict[str,
     body_reference = config.get("body_reference", {}) if isinstance(config, dict) else {}
     if not isinstance(body_reference, dict):
         body_reference = {}
+    view_instructions = body_reference.get("view_instructions", {})
+    if not isinstance(view_instructions, dict):
+        view_instructions = {}
+
+    positive_rules = _format_rule_lines(body_reference.get("positive", []))
+    view_rules = _format_rule_lines(view_instructions.get(view_token, []))
+    if view_rules:
+        positive_rules = "\n".join(value for value in (positive_rules, view_rules) if value)
 
     label = str(config.get("label", canonical)).strip() if isinstance(config, dict) else canonical
     return {
         "CHARACTER_RACE": label,
-        "RACE_BODY_REFERENCE_POSITIVE": _format_rule_lines(body_reference.get("positive", [])),
+        "RACE_BODY_REFERENCE_POSITIVE": positive_rules,
         "RACE_BODY_REFERENCE_NEGATIVE": _format_rule_lines(body_reference.get("negative", [])),
     }
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "default_race": "human",
   "races": {
     "human": {
@@ -27,7 +27,15 @@
         ],
         "negative": [
           "Missing, hidden, rounded, or human ears."
-        ]
+        ],
+        "view_instructions": {
+          "FRONT_LEFT_3_4": [
+            "The far side ear tip must be visible."
+          ],
+          "FRONT_RIGHT_3_4": [
+            "The far side ear tip must be visible."
+          ]
+        }
       }
     }
   }

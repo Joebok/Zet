@@ -934,7 +934,7 @@ Backend = "manual_chatgpt"
             tasks = client.get("/api/render-console/tasks")
             self.assertEqual(tasks.status_code, 200)
             self.assertEqual(tasks.json()["tasks"][0]["ask_id"], "Ask_Asset_1_RENDER_TEST")
-            self.assertEqual(tasks.json()["tasks"][0]["display_label"], "Asset 1")
+            self.assertEqual(tasks.json()["tasks"][0]["display_label"], "Body-Reference / Front")
 
             detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
             self.assertEqual(detail.status_code, 200)

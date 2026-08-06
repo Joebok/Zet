@@ -1,6 +1,6 @@
-This is a text-to-image generation request. No existing image is referenced, attached, or should be used. Generate a completely new full-body technical body-reference image from this description only.
+Generate a completely new full-body technical body template from this description only. This is a text-to-image generation request. 
 
-Depict {{CHARACTER_NAME}}, an {{CHARACTER_PHASE}} {{CHARACTER_RACE}} {{CHARACTER_GENDER}}, in a neutral standing pose from a {VIEW} view.
+The template is of an {{CHARACTER_PHASE}} {{CHARACTER_RACE}} {{CHARACTER_GENDER}}, in a neutral standing pose from a {VIEW} view.
 
 {{VIEW_INSTRUCTION}}
 
@@ -13,8 +13,6 @@ BODY PROPORTIONS
 {{SECTION:BODY_DESCRIPTION_FACTS}}
 
 {{SECTION:BODY_DESCRIPTION_VIEW_{VIEW}}}
-
-{{SECTION:IDENTITY_PRESERVATION_BODY}}
 
 STANCE AND FOOT PLACEMENT — CRITICAL
 

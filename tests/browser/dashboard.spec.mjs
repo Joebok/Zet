@@ -98,6 +98,37 @@ test("shared action roles and control states use the semantic design system", as
   await expect(page.locator(".fullscreen-image-close")).toBeHidden();
 });
 
+test("uploading a manifest headshot preserves the selected body reference", async ({ page }) => {
+  const detail = {
+    asset: { asset_id: 99, body_view: "Front", head_view: "Front" },
+    body_reference_options: [
+      { path: "body-one.png", label: "Body one", exists: true },
+      { path: "body-two.png", label: "Body two", exists: true },
+    ],
+    headshot_options: [{ path: "new-head.png", label: "New head", exists: true }],
+    selected_body_reference: { path: "body-one.png" },
+    selected_headshot: {},
+    reference_files: [],
+    is_manifest_editable: true,
+  };
+  await page.route("**/api/head-fitment-manifest/99?*", (route) => route.fulfill({ json: detail }));
+  await page.route("**/api/head-fitment-manifest/headshots?*", (route) => route.fulfill({
+    json: { name: "new-head.png", path: "new-head.png" },
+  }));
+
+  await openPage(page, "manifest");
+  await page.evaluate(() => selectManifestAsset(99));
+  await page.locator("#body-reference-select").selectOption("body-two.png");
+  await page.locator("#headshot-upload").setInputFiles({
+    name: "new-head.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("headshot"),
+  });
+
+  await expect(page.locator("#body-reference-select")).toHaveValue("body-two.png");
+  await expect(page.locator("#headshot-reference-select")).toHaveValue("new-head.png");
+});
+
 test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
   await openPage(page, "assets");
   const toggle = page.locator("#toolbar-settings-button");

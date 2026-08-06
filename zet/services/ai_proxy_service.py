@@ -117,6 +117,7 @@ class AIProxyService:
             ollama_model="",
             prompt_file="Final_Image_Prompt.md",
             expected_output=asset.final_image_output,
+            body_view=asset.body_view,
             candidate_output_file=asset.final_image_output,
             task_type="render",
             render_preset="chatgpt-manual",
@@ -222,6 +223,8 @@ class AIProxyService:
             "ollama_num_ctx": ask.ollama_num_ctx,
             "consumer": ask.consumer,
         }
+        if ask.body_view is not None:
+            payload["body_view"] = ask.body_view
         workflow_kind = self._local_render_workflow_kind()
         if ask.worker_type == "local_image_render" and workflow_kind:
             payload["workflow_kind"] = workflow_kind

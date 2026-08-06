@@ -81,6 +81,7 @@ class AIProxyAsk:
     ollama_model: str
     prompt_file: str
     expected_output: str
+    body_view: Optional[str] = None
     candidate_output_file: Optional[str] = None
     task_type: Optional[str] = None
     auxiliary: bool = False

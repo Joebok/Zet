@@ -10,15 +10,6 @@ Augmented prompt for left-right read on scenes; incorporate depth.
 
 Setting up HTTPS://
 
-| View            | Orientation Sentence                                                             | Camera Position                                                               |
-| --------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Front           | The head, torso, and feet all point directly toward the viewer.                  |                                                                               |
-| Front-Left 3/4  | The head, torso, and feet all point toward the right side of the image.          | The camera is positioned in front of and to the character's anatomical left.  |
-| Left Profile    | The head, torso, and feet all point directly toward the right side of the image. |                                                                               |
-| Back-Left 3/4   | The head, torso, and feet all point toward the right side of the image.          | The camera is positioned behind and to the character's anatomical left.       |
-| Back            | The head, torso, and feet all point directly away from the viewer.               |                                                                               |
-| Back-Right 3/4  | The head, torso, and feet all point toward the left side of the image.           | The camera is positioned behind and to the character's anatomical right.      |
-| Right Profile   | The head, torso, and feet all point directly toward the left side of the image.  |                                                                               |
-| Front-Right 3/4 | The head, torso, and feet all point toward the left side of the image.           | The camera is positioned in front of and to the character's anatomical right. |
+Age-Adjuster Pipeline
 
-The head, torso, and feet all point toward the right side of the image. Do not rotate the head independently of the body.
+Head Generation Pipeline

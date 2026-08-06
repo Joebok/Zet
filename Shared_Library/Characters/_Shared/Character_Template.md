@@ -657,7 +657,7 @@ The legs remain straight and relaxed, with only a slight natural knee softness.
 Both knees point in the same direction as the torso.
 Feet are placed directly under the hips, shoulder-width or slightly narrower.
 Left and right feet are parallel or nearly parallel.
-The feet must preserve the requested body view.
+The feet must align with the requested body view.
 
 For {VIEW} view:
 <!-- ZET:END NEUTRAL_POSE_STANCE -->
@@ -668,7 +668,7 @@ For {VIEW} view:
 - Knees, ankles, and toes align vertically beneath the hips.
 - No staggered foot placement.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT -->
 
@@ -679,7 +679,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
 
@@ -690,7 +690,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4 -->
 
@@ -700,7 +700,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - One foot may partially overlap the other because of the view angle, but neither foot is lifted.
 - The body is not stepping forward.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_LEFT_PROFILE -->
 
@@ -710,7 +710,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - One foot may partially overlap the other because of the view angle, but neither foot is lifted.
 - The body is not stepping forward.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE -->
 
@@ -721,7 +721,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK_LEFT_3_4 -->
 
@@ -732,7 +732,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - Do not turn the stance into a walking pose.
 - Do not cross the feet or place one foot behind the other dramatically.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK_RIGHT_3_4 -->
 
@@ -742,7 +742,7 @@ Only change the camera/view orientation; do not change the pose, leg placement, 
 - Knees, ankles, and toes align vertically beneath the hips.
 - No staggered foot placement.
 
-Only change the camera/view orientation; do not change the pose, leg placement, weight distribution, hip alignment, or foot contact.
+Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
 
 <!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK -->
 

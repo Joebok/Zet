@@ -204,7 +204,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "VIEW_INSTRUCTION": view_instruction(view_data, "body", task, include_intro=True),
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         **template_metadata(template_path),
-        **load_race_render_rules(project_root, template_path),
+        **load_race_render_rules(project_root, template_path, view_token),
     }
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,

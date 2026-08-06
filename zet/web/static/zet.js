@@ -8530,7 +8530,9 @@ async function uploadHeadshotReference() {
       body: file,
     });
     showManifestMessage(`Uploaded ${payload.name}.`);
+    const selectedBodyReferencePath = bodyReferenceSelect.value;
     await selectManifestAsset(state.selectedManifestAssetId);
+    bodyReferenceSelect.value = selectedBodyReferencePath;
     headshotReferenceSelect.value = payload.path;
     updateManifestPreviews();
   } catch (error) {

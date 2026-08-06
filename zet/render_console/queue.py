@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION, AIProxyAskManifest
+from zet.repositories.asset_repository import AssetRepository, AssetRepositoryError
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
+from zet.services.path_service import PathService
 
 
 MANUAL_CHATGPT_WORKER_TYPE = "manual_chatgpt_render"
@@ -36,7 +38,10 @@ class ManualRenderTask:
         if story_slug or scene_slug:
             display_label = " / ".join(value for value in [story_slug, scene_slug] if value)
         elif self.asset_id is not None:
-            display_label = f"Asset {self.asset_id}"
+            view = str(self.manifest.get("body_view") or "")
+            display_label = " / ".join(value for value in [self.pipeline, view] if value)
+            if not display_label:
+                display_label = f"Asset {self.asset_id}"
         else:
             display_label = self.ask_id
         return {
@@ -61,6 +66,7 @@ class RenderConsoleQueue:
     def __init__(self, config: Config):
         self.config = config
         self.path_service = AIProxyPathService(config)
+        self.asset_repository = AssetRepository(PathService(config))
 
     @property
     def proxy_root(self) -> Path:
@@ -96,6 +102,17 @@ class RenderConsoleQueue:
             asset_id = int(asset_id) if asset_id is not None else None
         except Exception:
             asset_id = None
+
+        if asset_id is not None and not manifest.get("body_view"):
+            try:
+                asset = self.asset_repository.get_asset(
+                    str(manifest.get("character") or ""),
+                    str(manifest.get("phase") or ""),
+                    asset_id,
+                )
+                manifest["body_view"] = asset.body_view
+            except AssetRepositoryError:
+                pass
 
         return ManualRenderTask(
             ask_id=str(manifest.get("ask_id") or ask_path.name),
