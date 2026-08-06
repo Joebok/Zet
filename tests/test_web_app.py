@@ -180,6 +180,12 @@ Test head facts.
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
 Test front head view.
 <!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
+Unrequested left-profile head view.
+<!-- ZET:END HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
+<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
+Forbidden front body description.
+<!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
 <!-- ZET:BEGIN HAIR_DESCRIPTION_FACTS -->
 Test hair facts.
 <!-- ZET:END HAIR_DESCRIPTION_FACTS -->
@@ -1435,8 +1441,15 @@ Backend = "manual_chatgpt"
             self.assertIn("The attached body-reference image is the Reference Body source.", prompt_text)
             self.assertIn("The attached headshot reference is the Character Head source.", prompt_text)
             self.assertIn("The output must be a standalone head-and-neck module.", prompt_text)
-            self.assertIn("Use the Reference Body as a direct front-view neck-fitment source.", prompt_text)
+            self.assertIn("Use the Reference Body only to determine the fitted neck’s natural width, axis, and attachment position.", prompt_text)
+            self.assertIn("extend below the neck cut into transparent space", prompt_text)
+            self.assertIn("Use the Reference Body only to match the fitted neck’s width, axis, and cut position", prompt_text)
+            self.assertIn("The Character Head source controls the head pose, face, hair, expression, and identity.", prompt_text)
             self.assertIn("Render the Character Head and fitted neck from a direct front view", prompt_text)
+            self.assertIn("Test character general facts.", prompt_text)
+            self.assertIn("Avoid head-fitment drift.", prompt_text)
+            self.assertNotIn("Unrequested left-profile head view.", prompt_text)
+            self.assertNotIn("Forbidden front body description.", prompt_text)
             ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").iterdir())
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])

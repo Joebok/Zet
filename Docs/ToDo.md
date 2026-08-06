@@ -13,3 +13,5 @@ Age-Adjuster Pipeline
 Head Generation Pipeline
 
 Species Template add/edit
+
+Harvest Final_Image_Prompts to store in pipeline folder for all jobs.

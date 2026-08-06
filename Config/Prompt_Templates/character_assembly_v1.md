@@ -1,13 +1,8 @@
-FULL-BODY HEAD-ASSEMBLY FITMENT IMAGE
-
-Character: {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
-Canonical Art Style: {{CANONICAL_ART_STYLE}}
-Requested body view: {{BODY_VIEW_TOKEN}}.
-Requested head view: {{HEAD_VIEW_TOKEN}}.
-
-PRIMARY OBJECTIVE — HEAD-TO-BODY ASSEMBLY
-
 Create one complete full-body character render by placing the Character Head source onto the Reference Body source.
+
+{{VIEW_INSTRUCTION}}
+
+FULL-BODY HEAD-ASSEMBLY FITMENT IMAGE
 
 The Reference Body is the locked body source.
 The Character Head is the locked head/identity source.
@@ -19,6 +14,10 @@ Preserve the Reference Body exactly except where the mannequin/placeholder head 
 The Reference Body is not a style suggestion.
 The Character Head is not a loose inspiration image.
 Use them as direct source references for the specified regions.
+
+CANONICAL ART STYLE DIRECTIVE
+
+Render the image in the Canonical Art Style: {{CANONICAL_ART_STYLE}}
 
 HEAD ORIENTATION LOCK — CRITICAL
 
@@ -197,11 +196,6 @@ Preserve the Reference Body fitment clothing exactly:
 {{SECTION:TECHNICAL_MODESTY_LAYER}}
 Do not replace, redesign, embellish, recolor, or interpret the fitment clothing as costume.
 This image is a generic fitment/body-reference asset for later costume work.
-
-Body view instruction:
-{{BODY_VIEW_INSTRUCTION}}
-
-Head view instruction:
 
 The Character Head source is provided only as an identity reference.
 

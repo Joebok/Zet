@@ -1,16 +1,8 @@
-HEAD-FITMENT CHARACTER REFERENCE IMAGE.
+Render a standalone head-and-neck fitment module matching the Character Head source, with only the neck adjusted to fit the Reference Body.
 
-Character: {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
-Canonical Art Style: {{CANONICAL_ART_STYLE}}
-Requested body view: {{BODY_VIEW_TOKEN}}.
-Requested head view: {{HEAD_VIEW_TOKEN}}.
+{{VIEW_INSTRUCTION}}
 
-All necessary information is in these instructions and in the attached reference images.
-Follow these instructions exactly.
-
-# INSTRUCTIONS
-
-Render a head shot only image exactly like the Character Head except that the Character neck should be adjusted to fit the Reference Body.
+HEAD-FITMENT CHARACTER REFERENCE IMAGE
 
 The image should:
  
@@ -33,7 +25,7 @@ Reference roles:
 
 CANONICAL ART STYLE DIRECTIVE
 
-Render the fitted Character Head and neck in the Canonical Art Style listed above.
+Render the image in the Canonical Art Style: {{CANONICAL_ART_STYLE}}
 
 If the Character Head source uses a different art style, repaint only the rendering style into the Canonical Art Style while preserving the Character Head identity, expression, view angle, face shape, facial proportions, hair silhouette, ear shape, eye color, skin tone, and neck fitment.
 
@@ -42,15 +34,13 @@ The art-style conversion must not change the head view, camera angle, face ident
 
 NECK FITMENT
 
-Use the Reference Body only to match the neck’s width, angle, and attachment position.
+Use the Reference Body only to determine the fitted neck’s natural width, axis, and attachment position.
 
-Show a short, naturally proportioned upper-neck segment beneath the jaw. End the neck at the Reference Body’s mid-neck cut plane, before the neck begins to widen into the trapezius or shoulders.
+Show a short-to-average, naturally proportioned upper-neck segment beneath the jaw. Cut the output across the middle of the Reference Body’s natural neck segment, clearly above the point where the neck begins to broaden toward the trapezius or shoulders.
 
-The visible neck must be short-to-average in length and proportionate to the character’s head and frame. Do not elongate the neck to create additional space beneath the hair.
+Do not lengthen the neck to create space beneath the hairstyle, and do not move the neck cut downward to expose it.
 
-The hairstyle is independent of the neck cut plane. Shoulder-length hair may extend below the neck cut, overlap it, or completely obscure portions of the lower neck edge. Preserve the full hair silhouette without moving the neck cut downward.
-
-The neck cut edge does not need to remain fully visible.
+Preserve the complete hair silhouette from the Character Head source. Hair may overlap the neck, extend below the neck cut into transparent space, or obscure the cut edge. The cut edge may remain visible where the hairstyle naturally leaves it uncovered.
 
 Render no shoulder slope, trapezius, collarbones, upper back, chest, torso, clothing, mannequin body, or stand.
 
@@ -93,7 +83,7 @@ The visible neck terminates at the neck cut plane.
 
 No anatomy below the neck cut plane is rendered.
 
-The output is incorrect if the neck is lengthened so that its lower cut edge appears beneath the hair. Hair may hang lower than the neck and may hide the neck cut.
+Do not lengthen the neck merely to expose its lower cut edge beneath the hair. The cut edge may remain visible where the hairstyle naturally leaves it uncovered.
 
 The image is incorrect if the neck widens into the shoulders.
 
@@ -106,11 +96,9 @@ The image is incorrect if the neck visibly flares into the trapezius or shoulder
 Reference Body is alignment-only.
 
 Use the Reference Body only for fitment reference geometry:
-- neck scale
-- neck angle
 - neck width
-- attachment position
-- neck cut plane
+- neck axis
+- neck cut position
 
 Do not render any part of the Reference Body.
 Do not render any mannequin torso from the Reference Body.
@@ -121,9 +109,6 @@ View-drift failure rule:
 
 The output is incorrect if it uses any view angle, camera orientation, or view instruction other than the requested Character Head view.
 
-Head view instruction:
-{{HEAD_VIEW_INSTRUCTION}}
-
 Reference Body view instruction:
 {{BODY_VIEW_INSTRUCTION}}
 
@@ -131,7 +116,7 @@ THREE-QUARTER ORIENTATION LOCK
 
 If the requested view is a three-quarter view, treat the Character Head and fitted neck as one rigid head-and-neck module.
 The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share the same requested three-quarter orientation.
-The Reference Body controls the neck angle; the Character Head controls identity only.
+The Reference Body controls the fitted neck’s width, axis, and cut position; the Character Head controls the head pose, face, hair, expression, and identity.
 Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct front, direct back, or profile view.
 
 Good output:

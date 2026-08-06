@@ -8,6 +8,10 @@ Entire body visible from top of head to soles of feet, with both feet fully visi
 Use a neutral standing pose and a full-body composition, not portrait, bust, waist-up, or thigh-up framing.
 Prioritize readable body proportions, a clean silhouette, and the requested view angle.
 
+CANONICAL ART STYLE DIRECTIVE
+
+Render the image in the Canonical Art Style: {{CANONICAL_ART_STYLE}}
+
 BODY PROPORTIONS
 
 {{SECTION:BODY_DESCRIPTION_FACTS}}
