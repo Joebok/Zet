@@ -46,7 +46,7 @@ Use the Reference Body only to match the neck’s width, angle, and attachment p
 
 Show a short, naturally proportioned upper-neck segment beneath the jaw. End the neck at the Reference Body’s mid-neck cut plane, before the neck begins to widen into the trapezius or shoulders.
 
-The visible neck must be short-to-average in length and proportionate to the character’s head and petite frame. Do not elongate the neck to create additional space beneath the hair.
+The visible neck must be short-to-average in length and proportionate to the character’s head and frame. Do not elongate the neck to create additional space beneath the hair.
 
 The hairstyle is independent of the neck cut plane. Shoulder-length hair may extend below the neck cut, overlap it, or completely obscure portions of the lower neck edge. Preserve the full hair silhouette without moving the neck cut downward.
 
@@ -131,7 +131,7 @@ THREE-QUARTER ORIENTATION LOCK
 
 If the requested view is a three-quarter view, treat the Character Head and fitted neck as one rigid head-and-neck module.
 The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share the same requested three-quarter orientation.
-The Reference Body controls the neck docking angle; the Character Head controls identity only.
+The Reference Body controls the neck angle; the Character Head controls identity only.
 Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct front, direct back, or profile view.
 
 Good output:

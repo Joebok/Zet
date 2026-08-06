@@ -12,6 +12,8 @@ class HeadFitmentPromptTemplateTests(unittest.TestCase):
 
         self.assertNotIn("neck-column anchor", prompt.lower())
         self.assertNotIn("base-neck docking", prompt.lower())
+        self.assertNotIn("petite frame", prompt.lower())
+        self.assertNotIn("docking", prompt.lower())
         self.assertIn("NECK FITMENT", prompt)
         self.assertIn("short-to-average in length", prompt)
         self.assertIn("Hair may hang lower than the neck", prompt)
