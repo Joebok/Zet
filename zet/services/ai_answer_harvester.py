@@ -85,6 +85,12 @@ class AIAnswerHarvester:
             if source.exists() and source.is_file():
                 shutil.copy2(source, output_dir / name)
 
+    def _copy_final_image_prompt(self, answer_path: Path, output_dir: Path) -> None:
+        prompt_path = answer_path / "Final_Image_Prompt.md"
+        if prompt_path.is_file():
+            output_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(prompt_path, output_dir / prompt_path.name)
+
     def _harvest_manifest_path(self, answer_path: Path) -> Path:
         return answer_path / "harvest_manifest.json"
 
@@ -206,6 +212,7 @@ class AIAnswerHarvester:
         pipeline_path.mkdir(parents=True, exist_ok=True)
         dest_response_path = pipeline_path / response_path.name
         shutil.copy2(response_path, dest_response_path)
+        self._copy_final_image_prompt(answer_path, pipeline_path)
         answer_manifest = self._read_json(answer_path / "answer_manifest.json")
         comment = str(answer_manifest.get("render_comment") or "").strip()
         comment_source_path = answer_path / "Render_Review_Comment.md"
@@ -271,6 +278,7 @@ class AIAnswerHarvester:
         target_output_file = str(ask_manifest.get("target_output_file") or answer.expected_output)
         target_output_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_output_dir / target_output_file
+        self._copy_final_image_prompt(answer_path, target_output_dir)
         if task_type == "prompt_condense":
             target_path.write_text(
                 ensure_condensed_negative_prompt(response_path.read_text(encoding="utf-8")),
@@ -365,6 +373,7 @@ class AIAnswerHarvester:
             if api_call_path.exists():
                 pipeline_path.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(api_call_path, pipeline_path / api_call_path.name)
+            self._copy_final_image_prompt(answer_path, pipeline_path)
             self._copy_local_render_artifacts(answer_path, pipeline_path)
             result = HarvestResult(
                 answer_path=answer_path,
@@ -381,6 +390,7 @@ class AIAnswerHarvester:
         target_path = Path(target_output_file)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(response_path, target_path)
+        self._copy_final_image_prompt(answer_path, target_path.parent)
         api_call_path = answer_path / "Stable_Matrix_API_Call.json"
         if api_call_path.exists():
             shutil.copy2(api_call_path, target_path.parent / "Stable_Matrix_API_Call.json")

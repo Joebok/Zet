@@ -160,6 +160,7 @@ An arch.
                 encoding="utf-8",
             )
             (answer_path / "At-the-Arch.png").write_bytes(b"story image")
+            (answer_path / "Final_Image_Prompt.md").write_text("story prompt\n", encoding="utf-8")
             (answer_path / "Stable_Matrix_API_Call.json").write_text('{"prompt": "story"}\n', encoding="utf-8")
             config_path = root / "config.toml"
             config_path.write_text(
@@ -178,6 +179,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
             self.assertEqual("RENDER_APPLIED", results[0].status)
             self.assertEqual(b"story image", target_path.read_bytes())
+            self.assertEqual("story prompt\n", (target_path.parent / "Final_Image_Prompt.md").read_text(encoding="utf-8"))
             self.assertEqual(
                 '{"prompt": "story"}',
                 (target_path.parent / "Stable_Matrix_API_Call.json").read_text(encoding="utf-8").strip(),
