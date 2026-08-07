@@ -4,9 +4,17 @@ Replace the mannequin head and placeholder neck of the Reference Body using the 
 
 The Character Head may be a natural head-and-shoulders or limited-bust reference. Its neck, shoulders, upper torso, clothing, and transparent surrounding area provide context only. Do not copy those contextual elements into the final image.
 
+# HEAD PRESERVATION LOCK
+
+The supplied Character Head is already the finished rendering of the character's head. Transfer it into the final assembly without re-rendering or reinterpreting the face.
+
+Scale and position the head as required by the Reference Body, but preserve the supplied facial rendering, apparent age, geometry, texture, asymmetry, and surface detail.
+
+Reconstruction is permitted only at the neck attachment and immediate hair/neck/shoulder boundary. The face, skull, ears, and main hair mass are not reconstruction regions.
+
 Preserve the established character identity, body proportions, pose, framing, clothing, background, and requested view.
 
-Harmonize the head, hair, neck, and shoulder junction as needed to form one natural, anatomically correct, visually continuous character.
+Harmonize only the neck and immediate hair/neck/shoulder junction as needed to form one natural, anatomically correct, visually continuous character.
 
 Make only localized assembly corrections. Do not redesign either source.
 
@@ -20,9 +28,9 @@ The Reference Body controls the overall body geometry, body proportions, pose, s
 
 The Character Head controls character identity, head shape, face, age characteristics, species, expression, gaze, hairstyle, ears, skull orientation, facial-plane direction, and feature visibility. Preserve these directly; they are not adjustable fitment geometry.
 
-The adaptive assembly region is the neck and immediate neck/hair/shoulder junction rather than a rigid source boundary.
+Everything above that local attachment region is preserved Character Head content, not material to regenerate.
 
-Neither source is pixel-locked within this local region. Reconstruct and harmonize only that region as needed to produce natural anatomy and visual continuity while preserving the defining properties controlled by each source.
+Neither source is pixel-locked inside the adaptive attachment region.
 
 The face, jaw, chin, ears, skull, expression, and main hairstyle mass of the Character Head are outside the adaptive region. The Reference Body's overall shoulder geometry and body silhouette are also outside it.
 
@@ -66,7 +74,7 @@ Adjust the visible neck length only as needed to correct the attachment and main
 
 Keep changes localized to the neck and immediate neck/hair/shoulder junction. Final anatomical continuity takes priority over literal preservation of source neck pixels and local attachment geometry, but never over the Character Head's facial identity, apparent age, expression, gaze, ears, or main hairstyle design.
 
-Treat the supplied Character Head as visually final. Preserve facial maturity, feature geometry, skin texture, eyelids, under-eye contours, cheek structure, jaw, chin, asymmetry, shading, brushwork, and surface detail. Do not beautify, smooth, rejuvenate, cosmetically lift, anime-stylize, or broadly repaint the face.
+Treat the supplied Character Head as visually final. Preserve its facial maturity, geometry, skin texture, under-eye and cheek contours, jaw, chin, asymmetry, shading, brushwork, and surface detail. Do not beautify, smooth, rejuvenate, or repaint the face.
 
 The head must not float, appear pasted on, sink into the shoulders, or connect through an unnaturally long, narrow, wide, twisted, or sharply cut neck.
 
@@ -80,6 +88,7 @@ Do not change the character's facial identity, age phase, species, hairstyle des
 
 - One coherent full-body character is visible, including both feet.
 - The final character faithfully preserves the Reference Body's overall body, pose, proportions, stance, framing, clothing, background, and requested view.
+- The face is the supplied Character Head rendering at the required assembled scale, not a newly interpreted or regenerated version of that face. Apparent age, facial texture, and maturity must not change.
 - The final skull is scaled and positioned consistently with the mannequin skull in the Reference Body. Character-specific skull shape, hair, and ears may extend differently, but the head must not become globally larger merely because the Character Head source includes shoulders or upper torso.
 - The final head faithfully preserves the Character Head's identity, face, age phase, species, expression, gaze, hairstyle design, ears, and orientation.
 - The head, neck, hair, shoulders, and exposed skin form one anatomically natural and visually continuous assembly.
