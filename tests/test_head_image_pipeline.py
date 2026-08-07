@@ -14,7 +14,7 @@ from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.config_service import Config
 from zet.services.path_service import PathService
 from zet.services.reference_service import ReferenceService
-from zet.workers import head_fitment_manifest_worker
+from zet.workers import character_assembly_manifest_worker
 from zet.web.app import create_app
 
 
@@ -54,7 +54,8 @@ class HeadImageCompilerTests(unittest.TestCase):
                         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
                         self.assertIn("HEAD-IMAGE CHARACTER REFERENCE", prompt)
                         self.assertNotIn("NECK FITMENT", prompt)
-                        self.assertNotIn("transparent background", prompt.lower())
+                        self.assertIn("transparent background", prompt.lower())
+                        self.assertNotIn("simple, unobtrusive background", prompt.lower())
                         self.assertIn("source image is attached" if references else "No source image is supplied", prompt)
 
     def test_source_reference_instructions_follow_attachment_notice_only_when_source_is_attached(self) -> None:
@@ -184,11 +185,11 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
 
 class HeadImageFoundationTests(unittest.TestCase):
-    def test_new_foundation_contains_four_eight_view_pipelines(self) -> None:
+    def test_new_foundation_contains_three_eight_view_pipelines(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             service = CharacterOnboardingService(PathService(config_for(Path(temp_dir)), PROJECT_ROOT), PROJECT_ROOT)
             assets = service._foundation_assets("Test", "Adult")
-            self.assertEqual(len(assets), 32)
+            self.assertEqual(len(assets), 24)
             self.assertEqual([item["pipeline"] for item in assets[8:16]], ["Head-Image"] * 8)
 
     def test_add_missing_head_images_is_idempotent(self) -> None:
@@ -204,7 +205,7 @@ class HeadImageFoundationTests(unittest.TestCase):
             self.assertEqual(service.add_missing_head_image_foundation("Test", "Adult"), [])
 
 
-class HeadFitmentHeadImageDefaultTests(unittest.TestCase):
+class DirectAssemblyHeadImageDefaultTests(unittest.TestCase):
     def test_manifest_reference_options_match_asset_view(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -217,8 +218,8 @@ class HeadFitmentHeadImageDefaultTests(unittest.TestCase):
             for asset_id, pipeline, view in (
                 (1, "Body-Reference", "Front"),
                 (2, "Body-Reference", "Left"),
-                (3, "Head-Fitment", "Front"),
-                (4, "Head-Fitment", "Left"),
+                (3, "Head-Image", "Front"),
+                (4, "Head-Image", "Left"),
             ):
                 output = f"{pipeline}_{view}.png"
                 (asset_path / output).write_bytes(b"image")
@@ -235,20 +236,17 @@ class HeadFitmentHeadImageDefaultTests(unittest.TestCase):
                     final_image_output=output,
                 ).__dict__)
             records.extend([
-                Asset(5, "Test", "Adult", "Head-Fitment", "Front", head_view="Front").__dict__,
-                Asset(6, "Test", "Adult", "Character-Assembly", "Front", head_view="Front").__dict__,
+                Asset(5, "Test", "Adult", "Character-Assembly", "Front", head_view="Front").__dict__,
             ])
             (character_path / "Assets.json").write_text(
-                json.dumps({"schema_version": 1, "next_asset_id": 7, "assets": records}),
+                json.dumps({"schema_version": 2, "next_asset_id": 6, "reserved_asset_ids": [], "assets": records}),
                 encoding="utf-8",
             )
             service = ReferenceService(AssetRepository(paths), paths)
 
-            fitment = service.head_fitment_context("Test", "Adult", 5)
-            self.assertEqual([item["asset_id"] for item in fitment["body_reference_options"]], [1])
-            assembly = service.character_assembly_context("Test", "Adult", 6)
+            assembly = service.character_assembly_context("Test", "Adult", 5)
             self.assertEqual([item["asset_id"] for item in assembly["body_reference_options"]], [1])
-            self.assertEqual([item["asset_id"] for item in assembly["head_fitment_options"]], [3])
+            self.assertEqual([item["asset_id"] for item in assembly["head_image_options"]], [3])
 
     def test_manifest_defaults_to_same_view_locked_head_image(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -264,11 +262,11 @@ class HeadFitmentHeadImageDefaultTests(unittest.TestCase):
             records = [
                 Asset(1, "Test", "Adult", "Body-Reference", "Front", asset_state="LOCKED", pipeline_stage="LOCKED", actor="HUMAN_AGENT", final_image_output=body.name).__dict__,
                 Asset(2, "Test", "Adult", "Head-Image", "Front", head_view="Front", asset_state="LOCKED", pipeline_stage="LOCKED", actor="HUMAN_AGENT", final_image_output=head.name).__dict__,
-                Asset(3, "Test", "Adult", "Head-Fitment", "Front", head_view="Front", pipeline_stage="MANIFEST", final_image_output="Head-Fitment_Front_Front.png").__dict__,
+                Asset(3, "Test", "Adult", "Character-Assembly", "Front", head_view="Front", pipeline_stage="MANIFEST", final_image_output="Character-Assembly_Front_Front_Assembled.png").__dict__,
             ]
             (character_path / "Assets.json").write_text(json.dumps({"schema_version": 1, "next_asset_id": 4, "assets": records}), encoding="utf-8")
             context = WorkerContext(root / "pipeline", root / "candidate.png", root / "locked.png", character_path, asset_path)
-            result = head_fitment_manifest_worker.run(Asset(**records[2]), context)
+            result = character_assembly_manifest_worker.run(Asset(**records[2]), context)
             self.assertTrue(result.success)
             saved = json.loads((character_path / "Assets.json").read_text(encoding="utf-8"))["assets"][2]
             self.assertEqual([item["role"] for item in saved["reference_files"]], ["body_reference", "head_image"])

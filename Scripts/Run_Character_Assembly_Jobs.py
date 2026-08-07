@@ -72,9 +72,9 @@ def write_dependency_manifest(
         "assembly_style_mode": assembly_style_mode,
         "resources_allowed": True,
         "resources": reference_files,
-        "required_reference_roles": ["body_reference", "head_fitment"],
+        "required_reference_roles": ["body_reference", "head_image"],
         "notes": [
-            "Character-assembly uses locked Body-Reference and Head-Fitment assets selected by matching body/head view.",
+            "Character-assembly uses locked Body-Reference and Head-Image assets selected by matching body/head view.",
             "Prompt text describes reference usage; image file selection is stored in asset.reference_files and ask manifest.",
         ],
     }
@@ -141,9 +141,9 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
 
     references = reference_files_for_job(job)
     body_reference = reference_by_role(references, "body_reference")
-    head_fitment = reference_by_role(references, "head_fitment")
+    head_image = reference_by_role(references, "head_image")
     validate_reference(body_reference, "body_reference")
-    validate_reference(head_fitment, "head_fitment")
+    validate_reference(head_image, "head_image")
     validate_character_assembly_inputs(
         project_root,
         character=character,
@@ -151,7 +151,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         body_view_token=body_view_token,
         head_view_token=head_view_token,
         body_reference=body_reference,
-        head_fitment=head_fitment,
+        head_image=head_image,
     )
 
     selection = CompiledSelection([], [], [], [], [], {})

@@ -155,6 +155,10 @@ class AssetRepository:
         if not isinstance(records, list):
             raise AssetRepositoryError("Assets.json must contain an 'assets' list")
         next_asset_id = int(payload.get("next_asset_id") or 1)
+        raw_reserved_ids = payload.get("reserved_asset_ids", [])
+        if not isinstance(raw_reserved_ids, list) or any(not isinstance(asset_id, int) for asset_id in raw_reserved_ids):
+            raise AssetRepositoryError("Assets.json reserved_asset_ids must be a list of integers")
+        reserved_ids = set(raw_reserved_ids)
         used_ids = {
             record.get("asset_id")
             for record in records
@@ -162,7 +166,11 @@ class AssetRepository:
         }
         for asset in assets:
             if asset.asset_id <= 0:
+                while next_asset_id in used_ids or next_asset_id in reserved_ids:
+                    next_asset_id += 1
                 asset.asset_id = next_asset_id
+            if asset.asset_id in reserved_ids:
+                raise AssetRepositoryError(f"Asset {asset.asset_id} is reserved for {character}/{phase}")
             if asset.asset_id in used_ids:
                 raise AssetRepositoryError(f"Asset {asset.asset_id} already exists for {character}/{phase}")
             used_ids.add(asset.asset_id)

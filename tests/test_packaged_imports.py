@@ -9,7 +9,6 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 COMPILER_MODULES = [
     "Scripts.Run_Body_Reference_Jobs",
-    "Scripts.Run_Head_Fitment_Jobs",
     "Scripts.Run_Character_Assembly_Jobs",
     "Scripts.Run_Costume_Dressing_Jobs",
     "Scripts.Run_Expression_Jobs",
@@ -30,7 +29,6 @@ import sys
 from pathlib import Path
 scripts_path = Path({str(PROJECT_ROOT / 'Scripts')!r}).resolve()
 import zet.workers.body_reference_prompt_worker
-import zet.workers.head_fitment_prompt_worker
 import zet.workers.head_image_manifest_worker
 import zet.workers.head_image_prompt_worker
 import zet.workers.character_assembly_prompt_worker
@@ -39,7 +37,7 @@ import zet.workers.expression_prompt_worker
 import zet.services.character_onboarding_service
 import zet.services.prompt_review_service
 from Scripts.Run_Body_Reference_Jobs import extract_template_field, load_bundle
-from Scripts.Run_Head_Fitment_Jobs import reference_by_role, validate_reference
+from zet.services.pipeline_compiler_support import reference_by_role, validate_reference
 assert scripts_path not in [Path(value).resolve() for value in sys.path if value]
 """
     subprocess.run(

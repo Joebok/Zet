@@ -1772,7 +1772,7 @@ class StoryService:
         """Return the short pipeline label used in scene reference tags."""
         return {
             "Body-Reference": "Body",
-            "Head-Fitment": "Head",
+            "Head-Image": "Head",
             "Character-Assembly": "Character",
             "Costume-Dressing": "Costume",
             "Expression": "Expression",

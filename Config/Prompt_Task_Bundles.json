@@ -40,37 +40,6 @@
       "next_status": "READY_FOR_RENDER",
       "next_actor": "AI_AGENT"
     },
-    "head-fitment": {
-      "description": "Static head-fitment prompt using a locked body-reference and same-view Head-Image, with explicit legacy headshot override support.",
-      "prompt_builder": "static",
-      "required_sections": [
-        "HEAD_FITMENT_RENDERING_RULES"
-      ],
-      "optional_sections": [],
-      "forbidden_sections": [
-        "*_PICARESQUE",
-        "BODY_DESCRIPTION_VIEW_*",
-        "COSTUME_DESCRIPTION_*",
-        "EQUIPMENT_DESCRIPTION_*",
-        "EXPRESSION_DESCRIPTION_*",
-        "SCENE_RENDERING_*"
-      ],
-      "static_prompt_template": "head_fitment_v1",
-      "resources": {
-        "required_reference_roles": [
-          "body_reference",
-          "head_image"
-        ]
-      },
-      "output_files": {
-        "compiled_sections": "Compiled_Sections.md",
-        "final_prompt": "Final_Image_Prompt.md",
-        "dependency_manifest": "dependency_manifest.json",
-        "image_review": "Image_Review.md"
-      },
-      "next_status": "READY_FOR_RENDER",
-      "next_actor": "AI_AGENT"
-    },
     "head-image": {
       "description": "Static head rotation prompt with an optional source image.",
       "prompt_builder": "static",
@@ -96,7 +65,6 @@
       "forbidden_sections": [
         "*_PICARESQUE",
         "BODY_DESCRIPTION_*",
-        "HEAD_FITMENT_RENDERING_RULES",
         "COSTUME_DESCRIPTION_*",
         "EQUIPMENT_DESCRIPTION_*",
         "SCENE_RENDERING_*"
@@ -117,7 +85,7 @@
       "next_actor": "AI_AGENT"
     },
     "character-assembly": {
-      "description": "Static full-character assembly prompt using locked body-reference and head-fitment image references. No prompt review.",
+      "description": "Static full-character assembly prompt using locked body-reference and Head-Image references. No prompt review.",
       "prompt_builder": "static",
       "required_sections": [],
       "optional_sections": [],
@@ -128,7 +96,7 @@
       "resources": {
         "required_reference_roles": [
           "body_reference",
-          "head_fitment"
+          "head_image"
         ]
       },
       "output_files": {

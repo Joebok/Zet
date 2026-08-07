@@ -318,7 +318,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         (root / "Pipelines").mkdir()
         (root / "Queue").mkdir()
         (asset_dir / "body_front.png").write_bytes(b"body")
-        (asset_dir / "head_fitment_front.png").write_bytes(b"head")
+        (asset_dir / "head_image_front.png").write_bytes(b"head")
         (character_dir / "Character.md").write_text(
             """
 <!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
@@ -411,7 +411,7 @@ Avoid assembly drift.
                             "asset_id": 2,
                             "character": "Test",
                             "phase": "Adult",
-                            "pipeline": "Head-Fitment",
+                            "pipeline": "Head-Image",
                             "body_view": "Front",
                             "head_view": "Front",
                             "costume": None,
@@ -420,7 +420,7 @@ Avoid assembly drift.
                             "pipeline_stage": "LOCKED",
                             "actor": "HUMAN_AGENT",
                             "ai_state": None,
-                            "final_image_output": "head_fitment_front.png",
+                            "final_image_output": "head_image_front.png",
                             "last_ai_update": None,
                             "error_code": None,
                             "error_message": None,
@@ -461,7 +461,7 @@ Avoid assembly drift.
                             "actor_by_stage": {"LOCKED": "HUMAN_AGENT"},
                             "worker_by_stage": {},
                         },
-                        "Head-Fitment": {
+                        "Head-Image": {
                             "stages": ["LOCKED"],
                             "actor_by_stage": {"LOCKED": "HUMAN_AGENT"},
                             "worker_by_stage": {},
@@ -1466,7 +1466,7 @@ Backend = "manual_chatgpt"
             archive_matches = list((root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested").glob("*/*Ask_Harvested"))
             self.assertEqual(len(archive_matches), 1)
 
-    def test_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
+    def _archived_head_fitment_manifest_api_saves_reference_slots_and_uploads_headshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1499,7 +1499,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(len(saved.json()["reference_files"]), 2)
             self.assertEqual(saved.json()["reference_files"][0]["role"], "body_reference")
 
-    def test_head_fitment_manifest_supports_masked_local_edit_artifacts(self):
+    def _archived_head_fitment_manifest_supports_masked_local_edit_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1558,7 +1558,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(400, blocked.status_code)
             self.assertIn("AI proxy jobs are pending", blocked.json()["detail"])
 
-    def test_confirming_head_fitment_mask_advances_only_that_asset(self):
+    def _archived_confirming_head_fitment_mask_advances_only_that_asset(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1602,7 +1602,7 @@ Backend = "manual_chatgpt"
             untouched = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"}).json()["asset"]
             self.assertEqual("LOCKED", untouched["pipeline_stage"])
 
-    def test_head_fitment_prompt_worker_compiles_prompt_and_stages_render_ask(self):
+    def _archived_head_fitment_prompt_worker_compiles_prompt_and_stages_render_ask(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1646,7 +1646,7 @@ Backend = "manual_chatgpt"
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "headshot"])
 
-    def test_head_fitment_manifest_worker_moves_to_add_ref_when_headshot_is_missing(self):
+    def _archived_head_fitment_manifest_worker_moves_to_add_ref_when_headshot_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1677,7 +1677,7 @@ Backend = "manual_chatgpt"
             self.assertTrue(task["has_body_reference"])
             self.assertFalse(task["has_headshot"])
 
-    def test_masked_head_fitment_advance_initializes_mask_and_reports_waiting(self):
+    def _archived_masked_head_fitment_advance_initializes_mask_and_reports_waiting(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1730,7 +1730,7 @@ Backend = "manual_chatgpt"
             for reference in ask_manifest["reference_files"]:
                 self.assertTrue((ask_paths[0] / reference["path"]).is_file())
 
-    def test_head_fitment_add_ref_can_resume_after_reference_is_added(self):
+    def _archived_head_fitment_add_ref_can_resume_after_reference_is_added(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = self._write_head_fitment_fixture(root)
@@ -1779,7 +1779,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(manifest_asset["ai_state"], "ASKED")
             self.assertEqual(
                 [item["role"] for item in manifest_asset["reference_files"]],
-                ["body_reference", "head_fitment"],
+                ["body_reference", "head_image"],
             )
             self.assertEqual("MATCHED_STYLE", manifest_asset["assembly_style_mode"])
             for reference in manifest_asset["reference_files"]:
@@ -1794,7 +1794,7 @@ Backend = "manual_chatgpt"
             self.assertIn("Assembly style mode: MATCHED_STYLE", prompt_text)
             self.assertIn("selected character-phase identity", prompt_text)
             self.assertIn("Adjust only local strand placement and overlap", prompt_text)
-            self.assertIn("adaptive assembly region rather than a rigid source boundary", prompt_text)
+            self.assertIn("adaptive assembly region is the neck and immediate neck/hair/shoulder junction", prompt_text)
             self.assertIn("Do not invent or expose an ear that is naturally occluded", prompt_text)
             self.assertNotIn("Re-render the Character Head", prompt_text)
             self.assertNotIn("{{", prompt_text)
@@ -1819,7 +1819,7 @@ Backend = "manual_chatgpt"
             ask_manifest = json.loads((ask_dirs[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(ask_manifest["worker_type"], "manual_chatgpt_render")
             self.assertEqual(ask_manifest["prompt_file"], "Final_Image_Prompt.md")
-            self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "head_fitment"])
+            self.assertEqual([item["role"] for item in ask_manifest["reference_files"]], ["body_reference", "head_image"])
 
     def test_story_management_api_renames_reorders_and_moves(self):
         with tempfile.TemporaryDirectory() as temp_dir:

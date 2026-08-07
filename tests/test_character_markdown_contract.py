@@ -39,7 +39,7 @@ class CharacterMarkdownContractTests(unittest.TestCase):
         )
         bundles = json.loads((PROJECT_ROOT / "Config" / "Prompt_Task_Bundles.json").read_text(encoding="utf-8"))["bundles"]
         required = {"IDENTITY_PRESERVATION_SCENE", "IDENTITY_PRESERVATION_EYES"}
-        for name in ["body-reference", "head-image", "head-fitment", "character-assembly", "expression"]:
+        for name in ["body-reference", "head-image", "character-assembly", "expression"]:
             for section in bundles[name].get("required_sections", []):
                 if section == "IDENTITY_PRESERVATION_COSTUME":
                     continue

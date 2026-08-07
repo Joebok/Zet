@@ -15,7 +15,6 @@ from zet.services.path_service import PathService
 COMPARABLE_PIPELINES = [
     "Body-Reference",
     "Head-Image",
-    "Head-Fitment",
     "Character-Assembly",
     "Costume-Dressing",
     "Expression",
@@ -207,7 +206,7 @@ class PhaseComparisonService:
     def _slot_key(self, pipeline: str, asset: Asset) -> str:
         """Return the normalized matching key for an asset."""
         parts = [self._normalize_slot_part(asset.body_view)]
-        if pipeline in {"Head-Image", "Head-Fitment", "Character-Assembly", "Costume-Dressing", "Expression"}:
+        if pipeline in {"Head-Image", "Character-Assembly", "Costume-Dressing", "Expression"}:
             parts.append(self._normalize_slot_part(asset.head_view))
         if pipeline == "Expression":
             parts.append(self._normalize_slot_part(asset.expression))
@@ -218,7 +217,7 @@ class PhaseComparisonService:
         if asset is None:
             return "Unknown slot"
         parts = [str(asset.body_view or "")]
-        if pipeline in {"Head-Image", "Head-Fitment", "Character-Assembly", "Costume-Dressing", "Expression"} and asset.head_view:
+        if pipeline in {"Head-Image", "Character-Assembly", "Costume-Dressing", "Expression"} and asset.head_view:
             parts.append(str(asset.head_view))
         if pipeline == "Expression" and asset.expression:
             parts.append(str(asset.expression))

@@ -26,7 +26,6 @@ MISSING_REFERENCE_ERROR_CODES = {
 ASSET_PIPELINE_ORDER = [
     "Body-Reference",
     "Head-Image",
-    "Head-Fitment",
     "Character-Assembly",
     "Costume-Dressing",
     "Expression",
@@ -132,12 +131,6 @@ class AssetService:
         return actor
 
     def _actor_for_stage(self, asset: Asset, pipeline, stage: str) -> str:
-        if (
-            asset.pipeline == "Head-Fitment"
-            and stage == "RENDER"
-            and str(self.path_service.config.head_fitment_render_mode) == "masked_local"
-        ):
-            return "PYTHON"
         return self._validate_actor(pipeline.name, stage, pipeline.actor_by_stage.get(stage))
 
     def _view_folder_for_asset(self, asset: Asset) -> str:
@@ -545,21 +538,7 @@ class AssetService:
                 refreshed_asset.updated_at = self._timestamp()
                 self.asset_repository.save_asset(refreshed_asset)
             if result.advance_stage:
-                if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "ADD_REF":
-                    pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
-                    prompt_actor = self._validate_actor(pipeline.name, "PROMPT", pipeline.actor_by_stage.get("PROMPT"))
-                    updated_asset = replace(refreshed_asset)
-                    updated_asset.asset_state = "IN_PROGRESS"
-                    updated_asset.pipeline_stage = "PROMPT"
-                    updated_asset.actor = prompt_actor
-                    updated_asset.ai_state = None
-                    updated_asset.error_code = None
-                    updated_asset.error_message = None
-                    updated_asset.updated_at = self._timestamp()
-                    self.asset_repository.save_asset(updated_asset)
-                    self.housekeeping_service.prepare_stage(updated_asset)
-                else:
-                    updated_asset = self.move_next(character, phase, asset_id)
+                updated_asset = self.move_next(character, phase, asset_id)
             else:
                 updated_asset = replace(refreshed_asset)
                 updated_asset.error_code = None

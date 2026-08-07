@@ -8,6 +8,5 @@ Augmented prompt for left-right read on scenes; incorporate depth.
 
 Setting up HTTPS://
 
-Head-Fitment : visible status of local image jobs on asset page
 
 On AI tools, see status of ComfyUI - add start/stop/restart?

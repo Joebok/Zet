@@ -237,20 +237,11 @@ The first successful image saved for a scene is published directly to `Stories/<
 
 Promoting a scene candidate backs up the current published image under `Locked_Backups`, publishes the candidate, and clears the pending review. Discarding removes only the candidate. Other dashboard pages always display the published image and link the `Candidate Image Pending` overlay to the matching scene in Image Review.
 
-### Head-Fitment Pipeline
+### Direct Character Assembly
 
-Head-Fitment now uses structured image references:
+Character-Assembly consumes matching locked `body_reference` and `head_image` references. Head-Image controls identity, age, face, ears, hairstyle, gaze, and head orientation; Body-Reference controls the final body, shoulders, clothing, pose, framing, and background. Reconstruction is limited to the neck and immediate neck/hair/shoulder junction.
 
-- `body_reference`: a locked Body-Reference output selected in the Manifest page
-- `headshot`: a selected or uploaded headshot reference image
-
-The active stage path is:
-
-```text
-MANIFEST -> PROMPT -> RENDER -> RENDER_REVIEW -> LOCKED
-```
-
-Head-Fitment does not use ComfyUI local preview rendering. The `PROMPT` worker compiles `Final_Image_Prompt.md` directly from `Character.md` sections and `Config/Prompt_Templates/head_fitment_v1.md`. When the asset moves into `RENDER`, Zet queues a manual ChatGPT render task with `ask_manifest.json.reference_files` containing the selected body-reference and headshot images.
+The former Head-Fitment pipeline is retired and has no active configuration, routes, workers, assets, or reference role. Its implementation and historical artifacts are retained only in archives.
 
 ### Assets Page
 

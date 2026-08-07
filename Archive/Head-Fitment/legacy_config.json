@@ -1,0 +1,21 @@
+{
+  "pipeline": "Head-Fitment",
+  "task_bundle": {
+    "prompt_builder": "static",
+    "required_sections": ["HEAD_FITMENT_RENDERING_RULES"],
+    "static_prompt_template": "head_fitment_v1",
+    "required_reference_roles": ["body_reference", "head_image"]
+  },
+  "masked_local_preset": {
+    "name": "head-fitment-inpaint",
+    "backend": "comfyui",
+    "workflow_kind": "head_fitment_inpaint",
+    "steps": 24,
+    "cfg": 6.0,
+    "denoising_strength": 0.22,
+    "mask_blur": 6,
+    "inpaint_full_res_padding": 32,
+    "supports_reference_images": true,
+    "supports_masks": true
+  }
+}

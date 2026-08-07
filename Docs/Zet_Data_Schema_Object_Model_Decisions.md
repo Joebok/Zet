@@ -239,7 +239,7 @@ Pipeline rules belong in `Pipelines.json`.
 The current configured pipelines are:
 
 - `Body-Reference`
-- `Head-Fitment`
+- `Head-Image`
 - `Character-Assembly`
 
 The current stage sequence for these pipelines is:

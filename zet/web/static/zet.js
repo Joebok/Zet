@@ -303,17 +303,6 @@ const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-
 const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
-const settingHeadFitmentRenderMode = document.querySelector("#setting-head-fitment-render-mode");
-const settingHeadFitmentPreset = document.querySelector("#setting-head-fitment-preset");
-const settingHeadFitmentCheckpoint = document.querySelector("#setting-head-fitment-checkpoint");
-const settingHeadFitmentFeather = document.querySelector("#setting-head-fitment-feather");
-const settingHeadFitmentMaskGeneration = document.querySelector("#setting-head-fitment-mask-generation");
-const settingHeadFitmentMaskAutoConfirm = document.querySelector("#setting-head-fitment-mask-auto-confirm");
-const settingHeadFitmentMaskThreshold = document.querySelector("#setting-head-fitment-mask-threshold");
-const settingHeadFitmentMaskAttempts = document.querySelector("#setting-head-fitment-mask-attempts");
-const settingHeadFitmentBiRefNetModel = document.querySelector("#setting-head-fitment-birefnet-model");
-const settingHeadFitmentMediaPipeModel = document.querySelector("#setting-head-fitment-mediapipe-model");
-const settingHeadFitmentSAMCheckpoint = document.querySelector("#setting-head-fitment-sam-checkpoint");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
 const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
@@ -403,18 +392,6 @@ const headshotUpload = document.querySelector("#headshot-upload");
 const bodyReferencePreview = document.querySelector("#body-reference-preview");
 const headshotReferencePreview = document.querySelector("#headshot-reference-preview");
 const manifestReferenceJson = document.querySelector("#manifest-reference-json");
-const manifestMaskedEdit = document.querySelector("#manifest-masked-edit");
-const manifestMaskStatus = document.querySelector("#manifest-mask-status");
-const manifestMaskInitialize = document.querySelector("#manifest-mask-initialize");
-const manifestMaskReject = document.querySelector("#manifest-mask-reject");
-const manifestMaskSave = document.querySelector("#manifest-mask-save");
-const manifestMaskBrushMode = document.querySelector("#manifest-mask-brush-mode");
-const manifestMaskBrushSize = document.querySelector("#manifest-mask-brush-size");
-const manifestMaskCanvas = document.querySelector("#manifest-mask-canvas");
-const manifestMaskModels = document.querySelector("#manifest-mask-models");
-const manifestMaskBuffer = document.createElement("canvas");
-let manifestMaskSourceImage = null;
-let manifestMaskDrawing = false;
 const turnaroundStatus = document.querySelector("#turnaround-status");
 const turnaroundMessage = document.querySelector("#turnaround-message");
 const turnaroundTableBody = document.querySelector("#turnaround-table tbody");
@@ -1790,7 +1767,7 @@ async function loadContext() {
 }
 
 function updateHeaderFitmentPreview() {
-  // Show the locked Front-Left-3-4 head-fitment image when this phase has one.
+  // Show the locked Front-Left-3-4 Head-Image when this phase has one.
   const preview = state.headerPreviews?.[state.character]?.[state.phase] || null;
   if (preview?.image_path) {
     const cacheKey = [
@@ -2106,7 +2083,7 @@ function filteredAssets() {
 
 function isBaseImageAsset(asset) {
   return (
-    ["Body-Reference", "Head-Image", "Head-Fitment", "Character-Assembly"].includes(asset?.pipeline || "") &&
+    ["Body-Reference", "Head-Image", "Character-Assembly"].includes(asset?.pipeline || "") &&
     asset?.asset_state === "LOCKED"
   );
 }
@@ -7545,17 +7522,6 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(automation.ai_prompt_analysis_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
-  settingHeadFitmentRenderMode.value = automation.head_fitment_render_mode || "prompt";
-  settingHeadFitmentPreset.value = automation.head_fitment_masked_local_preset || "head-fitment-inpaint";
-  settingHeadFitmentCheckpoint.value = automation.head_fitment_masked_local_checkpoint || "";
-  settingHeadFitmentFeather.value = automation.head_fitment_mask_feather_pixels ?? 6;
-  settingHeadFitmentMaskGeneration.value = automation.head_fitment_mask_generation || "comfyui_ensemble";
-  settingHeadFitmentMaskAutoConfirm.checked = automation.head_fitment_mask_auto_confirm !== false;
-  settingHeadFitmentMaskThreshold.value = automation.head_fitment_mask_auto_confirm_threshold ?? 0.90;
-  settingHeadFitmentMaskAttempts.value = automation.head_fitment_mask_sam_attempts ?? 3;
-  settingHeadFitmentBiRefNetModel.value = automation.head_fitment_mask_birefnet_model || "birefnet.safetensors";
-  settingHeadFitmentMediaPipeModel.value = automation.head_fitment_mask_mediapipe_model || "mediapipe_face_fp32.safetensors";
-  settingHeadFitmentSAMCheckpoint.value = automation.head_fitment_mask_sam_checkpoint || "sam3.1_multiplex_fp16.safetensors";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
   renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
@@ -7694,17 +7660,6 @@ function automationPayloadFromForm() {
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
-    head_fitment_render_mode: settingHeadFitmentRenderMode.value,
-    head_fitment_masked_local_preset: settingHeadFitmentPreset.value,
-    head_fitment_masked_local_checkpoint: settingHeadFitmentCheckpoint.value,
-    head_fitment_mask_feather_pixels: Number(settingHeadFitmentFeather.value || 0),
-    head_fitment_mask_generation: settingHeadFitmentMaskGeneration.value,
-    head_fitment_mask_auto_confirm: settingHeadFitmentMaskAutoConfirm.checked,
-    head_fitment_mask_auto_confirm_threshold: Number(settingHeadFitmentMaskThreshold.value || 0),
-    head_fitment_mask_sam_attempts: Number(settingHeadFitmentMaskAttempts.value || 0),
-    head_fitment_mask_birefnet_model: settingHeadFitmentBiRefNetModel.value,
-    head_fitment_mask_mediapipe_model: settingHeadFitmentMediaPipeModel.value,
-    head_fitment_mask_sam_checkpoint: settingHeadFitmentSAMCheckpoint.value,
   };
 }
 
@@ -8454,12 +8409,11 @@ async function loadManifestTasks(preferredAssetId = null) {
     return;
   }
   manifestStatus.textContent = "Loading manifest tasks...";
-  const [headImagePayload, fitmentPayload, assemblyPayload] = await Promise.all([
+  const [headImagePayload, assemblyPayload] = await Promise.all([
     fetchJson(`/api/head-image-manifest/tasks?${currentQuery().toString()}`),
-    fetchJson(`/api/head-fitment-manifest/tasks?${currentQuery().toString()}`),
     fetchJson(`/api/character-assembly-manifest/tasks?${currentQuery().toString()}`),
   ]);
-  state.manifestTasks = [...(headImagePayload.tasks || []), ...(fitmentPayload.tasks || []), ...(assemblyPayload.tasks || [])];
+  state.manifestTasks = [...(headImagePayload.tasks || []), ...(assemblyPayload.tasks || [])];
   const taskIds = new Set(state.manifestTasks.map((task) => task.asset_id));
   state.selectedManifestAssetId = preferredAssetId || state.selectedManifestAssetId || state.manifestTasks[0]?.asset_id || null;
   if (state.selectedManifestAssetId && !taskIds.has(state.selectedManifestAssetId)) {
@@ -8498,14 +8452,9 @@ async function selectManifestAsset(assetId) {
   state.selectedManifestAssetId = Number(assetId);
   updateSelectableRows(manifestTaskBody, (row) => Number(row.dataset.assetId) === state.selectedManifestAssetId);
   const task = state.manifestTasks.find((item) => item.asset_id === state.selectedManifestAssetId);
-  resetManifestMaskPreview();
-  manifestMaskedEdit.hidden = task?.pipeline !== "Head-Fitment";
-  if (task?.pipeline === "Head-Fitment") {
-    manifestMaskStatus.textContent = "Please wait for mask to load.";
-  }
   const route = task?.pipeline === "Head-Image"
     ? "head-image-manifest"
-    : (task?.pipeline === "Character-Assembly" ? "character-assembly-manifest" : "head-fitment-manifest");
+    : "character-assembly-manifest";
   const detail = await fetchJson(`/api/${route}/${state.selectedManifestAssetId}?${currentQuery().toString()}`);
   if (state.selectedManifestAssetId !== Number(assetId)) {
     return;
@@ -8521,10 +8470,6 @@ function clearManifest() {
   bodyReferencePreview.textContent = "No body reference selected.";
   headshotReferencePreview.textContent = "No headshot selected.";
   manifestReferenceJson.textContent = "";
-  manifestMaskedEdit.hidden = true;
-  manifestMaskStatus.textContent = "";
-  manifestMaskModels.textContent = "";
-  resetManifestMaskPreview();
   manifestBodySection.hidden = false;
   headshotUpload.hidden = false;
   saveManifestReferencesButton.disabled = true;
@@ -8539,214 +8484,24 @@ function renderManifest(detail) {
   manifestTitle.textContent = `Asset ${asset.asset_id} | ${asset.body_view} / ${asset.head_view}${proxyStatus}`;
   const isHeadImage = asset.pipeline === "Head-Image";
   const isCharacterAssembly = asset.pipeline === "Character-Assembly";
-  const isHeadFitment = asset.pipeline === "Head-Fitment";
   manifestBodySection.hidden = isHeadImage;
-  manifestHeadHeading.textContent = isHeadImage ? "Optional Source Image" : (isCharacterAssembly ? "Head Fitment" : "Head Image");
+  manifestHeadHeading.textContent = isHeadImage ? "Optional Source Image" : "Head Image";
   headshotUpload.hidden = isCharacterAssembly;
   fillReferenceSelect(bodyReferenceSelect, detail.body_reference_options || [], detail.selected_body_reference?.path || "");
   const headOptions = isHeadImage
     ? (detail.source_options || [])
-    : (isCharacterAssembly ? (detail.head_fitment_options || []) : (detail.headshot_options || []));
+    : (detail.head_image_options || []);
   const selectedHeadPath = isHeadImage
     ? (detail.selected_source?.path || "")
-    : (isCharacterAssembly ? (detail.selected_head_fitment?.path || "") : (detail.selected_headshot?.path || ""));
+    : (detail.selected_head_image?.path || "");
   fillReferenceSelect(headshotReferenceSelect, headOptions, selectedHeadPath);
   manifestReferenceJson.textContent = JSON.stringify(detail.reference_files || [], null, 2);
   bodyReferenceSelect.disabled = !detail.is_manifest_editable;
   headshotReferenceSelect.disabled = !detail.is_manifest_editable;
   headshotUpload.disabled = !detail.is_manifest_editable;
   saveManifestReferencesButton.disabled = !detail.is_manifest_editable;
-  manifestMaskedEdit.hidden = !isHeadFitment;
-  if (isHeadFitment) {
-    renderManifestMaskedEdit(detail).catch((error) => {
-      manifestMaskStatus.textContent = error.message;
-    });
-  }
   updateManifestPreviews();
   updateManifestNavigation();
-}
-
-function loadImageElement(path) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Unable to load image: ${path}`));
-    image.src = fileUrl(path, Date.now().toString());
-  });
-}
-
-function resetManifestMaskPreview() {
-  manifestMaskSourceImage = null;
-  manifestMaskDrawing = false;
-  manifestMaskCanvas.width = 0;
-  manifestMaskCanvas.height = 0;
-  manifestMaskBuffer.width = 0;
-  manifestMaskBuffer.height = 0;
-}
-
-function paintManifestMaskPreview() {
-  if (!manifestMaskSourceImage || !manifestMaskCanvas.width) {
-    return;
-  }
-  const width = manifestMaskCanvas.width;
-  const height = manifestMaskCanvas.height;
-  const visible = manifestMaskCanvas.getContext("2d");
-  visible.clearRect(0, 0, width, height);
-  visible.drawImage(manifestMaskSourceImage, 0, 0, width, height);
-  const mask = manifestMaskBuffer.getContext("2d").getImageData(0, 0, width, height);
-  const overlay = visible.createImageData(width, height);
-  for (let index = 0; index < mask.data.length; index += 4) {
-    const value = mask.data[index];
-    if (value >= 192) {
-      overlay.data[index] = 40;
-      overlay.data[index + 1] = 190;
-      overlay.data[index + 2] = 95;
-      overlay.data[index + 3] = 42;
-    } else if (value >= 64) {
-      overlay.data[index] = 255;
-      overlay.data[index + 1] = 170;
-      overlay.data[index + 2] = 0;
-      overlay.data[index + 3] = 120;
-    } else {
-      overlay.data[index] = 210;
-      overlay.data[index + 1] = 30;
-      overlay.data[index + 2] = 45;
-      overlay.data[index + 3] = 85;
-    }
-  }
-  const overlayCanvas = document.createElement("canvas");
-  overlayCanvas.width = width;
-  overlayCanvas.height = height;
-  overlayCanvas.getContext("2d").putImageData(overlay, 0, 0);
-  visible.drawImage(overlayCanvas, 0, 0);
-}
-
-async function renderManifestMaskedEdit(detail) {
-  const edit = detail.masked_edit || {};
-  const enabled = edit.mode === "masked_local";
-  const assetId = detail.asset?.asset_id;
-  resetManifestMaskPreview();
-  manifestMaskInitialize.textContent = edit.mask_exists ? "Regen Mask" : "Generate Mask";
-  manifestMaskInitialize.disabled = !detail.is_manifest_editable || !enabled;
-  manifestMaskReject.disabled = !detail.is_manifest_editable || !enabled || !edit.mask_exists;
-  manifestMaskSave.disabled = !detail.is_manifest_editable || !enabled || !edit.mask_exists;
-  manifestMaskBrushMode.disabled = !detail.is_manifest_editable || !enabled || !edit.mask_exists;
-  manifestMaskBrushSize.disabled = !detail.is_manifest_editable || !enabled || !edit.mask_exists;
-  manifestMaskCanvas.style.pointerEvents = detail.is_manifest_editable ? "" : "none";
-  const score = edit.confidence_score == null ? "" : ` Confidence ${Number(edit.confidence_score).toFixed(3)}.`;
-  const statusText = !enabled
-    ? "Prompt-based mode is active. Enable masked_local in Image Config to use this alternative."
-    : edit.generation_status === "pending"
-      ? "Automated mask generation is pending in the AI Proxy."
-      : edit.generation_status === "failed"
-        ? "Automated mask generation failed. Review proxy diagnostics and regenerate."
-        : edit.confirmed && edit.current
-          ? `Mask confirmed and current.${score} Use Advance All to continue.`
-          : edit.mask_exists
-            ? `Pipeline waiting: review and confirm the generated mask.${score}`
-            : "Use Advance All or Generate Mask after saving references.";
-  manifestMaskStatus.textContent = statusText;
-  const requirements = await fetchJson("/api/head-fitment-model-requirements").catch((error) => ({ error: error.message }));
-  if (state.selectedManifestAssetId !== assetId) return;
-  manifestMaskModels.textContent = JSON.stringify(requirements, null, 2);
-  if (!edit.mask_exists || !edit.mask_path) {
-    return;
-  }
-  const sourcePath = detail.selected_head_image?.path || detail.selected_headshot?.path;
-  manifestMaskStatus.textContent = "Please wait for mask to load.";
-  const [source, mask] = await Promise.all([loadImageElement(sourcePath), loadImageElement(edit.mask_path)]);
-  if (state.selectedManifestAssetId !== assetId) return;
-  manifestMaskSourceImage = source;
-  manifestMaskCanvas.width = source.naturalWidth;
-  manifestMaskCanvas.height = source.naturalHeight;
-  manifestMaskBuffer.width = source.naturalWidth;
-  manifestMaskBuffer.height = source.naturalHeight;
-  const maskContext = manifestMaskBuffer.getContext("2d", { willReadFrequently: true });
-  maskContext.clearRect(0, 0, mask.width, mask.height);
-  maskContext.drawImage(mask, 0, 0, source.naturalWidth, source.naturalHeight);
-  paintManifestMaskPreview();
-  manifestMaskStatus.textContent = statusText;
-}
-
-function manifestMaskPoint(event) {
-  const rect = manifestMaskCanvas.getBoundingClientRect();
-  return {
-    x: (event.clientX - rect.left) * manifestMaskCanvas.width / rect.width,
-    y: (event.clientY - rect.top) * manifestMaskCanvas.height / rect.height,
-  };
-}
-
-function drawManifestMask(event) {
-  if (!manifestMaskDrawing || !manifestMaskCanvas.width) {
-    return;
-  }
-  const point = manifestMaskPoint(event);
-  const values = { remove: 0, edit: 128, protect: 255 };
-  const brushMode = manifestMaskBrushMode.querySelector('input[name="manifest-mask-brush-mode"]:checked')?.value;
-  const value = values[brushMode] ?? 255;
-  const context = manifestMaskBuffer.getContext("2d", { willReadFrequently: true });
-  context.fillStyle = `rgb(${value}, ${value}, ${value})`;
-  context.beginPath();
-  context.arc(point.x, point.y, Number(manifestMaskBrushSize.value || 36), 0, Math.PI * 2);
-  context.fill();
-  paintManifestMaskPreview();
-}
-
-async function initializeManifestMask() {
-  if (!state.selectedManifestAssetId) return;
-  manifestMaskInitialize.disabled = true;
-  manifestMaskStatus.textContent = "Queueing automated mask generation...";
-  try {
-    await fetchJson(`/api/head-fitment-manifest/${state.selectedManifestAssetId}/masked-edit/initialize?${currentQuery().toString()}`, { method: "POST" });
-    await selectManifestAsset(state.selectedManifestAssetId);
-  } catch (error) {
-    manifestMaskStatus.textContent = error.message;
-  } finally {
-    manifestMaskInitialize.disabled = false;
-  }
-}
-
-async function rejectAndRegenerateManifestMask() {
-  if (!state.selectedManifestAssetId) return;
-  const reason = window.prompt("Why is this mask being rejected?", "View-specific mask geometry is incorrect.");
-  if (!reason) return;
-  manifestMaskReject.disabled = true;
-  manifestMaskStatus.textContent = "Archiving the rejected mask and queueing regeneration...";
-  try {
-    await fetchJson(
-      `/api/head-fitment-manifest/${state.selectedManifestAssetId}/masked-edit/reject-and-regenerate?${currentQuery().toString()}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) },
-    );
-    await selectManifestAsset(state.selectedManifestAssetId);
-  } catch (error) {
-    manifestMaskStatus.textContent = error.message;
-  } finally {
-    manifestMaskReject.disabled = false;
-  }
-}
-
-async function saveManifestMask() {
-  if (!state.selectedManifestAssetId || !manifestMaskBuffer.width) return;
-  manifestMaskSave.disabled = true;
-  manifestMaskStatus.textContent = "Saving mask...";
-  try {
-    const blob = await new Promise((resolve) => manifestMaskBuffer.toBlob(resolve, "image/png"));
-    const response = await fetch(`/api/head-fitment-manifest/${state.selectedManifestAssetId}/masked-edit/mask?${currentQuery().toString()}`, {
-      method: "PUT",
-      headers: { "Content-Type": "image/png" },
-      body: blob,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.detail || `${response.status} ${response.statusText}`);
-    const confirmedAssetId = state.selectedManifestAssetId;
-    showManifestMessage(`Mask confirmed. Asset ${confirmedAssetId} advanced.`, "success");
-    await loadAssets(state.selectedAssetId);
-    await loadManifestTasks();
-  } catch (error) {
-    manifestMaskStatus.textContent = error.message;
-  } finally {
-    manifestMaskSave.disabled = false;
-  }
 }
 
 function fillReferenceSelect(select, options, selectedPath) {
@@ -8796,7 +8551,7 @@ async function saveManifestReferences() {
       ? `/api/head-image-manifest/${state.selectedManifestAssetId}/source`
       : (isCharacterAssembly
         ? `/api/character-assembly-manifest/${state.selectedManifestAssetId}/references`
-        : `/api/head-fitment-manifest/${state.selectedManifestAssetId}/references`);
+        : `/api/character-assembly-manifest/${state.selectedManifestAssetId}/references`);
     const payload = await fetchJson(
       `${route}?${currentQuery().toString()}`,
       {
@@ -8806,7 +8561,7 @@ async function saveManifestReferences() {
           source_path: headshotReferenceSelect.value,
         } : isCharacterAssembly ? {
           body_reference_path: bodyReferenceSelect.value,
-          head_fitment_path: headshotReferenceSelect.value,
+          head_image_path: headshotReferenceSelect.value,
         } : {
           body_reference_path: bodyReferenceSelect.value,
           head_image_path: headshotReferenceSelect.value,
@@ -8832,7 +8587,7 @@ async function uploadHeadshotReference() {
   const params = currentQuery();
   params.set("filename", file.name);
   try {
-    const uploadRoute = isHeadImage ? "/api/head-image-sources" : "/api/head-fitment-manifest/headshots";
+    const uploadRoute = "/api/head-image-sources";
     const payload = await fetchJson(`${uploadRoute}?${params.toString()}`, {
       method: "POST",
       headers: { "Content-Type": file.type || "application/octet-stream" },
@@ -9577,22 +9332,6 @@ bodyReferenceSelect.addEventListener("change", updateManifestPreviews);
 headshotReferenceSelect.addEventListener("change", updateManifestPreviews);
 headshotUpload.addEventListener("change", uploadHeadshotReference);
 saveManifestReferencesButton.addEventListener("click", saveManifestReferences);
-manifestMaskInitialize.addEventListener("click", initializeManifestMask);
-manifestMaskReject.addEventListener("click", rejectAndRegenerateManifestMask);
-manifestMaskSave.addEventListener("click", saveManifestMask);
-manifestMaskCanvas.addEventListener("pointerdown", (event) => {
-  manifestMaskDrawing = true;
-  manifestMaskCanvas.setPointerCapture(event.pointerId);
-  drawManifestMask(event);
-});
-manifestMaskCanvas.addEventListener("pointermove", drawManifestMask);
-manifestMaskCanvas.addEventListener("pointerup", (event) => {
-  manifestMaskDrawing = false;
-  manifestMaskCanvas.releasePointerCapture(event.pointerId);
-});
-manifestMaskCanvas.addEventListener("pointercancel", () => {
-  manifestMaskDrawing = false;
-});
 manifestPrev.addEventListener("click", () => {
   const index = state.manifestTasks.findIndex((task) => task.asset_id === state.selectedManifestAssetId);
   if (index > 0) {

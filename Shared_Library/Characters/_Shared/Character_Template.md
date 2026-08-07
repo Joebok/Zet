@@ -639,9 +639,9 @@ Rendering priorities:
 
 * Render one clear image of the character's head in the requested view.
 * Use the Canonical Art Style.
-* Head-only, head-and-shoulders, bust, or a small amount of upper torso are all acceptable when they support a natural result.
-* Use a simple, unobtrusive background and clear readable lighting.
-* Do not impose head-fitment neck geometry, a fixed neck cut, transparency, or shoulder-removal requirements.
+* Use natural head-and-shoulders or limited-bust framing with the complete head, hair silhouette, jaw, chin, neck, and enough upper-shoulder context for assembly.
+* Render on a transparent background with clear readable lighting; do not add a backdrop or environment.
+* The visible shoulders, upper torso, and clothing are contextual only and do not define the final assembled body.
 * Do not add a narrative scene, prominent props, or unrelated characters.
 
 <!-- ZET:END HEAD_IMAGE_RENDERING_RULES -->
@@ -655,25 +655,6 @@ Rendering priorities:
 * `[Body-only art style without face or head traits.]`
 
 <!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
-
-## Head Fitment Rendering Rules
-
-<!-- ZET:BEGIN HEAD_FITMENT_RENDERING_RULES -->
-
-Rendering priorities:
-
-* Head-and-neck module only.
-* Transparent background.
-* Clear silhouette.
-* Preserve requested head view.
-* Preserve identity and fitment geometry.
-* No dramatic lighting.
-* No narrative scene.
-* No acting.
-* No shoulders, torso, bust, clothing, costume, mannequin, or stand.
-
-<!-- ZET:END HEAD_FITMENT_RENDERING_RULES -->
-
 
 ## STANCE AND FOOT PLACEMENT — CRITICAL
 
@@ -907,7 +888,6 @@ Avoid:
 Examples:
 
 * For body-reference: avoid facial emotion, costume details, dramatic scene lighting.
-* For head-fitment: avoid changing facial identity, hair silhouette, ear shape, eye color, or neck alignment.
 * For costume-fitment: avoid changing body proportions to fit the costume.
 * For turnaround: avoid pose variation between views.
 * For expression sheets: avoid changing identity to exaggerate expression.
@@ -931,24 +911,6 @@ Recommended sections for body-reference:
 * NEUTRAL_POSE_STANCE_VIEW_[REQUESTED_VIEW]
 
 <!-- ZET:END COMPILER_BUNDLE_BODY_REFERENCE -->
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_HEAD_FITMENT -->
-
-Recommended sections for head-fitment:
-
-* GENERAL_DESCRIPTION_FACTS
-* HEAD_DESCRIPTION_FACTS
-* HEAD_DESCRIPTION_VIEW_[REQUESTED_VIEW]
-* HAIR_DESCRIPTION_FACTS
-* HAIR_DESCRIPTION_VIEW_[REQUESTED_VIEW]
-* IDENTITY_PRESERVATION_CORE
-* IDENTITY_PRESERVATION_FACE
-* IDENTITY_PRESERVATION_HAIR
-* IDENTITY_PRESERVATION_EARS
-* HEAD_FITMENT_RENDERING_RULES
-* NEGATIVE_GUIDANCE_GENERAL
-
-<!-- ZET:END COMPILER_BUNDLE_HEAD_FITMENT -->
 
 <!-- ZET:BEGIN COMPILER_BUNDLE_HEAD_IMAGE -->
 

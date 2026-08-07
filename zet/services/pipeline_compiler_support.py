@@ -479,7 +479,7 @@ def validate_character_assembly_inputs(
     body_view_token: str,
     head_view_token: str,
     body_reference: dict,
-    head_fitment: dict,
+    head_image: dict,
 ) -> None:
     if body_view_token != head_view_token:
         raise TemplateCompileError(
@@ -489,8 +489,8 @@ def validate_character_assembly_inputs(
 
     expected_views = (
         (body_reference, "body_reference", "body_view"),
-        (head_fitment, "head_fitment", "body_view"),
-        (head_fitment, "head_fitment", "head_view"),
+        (head_image, "head_image", "body_view"),
+        (head_image, "head_image", "head_view"),
     )
     for reference, role, field in expected_views:
         raw_view = str(reference.get(field) or "").strip()
@@ -506,7 +506,7 @@ def validate_character_assembly_inputs(
                 f"Reference slot {role} {field} {reference_view} does not match requested view {body_view_token}.",
             )
 
-    for reference, role in ((body_reference, "body_reference"), (head_fitment, "head_fitment")):
+    for reference, role in ((body_reference, "body_reference"), (head_image, "head_image")):
         for field, expected in (("character", character), ("phase", phase)):
             value = str(reference.get(field) or "").strip()
             if value and value != expected:

@@ -188,8 +188,17 @@ class CharacterOnboardingService:
             if payload.get("assets"):
                 return
         assets = self._foundation_assets(character, phase)
+        reserved_asset_ids = list(range(17, 25))
         assets_path.write_text(
-            json.dumps({"schema_version": 1, "next_asset_id": len(assets) + 1, "assets": assets}, indent=2) + "\n",
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "next_asset_id": max(item["asset_id"] for item in assets) + 1,
+                    "reserved_asset_ids": reserved_asset_ids,
+                    "assets": assets,
+                },
+                indent=2,
+            ) + "\n",
             encoding="utf-8",
         )
 
@@ -215,7 +224,7 @@ class CharacterOnboardingService:
                 elif value == str(shared_sections.get(name) or "").strip():
                     errors.append(f"{name} still contains shared template placeholder text.")
             sections, sources = load_body_reference_section_data(self.project_root, template_path)
-            for bundle_name in ["body-reference", "head-image", "head-fitment", "character-assembly"]:
+            for bundle_name in ["body-reference", "head-image", "character-assembly"]:
                 bundle = load_bundle(self.project_root, bundle_name)
                 for view in self._view_tokens():
                     selection = select_sections(sections, bundle, view, sources)
@@ -237,7 +246,6 @@ class CharacterOnboardingService:
         phase_path = self.path_service.character_path(character, phase)
         phase_path.mkdir(parents=True, exist_ok=True)
         for folder in [
-            phase_path / "Reference_Images" / "Headshots",
             phase_path / "Reference_Images" / "Head_Image_Sources",
             phase_path / "Body_Reference",
             self.path_service.character_asset_path(character, phase),
@@ -261,7 +269,7 @@ class CharacterOnboardingService:
             turnaround_path.write_text('{\n  "schema_version": 1,\n  "turnarounds": []\n}\n', encoding="utf-8")
 
     def _foundation_assets(self, character: str, phase: str) -> list[dict[str, Any]]:
-        """Build initial Body-Reference, Head-Image, Head-Fitment, and Character-Assembly assets."""
+        """Build initial Body-Reference, Head-Image, and Character-Assembly assets."""
         assets: list[Asset] = []
         stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         asset_id = 1
@@ -282,21 +290,8 @@ class CharacterOnboardingService:
                 )
             )
             asset_id += 1
-        for view in FOUNDATION_VIEWS:
-            assets.append(
-                Asset(
-                    asset_id,
-                    character,
-                    phase,
-                    "Head-Fitment",
-                    view,
-                    head_view=view,
-                    pipeline_stage="ADD_REF",
-                    final_image_output=f"Head-Fitment_{view}_{view}.png",
-                    updated_at=stamp,
-                )
-            )
-            asset_id += 1
+        # Preserve the retired Head-Fitment foundation slot without creating active assets.
+        asset_id += len(FOUNDATION_VIEWS)
         for view in FOUNDATION_VIEWS:
             assets.append(
                 Asset(
@@ -360,11 +355,7 @@ class CharacterOnboardingService:
             worker_by_stage = pipeline.get("worker_by_stage", {})
             if isinstance(worker_by_stage, dict):
                 worker_by_stage.pop("PROMPT_REVIEW", None)
-        head_fitment = pipelines.get("Head-Fitment")
-        if isinstance(head_fitment, dict):
-            workers = head_fitment.get("worker_by_stage")
-            if isinstance(workers, dict):
-                workers["RENDER"] = "zet.workers.head_fitment_render_worker"
+        pipelines.pop("Head-Fitment", None)
         pipelines_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def add_missing_head_image_foundation(self, character: str, phase: str) -> list[Asset]:
@@ -379,11 +370,14 @@ class CharacterOnboardingService:
             raise CharacterOnboardingError("Assets.json must contain an assets list.")
         existing = {str(record.get("body_view") or "") for record in records if record.get("pipeline") == "Head-Image"}
         next_id = int(payload.get("next_asset_id") or 1)
+        reserved_ids = {int(asset_id) for asset_id in payload.get("reserved_asset_ids", [])}
         stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         added: list[Asset] = []
         for view in FOUNDATION_VIEWS:
             if view in existing:
                 continue
+            while next_id in reserved_ids:
+                next_id += 1
             asset = Asset(next_id, character, phase, "Head-Image", view, head_view=view, final_image_output=f"Head-Image_{view}.png", updated_at=stamp)
             records.append(asdict(asset))
             added.append(asset)

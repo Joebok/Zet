@@ -87,7 +87,7 @@ assets["assets"].extend(
         {
             **assets["assets"][0],
             "asset_id": 4,
-            "pipeline": "Head-Fitment",
+            "pipeline": "Head-Image",
             "body_view": "Front-Left-3-4",
             "head_view": "Front-Left-3-4",
             "asset_state": "LOCKED",

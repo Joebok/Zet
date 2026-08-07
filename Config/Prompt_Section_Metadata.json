@@ -33,10 +33,6 @@
       "label": "Body-Reference Rendering Rules",
       "description": "Rules for neutral technical full-body reference rendering."
     },
-    "HEAD_FITMENT_RENDERING_RULES": {
-      "label": "Head-Fitment Rendering Rules",
-      "description": "Rules for neutral technical head-and-neck fitment rendering."
-    },
     "HEAD_IMAGE_REFERENCE_RULES": {
       "label": "Head-Image Reference Rules",
       "description": "Rules defining how an optional source image contributes identity and which target-phase changes override it."

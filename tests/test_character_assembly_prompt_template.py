@@ -28,7 +28,7 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         head_view: str | None = None,
         style_mode: str | None = None,
         body_reference: dict | None = None,
-        head_fitment: dict | None = None,
+        head_image: dict | None = None,
         output_name: str = "output",
     ) -> dict:
         references = [
@@ -40,9 +40,9 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
                 "character": "Test",
                 "phase": "Adult",
             },
-            head_fitment
+            head_image
             or {
-                "role": "head_fitment",
+                "role": "head_image",
                 "path": str(self.head_path),
                 "body_view": view,
                 "head_view": view,
@@ -155,12 +155,12 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("adaptive assembly region rather than a rigid source boundary", prompt)
+        self.assertIn("adaptive assembly region is the neck and immediate neck/hair/shoulder junction", prompt)
         self.assertIn("Neither source is pixel-locked within this local region", prompt)
-        self.assertIn("Final anatomical continuity and visual integration", prompt)
+        self.assertIn("Final anatomical continuity takes priority", prompt)
         self.assertIn("overall shoulder placement, width, and silhouette", prompt)
         self.assertIn("Adjust the visible neck length only as needed", prompt)
-        self.assertIn("use enough of that region to produce natural anatomy and a seamless final result", prompt)
+        self.assertIn("Do not beautify, smooth, rejuvenate", prompt)
         for omitted in (
             "Use the smallest practical area of change",
             "Preserve all other pixels",
@@ -210,15 +210,15 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         self.assertFalse((self.root / "missing-view" / "Final_Image_Prompt.md").exists())
 
     def test_mismatched_reference_view_fails_before_artifact_generation(self) -> None:
-        head_fitment = {
-            "role": "head_fitment",
+        head_image = {
+            "role": "head_image",
             "path": str(self.head_path),
             "body_view": "FRONT",
             "head_view": "LEFT_PROFILE",
         }
         with self.assertRaises(TemplateCompileError) as raised:
             compile_character_assembly_job(
-                self._job(head_fitment=head_fitment, output_name="reference-mismatch"),
+                self._job(head_image=head_image, output_name="reference-mismatch"),
                 PROJECT_ROOT,
             )
 

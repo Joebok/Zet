@@ -158,7 +158,7 @@ Reviewed At:
 - [ ] The result is recognizably the same character.
 - [ ] Intentional target-phase changes are present without unrelated identity drift.
 - [ ] Head and hair silhouettes match the view-specific Character.md rules.
-- [ ] Framing is natural and usable as a later Head-Fitment source.
+- [ ] Framing is natural and usable as a direct Character-Assembly source.
 - [ ] No narrative scene, prominent prop, or unrelated character was added.
 
 ## Notes

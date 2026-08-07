@@ -12,7 +12,11 @@ Target view: {{VIEW_LABEL}}
 
 Create one reusable head reference image. Preserve recognizable character identity while applying the target phase and requested view exactly. The target view controls the head rotation, face plane, ears, and gaze even when a source image shows another angle.
 
-Do not turn this into a fitment module. Natural head-only, head-and-shoulders, bust, or limited upper-torso framing is acceptable.
+Render a natural head-and-shoulders or limited-bust reference on a transparent background.
+
+Include the complete head and hair silhouette, complete jaw and chin, a naturally proportioned neck, and enough upper-shoulder context to show how the neck, hair, and shoulders relate. Do not crop through the jaw or upper neck, lengthen the neck for clearance, or force hair away from the neck and shoulders.
+
+The visible shoulders, upper torso, clothing, and transparent surrounding area are contextual only. They do not define the final body geometry and may be discarded during Character-Assembly.
 
 ## Character and phase
 

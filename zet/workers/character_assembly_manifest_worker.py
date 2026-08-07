@@ -61,17 +61,17 @@ def run(asset, context) -> WorkerResult:
     head_record, head_path = _matching_asset(
         context,
         payload,
-        pipeline="Head-Fitment",
-        body_view=asset.body_view,
+        pipeline="Head-Image",
+        body_view=head_view,
         head_view=head_view,
     )
     if head_record is None or head_path is None:
         return WorkerResult(
             success=False,
-            message=f"No locked head-fitment image found for {asset.body_view} / {head_view}.",
+            message=f"No locked head-image found for {head_view}.",
             advance_stage=False,
-            error_code="MISSING_HEAD_FITMENT",
-            error_message=f"No locked Head-Fitment asset found for body view {asset.body_view} and head view {head_view}.",
+            error_code="MISSING_HEAD_IMAGE_REFERENCE",
+            error_message=f"No locked Head-Image asset found for head view {head_view}.",
         )
 
     references = [
@@ -85,8 +85,8 @@ def run(asset, context) -> WorkerResult:
             "body_view": body_record.get("body_view"),
         },
         {
-            "role": "head_fitment",
-            "label": "Locked head-fitment image",
+            "role": "head_image",
+            "label": "Locked Head-Image",
             "path": str(head_path),
             "source_asset_id": head_record.get("asset_id"),
             "character": asset.character,

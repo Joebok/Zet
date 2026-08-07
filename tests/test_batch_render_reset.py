@@ -46,7 +46,7 @@ class BatchRenderResetTests(unittest.TestCase):
                         "assets": [
                             asset_record(1, "Body-Reference", "RENDER_REVIEW"),
                             asset_record(2, "Body-Reference", "LOCKED", "LOCKED"),
-                            asset_record(3, "Head-Fitment", "RENDER_REVIEW"),
+                            asset_record(3, "Head-Image", "RENDER_REVIEW"),
                             asset_record(4, "Body-Reference", "MANIFEST"),
                         ]
                     },
@@ -67,7 +67,7 @@ class BatchRenderResetTests(unittest.TestCase):
                                 },
                                 "worker_by_stage": {},
                             },
-                            "Head-Fitment": {
+                            "Head-Image": {
                                 "stages": ["RENDER", "RENDER_REVIEW"],
                                 "actor_by_stage": {"RENDER": "AI_AGENT", "RENDER_REVIEW": "HUMAN_AGENT"},
                                 "worker_by_stage": {},
@@ -119,7 +119,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(updated_4.actor, "HUMAN_AGENT")
 
             unchanged_3 = app.asset_repository.get_asset("Test", "Adult", 3)
-            self.assertEqual(unchanged_3.pipeline, "Head-Fitment")
+            self.assertEqual(unchanged_3.pipeline, "Head-Image")
             self.assertEqual(unchanged_3.pipeline_stage, "RENDER_REVIEW")
 
             ask_dirs = list((root / "Queue" / "Manual_Render_Queue" / "Ask").glob("Ask_Asset_1_RENDER_*"))

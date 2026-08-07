@@ -25,17 +25,6 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
-    head_fitment_render_mode: str = "prompt"
-    head_fitment_masked_local_preset: str = "head-fitment-inpaint"
-    head_fitment_masked_local_checkpoint: str = ""
-    head_fitment_mask_feather_pixels: int = 6
-    head_fitment_mask_generation: str = "comfyui_ensemble"
-    head_fitment_mask_auto_confirm: bool = True
-    head_fitment_mask_auto_confirm_threshold: float = 0.90
-    head_fitment_mask_sam_attempts: int = 3
-    head_fitment_mask_birefnet_model: str = "birefnet.safetensors"
-    head_fitment_mask_mediapipe_model: str = "mediapipe_face_fp32.safetensors"
-    head_fitment_mask_sam_checkpoint: str = "sam3.1_multiplex_fp16.safetensors"
     local_render_backend: str = "stable_matrix"
     stable_matrix_profile: str = ""
     stable_matrix_positive_prompt_globals: str = ""
@@ -137,17 +126,6 @@ class PipelineControlService:
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
-            head_fitment_render_mode=str(self.config.head_fitment_render_mode),
-            head_fitment_masked_local_preset=str(self.config.head_fitment_masked_local_preset),
-            head_fitment_masked_local_checkpoint=str(self.config.head_fitment_masked_local_checkpoint),
-            head_fitment_mask_feather_pixels=int(self.config.head_fitment_mask_feather_pixels),
-            head_fitment_mask_generation=str(self.config.head_fitment_mask_generation),
-            head_fitment_mask_auto_confirm=bool(self.config.head_fitment_mask_auto_confirm),
-            head_fitment_mask_auto_confirm_threshold=float(self.config.head_fitment_mask_auto_confirm_threshold),
-            head_fitment_mask_sam_attempts=int(self.config.head_fitment_mask_sam_attempts),
-            head_fitment_mask_birefnet_model=str(self.config.head_fitment_mask_birefnet_model),
-            head_fitment_mask_mediapipe_model=str(self.config.head_fitment_mask_mediapipe_model),
-            head_fitment_mask_sam_checkpoint=str(self.config.head_fitment_mask_sam_checkpoint),
             local_render_backend=str(self.config.local_render_backend),
             stable_matrix_profile=str(self.config.local_render_preset),
             stable_matrix_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
@@ -208,12 +186,6 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
-            {"Scope": "Project config", "Setting": "HeadFitment.RenderMode", "Value": self.config.head_fitment_render_mode},
-            {"Scope": "Project config", "Setting": "HeadFitment.MaskedLocalPreset", "Value": self.config.head_fitment_masked_local_preset},
-            {"Scope": "Project config", "Setting": "HeadFitment.MaskedLocalCheckpoint", "Value": self.config.head_fitment_masked_local_checkpoint},
-            {"Scope": "Project config", "Setting": "HeadFitment.MaskGeneration", "Value": self.config.head_fitment_mask_generation},
-            {"Scope": "Project config", "Setting": "HeadFitment.MaskAutoConfirm", "Value": self.config.head_fitment_mask_auto_confirm},
-            {"Scope": "Project config", "Setting": "HeadFitment.MaskAutoConfirmThreshold", "Value": self.config.head_fitment_mask_auto_confirm_threshold},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.Model", "Value": self.config.ai_prompt_analysis_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
@@ -251,17 +223,6 @@ class PipelineControlService:
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
-            ("HeadFitment", "RenderMode"): settings.head_fitment_render_mode,
-            ("HeadFitment", "MaskedLocalPreset"): settings.head_fitment_masked_local_preset,
-            ("HeadFitment", "MaskedLocalCheckpoint"): settings.head_fitment_masked_local_checkpoint,
-            ("HeadFitment", "MaskFeatherPixels"): settings.head_fitment_mask_feather_pixels,
-            ("HeadFitment", "MaskGeneration"): settings.head_fitment_mask_generation,
-            ("HeadFitment", "MaskAutoConfirm"): settings.head_fitment_mask_auto_confirm,
-            ("HeadFitment", "MaskAutoConfirmThreshold"): settings.head_fitment_mask_auto_confirm_threshold,
-            ("HeadFitment", "MaskSAMAttempts"): settings.head_fitment_mask_sam_attempts,
-            ("HeadFitment", "MaskBiRefNetModel"): settings.head_fitment_mask_birefnet_model,
-            ("HeadFitment", "MaskMediaPipeModel"): settings.head_fitment_mask_mediapipe_model,
-            ("HeadFitment", "MaskSAMCheckpoint"): settings.head_fitment_mask_sam_checkpoint,
             ("AIPromptAnalysis", "Model"): settings.ai_prompt_analysis_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
@@ -273,24 +234,6 @@ class PipelineControlService:
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))
             raise PipelineControlServiceError(f"Render backend must be one of: {choices}.")
-        if settings.head_fitment_render_mode not in {"prompt", "masked_local"}:
-            raise PipelineControlServiceError("Head-Fitment render mode must be prompt or masked_local.")
-        if not settings.head_fitment_masked_local_preset.strip():
-            raise PipelineControlServiceError("Head-Fitment masked-local preset cannot be blank.")
-        if settings.head_fitment_mask_feather_pixels < 0 or settings.head_fitment_mask_feather_pixels > 64:
-            raise PipelineControlServiceError("Head-Fitment mask feather must be between 0 and 64 pixels.")
-        if settings.head_fitment_mask_generation != "comfyui_ensemble":
-            raise PipelineControlServiceError("Head-Fitment mask generation must be comfyui_ensemble.")
-        if not 0 <= settings.head_fitment_mask_auto_confirm_threshold <= 1:
-            raise PipelineControlServiceError("Head-Fitment mask auto-confirm threshold must be between 0 and 1.")
-        if settings.head_fitment_mask_sam_attempts < 1 or settings.head_fitment_mask_sam_attempts > 3:
-            raise PipelineControlServiceError("Head-Fitment SAM attempts must be between 1 and 3.")
-        if not all((
-            settings.head_fitment_mask_birefnet_model.strip(),
-            settings.head_fitment_mask_mediapipe_model.strip(),
-            settings.head_fitment_mask_sam_checkpoint.strip(),
-        )):
-            raise PipelineControlServiceError("Head-Fitment mask model filenames cannot be blank.")
         local_backend = settings.local_render_backend.strip()
         if local_backend not in self.SAFE_LOCAL_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_LOCAL_RENDER_BACKENDS))

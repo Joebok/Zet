@@ -98,42 +98,10 @@ test("shared action roles and control states use the semantic design system", as
   await expect(page.locator(".fullscreen-image-close")).toBeHidden();
 });
 
-test("uploading a manifest headshot preserves the selected body reference", async ({ page }) => {
-  const detail = {
-    asset: { asset_id: 99, body_view: "Front", head_view: "Front" },
-    body_reference_options: [
-      { path: "body-one.png", label: "Body one", exists: true },
-      { path: "body-two.png", label: "Body two", exists: true },
-    ],
-    headshot_options: [{ path: "new-head.png", label: "New head", exists: true }],
-    selected_body_reference: { path: "body-one.png" },
-    selected_headshot: {},
-    reference_files: [],
-    is_manifest_editable: true,
-  };
-  await page.route("**/api/head-fitment-manifest/99?*", (route) => route.fulfill({ json: detail }));
-  await page.route("**/api/head-fitment-manifest/headshots?*", (route) => route.fulfill({
-    json: { name: "new-head.png", path: "new-head.png" },
-  }));
-
-  await openPage(page, "manifest");
-  await page.evaluate(() => selectManifestAsset(99));
-  await page.locator("#body-reference-select").selectOption("body-two.png");
-  await page.locator("#headshot-upload").setInputFiles({
-    name: "new-head.png",
-    mimeType: "image/png",
-    buffer: Buffer.from("headshot"),
-  });
-
-  await expect(page.locator("#body-reference-select")).toHaveValue("body-two.png");
-  await expect(page.locator("#headshot-reference-select")).toHaveValue("new-head.png");
-});
-
 test("head-image manifest selection shows only the optional source image", async ({ page }) => {
   await page.route("**/api/head-image-manifest/tasks?*", (route) => route.fulfill({
     json: { tasks: [{ asset_id: 53, pipeline: "Head-Image", body_view: "Front", head_view: "Front" }] },
   }));
-  await page.route("**/api/head-fitment-manifest/tasks?*", (route) => route.fulfill({ json: { tasks: [] } }));
   await page.route("**/api/head-image-manifest/53?*", (route) => route.fulfill({
     json: {
       asset: { asset_id: 53, pipeline: "Head-Image", body_view: "Front", head_view: "Front" },
@@ -149,60 +117,6 @@ test("head-image manifest selection shows only the optional source image", async
   await expect(page.locator("#manifest-task-table tbody td")).toHaveText(["53", "Head-Image", "Front", "Ready"]);
   await expect(page.locator("#manifest-body-section")).toBeHidden();
   await expect(page.locator("#manifest-head-heading")).toHaveText("Optional Source Image");
-});
-
-test("changing manifest assets clears the previous mask while the next mask loads", async ({ page }) => {
-  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
-  const tasks = [1, 2].map((asset_id) => ({
-    asset_id,
-    pipeline: "Head-Fitment",
-    body_view: "Front",
-    ai_proxy_status: { pending: false },
-  }));
-  const detail = (asset_id) => ({
-    asset: { asset_id, pipeline: "Head-Fitment", body_view: "Front", head_view: "Front" },
-    body_reference_options: [],
-    headshot_options: [],
-    selected_body_reference: {},
-    selected_headshot: { path: `head-${asset_id}.png` },
-    selected_head_image: { path: `head-${asset_id}.png` },
-    reference_files: [],
-    is_manifest_editable: true,
-    ai_proxy_status: { pending: false },
-    masked_edit: {
-      mode: "masked_local",
-      mask_exists: true,
-      mask_path: `mask-${asset_id}.png`,
-      generation_status: "ready",
-      confirmed: false,
-      current: true,
-    },
-  });
-  await page.route("**/api/head-image-manifest/tasks?*", (route) => route.fulfill({ json: { tasks: [] } }));
-  await page.route("**/api/character-assembly-manifest/tasks?*", (route) => route.fulfill({ json: { tasks: [] } }));
-  await page.route("**/api/head-fitment-manifest/tasks?*", (route) => route.fulfill({ json: { tasks } }));
-  await page.route("**/api/head-fitment-model-requirements", (route) => route.fulfill({ json: {} }));
-  await page.route("**/api/file?*", (route) => route.fulfill({ contentType: "image/png", body: png }));
-  await page.route("**/api/head-fitment-manifest/1?*", (route) => route.fulfill({ json: detail(1) }));
-  await page.route("**/api/head-fitment-manifest/2?*", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    await route.fulfill({ json: detail(2) });
-  });
-
-  await openPage(page, "manifest");
-  await expect.poll(() => page.locator("#manifest-mask-canvas").evaluate((canvas) => canvas.width)).toBe(1);
-  await expect(page.locator('#manifest-mask-brush-mode input[type="radio"]')).toHaveCount(3);
-  await expect(page.locator("#manifest-mask-initialize")).toHaveText("Regen Mask");
-  await expect(page.locator("#manifest-mask-reject")).toHaveText("Reject and Regen");
-  const [canvasBox, controlsBox] = await Promise.all([
-    page.locator("#manifest-mask-canvas").boundingBox(),
-    page.locator(".manifest-mask-controls").boundingBox(),
-  ]);
-  expect(controlsBox.x).toBeGreaterThan(canvasBox.x + canvasBox.width);
-  await page.locator('#manifest-task-table tbody tr[data-asset-id="2"]').click();
-  await expect(page.locator("#manifest-mask-status")).toHaveText("Please wait for mask to load.");
-  await expect.poll(() => page.locator("#manifest-mask-canvas").evaluate((canvas) => canvas.width)).toBe(0);
-  await expect.poll(() => page.locator("#manifest-mask-canvas").evaluate((canvas) => canvas.width)).toBe(1);
 });
 
 test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
@@ -267,8 +181,8 @@ test("first visit chooses Story Overview for a ready character and Character Ove
 
 test("workspace overviews show readiness, image states, and scene navigation", async ({ page }) => {
   await openPage(page, "onboarding");
-  await expect(page.locator("#character-workflow > li")).toHaveCount(5);
-  await expect(page.locator("#character-overview-metrics .overview-metric")).toHaveCount(6);
+  await expect(page.locator("#character-workflow > li")).toHaveCount(6);
+  await expect(page.locator("#character-overview-metrics .overview-metric")).toHaveCount(7);
   await expect(page.locator("#character-recommended-label")).not.toBeEmpty();
 
   await page.locator("#workspace-story").click();

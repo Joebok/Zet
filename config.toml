@@ -55,19 +55,6 @@ IntervalSeconds = 60
 [Render]
 Backend = "manual_chatgpt"
 
-[HeadFitment]
-RenderMode = "masked_local"
-MaskedLocalPreset = "head-fitment-inpaint"
-MaskedLocalCheckpoint = "perfectdeliberate_v90.safetensors"
-MaskFeatherPixels = 6
-MaskGeneration = "comfyui_ensemble"
-MaskAutoConfirm = true
-MaskAutoConfirmThreshold = 0.90
-MaskSAMAttempts = 3
-MaskBiRefNetModel = "birefnet.safetensors"
-MaskMediaPipeModel = "mediapipe_face_fp32.safetensors"
-MaskSAMCheckpoint = "sam3.1_multiplex_fp16.safetensors"
-
 [AIPromptAnalysis]
 Model = "zet-image-analyst:latest"
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

@@ -1,6 +1,8 @@
 # Render Task
 
-Replace the mannequin head and placeholder neck of the Reference Body with the supplied fitted Character Head.
+Replace the mannequin head and placeholder neck of the Reference Body using the supplied Character Head image.
+
+The Character Head may be a natural head-and-shoulders or limited-bust reference. Its neck, shoulders, upper torso, clothing, and transparent surrounding area provide context only. Do not copy those contextual elements into the final image.
 
 Preserve the established character identity, body proportions, pose, framing, clothing, background, and requested view.
 
@@ -18,9 +20,11 @@ The Reference Body controls the overall body geometry, body proportions, pose, s
 
 The Character Head controls the selected character-phase identity, head shape, face, age characteristics, species, expression, gaze, hairstyle design, ears, feature visibility, and head orientation. Preserve those defining properties directly; do not treat the source as loose identity inspiration.
 
-The head–neck–shoulder junction is an adaptive assembly region rather than a rigid source boundary.
+The adaptive assembly region is the neck and immediate neck/hair/shoulder junction rather than a rigid source boundary.
 
-Neither source is pixel-locked within this local region. Reconstruct and harmonize the region as needed to produce the most natural final anatomy and visual continuity while preserving the defining properties controlled by each source.
+Neither source is pixel-locked within this local region. Reconstruct and harmonize only that region as needed to produce natural anatomy and visual continuity while preserving the defining properties controlled by each source.
+
+The face, jaw, chin, ears, skull, expression, and main hairstyle mass of the Character Head are outside the adaptive region. The Reference Body's overall shoulder geometry and body silhouette are also outside it.
 
 Do not require literal preservation of imperfect neck edges, attachment geometry, hair intersections, shading transitions, or placeholder material.
 
@@ -46,7 +50,9 @@ Adjust the local neck width, taper, attachment position, jaw-to-neck transition,
 
 Adjust the visible neck length only as needed to correct the attachment and maintain natural proportions.
 
-Keep changes localized to the head–neck–shoulder assembly region, but use enough of that region to produce natural anatomy and a seamless final result. Final anatomical continuity and visual integration take priority over literal preservation of either source within this region.
+Keep changes localized to the neck and immediate neck/hair/shoulder junction. Final anatomical continuity takes priority over literal preservation of source neck pixels and local attachment geometry, but never over the Character Head's facial identity, apparent age, expression, gaze, ears, or main hairstyle design.
+
+Treat the supplied Character Head as visually final. Preserve facial maturity, feature geometry, skin texture, eyelids, under-eye contours, cheek structure, jaw, chin, asymmetry, shading, brushwork, and surface detail. Do not beautify, smooth, rejuvenate, cosmetically lift, anime-stylize, or broadly repaint the face.
 
 The head must not float, appear pasted on, sink into the shoulders, or connect through an unnaturally long, narrow, wide, twisted, or sharply cut neck.
 

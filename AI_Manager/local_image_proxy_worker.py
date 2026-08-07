@@ -19,7 +19,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -44,10 +43,6 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
 from Local_Render_Adapters import LocalRenderUnavailable, render_image
 from zet.models.ai_proxy import AIProxyAskManifest
 from zet.services.atomic_file_service import write_json_atomic
-from zet.services.config_service import ConfigService
-from zet.services.head_fitment_edit_service import HeadFitmentEditService
-from zet.services.head_fitment_mask_generation_service import HeadFitmentMaskGenerationService
-from zet.services.path_service import PathService
 from AI_Manager.proxy_worker_output import log_job
 
 SUPPORTED_WORKER_TYPES = {"local_image_render"}
@@ -168,59 +163,7 @@ def process_claimed(
         if not prompt_path.exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
 
-        if str(ask_manifest.get("task_type") or "") == "head_fitment_mask_generate":
-            config_path = Path(config_path).resolve()
-            config = ConfigService.load(config_path)
-            references = {
-                str(item.get("role") or ""): folder / str(item.get("path") or "")
-                for item in ask_manifest.get("reference_files") or []
-                if isinstance(item, dict)
-            }
-            head_path = references.get("head_image") or references.get("headshot")
-            body_path = references.get("body_reference")
-            if head_path is None or body_path is None or not head_path.is_file() or not body_path.is_file():
-                raise FileNotFoundError("Head-Fitment mask task requires localized head_image and body_reference files.")
-            generated = HeadFitmentMaskGenerationService().generate(
-                head_path=head_path,
-                body_path=body_path,
-                output_dir=folder,
-                server_url=str(config.comfyui_server_url),
-                view=str(ask_manifest.get("head_view") or ask_manifest.get("body_view") or "Front"),
-                birefnet_model=str(ask_manifest.get("mask_birefnet_model") or config.head_fitment_mask_birefnet_model),
-                mediapipe_model=str(ask_manifest.get("mask_mediapipe_model") or config.head_fitment_mask_mediapipe_model),
-                sam_checkpoint=str(ask_manifest.get("mask_sam_checkpoint") or config.head_fitment_mask_sam_checkpoint),
-                attempts=int(ask_manifest.get("mask_sam_attempts", config.head_fitment_mask_sam_attempts)),
-                poll_seconds=float(config.comfyui_poll_seconds),
-                timeout_seconds=float(config.comfyui_timeout_seconds),
-            )
-            result = SimpleNamespace(
-                image_path=generated.mask_path,
-                metadata_path=generated.report_path,
-                artifact_paths=generated.artifact_paths,
-                prompt_id=generated.prompt_id,
-            )
-        elif str(ask_manifest.get("task_type") or "") == "head_fitment_inpaint":
-            config_path = Path(config_path).resolve()
-            config = ConfigService.load(config_path)
-            path_service = PathService(config, config_path.parent)
-            service = HeadFitmentEditService(None, path_service)
-            outputs = service.render_artifacts(
-                prompt_text=prompt_path.read_text(encoding="utf-8"),
-                init_path=folder / str(ask_manifest.get("head_fitment_init_file") or "Head_Fitment_Init.png"),
-                mask_path=folder / str(ask_manifest.get("head_fitment_mask_file") or "Head_Fitment_Edit_Mask.png"),
-                output_path=folder / expected_output,
-                preset_name=preset_name,
-                checkpoint=str(ask_manifest.get("checkpoint") or "") or None,
-                feather_pixels=int(ask_manifest.get("mask_feather_pixels", 6)),
-            )
-            result = SimpleNamespace(
-                image_path=outputs[0],
-                metadata_path=outputs[2],
-                artifact_paths=outputs[1:],
-                prompt_id=read_json(outputs[2]).get("prompt_id", ""),
-            )
-        else:
-            result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
+        result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
         output_path = folder / expected_output
         if Path(result.image_path).resolve() != output_path.resolve():
             shutil.copy2(result.image_path, output_path)
