@@ -60,8 +60,6 @@ The final skull must read at the same anatomical scale as the mannequin skull. I
 
 ## Style Mode
 
-Assembly style mode: {{ASSEMBLY_STYLE_MODE}}
-
 {{ASSEMBLY_STYLE_INSTRUCTION}}
 
 # Assembly and Neck Connection
