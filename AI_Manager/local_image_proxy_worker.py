@@ -43,8 +43,10 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
 
 from Local_Render_Adapters import LocalRenderUnavailable, render_image
 from zet.models.ai_proxy import AIProxyAskManifest
+from zet.services.atomic_file_service import write_json_atomic
 from zet.services.config_service import ConfigService
 from zet.services.head_fitment_edit_service import HeadFitmentEditService
+from zet.services.head_fitment_mask_generation_service import HeadFitmentMaskGenerationService
 from zet.services.path_service import PathService
 from AI_Manager.proxy_worker_output import log_job
 
@@ -67,19 +69,8 @@ def read_ask_manifest(path: Path) -> dict:
     return AIProxyAskManifest.from_dict(read_json(path)).to_dict()
 
 
-def ensure_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-
-
 def write_json(path: Path, data: dict) -> None:
-    payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    ensure_directory(path.parent)
-    temp_path = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-    try:
-        temp_path.write_text(payload, encoding="utf-8")
-        temp_path.replace(path)
-    finally:
-        temp_path.unlink(missing_ok=True)
+    write_json_atomic(path, data)
 
 
 def localize_output_json_paths(folder: Path) -> None:
@@ -177,7 +168,38 @@ def process_claimed(
         if not prompt_path.exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
 
-        if str(ask_manifest.get("task_type") or "") == "head_fitment_inpaint":
+        if str(ask_manifest.get("task_type") or "") == "head_fitment_mask_generate":
+            config_path = Path(config_path).resolve()
+            config = ConfigService.load(config_path)
+            references = {
+                str(item.get("role") or ""): folder / str(item.get("path") or "")
+                for item in ask_manifest.get("reference_files") or []
+                if isinstance(item, dict)
+            }
+            head_path = references.get("head_image") or references.get("headshot")
+            body_path = references.get("body_reference")
+            if head_path is None or body_path is None or not head_path.is_file() or not body_path.is_file():
+                raise FileNotFoundError("Head-Fitment mask task requires localized head_image and body_reference files.")
+            generated = HeadFitmentMaskGenerationService().generate(
+                head_path=head_path,
+                body_path=body_path,
+                output_dir=folder,
+                server_url=str(config.comfyui_server_url),
+                view=str(ask_manifest.get("head_view") or ask_manifest.get("body_view") or "Front"),
+                birefnet_model=str(ask_manifest.get("mask_birefnet_model") or config.head_fitment_mask_birefnet_model),
+                mediapipe_model=str(ask_manifest.get("mask_mediapipe_model") or config.head_fitment_mask_mediapipe_model),
+                sam_checkpoint=str(ask_manifest.get("mask_sam_checkpoint") or config.head_fitment_mask_sam_checkpoint),
+                attempts=int(ask_manifest.get("mask_sam_attempts", config.head_fitment_mask_sam_attempts)),
+                poll_seconds=float(config.comfyui_poll_seconds),
+                timeout_seconds=float(config.comfyui_timeout_seconds),
+            )
+            result = SimpleNamespace(
+                image_path=generated.mask_path,
+                metadata_path=generated.report_path,
+                artifact_paths=generated.artifact_paths,
+                prompt_id=generated.prompt_id,
+            )
+        elif str(ask_manifest.get("task_type") or "") == "head_fitment_inpaint":
             config_path = Path(config_path).resolve()
             config = ConfigService.load(config_path)
             path_service = PathService(config, config_path.parent)
@@ -193,9 +215,9 @@ def process_claimed(
             )
             result = SimpleNamespace(
                 image_path=outputs[0],
-                metadata_path=outputs[-1],
+                metadata_path=outputs[2],
                 artifact_paths=outputs[1:],
-                prompt_id="",
+                prompt_id=read_json(outputs[2]).get("prompt_id", ""),
             )
         else:
             result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))

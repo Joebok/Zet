@@ -14,6 +14,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.models.reference import reference_files_payload
 from zet.services.ai_proxy_path_service import AIProxyPathService
+from zet.services.atomic_file_service import write_text_atomic
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.head_fitment_edit_service import HeadFitmentEditService
 from zet.services.path_service import PathService
@@ -69,14 +70,7 @@ class AIProxyService:
         return data
 
     def _write_text_atomic(self, path: Path, contents: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_name(f"{path.name}.tmp")
-        try:
-            temp_path.write_text(contents, encoding="utf-8")
-            temp_path.replace(path)
-        finally:
-            if temp_path.exists():
-                temp_path.unlink()
+        write_text_atomic(path, contents)
 
     def _write_json_atomic(self, path: Path, payload: dict) -> None:
         contents = json.dumps(payload, indent=2) + "\n"
@@ -254,7 +248,7 @@ class AIProxyService:
                     "head_fitment_init_file": "Head_Fitment_Init.png",
                     "head_fitment_mask_file": "Head_Fitment_Edit_Mask.png",
                     "head_fitment_spec_file": "Head_Fitment_Edit.json",
-                    "image_generation": "stable_matrix",
+                    "image_generation": "comfyui",
                     "checkpoint": str(self.path_service.config.head_fitment_masked_local_checkpoint),
                     "mask_feather_pixels": int(self.path_service.config.head_fitment_mask_feather_pixels),
                 }
@@ -271,6 +265,108 @@ class AIProxyService:
             if not source.is_file():
                 raise AIProxyServiceError(f"Missing Head-Fitment inpaint artifact: {source.name}")
             shutil.copy2(source, ask_path / source.name)
+
+    def stage_head_fitment_mask_ask(self, character: str, phase: str, asset_id: int, *, force: bool = False) -> Path | None:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        if asset.pipeline != "Head-Fitment":
+            raise AIProxyServiceError("Automated mask generation is only available for Head-Fitment assets.")
+        edit_service = HeadFitmentEditService(self.asset_repository, self.path_service)
+        context = edit_service.context(character, phase, asset_id)
+        if context["confirmed"] and context["current"]:
+            return None
+        head = edit_service._reference(asset, "head_image", "headshot")
+        body = edit_service._reference(asset, "body_reference")
+        head_path = Path(str(head["path"]))
+        body_path = Path(str(body["path"]))
+        head_hash = edit_service._sha256(head_path)
+        body_hash = edit_service._sha256(body_path)
+        if not force:
+            for path in self.ai_proxy_path_service.task_paths("ask", "answer"):
+                queued = self._read_json_if_exists(path / "ask_manifest.json")
+                if (
+                    queued.get("task_type") == "head_fitment_mask_generate"
+                    and int(queued.get("asset_id") or 0) == asset_id
+                    and queued.get("head_image_sha256") == head_hash
+                    and queued.get("body_reference_sha256") == body_hash
+                    and not (path / "harvest_manifest.json").exists()
+                ):
+                    return path
+        self._ensure_queue_dirs()
+        stamp = self._timestamp_compact()
+        ask_id = f"Ask_Asset_{asset_id}_HEAD_FITMENT_MASK_{stamp}"
+        ask_path = self._create_ask_folder(ask_id, "local_image_render")
+        references = reference_files_payload([head, body])
+        references[0]["role"] = "head_image"
+        references[1]["role"] = "body_reference"
+        manifest = {
+            "version": AI_PROXY_PROTOCOL_VERSION,
+            "ask_id": ask_id,
+            "asset_id": asset_id,
+            "character": character,
+            "phase": phase,
+            "pipeline": asset.pipeline,
+            "pipeline_stage": asset.pipeline_stage,
+            "ollama_attempt_id": f"{stamp}_{asset_id}_HEAD_FITMENT_MASK",
+            "worker_type": "local_image_render",
+            "prompt_file": "Head_Fitment_Mask_Task.md",
+            "expected_output": "Head_Fitment_Edit_Mask.png",
+            "candidate_output_file": None,
+            "task_type": "head_fitment_mask_generate",
+            "auxiliary": True,
+            "target_output_dir": str(self.path_service.pipeline_path(asset).resolve()),
+            "artifact_output_dir": str((self.path_service.pipeline_path(asset) / "Head_Fitment_Mask_Diagnostics").resolve()),
+            "target_output_file": "Head_Fitment_Edit_Mask.png",
+            "image_generation": "comfyui",
+            "render_preset": "head-fitment-mask-ensemble",
+            "body_view": asset.body_view,
+            "head_view": asset.head_view or asset.body_view,
+            "head_image_sha256": head_hash,
+            "body_reference_sha256": body_hash,
+            "mask_auto_confirm": bool(self.path_service.config.head_fitment_mask_auto_confirm),
+            "replace_confirmed_mask": False,
+            "mask_auto_confirm_threshold": float(self.path_service.config.head_fitment_mask_auto_confirm_threshold),
+            "mask_sam_attempts": int(self.path_service.config.head_fitment_mask_sam_attempts),
+            "mask_birefnet_model": str(self.path_service.config.head_fitment_mask_birefnet_model),
+            "mask_mediapipe_model": str(self.path_service.config.head_fitment_mask_mediapipe_model),
+            "mask_sam_checkpoint": str(self.path_service.config.head_fitment_mask_sam_checkpoint),
+            "reference_files": references,
+        }
+        self._write_json_atomic(ask_path / "ask_manifest.json", manifest)
+        self._write_text_atomic(ask_path / "Head_Fitment_Mask_Task.md", "Generate semantic Head-Fitment mask artifacts.\n")
+        return self._publish_ask_folder(ask_path, ask_id, "local_image_render")
+
+    def head_fitment_mask_generation_status(self, character: str, phase: str, asset_id: int) -> dict:
+        for path in reversed(list(self.ai_proxy_path_service.task_paths("ask", "running", "answer"))):
+            manifest = self._read_json_if_exists(path / "ask_manifest.json")
+            if manifest.get("task_type") != "head_fitment_mask_generate" or int(manifest.get("asset_id") or 0) != asset_id:
+                continue
+            if (path / "harvest_manifest.json").exists():
+                harvest = self._read_json_if_exists(path / "harvest_manifest.json")
+                return {"generation_status": "ready" if "APPLIED" in str(harvest.get("status")) else "failed", "source_ask_id": manifest.get("ask_id")}
+            answer = self._read_json_if_exists(path / "answer_manifest.json")
+            return {
+                "generation_status": "failed" if answer and answer.get("status") not in {None, "SUCCESS"} else "pending",
+                "source_ask_id": manifest.get("ask_id"),
+            }
+        return {"generation_status": "missing", "source_ask_id": None}
+
+    def asset_job_status(self, asset_id: int) -> dict:
+        """Return outstanding AI proxy work for one asset."""
+        jobs = []
+        for state in ("ask", "running", "answer"):
+            for path in self.ai_proxy_path_service.task_paths(state):
+                manifest = self._read_json_if_exists(path / "ask_manifest.json")
+                if int(manifest.get("asset_id") or 0) != asset_id:
+                    continue
+                if state == "answer" and (path / "harvest_manifest.json").exists():
+                    continue
+                jobs.append({
+                    "ask_id": manifest.get("ask_id") or path.name,
+                    "state": state,
+                    "task_type": manifest.get("task_type"),
+                    "worker_type": manifest.get("worker_type"),
+                })
+        return {"pending": bool(jobs), "count": len(jobs), "jobs": jobs}
 
     def _prompt_contents(self, asset) -> str:
         """Read the prompt text that should be copied into a queued ask."""

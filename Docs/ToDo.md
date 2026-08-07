@@ -8,10 +8,6 @@ Augmented prompt for left-right read on scenes; incorporate depth.
 
 Setting up HTTPS://
 
-If you want the fastest improvement:
+Head-Fitment : visible status of local image jobs on asset page
 
-Remove:
-the entire Canonical Art Style Directive
-“Render in the Canonical Art Style”
-
-Preserve all visible facial age and maturity cues from the Character Head source, including skin texture, fine lines, mature eyelid structure, under-eye contours, cheek hollowing, mouth-area definition, jaw, and chin. This requirement applies to the face only; the source neck, shoulders, collarbones, and torso are not preserved. 
+On AI tools, see status of ComfyUI - add start/stop/restart?

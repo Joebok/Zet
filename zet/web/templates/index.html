@@ -900,6 +900,7 @@
                 <th>asset</th>
                 <th>pipeline</th>
                 <th>body view</th>
+                <th>status</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -925,32 +926,32 @@
             </section>
           </div>
           <section id="manifest-masked-edit" class="manifest-masked-edit" hidden>
-            <div class="review-header">
-              <div>
+            <div class="manifest-mask-workspace">
+              <canvas id="manifest-mask-canvas" aria-label="Head-Fitment semantic mask editor"></canvas>
+              <div class="manifest-mask-controls">
                 <h3>Masked Local Edit</h3>
                 <div id="manifest-mask-status" class="status-text"></div>
-              </div>
-              <div class="button-row compact">
-                <button id="manifest-mask-initialize" type="button">Initialize Mask</button>
-                <button id="manifest-mask-save" class="primary-action" type="button" disabled>Confirm Mask</button>
+                <div class="button-row compact">
+                  <button id="manifest-mask-initialize" type="button">Generate Mask</button>
+                  <button id="manifest-mask-reject" type="button" disabled>Reject and Regen</button>
+                  <button id="manifest-mask-save" class="primary-action" type="button" disabled>Confirm Mask</button>
+                </div>
+                <div class="manifest-mask-tools">
+                  <fieldset id="manifest-mask-brush-mode">
+                    <legend>Brush</legend>
+                    <label><input type="radio" name="manifest-mask-brush-mode" value="protect" checked> Protect head</label>
+                    <label><input type="radio" name="manifest-mask-brush-mode" value="edit"> Edit neck</label>
+                    <label><input type="radio" name="manifest-mask-brush-mode" value="remove"> Remove</label>
+                  </fieldset>
+                  <label>Size <input id="manifest-mask-brush-size" type="range" min="4" max="120" value="36"></label>
+                </div>
+                <p class="field-help">Green is protected, amber is neck-only editing, and red is removed. The final renderer restores protected pixels exactly.</p>
+                <details>
+                  <summary>Required local models</summary>
+                  <pre id="manifest-mask-models"></pre>
+                </details>
               </div>
             </div>
-            <div class="manifest-mask-tools">
-              <label>Brush
-                <select id="manifest-mask-brush-mode">
-                  <option value="protect">Protect head</option>
-                  <option value="edit">Edit neck</option>
-                  <option value="remove">Remove</option>
-                </select>
-              </label>
-              <label>Size <input id="manifest-mask-brush-size" type="range" min="4" max="120" value="36"></label>
-            </div>
-            <canvas id="manifest-mask-canvas" aria-label="Head-Fitment semantic mask editor"></canvas>
-            <p class="field-help">Green is protected, amber is neck-only editing, and red is removed. The final renderer restores protected pixels exactly.</p>
-            <details>
-              <summary>Required local models</summary>
-              <pre id="manifest-mask-models"></pre>
-            </details>
           </section>
         </section>
         <aside class="review-actions">
@@ -1327,6 +1328,13 @@
             <label>Head-Fitment masked preset<input id="setting-head-fitment-preset" type="text" value="head-fitment-inpaint"></label>
             <label>Head-Fitment checkpoint<input id="setting-head-fitment-checkpoint" type="text"></label>
             <label>Head-Fitment mask feather pixels<input id="setting-head-fitment-feather" type="number" min="0" max="64" step="1" value="6"></label>
+            <label>Mask generation<input id="setting-head-fitment-mask-generation" type="text" value="comfyui_ensemble" readonly></label>
+            <label><input id="setting-head-fitment-mask-auto-confirm" type="checkbox" checked> Auto-confirm passing masks</label>
+            <label>Mask auto-confirm threshold<input id="setting-head-fitment-mask-threshold" type="number" min="0" max="1" step="0.01" value="0.90"></label>
+            <label>SAM attempts<input id="setting-head-fitment-mask-attempts" type="number" min="1" max="3" step="1" value="3"></label>
+            <label>BiRefNet model<input id="setting-head-fitment-birefnet-model" type="text" value="birefnet.safetensors"></label>
+            <label>MediaPipe model<input id="setting-head-fitment-mediapipe-model" type="text" value="mediapipe_face_fp32.safetensors"></label>
+            <label>SAM checkpoint<input id="setting-head-fitment-sam-checkpoint" type="text" value="sam3.1_multiplex_fp16.safetensors"></label>
             <button class="primary-action" type="submit">Save Project Settings</button>
           </form>
         </section>

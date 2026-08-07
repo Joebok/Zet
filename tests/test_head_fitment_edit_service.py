@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import base64
 from io import BytesIO
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -19,6 +19,7 @@ from zet.services.head_fitment_edit_service import (
     MASK_EDIT,
     MASK_PROTECT,
     MASK_REMOVE,
+    compile_head_fitment_inpaint_workflow,
 )
 from zet.services.path_service import PathService
 
@@ -110,23 +111,23 @@ class HeadFitmentEditServiceTests(unittest.TestCase):
 
             requirements = {
                 "schema_version": 1,
-                "backend": "stable_matrix",
+                "backend": "comfyui",
                 "server_url": "http://test",
                 "preset": "head-fitment-inpaint",
-                "models": [{"kind": "checkpoint", "required": True, "configured": "test-checkpoint", "available": True, "resolved": {"title": "test-checkpoint"}}],
+                "required_nodes": [],
+                "missing_nodes": [],
+                "models": [{"kind": "checkpoint", "required": True, "configured": "test-checkpoint", "available": True, "resolved": {"name": "test-checkpoint"}}],
                 "not_required": ["ControlNet"],
             }
 
-            def response(_url, _path, payload):
-                init = Image.open(BytesIO(base64.b64decode(payload["init_images"][0].split(",", 1)[1])))
-                rendered = Image.new("RGB", init.size, (255, 0, 0))
-                output = BytesIO()
-                rendered.save(output, "PNG")
-                return {"images": [base64.b64encode(output.getvalue()).decode("ascii")], "info": "test"}
+            def response(_workflow, *, output_dir, **_kwargs):
+                raw = output_dir / "raw-test.png"
+                Image.new("RGB", (64, 80), (255, 0, 0)).save(raw)
+                return SimpleNamespace(image_paths=[raw], prompt_id="prompt-1")
 
             output_path = service.path_service.pipeline_path(asset) / asset.final_image_output
-            with patch.object(service, "model_requirements", return_value=requirements), patch.object(
-                service, "_post_json", side_effect=response
+            with patch.object(service, "model_requirements", return_value=requirements), patch(
+                "zet.services.head_fitment_edit_service.run_comfyui_workflow", side_effect=response
             ):
                 service.render(asset, "fit only the neck", output_path)
 
@@ -136,6 +137,65 @@ class HeadFitmentEditServiceTests(unittest.TestCase):
                 self.assertEqual(0, result.getpixel((2, 75))[3])
                 self.assertEqual((255, 0, 0), result.getpixel((32, 65))[:3])
             self.assertTrue(service.paths(asset).model_requirements.exists())
+
+    def test_comfyui_inpaint_workflow_uses_core_nodes(self) -> None:
+        workflow = compile_head_fitment_inpaint_workflow(
+            init_input="init.png", mask_input="mask.png", checkpoint="model.safetensors",
+            prompt="neck", negative_prompt="face", steps=24, cfg=6.0,
+            sampler_name="dpmpp_2m", scheduler="karras", denoise=0.22,
+            grow_mask_by=6, seed=7, output_prefix="Zet/Test",
+        )
+        self.assertEqual("VAEEncodeForInpaint", workflow["7"]["class_type"])
+        self.assertEqual(0.22, workflow["8"]["inputs"]["denoise"])
+        self.assertEqual("red", workflow["4"]["inputs"]["channel"])
+
+    def test_generated_mask_auto_confirms_and_preserves_confirmed_current_mask(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _, _ = self._fixture(Path(temp_dir))
+            generated = Path(temp_dir) / "generated.png"
+            mask = np.full((80, 64), MASK_REMOVE, np.uint8)
+            mask[:55, 8:56] = MASK_PROTECT
+            mask[55:74, 22:42] = MASK_EDIT
+            Image.fromarray(mask, "L").save(generated)
+            report = {
+                "confidence_score": 0.95,
+                "validation_failures": [],
+                "components": {"semantic_agreement": 0.95},
+                "geometry": {"center_x": 32},
+            }
+
+            installed = service.install_generated_mask(
+                "Test", "Elder", 1, generated, report,
+                source_ask_id="ask-1", auto_confirm=True, threshold=0.90,
+            )
+
+            self.assertTrue(installed["confirmed"])
+            self.assertTrue(installed["auto_confirmed"])
+            self.assertEqual(installed["source_ask_id"], "ask-1")
+            generated.write_bytes(b"not-an-image")
+            preserved = service.install_generated_mask(
+                "Test", "Elder", 1, generated, report,
+                source_ask_id="ask-2", auto_confirm=True, threshold=0.90,
+            )
+            self.assertEqual(preserved["generation_install"], "preserved_confirmed")
+
+    def test_reject_archives_artifacts_and_marks_mask_unconfirmed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, asset, _ = self._fixture(Path(temp_dir))
+            context = service.initialize("Test", "Elder", 1)
+            with Image.open(context["mask_path"]) as image:
+                buffer = BytesIO()
+                image.save(buffer, "PNG")
+            service.save_mask("Test", "Elder", 1, buffer.getvalue())
+
+            rejected = service.reject_mask("Test", "Elder", 1, "profile corridor was anterior")
+
+            self.assertFalse(rejected["confirmed"])
+            self.assertEqual("profile corridor was anterior", rejected["rejection_history"][-1]["reason"])
+            archives = list((service.paths(asset).diagnostics / "rejected").iterdir())
+            self.assertEqual(1, len(archives))
+            self.assertTrue((archives[0] / "Head_Fitment_Edit_Mask.png").is_file())
+            self.assertTrue((archives[0] / "rejection.json").is_file())
 
 
 if __name__ == "__main__":

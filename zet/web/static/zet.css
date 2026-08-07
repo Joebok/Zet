@@ -1926,16 +1926,46 @@ summary:focus-visible {
   padding-top: 1rem;
 }
 
-.manifest-mask-tools {
-  display: flex;
+.manifest-mask-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 720px) minmax(220px, 1fr);
   gap: 1rem;
-  align-items: end;
-  margin-bottom: 0.75rem;
+  align-items: start;
+}
+
+.manifest-mask-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-self: stretch;
+}
+
+.manifest-mask-controls h3,
+.manifest-mask-controls .field-help {
+  margin: 0;
+}
+
+.manifest-mask-tools {
+  display: grid;
+  gap: 0.75rem;
+  margin-block: auto;
+}
+
+#manifest-mask-brush-mode {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+#manifest-mask-brush-mode label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 #manifest-mask-canvas {
   display: block;
-  width: min(100%, 720px);
+  width: 100%;
   height: auto;
   border: 1px solid var(--border-color);
   background: repeating-conic-gradient(#d8d8d8 0 25%, #f3f3f3 0 50%) 50% / 20px 20px;
@@ -2957,6 +2987,10 @@ dd {
 
   .manifest-picker-grid {
     grid-template-columns: 1fr;
+  }
+
+  .manifest-mask-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.45fr);
   }
 
   .render-console-layout,

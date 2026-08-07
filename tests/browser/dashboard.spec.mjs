@@ -146,9 +146,63 @@ test("head-image manifest selection shows only the optional source image", async
 
   await openPage(page, "manifest");
 
-  await expect(page.locator("#manifest-task-table tbody td")).toHaveText(["53", "Head-Image", "Front"]);
+  await expect(page.locator("#manifest-task-table tbody td")).toHaveText(["53", "Head-Image", "Front", "Ready"]);
   await expect(page.locator("#manifest-body-section")).toBeHidden();
   await expect(page.locator("#manifest-head-heading")).toHaveText("Optional Source Image");
+});
+
+test("changing manifest assets clears the previous mask while the next mask loads", async ({ page }) => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  const tasks = [1, 2].map((asset_id) => ({
+    asset_id,
+    pipeline: "Head-Fitment",
+    body_view: "Front",
+    ai_proxy_status: { pending: false },
+  }));
+  const detail = (asset_id) => ({
+    asset: { asset_id, pipeline: "Head-Fitment", body_view: "Front", head_view: "Front" },
+    body_reference_options: [],
+    headshot_options: [],
+    selected_body_reference: {},
+    selected_headshot: { path: `head-${asset_id}.png` },
+    selected_head_image: { path: `head-${asset_id}.png` },
+    reference_files: [],
+    is_manifest_editable: true,
+    ai_proxy_status: { pending: false },
+    masked_edit: {
+      mode: "masked_local",
+      mask_exists: true,
+      mask_path: `mask-${asset_id}.png`,
+      generation_status: "ready",
+      confirmed: false,
+      current: true,
+    },
+  });
+  await page.route("**/api/head-image-manifest/tasks?*", (route) => route.fulfill({ json: { tasks: [] } }));
+  await page.route("**/api/character-assembly-manifest/tasks?*", (route) => route.fulfill({ json: { tasks: [] } }));
+  await page.route("**/api/head-fitment-manifest/tasks?*", (route) => route.fulfill({ json: { tasks } }));
+  await page.route("**/api/head-fitment-model-requirements", (route) => route.fulfill({ json: {} }));
+  await page.route("**/api/file?*", (route) => route.fulfill({ contentType: "image/png", body: png }));
+  await page.route("**/api/head-fitment-manifest/1?*", (route) => route.fulfill({ json: detail(1) }));
+  await page.route("**/api/head-fitment-manifest/2?*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({ json: detail(2) });
+  });
+
+  await openPage(page, "manifest");
+  await expect.poll(() => page.locator("#manifest-mask-canvas").evaluate((canvas) => canvas.width)).toBe(1);
+  await expect(page.locator('#manifest-mask-brush-mode input[type="radio"]')).toHaveCount(3);
+  await expect(page.locator("#manifest-mask-initialize")).toHaveText("Regen Mask");
+  await expect(page.locator("#manifest-mask-reject")).toHaveText("Reject and Regen");
+  const [canvasBox, controlsBox] = await Promise.all([
+    page.locator("#manifest-mask-canvas").boundingBox(),
+    page.locator(".manifest-mask-controls").boundingBox(),
+  ]);
+  expect(controlsBox.x).toBeGreaterThan(canvasBox.x + canvasBox.width);
+  await page.locator('#manifest-task-table tbody tr[data-asset-id="2"]').click();
+  await expect(page.locator("#manifest-mask-status")).toHaveText("Please wait for mask to load.");
+  await expect.poll(() => page.locator("#manifest-mask-canvas").evaluate((canvas) => canvas.width)).toBe(0);
+  await expect.poll(() => page.locator("#manifest-mask-canvas").evaluate((canvas) => canvas.width)).toBe(1);
 });
 
 test("toolbar is a keyboard-operable disclosure", async ({ page }) => {

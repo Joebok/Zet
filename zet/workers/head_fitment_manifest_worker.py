@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from zet.models.worker import WorkerResult
-from zet.services.head_fitment_edit_service import HeadFitmentEditError, HeadFitmentEditService
+from zet.services.head_fitment_edit_service import HeadFitmentEditService
 
 
 def _assets_payload(context) -> tuple[Path, dict]:
@@ -145,10 +145,14 @@ def run(asset, context) -> WorkerResult:
         refreshed = context.asset_repository.get_asset(asset.character, asset.phase, asset.asset_id)
         service = HeadFitmentEditService(context.asset_repository, context.path_service)
         edit = service.context(asset.character, asset.phase, asset.asset_id)
-        if not edit["mask_exists"] or not edit["current"]:
+        if not edit["mask_exists"] or not edit["current"] or not edit["confirmed"]:
             try:
-                edit = service.initialize(asset.character, asset.phase, asset.asset_id)
-            except HeadFitmentEditError as exc:
+                ask_path = context.ai_proxy_service.stage_head_fitment_mask_ask(
+                    asset.character,
+                    asset.phase,
+                    asset.asset_id,
+                )
+            except Exception as exc:
                 return WorkerResult(
                     success=False,
                     message=str(exc),
@@ -156,6 +160,13 @@ def run(asset, context) -> WorkerResult:
                     error_code="HEAD_FITMENT_MASK_INITIALIZATION_FAILED",
                     error_message=str(exc),
                 )
+            return WorkerResult(
+                success=True,
+                message=f"Head-Fitment automated mask queued or pending: {ask_path or 'existing task'}.",
+                output_files=[str(Path(item["path"])) for item in references],
+                advance_stage=False,
+                reference_files=refreshed.reference_files,
+            )
         if not edit["confirmed"] or not edit["current"]:
             return WorkerResult(
                 success=True,

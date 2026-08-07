@@ -16,7 +16,7 @@ from zet.services.asset_service import (
 )
 from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
-from zet.services.ai_proxy_service import AIProxyService
+from zet.services.ai_proxy_service import AIProxyService, AIProxyServiceError
 from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.character_source_service import CharacterSourceService
@@ -790,6 +790,9 @@ class ZetApp:
     def queue_snapshot(self):
         return self.ai_proxy_service.queue_snapshot()
 
+    def asset_ai_proxy_status(self, asset_id: int):
+        return self.ai_proxy_service.asset_job_status(asset_id)
+
     def archive_harvested_answers(self):
         """Archive harvested AI answer folders."""
         return self.ai_proxy_service.archive_harvested_answers()
@@ -828,16 +831,60 @@ class ZetApp:
         path.write_text(text, encoding="utf-8")
 
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
-        return self.reference_service.head_fitment_context(character, phase, asset_id)
+        context = self.reference_service.head_fitment_context(character, phase, asset_id)
+        proxy_status = self.asset_ai_proxy_status(asset_id)
+        context["ai_proxy_status"] = proxy_status
+        context["is_manifest_editable"] = context["is_manifest_editable"] and not proxy_status["pending"]
+        return context
 
     def head_fitment_edit_context(self, character: str, phase: str, asset_id: int):
-        return self.head_fitment_edit_service.context(character, phase, asset_id)
+        context = self.head_fitment_edit_service.context(character, phase, asset_id)
+        generation = self.ai_proxy_service.head_fitment_mask_generation_status(character, phase, asset_id)
+        if generation["generation_status"] in {"pending", "failed"} or context["generation_status"] in {"missing", "stale"}:
+            context.update(generation)
+        return context
 
     def initialize_head_fitment_edit(self, character: str, phase: str, asset_id: int):
-        return self.head_fitment_edit_service.initialize(character, phase, asset_id)
+        ask_path = self.ai_proxy_service.stage_head_fitment_mask_ask(character, phase, asset_id, force=True)
+        context = self.head_fitment_edit_context(character, phase, asset_id)
+        context["queued_path"] = str(ask_path) if ask_path else None
+        return context
+
+    def reject_and_regenerate_head_fitment_edit(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        reason: str,
+    ):
+        if self.asset_ai_proxy_status(asset_id)["pending"]:
+            raise AIProxyServiceError("Head-fitment mask cannot be edited while AI proxy jobs are pending.")
+        self.head_fitment_edit_service.reject_mask(character, phase, asset_id, reason)
+        ask_path = self.ai_proxy_service.stage_head_fitment_mask_ask(character, phase, asset_id, force=True)
+        context = self.head_fitment_edit_context(character, phase, asset_id)
+        context["queued_path"] = str(ask_path) if ask_path else None
+        return context
 
     def save_head_fitment_edit_mask(self, character: str, phase: str, asset_id: int, contents: bytes):
+        if self.asset_ai_proxy_status(asset_id)["pending"]:
+            raise AIProxyServiceError("Head-fitment mask cannot be edited while AI proxy jobs are pending.")
         return self.head_fitment_edit_service.save_mask(character, phase, asset_id, contents)
+
+    def confirm_and_advance_head_fitment_edit_mask(
+        self,
+        character: str,
+        phase: str,
+        asset_id: int,
+        contents: bytes,
+    ):
+        mask = self.save_head_fitment_edit_mask(character, phase, asset_id, contents)
+        result = self.asset_service.run_current_worker_chain(character, phase, asset_id)
+        return {
+            "mask": mask,
+            "asset": result.asset,
+            "worker_count": result.worker_count,
+            "messages": result.messages,
+        }
 
     def head_fitment_model_requirements(self):
         return self.head_fitment_edit_service.model_requirements()
@@ -862,6 +909,8 @@ class ZetApp:
         body_reference_path: str,
         headshot_path: str,
     ) -> Asset:
+        if self.asset_ai_proxy_status(asset_id)["pending"]:
+            raise AIProxyServiceError("Head-fitment references cannot be edited while AI proxy jobs are pending.")
         return self.reference_service.save_head_fitment_references(
             character,
             phase,

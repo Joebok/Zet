@@ -9,6 +9,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.head_fitment_edit_service import HeadFitmentEditService
 from zet.services.path_service import PathService
 from zet.services.state_machine import StateMachine
 
@@ -271,6 +272,9 @@ class AIAnswerHarvester:
         if not response_path.exists():
             raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
 
+        if task_type == "head_fitment_mask_generate":
+            return self._apply_head_fitment_mask_answer(answer_path, answer, ask_manifest, response_path)
+
         target_output_dir_text = str(ask_manifest.get("target_output_dir") or "").strip()
         if not target_output_dir_text:
             raise AIAnswerHarvesterError(f"Auxiliary answer {answer_path} is missing target_output_dir.")
@@ -340,6 +344,98 @@ class AIAnswerHarvester:
                     ),
                 )
                 self._write_harvest_manifest(answer_path, result)
+        return result
+
+    def _apply_head_fitment_mask_answer(
+        self,
+        answer_path: Path,
+        answer: AIProxyAnswer,
+        ask_manifest: dict,
+        response_path: Path,
+    ) -> HarvestResult:
+        character = str(ask_manifest.get("character") or "")
+        phase = str(ask_manifest.get("phase") or "")
+        asset = self.asset_repository.get_asset(character, phase, int(answer.asset_id or 0))
+        service = HeadFitmentEditService(self.asset_repository, self.path_service)
+        head_path = Path(str(service._reference(asset, "head_image", "headshot")["path"]))
+        body_path = Path(str(service._reference(asset, "body_reference")["path"]))
+        if (
+            service._sha256(head_path) != str(ask_manifest.get("head_image_sha256") or "")
+            or service._sha256(body_path) != str(ask_manifest.get("body_reference_sha256") or "")
+        ):
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status="HEAD_FITMENT_MASK_STALE",
+                message="Discarded generated Head-Fitment mask because its source references changed.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
+        current = service.context(character, phase, asset.asset_id)
+        if current["confirmed"] and current["current"]:
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status="HEAD_FITMENT_MASK_PRESERVED_CONFIRMED",
+                message="Discarded generated Head-Fitment mask because a confirmed current mask already exists.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
+        report_path = answer_path / "Head_Fitment_Mask_Score.json"
+        if not report_path.is_file():
+            raise AIAnswerHarvesterError("Head-Fitment mask answer is missing Head_Fitment_Mask_Score.json.")
+        report = self._read_json(report_path)
+        edit_paths = service.paths(asset)
+        edit_paths.diagnostics.mkdir(parents=True, exist_ok=True)
+        run_diagnostics = edit_paths.diagnostics / answer.ask_id
+        run_diagnostics.mkdir(parents=True, exist_ok=True)
+        metadata = self._read_json(answer_path / "LOCAL_RENDER_METADATA.json")
+        artifact_names = metadata.get("artifact_files") if isinstance(metadata.get("artifact_files"), list) else []
+        for value in artifact_names:
+            source = answer_path / Path(str(value)).name
+            if source.is_file() and source.resolve() != response_path.resolve():
+                shutil.copy2(source, edit_paths.diagnostics / source.name)
+                shutil.copy2(source, run_diagnostics / source.name)
+        for source in (report_path, answer_path / "LOCAL_RENDER_METADATA.json"):
+            if source.is_file():
+                shutil.copy2(source, edit_paths.diagnostics / source.name)
+                shutil.copy2(source, run_diagnostics / source.name)
+        validation_failures = report.get("validation_failures") if isinstance(report, dict) else None
+        if validation_failures:
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status="HEAD_FITMENT_MASK_INVALID",
+                message="Generated Head-Fitment geometry failed hard validation; diagnostics retained and no mask installed.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
+        installed = service.install_generated_mask(
+            character,
+            phase,
+            asset.asset_id,
+            response_path,
+            report,
+            source_ask_id=answer.ask_id,
+            auto_confirm=bool(ask_manifest.get("mask_auto_confirm", True)),
+            threshold=float(ask_manifest.get("mask_auto_confirm_threshold", 0.90)),
+            replace_confirmed=False,
+        )
+        status = "HEAD_FITMENT_MASK_APPLIED_AUTO_CONFIRMED" if installed["confirmed"] else "HEAD_FITMENT_MASK_APPLIED_REVIEW_REQUIRED"
+        result = HarvestResult(
+            answer_path=answer_path,
+            ask_id=answer.ask_id,
+            asset_id=answer.asset_id,
+            status=status,
+            message=(
+                f"Installed automated Head-Fitment mask with confidence "
+                f"{float(installed.get('confidence_score') or 0):.3f}."
+            ),
+        )
+        self._write_harvest_manifest(answer_path, result)
         return result
 
     def _apply_target_output_answer(self, answer_path: Path, answer: AIProxyAnswer, ask_manifest: dict) -> HarvestResult:

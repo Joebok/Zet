@@ -169,6 +169,9 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["render_review_comment"] = render_comment
     data["has_render_review_comment"] = bool(render_comment)
     data["review_image_ready"] = _review_image_ready(zet_app, asset)
+    ai_proxy_status = zet_app.asset_ai_proxy_status(asset.asset_id) if asset.pipeline == "Head-Fitment" else {"pending": False, "count": 0, "jobs": []}
+    data["ai_proxy_status"] = ai_proxy_status
+    data["actor_display"] = f"{asset.actor} → AI PROXY" if ai_proxy_status["pending"] else asset.actor
     try:
         locked_image_path = zet_app.path_service.locked_image_path(asset)
         data["locked_image_path"] = str(locked_image_path)
@@ -182,6 +185,8 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
         data["pipeline_stage_display"] = f"CAMERA {asset.pipeline_stage}"
     else:
         data["pipeline_stage_display"] = asset.pipeline_stage
+    if ai_proxy_status["pending"]:
+        data["pipeline_stage_display"] += " (AI PROXY PENDING)"
     return data
 
 
@@ -546,6 +551,7 @@ def _head_fitment_manifest_context_payload(zet_app: ZetApp, character: str, phas
         "selected_headshot": _jsonable(context["selected_headshot"]),
         "selected_head_image": _jsonable(context["selected_head_image"]),
         "reference_files": _jsonable(context["reference_files"]),
+        "ai_proxy_status": _jsonable(context["ai_proxy_status"]),
         "masked_edit": _jsonable(edit_context),
     }
 
@@ -659,6 +665,27 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ),
         head_fitment_mask_feather_pixels=int(
             payload.get("head_fitment_mask_feather_pixels", defaults.head_fitment_mask_feather_pixels)
+        ),
+        head_fitment_mask_generation=str(
+            payload.get("head_fitment_mask_generation", defaults.head_fitment_mask_generation)
+        ),
+        head_fitment_mask_auto_confirm=bool(
+            payload.get("head_fitment_mask_auto_confirm", defaults.head_fitment_mask_auto_confirm)
+        ),
+        head_fitment_mask_auto_confirm_threshold=float(
+            payload.get("head_fitment_mask_auto_confirm_threshold", defaults.head_fitment_mask_auto_confirm_threshold)
+        ),
+        head_fitment_mask_sam_attempts=int(
+            payload.get("head_fitment_mask_sam_attempts", defaults.head_fitment_mask_sam_attempts)
+        ),
+        head_fitment_mask_birefnet_model=str(
+            payload.get("head_fitment_mask_birefnet_model", defaults.head_fitment_mask_birefnet_model)
+        ),
+        head_fitment_mask_mediapipe_model=str(
+            payload.get("head_fitment_mask_mediapipe_model", defaults.head_fitment_mask_mediapipe_model)
+        ),
+        head_fitment_mask_sam_checkpoint=str(
+            payload.get("head_fitment_mask_sam_checkpoint", defaults.head_fitment_mask_sam_checkpoint)
         ),
         local_render_backend=str(payload.get("local_render_backend", defaults.local_render_backend)),
         stable_matrix_profile=stable_profile,
@@ -2657,6 +2684,26 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/head-fitment-manifest/{asset_id}/masked-edit/reject-and-regenerate")
+    def head_fitment_manifest_reject_and_regenerate_masked_edit(
+        asset_id: int,
+        payload: dict[str, Any],
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _jsonable(
+                zet_app.reject_and_regenerate_head_fitment_edit(
+                    character,
+                    phase,
+                    asset_id,
+                    str(payload.get("reason") or "Rejected from the Head-Fitment mask editor."),
+                )
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.put("/api/head-fitment-manifest/{asset_id}/masked-edit/mask")
     async def head_fitment_manifest_save_masked_edit(
         request: Request,
@@ -2667,7 +2714,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         try:
             return _jsonable(
-                zet_app.save_head_fitment_edit_mask(character, phase, asset_id, await request.body())
+                zet_app.confirm_and_advance_head_fitment_edit_mask(character, phase, asset_id, await request.body())
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

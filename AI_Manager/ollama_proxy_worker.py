@@ -31,6 +31,7 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
         sys.path.insert(0, str(import_path))
 
 from zet.models.ai_proxy import AIProxyAskManifest
+from zet.services.atomic_file_service import write_json_atomic, write_text_atomic as atomic_write_text
 from AI_Manager.proxy_worker_output import log_job
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -77,71 +78,12 @@ def read_ask_manifest(path: Path) -> dict:
     return AIProxyAskManifest.from_dict(read_json(path)).to_dict()
 
 
-def ensure_directory(path: Path) -> None:
-    missing_paths: list[Path] = []
-    current = path
-
-    while True:
-        if current.is_dir():
-            break
-        if current.exists():
-            raise FileExistsError(f"Path exists but is not a directory: {current}")
-        missing_paths.append(current)
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-
-    for missing_path in reversed(missing_paths):
-        try:
-            missing_path.mkdir()
-        except FileExistsError:
-            # Some macOS-hosted SMB shares surface existing directories as WinError 183.
-            time.sleep(0.1)
-            continue
-
-
 def write_json(path: Path, data: dict) -> None:
-    payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    last_exc: BaseException | None = None
-    for _attempt in range(3):
-        temp_path = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-        try:
-            ensure_directory(path.parent)
-            temp_path.write_text(payload, encoding="utf-8")
-            temp_path.replace(path)
-            return
-        except (FileNotFoundError, FileExistsError) as exc:
-            last_exc = exc
-            time.sleep(0.2)
-        finally:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
-    if last_exc is not None:
-        raise last_exc
+    write_json_atomic(path, data)
 
 
 def write_text_atomic(path: Path, contents: str) -> None:
-    last_exc: BaseException | None = None
-    for _attempt in range(3):
-        temp_path = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-        try:
-            ensure_directory(path.parent)
-            temp_path.write_text(contents, encoding="utf-8")
-            temp_path.replace(path)
-            return
-        except (FileNotFoundError, FileExistsError) as exc:
-            last_exc = exc
-            time.sleep(0.2)
-        finally:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
-    if last_exc is not None:
-        raise last_exc
+    atomic_write_text(path, contents)
 
 
 def ollama_health_url(generate_url: str) -> str:

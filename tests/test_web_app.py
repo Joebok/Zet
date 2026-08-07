@@ -865,6 +865,9 @@ Backend = "manual_chatgpt"
             locked_path = root / "Assets" / "Test" / "Adult" / "front.png"
             locked_path.write_bytes(b"locked image")
             candidate_path = root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1" / "front.png"
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Asset_1_RENDER_stale"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text('{"asset_id": 1}\n', encoding="utf-8")
             client = TestClient(create_app(config_path))
 
             kept = client.post(
@@ -879,6 +882,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(payload["actor"], "HUMAN_AGENT")
             self.assertEqual(locked_path.read_bytes(), b"locked image")
             self.assertFalse(candidate_path.exists())
+            self.assertFalse(ask_path.exists())
 
     def test_ai_controls_api_serves_queue_and_managed_processes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1526,17 +1530,77 @@ Backend = "manual_chatgpt"
                 params={"character": "Test", "phase": "Adult"},
             )
             self.assertEqual(initialized.status_code, 200)
-            self.assertTrue(initialized.json()["mask_exists"])
-            mask_path = Path(initialized.json()["mask_path"])
-            confirmed = client.put(
+            self.assertFalse(initialized.json()["mask_exists"])
+            self.assertEqual("pending", initialized.json()["generation_status"])
+            ask_paths = list((root / "Queue" / "File_Proxy" / "Ask" / "zet").glob("Ask_Asset_2_HEAD_FITMENT_MASK_*"))
+            self.assertEqual(1, len(ask_paths))
+            manifest = json.loads((ask_paths[0] / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("local_image_render", manifest["worker_type"])
+            self.assertEqual("head_fitment_mask_generate", manifest["task_type"])
+            self.assertEqual("comfyui", manifest["image_generation"])
+
+            asset_detail = client.get("/api/assets/2", params={"character": "Test", "phase": "Adult"}).json()
+            self.assertTrue(asset_detail["asset"]["ai_proxy_status"]["pending"])
+            self.assertIn("AI PROXY PENDING", asset_detail["asset"]["pipeline_stage_display"])
+            self.assertEqual("PYTHON → AI PROXY", asset_detail["asset"]["actor_display"])
+
+            pending_detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"}).json()
+            self.assertTrue(pending_detail["ai_proxy_status"]["pending"])
+            self.assertFalse(pending_detail["is_manifest_editable"])
+            blocked = client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={
+                    "body_reference_path": detail["body_reference_options"][0]["path"],
+                    "head_image_path": detail["headshot_options"][0]["path"],
+                },
+            )
+            self.assertEqual(400, blocked.status_code)
+            self.assertIn("AI proxy jobs are pending", blocked.json()["detail"])
+
+    def test_confirming_head_fitment_mask_advances_only_that_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_head_fitment_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8")
+                + "\n[HeadFitment]\nRenderMode = \"masked_local\"\nMaskedLocalPreset = \"head-fitment-inpaint\"\n",
+                encoding="utf-8",
+            )
+            body = Image.new("RGB", (64, 96), "white")
+            body.paste("gray", (20, 4, 44, 80))
+            body.save(root / "Assets" / "Test" / "Adult" / "body_front.png")
+            head = Image.new("RGB", (64, 80), "white")
+            head.paste("silver", (8, 3, 56, 78))
+            head.save(root / "Characters" / "Test" / "Adult" / "Reference_Images" / "Headshots" / "head_front.png")
+            web_app = create_app(config_path)
+            client = TestClient(web_app)
+            detail = client.get("/api/head-fitment-manifest/2", params={"character": "Test", "phase": "Adult"}).json()
+            client.post(
+                "/api/head-fitment-manifest/2/references",
+                params={"character": "Test", "phase": "Adult"},
+                json={
+                    "body_reference_path": detail["body_reference_options"][0]["path"],
+                    "head_image_path": detail["headshot_options"][0]["path"],
+                },
+            )
+            edit = web_app.state.zet_app.head_fitment_edit_service.initialize("Test", "Adult", 2)
+
+            response = client.put(
                 "/api/head-fitment-manifest/2/masked-edit/mask",
                 params={"character": "Test", "phase": "Adult"},
-                content=mask_path.read_bytes(),
+                content=Path(edit["mask_path"]).read_bytes(),
                 headers={"content-type": "image/png"},
             )
-            self.assertEqual(confirmed.status_code, 200)
-            self.assertTrue(confirmed.json()["confirmed"])
-            self.assertTrue(confirmed.json()["current"])
+
+            self.assertEqual(200, response.status_code, response.text)
+            payload = response.json()
+            self.assertTrue(payload["mask"]["confirmed"])
+            self.assertEqual(2, payload["asset"]["asset_id"])
+            self.assertEqual("RENDER", payload["asset"]["pipeline_stage"])
+            self.assertEqual("AI_AGENT", payload["asset"]["actor"])
+            untouched = client.get("/api/assets/1", params={"character": "Test", "phase": "Adult"}).json()["asset"]
+            self.assertEqual("LOCKED", untouched["pipeline_stage"])
 
     def test_head_fitment_prompt_worker_compiles_prompt_and_stages_render_ask(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1654,33 +1718,17 @@ Backend = "manual_chatgpt"
                 params={"character": "Test", "phase": "Adult"},
             ).json()
             self.assertEqual("MANIFEST", context["asset"]["pipeline_stage"])
-            self.assertTrue(context["masked_edit"]["mask_exists"])
+            self.assertFalse(context["masked_edit"]["mask_exists"])
             self.assertFalse(context["masked_edit"]["confirmed"])
-
-            mask_path = Path(context["masked_edit"]["mask_path"])
-            confirmed = client.put(
-                "/api/head-fitment-manifest/2/masked-edit/mask",
-                params={"character": "Test", "phase": "Adult"},
-                content=mask_path.read_bytes(),
-                headers={"Content-Type": "image/png"},
-            )
-            self.assertEqual(200, confirmed.status_code)
-            queued = client.post(
-                "/api/assets/advance-all",
-                params={"character": "Test", "phase": "Adult"},
-                json={"asset_ids": [2]},
-            )
-            self.assertEqual("RENDER", queued.json()["results"][0]["after_stage"])
-            self.assertEqual("AI_AGENT", queued.json()["results"][0]["after_actor"])
-            ask_paths = list((root / "Queue" / "File_Proxy" / "Ask" / "zet").glob("Ask_Asset_2_RENDER_*"))
+            self.assertEqual("pending", context["masked_edit"]["generation_status"])
+            ask_paths = list((root / "Queue" / "File_Proxy" / "Ask" / "zet").glob("Ask_Asset_2_HEAD_FITMENT_MASK_*"))
             self.assertEqual(1, len(ask_paths))
             ask_manifest = json.loads((ask_paths[0] / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual("local_image_render", ask_manifest["worker_type"])
-            self.assertEqual("head_fitment_inpaint", ask_manifest["task_type"])
-            self.assertEqual("head-fitment-inpaint", ask_manifest["render_preset"])
-            self.assertTrue((ask_paths[0] / ask_manifest["head_fitment_init_file"]).is_file())
-            self.assertTrue((ask_paths[0] / ask_manifest["head_fitment_mask_file"]).is_file())
-            self.assertTrue((ask_paths[0] / ask_manifest["head_fitment_spec_file"]).is_file())
+            self.assertEqual("head_fitment_mask_generate", ask_manifest["task_type"])
+            self.assertEqual(["head_image", "body_reference"], [item["role"] for item in ask_manifest["reference_files"]])
+            for reference in ask_manifest["reference_files"]:
+                self.assertTrue((ask_paths[0] / reference["path"]).is_file())
 
     def test_head_fitment_add_ref_can_resume_after_reference_is_added(self):
         with tempfile.TemporaryDirectory() as temp_dir:

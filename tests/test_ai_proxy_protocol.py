@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from AI_Manager import local_image_proxy_worker, ollama_proxy_worker
 from zet.models.ai_proxy import AIProxyAskManifest, UnsupportedAIProxyProtocolVersion
@@ -90,6 +91,30 @@ class AIProxyProtocolTests(unittest.TestCase):
                 with self.subTest(reader=reader.__module__):
                     with self.assertRaisesRegex(UnsupportedAIProxyProtocolVersion, "version 2"):
                         reader(path)
+
+    def test_proxy_workers_retry_dropbox_write_locks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            real_replace = __import__("os").replace
+
+            for worker in (ollama_proxy_worker, local_image_proxy_worker):
+                with self.subTest(worker=worker.__name__):
+                    path = root / worker.__name__ / "answer_manifest.json"
+                    attempts = 0
+
+                    def flaky_replace(source, destination):
+                        nonlocal attempts
+                        attempts += 1
+                        if attempts < 3:
+                            raise PermissionError(13, "Dropbox sharing violation")
+                        real_replace(source, destination)
+
+                    with patch("zet.services.atomic_file_service.os.replace", side_effect=flaky_replace):
+                        worker.write_json(path, {"status": "SUCCESS"})
+
+                    self.assertEqual(3, attempts)
+                    self.assertEqual({"status": "SUCCESS"}, json.loads(path.read_text(encoding="utf-8")))
+                    self.assertEqual([], list(path.parent.glob(".*.tmp.*")))
 
 
 if __name__ == "__main__":

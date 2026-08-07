@@ -482,6 +482,7 @@ class AssetService:
         if not locked_image_path.exists():
             raise AssetServiceError("Cannot keep locked: locked image does not exist.")
 
+        self.ai_proxy_service.clear_asset_queue_items(asset)
         self.path_service.candidate_image_path(asset).unlink(missing_ok=True)
         self.render_review_comment_path(asset).unlink(missing_ok=True)
 

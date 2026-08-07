@@ -151,6 +151,21 @@ def list_comfyui_node_types(server_url: str) -> set[str]:
     return {str(key) for key in payload}
 
 
+def comfyui_model_options(server_url: str, node_type: str, input_name: str) -> set[str]:
+    payload = _request_json(f"{server_url.rstrip('/')}/object_info/{urllib.parse.quote(node_type)}")
+    node = payload.get(node_type) if isinstance(payload, dict) else None
+    required = node.get("input", {}).get("required", {}) if isinstance(node, dict) else {}
+    definition = required.get(input_name)
+    if not isinstance(definition, list) or not definition:
+        return set()
+    raw = definition[0]
+    if isinstance(raw, list):
+        return {str(item) for item in raw}
+    if len(definition) > 1 and isinstance(definition[1], dict):
+        return {str(item) for item in definition[1].get("options", [])}
+    return set()
+
+
 def _upload_comfyui_input(server_url: str, reference: dict[str, Any], timeout: float = 60) -> None:
     source = Path(str(reference.get("path") or "")).expanduser()
     if not source.is_file():
