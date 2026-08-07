@@ -31,6 +31,8 @@ from zet.services.pipeline_compiler_support import (
     validate_character_assembly_inputs,
     normalize_assembly_style_mode,
     character_assembly_style_instruction,
+    view_orientation_intro,
+    with_view_orientation_intro,
 )
 
 
@@ -189,7 +191,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
             "HEAD_VIEW_INSTRUCTION": view_instruction(head_view_data, "head", task),
             "VIEW_TOKEN": body_view_token,
             "VIEW_LABEL": str(body_view_data["label"]),
-            "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task),
+            "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
         }

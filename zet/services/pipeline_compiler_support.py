@@ -105,7 +105,7 @@ def view_instruction(view_data: dict, role: str, task: str, include_intro: bool 
             instruction,
             view_data,
             include_intro,
-            include_orientation_details=role == "body" and task_key == "body-reference",
+            include_orientation_details=role == "body" and (task_key == "body-reference" or task_key == "character-assembly"),
         )
 
     role_instructions = view_data.get(role_key)
