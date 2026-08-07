@@ -42,6 +42,10 @@ class Config:
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
+    head_fitment_render_mode: str = "prompt"
+    head_fitment_masked_local_preset: str = "head-fitment-inpaint"
+    head_fitment_masked_local_checkpoint: str = ""
+    head_fitment_mask_feather_pixels: int = 6
     ai_prompt_analysis_model: str = "qwen3.5:9b-instruct"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
 
@@ -114,6 +118,11 @@ class ConfigService:
         return render if isinstance(render, dict) else {}
 
     @staticmethod
+    def _head_fitment_config(payload: dict) -> dict:
+        head_fitment = payload.get("HeadFitment", {})
+        return head_fitment if isinstance(head_fitment, dict) else {}
+
+    @staticmethod
     def _turnaround_config(payload: dict) -> dict:
         turnaround = payload.get("Turnaround", {})
         return turnaround if isinstance(turnaround, dict) else {}
@@ -143,6 +152,7 @@ class ConfigService:
             turnaround = ConfigService._turnaround_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
+            head_fitment = ConfigService._head_fitment_config(payload)
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
             library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
             return Config(
@@ -189,6 +199,12 @@ class ConfigService:
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
                 render_backend=str(render.get("Backend", "local_image")),
+                head_fitment_render_mode=str(head_fitment.get("RenderMode", "prompt")).strip().lower(),
+                head_fitment_masked_local_preset=str(
+                    head_fitment.get("MaskedLocalPreset", "head-fitment-inpaint")
+                ).strip(),
+                head_fitment_masked_local_checkpoint=str(head_fitment.get("MaskedLocalCheckpoint", "")).strip(),
+                head_fitment_mask_feather_pixels=int(head_fitment.get("MaskFeatherPixels", 6)),
                 ai_prompt_analysis_model=str(ai_prompt_analysis.get("Model", "qwen3.5:9b-instruct")),
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")

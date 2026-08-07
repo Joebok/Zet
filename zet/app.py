@@ -24,6 +24,7 @@ from zet.services.config_service import ConfigService
 from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.head_fitment_edit_service import HeadFitmentEditService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.path_service import PathService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
@@ -102,6 +103,9 @@ class AssetRef:
     def discard_candidate(self) -> Asset:
         return self._app.asset_service.discard_candidate(self._character, self._phase, self._asset_id)
 
+    def keep_locked(self) -> Asset:
+        return self._app.asset_service.keep_locked(self._character, self._phase, self._asset_id)
+
     def render_review_comment(self) -> str:
         """Read the render-review comment for this asset."""
         return self._app.asset_service.get_render_review_comment(self._character, self._phase, self._asset_id)
@@ -156,6 +160,7 @@ class ZetApp:
         self.asset_service = asset_service
         self.prompt_review_service = prompt_review_service
         self.reference_service = reference_service
+        self.head_fitment_edit_service = HeadFitmentEditService(asset_repository, path_service)
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
         self.turnaround_service = turnaround_service
@@ -232,6 +237,7 @@ class ZetApp:
             ai_proxy_path_service,
             housekeeping_service,
         )
+        worker_service.ai_proxy_service = ai_proxy_service
         ai_answer_harvester = AIAnswerHarvester(
             asset_repository,
             pipeline_repository,
@@ -723,10 +729,17 @@ class ZetApp:
                 before_stage = asset.pipeline_stage
                 before_actor = asset.actor
                 result = self.asset_service.run_current_worker_chain(character, phase, asset.asset_id)
+                progressed = result.asset.pipeline_stage != before_stage or result.asset.actor != before_actor
+                if result.asset.pipeline_stage == "ERROR":
+                    status = "ERROR"
+                elif progressed:
+                    status = "ADVANCED"
+                else:
+                    status = "WAITING" if result.worker_count else "SKIPPED"
                 results.append(
                     {
                         "asset_id": result.asset.asset_id,
-                        "status": "ADVANCED" if result.worker_count else "SKIPPED",
+                        "status": status,
                         "message": " | ".join(result.messages) or "No worker ran.",
                         "worker_count": result.worker_count,
                         "before_stage": before_stage,
@@ -816,6 +829,18 @@ class ZetApp:
 
     def head_fitment_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_fitment_context(character, phase, asset_id)
+
+    def head_fitment_edit_context(self, character: str, phase: str, asset_id: int):
+        return self.head_fitment_edit_service.context(character, phase, asset_id)
+
+    def initialize_head_fitment_edit(self, character: str, phase: str, asset_id: int):
+        return self.head_fitment_edit_service.initialize(character, phase, asset_id)
+
+    def save_head_fitment_edit_mask(self, character: str, phase: str, asset_id: int, contents: bytes):
+        return self.head_fitment_edit_service.save_mask(character, phase, asset_id, contents)
+
+    def head_fitment_model_requirements(self):
+        return self.head_fitment_edit_service.model_requirements()
 
     def head_image_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_image_context(character, phase, asset_id)

@@ -1920,6 +1920,29 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.manifest-masked-edit {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+}
+
+.manifest-mask-tools {
+  display: flex;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+#manifest-mask-canvas {
+  display: block;
+  width: min(100%, 720px);
+  height: auto;
+  border: 1px solid var(--border-color);
+  background: repeating-conic-gradient(#d8d8d8 0 25%, #f3f3f3 0 50%) 50% / 20px 20px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
 .manifest-picker-grid section {
   display: grid;
   gap: 8px;

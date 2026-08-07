@@ -55,6 +55,12 @@ IntervalSeconds = 60
 [Render]
 Backend = "manual_chatgpt"
 
+[HeadFitment]
+RenderMode = "masked_local"
+MaskedLocalPreset = "head-fitment-inpaint"
+MaskedLocalCheckpoint = "sd\\perfectdeliberate_v90.safetensors [aea4ec6c4d]"
+MaskFeatherPixels = 6
+
 [AIPromptAnalysis]
 Model = "zet-image-analyst:latest"
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

@@ -360,6 +360,11 @@ class CharacterOnboardingService:
             worker_by_stage = pipeline.get("worker_by_stage", {})
             if isinstance(worker_by_stage, dict):
                 worker_by_stage.pop("PROMPT_REVIEW", None)
+        head_fitment = pipelines.get("Head-Fitment")
+        if isinstance(head_fitment, dict):
+            workers = head_fitment.get("worker_by_stage")
+            if isinstance(workers, dict):
+                workers["RENDER"] = "zet.workers.head_fitment_render_worker"
         pipelines_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def add_missing_head_image_foundation(self, character: str, phase: str) -> list[Asset]:

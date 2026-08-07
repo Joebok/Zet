@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from zet.models.worker import WorkerResult
+from zet.services.head_fitment_edit_service import HeadFitmentEditError, HeadFitmentEditService
 
 
 def _assets_payload(context) -> tuple[Path, dict]:
@@ -139,6 +140,30 @@ def run(asset, context) -> WorkerResult:
             error_code="ASSET_NOT_FOUND",
             error_message=f"Asset {asset.asset_id} not found in {assets_path}.",
         )
+
+    if context.config is not None and str(context.config.head_fitment_render_mode) == "masked_local":
+        refreshed = context.asset_repository.get_asset(asset.character, asset.phase, asset.asset_id)
+        service = HeadFitmentEditService(context.asset_repository, context.path_service)
+        edit = service.context(asset.character, asset.phase, asset.asset_id)
+        if not edit["mask_exists"] or not edit["current"]:
+            try:
+                edit = service.initialize(asset.character, asset.phase, asset.asset_id)
+            except HeadFitmentEditError as exc:
+                return WorkerResult(
+                    success=False,
+                    message=str(exc),
+                    advance_stage=False,
+                    error_code="HEAD_FITMENT_MASK_INITIALIZATION_FAILED",
+                    error_message=str(exc),
+                )
+        if not edit["confirmed"] or not edit["current"]:
+            return WorkerResult(
+                success=True,
+                message="Head-Fitment mask initialized; review and confirm it in the Manifest editor before continuing.",
+                output_files=[str(Path(item["path"])) for item in references],
+                advance_stage=False,
+                reference_files=refreshed.reference_files,
+            )
 
     return WorkerResult(
         success=True,

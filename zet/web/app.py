@@ -535,6 +535,7 @@ def _head_fitment_manifest_task_payload(zet_app: ZetApp, asset) -> dict[str, Any
 
 def _head_fitment_manifest_context_payload(zet_app: ZetApp, character: str, phase: str, asset_id: int) -> dict[str, Any]:
     context = zet_app.head_fitment_reference_context(character, phase, asset_id)
+    edit_context = zet_app.head_fitment_edit_context(character, phase, asset_id)
     return {
         "asset": _asset_payload(zet_app, context["asset"]),
         "is_manifest_editable": context["is_manifest_editable"],
@@ -545,6 +546,7 @@ def _head_fitment_manifest_context_payload(zet_app: ZetApp, character: str, phas
         "selected_headshot": _jsonable(context["selected_headshot"]),
         "selected_head_image": _jsonable(context["selected_head_image"]),
         "reference_files": _jsonable(context["reference_files"]),
+        "masked_edit": _jsonable(edit_context),
     }
 
 
@@ -646,6 +648,18 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
         render_backend=str(payload.get("render_backend", defaults.render_backend)),
+        head_fitment_render_mode=str(
+            payload.get("head_fitment_render_mode", defaults.head_fitment_render_mode)
+        ),
+        head_fitment_masked_local_preset=str(
+            payload.get("head_fitment_masked_local_preset", defaults.head_fitment_masked_local_preset)
+        ),
+        head_fitment_masked_local_checkpoint=str(
+            payload.get("head_fitment_masked_local_checkpoint", defaults.head_fitment_masked_local_checkpoint)
+        ),
+        head_fitment_mask_feather_pixels=int(
+            payload.get("head_fitment_mask_feather_pixels", defaults.head_fitment_mask_feather_pixels)
+        ),
         local_render_backend=str(payload.get("local_render_backend", defaults.local_render_backend)),
         stable_matrix_profile=stable_profile,
         stable_matrix_positive_prompt_globals=stable_positive,
@@ -915,12 +929,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             asset_ids = [int(value) for value in payload.get("asset_ids", [])]
             results = zet_app.advance_assets(character, phase, asset_ids)
             advanced = len([item for item in results if item.get("status") == "ADVANCED"])
+            waiting = len([item for item in results if item.get("status") == "WAITING"])
             errors = len([item for item in results if item.get("status") == "ERROR"])
             skipped = len([item for item in results if item.get("status") == "SKIPPED"])
             return {
                 "results": results,
                 "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
-                "message": f"Advanced {advanced} asset(s); skipped {skipped}; errors {errors}.",
+                "message": f"Advanced {advanced} asset(s); waiting for action {waiting}; skipped {skipped}; errors {errors}.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2630,6 +2645,41 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/head-fitment-manifest/{asset_id}/masked-edit/initialize")
+    def head_fitment_manifest_initialize_masked_edit(
+        asset_id: int,
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _jsonable(zet_app.initialize_head_fitment_edit(character, phase, asset_id))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/head-fitment-manifest/{asset_id}/masked-edit/mask")
+    async def head_fitment_manifest_save_masked_edit(
+        request: Request,
+        asset_id: int,
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _jsonable(
+                zet_app.save_head_fitment_edit_mask(character, phase, asset_id, await request.body())
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/head-fitment-model-requirements")
+    def head_fitment_model_requirements() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _jsonable(zet_app.head_fitment_model_requirements())
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.post("/api/assets/{asset_id}/regenerate-and-clear-references")
     def regenerate_and_clear_references(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -2645,6 +2695,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             updated = zet_app.asset(character, phase, asset_id).promote_to_locked()
             return _action_response(zet_app, character, phase, updated.asset_id, "Asset promoted to LOCKED.")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/assets/{asset_id}/keep-locked")
+    def keep_locked(asset_id: int, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            updated = zet_app.asset(character, phase, asset_id).keep_locked()
+            return _action_response(zet_app, character, phase, updated.asset_id, "Keeping existing locked image.")
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

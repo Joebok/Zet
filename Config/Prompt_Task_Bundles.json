@@ -44,21 +44,9 @@
       "description": "Static head-fitment prompt using a locked body-reference and same-view Head-Image, with explicit legacy headshot override support.",
       "prompt_builder": "static",
       "required_sections": [
-        "GENERAL_DESCRIPTION_FACTS",
-        "HEAD_DESCRIPTION_FACTS",
-        "HEAD_DESCRIPTION_VIEW_{VIEW}",
-        "HAIR_DESCRIPTION_FACTS",
-        "HAIR_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_CORE",
-        "IDENTITY_PRESERVATION_FACE",
-        "IDENTITY_PRESERVATION_HAIR",
-        "IDENTITY_PRESERVATION_EARS",
-        "HEAD_FITMENT_RENDERING_RULES",
-        "NEGATIVE_GUIDANCE_GENERAL"
+        "HEAD_FITMENT_RENDERING_RULES"
       ],
-      "optional_sections": [
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
-      ],
+      "optional_sections": [],
       "forbidden_sections": [
         "*_PICARESQUE",
         "BODY_DESCRIPTION_VIEW_*",

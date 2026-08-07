@@ -20,6 +20,7 @@ class WorkerService:
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.path_service = path_service
+        self.ai_proxy_service = None
         self.last_worker_module_name: str | None = None
         self.last_worker_result: WorkerResult | None = None
 
@@ -35,6 +36,10 @@ class WorkerService:
             locked_image_path=self.path_service.locked_image_path(asset),
             character_path=self.path_service.character_path(asset.character, asset.phase),
             character_asset_path=self.path_service.character_asset_path(asset.character, asset.phase),
+            config=self.path_service.config,
+            asset_repository=self.asset_repository,
+            path_service=self.path_service,
+            ai_proxy_service=self.ai_proxy_service,
         )
 
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> WorkerResult:

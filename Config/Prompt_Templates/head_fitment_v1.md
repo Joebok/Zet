@@ -1,4 +1,4 @@
-Render a standalone head-and-neck fitment module matching the Character Head source, with no changes above the jawline other than art-style conversion if required. Only the neck geometry may change.
+Render a standalone head-and-neck fitment module matching the Character Head source. Preserve the entire source head through the complete jaw and chin. Only newly generated or mask-editable neck pixels beneath the existing jaw may change.
 
 {{VIEW_INSTRUCTION}}
 
@@ -7,10 +7,18 @@ HEAD-FITMENT CHARACTER REFERENCE IMAGE
 The image should:
  
  * be head and neck only 
- * preserve identity, expression, hair, and all features of the referenced head image above the neck.
+ * preserve the complete face, jaw, chin, ears, hair, expression, age presentation, and rendering of the referenced head image.
  * have transparent background
 
 This is a technical fitment asset, not a portrait crop.
+
+SOURCE RENDERING LOCK
+
+Preserve the complete visible rendering of the Character Head source through the entire jaw and chin. This includes identity, feature geometry, apparent age, facial maturity, asymmetry, shading, brushwork, and surface detail exactly as visible in the source.
+
+Do not beautify, idealize, smooth, rejuvenate, cosmetically lift, or otherwise reinterpret the facial anatomy or rendering.
+
+The source image already represents the correct canonical character, age phase, hairstyle, and rendering style. Preserve that existing style and finish; do not reapply a generalized art style. Do not reinterpret the head from the textual character description. Character-template text identifies visible features that must survive the fitment and must not override the source.
 
 Reference roles:
 
@@ -18,14 +26,9 @@ Reference roles:
 - The attached headshot reference is the Character Head source. This remains supported for backward-compatible legacy jobs.
 - The attached body-reference image is the Reference Body source.
 
-CANONICAL ART STYLE DIRECTIVE
+Do not regenerate, redesign, or reinterpret the face. Treat the entire Character Head source through the complete jaw and chin as visually final. Only extend, transform, or fit neck pixels beneath the existing jaw.
 
-Render the image in the Canonical Art Style: {{CANONICAL_ART_STYLE}}
-
-If the Character Head source uses a different art style, repaint only the rendering style into the Canonical Art Style while preserving the Character Head identity, expression, view angle, face shape, facial proportions, hair silhouette, ear shape, eye color, skin tone, and neck fitment.
-
-The art-style conversion must not redesign the character.
-The art-style conversion must not change the head view, camera angle, face identity, hairstyle, ears, expression, age, species, or neck geometry.
+For a masked-local edit, the semantic mask is authoritative: protected head pixels must be copied from the source after rendering, editable pixels are confined to the upper neck, and removed pixels remain transparent. Never fall back to a full-frame reconstruction.
 
 NECK FITMENT
 
@@ -39,34 +42,11 @@ Preserve the complete hair silhouette from the Character Head source. Hair may o
 
 The output fails if any shoulder slope, trapezius, collarbone, chest, torso, or body geometry is visible, or if the neck widens into the shoulders.
 
-CANONICAL ART STYLE REINFORCEMENT
-
-The final fitted head-and-neck module must be rendered in the Canonical Art Style listed at the top of this prompt.
-
-If the Character Head source is not already in the Canonical Art Style, convert only the rendering style. Preserve the Character Head’s identity, expression, face shape, facial proportions, eye color, gaze, hair silhouette, ear shape, skin tone, view angle, camera orientation, and fitted neck geometry.
-
-Do not let the art-style conversion become a redesign.
-
-ART-STYLE CONVERSION BUDGET
-
-Allowed style changes:
-- convert line quality, brush texture, shading, rendering finish, and reference-sheet presentation into the Canonical Art Style
-- harmonize the fitted neck with the head in the same Canonical Art Style
-
-Forbidden style changes:
-- changing facial structure
-- changing expression
-- changing eye shape or eye color
-- changing hair shape, length, part, or silhouette
-- changing ear shape, size, angle, or visibility
-- changing the requested view angle
-- changing the fitted neck length, width, angle, or cut plane
-
 The Character Head MUST NOT BE ROTATED.
 
 Do not change the Character Head view, camera orientation, head shape, face, hair, ears, eye visibility, nose visibility, skin tone, expression, or identity.
 
-Render all visible head-and-neck features in the Canonical Art Style listed above.
+Render the fitted neck with a finish continuous with the Character Head source. Any blending or repainting must occur exclusively on the editable neck beneath the jaw; do not blend across the jaw edge, chin, lower face, ears, or hair.
 
 The only allowed adjustment is to align the Character Head and Character Neck to the Reference Body neck connection point, then suppress the Reference Body and any body/torso material, leaving only a fitted character head-and-neck image.
 
@@ -88,16 +68,9 @@ The output is incorrect if it uses any view angle, camera orientation, or view i
 Reference Body view instruction:
 {{BODY_VIEW_INSTRUCTION}}
 
-THREE-QUARTER ORIENTATION LOCK
-
-If the requested view is a three-quarter view, treat the Character Head and fitted neck as one rigid head-and-neck module.
-The face plane, nose direction, eye gaze, ears, jaw, skull, and neck axis all share the same requested three-quarter orientation.
-The Reference Body controls the fitted neck’s width, axis, and cut position; the Character Head controls the head pose, face, hair, expression, and identity.
-Do not turn the eyes toward the viewer, twist the neck, mirror the head, or drift into a direct front, direct back, or profile view.
-
 Good output:
 - The image only has the Character Head and fitted character neck.
-- The Character Head matches its source image except for small neck adjustment for smooth fitment.
+- The entire Character Head matches its source without alteration; all fitment changes are confined to neck pixels beneath the existing jaw.
 - Hair matches the source in shape, color, texture, orientation, and visibility.
 - Eyes match the source in shape, color, texture, orientation, and visibility where visible.
 - Ears match the source in shape, orientation, and visibility.
@@ -110,31 +83,5 @@ Bad output:
 - Hair, ears, face, skin tone, or camera orientation drift away from the Character Head source.
 
 {{SECTION:HEAD_FITMENT_RENDERING_RULES}}
-
-{{SECTION:GENERAL_DESCRIPTION_FACTS}}
-
-{{SECTION:HEAD_DESCRIPTION_FACTS}}
-
-{{SECTION:HEAD_DESCRIPTION_VIEW_{VIEW}}}
-
-{{SECTION:HAIR_DESCRIPTION_FACTS}}
-
-{{SECTION:HAIR_DESCRIPTION_VIEW_{VIEW}}}
-
-{{SECTION:IDENTITY_PRESERVATION_CORE}}
-
-{{SECTION:IDENTITY_PRESERVATION_FACE}}
-
-{{SECTION:IDENTITY_PRESERVATION_HAIR}}
-
-{{SECTION:IDENTITY_PRESERVATION_EARS}}
-
-Negative constraints:
-
-{{SECTION:NEGATIVE_GUIDANCE_GENERAL}}
-
-{{SECTION:NEGATIVE_GUIDANCE_JOB_SPECIFIC}}
-
-Do not render: generic replacement face, wrong species markers, human ears, rounded ears, missing ears, hidden ears, wrong eye color, wrong hair silhouette, long hair, curly hair, helmet hair, changed body type, changed costume, changed camera angle, portrait crop, bust shot, waist-up framing, narrative scene, dramatic lighting, props, weapons, extra accessories, seductive pose, fashion pose, pin-up pose.
 
 The final image should look like the selected Character Head source with its neck fitted for the selected Reference Body neck connection point, with only the fitted head-and-neck module visible.

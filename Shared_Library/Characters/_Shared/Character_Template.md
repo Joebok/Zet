@@ -667,7 +667,6 @@ Rendering priorities:
 * Clear silhouette.
 * Preserve requested head view.
 * Preserve identity and fitment geometry.
-* Render in the Canonical Art Style.
 * No dramatic lighting.
 * No narrative scene.
 * No acting.

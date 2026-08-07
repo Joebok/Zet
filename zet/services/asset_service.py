@@ -131,6 +131,15 @@ class AssetService:
             raise AssetServiceError(f"Pipeline {pipeline_name} uses invalid actor {actor} for stage {stage}")
         return actor
 
+    def _actor_for_stage(self, asset: Asset, pipeline, stage: str) -> str:
+        if (
+            asset.pipeline == "Head-Fitment"
+            and stage == "RENDER"
+            and str(self.path_service.config.head_fitment_render_mode) == "masked_local"
+        ):
+            return "PYTHON"
+        return self._validate_actor(pipeline.name, stage, pipeline.actor_by_stage.get(stage))
+
     def _view_folder_for_asset(self, asset: Asset) -> str:
         return self.prompt_artifact_service.view_folder_for_asset(asset, tolerate_config_errors=True)
 
@@ -176,7 +185,7 @@ class AssetService:
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         next_stage = self.state_machine.next_stage(pipeline, asset.pipeline_stage)
 
-        next_actor = self._validate_actor(pipeline.name, next_stage, pipeline.actor_by_stage.get(next_stage))
+        next_actor = self._actor_for_stage(asset, pipeline, next_stage)
 
         updated_asset = replace(asset)
         updated_asset.pipeline_stage = next_stage
@@ -253,9 +262,15 @@ class AssetService:
         pipeline = self.pipeline_repository.get_pipeline(character, phase, pipeline_name)
         if "RENDER" not in pipeline.stages:
             raise AssetServiceError(f"Pipeline {pipeline_name} has no RENDER stage.")
-        render_actor = self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
-        if render_actor != "AI_AGENT":
-            raise AssetServiceError(f"Pipeline {pipeline_name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
+        sample = next(
+            (asset for asset in self.asset_repository.list_assets(character, phase) if asset.pipeline == pipeline_name),
+            None,
+        )
+        render_actor = (
+            self._actor_for_stage(sample, pipeline, "RENDER")
+            if sample is not None
+            else self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
+        )
 
         candidates: list[tuple[Asset, str | None]] = []
         for asset in self.asset_repository.list_assets(character, phase):
@@ -321,7 +336,7 @@ class AssetService:
                 updated_asset.asset_state = "IN_PROGRESS"
                 updated_asset.pipeline_stage = "RENDER"
                 updated_asset.actor = render_actor
-                updated_asset.ai_state = "ASKED"
+                updated_asset.ai_state = "ASKED" if render_actor == "AI_AGENT" else None
                 updated_asset.error_code = None
                 updated_asset.error_message = None
                 updated_asset.last_ai_update = f"Batch render reset requested at {self._timestamp()}"
@@ -329,7 +344,9 @@ class AssetService:
                 self.asset_repository.save_asset(updated_asset)
                 self.housekeeping_service.prepare_stage(updated_asset)
 
-                ask_path = self.ai_proxy_service.stage_current_ai_ask(character, phase, asset.asset_id)
+                ask_path = None
+                if render_actor == "AI_AGENT":
+                    ask_path = self.ai_proxy_service.stage_current_ai_ask(character, phase, asset.asset_id)
                 refreshed = self.asset_repository.get_asset(character, phase, asset.asset_id)
                 results.append(
                     BatchRenderResetResult(
@@ -338,7 +355,11 @@ class AssetService:
                         before_actor=asset.actor,
                         before_state=asset.asset_state,
                         status="RESET",
-                        message=f"Moved to RENDER and staged ask {ask_path.name}.",
+                        message=(
+                            f"Moved to RENDER and staged ask {ask_path.name}."
+                            if ask_path is not None
+                            else "Moved to masked-local RENDER."
+                        ),
                     )
                 )
                 self.housekeeping_service.prepare_stage(refreshed)
@@ -454,6 +475,29 @@ class AssetService:
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
 
+    def keep_locked(self, character: str, phase: str, asset_id: int) -> Asset:
+        asset = self.asset_repository.get_asset(character, phase, asset_id)
+        locked_image_path = self.path_service.locked_image_path(asset)
+
+        if not locked_image_path.exists():
+            raise AssetServiceError("Cannot keep locked: locked image does not exist.")
+
+        self.path_service.candidate_image_path(asset).unlink(missing_ok=True)
+        self.render_review_comment_path(asset).unlink(missing_ok=True)
+
+        updated_asset = replace(asset)
+        updated_asset.asset_state = "LOCKED"
+        updated_asset.pipeline_stage = "LOCKED"
+        updated_asset.actor = "HUMAN_AGENT"
+        updated_asset.ai_state = None
+        updated_asset.error_code = None
+        updated_asset.error_message = None
+        updated_asset.updated_at = self._timestamp()
+
+        self.asset_repository.save_asset(updated_asset)
+        self.housekeeping_service.prepare_stage(updated_asset)
+        return updated_asset
+
     def regenerate_and_clear_references(self, character: str, phase: str, asset_id: int) -> Asset:
         return self.regenerate(character, phase, asset_id, clear_references=True)
 
@@ -463,9 +507,7 @@ class AssetService:
             raise AssetServiceError("Render retry is only available at RENDER_REVIEW / HUMAN_AGENT.")
 
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
-        render_actor = self._validate_actor(pipeline.name, "RENDER", pipeline.actor_by_stage.get("RENDER"))
-        if render_actor != "AI_AGENT":
-            raise AssetServiceError(f"Pipeline {pipeline.name} RENDER stage is configured for {render_actor}, not AI_AGENT.")
+        render_actor = self._actor_for_stage(asset, pipeline, "RENDER")
 
         self.ai_proxy_service.clear_asset_queue_items(asset)
         self._clear_render_outputs(asset)
@@ -474,7 +516,7 @@ class AssetService:
         updated_asset.asset_state = "IN_PROGRESS"
         updated_asset.pipeline_stage = "RENDER"
         updated_asset.actor = render_actor
-        updated_asset.ai_state = "ASKED"
+        updated_asset.ai_state = "ASKED" if render_actor == "AI_AGENT" else None
         updated_asset.error_code = None
         updated_asset.error_message = None
         updated_asset.last_ai_update = reason.strip() or f"Render review retry requested at {self._timestamp()}"
@@ -482,7 +524,8 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
-        self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+        if render_actor == "AI_AGENT":
+            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
         return self.asset_repository.get_asset(character, phase, asset_id)
 
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> Asset:

@@ -19,6 +19,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,9 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
 
 from Local_Render_Adapters import LocalRenderUnavailable, render_image
 from zet.models.ai_proxy import AIProxyAskManifest
+from zet.services.config_service import ConfigService
+from zet.services.head_fitment_edit_service import HeadFitmentEditService
+from zet.services.path_service import PathService
 from AI_Manager.proxy_worker_output import log_job
 
 SUPPORTED_WORKER_TYPES = {"local_image_render"}
@@ -154,6 +158,7 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
 def process_claimed(
     folder: Path,
     worker_id: str,
+    config_path: str | Path = "config.toml",
 ) -> str:
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     prompt_file = str(ask_manifest.get("prompt_file") or "Final_Image_Prompt.md")
@@ -172,8 +177,31 @@ def process_claimed(
         if not prompt_path.exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
 
-        result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
-        shutil.copy2(result.image_path, folder / expected_output)
+        if str(ask_manifest.get("task_type") or "") == "head_fitment_inpaint":
+            config_path = Path(config_path).resolve()
+            config = ConfigService.load(config_path)
+            path_service = PathService(config, config_path.parent)
+            service = HeadFitmentEditService(None, path_service)
+            outputs = service.render_artifacts(
+                prompt_text=prompt_path.read_text(encoding="utf-8"),
+                init_path=folder / str(ask_manifest.get("head_fitment_init_file") or "Head_Fitment_Init.png"),
+                mask_path=folder / str(ask_manifest.get("head_fitment_mask_file") or "Head_Fitment_Edit_Mask.png"),
+                output_path=folder / expected_output,
+                preset_name=preset_name,
+                checkpoint=str(ask_manifest.get("checkpoint") or "") or None,
+                feather_pixels=int(ask_manifest.get("mask_feather_pixels", 6)),
+            )
+            result = SimpleNamespace(
+                image_path=outputs[0],
+                metadata_path=outputs[-1],
+                artifact_paths=outputs[1:],
+                prompt_id="",
+            )
+        else:
+            result = render_image(**render_image_kwargs(ask_manifest, prompt_path, folder, preset_name))
+        output_path = folder / expected_output
+        if Path(result.image_path).resolve() != output_path.resolve():
+            shutil.copy2(result.image_path, output_path)
         backend_metadata = read_json(result.metadata_path) if result.metadata_path.exists() else {}
         artifact_files = []
         for artifact_path in getattr(result, "artifact_paths", []) or []:
@@ -245,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     result = process_claimed(
         job_dir,
         args.worker_id,
+        args.config,
     )
     return 0 if result == "SUCCESS" else 1
 

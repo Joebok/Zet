@@ -25,6 +25,10 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
+    head_fitment_render_mode: str = "prompt"
+    head_fitment_masked_local_preset: str = "head-fitment-inpaint"
+    head_fitment_masked_local_checkpoint: str = ""
+    head_fitment_mask_feather_pixels: int = 6
     local_render_backend: str = "stable_matrix"
     stable_matrix_profile: str = ""
     stable_matrix_positive_prompt_globals: str = ""
@@ -126,6 +130,10 @@ class PipelineControlService:
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
+            head_fitment_render_mode=str(self.config.head_fitment_render_mode),
+            head_fitment_masked_local_preset=str(self.config.head_fitment_masked_local_preset),
+            head_fitment_masked_local_checkpoint=str(self.config.head_fitment_masked_local_checkpoint),
+            head_fitment_mask_feather_pixels=int(self.config.head_fitment_mask_feather_pixels),
             local_render_backend=str(self.config.local_render_backend),
             stable_matrix_profile=str(self.config.local_render_preset),
             stable_matrix_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
@@ -186,6 +194,9 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
+            {"Scope": "Project config", "Setting": "HeadFitment.RenderMode", "Value": self.config.head_fitment_render_mode},
+            {"Scope": "Project config", "Setting": "HeadFitment.MaskedLocalPreset", "Value": self.config.head_fitment_masked_local_preset},
+            {"Scope": "Project config", "Setting": "HeadFitment.MaskedLocalCheckpoint", "Value": self.config.head_fitment_masked_local_checkpoint},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.Model", "Value": self.config.ai_prompt_analysis_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
@@ -223,6 +234,10 @@ class PipelineControlService:
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
+            ("HeadFitment", "RenderMode"): settings.head_fitment_render_mode,
+            ("HeadFitment", "MaskedLocalPreset"): settings.head_fitment_masked_local_preset,
+            ("HeadFitment", "MaskedLocalCheckpoint"): settings.head_fitment_masked_local_checkpoint,
+            ("HeadFitment", "MaskFeatherPixels"): settings.head_fitment_mask_feather_pixels,
             ("AIPromptAnalysis", "Model"): settings.ai_prompt_analysis_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
@@ -234,6 +249,12 @@ class PipelineControlService:
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))
             raise PipelineControlServiceError(f"Render backend must be one of: {choices}.")
+        if settings.head_fitment_render_mode not in {"prompt", "masked_local"}:
+            raise PipelineControlServiceError("Head-Fitment render mode must be prompt or masked_local.")
+        if not settings.head_fitment_masked_local_preset.strip():
+            raise PipelineControlServiceError("Head-Fitment masked-local preset cannot be blank.")
+        if settings.head_fitment_mask_feather_pixels < 0 or settings.head_fitment_mask_feather_pixels > 64:
+            raise PipelineControlServiceError("Head-Fitment mask feather must be between 0 and 64 pixels.")
         local_backend = settings.local_render_backend.strip()
         if local_backend not in self.SAFE_LOCAL_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_LOCAL_RENDER_BACKENDS))

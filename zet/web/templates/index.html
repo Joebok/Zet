@@ -251,6 +251,7 @@
           <div class="button-row">
             <button id="regenerate" class="update-action" data-action="regenerate" disabled>Regen</button>
             <button id="regenerate-clear-references" class="update-action" data-action="regenerate-and-clear-references" disabled>Regen &amp; clear refs</button>
+            <button id="keep-locked" data-action="keep-locked" hidden disabled>Keep LOCKED</button>
             <button id="promote-to-locked" class="primary-action" data-action="promote-to-locked" disabled>Promote to LOCKED</button>
             <button id="create-identity-from-asset" class="create-action" type="button" disabled>Create Identity Key</button>
           </div>
@@ -923,6 +924,34 @@
               <div id="headshot-reference-preview" class="image-placeholder">No headshot selected.</div>
             </section>
           </div>
+          <section id="manifest-masked-edit" class="manifest-masked-edit" hidden>
+            <div class="review-header">
+              <div>
+                <h3>Masked Local Edit</h3>
+                <div id="manifest-mask-status" class="status-text"></div>
+              </div>
+              <div class="button-row compact">
+                <button id="manifest-mask-initialize" type="button">Initialize Mask</button>
+                <button id="manifest-mask-save" class="primary-action" type="button" disabled>Confirm Mask</button>
+              </div>
+            </div>
+            <div class="manifest-mask-tools">
+              <label>Brush
+                <select id="manifest-mask-brush-mode">
+                  <option value="protect">Protect head</option>
+                  <option value="edit">Edit neck</option>
+                  <option value="remove">Remove</option>
+                </select>
+              </label>
+              <label>Size <input id="manifest-mask-brush-size" type="range" min="4" max="120" value="36"></label>
+            </div>
+            <canvas id="manifest-mask-canvas" aria-label="Head-Fitment semantic mask editor"></canvas>
+            <p class="field-help">Green is protected, amber is neck-only editing, and red is removed. The final renderer restores protected pixels exactly.</p>
+            <details>
+              <summary>Required local models</summary>
+              <pre id="manifest-mask-models"></pre>
+            </details>
+          </section>
         </section>
         <aside class="review-actions">
           <h3>Saved Reference Slots</h3>
@@ -1288,6 +1317,16 @@
                 <option value="local_image">local_image</option>
               </select>
             </label>
+            <label>
+              Head-Fitment render mode
+              <select id="setting-head-fitment-render-mode">
+                <option value="prompt">Prompt-based</option>
+                <option value="masked_local">Masked local edit</option>
+              </select>
+            </label>
+            <label>Head-Fitment masked preset<input id="setting-head-fitment-preset" type="text" value="head-fitment-inpaint"></label>
+            <label>Head-Fitment checkpoint<input id="setting-head-fitment-checkpoint" type="text"></label>
+            <label>Head-Fitment mask feather pixels<input id="setting-head-fitment-feather" type="number" min="0" max="64" step="1" value="6"></label>
             <button class="primary-action" type="submit">Save Project Settings</button>
           </form>
         </section>

@@ -12,6 +12,10 @@ class WorkerContext:
     locked_image_path: Path
     character_path: Path
     character_asset_path: Path
+    config: object | None = None
+    asset_repository: object | None = None
+    path_service: object | None = None
+    ai_proxy_service: object | None = None
 
 
 @dataclass

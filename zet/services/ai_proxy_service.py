@@ -15,6 +15,7 @@ from zet.repositories.pipeline_repository import PipelineRepository
 from zet.models.reference import reference_files_payload
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.head_fitment_edit_service import HeadFitmentEditService
 from zet.services.path_service import PathService
 from zet.services.prompt_artifact_service import PromptArtifactService
 
@@ -154,6 +155,25 @@ class AIProxyService:
                 task_type="render",
                 render_preset=self._local_render_preset(),
             )
+        if asset.pipeline == "Head-Fitment" and asset.pipeline_stage == "RENDER" and str(
+            self.path_service.config.head_fitment_render_mode
+        ) == "masked_local":
+            return AIProxyAsk(
+                ask_id=ask_id,
+                asset_id=asset.asset_id,
+                character=asset.character,
+                phase=asset.phase,
+                pipeline=asset.pipeline,
+                pipeline_stage=asset.pipeline_stage,
+                ollama_attempt_id=attempt_id,
+                worker_type="local_image_render",
+                ollama_model="",
+                prompt_file="Final_Image_Prompt.md",
+                expected_output=asset.final_image_output,
+                candidate_output_file=asset.final_image_output,
+                task_type="head_fitment_inpaint",
+                render_preset=str(self.path_service.config.head_fitment_masked_local_preset),
+            )
         if asset.pipeline in {"Head-Image", "Head-Fitment"} and asset.pipeline_stage == "RENDER":
             return self._build_manual_render_ask(asset, ask_id, attempt_id)
         if asset.pipeline == "Character-Assembly" and asset.pipeline_stage == "RENDER":
@@ -226,9 +246,31 @@ class AIProxyService:
         if ask.body_view is not None:
             payload["body_view"] = ask.body_view
         workflow_kind = self._local_render_workflow_kind()
-        if ask.worker_type == "local_image_render" and workflow_kind:
+        if ask.worker_type == "local_image_render" and ask.task_type != "head_fitment_inpaint" and workflow_kind:
             payload["workflow_kind"] = workflow_kind
+        if ask.task_type == "head_fitment_inpaint":
+            payload.update(
+                {
+                    "head_fitment_init_file": "Head_Fitment_Init.png",
+                    "head_fitment_mask_file": "Head_Fitment_Edit_Mask.png",
+                    "head_fitment_spec_file": "Head_Fitment_Edit.json",
+                    "image_generation": "stable_matrix",
+                    "checkpoint": str(self.path_service.config.head_fitment_masked_local_checkpoint),
+                    "mask_feather_pixels": int(self.path_service.config.head_fitment_mask_feather_pixels),
+                }
+            )
         return payload
+
+    def _copy_head_fitment_inpaint_inputs(self, asset, ask_path: Path) -> None:
+        service = HeadFitmentEditService(self.asset_repository, self.path_service)
+        context = service.context(asset.character, asset.phase, asset.asset_id)
+        if not context["confirmed"] or not context["current"]:
+            raise AIProxyServiceError("Head-Fitment mask must be confirmed and current before render staging.")
+        paths = service.paths(asset)
+        for source in (paths.init, paths.mask, paths.spec):
+            if not source.is_file():
+                raise AIProxyServiceError(f"Missing Head-Fitment inpaint artifact: {source.name}")
+            shutil.copy2(source, ask_path / source.name)
 
     def _prompt_contents(self, asset) -> str:
         """Read the prompt text that should be copied into a queued ask."""
@@ -300,6 +342,8 @@ class AIProxyService:
 
         prompt_path = ask_path / ask.prompt_file
         self._write_text_atomic(prompt_path, self._prompt_contents(asset))
+        if ask.task_type == "head_fitment_inpaint":
+            self._copy_head_fitment_inpaint_inputs(asset, ask_path)
 
         updated_asset = replace(asset)
         updated_asset.ai_state = "ASKED"
