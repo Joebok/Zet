@@ -42,19 +42,21 @@ Preserve the ear shape and visibility shown by the Character Head. Do not invent
 
 The Reference Body and Character Head must already belong to the same character phase and skin-tone specification. Do not broadly recolor or globally reinterpret either source.
 
-Head-to-Body Scale
+# Head-to-Body Scale
 
-The Reference Body controls the final head scale, placement, and overall head-to-body proportion.
+The Reference Body controls final head scale, placement, and head-to-body proportion.
 
-Use the mannequin head in the Reference Body as the primary geometric guide for the size and placement of the Character Head. Match the mannequin skull's approximate crown-to-chin scale, skull volume, and anatomical position while preserving the Character Head's individual skull shape. Hair, ears, and other features may extend beyond the mannequin silhouette and must not be included when judging skull size.
+The mannequin skull is the authoritative geometric fitment guide. Scale and position the Character Head so its skull matches the mannequin skull's crown-to-chin height, approximate skull width and volume, and anatomical position.
 
-The Character Head controls head shape, facial geometry, identity, hairstyle, ears, and other defining head features, but its absolute image size is not authoritative.
+Judge skull scale only. Hair, ears, and other projecting features may extend beyond the mannequin silhouette and are not included when measuring head size.
 
-A head-and-shoulders or limited-bust source may make the head appear larger because of its crop, framing, shoulder context, or source composition. Ignore that apparent source scale. Do not size the assembled head according to the width of the shoulders or upper torso visible in the Character Head source.
+The Character Head controls skull shape, face, identity, hairstyle, ears, and facial detail, but its absolute source-image size is not authoritative.
 
-Use the mannequin skull as a fitment guide, not as an identity or shape template. Do not reshape the Character Head to match the mannequin. Preserve the Character Head's distinctive skull, jaw, face, ears, and hairstyle while fitting those features within the appropriate overall head-to-body scale.
+Ignore the apparent scale created by portrait cropping, shoulders, upper torso, or source framing. Do not preserve the Character Head's apparent portrait size.
 
-The completed character must have the natural head-to-body proportion established by the Reference Body and must not appear to have a portrait-sized head attached to a smaller full-body figure.
+Scale the Character Head; do not reshape it. Preserve its individual skull, jaw, face, ears, hairstyle, and facial rendering at the body-appropriate scale established by the Reference Body.
+
+The final skull must read at the same anatomical scale as the mannequin skull. It must not become larger simply because the Character Head comes from a close portrait.
 
 ## Style Mode
 
@@ -89,7 +91,7 @@ Do not change the character's facial identity, age phase, species, hairstyle des
 - One coherent full-body character is visible, including both feet.
 - The final character faithfully preserves the Reference Body's overall body, pose, proportions, stance, framing, clothing, background, and requested view.
 - The face is the supplied Character Head rendering at the required assembled scale, not a newly interpreted or regenerated version of that face. Apparent age, facial texture, and maturity must not change.
-- The final skull is scaled and positioned consistently with the mannequin skull in the Reference Body. Character-specific skull shape, hair, and ears may extend differently, but the head must not become globally larger merely because the Character Head source includes shoulders or upper torso.
+- The final character skull matches the mannequin skull's anatomical scale and position. The Character Head may differ in shape, and hair or ears may extend farther, but the skull itself must not be visibly larger than the mannequin fitment skull.
 - The final head faithfully preserves the Character Head's identity, face, age phase, species, expression, gaze, hairstyle design, ears, and orientation.
 - The head, neck, hair, shoulders, and exposed skin form one anatomically natural and visually continuous assembly.
 - No mannequin material, source seam, pasted edge, mismatched shading, floating head, stretched neck, or buried neck remains visible.
