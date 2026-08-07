@@ -18,7 +18,7 @@ Produce one coherent full-body character in one {{VIEW_LABEL}}.
 
 The Reference Body controls the overall body geometry, body proportions, pose, stance, overall shoulder placement, width and silhouette, framing, fitment clothing, exposed body skin, background, requested view, camera orientation, and the correct anatomical scale and placement of the head relative to the body. The mannequin head is the geometric fitment guide for final skull scale and position.
 
-The Character Head controls the selected character-phase identity, head shape, face, age characteristics, species, expression, gaze, hairstyle design, ears, feature visibility, and head orientation. Preserve those defining properties directly; do not treat the source as loose identity inspiration.
+The Character Head controls character identity, head shape, face, age characteristics, species, expression, gaze, hairstyle, ears, skull orientation, facial-plane direction, and feature visibility. Preserve these directly; they are not adjustable fitment geometry.
 
 The adaptive assembly region is the neck and immediate neck/hair/shoulder junction rather than a rigid source boundary.
 
@@ -74,7 +74,7 @@ Do not leave a visible seam, mannequin residue, collar, socket, ring artifact, o
 
 Do not change the overall body shape, body proportions, pose, stance, foot placement, camera angle, crop, clothing, or background.
 
-Do not change the character's facial identity, age phase, species, hairstyle design, ear design, expression, gaze direction, or head orientation.
+Do not change the character's facial identity, age phase, species, hairstyle design, ear design, expression, gaze, or orientation.
 
 # Acceptance Criteria
 
@@ -84,5 +84,7 @@ Do not change the character's facial identity, age phase, species, hairstyle des
 - The final head faithfully preserves the Character Head's identity, face, age phase, species, expression, gaze, hairstyle design, ears, and orientation.
 - The head, neck, hair, shoulders, and exposed skin form one anatomically natural and visually continuous assembly.
 - No mannequin material, source seam, pasted edge, mismatched shading, floating head, stretched neck, or buried neck remains visible.
+- The skull, facial plane, neck, and torso preserve the supplied shared orientation; there is no independent head turn.
+- In rear-biased views, the final image does not reveal more of the face than the supplied Character Head.
 - Local assembly corrections do not cause broader body, head, costume, view, or background drift.
 - No costume elements, props, accessories, scenery, text, or new lighting effects are added.

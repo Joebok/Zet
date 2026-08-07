@@ -3,24 +3,24 @@
   "views": {
     "FRONT": {
       "label": "direct front view",
-      "orientation_sentence": "The head, torso, and feet all point directly toward the viewer.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same direct front orientation. Do not introduce independent head rotation.",
       "costume_dressing_orientation_lock": "Preserve a true direct front orientation, square to the camera. Keep the body and face front-facing and the stance symmetrical. Do not add a three-quarter turn.",
       "folder_name": "Front",
       "output_name_fragment": "Front",
       "instruction": "Render the character from a direct front view, facing the viewer squarely.",
       "body_instructions": {
         "body-reference": "Render the body from a direct front view, facing the viewer squarely.",
-        "character-assembly": "The Reference Body and Character Head already use the same direct front view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head.",
+        "character-assembly": "The Reference Body and Character Head already use the same direct front view. Preserve that orientation exactly. Do not rotate, mirror, tilt, or re-pose the head. Preserve the supplied gaze.",
         "costume-dressing": "Preserve the Assembled Character source as a direct front-view full-body source, facing the viewer squarely."
       },
       "head_instructions": {
         "head-image": "Render the head from a direct front view, facing the viewer squarely. The requested target view overrides any source-image orientation.",
-        "character-assembly": "Preserve the Character Head's direct front view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes."
+        "character-assembly": "Preserve the Character Head's direct front orientation and supplied gaze exactly."
       }
     },
     "FRONT_LEFT_3_4": {
       "label": "front-left three-quarter view",
-      "orientation_sentence": "The head, torso, and feet all point toward the left side of the image.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same front-left three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is positioned in front of and to the character's anatomical left.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied front-left three-quarter angle. Do not repaint the face into a direct front view or create independent eye contact.",
       "folder_name": "Front_Left_3_4",
@@ -28,17 +28,17 @@
       "instruction": "Render the character from a front-left three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-left three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
       "body_instructions": {
         "body-reference": "THREE-QUARTER ORIENTATION LOCK\n\nRender the body from a front-left three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-left three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
-        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same front-left three-quarter view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same front-left three-quarter view. Preserve that shared orientation exactly. The head, neck, and torso remain one aligned unit; do not add independent head yaw, pitch, or roll. Preserve the Character Head's facial-plane direction, feature visibility, and gaze. Do not turn the face or eyes toward the viewer.",
         "costume-dressing": "Preserve the Assembled Character source as a front-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked front-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
         "head-image": "Render the head from a front-left three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck share that orientation. Rotate away from any source-image angle and do not drift into a direct front or profile view.",
-        "character-assembly": "Preserve the Character Head's front-left three-quarter view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's front-left three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
     "FRONT_RIGHT_3_4": {
       "label": "front-right three-quarter view",
-      "orientation_sentence": "The head, torso, and feet all point toward the right side of the image.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same front-right three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is positioned in front of and to the character's anatomical right.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied front-right three-quarter angle. Do not repaint the face into a direct front view or create independent eye contact.",
       "folder_name": "Front_Right_3_4",
@@ -46,51 +46,51 @@
       "instruction": "Render the character from a front-right three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-right three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
       "body_instructions": {
         "body-reference": "THREE-QUARTER ORIENTATION LOCK\n\nRender the body from a front-right three-quarter body view. Treat this as one physical camera angle, not a direct front view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same front-right three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
-        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same front-right three-quarter view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same front-right three-quarter view. Preserve that shared orientation exactly. The head, neck, and torso remain one aligned unit; do not add independent head yaw, pitch, or roll. Preserve the Character Head's facial-plane direction, feature visibility, and gaze. Do not turn the face or eyes toward the viewer.",
         "costume-dressing": "Preserve the Assembled Character source as a front-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked front-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
         "head-image": "Render the head from a front-right three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck share that orientation. Rotate away from any source-image angle and do not drift into a direct front or profile view.",
-        "character-assembly": "Preserve the Character Head's front-right three-quarter view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's front-right three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
     "LEFT_PROFILE": {
       "label": "left profile view",
-      "orientation_sentence": "The head, torso, and feet all point directly toward the left side of the image.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same direct left-profile orientation. Do not introduce independent head rotation.",
       "costume_dressing_orientation_lock": "Preserve a true left-facing profile. Do not rotate the face or torso toward the camera.",
       "folder_name": "Left_Profile",
       "output_name_fragment": "Left-Profile",
       "instruction": "Render the character from a direct left profile view, showing the character's left side.",
       "body_instructions": {
         "body-reference": "Render the body from a direct left profile view, showing the character's left side.",
-        "character-assembly": "The Reference Body and Character Head already use the same direct left-profile view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "The Reference Body and Character Head already use the same direct left-profile view. Preserve that orientation exactly. Do not rotate, mirror, tilt, or re-pose the head. Preserve the supplied gaze and do not turn the face toward the viewer.",
         "costume-dressing": "Preserve the Assembled Character source as a direct left-profile full-body source. Do not rotate, mirror, or reinterpret the body direction."
       },
       "head_instructions": {
         "head-image": "Render the head from a direct left profile view, showing the character's left side. The requested target view overrides any source-image orientation.",
-        "character-assembly": "Preserve the Character Head's direct left-profile view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's direct left-profile orientation, feature visibility, and supplied gaze exactly."
       }
     },
     "RIGHT_PROFILE": {
       "label": "right profile view",
-      "orientation_sentence": "The head, torso, and feet all point directly toward the right side of the image.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same direct right-profile orientation. Do not introduce independent head rotation.",
       "costume_dressing_orientation_lock": "Preserve a true right-facing profile. Do not rotate the face or torso toward the camera.",
       "folder_name": "Right_Profile",
       "output_name_fragment": "Right-Profile",
       "instruction": "Render the character from a direct right profile view, showing the character's right side.",
       "body_instructions": {
         "body-reference": "Render the body from a direct right profile view, showing the character's right side.",
-        "character-assembly": "The Reference Body and Character Head already use the same direct right-profile view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "The Reference Body and Character Head already use the same direct right-profile view. Preserve that orientation exactly. Do not rotate, mirror, tilt, or re-pose the head. Preserve the supplied gaze and do not turn the face toward the viewer.",
         "costume-dressing": "Preserve the Assembled Character source as a direct right-profile full-body source. Do not rotate, mirror, or reinterpret the body direction."
       },
       "head_instructions": {
         "head-image": "Render the head from a direct right profile view, showing the character's right side. The requested target view overrides any source-image orientation.",
-        "character-assembly": "Preserve the Character Head's direct right-profile view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's direct right-profile orientation, feature visibility, and supplied gaze exactly."
       }
     },
     "BACK_LEFT_3_4": {
       "label": "back-left three-quarter view",
-      "orientation_sentence": "The head, torso, and feet all point toward the left side of the image.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same back-left three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is positioned behind and to the character's anatomical left.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied away-facing back-left three-quarter angle. The back remains the dominant body surface. Do not rotate the head or torso toward the viewer, and reveal the face only to the degree already present in the Character-Assembly source.",
       "folder_name": "Back_Left_3_4",
@@ -98,17 +98,17 @@
       "instruction": "Render the character from a back-left three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-left three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
       "body_instructions": {
         "body-reference": "THREE-QUARTER ORIENTATION LOCK\n\nRender the body from a back-left three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-left three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
-        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same back-left three-quarter view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same back-left three-quarter view. Preserve that shared orientation exactly. The head, neck, and torso remain one aligned unit; do not add independent head yaw, pitch, or roll.\n\nThis is a rear-biased view. The back and anatomical left side of the head remain dominant. Preserve the Character Head's exact facial-plane direction, feature visibility, and gaze. Do not turn the face toward the viewer or reveal more of the eyes, nose, mouth, cheek, or expression. Any feature hidden or only partly visible in the Character Head must remain similarly hidden or partial. Greater facial visibility is an orientation error.",
         "costume-dressing": "Preserve the Assembled Character source as a back-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
         "head-image": "Render the head from a back-left three-quarter view. The back of the skull and hair remain dominant while only the target-view amount of cheek or jaw is visible. Rotate away from any source-image angle.",
-        "character-assembly": "Preserve the Character Head's back-left three-quarter view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's back-left three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
-      "orientation_sentence": "The head, torso, and feet all point toward the right side of the image.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same back-right three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is positioned behind and to the character's anatomical right.",
       "costume_dressing_orientation_lock": "Preserve the exact supplied away-facing back-right three-quarter angle. The back remains the dominant body surface. Do not rotate the head or torso toward the viewer, and reveal the face only to the degree already present in the Character-Assembly source.",
       "folder_name": "Back_Right_3_4",
@@ -116,29 +116,29 @@
       "instruction": "Render the character from a back-right three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-right three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
       "body_instructions": {
         "body-reference": "THREE-QUARTER ORIENTATION LOCK\n\nRender the body from a back-right three-quarter body view. Treat this as one physical camera angle, not a direct back view and not a profile view. The torso, shoulders, neck, mannequin head, face plane, eye gaze, hips, knees, and feet all share the same back-right three-quarter direction. Do not turn the head or eyes toward the viewer independently. Do not reverse the requested anatomical left-right orientation, and do not introduce twisting between the head, torso, hips, or feet.",
-        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same back-right three-quarter view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "THREE-QUARTER ORIENTATION LOCK\n\nThe Reference Body and Character Head already use the same back-right three-quarter view. Preserve that shared orientation exactly. The head, neck, and torso remain one aligned unit; do not add independent head yaw, pitch, or roll.\n\nThis is a rear-biased view. The back and anatomical right side of the head remain dominant. Preserve the Character Head's exact facial-plane direction, feature visibility, and gaze. Do not turn the face toward the viewer or reveal more of the eyes, nose, mouth, cheek, or expression. Any feature hidden or only partly visible in the Character Head must remain similarly hidden or partial. Greater facial visibility is an orientation error.",
         "costume-dressing": "Preserve the Assembled Character source as a back-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
         "head-image": "Render the head from a back-right three-quarter view. The back of the skull and hair remain dominant while only the target-view amount of cheek or jaw is visible. Rotate away from any source-image angle.",
-        "character-assembly": "Preserve the Character Head's back-right three-quarter view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's back-right three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
     "BACK": {
       "label": "back view",
-      "orientation_sentence": "The head, torso, and feet all point directly away from the viewer.",
+      "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same direct back orientation. Do not introduce independent head rotation.",
       "costume_dressing_orientation_lock": "Preserve a true direct back orientation with the body and head facing away. Do not reveal more face than the supplied source or turn the character toward the viewer.",
       "folder_name": "Back",
       "output_name_fragment": "Back",
       "instruction": "Render the character from a direct back view, facing away from the viewer squarely.",
       "body_instructions": {
         "body-reference": "Render the body from a direct back view, facing away from the viewer squarely.",
-        "character-assembly": "The Reference Body and Character Head already use the same direct back view. Preserve both orientations exactly. Do not rotate, mirror, tilt, or re-pose either source. Preserve the gaze shown by the Character Head source. Do not redirect the eyes independently of the head or toward the viewer.",
+        "character-assembly": "The Reference Body and Character Head already use the same direct back view. Preserve that orientation exactly. Do not rotate, mirror, tilt, or re-pose the head. Do not reveal the face or redirect the gaze toward the viewer.",
         "costume-dressing": "Preserve the Assembled Character source as a direct back-view full-body source, facing away from the viewer squarely."
       },
       "head_instructions": {
         "head-image": "Render the head from a direct back view, facing away from the viewer squarely. Do not reveal the face. The requested target view overrides any source-image orientation.",
-        "character-assembly": "Preserve the Character Head's direct back view and source gaze exactly. Do not rotate, mirror, tilt, re-pose, or redirect the eyes toward the viewer."
+        "character-assembly": "Preserve the Character Head's direct back orientation and supplied gaze exactly. Do not reveal the face."
       }
     }
   }
