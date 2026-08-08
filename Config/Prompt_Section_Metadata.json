@@ -56,6 +56,10 @@
     "NEGATIVE_GUIDANCE_JOB_SPECIFIC": {
       "label": "Job-Specific Negative Guidance",
       "description": "Avoid rules specific to the selected pipeline or job."
+    },
+    "CHARACTER_ASSEMBLY_RENDERING_RULES": {
+      "label": "Character Assembly Rendering Rules",
+      "description": "Rules for rendering the assembled character."
     }
   }
 }

@@ -11,19 +11,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError
+from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError, select_sections
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
+    apply_character_assembly_section_overrides,
     expected_output_for_job,
     job_get,
     load_bundle,
+    load_body_reference_section_data,
     load_view_data,
     normalize_view,
     output_files,
     require_job_field,
     resolve_project_path,
+    template_metadata,
+    template_path_for_job,
     view_instruction,
     reference_by_role,
     reference_files_for_job,
@@ -156,7 +160,14 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         head_image=head_image,
     )
 
-    selection = CompiledSelection([], [], [], [], [], {})
+    template_path = template_path_for_job(project_root, job, character, phase)
+    all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
+    all_sections, section_sources = apply_character_assembly_section_overrides(all_sections, section_sources)
+    selection = select_sections(all_sections, bundle, body_view_token, section_sources)
+    if selection.missing_required:
+        raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
+    if selection.forbidden_matches:
+        raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -194,6 +205,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
             "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
+            **template_metadata(template_path),
         }
     metadata_sources = {
         "CHARACTER_NAME": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset character", "editable": False},

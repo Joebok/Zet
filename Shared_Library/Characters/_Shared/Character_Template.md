@@ -655,6 +655,12 @@ Rendering priorities:
 
 <!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
 
+## Character-Assembly Rendering Rules
+
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_RENDERING_RULES -->
+
+<!-- ZET:END CHARACTER_ASSEMBLY_RENDERING_RULES -->
+
 ## STANCE AND FOOT PLACEMENT — CRITICAL
 
 <!-- ZET:BEGIN NEUTRAL_POSE_STANCE -->
@@ -891,6 +897,12 @@ Avoid:
 * Do not add extra weapons, props, jewelry, decorative accessories, labels, registration text, or visible guide marks.
 
 <!-- ZET:END HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+
+## Character-Assembly Negative Guidance - Job Specific
+
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+
+<!-- ZET:END CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 
 ## General Negative Guidance
 

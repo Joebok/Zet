@@ -116,6 +116,26 @@ def apply_head_image_section_overrides(
     return sections, sources
 
 
+def apply_character_assembly_section_overrides(
+    sections: dict[str, str],
+    sources: dict[str, dict],
+) -> tuple[dict[str, str], dict[str, dict]]:
+    """Map Character-Assembly-specific negative sections onto the bundle's legacy slots."""
+    mappings = {
+        "NEGATIVE_GUIDANCE_GENERAL": "CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_GENERAL",
+        "NEGATIVE_GUIDANCE_JOB_SPECIFIC": "CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC",
+    }
+    for target, source in mappings.items():
+        value = str(sections.get(source) or "").strip()
+        if not value:
+            continue
+        sections[target] = value
+        source_meta = sources.get(source)
+        if isinstance(source_meta, dict):
+            sources[target] = dict(source_meta, section_name=target)
+    return sections, sources
+
+
 def view_instruction(view_data: dict, role: str, task: str, include_intro: bool = False) -> str:
     """Return task-specific view instruction text with optional shared intro."""
     role_key = f"{role}_instructions"

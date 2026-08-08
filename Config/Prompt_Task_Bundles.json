@@ -88,7 +88,10 @@
       "description": "Static full-character assembly prompt using locked body-reference and Head-Image references. No prompt review.",
       "prompt_builder": "static",
       "required_sections": [],
-      "optional_sections": [],
+      "optional_sections": [
+        "CHARACTER_ASSEMBLY_RENDERING_RULES",
+        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
+      ],
       "forbidden_sections": [
         "*_PICARESQUE"
       ],
