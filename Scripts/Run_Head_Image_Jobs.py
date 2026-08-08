@@ -15,6 +15,7 @@ from Scripts.Compile_Character_Template import TemplateCompileError, select_sect
 from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
+    apply_head_image_section_overrides,
     job_get,
     load_body_reference_section_data,
     load_bundle,
@@ -70,17 +71,16 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     if source_reference is not None:
         validate_reference(source_reference, "head_image_source", project_root)
         source_block = (
-            "A source image is attached as the Head Image Source. Use it as the visual identity authority under "
-            "the Character.md reference rules. Preserve identity-defining traits that the target phase does not "
-            "explicitly change, but rotate the result into the requested target view."
+            "Use the attached source image as an identity reference for the same person."
         )
     else:
         source_block = (
-            "No source image is supplied. Construct the character identity from the factual, identity-preservation, "
-            "reference-rule, and requested-view sections of Character.md."
+            "No source image is supplied. Construct the requested character phase from the factual character, head, "
+            "hair, and requested-view descriptions below."
         )
 
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
+    sections, section_sources = apply_head_image_section_overrides(sections, section_sources)
     if source_reference is None:
         sections["HEAD_IMAGE_REFERENCE_INSTRUCTIONS"] = ""
     selection = select_sections(sections, bundle, view_token, section_sources)
@@ -137,6 +137,12 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "resources_allowed": True,
         "resources": references,
         "optional_reference_roles": ["head_image_source"],
+        "head_image_prompt_contract": {
+            "version": 3,
+            "primary_focus": "phase_transformation_identity_and_view",
+            "geometry_regularization": "deferred",
+            "background": "transparent",
+        },
     })
     paths["image_review"].write_text(
         f"""# Image Review
@@ -155,11 +161,13 @@ Reviewed At:
 ## Checklist
 
 - [ ] The requested head view is exact and not mirrored.
-- [ ] The result is recognizably the same character.
-- [ ] Intentional target-phase changes are present without unrelated identity drift.
-- [ ] Head and hair silhouettes match the view-specific Character.md rules.
-- [ ] Framing is natural and usable as a direct Character-Assembly source.
-- [ ] No narrative scene, prominent prop, or unrelated character was added.
+- [ ] The result is recognizably the same character as the supplied source, when one is present.
+- [ ] Explicit target-phase changes are clearly visible rather than being suppressed by the source appearance.
+- [ ] If the target phase changes apparent age, the face itself communicates that age change without relying only on hair color.
+- [ ] Head and hair appearance match the Character.md factual and view-specific rules.
+- [ ] The complete head and hairstyle silhouette are present and usable.
+- [ ] Framing is natural and does not distort the character merely to satisfy technical fitment geometry.
+- [ ] The background is transparent and no narrative environment or unrelated character was added.
 
 ## Notes
 """,
@@ -175,6 +183,7 @@ Reviewed At:
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,
+        "head_image_prompt_contract_version": 3,
         "reference_files": references,
     }
 
