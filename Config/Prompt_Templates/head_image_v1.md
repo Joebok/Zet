@@ -4,13 +4,13 @@ Create one image of {{CHARACTER_NAME}} in the {{CHARACTER_PHASE}} phase, shown i
 
 {{HEAD_IMAGE_REFERENCE_INSTRUCTIONS}}
 
+{{HEAD_IMAGE_REFERENCE_RULES}}
+
 ## Requested view
 
 {{VIEW_INSTRUCTION}}
 
 {{HEAD_DESCRIPTION_VIEW_{VIEW}}}
-
-{{HEAD_IMAGE_REFERENCE_RULES}}
 
 ## Rendering Style
 
@@ -19,7 +19,5 @@ Use the Canonical Art Style:
 {{CANONICAL_ART_STYLE}}
 
 ## Negative guidance
-
-{{SECTION:NEGATIVE_GUIDANCE_GENERAL}}
 
 {{SECTION:NEGATIVE_GUIDANCE_JOB_SPECIFIC}}

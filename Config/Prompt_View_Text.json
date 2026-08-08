@@ -14,7 +14,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a direct front-view full-body source, facing the viewer squarely."
       },
       "head_instructions": {
-        "head-image": "Render the head in direct front view, facing the viewer squarely. The requested target view overrides any source-image orientation.",
+        "head-image": "Render the source character's head in direct front view, facing the viewer squarely. Preserve the same person's identity while changing only what the current phase requires. The requested target view overrides any source-image orientation. Show both eyes clearly and do not introduce head tilt or independent gaze redirection.",
         "character-assembly": "Preserve the Character Head's direct front orientation and supplied gaze exactly."
       }
     },
@@ -32,7 +32,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a front-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked front-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-image": "Render the head in front-left three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck share that orientation. Rotate away from any source-image angle and do not drift into a direct front or profile view.",
+        "head-image": "Render the source character's head in a true front-left three-quarter view. Preserve the same person's identity while changing only what the current phase requires. Rotate the entire head naturally into this view: the face plane and nose point toward the character's anatomical left, the near left cheek and left ear are more exposed, and the far eye remains visible. Do not drift into direct front or full profile, and do not turn the eyes independently toward the viewer.",
         "character-assembly": "Preserve the Character Head's front-left three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
@@ -50,7 +50,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a front-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked front-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-image": "Render the head in front-right three-quarter view. The face plane, nose direction, eye gaze, ears, jaw, skull, and neck share that orientation. Rotate away from any source-image angle and do not drift into a direct front or profile view.",
+        "head-image": "Render the source character's head in a true front-right three-quarter view. Preserve the same person's identity while changing only what the current phase requires. Rotate the entire head naturally into this view: the face plane and nose point toward the character's anatomical right, the near right cheek and right ear are more exposed, and the far eye remains visible. Do not drift into direct front or full profile, and do not turn the eyes independently toward the viewer.",
         "character-assembly": "Preserve the Character Head's front-right three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
@@ -67,7 +67,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a direct left-profile full-body source. Do not rotate, mirror, or reinterpret the body direction."
       },
       "head_instructions": {
-        "head-image": "Render the head in direct left profile view, showing the character's left side. The requested target view overrides any source-image orientation.",
+        "head-image": "Render the source character's head in direct left profile, showing the character's anatomical left side. Preserve the same person's identity while changing only what the current phase requires. Show a true profile silhouette with only the target-view amount of the far side visible. Do not rotate the face back toward the viewer.",
         "character-assembly": "Preserve the Character Head's direct left-profile orientation, feature visibility, and supplied gaze exactly."
       }
     },
@@ -84,7 +84,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a direct right-profile full-body source. Do not rotate, mirror, or reinterpret the body direction."
       },
       "head_instructions": {
-        "head-image": "Render the head in direct right profile view, showing the character's right side. The requested target view overrides any source-image orientation.",
+        "head-image": "Render the source character's head in direct right profile, showing the character's anatomical right side. Preserve the same person's identity while changing only what the current phase requires. Show a true profile silhouette with only the target-view amount of the far side visible. Do not rotate the face back toward the viewer.",
         "character-assembly": "Preserve the Character Head's direct right-profile orientation, feature visibility, and supplied gaze exactly."
       }
     },
@@ -102,7 +102,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a back-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-image": "Render the head in back-left three-quarter view. The back of the skull and hair remain dominant while only the target-view amount of cheek or jaw is visible. Rotate away from any source-image angle.",
+        "head-image": "Render the source character's head in a true back-left three-quarter view. Preserve the same person's identity while changing only what the current phase requires. The back of the skull and hairstyle must remain dominant; the anatomical left rear side is more exposed. Show only a small target-view hint of the left cheek or jaw if naturally visible. Do not turn the face toward the viewer, do not reveal a recognizable side profile, and do not increase visibility of the eyes, nose, mouth, cheek, or expression beyond what a rear three-quarter view allows.",
         "character-assembly": "Preserve the Character Head's back-left three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
@@ -120,7 +120,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a back-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-image": "Render the head in back-right three-quarter view. The back of the skull and hair remain dominant while only the target-view amount of cheek or jaw is visible. Rotate away from any source-image angle.",
+        "head-image": "Render the source character's head in a true back-right three-quarter view. Preserve the same person's identity while changing only what the current phase requires. The back of the skull and hairstyle must remain dominant; the anatomical right rear side is more exposed. Show only a small target-view hint of the right cheek or jaw if naturally visible. Do not turn the face toward the viewer, do not reveal a recognizable side profile, and do not increase visibility of the eyes, nose, mouth, cheek, or expression beyond what a rear three-quarter view allows.",
         "character-assembly": "Preserve the Character Head's back-right three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
@@ -137,7 +137,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a direct back-view full-body source, facing away from the viewer squarely."
       },
       "head_instructions": {
-        "head-image": "Render the head in direct back view, facing away from the viewer squarely. Do not reveal the face. The requested target view overrides any source-image orientation.",
+        "head-image": "Render the source character's head in direct back view, facing away from the viewer squarely. Preserve the same person's identity while changing only what the current phase requires. Do not reveal the face or turn the head toward either side. The requested target view overrides any source-image orientation.",
         "character-assembly": "Preserve the Character Head's direct back orientation and supplied gaze exactly. Do not reveal the face."
       }
     }
