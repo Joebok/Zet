@@ -3,7 +3,7 @@
   "backgrounds": {
     "turnaround_source": {
       "label": "Turnaround source background",
-      "text": "Use a plain smooth neutral light gray studio background. The background must be matte, evenly lit, low-texture, and easy to separate from the character silhouette. Do not use mottled paint texture, vignette, patterned backdrop, floor seam, strong cast shadow touching the body silhouette, scenery, props, text, labels, or a chroma-key green-screen color."
+      "text": "Use a plain smooth very light desaturated blue-gray studio background. Even studio lighting. No cast shadows, floor shadows, contact shadows, vignette, or halo around the character."
     }
   }
 }

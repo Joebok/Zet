@@ -53,7 +53,10 @@ BACKGROUND AND RENDERING
 {{SECTION:BODY_REFERENCE_RENDERING_RULES}}
 
 {{BACKGROUND_TREATMENT}}
-Even studio lighting.
+
+The background must be clearly distinguishable from the light-gray mannequin head and the character silhouette.
+
+Do not render cast shadows, floor shadows, contact shadows, halos, or vignetting around the character silhouette.
 
 Do not render a wrong view, dramatic or fashion pose, narrative scene, props, weapons, accessories, ornate costume, or body-type drift.
 

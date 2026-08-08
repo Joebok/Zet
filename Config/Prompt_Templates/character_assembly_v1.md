@@ -15,3 +15,4 @@ Put this head on this body.
 
 # Acceptance Criteria
 
+{{CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA}}

@@ -90,6 +90,7 @@
       "required_sections": [],
       "optional_sections": [
         "CHARACTER_ASSEMBLY_RENDERING_RULES",
+        "CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA",
         "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
       ],
       "forbidden_sections": [

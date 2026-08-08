@@ -30,10 +30,10 @@
         ],
         "view_instructions": {
           "FRONT_LEFT_3_4": [
-            "The far side ear tip must be visible."
+            "The anatomical right ear is the far ear. Show at least its pointed tip projecting slightly beyond the far-side skull silhouette."
           ],
           "FRONT_RIGHT_3_4": [
-            "The far side ear tip must be visible."
+            "The anatomical left ear is the near ear. Show at least its pointed tip projecting slightly beyond the near-side skull silhouette."
           ]
         }
       }

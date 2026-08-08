@@ -60,6 +60,10 @@
     "CHARACTER_ASSEMBLY_RENDERING_RULES": {
       "label": "Character Assembly Rendering Rules",
       "description": "Rules for rendering the assembled character."
+    },
+    "CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA": {
+      "label": "Character Assembly Acceptance Criteria",
+      "description": "Acceptance criteria for the assembled character render."
     }
   }
 }
