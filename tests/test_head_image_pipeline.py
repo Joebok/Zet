@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
 from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.models.asset import Asset
 from zet.models.worker import WorkerContext
@@ -19,6 +20,7 @@ from zet.web.app import create_app
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ELDER_LIBRARY_ROOT = PROJECT_ROOT.parent / "Zet_Library"
 
 
 def config_for(root: Path) -> Config:
@@ -39,6 +41,7 @@ class HeadImageCompilerTests(unittest.TestCase):
             source = root / "source.png"
             source.write_bytes(b"image")
             for view in FOUNDATION_VIEWS:
+                prompts = {}
                 for suffix, references in (("none", []), ("source", [{"role": "head_image_source", "path": str(source)}])):
                     with self.subTest(view=view, source=bool(references)):
                         result = compile_head_image_job({
@@ -52,13 +55,20 @@ class HeadImageCompilerTests(unittest.TestCase):
                             "Reference Files": references,
                         }, PROJECT_ROOT)
                         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-                        self.assertIn("HEAD-IMAGE CHARACTER REFERENCE", prompt)
+                        prompts[suffix] = prompt
+                        self.assertIn("HEAD-IMAGE Adult CHARACTER REFERENCE", prompt)
                         self.assertNotIn("NECK FITMENT", prompt)
-                        self.assertIn("transparent background", prompt.lower())
                         self.assertNotIn("simple, unobtrusive background", prompt.lower())
-                        self.assertIn("source image is attached" if references else "No source image is supplied", prompt)
+                        self.assertNotIn("{{", prompt)
+                        self.assertNotIn("young-adult Tsaeytte", prompt)
+                        self.assertNotIn("* Wrong age phase.", prompt)
+                        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+                        self.assertEqual(3, manifest["head_image_prompt_contract"]["version"])
+                        self.assertEqual("deferred", manifest["head_image_prompt_contract"]["geometry_regularization"])
+                        self.assertEqual(references, manifest["resources"])
+                self.assertEqual(prompts["none"], prompts["source"])
 
-    def test_source_reference_instructions_follow_attachment_notice_only_when_source_is_attached(self) -> None:
+    def test_source_reference_instructions_are_included_only_when_source_is_attached(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             template = root / "Character.md"
@@ -89,8 +99,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                 "Reference Files": [{"role": "head_image_source", "path": str(source)}],
             }, PROJECT_ROOT)
             prompt = Path(with_source["final_prompt"]).read_text(encoding="utf-8")
-            self.assertLess(prompt.index("rotate the result into the requested target view."), prompt.index("Interpret this source as identity evidence."))
-            self.assertLess(prompt.index("Interpret this source as identity evidence."), prompt.index("Create one reusable head reference image."))
+            self.assertLess(prompt.index("Interpret this source as identity evidence."), prompt.index("## Requested view"))
 
             without_source = compile_head_image_job({
                 **base_job,
@@ -117,6 +126,49 @@ class HeadImageCompilerTests(unittest.TestCase):
             }
             with self.assertRaisesRegex(Exception, "at most one"):
                 compile_head_image_job(job, PROJECT_ROOT)
+
+
+@unittest.skipUnless(
+    (ELDER_LIBRARY_ROOT / "Characters" / "Tsaeytte" / "Elder" / "Character.md").is_file(),
+    "The checked-out Zet_Library Elder regression artifacts are unavailable.",
+)
+class ElderPromptRegressionTests(unittest.TestCase):
+    def test_current_compilers_reproduce_all_saved_elder_prompts_exactly(self) -> None:
+        template = ELDER_LIBRARY_ROOT / "Characters" / "Tsaeytte" / "Elder" / "Character.md"
+        pipeline_root = ELDER_LIBRARY_ROOT / "Pipelines" / "Tsaeytte" / "Elder"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_root = Path(temp_dir)
+            for task, compiler in (
+                ("Head-Image", compile_head_image_job),
+                ("Character-Assembly", compile_character_assembly_job),
+            ):
+                prompt_paths = sorted((pipeline_root / task).rglob("Final_Image_Prompt.md"))
+                self.assertEqual(8, len(prompt_paths), task)
+                for index, expected_path in enumerate(prompt_paths):
+                    manifest = json.loads(
+                        (expected_path.parent / "dependency_manifest.json").read_text(encoding="utf-8")
+                    )
+                    job = {
+                        "Job": manifest["job_id"],
+                        "Task": manifest["task"],
+                        "Character": manifest["character"],
+                        "Phase": manifest["phase"],
+                        "Template Path": str(template),
+                        "Output Directory": str(output_root / task / str(index)),
+                        "Reference Files": manifest["resources"],
+                    }
+                    if task == "Head-Image":
+                        job["Head View"] = manifest["view_token"]
+                    else:
+                        job.update({
+                            "Body View": manifest["body_view_token"],
+                            "Head View": manifest["head_view_token"],
+                            "Assembly Style Mode": manifest["assembly_style_mode"],
+                        })
+                    result = compiler(job, PROJECT_ROOT)
+                    actual = Path(result["final_prompt"]).read_text(encoding="utf-8")
+                    expected = expected_path.read_text(encoding="utf-8")
+                    self.assertEqual(expected, actual, str(expected_path))
 
 
 class HeadImageReferenceTests(unittest.TestCase):

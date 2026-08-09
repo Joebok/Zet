@@ -125,7 +125,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
             self.assertIn(value, opening)
         self.assertLess(prompt.index("# Locked Source"), prompt.index("# Costume Design"))
         self.assertLess(prompt.index("# Orientation Lock"), prompt.index("# Costume Design"))
-        self.assertIn("Requested body view: FRONT.", prompt)
+        self.assertIn("Requested body view: DIRECT FRONT.", prompt)
         self.assertIn("Preserve that view exactly.", prompt)
         self.assertIn("Small blue pendant", prompt)
         self.assertNotIn("None.", prompt)
@@ -166,7 +166,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         prompt, source_map, _ = self._compile(facts, "FRONT_LEFT_3_4", "FRONT")
 
         self.assertIn("Requested body view: FRONT-LEFT THREE-QUARTER.", prompt)
-        self.assertIn("Requested head view: FRONT.", prompt)
+        self.assertIn("Requested head view: DIRECT FRONT.", prompt)
         self.assertIn("body orientation and head orientation", prompt)
         self.assertTrue(source_map["fragments"])
 

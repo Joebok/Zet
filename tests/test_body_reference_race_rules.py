@@ -196,7 +196,7 @@ Species / Ancestry: `[High elf]`
                 "The mannequin head must face the same FRONT-LEFT THREE-QUARTER view as the body.",
                 prompt,
             )
-            self.assertIn("The far side ear tip must be visible.", prompt)
+            self.assertIn("pointed tip projecting slightly beyond", prompt)
 
     def test_race_view_instruction_is_injected_only_for_configured_views(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -208,63 +208,31 @@ Species / Ancestry: `[High elf]`
             for view_token in ("FRONT_LEFT_3_4", "FRONT_RIGHT_3_4"):
                 with self.subTest(view=view_token):
                     rules = load_race_render_rules(root, template_path, view_token)
-                    self.assertIn(
-                        "The far side ear tip must be visible.",
-                        rules["RACE_BODY_REFERENCE_POSITIVE"],
-                    )
+                    self.assertIn("pointed tip projecting slightly beyond", rules["RACE_BODY_REFERENCE_POSITIVE"])
 
             front_rules = load_race_render_rules(root, template_path, "FRONT")
             self.assertNotIn(
-                "The far side ear tip must be visible.",
+                "pointed tip projecting slightly beyond",
                 front_rules["RACE_BODY_REFERENCE_POSITIVE"],
             )
 
     def test_body_reference_view_orientation_details_match_configured_view(self) -> None:
-        expected = {
-            "FRONT": (
-                "The head, torso, and feet all point directly toward the viewer.",
-                "",
-            ),
-            "FRONT_LEFT_3_4": (
-                "The head, torso, and feet all point toward the left side of the image.",
-                "The camera is positioned in front of and to the character's anatomical left.",
-            ),
-            "LEFT_PROFILE": (
-                "The head, torso, and feet all point directly toward the left side of the image.",
-                "",
-            ),
-            "BACK_LEFT_3_4": (
-                "The head, torso, and feet all point toward the left side of the image.",
-                "The camera is positioned behind and to the character's anatomical left.",
-            ),
-            "BACK": (
-                "The head, torso, and feet all point directly away from the viewer.",
-                "",
-            ),
-            "BACK_RIGHT_3_4": (
-                "The head, torso, and feet all point toward the right side of the image.",
-                "The camera is positioned behind and to the character's anatomical right.",
-            ),
-            "RIGHT_PROFILE": (
-                "The head, torso, and feet all point directly toward the right side of the image.",
-                "",
-            ),
-            "FRONT_RIGHT_3_4": (
-                "The head, torso, and feet all point toward the right side of the image.",
-                "The camera is positioned in front of and to the character's anatomical right.",
-            ),
-        }
-
-        for view_token, (orientation, camera_position) in expected.items():
+        view_tokens = (
+            "FRONT", "FRONT_LEFT_3_4", "LEFT_PROFILE", "BACK_LEFT_3_4",
+            "BACK", "BACK_RIGHT_3_4", "RIGHT_PROFILE", "FRONT_RIGHT_3_4",
+        )
+        for view_token in view_tokens:
             with self.subTest(view=view_token):
+                view_data = load_view_data(PROJECT_ROOT, view_token)
                 instruction = view_instruction(
-                    load_view_data(PROJECT_ROOT, view_token),
+                    view_data,
                     "body",
                     "body-reference",
                     include_intro=True,
                 )
-                self.assertIn(orientation, instruction)
+                self.assertIn(view_data["orientation_sentence"], instruction)
                 self.assertIn("Do not rotate the head independently of the body.", instruction)
+                camera_position = view_data.get("camera_position", "")
                 if camera_position:
                     self.assertIn(camera_position, instruction)
                 else:

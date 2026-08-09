@@ -16,7 +16,7 @@ from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
-    apply_character_assembly_section_overrides,
+    apply_negative_guidance_overrides,
     expected_output_for_job,
     job_get,
     load_bundle,
@@ -162,7 +162,9 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
 
     template_path = template_path_for_job(project_root, job, character, phase)
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    all_sections, section_sources = apply_character_assembly_section_overrides(all_sections, section_sources)
+    all_sections, section_sources = apply_negative_guidance_overrides(
+        all_sections, section_sources, "CHARACTER_ASSEMBLY"
+    )
     selection = select_sections(all_sections, bundle, body_view_token, section_sources)
     if selection.missing_required:
         raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))

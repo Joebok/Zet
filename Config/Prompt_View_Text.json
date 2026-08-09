@@ -14,7 +14,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a direct front-view full-body source, facing the viewer squarely."
       },
       "head_instructions": {
-        "head-image": "Render the source character's head in direct front view, facing the viewer squarely. Preserve the same person's identity while changing only what the current phase requires. The requested target view overrides any source-image orientation. Show both eyes clearly and do not introduce head tilt or independent gaze redirection.",
+        "head-image": "Render the head in direct front view, facing the viewer squarely. The requested target view overrides any source-image orientation.",
         "character-assembly": "Preserve the Character Head's direct front orientation and supplied gaze exactly."
       }
     },

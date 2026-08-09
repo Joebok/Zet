@@ -64,6 +64,18 @@
     "CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA": {
       "label": "Character Assembly Acceptance Criteria",
       "description": "Acceptance criteria for the assembled character render."
+    },
+    "HEAD_IMAGE_NEGATIVE_GUIDANCE_GENERAL": {
+      "label": "Head-Image General Negative Guidance",
+      "description": "General drift-prevention rules used only by Head-Image generation."
+    },
+    "HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC": {
+      "label": "Head-Image Job-Specific Negative Guidance",
+      "description": "Character- or phase-specific drift-prevention rules for Head-Image generation."
+    },
+    "CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC": {
+      "label": "Character Assembly Job-Specific Negative Guidance",
+      "description": "Character- or phase-specific drift-prevention rules for Character Assembly."
     }
   }
 }

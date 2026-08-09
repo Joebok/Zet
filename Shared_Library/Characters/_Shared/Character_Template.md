@@ -640,6 +640,7 @@ Rendering priorities:
 * Render one clear image of the character's head in the requested view.
 * Use the Canonical Art Style.
 * Use natural head-and-shoulders or limited-bust framing with the complete head, hair silhouette, jaw, chin, neck, and enough upper-shoulder context for assembly.
+* Render on a transparent background with clear readable lighting; do not add a backdrop or environment.
 * The visible shoulders, upper torso, and clothing are contextual only and do not define the final assembled body.
 * Do not add a narrative scene, prominent props, or unrelated characters.
 
@@ -872,17 +873,13 @@ These rules are used by Head-Image compilation in place of body-oriented general
 Avoid:
 
 * Generic replacement face or loss of character identity.
-* Wrong age phase, including reverting to young-adult Tsaeytte.
-* Human-style extreme aging: deep wrinkles, sagging jowls, age spots, cloudy eyes, or heavily weathered skin.
-* Sickly, skeletal, corpse-like, or generically elderly facial treatment.
+* Wrong target phase or suppression of explicitly described phase changes.
+* Aging, de-aging, beautification, or weathering not supported by the target-phase description.
+* Sickly, skeletal, corpse-like, or otherwise unintended facial treatment.
 * Wrong species markers, rounded/human ears, or missing expected ear visibility.
-* Wrong hair
-* Head-and-shoulders portrait framing, bust framing, visible shoulders, upper torso, clothing, jewelry, equipment, or costume context.
+* Wrong hairstyle, hair color, length, texture, or silhouette.
 * Opaque, parchment, studio, scenic, textured, or colored background. The background must remain truly transparent.
-* Cropping any part of the head, hair silhouette, ear tips, jaw, chin, or neck registration cut plane.
-* Portrait-style zoom changes between views.
-* An elongated neck, shoulder flare, trapezius flare, or neck geometry invented to fill the lower canvas.
-* Hair completely obscuring the lower-neck registration region.
+* Cropping any part of the head, hair silhouette, ear tips, jaw, chin, or required neck context.
 * Dramatic pose, expressive head tilt, independent head turn, or view drift.
 
 <!-- ZET:END HEAD_IMAGE_NEGATIVE_GUIDANCE_GENERAL -->
@@ -892,8 +889,8 @@ Avoid:
 <!-- ZET:BEGIN HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 
 * Preserve the exact requested head orientation and view-specific facial visibility.
-* Keep the output a reusable technical assembly asset rather than a portrait or scene.
-* Do not add shoulders or body context to demonstrate hair length; hair may extend into transparent space below the neck cut plane.
+* Keep the output a reusable head reference rather than a narrative portrait or scene.
+* Use only the natural neck and limited shoulder context needed to preserve the complete head and hairstyle silhouette.
 * Do not add extra weapons, props, jewelry, decorative accessories, labels, registration text, or visible guide marks.
 
 <!-- ZET:END HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->

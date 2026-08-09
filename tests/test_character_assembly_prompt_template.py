@@ -89,7 +89,7 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("Preserve the gaze shown by the Character Head source.", prompt)
+        self.assertIn("Preserve the Character Head's exact facial-plane direction, feature visibility, and supplied gaze.", prompt)
         self.assertNotIn("or toward the viewer", prompt)
 
     def test_non_front_gaze_is_not_redirected_toward_viewer(self) -> None:
@@ -99,9 +99,9 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         )
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("Do not redirect the eyes independently of the head or toward the viewer.", prompt)
+        self.assertIn("Do not turn the face toward the viewer or reveal more of the face", prompt)
 
-    def test_style_modes_emit_only_their_allowed_rendering_changes(self) -> None:
+    def test_style_mode_is_recorded_without_changing_the_established_prompt(self) -> None:
         matched = compile_character_assembly_job(self._job(output_name="matched"), PROJECT_ROOT)
         harmonized = compile_character_assembly_job(
             self._job(style_mode="HARMONIZE_STYLE", output_name="harmonized"),
@@ -111,12 +111,8 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         harmonized_prompt = Path(harmonized["final_prompt"]).read_text(encoding="utf-8")
 
         self.assertEqual("MATCHED_STYLE", matched["assembly_style_mode"])
-        self.assertIn("Allow localized blending, antialiasing, shading adjustment", matched_prompt)
-        self.assertIn("limited reconstruction", matched_prompt)
-        self.assertNotIn("Harmonize the Character Head's line quality", matched_prompt)
         self.assertEqual("HARMONIZE_STYLE", harmonized["assembly_style_mode"])
-        self.assertIn("Harmonize the Character Head's line quality, shading, and surface finish", harmonized_prompt)
-        self.assertNotIn("limited reconstruction", harmonized_prompt)
+        self.assertEqual(matched_prompt, harmonized_prompt)
 
     def test_prompt_omits_superseded_generation_rules(self) -> None:
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
@@ -137,41 +133,45 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
             "when shoulders are not rendered",
         ):
             self.assertNotIn(omitted, prompt)
-        self.assertEqual(1, prompt.count("fitment clothing"))
+        self.assertNotIn("fitment clothing", prompt)
 
-    def test_prompt_uses_generic_source_controlled_identity_rules(self) -> None:
+    def test_prompt_uses_character_template_assembly_sections(self) -> None:
+        self.template_path.write_text(
+            """Canonical Art Style: `[Test canonical style]`
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_RENDERING_RULES -->
+Use the character-specific assembly rules.
+<!-- ZET:END CHARACTER_ASSEMBLY_RENDERING_RULES -->
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+Do not alter the character-specific head.
+<!-- ZET:END CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+This generic negative must be replaced.
+<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA -->
+The character-specific head and body remain recognizable.
+<!-- ZET:END CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA -->
+""",
+            encoding="utf-8",
+        )
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("Produce one coherent full-body character in one direct front view.", prompt)
-        self.assertIn("selected character-phase identity", prompt)
-        self.assertIn("age characteristics, species", prompt)
-        self.assertIn("Preserve the hairstyle's defining length, shape, part, asymmetry, volume, and identity", prompt)
-        self.assertIn("Adjust only local strand placement and overlap", prompt)
-        self.assertIn("Do not invent or expose an ear that is naturally occluded", prompt)
-        self.assertNotIn("Local skin-transition and shading harmonization", prompt)
+        self.assertIn("Use the character-specific assembly rules.", prompt)
+        self.assertIn("Do not alter the character-specific head.", prompt)
+        self.assertNotIn("This generic negative must be replaced.", prompt)
+        self.assertIn("The character-specific head and body remain recognizable.", prompt)
+        self.assertNotIn("{{", prompt)
 
-    def test_prompt_uses_adaptive_quality_first_assembly_region(self) -> None:
+    def test_prompt_uses_minimal_junction_scoped_assembly_contract(self) -> None:
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("adaptive assembly region is the neck and immediate neck/hair/shoulder junction", prompt)
-        self.assertIn("Neither source is pixel-locked within this local region", prompt)
-        self.assertIn("Final anatomical continuity takes priority", prompt)
-        self.assertIn("overall shoulder placement, width, and silhouette", prompt)
-        self.assertIn("Adjust the visible neck length only as needed", prompt)
-        self.assertIn("Do not beautify, smooth, rejuvenate", prompt)
-        for omitted in (
-            "Use the smallest practical area of change",
-            "Preserve all other pixels",
-            "Everything below the replacement boundary",
-            "owns everything below the head-replacement boundary",
-            "fitted upper neck match",
-            "Preserve the fitted hair silhouette exactly",
-        ):
-            self.assertNotIn(omitted, prompt)
+        self.assertIn("Keep the face, hair, ears, and apparent age of the head exactly as they are.", prompt)
+        self.assertIn("Keep the body proportions, pose, stance, framing, and orientation exactly as they are.", prompt)
+        self.assertIn("Make only the changes needed to join the head and neck naturally.", prompt)
+        self.assertNotIn("{{", prompt)
 
-    def test_character_template_is_not_loaded_or_parsed(self) -> None:
+    def test_missing_or_malformed_character_template_is_rejected(self) -> None:
         malformed_path = self.root / "Malformed.md"
         malformed_path.write_text("<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->\n", encoding="utf-8")
         missing_path = self.root / "Missing.md"
@@ -183,10 +183,11 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
             with self.subTest(template_path=template_path):
                 job = self._job(output_name=output_name)
                 job["Template Path"] = str(template_path)
-                result = compile_character_assembly_job(job, PROJECT_ROOT)
-                prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-                self.assertIn("selected character-phase identity", prompt)
-                self.assertNotIn("IDENTITY_PRESERVATION_CORE", prompt)
+                with self.assertRaises(TemplateCompileError) as raised:
+                    compile_character_assembly_job(job, PROJECT_ROOT)
+                expected = "MALFORMED_TEMPLATE_MARKERS" if template_path.exists() else "MISSING_TEMPLATE"
+                self.assertEqual(expected, raised.exception.code)
+                self.assertFalse((self.root / output_name / "Final_Image_Prompt.md").exists())
 
     def test_mismatched_job_views_fail_before_artifact_generation(self) -> None:
         with self.assertRaises(TemplateCompileError) as raised:

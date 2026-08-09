@@ -361,7 +361,7 @@ def render_static_prompt_with_source_map(
                         "editable": False,
                     },
                 )
-            elif name in selection.sections:
+            elif name in selection.sections or name in selection.missing_optional:
                 text = selection.sections.get(name, "")
                 if name in required_set and not text.strip():
                     raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")

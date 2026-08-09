@@ -15,7 +15,7 @@ from Scripts.Compile_Character_Template import TemplateCompileError, select_sect
 from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
-    apply_head_image_section_overrides,
+    apply_negative_guidance_overrides,
     job_get,
     load_body_reference_section_data,
     load_bundle,
@@ -80,7 +80,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         )
 
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    sections, section_sources = apply_head_image_section_overrides(sections, section_sources)
+    sections, section_sources = apply_negative_guidance_overrides(sections, section_sources, "HEAD_IMAGE")
     if source_reference is None:
         sections["HEAD_IMAGE_REFERENCE_INSTRUCTIONS"] = ""
     selection = select_sections(sections, bundle, view_token, section_sources)

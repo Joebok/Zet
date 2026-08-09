@@ -89,41 +89,24 @@ def body_reference_head_facing_rule(view_data: dict) -> str:
     label = str(view_data.get("label") or view_data.get("_view_token") or "").strip()
     direction = re.sub(r"\s+view$", "", label, flags=re.IGNORECASE).strip().upper()
     qualifier = "" if "three-quarter" in label.lower() else "direct "
+    if qualifier:
+        direction = re.sub(r"^DIRECT\s+", "", direction)
     return f"The mannequin head must face the same {qualifier}{direction} view as the body."
 
 
-def apply_head_image_section_overrides(
+def apply_negative_guidance_overrides(
     sections: dict[str, str],
     sources: dict[str, dict],
+    section_prefix: str,
 ) -> tuple[dict[str, str], dict[str, dict]]:
-    """Map Head-Image-specific negative sections onto the bundle's legacy negative slots.
+    """Map task-specific negative sections onto the bundle's shared negative slots.
 
     This preserves the existing Prompt_Task_Bundles.json contract while preventing
-    body/stance/footwear negatives from leaking into head-only generation prompts.
+    unrelated task negatives from leaking into the compiled prompt.
     """
     mappings = {
-        "NEGATIVE_GUIDANCE_GENERAL": "HEAD_IMAGE_NEGATIVE_GUIDANCE_GENERAL",
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC": "HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC",
-    }
-    for target, source in mappings.items():
-        value = str(sections.get(source) or "").strip()
-        if not value:
-            continue
-        sections[target] = value
-        source_meta = sources.get(source)
-        if isinstance(source_meta, dict):
-            sources[target] = dict(source_meta, section_name=target)
-    return sections, sources
-
-
-def apply_character_assembly_section_overrides(
-    sections: dict[str, str],
-    sources: dict[str, dict],
-) -> tuple[dict[str, str], dict[str, dict]]:
-    """Map Character-Assembly-specific negative sections onto the bundle's legacy slots."""
-    mappings = {
-        "NEGATIVE_GUIDANCE_GENERAL": "CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_GENERAL",
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC": "CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC",
+        target: f"{section_prefix}_{target}"
+        for target in ("NEGATIVE_GUIDANCE_GENERAL", "NEGATIVE_GUIDANCE_JOB_SPECIFIC")
     }
     for target, source in mappings.items():
         value = str(sections.get(source) or "").strip()

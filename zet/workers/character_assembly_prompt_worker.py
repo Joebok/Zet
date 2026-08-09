@@ -22,6 +22,7 @@ def run(asset, context) -> WorkerResult:
         "Phase": asset.phase,
         "Body View": asset.body_view,
         "Head View": asset.head_view or asset.body_view,
+        "Template Path": str(context.character_path / "Character.md"),
         "Expected Output": asset.final_image_output or "",
         "Output Directory": str(context.pipeline_path),
         "Reference Files": asset.reference_files or [],
