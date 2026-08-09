@@ -684,8 +684,10 @@ Backend = "manual_chatgpt"
             root = Path(temp_dir)
             config_path = self._write_fixture(root)
             html = TestClient(create_app(config_path)).get("/").text
+            scenes_html = html[html.index('<section id="scenes-page"') : html.index('<section id="zine-page"')]
 
-            self.assertLess(html.index('id="scene-table"'), html.index('id="scene-new-name"'))
+            self.assertLess(scenes_html.index('id="scene-table"'), scenes_html.index('id="scene-new-name"'))
+            self.assertIn('id="scene-create"', scenes_html)
             image_index = html.index('id="scene-toggle-image"')
             builder_index = html.index('id="scene-builder-open"')
             render_index = html.index('id="scene-stage-render"')

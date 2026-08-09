@@ -228,6 +228,25 @@ test("New menu follows the active workspace", async ({ page }) => {
   await expect(page.locator("#new-story")).toBeVisible();
 });
 
+test("New Story and New Scene expose their creation controls", async ({ page }) => {
+  await openPage(page, "stories");
+  await page.locator("#new-menu-button").click();
+  await page.locator("#new-story").click();
+  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+  await expect(page.locator("#story-new-title")).toBeVisible();
+  await expect(page.locator("#story-new-title")).toBeFocused();
+  await page.locator("#story-new-title").fill("Created From New Menu");
+  await expect(page.locator("#story-create")).toBeVisible();
+
+  await page.locator("#new-menu-button").click();
+  await page.locator("#new-scene").click();
+  await expect(page.locator("#scenes-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-new-name")).toBeVisible();
+  await expect(page.locator("#scene-new-name")).toBeFocused();
+  await page.locator("#scene-new-name").fill("Created From New Menu");
+  await expect(page.locator("#scene-create")).toBeVisible();
+});
+
 test("Aux Images is accessible from the main button row", async ({ page }) => {
   await openPage(page, "assets");
   await page.locator("#workspace-story").click();
