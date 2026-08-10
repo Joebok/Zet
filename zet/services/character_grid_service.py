@@ -49,7 +49,7 @@ class CharacterGridOptions:
     cell_padding_y: int = 40
     columns: int = 4
     rows: int = 2
-    canvas_background: tuple[int, int, int, int] = (128, 128, 128, 255)
+    canvas_background: tuple[int, int, int, int] = (183, 193, 209, 255)
     diagnostics: bool = True
     debug_grid: bool = True
     crop_height_percent: Optional[float] = None

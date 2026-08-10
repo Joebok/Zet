@@ -25,6 +25,7 @@ class LocalRenderRequest:
     aspect_ratio: str = ""
     render_layout: dict[str, Any] | None = None
     seed: int | None = None
+    render_overrides: dict[str, Any] | None = None
 
 
 @dataclass

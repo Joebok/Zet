@@ -20,9 +20,35 @@ class ProcessServiceTests(unittest.TestCase):
                 stopped = service.restart("zet_web")
 
             self.assertEqual(stopped, 1)
-            command = popen.call_args.args[0]
+            command = popen.call_args_list[0].args[0]
             self.assertIn("zet.scripts.restart_managed_process", command)
             self.assertIn(str(os.getpid()), command)
+            self.assertIn("run_auto_harvest.bat", popen.call_args_list[1].args[0])
+
+    def test_starting_dashboard_starts_missing_auto_harvester(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = ProcessService(Path(temp_dir))
+            with (
+                patch.object(service, "list_processes", return_value=[]),
+                patch("zet.services.process_service.subprocess.Popen") as popen,
+            ):
+                service.start("zet_web")
+
+            self.assertEqual(2, popen.call_count)
+            self.assertIn("run_zet_web.bat", popen.call_args_list[0].args[0])
+            self.assertIn("run_auto_harvest.bat", popen.call_args_list[1].args[0])
+
+    def test_starting_dashboard_does_not_duplicate_auto_harvester(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = ProcessService(Path(temp_dir))
+            harvester = ProcessInfo(42, "python.exe", "python -m zet.scripts.auto_harvest_ai_answers")
+            with (
+                patch.object(service, "list_processes", return_value=[harvester]),
+                patch("zet.services.process_service.subprocess.Popen") as popen,
+            ):
+                service.start("zet_web")
+
+            self.assertEqual(1, popen.call_count)
 
 
 if __name__ == "__main__":

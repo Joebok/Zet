@@ -49,7 +49,9 @@ class CharacterSourceServiceTests(unittest.TestCase):
         phase = self.root / "Characters" / "Hero" / "Adult"
         phase.mkdir(parents=True)
         (phase / "Character.md").write_text(
-            _section("GENERAL_DESCRIPTION_FACTS", "adult elf")
+            _section("COMPILER_NOTES", "character notes")
+            + _section("LOCAL_IMAGE_GEN_OVERRIDES", "character overrides")
+            + _section("GENERAL_DESCRIPTION_FACTS", "adult elf")
             + _section("IDENTITY_PRESERVATION_CORE", "preserve identity")
             + _section("BODY_DESCRIPTION_FACTS", "petite proportions")
             + _section("BODY_DESCRIPTION_VIEW_FRONT", "front body")
@@ -57,7 +59,9 @@ class CharacterSourceServiceTests(unittest.TestCase):
             encoding="utf-8",
         )
         (phase / "Costume_Canonical_Adventure_Gear.md").write_text(
-            _section("COSTUME_DESCRIPTION_FACTS", "green adventure gear")
+            _section("COMPILER_NOTES", "costume notes")
+            + _section("LOCAL_IMAGE_GEN_OVERRIDES", "costume overrides")
+            + _section("COSTUME_DESCRIPTION_FACTS", "green adventure gear")
             + _section("COSTUME_DESCRIPTION_VIEW_FRONT", "front costume")
             + _section("IDENTITY_PRESERVATION_COSTUME", "preserve costume"),
             encoding="utf-8",

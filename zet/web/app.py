@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 import markdown
+from starlette.background import BackgroundTask
 
 from zet.app import ZetApp
 from zet.render_console.queue import RenderConsoleQueue
@@ -21,6 +22,7 @@ from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
+from zet.services.prompt_evolution_service import PromptEvolutionError
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -1722,6 +1724,211 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         if download:
             return FileResponse(requested, filename=requested.name)
         return FileResponse(requested)
+
+    @app.get("/api/prompt-evolution/options")
+    def prompt_evolution_options(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_options(character, phase)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-evolution/runs")
+    def prompt_evolution_runs() -> dict[str, Any]:
+        return {"runs": _app(app.state.config_path).list_prompt_evolution_runs()}
+
+    @app.get("/api/prompt-evolution/reference-preview")
+    def prompt_evolution_reference_preview(
+        character: str = Query(...), phase: str = Query(...), costume: str = Query(...), view: str = Query(...),
+    ) -> Response:
+        try:
+            content = _app(app.state.config_path).prompt_evolution_service.reference_preview(character, phase, costume, view)
+            return Response(content=content, media_type="image/png")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs")
+    def prompt_evolution_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).create_prompt_evolution_run(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-evolution/runs/{run_id}")
+    def prompt_evolution_detail(run_id: str) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return zet_app.prompt_evolution_service.advance_run(run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/select/{seed}")
+    def prompt_evolution_select(run_id: str, seed: int, payload: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.select_candidate(
+                run_id, seed, str((payload or {}).get("selection_reason") or ""),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/refinement-review/preview")
+    def prompt_evolution_preview_refinement(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            operations = payload.get("operations")
+            text_edit = "positive_core" in payload or "negative_core" in payload
+            if not text_edit and not isinstance(operations, list):
+                raise PromptEvolutionError("Refinement operations must be an array.")
+            return _app(app.state.config_path).prompt_evolution_service.preview_refinement_review(
+                run_id, str(payload.get("attempt_id") or ""), operations,
+                str(payload.get("positive_core") or "") if text_edit else None,
+                str(payload.get("negative_core") or "") if text_edit else None,
+            )
+        except (PromptEvolutionError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/refinement-review/accept")
+    def prompt_evolution_accept_refinement(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            operations = payload.get("operations") if "operations" in payload else None
+            if operations is not None and not isinstance(operations, list):
+                raise PromptEvolutionError("Refinement operations must be an array.")
+            return _app(app.state.config_path).prompt_evolution_service.accept_refinement_review(
+                run_id, str(payload.get("attempt_id") or ""), operations, bool(payload.get("confirm_override", False)),
+                str(payload.get("positive_core") or "") if "positive_core" in payload else None,
+                str(payload.get("negative_core") or "") if "negative_core" in payload else None,
+            )
+        except (PromptEvolutionError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/finalist/{finalist_id}")
+    def prompt_evolution_select_finalist(
+        run_id: str, finalist_id: str, payload: dict[str, Any] | None = Body(default=None),
+    ) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.select_finalist(
+                run_id, finalist_id, str((payload or {}).get("selection_reason") or ""),
+            )
+        except (PromptEvolutionError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/abort")
+    def prompt_evolution_abort(run_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.abort(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/prompt-evolution/runs/{run_id}/name")
+    def prompt_evolution_rename(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.rename(run_id, str(payload.get("name") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/directed-refinement")
+    def prompt_evolution_directed_refinement(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.start_directed_refinement(run_id, str(payload.get("instructions") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/prompt-evolution/runs/{run_id}")
+    def prompt_evolution_delete(run_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.delete(run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-evolution/runs/{run_id}/audit-bundle")
+    def prompt_evolution_audit_bundle(run_id: str) -> FileResponse:
+        try:
+            bundle = _app(app.state.config_path).prompt_evolution_service.create_audit_bundle(run_id)
+            return FileResponse(
+                bundle, media_type="application/zip", filename=f"prompt-evolution-{run_id}-audit.zip",
+                background=BackgroundTask(bundle.unlink, missing_ok=True),
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/replay")
+    def prompt_evolution_start_replay(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.start_replay_experiment(
+                run_id, int(payload.get("batch_index", 0)), int(payload.get("seed")), int(payload.get("repeats", 3)),
+            )
+        except (PromptEvolutionError, FileNotFoundError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-evolution/replays/{experiment_id}")
+    def prompt_evolution_replay(experiment_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.advance_replay_experiment(experiment_id)
+        except (PromptEvolutionError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/retry")
+    def prompt_evolution_retry(run_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.retry(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/restart")
+    def prompt_evolution_restart(run_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.restart(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/recover-evaluations")
+    def prompt_evolution_recover_evaluations(run_id: str) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.recover_missing_evaluations(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/prompt-evolution/runs/{run_id}/clone/{batch_index}")
+    def prompt_evolution_clone(run_id: str, batch_index: int) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.clone_from_batch(run_id, batch_index)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-evolution/templates")
+    def prompt_evolution_templates() -> dict[str, Any]:
+        service = _app(app.state.config_path).prompt_evolution_service
+        return {"templates": {name: service.template(name) for name in ("bootstrap", "evaluation", "checklist_evaluation", "ranking", "repair", "refinement", "directed_refinement")}}
+
+    @app.get("/api/prompt-evolution/checklists")
+    def prompt_evolution_checklists(
+        character: str = Query(...), phase: str = Query(...), costume: str = Query(...),
+    ) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.scoped_checklists(character, phase, costume)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/prompt-evolution/checklists/{scope}")
+    def prompt_evolution_checklist_save(scope: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.save_scoped_checklist(
+                scope, str(payload.get("character") or ""), str(payload.get("phase") or ""),
+                str(payload.get("costume") or ""), payload,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/prompt-evolution/templates/{name}")
+    def prompt_evolution_template_save(name: str, payload: dict[str, Any] = Body(...)) -> dict[str, str]:
+        try:
+            return _app(app.state.config_path).prompt_evolution_service.save_template(name, str(payload.get("text") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/edit-source/load")
     def edit_source_load(source: dict[str, Any] = Body(...)) -> dict[str, Any]:

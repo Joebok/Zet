@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from zet.services.character_grid_service import CharacterGridOptions
 from zet.web.app import create_app
 
 try:
@@ -27,6 +28,9 @@ VIEWS = [
 
 
 class TurnaroundServiceTests(unittest.TestCase):
+    def test_turnaround_padding_uses_gray_blue_background(self):
+        self.assertEqual((183, 193, 209, 255), CharacterGridOptions().canvas_background)
+
     def _write_png(
         self,
         path: Path,

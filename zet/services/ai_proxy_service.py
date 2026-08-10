@@ -553,6 +553,8 @@ class AIProxyService:
         scene_render_ir_path: Path | None = None,
         seed: int | None = None,
         checkpoint: str | None = None,
+        render_overrides: dict | None = None,
+        render_preset: str | None = None,
     ) -> dict:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
@@ -578,7 +580,7 @@ class AIProxyService:
             "target_output_dir": str((target_output_dir / "Local_Test_Renders").resolve()),
             "artifact_output_dir": str(target_output_dir.resolve()),
             "target_output_file": target_output_file,
-            "render_preset": self._local_render_preset(),
+            "render_preset": render_preset or self._local_render_preset(),
             "image_generation": str(
                 getattr(self.path_service.config, "local_render_backend", "stable_matrix")
             ).strip().lower(),
@@ -598,6 +600,8 @@ class AIProxyService:
             ask_manifest["workflow_kind"] = workflow_kind
         if seed is not None:
             ask_manifest["seed"] = int(seed)
+        if render_overrides:
+            ask_manifest["render_overrides"] = dict(render_overrides)
         if manifest.get("aspect_ratio"):
             ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
         if render_layout:
@@ -617,6 +621,8 @@ class AIProxyService:
         allow_parallel: bool = False,
         seed: int | None = None,
         checkpoint: str | None = None,
+        render_overrides: dict | None = None,
+        render_preset: str | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
         if not allow_parallel:
@@ -634,6 +640,8 @@ class AIProxyService:
             scene_render_ir_path,
             seed,
             checkpoint,
+            render_overrides,
+            render_preset,
         )
         ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)

@@ -20,7 +20,7 @@ PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 
 [LocalRender]
 AutoQueueAfterCondense = false
-Backend = "comfyui"
+Backend = "stable_matrix"
 
 [StableMatrix]
 Profile = "scene-preview-sd15"

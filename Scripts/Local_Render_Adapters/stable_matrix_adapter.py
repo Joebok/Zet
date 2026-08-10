@@ -163,6 +163,7 @@ def render_preview(
     aspect_ratio: str = "",
     render_layout: dict[str, Any] | None = None,
     seed: int | None = None,
+    render_overrides: dict[str, Any] | None = None,
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     prompt_text = final_prompt_path.read_text(encoding="utf-8")
@@ -180,6 +181,7 @@ def render_preview(
             aspect_ratio=aspect_ratio,
             render_layout=render_layout,
             seed=seed,
+            render_overrides=render_overrides,
         )
     except ValueError as exc:
         raise LocalRenderError(str(exc)) from exc

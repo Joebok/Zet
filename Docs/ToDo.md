@@ -8,4 +8,4 @@ Setting up HTTPS://
 
 On AI tools, see status of ComfyUI - add start/stop/restart?
 
-Background fill color on turnarounds.
+Add scene images to references

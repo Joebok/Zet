@@ -187,6 +187,15 @@ class ProcessService:
             )
         else:
             subprocess.Popen(spec.command, cwd=str(spec.cwd), env=env, shell=True)
+        if process_id == "zet_web":
+            self.start_if_stopped("auto_harvest")
+
+    def start_if_stopped(self, process_id: str) -> bool:
+        spec = self._spec_by_id(process_id)
+        if any(self._matches(process, spec) for process in self.list_processes()):
+            return False
+        self.start(process_id)
+        return True
 
     def stop(self, process_id: str) -> int:
         spec = self._spec_by_id(process_id)
@@ -205,6 +214,7 @@ class ProcessService:
         matches = [process for process in self.list_processes() if self._matches(process, spec)]
         if process_id == "zet_web" and any(process.pid == os.getpid() for process in matches):
             self._schedule_self_restart(spec, matches)
+            self.start_if_stopped("auto_harvest")
             return len(matches)
         stopped = self.stop(process_id)
         self.start(process_id)

@@ -138,6 +138,9 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
     if "seed" in parameters:
         value = ask_manifest.get("seed")
         kwargs["seed"] = int(value) if str(value or "").strip() else None
+    if "render_overrides" in parameters:
+        value = ask_manifest.get("render_overrides")
+        kwargs["render_overrides"] = value if isinstance(value, dict) else None
     return kwargs
 
 

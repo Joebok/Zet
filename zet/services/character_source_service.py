@@ -58,6 +58,8 @@ SECTION_GROUPS = {
     "negative or forbidden traits": ("NEGATIVE_GUIDANCE_GENERAL",),
 }
 
+NON_CONTENT_SECTION_OVERLAPS = {"COMPILER_NOTES", "LOCAL_IMAGE_GEN_OVERRIDES"}
+
 
 class CharacterSourceError(ValueError):
     """Report an invalid or unavailable character source selection."""
@@ -168,6 +170,10 @@ class CharacterSourceService:
                 f"Costume template: {costume['name']}",
             )
             overlap = set(sections).intersection(costume_sections)
+            for name in overlap.intersection(NON_CONTENT_SECTION_OVERLAPS):
+                costume_sections.pop(name, None)
+                costume_sources.pop(name, None)
+            overlap.difference_update(NON_CONTENT_SECTION_OVERLAPS)
             if overlap:
                 raise CharacterSourceError(
                     "Duplicate character/costume sections: "

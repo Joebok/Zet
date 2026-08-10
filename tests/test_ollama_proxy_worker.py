@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from AI_Manager.ollama_proxy_worker import (
     call_ollama_once,
+    ensure_explicit_image_tags,
     ollama_generation_options,
     process_claimed,
 )
@@ -72,6 +73,59 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["keep_alive"], 0)
         self.assertIs(captured["payload"]["think"], False)
 
+    def test_call_ollama_once_forwards_multimodal_json_options(self):
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, exc_type, exc, tb): return False
+            def read(self): return b'{"message":{"role":"assistant","content":"{}"}}'
+
+        captured = {}
+        def fake_urlopen(request, timeout):
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            captured["url"] = request.full_url
+            return FakeResponse()
+
+        with patch("AI_Manager.ollama_proxy_worker.urllib.request.urlopen", fake_urlopen):
+            call_ollama_once(
+                "http://localhost:11434/api/generate", "vision", "compare",
+                images=["first", "second"], json_output=True,
+            )
+
+        message = captured["payload"]["messages"][0]
+        self.assertEqual("user", message["role"])
+        self.assertEqual(["first", "second"], message["images"])
+        self.assertEqual("Image 1: [img]\nImage 2: [img]\n\ncompare", message["content"])
+        self.assertEqual("http://localhost:11434/api/chat", captured["url"])
+        self.assertEqual("json", captured["payload"]["format"])
+
+    def test_call_ollama_once_forwards_response_schema_to_generate_and_chat(self):
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, exc_type, exc, tb): return False
+            def read(self): return b'{"response":"{}","message":{"content":"{}"}}'
+
+        schema = {"type": "object", "properties": {"operations": {"type": "array"}}}
+        captured = []
+        def fake_urlopen(request, timeout):
+            captured.append(json.loads(request.data.decode("utf-8")))
+            return FakeResponse()
+
+        with patch("AI_Manager.ollama_proxy_worker.urllib.request.urlopen", fake_urlopen):
+            call_ollama_once("http://localhost:11434/api/generate", "text", "refine", response_schema=schema)
+            call_ollama_once(
+                "http://localhost:11434/api/generate", "vision", "refine",
+                images=["reference", "candidate"], response_schema=schema,
+            )
+
+        self.assertEqual(schema, captured[0]["format"])
+        self.assertEqual(schema, captured[1]["format"])
+
+    def test_explicit_image_tags_preserve_matching_prompt_and_reject_mismatch(self):
+        tagged = "Reference: [img]\nCandidate: [img]\nCompare them."
+        self.assertEqual(tagged, ensure_explicit_image_tags(tagged, 2))
+        with self.assertRaisesRegex(ValueError, "1 .* tags for 2 images"):
+            ensure_explicit_image_tags("Reference: [img]", 2)
+
     def test_generation_options_keep_legacy_defaults(self):
         self.assertEqual((0.1, None), ollama_generation_options({}))
 
@@ -99,6 +153,7 @@ class OllamaProxyWorkerTests(unittest.TestCase):
                         "ollama_model": "qwen3.5:9b",
                         "ollama_temperature": 0.7,
                         "ollama_num_ctx": 32768,
+                        "response_schema": {"type": "object"},
                         "prompt_file": "OLLAMA_PROMPT.md",
                         "expected_output": "MODEL_RESPONSE.md",
                     }
@@ -120,3 +175,4 @@ class OllamaProxyWorkerTests(unittest.TestCase):
             self.assertEqual("SUCCESS", result)
             self.assertEqual(0.7, call.call_args.kwargs["temperature"])
             self.assertEqual(32768, call.call_args.kwargs["num_ctx"])
+            self.assertEqual({"type": "object"}, call.call_args.kwargs["response_schema"])

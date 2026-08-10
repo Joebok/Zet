@@ -44,6 +44,11 @@ const state = {
   localImageReviewDetail: null,
   localImageReviewHarvestTimer: null,
   localImageReviewHarvestRunsRemaining: 0,
+  promptEvolutionAssets: [],
+  promptEvolutionRuns: [],
+  promptEvolutionRun: null,
+  promptEvolutionTemplates: {},
+  promptEvolutionRefreshTimer: null,
   turnaroundRows: [],
   selectedTurnaroundId: null,
   selectedAuxiliaryTurnaroundId: null,
@@ -127,7 +132,7 @@ const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "expressions", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-builder", "auxiliary-resources", "zine"]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
-const GLOBAL_PAGES = new Set(["template-editor", "ai-controls", "local-image-config", "pipeline-inspection", "pipeline-controls"]);
+const GLOBAL_PAGES = new Set(["template-editor", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-inspection", "pipeline-controls"]);
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
@@ -154,6 +159,36 @@ const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
+const promptEvolutionStatus = document.querySelector("#prompt-evolution-status");
+const promptEvolutionMessage = document.querySelector("#prompt-evolution-message");
+const promptEvolutionAsset = document.querySelector("#prompt-evolution-asset");
+const promptEvolutionSourcePreview = document.querySelector("#prompt-evolution-source-preview");
+const promptEvolutionDerivativePreview = document.querySelector("#prompt-evolution-derivative-preview");
+const promptEvolutionModel = document.querySelector("#prompt-evolution-model");
+const promptEvolutionChecklistModel = document.querySelector("#prompt-evolution-checklist-model");
+const promptEvolutionCheckpoint = document.querySelector("#prompt-evolution-checkpoint");
+const promptEvolutionProfile = document.querySelector("#prompt-evolution-profile");
+const promptEvolutionCfg = document.querySelector("#prompt-evolution-cfg");
+const promptEvolutionSteps = document.querySelector("#prompt-evolution-steps");
+const promptEvolutionBatchSize = document.querySelector("#prompt-evolution-batch-size");
+const promptEvolutionTotalBatches = document.querySelector("#prompt-evolution-total-batches");
+const promptEvolutionMetadata = document.querySelector("#prompt-evolution-metadata");
+const promptEvolutionMode = document.querySelector("#prompt-evolution-mode");
+const promptEvolutionPositive = document.querySelector("#prompt-evolution-positive");
+const promptEvolutionNegative = document.querySelector("#prompt-evolution-negative");
+const promptEvolutionCharacterChecklist = document.querySelector("#prompt-evolution-character-checklist");
+const promptEvolutionCostumeChecklist = document.querySelector("#prompt-evolution-costume-checklist");
+const promptEvolutionCharacterChecklistSave = document.querySelector("#prompt-evolution-character-checklist-save");
+const promptEvolutionCostumeChecklistSave = document.querySelector("#prompt-evolution-costume-checklist-save");
+const promptEvolutionChecklistCategories = document.querySelector("#prompt-evolution-checklist-categories");
+const promptEvolutionChecklistPaths = document.querySelector("#prompt-evolution-checklist-paths");
+const promptEvolutionStart = document.querySelector("#prompt-evolution-start");
+const promptEvolutionRefresh = document.querySelector("#prompt-evolution-refresh");
+const promptEvolutionRuns = document.querySelector("#prompt-evolution-runs");
+const promptEvolutionDetail = document.querySelector("#prompt-evolution-detail");
+const promptEvolutionTemplateName = document.querySelector("#prompt-evolution-template-name");
+const promptEvolutionTemplateText = document.querySelector("#prompt-evolution-template-text");
+const promptEvolutionTemplateSave = document.querySelector("#prompt-evolution-template-save");
 const onboardingStatus = document.querySelector("#onboarding-status");
 const onboardingMessage = document.querySelector("#onboarding-message");
 const onboardingCharacter = document.querySelector("#onboarding-character");
@@ -735,6 +770,10 @@ function showAiControlsMessage(message, kind = "info") {
 
 function showLocalImageConfigMessage(message, kind = "info") {
   showMessageElement(localImageConfigMessage, message, kind);
+}
+
+function showPromptEvolutionMessage(message, kind = "info") {
+  showMessageElement(promptEvolutionMessage, message, kind);
 }
 
 function showPipelineControlsMessage(message, kind = "info") {
@@ -1444,7 +1483,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 
 const RESPONSIVE_TOOL_PAGES = [
   ["template-editor", "Template Editor"], ["ai-controls", "AI Controls"],
-  ["local-image-config", "Image Config"], ["pipeline-inspection", "Pipeline Inspection"],
+  ["local-image-config", "Image Config"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
   ["pipeline-controls", "Pipeline Controls"],
 ];
 
@@ -2639,6 +2678,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
+  document.querySelector("#prompt-evolution-page").classList.toggle("active", page === "prompt-evolution");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
@@ -2648,7 +2688,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "pipeline-controls", "pipeline-inspection", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor"].includes(page),
     );
   renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -2706,6 +2746,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "local-image-config") {
     await loadPipelineControls();
+  }
+  if (page === "prompt-evolution") {
+    await loadPromptEvolution();
   }
   if (page === "render-console") {
     await loadRenderConsoleTasks();
@@ -8240,6 +8283,260 @@ function startLocalImageReviewHarvestTimer() {
   state.localImageReviewHarvestTimer = window.setInterval(runLocalImageReviewHarvestTick, 30000);
 }
 
+function promptEvolutionFileUrl(path) { return path ? `/api/file?path=${encodeURIComponent(path)}` : ""; }
+function selectedPromptEvolutionAsset() { return state.promptEvolutionAssets.find((item) => String(item.asset_id) === promptEvolutionAsset.value) || null; }
+const PROMPT_EVOLUTION_SETTINGS_KEY = "zet:prompt-evolution-settings";
+const promptEvolutionSettingControls = () => [promptEvolutionAsset, promptEvolutionModel, promptEvolutionChecklistModel, promptEvolutionCheckpoint, promptEvolutionProfile, promptEvolutionCfg, promptEvolutionSteps, promptEvolutionBatchSize, promptEvolutionTotalBatches, promptEvolutionMetadata, promptEvolutionMode, promptEvolutionPositive, promptEvolutionNegative];
+function savePromptEvolutionSettings() {
+  localStorage.setItem(PROMPT_EVOLUTION_SETTINGS_KEY, JSON.stringify(Object.fromEntries(promptEvolutionSettingControls().map((control) => [control.id, control.value]))));
+}
+function storedPromptEvolutionSettings() {
+  try { return JSON.parse(localStorage.getItem(PROMPT_EVOLUTION_SETTINGS_KEY) || "{}"); } catch { return {}; }
+}
+function restorePromptEvolutionSettings(settings) {
+  for (const control of promptEvolutionSettingControls()) {
+    const value = settings[control.id];
+    if (value == null) continue;
+    if (control.tagName === "SELECT" && !Array.from(control.options).some((option) => option.value === String(value))) continue;
+    const numeric = Number(value);
+    control.value = control.type === "number" && Number.isFinite(numeric)
+      ? String(Math.max(Number(control.min || numeric), Math.min(Number(control.max || numeric), numeric)))
+      : String(value);
+  }
+}
+function promptEvolutionPromptDiff(current, previous) {
+  if (!previous) return escapeHtml(current || "");
+  const currentTerms = String(current || "").split(",").map((term) => term.trim()).filter(Boolean);
+  const previousTerms = String(previous || "").split(",").map((term) => term.trim()).filter(Boolean);
+  const normalize = (term) => term.toLocaleLowerCase().replace(/\s+/g, " ");
+  const currentKeys = new Set(currentTerms.map(normalize));
+  const previousKeys = new Set(previousTerms.map(normalize));
+  const visible = currentTerms.map((term) => `<span class="${previousKeys.has(normalize(term)) ? "" : "prompt-diff-added"}">${escapeHtml(term)}</span>`);
+  visible.push(...previousTerms.filter((term) => !currentKeys.has(normalize(term))).map((term) => `<span class="prompt-diff-deleted">${escapeHtml(term)}</span>`));
+  return visible.join(", ");
+}
+function promptEvolutionDisplayScore(score) {
+  const numeric = Number(score);
+  if (!Number.isFinite(numeric)) return "—";
+  return numeric > 10 ? Math.round(numeric) / 10 : numeric;
+}
+function renderPromptEvolutionAsset() {
+  const asset = selectedPromptEvolutionAsset();
+  promptEvolutionSourcePreview.src = asset ? promptEvolutionFileUrl(asset.image_path) : "";
+  promptEvolutionDerivativePreview.src = asset ? `/api/prompt-evolution/reference-preview?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}&costume=${encodeURIComponent(asset.costume)}&view=${encodeURIComponent(asset.view)}` : "";
+}
+
+function promptEvolutionRefinementAttempt(attempt) {
+  const errors = (attempt.validation_errors || []).map((item) => `<li><strong>${item.operation_index == null ? "Response" : `Operation ${Number(item.operation_index) + 1}`} · ${escapeHtml(item.field || "operation")}</strong>: ${escapeHtml(item.message || "Rejected")}</li>`).join("");
+  const operations = attempt.operations || attempt.response?.operations || [];
+  const usable = attempt.strict_valid || attempt.guarded_override_allowed;
+  return `<article class="prompt-evolution-refinement-attempt" data-prompt-evolution-attempt="${escapeHtml(attempt.attempt_id)}">
+    <h3>Attempt ${escapeHtml(attempt.number || attempt.attempt_id)} · ${attempt.strict_valid ? "Valid" : attempt.guarded_override_allowed ? "Guarded override available" : "Blocked"}</h3>
+    <div class="prompt-evolution-summary-prompts"><strong>Complete positive core</strong><p>${escapeHtml(attempt.positive_core || "")}</p><strong>Complete negative core</strong><p>${escapeHtml(attempt.negative_core || "")}</p></div>
+    ${attempt.preview_status === "baseline" ? '<p class="action-message warning">No deterministic proposed core could be constructed. The unchanged baseline cores are shown.</p>' : ""}
+    <details open><summary>Derived structured diff</summary><pre>${escapeHtml(JSON.stringify(operations, null, 2))}</pre></details>
+    ${errors ? `<div class="action-message error"><strong>Why it was rejected</strong><ul>${errors}</ul></div>` : ""}
+    <div class="button-row compact">${usable ? `<button type="button" data-prompt-evolution-refinement-use="${escapeHtml(attempt.attempt_id)}">Use this</button>` : ""}<button type="button" data-prompt-evolution-refinement-edit="${escapeHtml(attempt.attempt_id)}">Edit prompt text</button></div>
+    <div class="prompt-evolution-refinement-editor" data-prompt-evolution-refinement-editor="${escapeHtml(attempt.attempt_id)}" hidden>
+      <label>Positive core<textarea data-prompt-evolution-positive-core>${escapeHtml(attempt.positive_core || "")}</textarea></label>
+      <label>Negative core<textarea data-prompt-evolution-negative-core>${escapeHtml(attempt.negative_core || "")}</textarea></label>
+      <small>Edit the comma-delimited prompt text directly. Zet derives and records the corresponding structured term changes.</small>
+      <div class="button-row compact"><button type="button" data-prompt-evolution-refinement-validate="${escapeHtml(attempt.attempt_id)}">Preview edit</button><button type="button" data-prompt-evolution-refinement-accept-edit="${escapeHtml(attempt.attempt_id)}" hidden>Use edited prompt</button></div>
+      <div data-prompt-evolution-refinement-edit-result></div>
+    </div>
+  </article>`;
+}
+
+function promptEvolutionRefinementValidation(result) {
+  const errors = (result.validation_errors || []).map((item) => `<li><strong>${item.operation_index == null ? "Response" : `Operation ${Number(item.operation_index) + 1}`} · ${escapeHtml(item.field || "operation")}</strong>: ${escapeHtml(item.message || "Rejected")}</li>`).join("");
+  return `<div class="prompt-evolution-summary-prompts"><strong>Positive core preview</strong><p>${escapeHtml(result.positive_core || "")}</p><strong>Negative core preview</strong><p>${escapeHtml(result.negative_core || "")}</p></div>${errors ? `<div class="action-message error"><ul>${errors}</ul></div>` : '<div class="action-message success">Edited prompt is valid. Structured changes are ready to record.</div>'}`;
+}
+
+async function loadPromptEvolutionChecklists() {
+  const asset = selectedPromptEvolutionAsset();
+  if (!asset) {
+    promptEvolutionCharacterChecklist.value = "[]";
+    promptEvolutionCostumeChecklist.value = "[]";
+    promptEvolutionChecklistCategories.textContent = "";
+    promptEvolutionChecklistPaths.textContent = "";
+    return;
+  }
+  const payload = await fetchJson(`/api/prompt-evolution/checklists?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}&costume=${encodeURIComponent(asset.costume)}`);
+  promptEvolutionCharacterChecklist.value = JSON.stringify(payload.character?.items || [], null, 2);
+  promptEvolutionCostumeChecklist.value = JSON.stringify(payload.costume?.items || [], null, 2);
+  promptEvolutionChecklistCategories.textContent = `Categories: ${(payload.categories || []).join(", ")}`;
+  promptEvolutionChecklistPaths.textContent = `Character: ${payload.paths?.character || ""}\nCostume: ${payload.paths?.costume || ""}`;
+}
+
+async function savePromptEvolutionChecklist(scope) {
+  const asset = selectedPromptEvolutionAsset();
+  if (!asset) return;
+  const editor = scope === "character" ? promptEvolutionCharacterChecklist : promptEvolutionCostumeChecklist;
+  let items;
+  try { items = JSON.parse(editor.value || "[]"); } catch (error) { throw new Error(`Invalid checklist JSON: ${error.message}`); }
+  if (!Array.isArray(items)) throw new Error("Checklist editor must contain a JSON array.");
+  const payload = await fetchJson(`/api/prompt-evolution/checklists/${encodeURIComponent(scope)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ character: state.character, phase: state.phase, costume: asset.costume, items }),
+  });
+  promptEvolutionCharacterChecklist.value = JSON.stringify(payload.character?.items || [], null, 2);
+  promptEvolutionCostumeChecklist.value = JSON.stringify(payload.costume?.items || [], null, 2);
+  showPromptEvolutionMessage(`${scope === "character" ? "Character / phase" : "Costume"} checklist saved.`, "success");
+}
+
+function renderPromptEvolutionDetail(run) {
+  state.promptEvolutionRun = run;
+  if (!run) { promptEvolutionDetail.replaceChildren(); syncPromptEvolutionRefresh(null); return; }
+  promptEvolutionDerivativePreview.src = promptEvolutionFileUrl(run.reference_image);
+  const scoreLabels = {
+    face_shape: "Face shape", eyes: "Eyes", hair: "Hair", species_markers: "Species markers", body_proportions: "Body proportions",
+    silhouette_layering: "Silhouette/layering", garment_pieces: "Garments", colors: "Colors", accessories_footwear: "Accessories/footwear",
+  };
+  const categoryScores = (scores) => Object.entries(scores || {}).filter(([name]) => scoreLabels[name]).map(([name, score]) => `${escapeHtml(scoreLabels[name])} ${escapeHtml(promptEvolutionDisplayScore(score))}/10`).join(" · ");
+  const checklistEffects = (candidate) => (candidate.checklist_effects || candidate.checklist_adjustments || []).map((item) => item.max_rating != null
+    ? `${escapeHtml(item.item)}: cap ${escapeHtml(promptEvolutionDisplayScore(item.max_rating))}/10 for ${escapeHtml(scoreLabels[item.category] || item.category)} (${escapeHtml(promptEvolutionDisplayScore(item.before))} → ${escapeHtml(promptEvolutionDisplayScore(item.after))})`
+    : `${escapeHtml(item.item)}: ${escapeHtml(item.adjustment > 0 ? `+${item.adjustment}` : item.adjustment)} to ${escapeHtml(scoreLabels[item.category] || item.category)}`).join(" · ");
+  const batches = (run.batches || []).map((batch, batchPosition, allBatches) => {
+    const winner = batch.selected_seed ?? batch.winner_seed;
+    const previousBatch = allBatches[batchPosition - 1];
+    const effectivePositive = batch.effective_positive_prompt || batch.positive_prompt || "";
+    const effectiveNegative = batch.effective_negative_prompt || batch.negative_prompt || "";
+    const previousPositive = previousBatch ? previousBatch.effective_positive_prompt || previousBatch.positive_prompt || "" : batch.original_positive_prompt || "";
+    const previousNegative = previousBatch ? previousBatch.effective_negative_prompt || previousBatch.negative_prompt || "" : batch.original_negative_prompt || "";
+    const candidates = (batch.candidates || []).map((candidate) => `<article class="prompt-evolution-candidate ${Number(candidate.seed) === Number(winner) ? "winner" : ""}">
+      <img class="fullscreen-image-trigger" src="${promptEvolutionFileUrl(candidate.file)}" alt="Candidate seed ${escapeHtml(candidate.seed)}"><strong>Seed ${escapeHtml(candidate.seed)}</strong>
+      <div>Character ${escapeHtml(promptEvolutionDisplayScore(candidate.character_identity))}/10 · Costume ${escapeHtml(promptEvolutionDisplayScore(candidate.costume_identity))}/10 · Combined ${escapeHtml(promptEvolutionDisplayScore(candidate.combined_score))}/10</div>
+      ${Object.keys(candidate.character_categories || {}).length ? `<details><summary>Category scores</summary><div><strong>Character</strong> ${categoryScores(candidate.character_categories)}</div><div><strong>Costume</strong> ${categoryScores(candidate.costume_categories)}</div>${checklistEffects(candidate) ? `<div><strong>Checklist</strong> ${checklistEffects(candidate)}</div>` : ""}</details>` : ""}
+      ${run.status === "AWAITING_USER" && Number(batch.index) === Number(run.current_batch) ? `<button type="button" data-prompt-evolution-select="${escapeHtml(candidate.seed)}">Use this candidate</button>` : ""}</article>`).join("");
+    const categoryRanking = (batch.category_ranking || []).map((item, index) => `<span class="${index === batch.category_ranking.length - 1 ? "prompt-evolution-target-category" : ""}">${escapeHtml(scoreLabels[item.category] || item.category)} ${escapeHtml(promptEvolutionDisplayScore(item.score))}/10</span>`).join(" · ");
+    const batchSlot = Number(batch.batch_slot ?? batch.index) + 1;
+    const retryLabel = Number(batch.retry_attempt || 0) > 0 ? ` · Retry ${Number(batch.retry_attempt)}` : "";
+    const selectionReason = run.status === "AWAITING_USER" && Number(batch.index) === Number(run.current_batch) ? `<div class="prompt-evolution-summary-prompts"><strong>Effective positive prompt for this batch</strong><p>${escapeHtml(effectivePositive)}</p><strong>Effective negative prompt for this batch</strong><p>${escapeHtml(effectiveNegative)}</p></div><label>Optional selection reason<textarea data-prompt-evolution-selection-reason placeholder="Explain what the selected image gets right or what the alternatives get wrong."></textarea><small>If another refinement follows, this note is appended to its Ollama prompt.</small></label>` : "";
+    return `<section class="prompt-evolution-batch"><h3>Batch ${batchSlot}${retryLabel} · ${batch.accepted === false ? "Rejected" : batch.status || "Pending"}${batch.human_override ? " · Human override" : ""}</h3>
+      <div class="prompt-evolution-gallery">${candidates || "Waiting for candidates…"}</div>${selectionReason}${categoryRanking ? `<div class="prompt-evolution-category-ranking"><strong>Winner categories, best to worst:</strong> ${categoryRanking}</div>` : ""}<details><summary>Effective prompt diff</summary><div class="prompt-evolution-prompts"><strong>Positive</strong> ${promptEvolutionPromptDiff(effectivePositive, previousPositive)}\n\n<strong>Negative</strong> ${promptEvolutionPromptDiff(effectiveNegative, previousNegative)}</div></details><button type="button" data-prompt-evolution-clone="${escapeHtml(batch.index)}">Clone from this row</button></section>`;
+  }).join("");
+  const incumbentBatch = (run.batches || []).find((batch) => Number(batch.index) === Number(run.incumbent?.batch));
+  const initialBatch = (run.batches || [])[0];
+  const initialPositive = initialBatch?.effective_positive_prompt || initialBatch?.positive_prompt || "";
+  const initialNegative = initialBatch?.effective_negative_prompt || initialBatch?.negative_prompt || "";
+  const summaryPositive = run.incumbent?.positive_core || incumbentBatch?.effective_positive_prompt || run.incumbent?.positive_prompt || "";
+  const summaryNegative = run.incumbent?.negative_core || incumbentBatch?.effective_negative_prompt || run.incumbent?.negative_prompt || "";
+  const showSummary = Boolean(run.incumbent && ["COMPLETE", "DIRECTED_REFINING"].includes(run.status));
+  const summary = showSummary ? `<section class="prompt-evolution-summary"><h2>Best result</h2><div class="prompt-evolution-summary-row">
+    <img class="fullscreen-image-trigger" src="${promptEvolutionFileUrl(run.incumbent.file)}" alt="Best image from ${escapeHtml(run.display_name || run.run_id)}">
+    <div class="prompt-evolution-summary-prompts"><strong>Reusable positive core</strong><p>${escapeHtml(summaryPositive)}</p><strong>Reusable negative core</strong><p>${escapeHtml(summaryNegative)}</p></div>
+  </div><button type="button" data-prompt-evolution-summary-diff>Show initial-to-final prompt diff</button><div class="prompt-evolution-summary-diff prompt-evolution-prompts" data-prompt-evolution-summary-diff-panel hidden><strong>Positive</strong> ${promptEvolutionPromptDiff(summaryPositive, initialPositive)}\n\n<strong>Negative</strong> ${promptEvolutionPromptDiff(summaryNegative, initialNegative)}</div><div class="prompt-evolution-summary-controls"><label>Run name<input data-prompt-evolution-run-name value="${escapeHtml(run.display_name || "")}" placeholder="Optional run name"></label><button type="button" data-prompt-evolution-save-name>Save name</button>
+  <label>Directed prompt refinement<textarea data-prompt-evolution-directed placeholder="Describe the prompt changes for a new run">${escapeHtml(run.directed_refinement?.instructions || "")}</textarea></label><button type="button" class="primary-action" data-prompt-evolution-directed-start ${run.status === "DIRECTED_REFINING" ? "disabled" : ""}>${run.status === "DIRECTED_REFINING" ? "Refining…" : "Refine and make new batch"}</button>
+  ${run.directed_refinement?.new_run_id ? `<button type="button" data-prompt-evolution-run-link="${escapeHtml(run.directed_refinement.new_run_id)}">Open refined run</button>` : ""}</div></section>` : "";
+  const refinementReview = run.status === "AWAITING_REFINEMENT_REVIEW" ? `<section class="prompt-evolution-summary"><h2>Refinement requires human review</h2><p>Ollama produced three rejected prompt refinements. Use an eligible prompt, repair its operations, or abort the run.</p>${((run.batches || []).find((batch) => Number(batch.index) === Number(run.current_batch))?.refinement_attempts || []).map(promptEvolutionRefinementAttempt).join("")}</section>` : "";
+  const reviewBatch = (run.batches || []).find((batch) => Number(batch.index) === Number(run.current_batch));
+  const reviewPositive = reviewBatch?.effective_positive_prompt || reviewBatch?.positive_prompt || "";
+  const reviewNegative = reviewBatch?.effective_negative_prompt || reviewBatch?.negative_prompt || "";
+  const finalistReview = run.status === "AWAITING_FINALIST" ? `<section class="prompt-evolution-summary"><h2>Choose the best prompt result</h2><p>Choices are randomized; scores and incumbent identity are hidden. If your choice rejects the newest refinement, Zet sends both the source image and your selected image to Ollama for the replacement refinement.</p><div class="prompt-evolution-gallery">${(run.finalists || []).map((finalist, index) => `<article class="prompt-evolution-candidate"><img class="fullscreen-image-trigger" src="${promptEvolutionFileUrl(finalist.file)}" alt="Choice ${index + 1}"><strong>Choice ${String.fromCharCode(65 + index)}</strong><button type="button" data-prompt-evolution-finalist="${escapeHtml(finalist.finalist_id)}">Choose this image</button></article>`).join("")}</div><div class="prompt-evolution-summary-prompts"><strong>Effective positive prompt for the reviewed batch</strong><p>${escapeHtml(reviewPositive)}</p><strong>Effective negative prompt for the reviewed batch</strong><p>${escapeHtml(reviewNegative)}</p></div><label>Optional selection reason<textarea data-prompt-evolution-selection-reason placeholder="Example: The hair in this image is a better match to the source."></textarea><small>If this choice triggers another refinement, the note is appended as “Also take this into consideration” so describe what the selected image gets right or the rejected refinement gets wrong. If the run completes, the note is only recorded with the selection.</small></label></section>` : "";
+  promptEvolutionDetail.innerHTML = `<div class="summary-bar">${escapeHtml(run.character)} · ${escapeHtml(run.phase)} · ${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
+    ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
+    ${run.exploration_warning ? `<div class="action-message warning">${escapeHtml(run.exploration_warning)}</div>` : ""}
+    <div class="button-row compact prompt-evolution-run-actions"><span><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint || "—")}</span><a class="button-link" href="/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/audit-bundle" download>Download audit bundle</a>${["COMPLETE", "ABORTED", "FAILED", "AWAITING_FINALIST"].includes(run.status) ? '<button type="button" data-prompt-evolution-action="restart">Restart with current logic</button>' : ""}${run.status === "FAILED" ? '<button type="button" data-prompt-evolution-action="retry">Retry failed stage</button>' : ""}${run.status === "EVALUATING" ? '<button type="button" data-prompt-evolution-action="recover-evaluations">Requeue missing evaluations</button>' : ""}${!["COMPLETE", "ABORTED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="abort">Abort</button>' : ""}${["COMPLETE", "ABORTED", "FAILED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="delete">Delete run</button>' : ""}</div>${summary}${refinementReview}${finalistReview}${run.status === "AWAITING_FINALIST" ? "" : (batches || "No batches yet.")}`;
+  promptEvolutionDetail.querySelectorAll(".prompt-evolution-candidate img, .prompt-evolution-summary img").forEach((image) => enableFullscreenImage(image));
+  promptEvolutionRuns.querySelectorAll("[data-prompt-evolution-run]").forEach((button) => {
+    const selected = button.dataset.promptEvolutionRun === run.run_id;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
+  syncPromptEvolutionRefresh(run);
+}
+
+const PROMPT_EVOLUTION_ACTIVE_STATUSES = new Set(["BOOTSTRAPPING", "RENDERING", "EVALUATING", "RANKING", "REFINING", "DIRECTED_REFINING"]);
+function syncPromptEvolutionRefresh(run) {
+  const shouldRefresh = Boolean(run && PROMPT_EVOLUTION_ACTIVE_STATUSES.has(run.status));
+  if (!shouldRefresh && state.promptEvolutionRefreshTimer) {
+    window.clearInterval(state.promptEvolutionRefreshTimer);
+    state.promptEvolutionRefreshTimer = null;
+  } else if (shouldRefresh && !state.promptEvolutionRefreshTimer) {
+    state.promptEvolutionRefreshTimer = window.setInterval(() => {
+      if (activePageName() === "prompt-evolution") refreshPromptEvolutionRuns().catch((error) => showPromptEvolutionMessage(error.message, "error"));
+    }, 30000);
+  }
+}
+
+async function selectPromptEvolutionRun(runId) {
+  const run = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(runId)}`);
+  renderPromptEvolutionDetail(run);
+  promptEvolutionStatus.textContent = `${run.status} · batch ${Math.min(Number(run.current_batch) + 1, Number(run.total_batches))}/${run.total_batches}`;
+}
+
+async function refreshPromptEvolutionRuns() {
+  const runs = await fetchJson("/api/prompt-evolution/runs");
+  state.promptEvolutionRuns = runs.runs || [];
+  const selected = state.promptEvolutionRun && state.promptEvolutionRuns.some((run) => run.run_id === state.promptEvolutionRun.run_id) ? state.promptEvolutionRun.run_id : state.promptEvolutionRuns[0]?.run_id;
+  promptEvolutionRuns.innerHTML = state.promptEvolutionRuns.map((run) => `<button type="button" class="${run.run_id === selected ? "selected" : ""}" aria-pressed="${run.run_id === selected ? "true" : "false"}" data-prompt-evolution-run="${escapeHtml(run.run_id)}">${escapeHtml(run.display_name || `${run.created_at} · ${run.costume}`)} · ${escapeHtml(run.status)}</button>`).join("") || "No runs yet.";
+  if (selected) await selectPromptEvolutionRun(selected); else renderPromptEvolutionDetail(null);
+}
+
+async function loadPromptEvolution() {
+  if (!state.character || !state.phase) return;
+  const stickySettings = storedPromptEvolutionSettings();
+  const [options, runs, models, checkpoints, templates] = await Promise.all([
+    fetchJson(`/api/prompt-evolution/options?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}`), fetchJson("/api/prompt-evolution/runs"),
+    fetchJson("/api/ai-controls/ollama-models").catch(() => ({ models: [] })), fetchJson("/api/local-image/checkpoints?preset=body-reference-preview&backend=stable_matrix").catch(() => ({ checkpoints: [] })),
+    fetchJson("/api/prompt-evolution/templates"),
+  ]);
+  state.promptEvolutionAssets = options.assets || []; state.promptEvolutionRuns = runs.runs || []; state.promptEvolutionTemplates = templates.templates || {};
+  setSelectOptionsWithLabels(promptEvolutionAsset, state.promptEvolutionAssets.map((item) => ({ value: String(item.asset_id), label: `${item.costume} · ${item.view}` })));
+  setSelectOptions(promptEvolutionModel, models.models || []);
+  setSelectOptions(promptEvolutionChecklistModel, models.models || []);
+  setSelectOptions(promptEvolutionProfile, options.profiles || []);
+  setSelectOptionsWithLabels(promptEvolutionCheckpoint, (checkpoints.checkpoints || []).map((item) => ({ value: item.title, label: item.title })));
+  restorePromptEvolutionSettings(stickySettings);
+  if (!stickySettings[promptEvolutionModel.id] && Array.from(promptEvolutionModel.options).some((option) => option.value === "qwen3.5-prompt-evo")) {
+    promptEvolutionModel.value = "qwen3.5-prompt-evo";
+  }
+  if (!stickySettings[promptEvolutionChecklistModel.id] && Array.from(promptEvolutionChecklistModel.options).some((option) => option.value === "qwen3-VL-prompt-evo")) {
+    promptEvolutionChecklistModel.value = "qwen3-VL-prompt-evo";
+  }
+  if (stickySettings[promptEvolutionProfile.id] && promptEvolutionProfile.value !== "body-reference-preview") {
+    await refreshPromptEvolutionCheckpoints();
+    restorePromptEvolutionSettings(stickySettings);
+  }
+  if (!stickySettings[promptEvolutionCheckpoint.id]) {
+    const preferredCheckpoint = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("perfectdeliberate_v90"));
+    if (preferredCheckpoint) promptEvolutionCheckpoint.value = preferredCheckpoint.value;
+  }
+  promptEvolutionTemplateText.value = state.promptEvolutionTemplates[promptEvolutionTemplateName.value] || ""; renderPromptEvolutionAsset();
+  await loadPromptEvolutionChecklists();
+  await refreshPromptEvolutionRuns();
+  savePromptEvolutionSettings();
+}
+
+async function startPromptEvolutionRun() {
+  const asset = selectedPromptEvolutionAsset(); if (!asset) return;
+  promptEvolutionStart.disabled = true; showPromptEvolutionMessage("Creating run…");
+  try {
+    const run = await fetchJson("/api/prompt-evolution/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      character: state.character, phase: state.phase, costume: asset.costume, view: asset.view, model: promptEvolutionModel.value, checklist_model: promptEvolutionChecklistModel.value, checkpoint: promptEvolutionCheckpoint.value, profile: promptEvolutionProfile.value,
+      cfg_scale: Number(promptEvolutionCfg.value), steps: Number(promptEvolutionSteps.value), batch_size: Number(promptEvolutionBatchSize.value), total_batches: Number(promptEvolutionTotalBatches.value),
+      metadata_mode: promptEvolutionMetadata.value, mode: promptEvolutionMode.value, positive_prompt: promptEvolutionPositive.value, negative_prompt: promptEvolutionNegative.value,
+    }) });
+    state.promptEvolutionRun = run; showPromptEvolutionMessage(`Created ${run.run_id}.`, "success"); await loadPromptEvolution();
+  } catch (error) { showPromptEvolutionMessage(error.message, "error"); } finally { promptEvolutionStart.disabled = false; }
+}
+
+async function refreshPromptEvolutionCheckpoints() {
+  const previous = promptEvolutionCheckpoint.value || storedPromptEvolutionSettings()[promptEvolutionCheckpoint.id];
+  const payload = await fetchJson(`/api/local-image/checkpoints?preset=${encodeURIComponent(promptEvolutionProfile.value || "body-reference-preview")}&backend=stable_matrix`);
+  setSelectOptionsWithLabels(promptEvolutionCheckpoint, (payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title })));
+  const preferred = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value === previous)
+    || Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("perfectdeliberate_v90"));
+  if (preferred) promptEvolutionCheckpoint.value = preferred.value;
+  savePromptEvolutionSettings();
+}
+
+async function savePromptEvolutionTemplate() {
+  const name = promptEvolutionTemplateName.value;
+  await fetchJson(`/api/prompt-evolution/templates/${encodeURIComponent(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: promptEvolutionTemplateText.value }) });
+  state.promptEvolutionTemplates[name] = promptEvolutionTemplateText.value; showPromptEvolutionMessage(`Saved ${name} template.`, "success");
+}
+
 async function saveAuxiliaryResourceImage() {
   const resource = selectedAuxiliaryResource();
   const imageLabel = auxResourceImageLabel.value.trim();
@@ -8974,6 +9271,8 @@ zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checke
 zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
 enableFullscreenImage(zinePreview);
 enableFullscreenImage(auxResourceImagePreview);
+enableFullscreenImage(promptEvolutionSourcePreview);
+enableFullscreenImage(promptEvolutionDerivativePreview);
 fullscreenImageClose.addEventListener("click", closeFullscreenImage);
 fullscreenImagePrevious.addEventListener("click", () => navigateFullscreenScene(-1));
 fullscreenImageNext.addEventListener("click", () => navigateFullscreenScene(1));
@@ -9270,6 +9569,117 @@ localImageReviewRefresh.addEventListener("click", () => loadLocalImageReviewTask
 localImageReviewClear.addEventListener("click", clearLocalImageReviewImages);
 localImageReviewGenerate.addEventListener("click", generateLocalImageReviewImages);
 localImageReviewGenerateAllModels.addEventListener("click", generateLocalImageReviewImagesForAllModels);
+promptEvolutionAsset.addEventListener("change", () => {
+  renderPromptEvolutionAsset();
+  loadPromptEvolutionChecklists().catch((error) => showPromptEvolutionMessage(error.message, "error"));
+});
+promptEvolutionSettingControls().forEach((control) => control.addEventListener(control.tagName === "TEXTAREA" || control.tagName === "INPUT" ? "input" : "change", savePromptEvolutionSettings));
+promptEvolutionProfile.addEventListener("change", () => refreshPromptEvolutionCheckpoints().catch((error) => showPromptEvolutionMessage(error.message, "error")));
+promptEvolutionStart.addEventListener("click", startPromptEvolutionRun);
+promptEvolutionRefresh.addEventListener("click", loadPromptEvolution);
+promptEvolutionTemplateName.addEventListener("change", () => { promptEvolutionTemplateText.value = state.promptEvolutionTemplates[promptEvolutionTemplateName.value] || ""; });
+promptEvolutionTemplateSave.addEventListener("click", () => savePromptEvolutionTemplate().catch((error) => showPromptEvolutionMessage(error.message, "error")));
+promptEvolutionCharacterChecklistSave.addEventListener("click", () => savePromptEvolutionChecklist("character").catch((error) => showPromptEvolutionMessage(error.message, "error")));
+promptEvolutionCostumeChecklistSave.addEventListener("click", () => savePromptEvolutionChecklist("costume").catch((error) => showPromptEvolutionMessage(error.message, "error")));
+promptEvolutionRuns.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-prompt-evolution-run]");
+  if (button) selectPromptEvolutionRun(button.dataset.promptEvolutionRun).catch((error) => showPromptEvolutionMessage(error.message, "error"));
+});
+promptEvolutionDetail.addEventListener("click", async (event) => {
+  const run = state.promptEvolutionRun; if (!run) return;
+  const candidate = event.target.closest("[data-prompt-evolution-select]");
+  const finalist = event.target.closest("[data-prompt-evolution-finalist]");
+  const action = event.target.closest("[data-prompt-evolution-action]");
+  const clone = event.target.closest("[data-prompt-evolution-clone]");
+  const saveName = event.target.closest("[data-prompt-evolution-save-name]");
+  const directed = event.target.closest("[data-prompt-evolution-directed-start]");
+  const runLink = event.target.closest("[data-prompt-evolution-run-link]");
+  const summaryDiff = event.target.closest("[data-prompt-evolution-summary-diff]");
+  const refinementUse = event.target.closest("[data-prompt-evolution-refinement-use]");
+  const refinementEdit = event.target.closest("[data-prompt-evolution-refinement-edit]");
+  const refinementValidate = event.target.closest("[data-prompt-evolution-refinement-validate]");
+  const refinementAcceptEdit = event.target.closest("[data-prompt-evolution-refinement-accept-edit]");
+  try {
+    if (summaryDiff) {
+      const panel = promptEvolutionDetail.querySelector("[data-prompt-evolution-summary-diff-panel]");
+      panel.hidden = !panel.hidden;
+      summaryDiff.textContent = panel.hidden ? "Show initial-to-final prompt diff" : "Hide initial-to-final prompt diff";
+      return;
+    }
+    if (runLink) { await selectPromptEvolutionRun(runLink.dataset.promptEvolutionRunLink); return; }
+    if (saveName) {
+      const name = promptEvolutionDetail.querySelector("[data-prompt-evolution-run-name]")?.value || "";
+      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/name`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
+      await refreshPromptEvolutionRuns();
+      return;
+    }
+    if (directed) {
+      const instructions = promptEvolutionDetail.querySelector("[data-prompt-evolution-directed]")?.value || "";
+      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/directed-refinement`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions }) }));
+      return;
+    }
+    if (refinementEdit) {
+      const editor = promptEvolutionDetail.querySelector(`[data-prompt-evolution-refinement-editor="${CSS.escape(refinementEdit.dataset.promptEvolutionRefinementEdit)}"]`);
+      editor.hidden = !editor.hidden;
+      refinementEdit.textContent = editor.hidden ? "Edit prompt text" : "Hide editor";
+      return;
+    }
+    if (refinementValidate || refinementAcceptEdit) {
+      const attemptId = (refinementValidate || refinementAcceptEdit).dataset.promptEvolutionRefinementValidate || refinementAcceptEdit.dataset.promptEvolutionRefinementAcceptEdit;
+      const editor = promptEvolutionDetail.querySelector(`[data-prompt-evolution-refinement-editor="${CSS.escape(attemptId)}"]`);
+      const positiveCore = editor.querySelector("[data-prompt-evolution-positive-core]").value;
+      const negativeCore = editor.querySelector("[data-prompt-evolution-negative-core]").value;
+      const editPayload = { attempt_id: attemptId, positive_core: positiveCore, negative_core: negativeCore };
+      if (refinementAcceptEdit) {
+        renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/refinement-review/accept`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editPayload),
+        }));
+        return;
+      }
+      const result = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/refinement-review/preview`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editPayload),
+      });
+      editor.querySelector("[data-prompt-evolution-refinement-edit-result]").innerHTML = promptEvolutionRefinementValidation(result);
+      editor.querySelector("[data-prompt-evolution-refinement-accept-edit]").hidden = !result.strict_valid;
+      return;
+    }
+    if (refinementUse) {
+      const attemptId = refinementUse.dataset.promptEvolutionRefinementUse;
+      const batch = (run.batches || []).find((item) => Number(item.index) === Number(run.current_batch));
+      const attempt = (batch?.refinement_attempts || []).find((item) => item.attempt_id === attemptId);
+      const confirmOverride = Boolean(attempt?.guarded_override_allowed && !attempt?.strict_valid);
+      if (confirmOverride && !window.confirm("This prompt is usable only with a guarded validation override. Continue and record the override?")) return;
+      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/refinement-review/accept`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attempt_id: attemptId, confirm_override: confirmOverride }),
+      }));
+      return;
+    }
+    if (candidate) {
+      const selectionReason = promptEvolutionDetail.querySelector("[data-prompt-evolution-selection-reason]")?.value || "";
+      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/select/${encodeURIComponent(candidate.dataset.promptEvolutionSelect)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ selection_reason: selectionReason }),
+      }));
+    }
+    if (finalist) {
+      const selectionReason = promptEvolutionDetail.querySelector("[data-prompt-evolution-selection-reason]")?.value || "";
+      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/finalist/${encodeURIComponent(finalist.dataset.promptEvolutionFinalist)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ selection_reason: selectionReason }),
+      }));
+    }
+    if (action?.dataset.promptEvolutionAction === "delete") {
+      if (!window.confirm(`Delete prompt evolution run ${run.run_id} and all of its generated images and data?`)) return;
+      await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}`, { method: "DELETE" });
+      state.promptEvolutionRun = null;
+      renderPromptEvolutionDetail(null);
+      await refreshPromptEvolutionRuns();
+      showPromptEvolutionMessage(`Deleted run ${run.run_id}.`, "success");
+    } else if (action?.dataset.promptEvolutionAction === "restart") {
+      state.promptEvolutionRun = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/restart`, { method: "POST" });
+      await loadPromptEvolution();
+    } else if (action) renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/${action.dataset.promptEvolutionAction}`, { method: "POST" }));
+    if (clone) { state.promptEvolutionRun = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/clone/${encodeURIComponent(clone.dataset.promptEvolutionClone)}`, { method: "POST" }); await loadPromptEvolution(); }
+  } catch (error) { showPromptEvolutionMessage(error.message, "error"); }
+});
 localImageReviewPrev.addEventListener("click", () => {
   selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, -1, selectLocalImageReviewTask);
 });

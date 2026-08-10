@@ -36,6 +36,7 @@ def render_image(
     render_layout: dict[str, Any] | None = None,
     scene_render_ir_path: Path | None = None,
     seed: int | None = None,
+    render_overrides: dict[str, Any] | None = None,
 ) -> LocalRenderResult:
     request = LocalRenderRequest(
         project_root=project_root,
@@ -48,6 +49,7 @@ def render_image(
         aspect_ratio=aspect_ratio,
         render_layout=render_layout,
         seed=seed,
+        render_overrides=render_overrides,
     )
     return render_request(request)
 
@@ -68,6 +70,7 @@ def render_request(request: LocalRenderRequest) -> LocalRenderResult:
             aspect_ratio=request.aspect_ratio,
             render_layout=request.render_layout,
             seed=request.seed,
+            render_overrides=request.render_overrides,
         )
     if backend == "comfyui":
         from Scripts.Local_Render_Adapters.comfyui_adapter import render_preview

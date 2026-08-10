@@ -32,6 +32,7 @@ from zet.services.pipeline_control_service import AutomationSettings, PipelineCo
 from zet.services.pipeline_inspection_service import PipelineInspectionService
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.prompt_artifact_service import PromptArtifactService
+from zet.services.prompt_evolution_service import PromptEvolutionService
 from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
@@ -185,6 +186,10 @@ class ZetApp:
             path_service,
             costume_service,
             story_service,
+            Path(__file__).resolve().parents[1],
+        )
+        self.prompt_evolution_service = PromptEvolutionService(
+            self,
             Path(__file__).resolve().parents[1],
         )
         self.zine_service = ZineService(path_service, story_service)
@@ -702,7 +707,21 @@ class ZetApp:
         return self.prompt_review_service.recompile(character, phase, asset_id, invalidate_review_artifacts)
 
     def harvest_ai_answers(self):
-        return self.asset_service.harvest_ai_answers()
+        results = self.asset_service.harvest_ai_answers()
+        self.prompt_evolution_service.advance_active_runs()
+        return results
+
+    def prompt_evolution_options(self, character: str, phase: str):
+        return self.prompt_evolution_service.options(character, phase)
+
+    def create_prompt_evolution_run(self, payload: dict):
+        return self.prompt_evolution_service.create_run(payload)
+
+    def list_prompt_evolution_runs(self):
+        return self.prompt_evolution_service.list_runs()
+
+    def prompt_evolution_run(self, run_id: str):
+        return self.prompt_evolution_service.detail(run_id)
 
     def run_available_workers(self, character: str, phase: str):
         return self.asset_service.run_available_workers(character, phase)

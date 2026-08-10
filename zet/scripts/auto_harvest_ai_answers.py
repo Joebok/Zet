@@ -43,6 +43,12 @@ def harvest_once(config_path: str) -> int:
     return len(results)
 
 
+def active_prompt_evolution_runs(config_path: str) -> bool:
+    app = ZetApp.from_config(config_path)
+    terminal = {"COMPLETE", "ABORTED", "FAILED", "AWAITING_USER"}
+    return any(run.get("status") not in terminal for run in app.list_prompt_evolution_runs())
+
+
 def main() -> int:
     args = build_parser().parse_args()
 
@@ -69,7 +75,7 @@ def main() -> int:
                 return 0
         except Exception as exc:
             print(f"{timestamp()} Error: {exc}", file=sys.stderr, flush=True)
-        time.sleep(interval)
+        time.sleep(min(interval, 5) if active_prompt_evolution_runs(args.config) else interval)
 
 
 if __name__ == "__main__":

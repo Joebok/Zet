@@ -102,7 +102,9 @@ def compile_stable_matrix_api_call(
     aspect_ratio: str = "",
     render_layout: dict[str, Any] | None = None,
     seed: int | None = None,
+    render_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    render_overrides = render_overrides or {}
     positive_prompt, negative_prompt = split_labeled_prompt(prompt_text)
     resolved_seed = preset.get("seed", "random") if seed is None else seed
     if str(resolved_seed).lower() == "random":
@@ -110,7 +112,9 @@ def compile_stable_matrix_api_call(
 
     selected_aspect_ratio = aspect_ratio or preset.get("aspect_ratio")
     size = _render_size_for_aspect_ratio(str(selected_aspect_ratio)) if selected_aspect_ratio else None
-    if size:
+    if render_overrides.get("width") and render_overrides.get("height"):
+        width, height = int(render_overrides["width"]), int(render_overrides["height"])
+    elif size:
         width, height = size
     elif preset.get("width") and preset.get("height"):
         width, height = int(preset["width"]), int(preset["height"])
@@ -121,8 +125,8 @@ def compile_stable_matrix_api_call(
         "negative_prompt": negative_prompt,
         "width": width,
         "height": height,
-        "steps": int(preset.get("steps", 32)),
-        "cfg_scale": float(preset.get("cfg", 7.0)),
+        "steps": int(render_overrides.get("steps", preset.get("steps", 32))),
+        "cfg_scale": float(render_overrides.get("cfg_scale", preset.get("cfg", 7.0))),
         "seed": int(resolved_seed),
         "sampler_name": str(preset.get("sampler_name", "DPM++ 2M")),
         "scheduler": str(preset.get("scheduler", "Karras")),

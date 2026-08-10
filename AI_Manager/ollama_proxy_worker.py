@@ -14,6 +14,7 @@ It does not edit Pipelines.json.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import socket
@@ -87,9 +88,26 @@ def write_text_atomic(path: Path, contents: str) -> None:
 
 
 def ollama_health_url(generate_url: str) -> str:
-    if generate_url.endswith("/api/generate"):
-        return generate_url[: -len("/api/generate")] + "/api/tags"
+    for endpoint in ("/api/generate", "/api/chat"):
+        if generate_url.endswith(endpoint):
+            return generate_url[: -len(endpoint)] + "/api/tags"
     return generate_url.rstrip("/") + "/api/tags"
+
+
+def ollama_chat_url(url: str) -> str:
+    return url[: -len("/api/generate")] + "/api/chat" if url.endswith("/api/generate") else url
+
+
+def ensure_explicit_image_tags(prompt: str, image_count: int) -> str:
+    if image_count <= 0:
+        return prompt
+    tag_count = prompt.count("[img]")
+    if tag_count == image_count:
+        return prompt
+    if tag_count:
+        raise ValueError(f"Ollama prompt has {tag_count} [img] tags for {image_count} images.")
+    labels = "\n".join(f"Image {index}: [img]" for index in range(1, image_count + 1))
+    return f"{labels}\n\n{prompt}"
 
 
 def is_transient_ollama_error(exc: BaseException) -> bool:
@@ -143,20 +161,45 @@ def call_ollama_once(
     temperature: float = 0.1,
     num_ctx: int | None = None,
     timeout: int = 600,
+    images: list[str] | None = None,
+    json_output: bool = False,
+    response_schema: dict | None = None,
 ) -> str:
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,
-        "keep_alive": 0,
-        "options": {"temperature": temperature},
-    }
+    multimodal_chat = bool(images and len(images) > 1)
+    if multimodal_chat:
+        prompt = ensure_explicit_image_tags(prompt, len(images))
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt, "images": images}],
+            "stream": False,
+            "think": False,
+            "keep_alive": 0,
+            "options": {"temperature": temperature},
+        }
+        request_url = ollama_chat_url(url)
+    else:
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "keep_alive": 0,
+            "options": {"temperature": temperature},
+        }
+        if images:
+            payload["images"] = images
+        request_url = url
+    if response_schema is not None:
+        if not isinstance(response_schema, dict):
+            raise ValueError("Ollama response_schema must be a JSON object")
+        payload["format"] = response_schema
+    elif json_output:
+        payload["format"] = "json"
     if num_ctx:
         payload["options"]["num_ctx"] = int(num_ctx)
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
-        url,
+        request_url,
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -169,6 +212,11 @@ def call_ollama_once(
         raise RuntimeError(f"Ollama HTTP {exc.code}: {detail[:500]}") from exc
 
     parsed = json.loads(body)
+    if multimodal_chat:
+        message = parsed.get("message")
+        if not isinstance(message, dict) or "content" not in message:
+            raise RuntimeError(f"Ollama chat response missing 'message.content': {body[:500]}")
+        return str(message["content"])
     if "response" not in parsed:
         raise RuntimeError(f"Ollama response missing 'response': {body[:500]}")
     return str(parsed["response"])
@@ -184,6 +232,9 @@ def call_ollama(
     retries: int = 8,
     retry_seconds: float = 10.0,
     preflight_attempts: int = 3,
+    images: list[str] | None = None,
+    json_output: bool = False,
+    response_schema: dict | None = None,
 ) -> str:
     if preflight_attempts > 0:
         wait_for_ollama(url, attempts=preflight_attempts, delay_seconds=retry_seconds, timeout=min(timeout, 10))
@@ -192,7 +243,10 @@ def call_ollama(
     total_attempts = max(1, retries + 1)
     for attempt in range(1, total_attempts + 1):
         try:
-            return call_ollama_once(url, model, prompt, temperature=temperature, num_ctx=num_ctx, timeout=timeout)
+            return call_ollama_once(
+                url, model, prompt, temperature=temperature, num_ctx=num_ctx,
+                timeout=timeout, images=images, json_output=json_output, response_schema=response_schema,
+            )
         except Exception as exc:
             if not is_transient_ollama_error(exc):
                 raise
@@ -276,6 +330,15 @@ def process_claimed(
             raise ValueError("ask_manifest expected_output is blank")
 
         prompt = (folder / prompt_file).read_text(encoding="utf-8")
+        encoded_images = []
+        for value in ask_manifest.get("image_files") or []:
+            name = str(value)
+            if not name or Path(name).name != name:
+                raise ValueError(f"Invalid Ollama image filename: {name}")
+            image_path = folder / name
+            if not image_path.is_file():
+                raise FileNotFoundError(f"Ollama image missing: {name}")
+            encoded_images.append(base64.b64encode(image_path.read_bytes()).decode("ascii"))
         response = call_ollama(
             ollama_url,
             model,
@@ -286,6 +349,9 @@ def process_claimed(
             retries=ollama_retries,
             retry_seconds=ollama_retry_seconds,
             preflight_attempts=preflight_attempts,
+            images=encoded_images,
+            json_output=bool(ask_manifest.get("json_output")),
+            response_schema=ask_manifest.get("response_schema"),
         )
         write_text_atomic(folder / expected_output, response)
         answer_manifest["status"] = "SUCCESS"
