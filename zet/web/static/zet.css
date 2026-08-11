@@ -1932,7 +1932,19 @@ summary:focus-visible {
 .prompt-evolution-runs button.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, #fff); }
 .prompt-evolution-run-actions { align-items: center; }
 .prompt-evolution-run-actions > span { margin-right: auto; overflow-wrap: anywhere; }
+.prompt-evolution-log { border: 1px solid var(--border); margin: 16px 0; padding: 12px; }
+.prompt-evolution-log h2 { margin-top: 0; }
+.prompt-evolution-log ol { background: var(--surface-subtle); list-style: none; margin: 0; max-height: 320px; overflow-y: auto; padding: 8px 12px; }
+.prompt-evolution-log li { display: grid; gap: 4px 12px; grid-template-columns: 150px minmax(0, 1fr); padding: 4px 0; }
+.prompt-evolution-log time { color: var(--muted); font-family: ui-monospace, monospace; }
+.prompt-evolution-log li.warning span { color: var(--warning); }
+.prompt-evolution-log li.error span { color: var(--danger); }
+.prompt-evolution-prompt-versions { border: 1px solid var(--border); margin: 16px 0; padding: 12px; }
+.prompt-evolution-prompt-versions > h2 { margin-top: 0; }
+.prompt-evolution-prompt-versions article + article { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.prompt-evolution-prompt-history { margin: 12px 0; }
 .prompt-evolution-batch { border-top: 1px solid var(--border); padding: 16px 0; }
+.prompt-evolution-batch pre { overflow: auto; white-space: pre-wrap; }
 .prompt-evolution-gallery { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .prompt-evolution-candidate { border: 2px solid transparent; display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 6px; }
 .prompt-evolution-candidate.winner { border-color: var(--accent); }
@@ -1942,7 +1954,6 @@ summary:focus-visible {
 .prompt-evolution-candidate > div,
 .prompt-evolution-candidate details { max-width: 100%; overflow-wrap: anywhere; }
 .prompt-evolution-prompts { white-space: pre-wrap; }
-.prompt-evolution-category-ranking { margin: 10px 0; }
 .prompt-evolution-target-category { font-weight: 700; text-decoration: underline; }
 .prompt-evolution-summary { border: 2px solid var(--accent); margin: 16px 0; padding: 14px; }
 .prompt-evolution-summary-row { display: grid; gap: 16px; grid-template-columns: minmax(160px, 240px) minmax(0, 1fr); }
@@ -1954,10 +1965,6 @@ summary:focus-visible {
 .prompt-evolution-summary-controls { display: grid; gap: 8px; margin-top: 12px; }
 .prompt-evolution-summary-controls textarea { min-height: 90px; width: 100%; }
 .prompt-evolution-summary > label textarea, .prompt-evolution-batch > label textarea { min-height: 80px; width: 100%; }
-.prompt-evolution-refinement-attempt { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 14px; }
-.prompt-evolution-refinement-attempt pre { overflow: auto; white-space: pre-wrap; }
-.prompt-evolution-refinement-editor { margin-top: 10px; }
-.prompt-evolution-refinement-editor textarea { min-height: 220px; width: 100%; }
 .prompt-diff-added { background: color-mix(in srgb, #2eaf5d 25%, transparent); color: var(--text); }
 .prompt-diff-deleted { background: color-mix(in srgb, #d84a4a 20%, transparent); color: var(--muted); text-decoration: line-through; }
 

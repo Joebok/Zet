@@ -1,26 +1,24 @@
 # Prompt Evolution Lab
 
-Open **Tools → Prompt Evolution** and select a locked Costume-Dressing costume/view. Zet creates a non-destructive, subject-aware 768 × 1024 reference derivative and renders every experiment candidate at the same dimensions.
+Prompt Evolution v3 optimizes a reusable Stable Diffusion prompt across seeds without category scores.
 
-Runs and their template snapshots, prompts, scores, and images are stored under the selected asset's `Prompt_Evolution` pipeline folder. Strategy-v2 runs keep a reusable identity/costume prompt core separate from the controlled full-body render wrapper. Each new batch retains its prior winner's seed and randomizes the remaining seeds.
+Each batch contains fixed benchmark seeds and fresh generalization seeds. Two independent visual critics compare every render with the canonical reference without seeing the prompt or each other's reports. A text-only synthesizer identifies recurrent, intermittent, and isolated deviations plus stable successes. The diagnostician then sees the synthesis, current prompt cores, and reference image. Only one to three high-confidence interventions reach the conservative prompt editor.
 
-Evaluations return a score, visible observation, corrective instruction, and confidence for every category. Refinement receives the two weakest corrections, triggered hard-checklist corrections, the reference image, and the selected candidate. It edits atomic prompt terms by stable ID; invalid, duplicate, contradictory, or no-op mutations are rejected and retried once.
+Character and costume sidecars contain optional desired-condition regression checks with `id`, `requirement`, `question`, and `correction`. Checks return pass, fail, or indeterminate evidence; they never score or cap a candidate.
 
-Automatic runs explore all configured batches, then pause at `AWAITING_FINALIST`. Finalists are randomized and shown without scores or prompt text. A human selects the final reusable core or keeps the incumbent. The selected `prompt_core.json` and `evaluation_wrapper.json` are persisted separately.
+Automatic evolution stops at the configured batch limit, when no prompt-level priority remains, or when no high-confidence intervention is available. Final review presents every prompt version in randomized order using its fixed-seed image grid; fresh-seed evidence is expandable. Prompt text, chronology, and the decision log remain hidden until selection. The selected reusable core and render wrapper are written to `prompt_core.json` and `evaluation_wrapper.json`.
 
-Evaluation checklist items are configured in `Config/Prompt_Evolution/checklist.json` and character/costume sidecars. Version-2 items use `id`, `item`, `question`, `correction`, `category`, and `max_rating`. The checklist model returns true, false, or indeterminate; only a true violation caps the category. New runs snapshot the current checklist, while legacy item-only checklists remain readable.
+After selection, each batch exposes a read-only decision audit containing both critic reports, regression checks, cross-seed synthesis, diagnosis, editor change log, and prompt diff. The audit bundle retains exact LLM prompts, attachments, responses, and transport manifests.
 
-Archived candidates can be replayed through `POST /api/prompt-evolution/runs/{run_id}/replay`. Replay artifacts are stored separately under `Prompt_Evolution_Experiments`; polling `GET /api/prompt-evolution/replays/{experiment_id}` advances repeated evaluations and text-only versus image-grounded corrective refinements without modifying the source run.
-
-Identity categories use a calibrated 0–10 scale, with 5 as the true midpoint, 7 as generally successful with visible defects, and 9–10 reserved for extremely close or effectively exact matches.
+Legacy run schemas are not listed or readable by v3.
 
 ## Local smoke test
 
 1. Start Ollama, Stable Matrix with its API enabled, File Proxy, Zet auto-harvest, and the dashboard.
-2. Confirm **Tools → AI Controls** lists the services as available.
-3. Open **Tools → Prompt Evolution**, select a locked costume/view, a vision model, checkpoint, and Stable Matrix profile.
-4. Set **Images** to `5`, **Batches** to `2`, and choose **Manual selection**.
-5. Start the run and verify the derivative preview is 768 × 1024.
-6. Confirm the second row retains the winning seed, uses new comparison seeds, and shows category scores and an effective-prompt diff.
-7. After the final batch, verify the run enters `AWAITING_FINALIST`, hides scores and prompts, and shows randomized finalists.
-8. Select a finalist or keep the incumbent. Verify the run enters `COMPLETE` and writes `prompt_core.json` and `evaluation_wrapper.json`.
+2. Open **Tools → Prompt Evolution** and select a locked Costume-Dressing reference.
+3. Select two visual critics, an analysis model, a regression-check model, checkpoint, and render profile.
+4. Use six images, three fixed seeds, two batches, and start the run.
+5. Verify every candidate queues two isolated critic asks and that the second batch reuses three seeds while replacing three.
+6. Verify the run advances through observing, synthesis, diagnosis, and editing without displaying scores.
+7. In final review, verify choices are randomized prompt-version grids with hidden prompt history and expandable fresh-seed evidence.
+8. Select a prompt version and verify `prompt_core.json`, `evaluation_wrapper.json`, and the post-selection decision audit.

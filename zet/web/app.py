@@ -1763,51 +1763,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/prompt-evolution/runs/{run_id}/select/{seed}")
-    def prompt_evolution_select(run_id: str, seed: int, payload: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-        try:
-            return _app(app.state.config_path).prompt_evolution_service.select_candidate(
-                run_id, seed, str((payload or {}).get("selection_reason") or ""),
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-evolution/runs/{run_id}/refinement-review/preview")
-    def prompt_evolution_preview_refinement(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        try:
-            operations = payload.get("operations")
-            text_edit = "positive_core" in payload or "negative_core" in payload
-            if not text_edit and not isinstance(operations, list):
-                raise PromptEvolutionError("Refinement operations must be an array.")
-            return _app(app.state.config_path).prompt_evolution_service.preview_refinement_review(
-                run_id, str(payload.get("attempt_id") or ""), operations,
-                str(payload.get("positive_core") or "") if text_edit else None,
-                str(payload.get("negative_core") or "") if text_edit else None,
-            )
-        except (PromptEvolutionError, FileNotFoundError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-evolution/runs/{run_id}/refinement-review/accept")
-    def prompt_evolution_accept_refinement(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        try:
-            operations = payload.get("operations") if "operations" in payload else None
-            if operations is not None and not isinstance(operations, list):
-                raise PromptEvolutionError("Refinement operations must be an array.")
-            return _app(app.state.config_path).prompt_evolution_service.accept_refinement_review(
-                run_id, str(payload.get("attempt_id") or ""), operations, bool(payload.get("confirm_override", False)),
-                str(payload.get("positive_core") or "") if "positive_core" in payload else None,
-                str(payload.get("negative_core") or "") if "negative_core" in payload else None,
-            )
-        except (PromptEvolutionError, FileNotFoundError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/prompt-evolution/runs/{run_id}/finalist/{finalist_id}")
-    def prompt_evolution_select_finalist(
-        run_id: str, finalist_id: str, payload: dict[str, Any] | None = Body(default=None),
+    @app.post("/api/prompt-evolution/runs/{run_id}/final-selection/{prompt_version_id}")
+    def prompt_evolution_final_selection(
+        run_id: str, prompt_version_id: str, payload: dict[str, Any] | None = Body(default=None),
     ) -> dict[str, Any]:
         try:
-            return _app(app.state.config_path).prompt_evolution_service.select_finalist(
-                run_id, finalist_id, str((payload or {}).get("selection_reason") or ""),
+            return _app(app.state.config_path).prompt_evolution_service.select_prompt_version(
+                run_id, prompt_version_id, str((payload or {}).get("selection_reason") or ""),
             )
         except (PromptEvolutionError, FileNotFoundError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1855,22 +1817,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/prompt-evolution/runs/{run_id}/replay")
-    def prompt_evolution_start_replay(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        try:
-            return _app(app.state.config_path).prompt_evolution_service.start_replay_experiment(
-                run_id, int(payload.get("batch_index", 0)), int(payload.get("seed")), int(payload.get("repeats", 3)),
-            )
-        except (PromptEvolutionError, FileNotFoundError, TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/prompt-evolution/replays/{experiment_id}")
-    def prompt_evolution_replay(experiment_id: str) -> dict[str, Any]:
-        try:
-            return _app(app.state.config_path).prompt_evolution_service.advance_replay_experiment(experiment_id)
-        except (PromptEvolutionError, FileNotFoundError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/prompt-evolution/runs/{run_id}/retry")
     def prompt_evolution_retry(run_id: str) -> dict[str, Any]:
         try:
@@ -1885,13 +1831,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.post("/api/prompt-evolution/runs/{run_id}/recover-evaluations")
-    def prompt_evolution_recover_evaluations(run_id: str) -> dict[str, Any]:
-        try:
-            return _app(app.state.config_path).prompt_evolution_service.recover_missing_evaluations(run_id)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.post("/api/prompt-evolution/runs/{run_id}/clone/{batch_index}")
     def prompt_evolution_clone(run_id: str, batch_index: int) -> dict[str, Any]:
         try:
@@ -1902,7 +1841,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     @app.get("/api/prompt-evolution/templates")
     def prompt_evolution_templates() -> dict[str, Any]:
         service = _app(app.state.config_path).prompt_evolution_service
-        return {"templates": {name: service.template(name) for name in ("bootstrap", "evaluation", "checklist_evaluation", "ranking", "repair", "refinement", "directed_refinement")}}
+        return {"templates": {name: service.template(name) for name in service.template_names}}
 
     @app.get("/api/prompt-evolution/checklists")
     def prompt_evolution_checklists(

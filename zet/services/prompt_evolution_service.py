@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import random
-import re
 import shutil
 import tempfile
 from typing import Any
@@ -20,19 +19,13 @@ from zet.services.character_grid_service import CharacterGridOptions, CharacterG
 
 CANVAS_WIDTH = 768
 CANVAS_HEIGHT = 1024
-IDENTITY_FLOOR = 6
-MINIMUM_SCORE_IMPROVEMENT = 0.1
-STRATEGY_VERSION = 2
+RUN_VERSION = 3
 DEFAULT_VISION_MODEL = "qwen3.5-prompt-evo"
 DEFAULT_CHECKLIST_MODEL = "qwen3-VL-prompt-evo"
-TEMPLATE_NAMES = ("bootstrap", "evaluation", "checklist_evaluation", "ranking", "repair", "refinement", "directed_refinement")
-CHARACTER_SCORE_CATEGORIES = ("face_shape", "eyes", "hair", "species_markers", "body_proportions")
-COSTUME_SCORE_CATEGORIES = ("silhouette_layering", "garment_pieces", "colors", "accessories_footwear")
-CATEGORY_DISPLAY_NAMES = {
-    "face_shape": "Face shape", "eyes": "Eyes", "hair": "Hair", "species_markers": "Species markers",
-    "body_proportions": "Body proportions", "silhouette_layering": "Silhouette/layering",
-    "garment_pieces": "Garments", "colors": "Colors", "accessories_footwear": "Accessories/footwear",
-}
+TEMPLATE_NAMES = (
+    "bootstrap", "visual_critic", "regression_check", "batch_synthesis",
+    "prompt_diagnosis", "prompt_edit", "repair", "directed_refinement",
+)
 DEFAULT_DETECTION_TOLERANCE = 50.0
 REFERENCE_PADDING_RATIO = 0.10
 GRAY_BACKGROUND_TERM = "gray background"
@@ -45,6 +38,54 @@ INITIAL_NEGATIVE_PREFIX = (
 )
 EVALUATION_POSITIVE_TERMS = (*INITIAL_POSITIVE_PREFIX, GRAY_BACKGROUND_TERM, *INITIAL_POSITIVE_SUFFIX)
 EVALUATION_NEGATIVE_TERMS = INITIAL_NEGATIVE_PREFIX
+
+VISUAL_REPORT_SCHEMA = {
+    "type": "object", "required": ["major_differences", "secondary_differences", "stable_matches"],
+    "properties": {
+        "major_differences": {"type": "array", "items": {"type": "object", "required": ["reference", "candidate"], "properties": {"reference": {"type": "string"}, "candidate": {"type": "string"}}}},
+        "secondary_differences": {"type": "array", "items": {"type": "object", "required": ["reference", "candidate"], "properties": {"reference": {"type": "string"}, "candidate": {"type": "string"}}}},
+        "stable_matches": {"type": "array", "items": {"type": "string"}},
+    },
+}
+SYNTHESIS_SCHEMA = {
+    "type": "object", "required": ["recurrent_deviations", "intermittent_deviations", "isolated_deviations", "stable_successes", "cross_feature_patterns", "next_round_priorities"],
+    "properties": {name: {"type": "array"} for name in (
+        "recurrent_deviations", "intermittent_deviations", "isolated_deviations", "stable_successes", "cross_feature_patterns", "next_round_priorities",
+    )},
+}
+SYNTHESIS_SCHEMA["properties"]["next_round_priorities"]["maxItems"] = 3
+_SYNTHESIS_FINDING_SCHEMA = {
+    "type": "object", "required": ["finding", "seeds", "observer_agreement"],
+    "properties": {"finding": {"type": "string"}, "seeds": {"type": "array", "items": {"type": "integer"}}, "observer_agreement": {"enum": ["single", "dual"]}},
+}
+for _name in ("recurrent_deviations", "intermittent_deviations", "isolated_deviations"):
+    SYNTHESIS_SCHEMA["properties"][_name]["items"] = _SYNTHESIS_FINDING_SCHEMA
+for _name in ("stable_successes", "cross_feature_patterns"):
+    SYNTHESIS_SCHEMA["properties"][_name]["items"] = {"type": "string"}
+SYNTHESIS_SCHEMA["properties"]["next_round_priorities"]["items"] = {
+    "type": "object", "required": ["problem", "evidence", "seeds", "observer_agreement"],
+    "properties": {"problem": {"type": "string"}, "evidence": {"type": "string"}, "seeds": {"type": "array", "items": {"type": "integer"}}, "observer_agreement": {"enum": ["single", "dual"]}},
+}
+DIAGNOSIS_SCHEMA = {
+    "type": "object", "required": ["interventions"], "properties": {"interventions": {"type": "array", "maxItems": 3, "items": {
+        "type": "object", "required": ["id", "observed_pattern", "prompt", "action", "relevant_wording", "proposed_wording", "diagnosis", "rationale", "confidence", "regression_risk"],
+        "properties": {"id": {"type": "string"}, "observed_pattern": {"type": "string"}, "prompt": {"enum": ["positive", "negative"]}, "action": {"enum": ["add", "replace", "delete"]}, "relevant_wording": {"type": "string"}, "proposed_wording": {"type": "string"}, "diagnosis": {"type": "string"}, "rationale": {"type": "string"}, "confidence": {"enum": ["High", "Medium", "Low"]}, "regression_risk": {"type": "string"}},
+    }}},
+}
+EDIT_SCHEMA = {
+    "type": "object", "required": ["positive_core", "negative_core", "changes"], "properties": {
+        "positive_core": {"type": "string"}, "negative_core": {"type": "string"},
+        "changes": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"type": "object", "required": ["intervention_id", "old", "new", "reason"], "properties": {"intervention_id": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}, "reason": {"type": "string"}}}},
+    },
+}
+PROMPT_CORE_SCHEMA = {
+    "type": "object", "required": ["positive_core", "negative_core"],
+    "properties": {"positive_core": {"type": "string"}, "negative_core": {"type": "string"}},
+}
+BOOTSTRAP_SCHEMA = {
+    "type": "object", "required": ["positive_terms", "negative_terms"],
+    "properties": {"positive_terms": {"type": "array", "items": {"type": "string"}}, "negative_terms": {"type": "array", "items": {"type": "string"}}},
+}
 
 
 class PromptEvolutionError(ValueError):
@@ -67,10 +108,16 @@ class PromptEvolutionService:
         self.project_root = Path(project_root).resolve()
         self.proxy = AIProxyPathService(app.config).file_proxy_client
         self.templates_root = self.project_root / "Config" / "Prompt_Evolution"
+        self.template_names = TEMPLATE_NAMES
 
     @staticmethod
     def _now() -> str:
         return datetime.now().isoformat(timespec="seconds")
+
+    def _log(self, run: dict[str, Any], message: str, level: str = "info", **details: Any) -> None:
+        event = {"at": self._now(), "level": level, "message": message}
+        event.update({key: value for key, value in details.items() if value is not None})
+        run.setdefault("activity_log", []).append(event)
 
     @staticmethod
     def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -85,6 +132,11 @@ class PromptEvolutionService:
         if not isinstance(data, dict):
             raise PromptEvolutionError(f"Expected a JSON object: {path}")
         return data
+
+    @staticmethod
+    def _archive_rejected_output(path: Path) -> None:
+        if path.is_file():
+            os.replace(path, path.with_name(f"{path.stem}.rejected{path.suffix}"))
 
     def template(self, name: str) -> str:
         if name not in TEMPLATE_NAMES:
@@ -110,32 +162,24 @@ class PromptEvolutionService:
         items = payload.get("items")
         if not isinstance(items, list):
             raise PromptEvolutionError("Checklist JSON must contain an items array.")
-        categories = set(CHARACTER_SCORE_CATEGORIES + COSTUME_SCORE_CATEGORIES)
         validated = []
         for row in items:
             if not isinstance(row, dict):
                 raise PromptEvolutionError("Each checklist item must be an object.")
-            item = str(row.get("item") or row.get("question") or "").strip()
+            requirement = str(row.get("requirement") or "").strip()
             question = str(row.get("question") or "").strip()
             correction = str(row.get("correction") or "").strip()
             item_id = str(row.get("id") or "").strip()
-            category = str(row.get("category") or "").strip()
-            try:
-                max_rating = float(row.get("max_rating"))
-            except (TypeError, ValueError) as exc:
-                raise PromptEvolutionError(f"Checklist item '{item or 'unnamed'}' requires a numeric max_rating.") from exc
-            if not item or category not in categories or not 0 <= max_rating <= 10:
-                raise PromptEvolutionError(
-                    "Checklist items require text, a known score category, and a max_rating from 0 to 10."
-                )
+            if not item_id or not requirement or not question or not correction:
+                raise PromptEvolutionError("Regression checks require id, requirement, question, and correction.")
             validated.append({
-                "id": item_id or f"legacy-{len(validated) + 1}",
-                "item": item,
+                "id": item_id,
+                "requirement": requirement,
                 "question": question,
                 "correction": correction,
-                "category": category,
-                "max_rating": int(max_rating) if max_rating.is_integer() else max_rating,
             })
+        if len({item["id"] for item in validated}) != len(validated):
+            raise PromptEvolutionError("Regression check IDs must be unique.")
         return validated
 
     def _scoped_checklist_path(self, scope: str, character: str, phase: str, costume: str = "") -> Path:
@@ -163,7 +207,7 @@ class PromptEvolutionService:
         merged: dict[str, dict[str, Any]] = {}
         for scope, items in (("global", global_items), ("character", character_items), ("costume", costume_items)):
             for row in items:
-                merged[row["item"].casefold()] = {**row, "scope": scope}
+                merged[row["id"]] = {**row, "scope": scope}
         return {
             "global": {"items": global_items},
             "character": {"items": character_items},
@@ -173,7 +217,6 @@ class PromptEvolutionService:
                 "character": str(self._scoped_checklist_path("character", character, phase)),
                 "costume": str(self._scoped_checklist_path("costume", character, phase, costume)),
             },
-            "categories": list(CHARACTER_SCORE_CATEGORIES + COSTUME_SCORE_CATEGORIES),
         }
 
     def save_scoped_checklist(
@@ -184,7 +227,7 @@ class PromptEvolutionService:
         items = self._validated_checklist_items(payload)
         path = self._scoped_checklist_path(scope, character, phase, costume)
         self._write_json(path, {
-            "version": 2,
+            "version": 3,
             "scope": {"kind": scope, "character": character, "phase": phase, **({"costume": costume} if scope == "costume" else {})},
             "items": items,
         })
@@ -306,51 +349,24 @@ class PromptEvolutionService:
             "placement_box": placement,
         }
 
-    def _metadata(self, character: str, phase: str, costume: str, view: str, mode: str) -> dict[str, Any]:
-        labels = {"character": character, "phase": phase, "costume": costume, "view": view}
-        if mode == "image_only":
-            return {}
-        if mode == "labels":
-            return labels
-        if mode != "curated":
-            raise PromptEvolutionError("Metadata mode must be image_only, labels, or curated.")
-        view_token = self.app.character_source_service.views.normalize_token(view)
-        options = self.app.character_source_service.options(character, phase)
-        costume_row = next((item for item in options["costumes"] if item["label"] == costume), None)
-        if costume_row is None:
-            raise PromptEvolutionError(f"Costume metadata is unavailable: {costume}")
-        snapshot = self.app.character_source_service.compile(
-            character=character, phase=phase, costume_slug=costume_row["value"], view_token=view_token,
-            selected_sections=("identity anchors", "face", "hair", "eyes", "ears", "body proportions", "selected costume", "view/orientation requirements"),
-            reference_tags=(),
-        )
-        source_snapshot = snapshot.get("source_snapshot", {})
-        return {
-            **labels,
-            "selected_sections": source_snapshot.get("selected_sections", {}) if isinstance(source_snapshot, dict) else {},
-        }
-
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         character, phase = str(payload.get("character") or ""), str(payload.get("phase") or "")
         costume, view = str(payload.get("costume") or ""), str(payload.get("view") or "")
         asset = self._source_asset(character, phase, costume, view)
-        batch_size, total_batches = int(payload.get("batch_size", 5)), int(payload.get("total_batches", 5))
+        batch_size, total_batches = int(payload.get("batch_size", 6)), int(payload.get("total_batches", 5))
         if not 2 <= batch_size <= 10 or not 2 <= total_batches <= 20:
             raise PromptEvolutionError("Batch size must be 2–10 and total batches must be 2–20.")
+        fixed_seed_count = int(payload.get("fixed_seed_count", 3))
+        if not 1 <= fixed_seed_count < batch_size:
+            raise PromptEvolutionError("Fixed seed count must be at least 1 and less than the batch size.")
         cfg_scale, steps = float(payload.get("cfg_scale", 7.0)), int(payload.get("steps", 25))
-        mode = str(payload.get("mode") or "auto")
         if not 0 <= cfg_scale <= 30 or not 1 <= steps <= 150:
             raise PromptEvolutionError("CFG must be 0–30 and steps must be 1–150.")
-        if mode not in {"auto", "manual"}:
-            raise PromptEvolutionError("Run mode must be auto or manual.")
         if str(self.app.config.local_render_backend).lower() != "stable_matrix":
             raise PromptEvolutionError("Prompt Evolution currently requires the Stable Matrix backend.")
         profile = str(payload.get("profile") or self.app.config.local_render_preset)
         if profile not in self.options(character, phase)["profiles"]:
             raise PromptEvolutionError(f"Unknown Stable Matrix render profile: {profile}")
-        metadata_snapshot = self._metadata(
-            character, phase, costume, view, str(payload.get("metadata_mode") or "curated")
-        )
         templates = {name: self.template(name) for name in TEMPLATE_NAMES}
         checklist = self.scoped_checklists(character, phase, costume)["merged"]
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -359,7 +375,6 @@ class PromptEvolutionService:
         source = self.app.path_service.locked_image_path(asset)
         derivative = root / "reference_768x1024.png"
         crop = self._reference_derivative(source, derivative, self._detection_tolerance(character, phase, costume))
-        self._write_json(root / "metadata_snapshot.json", metadata_snapshot)
         self._write_json(root / "template_snapshot.json", templates)
         self._write_json(root / "checklist_snapshot.json", checklist)
         generator = random.SystemRandom()
@@ -368,22 +383,30 @@ class PromptEvolutionService:
             value = generator.randrange(0, 2**63 - 1)
             if value not in seeds:
                 seeds.append(value)
+        fixed_seeds, fresh_seeds = seeds[:fixed_seed_count], seeds[fixed_seed_count:]
+        created_at = self._now()
         run = {
-            "version": 2, "strategy_version": STRATEGY_VERSION,
+            "version": RUN_VERSION,
             "run_id": run_id, "root": str(root.resolve()), "asset_id": asset.asset_id,
             "character": character, "phase": phase, "costume": costume, "view": view,
             "source_image": str(source.resolve()), "reference_image": str(derivative.resolve()), "crop": crop,
-            "model": str(payload.get("model") or DEFAULT_VISION_MODEL),
-            "checklist_model": str(payload.get("checklist_model") or DEFAULT_CHECKLIST_MODEL),
+            "critic_model_a": str(payload.get("critic_model_a") or DEFAULT_VISION_MODEL),
+            "critic_model_b": str(payload.get("critic_model_b") or DEFAULT_CHECKLIST_MODEL),
+            "analysis_model": str(payload.get("analysis_model") or DEFAULT_VISION_MODEL),
+            "check_model": str(payload.get("check_model") or DEFAULT_CHECKLIST_MODEL),
             "checkpoint": str(payload.get("checkpoint") or self.app.config.local_render_checkpoint),
             "profile": profile,
             "cfg_scale": cfg_scale, "steps": steps,
             "width": CANVAS_WIDTH, "height": CANVAS_HEIGHT, "batch_size": batch_size,
-            "total_batches": total_batches, "mode": mode,
-            "metadata_mode": str(payload.get("metadata_mode") or "curated"), "seeds": seeds,
-            "status": "BOOTSTRAPPING", "current_batch": 0, "incumbent": None,
-            "exploration_incumbent": None, "finalists": [], "rejected_mutations": [],
-            "created_at": self._now(), "updated_at": self._now(), "error": "",
+            "fixed_seed_count": fixed_seed_count, "total_batches": total_batches,
+            "fixed_seeds": fixed_seeds, "fresh_seeds": fresh_seeds, "seeds": seeds,
+            "status": "BOOTSTRAPPING", "current_batch": 0,
+            "selected_prompt_version": None,
+            "created_at": created_at, "updated_at": created_at, "error": "",
+            "activity_log": [{
+                "at": created_at, "level": "info",
+                "message": f"Run created with {batch_size} images per batch and {total_batches} configured batches.",
+            }],
         }
         self._write_json(root / "run.json", run)
         positive, negative = str(payload.get("positive_prompt") or "").strip(), str(payload.get("negative_prompt") or "").strip()
@@ -398,7 +421,7 @@ class PromptEvolutionService:
         response_schema: dict[str, Any] | None = None, temperature: float | None = None,
     ) -> str:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        queue_order = "01" if task.startswith("evaluate_") else "02" if task.startswith("checklist_") else "00"
+        queue_order = "01" if task.startswith("critic_") else "02" if task.startswith("check_") else "00"
         ask_id = f"Ask_Prompt_Evolution_{run['run_id']}_{queue_order}_{task}_{stamp}"
         staging = self.proxy.create_staging(ask_id)
         image_names = []
@@ -412,7 +435,7 @@ class PromptEvolutionService:
             "version": AI_PROXY_PROTOCOL_VERSION, "ask_id": ask_id, "asset_id": None,
             "character": run["character"], "phase": run["phase"], "pipeline": "Prompt-Evolution",
             "pipeline_stage": task.upper(), "ollama_attempt_id": stamp, "worker_type": "ollama_generate",
-            "ollama_model": model or run["model"], "prompt_file": "OLLAMA_PROMPT.md", "image_files": image_names,
+            "ollama_model": model or run["analysis_model"], "prompt_file": "OLLAMA_PROMPT.md", "image_files": image_names,
             "json_output": True, "expected_output": raw_output_name, "task_type": f"prompt_evolution_{task}",
             "auxiliary": True, "target_output_dir": str(output.parent.resolve()), "target_output_file": output.name,
             "prompt_evolution_run_id": run["run_id"],
@@ -423,6 +446,28 @@ class PromptEvolutionService:
             manifest["ollama_temperature"] = temperature
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         self.proxy.publish(staging, ask_id, "ollama_generate")
+        selected_model = model or run["analysis_model"]
+        batch_number = int(run.get("current_batch", 0)) + 1
+        parts = task.split("_")
+        if len(parts) >= 3 and parts[0] == "critic":
+            message = f"Batch {batch_number} — queued seed {parts[-1]} for Critic {parts[1].upper()} visual comparison ({selected_model})."
+        elif len(parts) >= 2 and parts[0] == "check":
+            message = f"Batch {batch_number} — queued seed {parts[-1]} for regression checks ({selected_model})."
+        elif task == "batch_synthesis":
+            message = f"Batch {batch_number} — queued cross-seed analysis ({selected_model})."
+        elif task.startswith("prompt_diagnosis"):
+            message = f"Batch {batch_number} — queued prompt diagnosis ({selected_model})."
+        elif task.startswith("prompt_edit"):
+            message = f"Batch {batch_number} — queued conservative prompt edit ({selected_model})."
+        elif task == "bootstrap":
+            message = f"Queued initial prompt generation ({selected_model})."
+        elif task.startswith("repair_"):
+            message = f"Queued JSON repair for {task.removeprefix('repair_')} ({selected_model})."
+        elif task == "directed_refinement":
+            message = f"Queued directed prompt refinement ({selected_model})."
+        else:
+            message = f"Queued {task.replace('_', ' ')} ({selected_model})."
+        self._log(run, message, task=task, ask_id=ask_id, model=selected_model)
         return ask_id
 
     def _format_template(self, run: dict[str, Any], name: str, values: dict[str, str]) -> str:
@@ -432,51 +477,41 @@ class PromptEvolutionService:
             text = text.replace("{{" + key + "}}", value)
         return text
 
-    def _metadata_word_pool(self, run: dict[str, Any]) -> str:
-        metadata = self._read_json(Path(run["root"]) / "metadata_snapshot.json")
-        if not metadata:
-            return ""
-        return (
-            "OPTIONAL METADATA WORD POOL\n"
-            "The canonical image is the source of visual truth. Do not treat this metadata as evidence about what is visible. "
-            "Use it only as a vocabulary pool when similar wording helps describe details already visible in the image.\n"
-            + json.dumps(metadata, indent=2, ensure_ascii=False)
-        )
-
     @staticmethod
     def _checklist_questions(checklist: dict[str, Any]) -> str:
-        questions = []
-        auxiliaries = (" is ", " are ", " has ", " have ", " does ", " do ", " can ")
-        for index, row in enumerate(checklist.get("items", []), 1):
-            explicit = str(row.get("question") or "").strip()
-            if explicit:
-                questions.append(f"{index} - {explicit}")
-                continue
-            raw_statement = str(row.get("item") or "").strip()
-            statement = raw_statement.rstrip(".?")
-            question = statement
-            if raw_statement.endswith("?"):
-                question = raw_statement
-            elif statement:
-                lowered = statement.casefold()
-                split = next(((lowered.index(auxiliary), auxiliary) for auxiliary in auxiliaries if auxiliary in lowered), None)
-                if split:
-                    position, auxiliary = split
-                    subject = statement[:position].strip()
-                    predicate = statement[position + len(auxiliary):].strip()
-                    article = "" if subject.casefold().startswith(("the ", "a ", "an ")) else "the "
-                    question = f"{auxiliary.strip().capitalize()} {article}{subject.casefold()} {predicate}?"
-                elif not statement.endswith("?"):
-                    question = f"Is this true: {statement}?"
-            questions.append(f"{index} - {question}")
-        return "\n".join(questions)
+        return json.dumps([
+            {"id": str(row["id"]), "question": str(row["question"])}
+            for row in checklist.get("items", [])
+        ], ensure_ascii=False)
 
-    def _queue_bootstrap(self, run: dict[str, Any]) -> None:
+    @staticmethod
+    def _regression_check_schema(configured_ids: list[str]) -> dict[str, Any]:
+        count = len(configured_ids)
+        return {
+            "type": "object", "required": ["checks"], "properties": {"checks": {
+                "type": "array", "minItems": count, "maxItems": count, "uniqueItems": True,
+                "items": {
+                    "type": "object", "required": ["id", "pass", "confidence", "evidence"],
+                    "properties": {
+                        "id": {"type": "string", "enum": configured_ids},
+                        "pass": {"type": ["boolean", "null"]}, "confidence": {"type": "number"},
+                        "evidence": {"type": "string"},
+                    },
+                },
+            }},
+        }
+
+    def _queue_bootstrap(self, run: dict[str, Any], prior_error: str = "") -> None:
         root = Path(run["root"])
         prompt = self._format_template(run, "bootstrap", {
             "METADATA": "", "METADATA_WORD_POOL": "",
         })
-        run["bootstrap_ask_id"] = self._queue_ollama(run, task="bootstrap", prompt=prompt, output=root / "bootstrap.json", images=[Path(run["reference_image"])])
+        if prior_error:
+            prompt += f"\n\nThe prior response was rejected: {prior_error}\nReturn only a corrected response that fixes this rejection."
+        run["bootstrap_ask_id"] = self._queue_ollama(
+            run, task="bootstrap_retry" if prior_error else "bootstrap", prompt=prompt, output=root / "bootstrap.json", images=[Path(run["reference_image"])],
+            model=run["analysis_model"], response_schema=BOOTSTRAP_SCHEMA, temperature=0,
+        )
         self._save_run(run)
 
     def _save_run(self, run: dict[str, Any]) -> None:
@@ -492,15 +527,17 @@ class PromptEvolutionService:
                 return self._read_json(repair_path)
             marker = path.with_name(f".{path.stem}.repair-queued")
             if not marker.exists():
+                self._log(run, f"Rejected malformed JSON in {path.name}; preparing a repair request.", "warning", file=path.name)
                 prompt = self._format_template(run, "repair", {
                     "REQUEST": path.stem,
                     "RESPONSE": path.read_text(encoding="utf-8", errors="replace"),
                 })
-                repair_model = str(run.get("checklist_model") or DEFAULT_CHECKLIST_MODEL) if path.stem.startswith("checklist_evaluation_") else None
+                repair_model = str(run.get("check_model") or DEFAULT_CHECKLIST_MODEL) if path.stem.startswith("regression_check_") else None
                 self._queue_ollama(
                     run, task=f"repair_{path.stem}", prompt=prompt, output=repair_path, images=[], model=repair_model,
                 )
                 marker.write_text(self._now(), encoding="utf-8")
+                self._save_run(run)
             raise PromptEvolutionRepairPending(f"Waiting for JSON repair: {path.name}")
 
     def _prompt_json(self, run: dict[str, Any], path: Path) -> tuple[str, str]:
@@ -510,6 +547,16 @@ class PromptEvolutionService:
         positive = ", ".join(positive_terms) if positive_terms else self._clean_prompt_terms(data.get("positive_prompt") or data.get("positive_core") or "")
         negative = ", ".join(negative_terms) if negative_terms else self._clean_prompt_terms(data.get("negative_prompt") or data.get("negative_core") or "")
         if not positive:
+            retry_prefix = f"{int(run.get('current_batch', 0))}:"
+            retry_used = any(
+                key.startswith(retry_prefix) and key.rsplit(":", 1)[-1] in {"BOOTSTRAPPING", "DIRECTED_REFINING"}
+                for key, count in run.get("validation_retries", {}).items() if int(count) >= 1
+            )
+            if retry_used:
+                positive = "character matching the canonical reference image"
+                self._log(run, f"Bootstrap retry still omitted a positive prompt; using a conservative fallback for {path.name}.", "warning")
+                self._save_run(run)
+                return positive, negative
             raise PromptEvolutionError(f"LLM response omitted positive_prompt: {path}")
         return positive, negative
 
@@ -517,36 +564,25 @@ class PromptEvolutionService:
     def _atomic_terms(value: Any) -> list[str]:
         if not isinstance(value, list):
             return []
-        terms = [PromptEvolutionService._strip_term_id(str(item)) for item in value if PromptEvolutionService._strip_term_id(str(item))]
-        if any("," in term for term in terms):
-            raise PromptEvolutionError("Atomic prompt terms must not contain commas.")
-        normalized = [" ".join(term.casefold().split()) for term in terms]
-        if len(normalized) != len(set(normalized)):
-            raise PromptEvolutionError("Atomic prompt terms must be unique.")
-        return terms
-
-    @staticmethod
-    def _strip_term_id(value: str) -> str:
-        return re.sub(r"^[pn]\d{3}:\s*", "", value.strip(), flags=re.IGNORECASE).strip()
+        terms = [term.strip() for item in value for term in str(item).split(",") if term.strip()]
+        unique: list[str] = []
+        seen: set[str] = set()
+        for term in terms:
+            normalized = " ".join(term.casefold().split())
+            if normalized not in seen:
+                seen.add(normalized)
+                unique.append(term)
+        return unique
 
     @staticmethod
     def _clean_prompt_terms(value: Any) -> str:
-        return ", ".join(
-            term for item in str(value).split(",")
-            if (term := PromptEvolutionService._strip_term_id(item))
-        )
+        return ", ".join(term for item in str(value).split(",") if (term := item.strip()))
 
     @staticmethod
-    def _term_records(value: str | list[str], prefix: str) -> list[dict[str, str]]:
-        raw_terms = value if isinstance(value, list) else value.split(",")
-        terms = [term for item in raw_terms if (term := PromptEvolutionService._strip_term_id(str(item)))]
-        return [{"id": f"{prefix}{index:03d}", "text": term} for index, term in enumerate(terms, 1)]
-
-    @staticmethod
-    def _compose_prompt(core_terms: list[dict[str, str]], wrapper: tuple[str, ...]) -> str:
+    def _compose_prompt(core: str, wrapper: tuple[str, ...]) -> str:
         result: list[str] = []
         seen: set[str] = set()
-        for term in [*(item["text"] for item in core_terms), *wrapper]:
+        for term in [*(item.strip() for item in core.split(",") if item.strip()), *wrapper]:
             key = " ".join(term.casefold().split())
             if key not in seen:
                 seen.add(key)
@@ -554,19 +590,12 @@ class PromptEvolutionService:
         return ", ".join(result)
 
     def _start_batch(self, run: dict[str, Any], positive: str, negative: str) -> None:
-        original_positive, original_negative = positive, negative
-        strategy_version = int(run.get("strategy_version", 1))
-        if strategy_version >= 2:
-            positive_terms = run.pop("pending_positive_terms", None) or self._term_records(positive, "p")
-            negative_terms = run.pop("pending_negative_terms", None) or self._term_records(negative, "n")
-            positive_core = ", ".join(item["text"] for item in positive_terms)
-            negative_core = ", ".join(item["text"] for item in negative_terms)
-            positive = self._compose_prompt(positive_terms, EVALUATION_POSITIVE_TERMS)
-            negative = self._compose_prompt(negative_terms, EVALUATION_NEGATIVE_TERMS)
-        elif int(run["current_batch"]) == 0:
-            positive, negative = self._initial_prompts(positive, negative)
-        if strategy_version < 2:
-            positive = self._ensure_gray_background(positive)
+        positive_core = self._clean_prompt_terms(positive)
+        negative_core = self._clean_prompt_terms(negative)
+        if not positive_core:
+            raise PromptEvolutionError("Positive prompt core cannot be empty.")
+        positive = self._compose_prompt(positive_core, EVALUATION_POSITIVE_TERMS)
+        negative = self._compose_prompt(negative_core, EVALUATION_NEGATIVE_TERMS)
         index = int(run["current_batch"])
         batch = Path(run["root"]) / "batches" / f"{index:03d}"
         batch.mkdir(parents=True, exist_ok=True)
@@ -577,6 +606,7 @@ class PromptEvolutionService:
             "ask_id": f"PromptEvolution_{run['run_id']}_{index}", "asset_id": run["asset_id"],
             "character": run["character"], "phase": run["phase"], "pipeline": "Prompt-Evolution", "pipeline_stage": "RENDER",
         }
+        self._log(run, f"Batch {index + 1} — starting renders for {len(run['seeds'])} seeds.", batch=index + 1)
         for seed in run["seeds"]:
             ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
                 manifest, prompt_path, batch, allow_parallel=True, seed=seed, checkpoint=run["checkpoint"],
@@ -585,520 +615,19 @@ class PromptEvolutionService:
             )
             ask = self._read_json(ask_path / "ask_manifest.json")
             asks.append({"ask_id": ask["ask_id"], "seed": seed, "file": str(batch / "Local_Test_Renders" / ask["expected_output"])})
-        batch_payload = {"index": index, "positive_prompt": positive, "negative_prompt": negative, "renders": asks, "status": "RENDERING"}
-        if strategy_version >= 2:
-            batch_payload.update({
-                "positive_core": positive_core,
-                "negative_core": negative_core,
-                "positive_core_terms": positive_terms,
-                "negative_core_terms": negative_terms,
-                "evaluation_wrapper": {
-                    "positive_terms": list(EVALUATION_POSITIVE_TERMS),
-                    "negative_terms": list(EVALUATION_NEGATIVE_TERMS),
-                },
-                "batch_slot": int(run.pop("pending_batch_slot", index)),
-                "retry_attempt": int(run.pop("pending_batch_retry", 0)),
-            })
-            parent_finalist_id = str(run.pop("pending_parent_finalist_id", "") or "")
-            if parent_finalist_id:
-                batch_payload["parent_finalist_id"] = parent_finalist_id
-        if index == 0:
-            batch_payload.update({"original_positive_prompt": original_positive, "original_negative_prompt": original_negative})
-        attempted_mutation = run.pop("pending_mutation", None)
-        if attempted_mutation:
-            batch_payload["attempted_mutation"] = attempted_mutation
+            self._log(run, f"Batch {index + 1} — queued render for seed {seed}.", batch=index + 1, seed=seed, ask_id=ask["ask_id"])
+        fixed = set(int(seed) for seed in run["fixed_seeds"])
+        batch_payload = {
+            "version": RUN_VERSION, "index": index, "prompt_version_id": f"prompt-{index:03d}",
+            "positive_prompt": positive, "negative_prompt": negative,
+            "positive_core": positive_core, "negative_core": negative_core,
+            "evaluation_wrapper": {"positive_terms": list(EVALUATION_POSITIVE_TERMS), "negative_terms": list(EVALUATION_NEGATIVE_TERMS)},
+            "renders": [{**item, "seed_role": "fixed" if int(item["seed"]) in fixed else "fresh"} for item in asks],
+            "status": "RENDERING",
+        }
         self._write_json(batch / "batch.json", batch_payload)
         run["status"] = "RENDERING"
         self._save_run(run)
-
-    @staticmethod
-    def _initial_prompts(positive: str, negative: str) -> tuple[str, str]:
-        def inject(original: str, before: tuple[str, ...], after: tuple[str, ...] = ()) -> str:
-            normalized = " ".join(original.casefold().split())
-            prefix = [term for term in before if " ".join(term.casefold().split()) not in normalized]
-            suffix = [term for term in after if " ".join(term.casefold().split()) not in normalized]
-            return ", ".join([*prefix, *([original.strip()] if original.strip() else []), *suffix])
-        return inject(positive, INITIAL_POSITIVE_PREFIX, INITIAL_POSITIVE_SUFFIX), inject(negative, INITIAL_NEGATIVE_PREFIX)
-
-    @staticmethod
-    def _ensure_gray_background(positive: str) -> str:
-        terms = [term.strip() for term in positive.split(",") if term.strip()]
-        terms = [GRAY_BACKGROUND_TERM if term.casefold() == LEGACY_GRAY_BACKGROUND_TERM else term for term in terms]
-        if not any(term.casefold() == GRAY_BACKGROUND_TERM for term in terms):
-            terms.append(GRAY_BACKGROUND_TERM)
-        return ", ".join(terms)
-
-    @staticmethod
-    def _score(
-        data: dict[str, Any], checklist: dict[str, Any] | None = None, checklist_data: dict[str, Any] | None = None,
-    ) -> tuple[float, float, float, dict[str, float], dict[str, float], list[dict[str, Any]]]:
-        feedback = data.get("category_feedback")
-        if isinstance(feedback, dict):
-            expected = CHARACTER_SCORE_CATEGORIES + COSTUME_SCORE_CATEGORIES
-            if any(not isinstance(feedback.get(name), dict) for name in expected):
-                raise PromptEvolutionError("Evaluation omitted structured category feedback.")
-            data = {
-                **data,
-                "character_categories": {name: feedback[name].get("score") for name in CHARACTER_SCORE_CATEGORIES},
-                "costume_categories": {name: feedback[name].get("score") for name in COSTUME_SCORE_CATEGORIES},
-                "character_evidence": {name: str(feedback[name].get("observation") or "") for name in CHARACTER_SCORE_CATEGORIES},
-                "costume_evidence": {name: str(feedback[name].get("observation") or "") for name in COSTUME_SCORE_CATEGORIES},
-            }
-        def category_scores(key: str, names: tuple[str, ...]) -> dict[str, float]:
-            raw = data.get(key)
-            if not isinstance(raw, dict):
-                return {}
-            scores: dict[str, float] = {}
-            for name in names:
-                if name not in raw or isinstance(raw[name], (dict, list)):
-                    raise PromptEvolutionError(f"Evaluation omitted numeric category: {key}.{name}")
-                scores[name] = float(raw[name])
-            legacy_scale = any(score > 10 for score in scores.values())
-            return {name: round(max(0, min(10, score / 10 if legacy_scale else score)), 1) for name, score in scores.items()}
-
-        character_categories = category_scores("character_categories", CHARACTER_SCORE_CATEGORIES)
-        costume_categories = category_scores("costume_categories", COSTUME_SCORE_CATEGORIES)
-        checklist_effects: list[dict[str, Any]] = []
-        if character_categories or costume_categories:
-            if not character_categories or not costume_categories:
-                raise PromptEvolutionError("Evaluation must include both character and costume category scorecards.")
-            character_evidence = data.get("character_evidence") if isinstance(data.get("character_evidence"), dict) else {}
-            costume_evidence = data.get("costume_evidence") if isinstance(data.get("costume_evidence"), dict) else {}
-            evidence_values = [data.get("evidence"), *character_evidence.values(), *costume_evidence.values()]
-            if not any(character_categories.values()) and not any(costume_categories.values()) and not int(data.get("confidence") or 0) and not any(str(value or "").strip() for value in evidence_values):
-                raise PromptEvolutionPlaceholderResponse("Evaluation copied empty placeholder values instead of inspecting the images.")
-            response_source = checklist_data if checklist_data is not None else data
-            responses = {
-                str(item.get("item") or ""): item.get("result") is True
-                for item in response_source.get("checklist", []) if isinstance(item, dict)
-            }
-            numbered_responses = {
-                int(item["number"]): item.get("result")
-                for item in response_source.get("checklist", [])
-                if isinstance(item, dict) and str(item.get("number") or "").isdigit()
-            }
-            if checklist_data is not None:
-                supplied = {
-                    str(item.get("item") or ""): item.get("result")
-                    for item in checklist_data.get("checklist", []) if isinstance(item, dict)
-                }
-                # Missing or malformed individual answers are indeterminate. A hard
-                # constraint must never be applied without an explicit true result.
-            for index, item in enumerate((checklist or {}).get("items", []), 1):
-                if not isinstance(item, dict) or not (numbered_responses.get(index) is True or responses.get(str(item.get("item") or ""), False)):
-                    continue
-                category = str(item.get("category") or "").strip().casefold().replace(" ", "_")
-                scores = character_categories if category in character_categories else costume_categories
-                if category not in scores:
-                    continue
-                before = scores[category]
-                if "max_rating" in item:
-                    max_rating = float(item["max_rating"])
-                    if max_rating > 10:
-                        max_rating /= 10
-                    scores[category] = round(min(before, max(0, min(10, max_rating))), 1)
-                    checklist_effects.append({"item": str(item["item"]), "category": category, "max_rating": max_rating, "before": before, "after": scores[category]})
-                    if item.get("id"):
-                        checklist_effects[-1]["id"] = str(item["id"])
-                    if item.get("correction"):
-                        checklist_effects[-1]["correction"] = str(item["correction"])
-                elif "adjustment" in item:
-                    adjustment = float(item["adjustment"])
-                    if abs(adjustment) > 10:
-                        adjustment /= 10
-                    scores[category] = round(max(0, min(10, before + adjustment)), 1)
-                    checklist_effects.append({
-                        "id": str(item.get("id") or ""), "item": str(item["item"]), "category": category,
-                        "correction": str(item.get("correction") or ""), "adjustment": adjustment,
-                        "before": before, "after": scores[category],
-                    })
-            character = round(sum(character_categories.values()) / len(character_categories), 1)
-            costume = round(sum(costume_categories.values()) / len(costume_categories), 1)
-        else:
-            def legacy_score(key: str) -> float:
-                raw = data.get(key, 0)
-                if isinstance(raw, dict):
-                    raw = next((raw[name] for name in ("score", "total", "overall", "identity_score") if name in raw), 0)
-                score = float(raw)
-                return round(max(0, min(10, score / 10 if score > 10 else score)), 1)
-            character = legacy_score("character_identity")
-            costume = legacy_score("costume_identity")
-        return character, costume, round((character + costume) / 2, 1), character_categories, costume_categories, checklist_effects
-
-    @staticmethod
-    def _ordered_ranking_seeds(ranking: dict[str, Any]) -> list[int]:
-        result: list[int] = []
-        for value in ranking.get("ordered_seeds", []) or []:
-            raw = value.get("seed") if isinstance(value, dict) else value
-            try:
-                seed = int(raw)
-            except (TypeError, ValueError):
-                continue
-            if seed not in result:
-                result.append(seed)
-        return result
-
-    @staticmethod
-    def _category_ranking(candidate: dict[str, Any]) -> list[dict[str, Any]]:
-        allowed = set(CHARACTER_SCORE_CATEGORIES + COSTUME_SCORE_CATEGORIES)
-        categories = {
-            name: score for name, score in {**candidate.get("character_categories", {}), **candidate.get("costume_categories", {})}.items()
-            if name in allowed
-        }
-        return [
-            {"category": name, "score": score}
-            for name, score in sorted(categories.items(), key=lambda item: (-item[1], item[0]))
-        ]
-
-    @staticmethod
-    def _category_evaluation_summary(candidate: dict[str, Any]) -> str:
-        rows = []
-        for heading, key, names in (
-            ("Character", "character_categories", CHARACTER_SCORE_CATEGORIES),
-            ("Costume", "costume_categories", COSTUME_SCORE_CATEGORIES),
-        ):
-            scores = candidate.get(key) if isinstance(candidate.get(key), dict) else {}
-            for order, name in enumerate(names):
-                if name not in scores:
-                    continue
-                score = float(scores[name])
-                score = max(0, min(10, score / 10 if score > 10 else score))
-                if score < 5:
-                    meaning = "This category needs major improvement"
-                elif score < 7:
-                    meaning = "This category needs improvement"
-                elif score < 9:
-                    meaning = "This category needs refinement"
-                else:
-                    meaning = "This category is excellent"
-                display_score = str(int(score)) if score.is_integer() else str(round(score, 1))
-                rows.append((score, 0 if heading == "Character" else 1, order,
-                             f"{heading} {CATEGORY_DISPLAY_NAMES[name]}: Evaluation {display_score}/10 - {meaning}."))
-        return "\n".join(row[3] for row in sorted(rows))
-
-    @staticmethod
-    def _checklist_directives(candidate: dict[str, Any]) -> str:
-        defects = []
-        seen = set()
-        for effect in candidate.get("checklist_effects") or candidate.get("checklist_adjustments") or []:
-            item = str(effect.get("item") or "").strip().rstrip(".")
-            if not item or item.casefold() in seen:
-                continue
-            seen.add(item.casefold())
-            statement = item if item.casefold().startswith(("the ", "a ", "an ")) else f"The {item[0].lower()}{item[1:]}"
-            defects.append(f"{statement}.")
-        if not defects:
-            return ""
-        noun = "this defect" if len(defects) == 1 else "these defects"
-        return f"Additionally you must address {noun} directly: " + " ".join(defects)
-
-    @staticmethod
-    def _selected_corrections(candidate: dict[str, Any], limit: int = 2) -> list[dict[str, str]]:
-        feedback = candidate.get("evaluation", {}).get("category_feedback", {})
-        ranked: list[tuple[float, str, str]] = []
-        if isinstance(feedback, dict):
-            for category, value in feedback.items():
-                if not isinstance(value, dict):
-                    continue
-                correction = str(value.get("correction") or "").strip()
-                if correction:
-                    ranked.append((float(value.get("score") or 0), category, correction))
-        selected = [
-            {"category": category, "correction": correction}
-            for _, category, correction in sorted(ranked)[:limit]
-        ]
-        seen = {(item["category"], item["correction"].casefold()) for item in selected}
-        for effect in candidate.get("checklist_effects") or []:
-            correction = str(effect.get("correction") or "").strip()
-            key = (str(effect.get("category") or ""), correction.casefold())
-            if correction and key not in seen:
-                selected.append({"category": key[0], "correction": correction})
-                seen.add(key)
-        return selected
-
-    @staticmethod
-    def _terms_for_prompt(records: list[dict[str, str]]) -> str:
-        return "\n".join(f"- {item['id']}: {item['text']}" for item in records)
-
-    @staticmethod
-    def _term_weight(text: str) -> tuple[str, float | None]:
-        match = re.fullmatch(r"\((.+):([0-9]+(?:\.[0-9]+)?)\)", text.strip())
-        return (match.group(1).strip(), float(match.group(2))) if match else (text.strip(), None)
-
-    @classmethod
-    def _term_key(cls, text: str) -> str:
-        base, _ = cls._term_weight(text)
-        return " ".join(base.casefold().split())
-
-    @classmethod
-    def _strengthened_term(cls, text: str) -> str:
-        base, weight = cls._term_weight(text)
-        increased = round((weight if weight is not None else 1.0) + 0.2, 2)
-        formatted = f"{increased:.2f}".rstrip("0").rstrip(".")
-        return f"({base}:{formatted})"
-
-    @staticmethod
-    def _refinement_response_schema(
-        positive_terms: list[dict[str, str]], negative_terms: list[dict[str, str]], allowed_categories: set[str],
-    ) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "positive_core": {"type": "string", "minLength": 1},
-                "negative_core": {"type": "string"},
-            },
-            "required": ["positive_core", "negative_core"],
-        }
-
-    @staticmethod
-    def _refinement_error(
-        code: str, operation_index: int | None, field: str, message: str, *, overrideable: bool = False,
-    ) -> dict[str, Any]:
-        return {
-            "code": code, "operation_index": operation_index, "field": field,
-            "message": message, "overrideable": overrideable,
-        }
-
-    @classmethod
-    def _analyze_term_operations(
-        cls,
-        positive_terms: list[dict[str, str]],
-        negative_terms: list[dict[str, str]],
-        data: dict[str, Any],
-        allowed_categories: set[str],
-        corrections: list[dict[str, str]] | None = None,
-    ) -> dict[str, Any]:
-        baseline = {
-            "positive": [{**item, "text": cls._strip_term_id(item["text"])} for item in positive_terms],
-            "negative": [{**item, "text": cls._strip_term_id(item["text"])} for item in negative_terms],
-        }
-        lists = {key: [dict(item) for item in records] for key, records in baseline.items()}
-        operations = data.get("operations")
-        errors: list[dict[str, Any]] = []
-        applied: list[dict[str, str]] = []
-        if not isinstance(operations, list) or not operations:
-            errors.append(cls._refinement_error(
-                "missing_operations", None, "operations", "Refinement must return at least one term operation.",
-            ))
-            operations = []
-        for index, raw in enumerate(operations):
-            if not isinstance(raw, dict):
-                errors.append(cls._refinement_error(
-                    "invalid_operation", index, "operation", "Operation must be a JSON object.",
-                ))
-                continue
-            operation_errors: list[dict[str, Any]] = []
-            target = str(raw.get("target") or "")
-            action = str(raw.get("action") or "")
-            term_id = str(raw.get("term_id") or "").strip()
-            new = cls._strip_term_id(str(raw.get("new") or ""))
-            category = str(raw.get("category") or "").strip()
-            if target not in lists:
-                operation_errors.append(cls._refinement_error(
-                    "invalid_target", index, "target", "Target must be positive or negative.",
-                ))
-            if action not in {"add", "remove", "edit"}:
-                operation_errors.append(cls._refinement_error(
-                    "invalid_action", index, "action", "Action must be add, edit, or remove.",
-                ))
-            if not category:
-                operation_errors.append(cls._refinement_error(
-                    "missing_category", index, "category", "Every operation must include one selected category.",
-                    overrideable=True,
-                ))
-            elif category not in allowed_categories:
-                operation_errors.append(cls._refinement_error(
-                    "unselected_category", index, "category",
-                    f"Category must be one of: {', '.join(sorted(allowed_categories))}.",
-                ))
-            records = lists.get(target, [])
-            match = next((item_index for item_index, item in enumerate(records) if item["id"] == term_id), None)
-            if action in {"edit", "remove"} and match is None:
-                operation_errors.append(cls._refinement_error(
-                    "unknown_term_id", index, "term_id", f"Refinement operation references unknown term ID: {term_id or '(blank)'}.",
-                ))
-            if action == "add" and term_id:
-                operation_errors.append(cls._refinement_error(
-                    "add_term_id", index, "term_id", "Add operations must use an empty term_id.",
-                ))
-            if action in {"add", "edit"} and (not new or any(separator in new for separator in (",", ";"))):
-                operation_errors.append(cls._refinement_error(
-                    "non_atomic_term", index, "new", "Refinement terms must be non-empty and atomic; commas and semicolons are not allowed.",
-                ))
-            if action == "remove" and new:
-                operation_errors.append(cls._refinement_error(
-                    "remove_has_new", index, "new", "Remove operations must use an empty new value.",
-                ))
-            if action in {"add", "edit"} and any(word in new.casefold().split() for word in ("added", "removed", "present", "absent")):
-                operation_errors.append(cls._refinement_error(
-                    "editing_narration", index, "new", "Terms must describe visual traits, not editing instructions.",
-                ))
-            blocking = [item for item in operation_errors if not item["overrideable"]]
-            errors.extend(operation_errors)
-            if blocking:
-                continue
-            if action == "add":
-                duplicate = next((item for item in records if cls._term_key(item["text"]) == cls._term_key(new)), None)
-                if duplicate is not None:
-                    term_id = duplicate["id"]
-                    new = cls._strengthened_term(duplicate["text"])
-                    duplicate["text"] = new
-                    action = "strengthen"
-                else:
-                    indexes = [int(item["id"][1:]) for item in records if item["id"].startswith(target[0]) and item["id"][1:].isdigit()]
-                    term_id = f"{target[0]}{max(indexes, default=0) + 1:03d}"
-                    records.append({"id": term_id, "text": new})
-            elif action == "remove":
-                records.pop(match)
-            elif action == "edit":
-                if records[match]["text"].casefold() == new.casefold():
-                    errors.append(cls._refinement_error(
-                        "no_op", index, "new", "Refinement attempted a no-op edit.",
-                    ))
-                    continue
-                records[match]["text"] = new
-            applied.append({"target": target, "action": action, "term_id": term_id, "new": new, "category": category})
-        for target, records in lists.items():
-            normalized = [cls._term_key(item["text"]) for item in records]
-            duplicates = {value for value in normalized if normalized.count(value) > 1}
-            if duplicates:
-                errors.append(cls._refinement_error(
-                    "duplicate_terms", None, target, f"Refinement produced duplicate {target} terms.",
-                ))
-        blocking_errors = [item for item in errors if not item["overrideable"]]
-        preview_lists = baseline if blocking_errors else lists
-        return {
-            "strict_valid": not errors,
-            "guarded_override_allowed": bool(errors) and not blocking_errors,
-            "validation_errors": errors,
-            "preview_status": "baseline" if blocking_errors else "complete",
-            "positive_terms": preview_lists["positive"],
-            "negative_terms": preview_lists["negative"],
-            "positive_core": ", ".join(item["text"] for item in preview_lists["positive"]),
-            "negative_core": ", ".join(item["text"] for item in preview_lists["negative"]),
-            "operations": applied,
-        }
-
-    @classmethod
-    def _apply_term_operations(
-        cls,
-        positive_terms: list[dict[str, str]],
-        negative_terms: list[dict[str, str]],
-        data: dict[str, Any],
-        allowed_categories: set[str],
-        corrections: list[dict[str, str]] | None = None,
-    ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
-        analysis = cls._analyze_term_operations(positive_terms, negative_terms, data, allowed_categories, corrections)
-        if not analysis["strict_valid"]:
-            raise PromptEvolutionError(analysis["validation_errors"][0]["message"])
-        return analysis["positive_terms"], analysis["negative_terms"], analysis["operations"]
-
-    @classmethod
-    def _refinement_contract_values(
-        cls, incumbent: dict[str, Any], corrections: list[dict[str, str]], evaluation: Any = None,
-    ) -> tuple[dict[str, str], dict[str, Any]]:
-        positive_terms = incumbent["positive_core_terms"]
-        negative_terms = incumbent["negative_core_terms"]
-        categories = {str(item["category"]) for item in corrections}
-        edit_record = positive_terms[0] if positive_terms else negative_terms[0]
-        edit_target = "positive" if positive_terms else "negative"
-        remove_record = negative_terms[0] if negative_terms else edit_record
-        remove_target = "negative" if negative_terms else edit_target
-        category = str(corrections[0]["category"])
-        examples = {"operations": [
-            {"target": edit_target, "action": "edit", "term_id": edit_record["id"], "new": "specific corrected visual trait", "category": category},
-            {"target": "negative", "action": "add", "term_id": "", "new": "specific unwanted visual trait", "category": category},
-            {"target": remove_target, "action": "remove", "term_id": remove_record["id"], "new": "", "category": category},
-        ]}
-        schema = cls._refinement_response_schema(positive_terms, negative_terms, categories)
-        return {
-            "CORRECTIONS": "\n".join(f"- {item['category']}: {item['correction']}" for item in corrections),
-            "POSITIVE_TERMS": cls._terms_for_prompt(positive_terms),
-            "NEGATIVE_TERMS": cls._terms_for_prompt(negative_terms),
-            "ALLOWED_CATEGORIES": json.dumps(sorted(categories), ensure_ascii=False),
-            "OUTPUT_SCHEMA": json.dumps(schema, indent=2, ensure_ascii=False),
-            "VALID_EXAMPLES": json.dumps(examples, indent=2, ensure_ascii=False),
-            "REJECTED_MUTATIONS": "[]",
-            "POSITIVE_PROMPT": incumbent["positive_core"], "NEGATIVE_PROMPT": incumbent["negative_core"],
-            "METADATA": "", "METADATA_WORD_POOL": "", "TARGET_CATEGORY": category,
-            "EVALUATIONS": json.dumps(evaluation or {}, indent=2, ensure_ascii=False),
-            "CATEGORY_EVALUATIONS": "", "REJECTION_CONTEXT": "", "CHECKLIST_DIRECTIVES": "",
-        }, schema
-
-    def _record_refinement_attempt(
-        self, run: dict[str, Any], batch: dict[str, Any], data: dict[str, Any], output: Path,
-    ) -> dict[str, Any]:
-        incumbent = run.get("exploration_incumbent") or run["incumbent"]
-        corrections = run.get("pending_corrections") or []
-        analysis = self._analyze_refinement_response(incumbent, data, corrections)
-        number = int(run.get("refinement_attempt_number", 1))
-        attempt = {
-            "attempt_id": f"ollama-{number:02d}", "number": number,
-            "source": "ollama_initial" if number == 1 else "ollama_retry",
-            "ask_id": str(run.get("refinement_ask_id") or ""), "output_file": str(output),
-            "response": data, "validation_errors": analysis["validation_errors"],
-            "strict_valid": analysis["strict_valid"],
-            "guarded_override_allowed": analysis["guarded_override_allowed"],
-            "preview_status": analysis["preview_status"],
-            "positive_core": analysis["positive_core"], "negative_core": analysis["negative_core"],
-            "operations": analysis["operations"], "accepted": False, "created_at": self._now(),
-        }
-        batch.setdefault("refinement_attempts", []).append(attempt)
-        return attempt | {"analysis": analysis}
-
-    @staticmethod
-    def _refinement_retry_text(base_prompt: str, data: dict[str, Any], errors: list[dict[str, Any]]) -> str:
-        reasons = "\n".join(
-            f"- Operation {int(item['operation_index']) + 1 if item['operation_index'] is not None else 'response'}, "
-            f"field {item['field']}: {item['message']}" for item in errors
-        )
-        return (
-            f"{base_prompt}\n\nPRIOR RESPONSE REJECTED\n{json.dumps(data, indent=2, ensure_ascii=False)}"
-            f"\n\nVALIDATION ERRORS\n{reasons}\n\nReturn a corrected response. Fix every listed error and repeat every required field."
-        )
-
-    def _apply_operations(self, positive: str, negative: str, data: dict[str, Any]) -> tuple[str, str, list[dict[str, str]]]:
-        positive_ops = data.get("positive_operations") or []
-        negative_ops = data.get("negative_operations") or []
-        if not isinstance(positive_ops, list) or not isinstance(negative_ops, list):
-            raise PromptEvolutionError("Refinement operations must be arrays.")
-        applied: list[dict[str, str]] = []
-        def mutate(text: str, operations: list[Any]) -> str:
-            terms = [item.strip() for item in text.split(",") if item.strip()]
-            def find_term(value: str) -> int | None:
-                normalized = " ".join(value.casefold().split())
-                return next((index for index, term in enumerate(terms) if " ".join(term.casefold().split()) == normalized), None)
-            for raw in operations:
-                if not isinstance(raw, dict) or raw.get("action") not in {"add", "remove", "edit"}:
-                    raise PromptEvolutionError("Invalid refinement operation.")
-                action, old, new = str(raw["action"]), str(raw.get("old") or "").strip(), str(raw.get("new") or "").strip()
-                old_index = find_term(old) if old else None
-                new_index = find_term(new) if new else None
-                resolved_action = action
-                if action == "add" and new:
-                    if new_index is None:
-                        terms.append(new)
-                    else:
-                        resolved_action = "noop"
-                elif action == "remove" and old:
-                    if old_index is not None:
-                        terms.pop(old_index)
-                    else:
-                        resolved_action = "noop"
-                elif action == "edit" and new:
-                    if old_index is not None:
-                        terms[old_index] = new
-                    elif new_index is not None:
-                        resolved_action = "noop"
-                    else:
-                        terms.append(new)
-                        resolved_action = "add"
-                else:
-                    raise PromptEvolutionError(f"Could not apply refinement operation: {raw}")
-                applied.append({"action": action, "resolved_action": resolved_action, "old": old, "new": new})
-            return ", ".join(terms)
-        return mutate(positive, positive_ops), mutate(negative, negative_ops), applied
 
     def advance_run(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
@@ -1112,7 +641,7 @@ class PromptEvolutionService:
             lock.unlink(missing_ok=True)
             return self.advance_run(run_id)
         try:
-            return self._advance_run_unlocked(run_id)
+            return self._advance_v3_unlocked(run_id)
         finally:
             lock.unlink(missing_ok=True)
 
@@ -1120,9 +649,406 @@ class PromptEvolutionService:
     def _now_timestamp() -> float:
         return datetime.now().timestamp()
 
-    def _advance_run_unlocked(self, run_id: str) -> dict[str, Any]:
+    @staticmethod
+    def _array(data: dict[str, Any], name: str) -> list[Any]:
+        value = data.get(name)
+        if not isinstance(value, list):
+            raise PromptEvolutionError(f"LLM response omitted array: {name}")
+        return value
+
+    @classmethod
+    def _validate_visual_report(
+        cls, data: dict[str, Any], *, lenient: bool = False, warnings: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if lenient:
+            for name in ("major_differences", "secondary_differences"):
+                value = data.get(name)
+                if not isinstance(value, list):
+                    (warnings if warnings is not None else []).append(f"Visual critic omitted {name}; assumed an empty list.")
+                    value = []
+                valid = [item for item in value if isinstance(item, dict) and str(item.get("reference") or "").strip() and str(item.get("candidate") or "").strip()]
+                if len(valid) != len(value):
+                    (warnings if warnings is not None else []).append(f"Ignored {len(value) - len(valid)} malformed {name} items.")
+                data[name] = valid
+            value = data.get("stable_matches")
+            if not isinstance(value, list):
+                (warnings if warnings is not None else []).append("Visual critic omitted stable_matches; assumed an empty list.")
+                value = []
+            data["stable_matches"] = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+            if len(data["stable_matches"]) != len(value):
+                (warnings if warnings is not None else []).append("Ignored malformed stable_matches items.")
+            return data
+        for name in ("major_differences", "secondary_differences"):
+            for item in cls._array(data, name):
+                if not isinstance(item, dict) or not str(item.get("reference") or "").strip() or not str(item.get("candidate") or "").strip():
+                    raise PromptEvolutionError(f"Visual critic returned an invalid {name} item.")
+        for item in cls._array(data, "stable_matches"):
+            if not isinstance(item, str) or not item.strip():
+                raise PromptEvolutionError("Visual critic returned an invalid stable match.")
+        return data
+
+    @classmethod
+    def _validate_synthesis(
+        cls, data: dict[str, Any], *, lenient: bool = False, warnings: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if lenient:
+            warning_list = warnings if warnings is not None else []
+            for name in ("recurrent_deviations", "intermittent_deviations", "isolated_deviations"):
+                value = data.get(name)
+                if not isinstance(value, list):
+                    warning_list.append(f"Synthesis omitted {name}; assumed an empty list.")
+                    value = []
+                valid = []
+                for item in value:
+                    if not isinstance(item, dict) or not str(item.get("finding") or "").strip():
+                        continue
+                    valid.append({**item, "seeds": item.get("seeds") if isinstance(item.get("seeds"), list) else [], "observer_agreement": item.get("observer_agreement") if item.get("observer_agreement") in {"single", "dual"} else "single"})
+                if len(valid) != len(value):
+                    warning_list.append(f"Ignored malformed {name} findings.")
+                data[name] = valid
+            for name in ("stable_successes", "cross_feature_patterns"):
+                value = data.get(name)
+                if not isinstance(value, list):
+                    warning_list.append(f"Synthesis omitted {name}; assumed an empty list.")
+                    value = []
+                data[name] = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+            value = data.get("next_round_priorities")
+            if not isinstance(value, list):
+                warning_list.append("Synthesis omitted next_round_priorities; assumed no remaining priorities.")
+                value = []
+            priorities = []
+            for item in value:
+                if not isinstance(item, dict) or not str(item.get("problem") or "").strip():
+                    continue
+                priorities.append({
+                    **item,
+                    "evidence": str(item.get("evidence") or "No evidence text supplied.").strip(),
+                    "seeds": item.get("seeds") if isinstance(item.get("seeds"), list) else [],
+                    "observer_agreement": item.get("observer_agreement") if item.get("observer_agreement") in {"single", "dual"} else "single",
+                })
+            if len(priorities) != len(value):
+                warning_list.append("Ignored malformed next-round priorities.")
+            if len(priorities) > 3:
+                warning_list.append("Synthesis returned more than three priorities; kept the first three.")
+            data["next_round_priorities"] = priorities[:3]
+            return data
+        for name in ("recurrent_deviations", "intermittent_deviations", "isolated_deviations", "stable_successes", "cross_feature_patterns", "next_round_priorities"):
+            cls._array(data, name)
+        if len(data["next_round_priorities"]) > 3:
+            raise PromptEvolutionError("Synthesis returned more than three priorities.")
+        for name in ("recurrent_deviations", "intermittent_deviations", "isolated_deviations"):
+            for item in data[name]:
+                if not isinstance(item, dict) or not str(item.get("finding") or "").strip() or item.get("observer_agreement") not in {"single", "dual"} or not isinstance(item.get("seeds"), list):
+                    raise PromptEvolutionError(f"Synthesis returned an invalid {name} finding.")
+        for item in data["next_round_priorities"]:
+            if not isinstance(item, dict) or not str(item.get("problem") or "").strip() or not str(item.get("evidence") or "").strip() or item.get("observer_agreement") not in {"single", "dual"} or not isinstance(item.get("seeds"), list):
+                raise PromptEvolutionError("Synthesis returned an invalid next-round priority.")
+        if any(not isinstance(item, str) or not item.strip() for name in ("stable_successes", "cross_feature_patterns") for item in data[name]):
+            raise PromptEvolutionError("Synthesis returned an invalid stable success or cross-feature pattern.")
+        return data
+
+    @classmethod
+    def _validate_checks(
+        cls, data: dict[str, Any], configured_ids: set[str], *, lenient: bool = False, warnings: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if lenient and not isinstance(data.get("checks"), list):
+            (warnings if warnings is not None else []).append("Regression-check response omitted checks; assumed all results indeterminate.")
+            data["checks"] = []
+        checks = cls._array(data, "checks")
+        returned: list[str] = []
+        for item in checks:
+            if not isinstance(item, dict):
+                returned.append("")
+                continue
+            item_id = str(item.get("id") or "").strip()
+            if item_id not in configured_ids and item_id.endswith("]") and "[" in item_id:
+                bracketed_id = item_id.rsplit("[", 1)[1][:-1].strip()
+                if bracketed_id in configured_ids:
+                    item_id = bracketed_id
+                    item["id"] = item_id
+            returned.append(item_id)
+        if lenient:
+            warning_list = warnings if warnings is not None else []
+            by_id: dict[str, dict[str, Any]] = {}
+            for item, item_id in zip(checks, returned):
+                if not isinstance(item, dict) or item_id not in configured_ids or item_id in by_id:
+                    continue
+                passed = item.get("pass")
+                if passed not in {True, False, None}:
+                    passed = None
+                    warning_list.append(f"Regression check {item_id} returned an invalid pass value; assumed indeterminate.")
+                try:
+                    confidence = min(1.0, max(0.0, float(item.get("confidence", 0))))
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                    warning_list.append(f"Regression check {item_id} returned invalid confidence; assumed 0.")
+                by_id[item_id] = {**item, "id": item_id, "pass": passed, "confidence": confidence, "evidence": str(item.get("evidence") or "No evidence supplied.")}
+            missing = sorted(configured_ids - set(by_id))
+            if missing:
+                warning_list.append(f"Regression checks omitted IDs {', '.join(missing)}; assumed indeterminate.")
+            if len(by_id) != len(checks):
+                warning_list.append("Ignored unknown or duplicate regression-check results.")
+            return [by_id.get(item_id, {"id": item_id, "pass": None, "confidence": 0.0, "evidence": "No result returned."}) for item_id in sorted(configured_ids)]
+        if set(returned) != configured_ids or len(returned) != len(configured_ids):
+            expected = ", ".join(sorted(configured_ids)) or "none"
+            received = ", ".join(returned) or "none"
+            raise PromptEvolutionError(
+                f"Regression-check response must return every configured ID exactly once (expected: {expected}; received: {received})."
+            )
+        for item in checks:
+            try:
+                valid_confidence = 0 <= float(item.get("confidence", -1)) <= 1
+            except (TypeError, ValueError, AttributeError):
+                valid_confidence = False
+            if not isinstance(item, dict) or item.get("pass") not in {True, False, None} or not valid_confidence:
+                raise PromptEvolutionError("Regression-check response returned an invalid result.")
+        return checks
+
+    @classmethod
+    def _validate_diagnosis(
+        cls, data: dict[str, Any], *, lenient: bool = False, warnings: list[str] | None = None,
+    ) -> dict[str, Any]:
+        if lenient:
+            warning_list = warnings if warnings is not None else []
+            interventions = data.get("interventions")
+            if not isinstance(interventions, list):
+                warning_list.append("Diagnosis omitted interventions; assumed no usable interventions.")
+                data["interventions"] = []
+                return data
+            normalized = []
+            for index, raw in enumerate(interventions[:3], 1):
+                if not isinstance(raw, dict) or not str(raw.get("proposed_wording") or "").strip():
+                    warning_list.append(f"Ignored diagnosis intervention {index} because it had no usable proposed wording.")
+                    continue
+                item = dict(raw)
+                item["id"] = str(item.get("id") or f"normalized-{index}").strip()
+                item["prompt"] = item.get("prompt") if item.get("prompt") in {"positive", "negative"} else "positive"
+                if raw.get("prompt") not in {"positive", "negative"}:
+                    warning_list.append(f"Intervention {item['id']} omitted a valid prompt target; assumed positive.")
+                item["action"] = item.get("action") if item.get("action") in {"add", "replace", "delete"} else "add"
+                if raw.get("action") not in {"add", "replace", "delete"}:
+                    warning_list.append(f"Intervention {item['id']} omitted a valid action; assumed add.")
+                if item["action"] in {"replace", "delete"} and not str(item.get("relevant_wording") or "").strip():
+                    if item["action"] == "replace":
+                        item["action"] = "add"
+                        warning_list.append(f"Intervention {item['id']} omitted relevant_wording; treated replace as add.")
+                    else:
+                        warning_list.append(f"Ignored delete intervention {item['id']} because relevant_wording was missing.")
+                        continue
+                item["relevant_wording"] = str(item.get("relevant_wording") or "")
+                for key in ("observed_pattern", "diagnosis", "rationale", "regression_risk"):
+                    if not str(item.get(key) or "").strip():
+                        item[key] = "Not supplied."
+                        warning_list.append(f"Intervention {item['id']} omitted {key}; used a neutral default.")
+                if item.get("confidence") not in {"High", "Medium", "Low"}:
+                    item["confidence"] = "Low"
+                    warning_list.append(f"Intervention {item['id']} omitted valid confidence; assumed Low.")
+                normalized.append(item)
+            if len(interventions) > 3:
+                warning_list.append("Diagnosis returned more than three interventions; kept the first three.")
+            data["interventions"] = normalized
+            return data
+        interventions = cls._array(data, "interventions")
+        if len(interventions) > 3:
+            raise PromptEvolutionError("Diagnosis returned more than three interventions.")
+        allowed = {"add", "replace", "delete"}
+        for item in interventions:
+            if not isinstance(item, dict) or item.get("confidence") not in {"High", "Medium", "Low"}:
+                raise PromptEvolutionError("Diagnosis returned an invalid confidence.")
+            if item.get("prompt") not in {"positive", "negative"} or item.get("action") not in allowed:
+                raise PromptEvolutionError("Diagnosis returned an invalid prompt intervention.")
+            for key in ("id", "observed_pattern", "diagnosis", "proposed_wording", "rationale", "regression_risk"):
+                if not str(item.get(key) or "").strip():
+                    raise PromptEvolutionError(f"Diagnosis intervention omitted {key}.")
+            if item["action"] in {"replace", "delete"} and not str(item.get("relevant_wording") or "").strip():
+                raise PromptEvolutionError("Replace/delete interventions require relevant_wording.")
+        return data
+
+    @classmethod
+    def _validate_edit(
+        cls, data: dict[str, Any], positive: str, negative: str, allowed_ids: set[str], *,
+        lenient: bool = False, warnings: list[str] | None = None,
+    ) -> dict[str, Any]:
+        new_positive = cls._clean_prompt_terms(data.get("positive_core") or "")
+        new_negative = cls._clean_prompt_terms(data.get("negative_core") or "")
+        if lenient:
+            warning_list = warnings if warnings is not None else []
+            if not new_positive:
+                new_positive = cls._clean_prompt_terms(positive)
+                warning_list.append("Prompt editor omitted the positive core; retained the prior positive core.")
+            if "negative_core" not in data:
+                new_negative = cls._clean_prompt_terms(negative)
+                warning_list.append("Prompt editor omitted the negative core; retained the prior negative core.")
+            changes = data.get("changes")
+            if not isinstance(changes, list):
+                changes = []
+                warning_list.append("Prompt editor omitted its change log; retained the prompt cores it returned.")
+            valid_changes = [item for item in changes if isinstance(item, dict) and str(item.get("intervention_id") or "") in allowed_ids][:3]
+            if len(valid_changes) != len(changes):
+                warning_list.append("Ignored malformed, ineligible, or excess prompt-editor change records.")
+            return {**data, "positive_core": new_positive, "negative_core": new_negative, "changes": valid_changes}
+        changes = cls._array(data, "changes")
+        if not new_positive or (new_positive == cls._clean_prompt_terms(positive) and new_negative == cls._clean_prompt_terms(negative)):
+            raise PromptEvolutionError("Prompt editor returned empty or unchanged cores.")
+        if not 1 <= len(changes) <= 3:
+            raise PromptEvolutionError("Prompt editor must return one to three changes.")
+        if any(not isinstance(item, dict) or str(item.get("intervention_id") or "") not in allowed_ids for item in changes):
+            raise PromptEvolutionError("Prompt editor used an ineligible intervention.")
+        return {**data, "positive_core": new_positive, "negative_core": new_negative}
+
+    @staticmethod
+    def _new_fresh_seeds(run: dict[str, Any]) -> list[int]:
+        generator = random.SystemRandom()
+        used = set(int(seed) for seed in run["fixed_seeds"])
+        result = []
+        while len(result) < int(run["batch_size"]) - int(run["fixed_seed_count"]):
+            seed = generator.randrange(0, 2**63 - 1)
+            if seed not in used:
+                used.add(seed)
+                result.append(seed)
+        return result
+
+    def _finish_v3(self, run: dict[str, Any], reason: str) -> None:
+        run["stop_reason"] = reason
+        run["status"] = "AWAITING_FINAL_REVIEW"
+        self._log(run, f"Automatic evolution finished: {reason}")
+        self._save_run(run)
+
+    def _log_validation_warnings(self, run: dict[str, Any], warnings: list[str]) -> None:
+        batch_number = int(run.get("current_batch", 0)) + 1
+        for warning in warnings:
+            self._log(run, f"Batch {batch_number} — validation warning: {warning}", "warning", batch=batch_number)
+
+    def _retry_observation_output(
+        self, run: dict[str, Any], batch: dict[str, Any], item: dict[str, Any], kind: str, error: str,
+    ) -> bool:
+        seed = int(item["seed"])
+        batch_number = int(run.get("current_batch", 0)) + 1
+        retry_key = f"{batch_number - 1}:OBSERVING:{kind}:{seed}"
+        retries = run.setdefault("validation_retries", {})
+        label = f"Critic {kind[-1].upper()}" if kind.startswith("critic_") else "regression check"
+        if int(retries.get(retry_key, 0)) >= 1:
+            run["failed_observation"] = {"kind": kind, "seed": seed}
+            self._log(run, f"Batch {batch_number} — {label} response for seed {seed} was rejected again: {error}", "error", batch=batch_number, seed=seed)
+            return False
+        retries[retry_key] = 1
+        self._log(run, f"Batch {batch_number} — rejected {label} response for seed {seed}: {error}", "warning", batch=batch_number, seed=seed)
+        if kind.startswith("critic_"):
+            role = kind.removeprefix("critic_")
+            record = item["critics"][role]
+            model = run[f"critic_model_{role}"]
+            prompt = self._format_template(run, "visual_critic", {"SEED": str(seed), "CRITIC_ROLE": role.upper()})
+            task = f"critic_{role}_{seed}"
+            schema = VISUAL_REPORT_SCHEMA
+        else:
+            record = item["check"]
+            checklist = self._read_json(Path(run["root"]) / "checklist_snapshot.json")
+            configured_ids = [str(row["id"]) for row in checklist.get("items", [])]
+            prompt = self._format_template(run, "regression_check", {
+                "SEED": str(seed), "CHECKS": self._checklist_questions(checklist),
+            })
+            model = run["check_model"]
+            task = f"check_{seed}"
+            schema = self._regression_check_schema(configured_ids)
+        output = Path(record["output"])
+        self._archive_rejected_output(output)
+        prompt += f"\n\nThe prior response was rejected: {error}\nReturn only a corrected response for this request."
+        record["ask_id"] = self._queue_ollama(
+            run, task=task, prompt=prompt, output=output,
+            images=[Path(run["reference_image"]), Path(item["file"])], model=model,
+            response_schema=schema, temperature=0,
+        )
+        record["retry_count"] = int(record.get("retry_count", 0)) + 1
+        batch["status"] = "OBSERVING"
+        run["status"] = "OBSERVING"
+        self._write_json(Path(run["root"]) / "batches" / f"{batch_number - 1:03d}" / "batch.json", batch)
+        self._save_run(run)
+        return True
+
+    def _retry_v3_validation(self, run: dict[str, Any], stage: str, error: str) -> bool:
+        retries = run.setdefault("validation_retries", {})
+        key = f"{int(run.get('current_batch', 0))}:{stage}"
+        if int(retries.get(key, 0)) >= 1:
+            return False
+        retries[key] = 1
+        root = Path(run["root"])
+        if stage == "BOOTSTRAPPING":
+            self._archive_rejected_output(root / "bootstrap.json")
+            self._log(run, f"Rejected bootstrapping output; queued one corrected retry: {error}", "warning")
+            run["last_validation_retry"] = {"stage": stage, "error": error, "at": self._now()}
+            self._queue_bootstrap(run, error)
+            return True
+        if stage == "OBSERVING":
+            return False
+        if stage == "DIRECTED_REFINING":
+            directed = run.get("directed_refinement") or {}
+            self._archive_rejected_output(Path(str(directed.get("output") or "")))
+            output = root / "directed_refinement.retry.json"
+            core = self._read_json(root / "prompt_core.json")
+            prompt = self._format_template(run, "directed_refinement", {
+                "POSITIVE_PROMPT": str(core["positive_core"]), "NEGATIVE_PROMPT": str(core["negative_core"]),
+                "METADATA": "", "METADATA_WORD_POOL": "", "INSTRUCTIONS": str(directed.get("instructions") or ""),
+            }) + f"\n\nThe prior response was rejected: {error}\nReturn only a corrected response that fixes this rejection."
+            directed.update({"output": str(output), "ask_id": self._queue_ollama(
+                run, task="directed_refinement_retry", prompt=prompt, output=output, images=[Path(run["reference_image"])],
+                model=run["analysis_model"], response_schema=PROMPT_CORE_SCHEMA, temperature=0,
+            )})
+            run["directed_refinement"] = directed
+            self._log(run, f"Rejected directed refinement output; queued one corrected retry: {error}", "warning")
+            run["last_validation_retry"] = {"stage": stage, "error": error, "at": self._now()}
+            self._save_run(run)
+            return True
+        batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
+        batch = self._read_json(batch_path / "batch.json")
+        if stage == "SYNTHESIZING":
+            self._archive_rejected_output(Path(batch["synthesis"]["output"]))
+            output = batch_path / "batch_synthesis.retry.json"
+            prompt = self._format_template(run, "batch_synthesis", {
+                "BATCH_EVIDENCE": json.dumps(batch.get("candidates", []), ensure_ascii=False),
+            }) + f"\n\nThe prior response was rejected: {error}\nReturn only a corrected response that fixes this rejection."
+            batch["synthesis"] = {"output": str(output), "ask_id": self._queue_ollama(
+                run, task="batch_synthesis_retry", prompt=prompt, output=output, images=[], model=run["analysis_model"],
+                response_schema=SYNTHESIS_SCHEMA, temperature=0,
+            )}
+            batch["status"] = "SYNTHESIZING"
+            run["status"] = "SYNTHESIZING"
+        elif stage == "DIAGNOSING":
+            output = batch_path / "prompt_diagnosis.retry.json"
+            prompt = self._format_template(run, "prompt_diagnosis", {
+                "POSITIVE_CORE": batch["positive_core"], "NEGATIVE_CORE": batch["negative_core"],
+                "SYNTHESIS": json.dumps(batch["synthesis"], ensure_ascii=False),
+            }) + f"\n\nThe prior response was rejected: {error}"
+            batch["diagnosis"] = {"output": str(output), "ask_id": self._queue_ollama(
+                run, task="prompt_diagnosis_retry", prompt=prompt, output=output,
+                images=[Path(run["reference_image"])], model=run["analysis_model"], response_schema=DIAGNOSIS_SCHEMA, temperature=0,
+            )}
+            batch["status"] = "DIAGNOSING"
+            run["status"] = "DIAGNOSING"
+        elif stage == "EDITING":
+            eligible = [item for item in batch["diagnosis"]["interventions"] if item["confidence"] == "High"]
+            output = batch_path / "prompt_edit.retry.json"
+            prompt = self._format_template(run, "prompt_edit", {
+                "POSITIVE_CORE": batch["positive_core"], "NEGATIVE_CORE": batch["negative_core"],
+                "INTERVENTIONS": json.dumps(eligible, ensure_ascii=False),
+                "STABLE_SUCCESSES": json.dumps(batch["synthesis"].get("stable_successes", []), ensure_ascii=False),
+            }) + f"\n\nThe prior response was rejected: {error}"
+            batch["edit"] = {"output": str(output), "ask_id": self._queue_ollama(
+                run, task="prompt_edit_retry", prompt=prompt, output=output, images=[], model=run["analysis_model"],
+                response_schema=EDIT_SCHEMA, temperature=0,
+            )}
+            batch["status"] = "EDITING"
+            run["status"] = "EDITING"
+        else:
+            return False
+        self._log(run, f"Batch {int(run.get('current_batch', 0)) + 1} — rejected {stage.lower()} output; queued one automatic retry: {error}", "warning")
+        run["last_validation_retry"] = {"stage": stage, "error": error, "at": self._now()}
+        self._write_json(batch_path / "batch.json", batch)
+        self._save_run(run)
+        return True
+
+    def _advance_v3_unlocked(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run["status"] in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_USER", "AWAITING_FINALIST", "AWAITING_REFINEMENT_REVIEW"}:
+        if run["status"] in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"}:
             return self.detail(run_id)
         try:
             root = Path(run["root"])
@@ -1132,613 +1058,211 @@ class PromptEvolutionService:
                 batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
                 batch = self._read_json(batch_path / "batch.json")
                 if all(Path(item["file"]).is_file() for item in batch["renders"]):
-                    evaluations = []
-                    checklist_path = root / "checklist_snapshot.json"
-                    checklist = self._read_json(checklist_path) if checklist_path.is_file() else {"items": []}
-                    checklist_questions = self._checklist_questions(checklist)
-                    template_snapshot = self._read_json(root / "template_snapshot.json")
-                    split_evaluations = "checklist_evaluation" in template_snapshot
-                    for item in batch["renders"]:
-                        output = batch_path / f"evaluation_{item['seed']}.json"
-                        prompt = self._format_template(run, "evaluation", {
-                            "METADATA": "", "METADATA_CONTEXT": "", "CHECKLIST": checklist_questions,
-                            "CHECKLIST_QUESTIONS": checklist_questions, "SEED": str(item["seed"]),
-                        })
-                        ask_id = self._queue_ollama(run, task=f"evaluate_{item['seed']}", prompt=prompt, output=output, images=[Path(run["reference_image"]), Path(item["file"])])
-                        evaluations.append({"seed": item["seed"], "file": item["file"], "output": str(output), "ask_id": ask_id})
-                    for item in evaluations if split_evaluations else []:
-                        output = batch_path / f"checklist_evaluation_{item['seed']}.json"
-                        prompt = self._format_template(run, "checklist_evaluation", {
-                            "METADATA": "", "METADATA_CONTEXT": "", "CHECKLIST": checklist_questions,
-                            "CHECKLIST_QUESTIONS": checklist_questions, "SEED": str(item["seed"]),
-                        })
-                        item["checklist_output"] = str(output)
-                        item["checklist_ask_id"] = self._queue_ollama(
-                            run, task=f"checklist_{item['seed']}", prompt=prompt, output=output,
-                            images=[Path(run["reference_image"]), Path(item["file"])],
-                            model=str(run.get("checklist_model") or DEFAULT_CHECKLIST_MODEL),
-                        )
-                    batch["evaluations"] = evaluations
-                    batch["status"] = "EVALUATING"
+                    checks = self._read_json(root / "checklist_snapshot.json")
+                    questions = self._checklist_questions(checks)
+                    configured_ids = [str(row["id"]) for row in checks.get("items", [])]
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — all renders completed; queueing independent visual reviews and regression checks.")
+                    observations = []
+                    for render in batch["renders"]:
+                        item = {"seed": render["seed"], "seed_role": render["seed_role"], "file": render["file"], "critics": {}}
+                        for role, model in (("a", run["critic_model_a"]), ("b", run["critic_model_b"])):
+                            output = batch_path / f"visual_critic_{role}_{render['seed']}.json"
+                            prompt = self._format_template(run, "visual_critic", {"SEED": str(render["seed"]), "CRITIC_ROLE": role.upper()})
+                            item["critics"][role] = {"output": str(output), "ask_id": self._queue_ollama(
+                                run, task=f"critic_{role}_{render['seed']}", prompt=prompt, output=output,
+                                images=[Path(run["reference_image"]), Path(render["file"])], model=model,
+                                response_schema=VISUAL_REPORT_SCHEMA, temperature=0,
+                            )}
+                        if questions:
+                            output = batch_path / f"regression_check_{render['seed']}.json"
+                            prompt = self._format_template(run, "regression_check", {"SEED": str(render["seed"]), "CHECKS": questions})
+                            item["check"] = {"output": str(output), "ask_id": self._queue_ollama(
+                                run, task=f"check_{render['seed']}", prompt=prompt, output=output,
+                                images=[Path(run["reference_image"]), Path(render["file"])], model=run["check_model"],
+                                response_schema=self._regression_check_schema(configured_ids), temperature=0,
+                            )}
+                        observations.append(item)
+                    batch.update({"observations": observations, "status": "OBSERVING"})
                     self._write_json(batch_path / "batch.json", batch)
-                    run["status"] = "EVALUATING"
+                    run["status"] = "OBSERVING"
                     self._save_run(run)
-            elif run["status"] == "EVALUATING":
+            elif run["status"] == "OBSERVING":
                 batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
                 batch = self._read_json(batch_path / "batch.json")
-                if all(
-                    Path(item["output"]).is_file()
-                    and (not item.get("checklist_output") or Path(item["checklist_output"]).is_file())
-                    for item in batch["evaluations"]
-                ):
-                    scored = []
-                    retry_queued = False
-                    checklist_path = root / "checklist_snapshot.json"
-                    checklist = self._read_json(checklist_path) if checklist_path.is_file() else {"items": []}
-                    for item in batch["evaluations"]:
-                        evaluation_path = Path(item["output"])
-                        evaluation = self._llm_json(run, evaluation_path)
-                        checklist_evaluation = self._llm_json(run, Path(item["checklist_output"])) if item.get("checklist_output") else None
+                outputs = [Path(role["output"]) for item in batch["observations"] for role in item["critics"].values()]
+                outputs += [Path(item["check"]["output"]) for item in batch["observations"] if item.get("check")]
+                if all(path.is_file() for path in outputs):
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — analyzing critic reports and regression-check responses.")
+                    evidence = []
+                    for item in batch["observations"]:
+                        critics = {}
+                        for role, record in item["critics"].items():
+                            retry_key = f"{int(run['current_batch'])}:OBSERVING:critic_{role}:{int(item['seed'])}"
+                            lenient = int(run.get("validation_retries", {}).get(retry_key, 0)) >= 1
+                            warnings: list[str] = []
+                            try:
+                                critics[role] = self._validate_visual_report(
+                                    self._llm_json(run, Path(record["output"])), lenient=lenient, warnings=warnings,
+                                )
+                            except PromptEvolutionError as exc:
+                                if self._retry_observation_output(run, batch, item, f"critic_{role}", str(exc)):
+                                    return self.detail(run_id)
+                                raise
+                            self._log_validation_warnings(run, warnings)
+                        check = self._llm_json(run, Path(item["check"]["output"])) if item.get("check") else {"checks": []}
+                        configured_ids = {str(row["id"]) for row in self._read_json(root / "checklist_snapshot.json").get("items", [])}
+                        retry_key = f"{int(run['current_batch'])}:OBSERVING:check:{int(item['seed'])}"
+                        lenient = int(run.get("validation_retries", {}).get(retry_key, 0)) >= 1
+                        warnings = []
                         try:
-                            score = self._score(evaluation, checklist, checklist_evaluation)
-                        except PromptEvolutionPlaceholderResponse:
-                            if evaluation_path.stem.endswith(".retry"):
-                                raise PromptEvolutionError(f"Evaluation returned empty placeholder scores twice: {evaluation_path.name}")
-                            retry_path = evaluation_path.with_name(f"{evaluation_path.stem}.retry.json")
-                            prompt = self._format_template(run, "evaluation", {
-                                "METADATA": "", "METADATA_CONTEXT": "", "SEED": str(item["seed"]),
-                            }) + "\nYour prior response copied empty/default values. Inspect both attached images and return actual scores and evidence."
-                            item["ask_id"] = self._queue_ollama(run, task=f"evaluate_{item['seed']}_retry", prompt=prompt, output=retry_path,
-                                                                  images=[Path(run["reference_image"]), Path(item["file"])])
-                            item["output"] = str(retry_path)
-                            retry_queued = True
-                            continue
-                        character, costume, combined, character_categories, costume_categories, checklist_effects = score
-                        scored.append({**item, "character_identity": character, "costume_identity": costume, "combined_score": combined,
-                                       "character_categories": character_categories, "costume_categories": costume_categories,
-                                       "checklist_effects": checklist_effects, "evaluation": evaluation,
-                                       "checklist_evaluation": checklist_evaluation})
-                    if retry_queued:
-                        self._write_json(batch_path / "batch.json", batch)
-                        return self.detail(run_id)
-                    scored.sort(key=lambda item: (-item["combined_score"], item["seed"]))
-                    first_metadata = Path(scored[0]["file"]).with_suffix(".json")
-                    if first_metadata.is_file():
-                        settings = self._read_json(first_metadata).get("settings", {})
-                        batch["effective_positive_prompt"] = str(settings.get("prompt") or batch["positive_prompt"])
-                        batch["effective_negative_prompt"] = str(settings.get("negative_prompt") or batch["negative_prompt"])
-                    batch.update({"candidates": scored, "status": "RANKING"})
-                    self._write_json(batch_path / "batch.json", batch)
-                    ranking_prompt = self._format_template(run, "ranking", {"SCORECARDS": json.dumps(scored, ensure_ascii=False)})
-                    run["ranking_ask_id"] = self._queue_ollama(run, task="ranking", prompt=ranking_prompt, output=batch_path / "ranking.json", images=[])
-                    run["status"] = "RANKING"
-                    self._save_run(run)
-            elif run["status"] == "RANKING":
-                batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
-                ranking_path = batch_path / "ranking.json"
-                if ranking_path.is_file():
-                    batch = self._read_json(batch_path / "batch.json")
-                    ranking = self._llm_json(run, ranking_path)
-                    candidates = batch["candidates"]
-                    best_score = max(item["combined_score"] for item in candidates)
-                    tied = [item for item in candidates if item["combined_score"] == best_score]
-                    order = self._ordered_ranking_seeds(ranking)
-                    winner = next((item for seed in order for item in tied if int(item["seed"]) == seed), tied[0])
-                    batch["category_ranking"] = self._category_ranking(winner)
-                    batch["target_category"] = batch["category_ranking"][-1]["category"] if batch["category_ranking"] else None
-                    if int(run.get("strategy_version", 1)) >= 2:
-                        finalist = {
-                            **winner,
-                            "finalist_id": f"batch-{int(run['current_batch']):03d}",
-                            "positive_prompt": batch["positive_prompt"], "negative_prompt": batch["negative_prompt"],
-                            "positive_core": batch["positive_core"], "negative_core": batch["negative_core"],
-                            "positive_core_terms": batch["positive_core_terms"], "negative_core_terms": batch["negative_core_terms"],
-                            "evaluation_wrapper": batch["evaluation_wrapper"], "batch": run["current_batch"],
-                        }
-                        if run.get("incumbent") is None:
-                            run["incumbent"] = finalist
-                        exploration = run.get("exploration_incumbent")
-                        improved_exploration = exploration is None or float(winner["combined_score"]) > float(exploration["combined_score"])
-                        if improved_exploration:
-                            run["exploration_incumbent"] = finalist
-                        if not any(item.get("positive_core") == finalist["positive_core"] and item.get("negative_core") == finalist["negative_core"] for item in run.get("finalists", [])):
-                            run.setdefault("finalists", []).append(finalist)
-                        accepted = None
-                        batch.update({"ranking": ranking, "winner_seed": winner["seed"], "shortlisted": True, "improved_exploration": improved_exploration, "accepted": None, "status": "REVIEWED"})
-                    else:
-                        incumbent = run.get("incumbent")
-                        accepted = incumbent is None or (
-                            winner["character_identity"] >= IDENTITY_FLOOR and winner["costume_identity"] >= IDENTITY_FLOOR
-                            and winner["combined_score"] >= (float(incumbent["combined_score"]) / 10 if float(incumbent["combined_score"]) > 10 else float(incumbent["combined_score"])) + MINIMUM_SCORE_IMPROVEMENT
-                        )
-                        if accepted:
-                            run["incumbent"] = {**winner, "positive_prompt": batch["positive_prompt"], "negative_prompt": batch["negative_prompt"], "batch": run["current_batch"]}
-                        batch.update({"ranking": ranking, "winner_seed": winner["seed"], "accepted": accepted, "status": "REVIEWED"})
-                    self._write_json(batch_path / "batch.json", batch)
-                    if int(run.get("strategy_version", 1)) < 2 and run["mode"] == "manual":
-                        run["status"] = "AWAITING_USER"
-                        self._save_run(run)
-                    else:
-                        self._queue_next_or_finish(run, batch)
-            elif run["status"] == "REFINING":
-                batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
-                refinement = Path(str(run.get("refinement_output") or batch_path / "refinement.json"))
-                if refinement.is_file():
-                    incumbent = run.get("exploration_incumbent") or run["incumbent"]
-                    data = self._llm_json(run, refinement)
-                    batch = self._read_json(batch_path / "batch.json")
-                    if int(run.get("strategy_version", 1)) >= 2:
-                        attempt = self._record_refinement_attempt(run, batch, data, refinement)
-                        analysis = attempt["analysis"]
-                        if not analysis["strict_valid"]:
-                            messages = [item["message"] for item in analysis["validation_errors"]]
-                            batch["refinement_rejected"] = " ".join(messages)
-                            self._write_json(batch_path / "batch.json", batch)
-                            attempt_number = int(run.get("refinement_attempt_number", 1))
-                            if attempt_number >= 3:
-                                run["error"] = ""
-                                run["exploration_warning"] = "Ollama produced three rejected refinement attempts. Human review is required."
-                                run["status"] = "AWAITING_REFINEMENT_REVIEW"
-                                run.pop("refinement_output", None)
-                                self._save_run(run)
+                            checked = self._validate_checks(check, configured_ids, lenient=lenient, warnings=warnings) if item.get("check") else []
+                        except PromptEvolutionError as exc:
+                            if self._retry_observation_output(run, batch, item, "check", str(exc)):
                                 return self.detail(run_id)
-                            values, schema = self._refinement_contract_values(incumbent, run.get("pending_corrections") or [])
-                            values["REJECTED_MUTATIONS"] = json.dumps(run.get("rejected_mutations", []), ensure_ascii=False)
-                            next_number = attempt_number + 1
-                            retry = batch_path / f"refinement.attempt-{next_number:02d}.json"
-                            retry_prompt = self._refinement_retry_text(
-                                str(run.get("last_refinement_prompt") or self._format_template(run, "refinement", values)),
-                                data, analysis["validation_errors"],
-                            )
-                            run["refinement_attempt_number"] = next_number
-                            run["refinement_ask_id"] = self._queue_ollama(
-                                run, task=f"refinement_retry_{next_number}", prompt=retry_prompt, output=retry,
-                                images=[Path(run["reference_image"]), Path(run["pending_candidate_image"])],
-                                response_schema=schema, temperature=0,
-                            )
-                            run["refinement_output"] = str(retry)
-                            self._save_run(run)
-                            return self.detail(run_id)
-                        positive_terms = analysis["positive_terms"]
-                        negative_terms = analysis["negative_terms"]
-                        operations = analysis["operations"]
-                        batch["refinement_attempts"][-1]["accepted"] = True
-                        positive = analysis["positive_core"]
-                        negative = analysis["negative_core"]
-                        run["pending_positive_terms"] = positive_terms
-                        run["pending_negative_terms"] = negative_terms
-                    else:
-                        positive, negative, operations = self._apply_operations(incumbent["positive_prompt"], incumbent["negative_prompt"], data)
-                    batch["mutation"] = operations
+                            raise
+                        self._log_validation_warnings(run, warnings)
+                        row = {"seed": item["seed"], "seed_role": item["seed_role"], "file": item["file"], "critics": critics, "checks": checked}
+                        evidence.append(row)
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — all observation responses accepted; queueing cross-seed analysis.")
+                    batch["candidates"] = evidence
+                    synthesis_output = batch_path / "batch_synthesis.json"
+                    synthesis_prompt = self._format_template(run, "batch_synthesis", {"BATCH_EVIDENCE": json.dumps(evidence, ensure_ascii=False)})
+                    batch["synthesis"] = {"output": str(synthesis_output), "ask_id": self._queue_ollama(
+                        run, task="batch_synthesis", prompt=synthesis_prompt, output=synthesis_output, images=[], model=run["analysis_model"],
+                        response_schema=SYNTHESIS_SCHEMA, temperature=0,
+                    )}
+                    batch["status"] = "SYNTHESIZING"
                     self._write_json(batch_path / "batch.json", batch)
-                    run["pending_mutation"] = operations
-                    run.pop("refinement_output", None)
-                    run.pop("refinement_attempt_number", None)
+                    run["status"] = "SYNTHESIZING"
+                    self._save_run(run)
+            elif run["status"] == "SYNTHESIZING":
+                batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
+                batch = self._read_json(batch_path / "batch.json")
+                output = Path(batch["synthesis"]["output"])
+                if output.is_file():
+                    retry_key = f"{int(run['current_batch'])}:SYNTHESIZING"
+                    warnings = []
+                    synthesis = self._validate_synthesis(
+                        self._llm_json(run, output),
+                        lenient=int(run.get("validation_retries", {}).get(retry_key, 0)) >= 1,
+                        warnings=warnings,
+                    )
+                    self._log_validation_warnings(run, warnings)
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — cross-seed analysis accepted.")
+                    batch["synthesis"] = synthesis
+                    self._write_json(batch_path / "batch.json", batch)
+                    if int(run["current_batch"]) + 1 >= int(run["total_batches"]):
+                        batch["status"] = "REVIEWED"
+                        self._write_json(batch_path / "batch.json", batch)
+                        self._finish_v3(run, "Configured batch limit reached.")
+                    elif not synthesis["next_round_priorities"]:
+                        batch["status"] = "REVIEWED"
+                        self._write_json(batch_path / "batch.json", batch)
+                        self._finish_v3(run, "No prompt-level priority remained.")
+                    else:
+                        diagnosis_output = batch_path / "prompt_diagnosis.json"
+                        diagnosis_prompt = self._format_template(run, "prompt_diagnosis", {
+                            "POSITIVE_CORE": batch["positive_core"], "NEGATIVE_CORE": batch["negative_core"],
+                            "SYNTHESIS": json.dumps(synthesis, ensure_ascii=False),
+                        })
+                        batch["diagnosis"] = {"output": str(diagnosis_output), "ask_id": self._queue_ollama(
+                            run, task="prompt_diagnosis", prompt=diagnosis_prompt, output=diagnosis_output,
+                            images=[Path(run["reference_image"])], model=run["analysis_model"], response_schema=DIAGNOSIS_SCHEMA, temperature=0,
+                        )}
+                        batch["status"] = "DIAGNOSING"
+                        self._write_json(batch_path / "batch.json", batch)
+                        run["status"] = "DIAGNOSING"
+                        self._save_run(run)
+            elif run["status"] == "DIAGNOSING":
+                batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
+                batch = self._read_json(batch_path / "batch.json")
+                output = Path(batch["diagnosis"]["output"])
+                if output.is_file():
+                    retry_key = f"{int(run['current_batch'])}:DIAGNOSING"
+                    warnings = []
+                    diagnosis = self._validate_diagnosis(
+                        self._llm_json(run, output),
+                        lenient=int(run.get("validation_retries", {}).get(retry_key, 0)) >= 1,
+                        warnings=warnings,
+                    )
+                    self._log_validation_warnings(run, warnings)
+                    eligible = [item for item in diagnosis["interventions"] if item["confidence"] == "High"]
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — diagnosis accepted with {len(eligible)} high-confidence interventions.")
+                    batch["diagnosis"] = diagnosis
+                    self._write_json(batch_path / "batch.json", batch)
+                    if not eligible:
+                        batch["status"] = "REVIEWED"
+                        self._write_json(batch_path / "batch.json", batch)
+                        self._finish_v3(run, "No high-confidence intervention was available.")
+                    else:
+                        edit_output = batch_path / "prompt_edit.json"
+                        edit_prompt = self._format_template(run, "prompt_edit", {
+                            "POSITIVE_CORE": batch["positive_core"], "NEGATIVE_CORE": batch["negative_core"],
+                            "INTERVENTIONS": json.dumps(eligible, ensure_ascii=False),
+                            "STABLE_SUCCESSES": json.dumps(batch["synthesis"].get("stable_successes", []), ensure_ascii=False),
+                        })
+                        batch["edit"] = {"output": str(edit_output), "ask_id": self._queue_ollama(
+                            run, task="prompt_edit", prompt=edit_prompt, output=edit_output, images=[], model=run["analysis_model"],
+                            response_schema=EDIT_SCHEMA, temperature=0,
+                        )}
+                        batch["status"] = "EDITING"
+                        self._write_json(batch_path / "batch.json", batch)
+                        run["status"] = "EDITING"
+                        self._save_run(run)
+            elif run["status"] == "EDITING":
+                batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
+                batch = self._read_json(batch_path / "batch.json")
+                output = Path(batch["edit"]["output"])
+                if output.is_file():
+                    eligible_ids = {str(item["id"]) for item in batch["diagnosis"]["interventions"] if item["confidence"] == "High"}
+                    retry_key = f"{int(run['current_batch'])}:EDITING"
+                    warnings = []
+                    edit = self._validate_edit(
+                        self._llm_json(run, output), batch["positive_core"], batch["negative_core"], eligible_ids,
+                        lenient=int(run.get("validation_retries", {}).get(retry_key, 0)) >= 1,
+                        warnings=warnings,
+                    )
+                    self._log_validation_warnings(run, warnings)
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — prompt edit accepted; preparing the next batch.")
+                    batch["edit"] = edit
+                    batch["status"] = "REVIEWED"
+                    self._write_json(batch_path / "batch.json", batch)
+                    if edit["positive_core"] == self._clean_prompt_terms(batch["positive_core"]) and edit["negative_core"] == self._clean_prompt_terms(batch["negative_core"]):
+                        self._finish_v3(run, "Prompt-editor retry produced no usable prompt change.")
+                        return self.detail(run_id)
+                    run["fresh_seeds"] = self._new_fresh_seeds(run)
+                    run["seeds"] = [*run["fixed_seeds"], *run["fresh_seeds"]]
                     run["current_batch"] = int(run["current_batch"]) + 1
-                    self._start_batch(run, positive, negative)
+                    self._start_batch(run, edit["positive_core"], edit["negative_core"])
             elif run["status"] == "DIRECTED_REFINING":
                 directed = run.get("directed_refinement") or {}
                 output = Path(str(directed.get("output") or ""))
                 if output.is_file():
                     positive, negative = self._prompt_json(run, output)
-                    new_run = self.create_run({
-                        key: run[key] for key in ("character", "phase", "costume", "view", "model", "checklist_model", "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "total_batches", "metadata_mode", "mode") if key in run
-                    } | {"positive_prompt": positive, "negative_prompt": negative})
-                    directed.update({"status": "COMPLETE", "new_run_id": new_run["run_id"], "positive_prompt": positive, "negative_prompt": negative})
+                    payload = {key: run[key] for key in (
+                        "character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model",
+                        "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches",
+                    )}
+                    new_run = self.create_run(payload | {"positive_prompt": positive, "negative_prompt": negative})
+                    directed.update({"status": "COMPLETE", "new_run_id": new_run["run_id"]})
                     run["directed_refinement"] = directed
                     run["status"] = "COMPLETE"
                     self._save_run(run)
         except PromptEvolutionRepairPending:
             pass
         except Exception as exc:
-            run["failed_stage"] = run["status"]
-            run["status"], run["error"] = "FAILED", str(exc)
-            self._save_run(run)
-        return self.detail(run_id)
-
-    def _finish_exploration(self, run: dict[str, Any]) -> None:
-        if int(run.get("strategy_version", 1)) >= 2:
-            rejected_ids = set(run.get("rejected_finalist_ids") or [])
-            eligible = [item for item in run.get("finalists", []) if item.get("finalist_id") not in rejected_ids]
-            finalists = sorted(eligible, key=lambda item: (-float(item.get("combined_score", 0)), int(item.get("batch", 0))))[:3]
-            initial = run.get("incumbent")
-            if initial and not any(item.get("finalist_id") == initial.get("finalist_id") for item in finalists):
-                finalists = [initial, *finalists[:2]]
-            generator = random.Random(str(run["run_id"]))
-            generator.shuffle(finalists)
-            run["finalists"] = finalists
-            run["status"] = "AWAITING_FINALIST"
-        else:
-            run["status"] = "COMPLETE"
-        self._save_run(run)
-
-    def _queue_v2_refinement(
-        self, run: dict[str, Any], batch: dict[str, Any], selected: dict[str, Any], incumbent: dict[str, Any],
-        selection_reason: str = "",
-    ) -> None:
-        corrections = self._selected_corrections(selected)
-        if not corrections:
-            run["exploration_stop_reason"] = "No corrective refinement was requested for the selected candidate."
-            self._finish_exploration(run)
-            return
-        values, schema = self._refinement_contract_values(
-            incumbent, corrections, selected.get("evaluation", {}).get("category_feedback", {}),
-        )
-        values["REJECTED_MUTATIONS"] = json.dumps(run.get("rejected_mutations", []), ensure_ascii=False)
-        prompt = self._format_template(run, "refinement", values)
-        reason = selection_reason.strip()
-        if reason:
-            prompt = f"{prompt}\n\nAlso take this into consideration: {reason}"
-        root = Path(run["root"])
-        output = root / "batches" / f"{int(run['current_batch']):03d}" / "refinement.attempt-01.json"
-        candidate_image = Path(str(selected["file"]))
-        selected_seed = int(selected["seed"])
-        generator = random.SystemRandom()
-        next_seeds = [selected_seed]
-        while len(next_seeds) < int(run["batch_size"]):
-            seed = generator.randrange(0, 2**63 - 1)
-            if seed not in next_seeds:
-                next_seeds.append(seed)
-        run["seeds"] = next_seeds
-        run["pending_corrections"] = corrections
-        run["pending_candidate_image"] = str(candidate_image)
-        run["pending_parent_finalist_id"] = str(incumbent.get("finalist_id") or "")
-        run["last_refinement_prompt"] = prompt
-        run["refinement_output"] = str(output)
-        run["refinement_attempt_number"] = 1
-        run["refinement_ask_id"] = self._queue_ollama(
-            run, task="refinement", prompt=prompt, output=output,
-            images=[Path(run["reference_image"]), candidate_image],
-            response_schema=schema, temperature=0,
-        )
-        run["status"] = "REFINING"
-        self._save_run(run)
-
-    def _queue_next_or_finish(self, run: dict[str, Any], batch: dict[str, Any]) -> None:
-        if int(run["current_batch"]) + 1 >= int(run["total_batches"]):
-            self._finish_exploration(run)
-            return
-        root = Path(run["root"])
-        incumbent = run.get("exploration_incumbent") or run["incumbent"]
-        selected_seed = int(batch.get("selected_seed", batch["winner_seed"]))
-        selected = next((candidate for candidate in batch.get("candidates", []) if int(candidate["seed"]) == selected_seed), {})
-        if int(run.get("strategy_version", 1)) >= 2:
-            if batch.get("improved_exploration") is False and batch.get("attempted_mutation"):
-                run.setdefault("rejected_mutations", []).extend(batch["attempted_mutation"])
-            self._queue_v2_refinement(run, batch, selected, incumbent)
-            return
-        checklist_directives = self._checklist_directives(selected)
-        category_evaluations = self._category_evaluation_summary(selected)
-        category_ranking = self._category_ranking(selected)
-        if category_ranking:
-            batch["category_ranking"] = category_ranking
-            batch["target_category"] = category_ranking[-1]["category"]
-            self._write_json(root / "batches" / f"{int(run['current_batch']):03d}" / "batch.json", batch)
-        target_category = str(batch.get("target_category") or "overall identity")
-        rejection_context = ""
-        if batch.get("accepted") is False:
-            attempted_mutation = batch.get("attempted_mutation") or []
-            if not attempted_mutation and int(run["current_batch"]) > 0:
-                previous_path = root / "batches" / f"{int(run['current_batch']) - 1:03d}" / "batch.json"
-                if previous_path.is_file():
-                    attempted_mutation = self._read_json(previous_path).get("mutation") or []
-            rejection_context = (
-                "The last prompt change was tried and had no beneficial effect, so that batch was rejected. "
-                f"Ineffective change: {json.dumps(attempted_mutation, ensure_ascii=False)}. "
-                "Do not repeat that change; try a different edit for the target category."
-            )
-        prompt = self._format_template(run, "refinement", {
-            "POSITIVE_PROMPT": incumbent["positive_prompt"], "NEGATIVE_PROMPT": incumbent["negative_prompt"],
-            "METADATA": "", "TARGET_CATEGORY": target_category,
-            "METADATA_WORD_POOL": self._metadata_word_pool(run),
-            "EVALUATIONS": category_evaluations, "CATEGORY_EVALUATIONS": category_evaluations,
-            "REJECTION_CONTEXT": rejection_context,
-            "CHECKLIST_DIRECTIVES": checklist_directives,
-        })
-        if checklist_directives and checklist_directives not in prompt:
-            lead = "Your job is to refine the Stable Diffusion prompt to correct defects and achieve higher evaluations for images generated by the new prompt."
-            prompt = prompt.replace(lead, f"{lead} {checklist_directives}", 1) if lead in prompt else f"{checklist_directives}\n\n{prompt}"
-        if rejection_context and rejection_context not in prompt:
-            prompt = f"{prompt}\n\n{rejection_context}"
-        selection_reason = str(batch.get("selection_reason") or "").strip()
-        if selection_reason:
-            prompt = f"{prompt}\n\nAlso take this into consideration: {selection_reason}"
-        output = root / "batches" / f"{int(run['current_batch']):03d}" / "refinement.json"
-        winner_seed = selected_seed
-        generator = random.SystemRandom()
-        next_seeds = [winner_seed]
-        while len(next_seeds) < int(run["batch_size"]):
-            seed = generator.randrange(0, 2**63 - 1)
-            if seed not in next_seeds:
-                next_seeds.append(seed)
-        run["seeds"] = next_seeds
-        run["refinement_ask_id"] = self._queue_ollama(run, task="refinement", prompt=prompt, output=output, images=[Path(run["reference_image"])])
-        run["status"] = "REFINING"
-        self._save_run(run)
-
-    def select_candidate(self, run_id: str, seed: int, selection_reason: str = "") -> dict[str, Any]:
-        run = self._find_run(run_id)
-        if run["status"] != "AWAITING_USER":
-            raise PromptEvolutionError("Run is not awaiting a manual selection.")
-        batch_path = Path(run["root"]) / "batches" / f"{int(run['current_batch']):03d}"
-        batch = self._read_json(batch_path / "batch.json")
-        selected = next((item for item in batch["candidates"] if int(item["seed"]) == int(seed)), None)
-        if selected is None:
-            raise PromptEvolutionError(f"Unknown candidate seed: {seed}")
-        run["incumbent"] = {**selected, "positive_prompt": batch["positive_prompt"], "negative_prompt": batch["negative_prompt"], "batch": run["current_batch"], "human_override": seed != batch["winner_seed"]}
-        batch["ai_accepted"] = batch.get("accepted")
-        batch["selected_seed"], batch["human_override"], batch["accepted"] = seed, seed != batch["winner_seed"], True
-        if selection_reason.strip():
-            batch["selection_reason"] = selection_reason.strip()
-        self._write_json(batch_path / "batch.json", batch)
-        self._queue_next_or_finish(run, batch)
-        return self.detail(run_id)
-
-    def _refinement_review_context(
-        self, run_id: str, attempt_id: str,
-    ) -> tuple[dict[str, Any], Path, dict[str, Any], dict[str, Any]]:
-        run = self._find_run(run_id)
-        if run.get("status") != "AWAITING_REFINEMENT_REVIEW":
-            raise PromptEvolutionError("Run is not awaiting refinement review.")
-        batch_path = Path(run["root"]) / "batches" / f"{int(run['current_batch']):03d}"
-        batch = self._read_json(batch_path / "batch.json")
-        attempt = next(
-            (item for item in batch.get("refinement_attempts", []) if item.get("attempt_id") == attempt_id), None,
-        )
-        if attempt is None:
-            raise PromptEvolutionError(f"Unknown refinement attempt: {attempt_id}")
-        return run, batch_path, batch, attempt
-
-    def preview_refinement_review(
-        self, run_id: str, attempt_id: str, operations: list[Any] | None = None,
-        positive_core: str | None = None, negative_core: str | None = None,
-    ) -> dict[str, Any]:
-        run, _, _, attempt = self._refinement_review_context(run_id, attempt_id)
-        incumbent = run.get("exploration_incumbent") or run["incumbent"]
-        corrections = run.get("pending_corrections") or []
-        if positive_core is not None or negative_core is not None:
-            operations = self._operations_from_prompt_text(
-                incumbent, attempt, positive_core or "", negative_core or "", corrections,
-            )
-        analysis = self._analyze_term_operations(
-            incumbent["positive_core_terms"], incumbent["negative_core_terms"], {"operations": operations or []},
-            {str(item["category"]) for item in corrections}, corrections,
-        )
-        return {"attempt_id": attempt_id, "operations_input": operations, **analysis}
-
-    @classmethod
-    def _operations_from_prompt_text(
-        cls, incumbent: dict[str, Any], attempt: dict[str, Any], positive_core: str,
-        negative_core: str, corrections: list[dict[str, str]],
-    ) -> list[dict[str, str]]:
-        category = str((corrections or [{"category": ""}])[0]["category"])
-        allowed_categories = {str(item["category"]) for item in corrections}
-        prior_operations = attempt.get("response", {}).get("operations") or []
-
-        def operation_category(target: str, term_id: str = "", new: str = "") -> str:
-            for item in prior_operations:
-                if not isinstance(item, dict) or str(item.get("target") or "") != target:
-                    continue
-                if term_id and str(item.get("term_id") or "") == term_id:
-                    candidate = str(item.get("category") or category)
-                    return candidate if candidate in allowed_categories else category
-                if new and cls._term_key(str(item.get("new") or "")) == cls._term_key(new):
-                    candidate = str(item.get("category") or category)
-                    return candidate if candidate in allowed_categories else category
-            return category
-
-        operations: list[dict[str, str]] = []
-        for target, text, existing in (
-            ("positive", positive_core, incumbent["positive_core_terms"]),
-            ("negative", negative_core, incumbent["negative_core_terms"]),
-        ):
-            revised = cls._term_records(cls._clean_prompt_terms(text), target[0])
-            if target == "positive" and not revised:
-                raise PromptEvolutionError("The edited positive prompt cannot be empty.")
-            revised_keys = [" ".join(item["text"].casefold().split()) for item in revised]
-            if len(set(revised_keys)) != len(revised):
-                raise PromptEvolutionError(f"The edited {target} prompt contains duplicate terms.")
-            common = min(len(existing), len(revised))
-            for index in range(common):
-                current, replacement = existing[index], revised[index]
-                if " ".join(current["text"].casefold().split()) != revised_keys[index]:
-                    operations.append({
-                        "target": target, "action": "edit", "term_id": current["id"], "new": replacement["text"],
-                        "category": operation_category(target, current["id"], replacement["text"]),
-                    })
-            for item in reversed(existing[common:]):
-                operations.append({
-                    "target": target, "action": "remove", "term_id": item["id"], "new": "",
-                    "category": operation_category(target, item["id"]),
-                })
-            for item in revised[common:]:
-                operations.append({
-                    "target": target, "action": "add", "term_id": "", "new": item["text"],
-                    "category": operation_category(target, new=item["text"]),
-                })
-        if not operations:
-            raise PromptEvolutionError("The edited prompt is unchanged.")
-        return operations
-
-    @classmethod
-    def _analyze_refinement_response(
-        cls, incumbent: dict[str, Any], data: dict[str, Any], corrections: list[dict[str, str]],
-    ) -> dict[str, Any]:
-        if "positive_core" not in data and "negative_core" not in data:
-            return cls._analyze_term_operations(
-                incumbent["positive_core_terms"], incumbent["negative_core_terms"], data,
-                {str(item["category"]) for item in corrections}, corrections,
-            )
-        errors: list[dict[str, Any]] = []
-        positive_value = data.get("positive_core")
-        negative_value = data.get("negative_core")
-        if not isinstance(positive_value, str) or not cls._clean_prompt_terms(positive_value):
-            errors.append(cls._refinement_error(
-                "missing_positive_core", None, "positive_core", "Refinement must return a non-empty positive_core string.",
-            ))
-        if not isinstance(negative_value, str):
-            errors.append(cls._refinement_error(
-                "missing_negative_core", None, "negative_core", "Refinement must return a negative_core string; it may be empty.",
-            ))
-        positive_core = cls._clean_prompt_terms(positive_value) if isinstance(positive_value, str) else ""
-        negative_core = cls._clean_prompt_terms(negative_value) if isinstance(negative_value, str) else ""
-        if not errors and (
-            positive_core.casefold() == str(incumbent["positive_core"]).casefold()
-            and negative_core.casefold() == str(incumbent["negative_core"]).casefold()
-        ):
-            errors.append(cls._refinement_error(
-                "unchanged_prompts", None, "response", "Refinement returned unchanged prompt cores.",
-            ))
-        if errors:
-            positive_terms = [{**item} for item in incumbent["positive_core_terms"]]
-            negative_terms = [{**item} for item in incumbent["negative_core_terms"]]
-            operations: list[dict[str, str]] = []
-        else:
-            positive_terms = cls._term_records(positive_core, "p")
-            negative_terms = cls._term_records(negative_core, "n")
-            try:
-                operations = cls._operations_from_prompt_text(
-                    incumbent, {"response": data}, positive_core, negative_core, corrections,
-                )
-            except PromptEvolutionError:
-                operations = []
-        return {
-            "strict_valid": not errors,
-            "guarded_override_allowed": False,
-            "validation_errors": errors,
-            "preview_status": "baseline" if errors else "complete",
-            "positive_terms": positive_terms,
-            "negative_terms": negative_terms,
-            "positive_core": ", ".join(item["text"] for item in positive_terms),
-            "negative_core": ", ".join(item["text"] for item in negative_terms),
-            "operations": operations,
-        }
-
-    def accept_refinement_review(
-        self, run_id: str, attempt_id: str, operations: list[Any] | None, confirm_override: bool,
-        positive_core: str | None = None, negative_core: str | None = None,
-    ) -> dict[str, Any]:
-        run, batch_path, batch, attempt = self._refinement_review_context(run_id, attempt_id)
-        text_edited = positive_core is not None or negative_core is not None
-        edited = operations is not None or text_edited
-        if text_edited:
-            incumbent = run.get("exploration_incumbent") or run["incumbent"]
-            operations = self._operations_from_prompt_text(
-                incumbent, attempt, positive_core or "", negative_core or "", run.get("pending_corrections") or [],
-            )
-        data = {"operations": operations} if edited else attempt.get("response") or {}
-        incumbent = run.get("exploration_incumbent") or run["incumbent"]
-        corrections = run.get("pending_corrections") or []
-        analysis = self._analyze_refinement_response(incumbent, data, corrections)
-        if edited and not analysis["strict_valid"]:
-            raise PromptEvolutionError("Edited operations remain invalid: " + " ".join(
-                item["message"] for item in analysis["validation_errors"]
-            ))
-        if not edited and not analysis["strict_valid"]:
-            if not analysis["guarded_override_allowed"]:
-                raise PromptEvolutionError("This rejected attempt has blocking validation errors and must be edited.")
-            if not confirm_override:
-                raise PromptEvolutionError("Confirm the guarded validation override before using this attempt.")
-        selected_attempt = attempt
-        if edited:
-            selected_attempt = {
-                "attempt_id": f"human-{len(batch.get('refinement_attempts', [])) + 1:02d}",
-                "number": len(batch.get("refinement_attempts", [])) + 1, "source": "human_edit",
-                "ask_id": "", "output_file": "", "response": data,
-                "validation_errors": analysis["validation_errors"], "strict_valid": True,
-                "guarded_override_allowed": False, "preview_status": "complete",
-                "positive_core": analysis["positive_core"], "negative_core": analysis["negative_core"],
-                "operations": analysis["operations"], "accepted": True, "created_at": self._now(),
-            }
-            batch.setdefault("refinement_attempts", []).append(selected_attempt)
-        else:
-            attempt["accepted"] = True
-            attempt["human_override"] = not analysis["strict_valid"]
-            attempt["accepted_at"] = self._now()
-        batch["mutation"] = analysis["operations"]
-        batch["selected_refinement_attempt_id"] = selected_attempt["attempt_id"]
-        batch["refinement_human_override"] = not analysis["strict_valid"]
-        self._write_json(batch_path / "batch.json", batch)
-        run["pending_mutation"] = analysis["operations"]
-        run["pending_positive_terms"] = analysis["positive_terms"]
-        run["pending_negative_terms"] = analysis["negative_terms"]
-        run.pop("exploration_warning", None)
-        run.pop("refinement_output", None)
-        run.pop("refinement_attempt_number", None)
-        run["current_batch"] = int(run["current_batch"]) + 1
-        self._start_batch(run, analysis["positive_core"], analysis["negative_core"])
-        return self.detail(run_id)
-
-    def select_finalist(self, run_id: str, finalist_id: str, selection_reason: str = "") -> dict[str, Any]:
-        run = self._find_run(run_id)
-        if run.get("status") != "AWAITING_FINALIST":
-            raise PromptEvolutionError("Run is not awaiting a finalist selection.")
-        batches = [
-            self._read_json(path)
-            for path in sorted((Path(run["root"]) / "batches").glob("*/batch.json"))
-        ]
-        finalists, _ = self._finalist_choices(run, batches)
-        finalist = next((item for item in finalists if item.get("finalist_id") == finalist_id), None)
-        if finalist is None:
-            raise PromptEvolutionError("Unknown prompt-evolution finalist.")
-        latest_batch = next(
-            (item for item in batches if int(item.get("index", -1)) == int(run.get("current_batch", -2))), None,
-        )
-        parent_finalist_id = str((latest_batch or {}).get("parent_finalist_id") or "")
-        if not parent_finalist_id and int(run.get("current_batch", 0)) == 1:
-            parent_finalist_id = str((run.get("incumbent") or {}).get("finalist_id") or "")
-        if latest_batch and finalist_id == parent_finalist_id and int(finalist.get("batch", -1)) < int(run["current_batch"]):
-            attempted_mutation = latest_batch.get("attempted_mutation") or []
-            if attempted_mutation:
-                run.setdefault("rejected_mutations", []).extend(attempted_mutation)
-            rejected_ids = {
-                item.get("finalist_id") for item in finalists
-                if int(item.get("batch", -1)) == int(run["current_batch"])
-            }
-            run.setdefault("rejected_finalist_ids", []).extend(
-                item for item in sorted(value for value in rejected_ids if value)
-                if item not in run.get("rejected_finalist_ids", [])
-            )
-            latest_batch.update({
-                "accepted": False, "human_rejected": True, "selected_finalist_id": finalist_id,
-                "selection_reason": selection_reason.strip(), "status": "REJECTED",
-            })
-            self._write_json(
-                Path(run["root"]) / "batches" / f"{int(run['current_batch']):03d}" / "batch.json", latest_batch,
-            )
-            run["exploration_incumbent"] = finalist
-            run["last_rejected_finalist_selection"] = {
-                "finalist_id": finalist_id, "rejected_batch": run["current_batch"],
-                "reason": selection_reason.strip(), "at": self._now(),
-            }
-            run["pending_batch_slot"] = int(latest_batch.get("batch_slot", run["current_batch"]))
-            run["pending_batch_retry"] = int(latest_batch.get("retry_attempt", 0)) + 1
-            self._queue_v2_refinement(run, latest_batch, finalist, finalist, selection_reason)
-            return self.detail(run_id)
-        run["incumbent"] = {**finalist, "human_finalist_selection": True}
-        run["selected_finalist_id"] = finalist_id
-        if selection_reason.strip():
-            run["finalist_selection_reason"] = selection_reason.strip()
-        run["status"] = "COMPLETE"
-        root = Path(run["root"])
-        self._write_json(root / "prompt_core.json", {
-            "strategy_version": int(run.get("strategy_version", 1)),
-            "positive_core": finalist.get("positive_core", finalist.get("positive_prompt", "")),
-            "negative_core": finalist.get("negative_core", finalist.get("negative_prompt", "")),
-            "positive_terms": finalist.get("positive_core_terms", []),
-            "negative_terms": finalist.get("negative_core_terms", []),
-            "checkpoint": run.get("checkpoint", ""),
-        })
-        self._write_json(root / "evaluation_wrapper.json", finalist.get("evaluation_wrapper") or {
-            "positive_terms": list(EVALUATION_POSITIVE_TERMS),
-            "negative_terms": list(EVALUATION_NEGATIVE_TERMS),
-        })
-        self._save_run(run)
+            failed_stage = run["status"]
+            self._log(run, f"Batch {int(run.get('current_batch', 0)) + 1} — {failed_stage.lower()} error: {exc}", "error")
+            if failed_stage == "OBSERVING" or not self._retry_v3_validation(run, failed_stage, str(exc)):
+                run["failed_stage"] = failed_stage
+                run["status"], run["error"] = "FAILED", str(exc)
+                self._save_run(run)
         return self.detail(run_id)
 
     def abort(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
         run["status"] = "ABORTED"
+        self._log(run, "Run aborted by the user.", "warning")
         self._save_run(run)
         return self.detail(run_id)
 
@@ -1750,20 +1274,23 @@ class PromptEvolutionService:
 
     def start_directed_refinement(self, run_id: str, instructions: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run["status"] != "COMPLETE" or not run.get("incumbent"):
-            raise PromptEvolutionError("Directed refinement requires a completed run with an incumbent image.")
+        if run["status"] != "COMPLETE" or not run.get("selected_prompt_version"):
+            raise PromptEvolutionError("Directed refinement requires a completed run with a selected prompt version.")
         if not instructions.strip():
             raise PromptEvolutionError("Directed refinement instructions are required.")
         root = Path(run["root"])
         output = root / f"directed_refinement_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
-        incumbent = run["incumbent"]
+        core = self._read_json(root / "prompt_core.json")
         prompt = self._format_template(run, "directed_refinement", {
-            "POSITIVE_PROMPT": str(incumbent.get("positive_core", incumbent["positive_prompt"])),
-            "NEGATIVE_PROMPT": str(incumbent.get("negative_core", incumbent["negative_prompt"])),
+            "POSITIVE_PROMPT": str(core["positive_core"]),
+            "NEGATIVE_PROMPT": str(core["negative_core"]),
             "METADATA": "",
             "METADATA_WORD_POOL": "", "INSTRUCTIONS": instructions.strip(),
         })
-        ask_id = self._queue_ollama(run, task="directed_refinement", prompt=prompt, output=output, images=[Path(run["reference_image"])])
+        ask_id = self._queue_ollama(
+            run, task="directed_refinement", prompt=prompt, output=output, images=[Path(run["reference_image"])],
+            model=run["analysis_model"], response_schema=PROMPT_CORE_SCHEMA, temperature=0,
+        )
         run["directed_refinement"] = {"status": "QUEUED", "instructions": instructions.strip(), "ask_id": ask_id, "output": str(output)}
         run["status"] = "DIRECTED_REFINING"
         self._save_run(run)
@@ -1771,7 +1298,7 @@ class PromptEvolutionService:
 
     def delete(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run["status"] in {"BOOTSTRAPPING", "RENDERING", "EVALUATING", "RANKING", "REFINING", "DIRECTED_REFINING", "AWAITING_FINALIST", "AWAITING_REFINEMENT_REVIEW"}:
+        if run["status"] in {"BOOTSTRAPPING", "RENDERING", "OBSERVING", "SYNTHESIZING", "DIAGNOSING", "EDITING", "DIRECTED_REFINING", "AWAITING_FINAL_REVIEW"}:
             raise PromptEvolutionError("Abort the active run before deleting it.")
         root = Path(run["root"]).resolve()
         pipeline_root = Path(self.app.config.base_pipeline_path).resolve()
@@ -1879,137 +1406,6 @@ class PromptEvolutionService:
             raise
         return destination
 
-    def start_replay_experiment(self, run_id: str, batch_index: int, seed: int, repeats: int = 3) -> dict[str, Any]:
-        if not 1 <= int(repeats) <= 5:
-            raise PromptEvolutionError("Replay repeats must be 1–5.")
-        run = self._find_run(run_id)
-        batch_path = Path(run["root"]) / "batches" / f"{int(batch_index):03d}" / "batch.json"
-        if not batch_path.is_file():
-            raise PromptEvolutionError("Replay batch does not exist.")
-        batch = self._read_json(batch_path)
-        candidate = next((item for item in batch.get("candidates", []) if int(item["seed"]) == int(seed)), None)
-        if candidate is None:
-            raise PromptEvolutionError("Replay candidate does not exist.")
-        experiment_id = f"{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-        root = Path(run["root"]).parent.parent / "Prompt_Evolution_Experiments" / experiment_id
-        root.mkdir(parents=True)
-        experiment_run = {**run, "run_id": experiment_id, "root": str(root)}
-        prompt = self.template("evaluation").replace("{{SEED}}", str(seed))
-        evaluations = []
-        for index in range(1, int(repeats) + 1):
-            output = root / f"evaluation_{index}.json"
-            ask_id = self._queue_ollama(
-                experiment_run, task=f"replay_evaluate_{index}", prompt=prompt, output=output,
-                images=[Path(run["reference_image"]), Path(candidate["file"])],
-            )
-            evaluations.append({"index": index, "ask_id": ask_id, "output": str(output)})
-        experiment = {
-            "version": 1, "experiment_id": experiment_id, "source_run_id": run_id,
-            "source_batch": int(batch_index), "source_seed": int(seed), "root": str(root),
-            "reference_image": run["reference_image"], "candidate_image": candidate["file"],
-            "checkpoint": run.get("checkpoint"), "profile": run.get("profile"),
-            "cfg_scale": run.get("cfg_scale"), "steps": run.get("steps"),
-            "positive_core": batch.get("positive_core", batch.get("positive_prompt", "")),
-            "negative_core": batch.get("negative_core", batch.get("negative_prompt", "")),
-            "positive_core_terms": batch.get("positive_core_terms") or self._term_records(batch.get("positive_prompt", ""), "p"),
-            "negative_core_terms": batch.get("negative_core_terms") or self._term_records(batch.get("negative_prompt", ""), "n"),
-            "evaluation_prompt": prompt, "evaluations": evaluations, "status": "EVALUATING",
-            "created_at": self._now(), "updated_at": self._now(),
-        }
-        self._write_json(root / "experiment.json", experiment)
-        return experiment
-
-    def _find_replay_experiment(self, experiment_id: str) -> dict[str, Any]:
-        base = Path(self.app.config.base_pipeline_path)
-        matches = list(base.glob(f"**/Prompt_Evolution_Experiments/{experiment_id}/experiment.json"))
-        if len(matches) != 1:
-            raise FileNotFoundError(f"Prompt-evolution replay experiment not found: {experiment_id}")
-        return self._read_json(matches[0])
-
-    def advance_replay_experiment(self, experiment_id: str) -> dict[str, Any]:
-        experiment = self._find_replay_experiment(experiment_id)
-        if experiment["status"] == "COMPLETE":
-            return experiment
-        if experiment["status"] == "FAILED":
-            if experiment.get("refinements") and all(Path(item["output"]).is_file() for item in experiment["refinements"]):
-                experiment["status"] = "REFINING"
-                experiment.pop("error", None)
-            else:
-                return experiment
-        root = Path(experiment["root"])
-        experiment_run = {
-            "run_id": experiment_id, "root": str(root), "character": "Replay", "phase": "Replay",
-            "model": DEFAULT_VISION_MODEL,
-        }
-        try:
-            if experiment["status"] == "EVALUATING" and all(Path(item["output"]).is_file() for item in experiment["evaluations"]):
-                results = [self._read_json(Path(item["output"])) for item in experiment["evaluations"]]
-                for result in results:
-                    self._score(result)
-                feedback = results[0]["category_feedback"]
-                ranges = {
-                    category: round(max(float(result["category_feedback"][category]["score"]) for result in results)
-                                    - min(float(result["category_feedback"][category]["score"]) for result in results), 2)
-                    for category in feedback
-                }
-                candidate = {"evaluation": results[0], "checklist_effects": []}
-                corrections = self._selected_corrections(candidate)
-                prompt = self.template("refinement")
-                values, schema = self._refinement_contract_values({
-                    "positive_core_terms": experiment["positive_core_terms"],
-                    "negative_core_terms": experiment["negative_core_terms"],
-                    "positive_core": experiment["positive_core"], "negative_core": experiment["negative_core"],
-                }, corrections, results[0].get("category_feedback", {}))
-                for key, value in values.items():
-                    prompt = prompt.replace("{{" + key + "}}", value)
-                refinements = []
-                text_prompt = prompt.replace(
-                    "Image 1 is the sole reference. Image 2 is the rendered candidate to correct.",
-                    "No images are attached. Edit only from the supplied current terms and corrective instructions.",
-                )
-                for variant, variant_prompt, images in (
-                    ("corrective_text", text_prompt, []),
-                    ("corrective_images", prompt, [Path(experiment["reference_image"]), Path(experiment["candidate_image"])]),
-                ):
-                    output = root / f"{variant}.json"
-                    ask_id = self._queue_ollama(
-                        experiment_run, task=f"replay_{variant}", prompt=variant_prompt, output=output, images=images,
-                        response_schema=schema, temperature=0,
-                    )
-                    refinements.append({"variant": variant, "ask_id": ask_id, "output": str(output), "prompt": variant_prompt})
-                experiment.update({
-                    "evaluation_results": results, "score_ranges": ranges, "corrections": corrections,
-                    "refinement_prompt": prompt, "refinements": refinements, "status": "REFINING",
-                })
-            elif experiment["status"] == "REFINING" and all(Path(item["output"]).is_file() for item in experiment["refinements"]):
-                corrections = experiment["corrections"]
-                variants = {}
-                for item in experiment["refinements"]:
-                    data = self._read_json(Path(item["output"]))
-                    try:
-                        analysis = self._analyze_refinement_response({
-                            "positive_core_terms": experiment["positive_core_terms"],
-                            "negative_core_terms": experiment["negative_core_terms"],
-                            "positive_core": experiment["positive_core"],
-                            "negative_core": experiment["negative_core"],
-                        }, data, corrections)
-                        if not analysis["strict_valid"]:
-                            raise PromptEvolutionError(analysis["validation_errors"][0]["message"])
-                        variants[item["variant"]] = {
-                            "status": "VALID",
-                            "positive_core": analysis["positive_core"],
-                            "negative_core": analysis["negative_core"],
-                            "operations": analysis["operations"],
-                        }
-                    except PromptEvolutionError as exc:
-                        variants[item["variant"]] = {"status": "INVALID", "error": str(exc), "response": data}
-                experiment.update({"variants": variants, "status": "COMPLETE"})
-        except Exception as exc:
-            experiment.update({"status": "FAILED", "error": str(exc)})
-        experiment["updated_at"] = self._now()
-        self._write_json(root / "experiment.json", experiment)
-        return experiment
-
     def clone_from_batch(self, run_id: str, batch_index: int) -> dict[str, Any]:
         run = self._find_run(run_id)
         batch_path = Path(run["root"]) / "batches" / f"{int(batch_index):03d}" / "batch.json"
@@ -2017,7 +1413,7 @@ class PromptEvolutionService:
             raise PromptEvolutionError(f"Batch does not exist: {batch_index}")
         batch = self._read_json(batch_path)
         settings = {
-            key: run[key] for key in ("character", "phase", "costume", "view", "model", "checklist_model", "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "total_batches", "metadata_mode", "mode") if key in run
+            key: run[key] for key in ("character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model", "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches") if key in run
         }
         settings["batch_size"] = max(2, int(settings.get("batch_size", 5)))
         settings["total_batches"] = max(2, int(settings.get("total_batches", 5)))
@@ -2028,13 +1424,13 @@ class PromptEvolutionService:
 
     def restart(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run["status"] not in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_FINALIST"}:
+        if run["status"] not in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"}:
             raise PromptEvolutionError("Only terminal prompt-evolution runs can be restarted.")
         settings = {
             key: run[key]
             for key in (
-                "character", "phase", "costume", "view", "model", "checklist_model", "checkpoint", "profile",
-                "cfg_scale", "steps", "batch_size", "total_batches", "metadata_mode", "mode",
+                "character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model", "checkpoint", "profile",
+                "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches",
             )
             if key in run
         }
@@ -2058,100 +1454,17 @@ class PromptEvolutionService:
         for path in Path(run["root"]).glob("**/.*.repair-queued"):
             path.unlink(missing_ok=True)
         failed_stage = str(run.pop("failed_stage", "RENDERING"))
-        if failed_stage == "EVALUATING" and self._retry_invalid_evaluations(run):
-            return self.detail(run_id)
+        retry_prefix = f"{int(run.get('current_batch', 0))}:{failed_stage}"
+        retry_used = any(key == retry_prefix or key.startswith(f"{retry_prefix}:") for key in run.get("validation_retries", {}))
+        message = (
+            f"Resuming {failed_stage.lower()} with lenient validation; no additional LLM retry was queued."
+            if retry_used else f"Resuming {failed_stage.lower()}; one corrected LLM retry remains available if validation rejects the response."
+        )
+        self._log(run, message, "warning")
         run["status"] = failed_stage
+        run.pop("failed_observation", None)
         self._save_run(run)
         return self.advance_run(run_id)
-
-    def _retry_invalid_evaluations(self, run: dict[str, Any]) -> bool:
-        root = Path(run["root"])
-        batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
-        batch = self._read_json(batch_path / "batch.json")
-        checklist_path = root / "checklist_snapshot.json"
-        checklist = self._read_json(checklist_path) if checklist_path.is_file() else {"items": []}
-        queued = False
-        for item in batch.get("evaluations", []):
-            output = Path(item["output"])
-            if not output.is_file():
-                continue
-            try:
-                evaluation = self._llm_json(run, output)
-                checklist_evaluation = self._llm_json(run, Path(item["checklist_output"])) if item.get("checklist_output") else None
-                self._score(evaluation, checklist, checklist_evaluation)
-            except PromptEvolutionError as exc:
-                attempt = int(item.get("stage_retry_attempts", 0)) + 1
-                retry_path = batch_path / f"evaluation_{item['seed']}.stage-retry-{attempt}.json"
-                prompt = self._format_template(run, "evaluation", {
-                    "METADATA": "", "METADATA_CONTEXT": "", "SEED": str(item["seed"]),
-                }) + f"\n\nYour prior response was rejected: {exc}. Return every required structured category exactly as requested."
-                item.update({
-                    "output": str(retry_path),
-                    "ask_id": self._queue_ollama(
-                        run, task=f"evaluate_{item['seed']}_stage_retry_{attempt}", prompt=prompt,
-                        output=retry_path, images=[Path(run["reference_image"]), Path(item["file"])],
-                    ),
-                    "stage_retry_attempts": attempt,
-                    "stage_retry_error": str(exc),
-                })
-                queued = True
-        if queued:
-            batch["status"] = "EVALUATING"
-            self._write_json(batch_path / "batch.json", batch)
-            run["status"] = "EVALUATING"
-            self._save_run(run)
-        return queued
-
-    def recover_missing_evaluations(self, run_id: str) -> dict[str, Any]:
-        run = self._find_run(run_id)
-        if run["status"] != "EVALUATING":
-            raise PromptEvolutionError("Missing evaluations can only be recovered while a run is evaluating.")
-        root = Path(run["root"])
-        batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
-        batch = self._read_json(batch_path / "batch.json")
-        snapshot = self.app.queue_snapshot()
-        active_ask_ids = {
-            str(item.get("ask_id") or item.get("job_id") or "")
-            for lane in ("ask", "running", "answer")
-            for item in snapshot.get(lane, [])
-            if isinstance(item, dict)
-        }
-        checklist_path = root / "checklist_snapshot.json"
-        checklist = self._read_json(checklist_path) if checklist_path.is_file() else {"items": []}
-        checklist_questions = self._checklist_questions(checklist)
-        recovered = []
-        still_active = []
-        passes = [
-            ("category", "output", "ask_id", "recovery_attempts", "evaluation", "evaluate", None),
-            ("checklist", "checklist_output", "checklist_ask_id", "checklist_recovery_attempts", "checklist_evaluation", "checklist", str(run.get("checklist_model") or DEFAULT_CHECKLIST_MODEL)),
-        ]
-        for kind, output_key, ask_key, attempts_key, template_name, task_name, model in passes:
-            for item in batch.get("evaluations", []):
-                if output_key not in item or Path(item[output_key]).is_file():
-                    continue
-                if str(item.get(ask_key) or "") in active_ask_ids:
-                    still_active.append(item[ask_key])
-                    continue
-                attempt = int(item.get(attempts_key, 0)) + 1
-                prompt = self._format_template(run, template_name, {
-                    "METADATA": "", "METADATA_CONTEXT": "", "CHECKLIST": checklist_questions,
-                    "CHECKLIST_QUESTIONS": checklist_questions, "SEED": str(item["seed"]),
-                })
-                ask_id = self._queue_ollama(
-                    run, task=f"{task_name}_{item['seed']}_recovery_{attempt}", prompt=prompt,
-                    output=Path(item[output_key]), images=[Path(run["reference_image"]), Path(item["file"])], model=model,
-                )
-                item.update({ask_key: ask_id, attempts_key: attempt, "recovered_at": self._now()})
-                recovered.append({"seed": item["seed"], "kind": kind, "ask_id": ask_id})
-        if not recovered:
-            if still_active:
-                raise PromptEvolutionError(f"Missing evaluation asks are still active: {', '.join(still_active)}")
-            raise PromptEvolutionError("No missing evaluation outputs were found to recover.")
-        batch["evaluation_recoveries"] = [*batch.get("evaluation_recoveries", []), {"at": self._now(), "items": recovered}]
-        self._write_json(batch_path / "batch.json", batch)
-        run["error"] = ""
-        self._save_run(run)
-        return self.detail(run_id)
 
     def _run_paths(self) -> list[Path]:
         base = Path(self.app.config.base_pipeline_path)
@@ -2160,72 +1473,54 @@ class PromptEvolutionService:
     def _find_run(self, run_id: str) -> dict[str, Any]:
         for path in self._run_paths():
             if path.parent.name == run_id:
-                return self._read_json(path)
+                run = self._read_json(path)
+                if int(run.get("version", 0)) == RUN_VERSION:
+                    return run
+                break
         raise FileNotFoundError(f"Prompt-evolution run not found: {run_id}")
 
     def list_runs(self) -> list[dict[str, Any]]:
-        return [self._read_json(path) for path in self._run_paths()]
+        runs = [self._read_json(path) for path in self._run_paths()]
+        return [run for run in runs if int(run.get("version", 0)) == RUN_VERSION]
 
     def detail(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run.get("status") == "AWAITING_FINALIST" and run.get("error"):
-            run["exploration_warning"] = str(run["error"])
-            run["error"] = ""
         batches = []
         for path in sorted((Path(run["root"]) / "batches").glob("*/batch.json")) if (Path(run["root"]) / "batches").exists() else []:
             batches.append(self._read_json(path))
-        if run.get("status") == "AWAITING_REFINEMENT_REVIEW":
-            incumbent = run.get("exploration_incumbent") or run.get("incumbent") or {}
-            corrections = run.get("pending_corrections") or []
-            allowed_categories = {str(item["category"]) for item in corrections}
-            for batch in batches:
-                if int(batch.get("index", -1)) != int(run.get("current_batch", -2)):
-                    continue
-                for attempt in batch.get("refinement_attempts", []):
-                    analysis = self._analyze_refinement_response(incumbent, attempt.get("response") or {}, corrections)
-                    attempt.update({
-                        "validation_errors": analysis["validation_errors"],
-                        "strict_valid": analysis["strict_valid"],
-                        "guarded_override_allowed": analysis["guarded_override_allowed"],
-                        "preview_status": analysis["preview_status"],
-                        "positive_core": analysis["positive_core"], "negative_core": analysis["negative_core"],
-                        "operations": analysis["operations"],
-                    })
-        finalists, finalist_mode = self._finalist_choices(run, batches)
-        return {**run, "batches": batches, "finalists": finalists, "finalist_mode": finalist_mode}
+        versions = [{
+            "prompt_version_id": batch["prompt_version_id"],
+            "fixed_renders": [item for item in batch.get("renders", []) if item.get("seed_role") == "fixed"],
+            "fresh_renders": [item for item in batch.get("renders", []) if item.get("seed_role") == "fresh"],
+        } for batch in batches]
+        random.Random(f"{run_id}:prompt-versions").shuffle(versions)
+        return {**run, "batches": batches, "prompt_versions": versions}
 
-    @staticmethod
-    def _finalist_choices(run: dict[str, Any], batches: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str]:
-        finalists = list(run.get("finalists") or [])
-        warning = run.get("exploration_warning") or run.get("error")
-        if run.get("status") != "AWAITING_FINALIST" or len(finalists) > 1 or not warning or not batches:
-            return finalists, "shortlist"
-        batch = batches[-1]
-        incumbent_file = str((run.get("incumbent") or {}).get("file") or "")
-        choices = []
-        for candidate in batch.get("candidates") or []:
-            choices.append({
-                **candidate,
-                "finalist_id": f"batch-{int(batch.get('index', 0)):03d}-seed-{candidate['seed']}",
-                "positive_prompt": batch.get("positive_prompt", ""),
-                "negative_prompt": batch.get("negative_prompt", ""),
-                "positive_core": batch.get("positive_core", batch.get("positive_prompt", "")),
-                "negative_core": batch.get("negative_core", batch.get("negative_prompt", "")),
-                "positive_core_terms": batch.get("positive_core_terms", []),
-                "negative_core_terms": batch.get("negative_core_terms", []),
-                "evaluation_wrapper": batch.get("evaluation_wrapper", {}),
-                "batch": batch.get("index", 0),
-                "is_incumbent": str(candidate.get("file") or "") == incumbent_file,
-            })
-        if not any(item["is_incumbent"] for item in choices) and run.get("incumbent"):
-            choices.append({**run["incumbent"], "is_incumbent": True})
-        generator = random.Random(f"{run.get('run_id', '')}:candidate-fallback")
-        generator.shuffle(choices)
-        return choices or finalists, "candidate_fallback"
+    def select_prompt_version(self, run_id: str, prompt_version_id: str, selection_reason: str = "") -> dict[str, Any]:
+        run = self._find_run(run_id)
+        if run["status"] != "AWAITING_FINAL_REVIEW":
+            raise PromptEvolutionError("Run is not awaiting final review.")
+        batches = [self._read_json(path) for path in sorted((Path(run["root"]) / "batches").glob("*/batch.json"))]
+        selected = next((batch for batch in batches if batch.get("prompt_version_id") == prompt_version_id), None)
+        if selected is None:
+            raise PromptEvolutionError("Unknown prompt version.")
+        run["selected_prompt_version"] = prompt_version_id
+        run["selection_reason"] = selection_reason.strip()
+        run["status"] = "COMPLETE"
+        self._log(run, f"Selected {prompt_version_id} as the final prompt version.")
+        root = Path(run["root"])
+        self._write_json(root / "prompt_core.json", {
+            "version": RUN_VERSION, "prompt_version_id": prompt_version_id,
+            "positive_core": selected["positive_core"], "negative_core": selected["negative_core"],
+            "checkpoint": run.get("checkpoint", ""),
+        })
+        self._write_json(root / "evaluation_wrapper.json", selected["evaluation_wrapper"])
+        self._save_run(run)
+        return self.detail(run_id)
 
     def advance_active_runs(self) -> list[dict[str, Any]]:
         results = []
         for run in self.list_runs():
-            if run["status"] not in {"COMPLETE", "ABORTED", "AWAITING_USER", "AWAITING_REFINEMENT_REVIEW"}:
+            if run["status"] not in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"}:
                 results.append(self.advance_run(run["run_id"]))
         return results

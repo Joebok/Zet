@@ -98,6 +98,63 @@ test("shared action roles and control states use the semantic design system", as
   await expect(page.locator(".fullscreen-image-close")).toBeHidden();
 });
 
+test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selection audits", async ({ page }) => {
+  await openPage(page, "prompt-evolution");
+  await expect(page.locator("#prompt-evolution-critic-model-a")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-critic-model-b")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-analysis-model")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-check-model")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-fixed-seed-count")).toHaveValue("3");
+  await expect(page.locator("#prompt-evolution-mode, #prompt-evolution-metadata")).toHaveCount(0);
+
+  const batch = {
+    index: 0, prompt_version_id: "prompt-000", status: "REVIEWED",
+    positive_prompt: "hidden black bob, gray background", negative_prompt: "hidden blonde hair, cropped",
+    positive_core: "hidden black bob", negative_core: "hidden blonde hair",
+    renders: [{ seed: 11, seed_role: "fixed", file: "fixed.png" }, { seed: 22, seed_role: "fresh", file: "fresh.png" }],
+    candidates: [{ seed: 11, critics: { a: { stable_matches: ["black bob"] }, b: { stable_matches: ["black bob"] } } }],
+    synthesis: { recurrent_deviations: [], stable_successes: ["black bob"] },
+    diagnosis: { interventions: [] }, edit: {},
+  };
+  const nextBatch = {
+    ...batch, index: 1, prompt_version_id: "prompt-001", status: "RENDERING", renders: [],
+    positive_prompt: "hidden black bob, teal coat, gray background", positive_core: "hidden black bob, teal coat",
+  };
+  await page.evaluate((value) => renderPromptEvolutionDetail(value), {
+    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
+    reference_image: "reference.png", checkpoint: "checkpoint", status: "RENDERING", batches: [batch, nextBatch],
+  });
+  const activePromptHistory = page.locator(".prompt-evolution-prompt-history").nth(1);
+  await activePromptHistory.click();
+  await expect(activePromptHistory).toContainText("hidden black bob, teal coat");
+  await expect(activePromptHistory.locator(".prompt-diff-added")).toContainText("teal coat");
+
+  await page.evaluate((value) => renderPromptEvolutionDetail(value), {
+    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
+    reference_image: "reference.png", checkpoint: "checkpoint", status: "AWAITING_FINAL_REVIEW",
+    prompt_versions: [{ prompt_version_id: "prompt-000", fixed_renders: [batch.renders[0]], fresh_renders: [batch.renders[1]] }], batches: [batch, nextBatch],
+  });
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("Choice A");
+  await expect(page.locator(".prompt-evolution-prompt-versions")).toContainText("Prompt version 2");
+  await expect(page.locator("[data-prompt-evolution-final-version='prompt-000']")).toBeVisible();
+
+  await page.evaluate((value) => renderPromptEvolutionDetail(value), {
+    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
+    reference_image: "reference.png", checkpoint: "checkpoint", status: "COMPLETE",
+    selected_prompt_version: "prompt-000", prompt_versions: [], batches: [batch],
+    activity_log: [{ at: "2026-08-10T14:00:00", level: "info", message: "Batch 1 — queued seed 11 for Critic A visual comparison." }],
+  });
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("Selected prompt version");
+  await expect(page.locator(".prompt-evolution-log")).toContainText("queued seed 11 for Critic A");
+  await page.locator("#prompt-evolution-detail details").filter({ hasText: "Automatic decision audit" }).click();
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("Cross-seed synthesis");
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("black bob");
+
+  const refreshed = page.waitForResponse((response) => response.url().endsWith("/api/prompt-evolution/runs") && response.ok());
+  await page.locator("#prompt-evolution-refresh").click();
+  await refreshed;
+});
+
 test("head-image manifest selection shows only the optional source image", async ({ page }) => {
   await page.route("**/api/head-image-manifest/tasks?*", (route) => route.fulfill({
     json: { tasks: [{ asset_id: 53, pipeline: "Head-Image", body_view: "Front", head_view: "Front" }] },

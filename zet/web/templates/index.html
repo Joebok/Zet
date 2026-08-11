@@ -1441,24 +1441,24 @@
               <figure><figcaption>Locked source</figcaption><img id="prompt-evolution-source-preview" alt="Selected locked costume reference"></figure>
               <figure><figcaption>768 × 1024 derivative</figcaption><img id="prompt-evolution-derivative-preview" alt="Processed prompt evolution reference"></figure>
             </div>
-            <label>Prompt edits, category evaluation model<select id="prompt-evolution-model"></select></label>
-            <label>Checklist evaluation model<select id="prompt-evolution-checklist-model"></select></label>
+            <label>Visual critic A<select id="prompt-evolution-critic-model-a"></select></label>
+            <label>Visual critic B<select id="prompt-evolution-critic-model-b"></select></label>
+            <label>Analysis and editor model<select id="prompt-evolution-analysis-model"></select></label>
+            <label>Regression-check model<select id="prompt-evolution-check-model"></select></label>
             <label>Checkpoint<select id="prompt-evolution-checkpoint"></select></label>
             <label>Render profile<select id="prompt-evolution-profile"></select></label>
             <div class="form-grid compact">
               <label>CFG<input id="prompt-evolution-cfg" type="number" min="0" max="30" step="0.5" value="7"></label>
               <label>Steps<input id="prompt-evolution-steps" type="number" min="1" max="150" value="32"></label>
-              <label>Images<input id="prompt-evolution-batch-size" type="number" min="2" max="10" value="5"></label>
+              <label>Images<input id="prompt-evolution-batch-size" type="number" min="2" max="10" value="6"></label>
+              <label>Fixed seeds<input id="prompt-evolution-fixed-seed-count" type="number" min="1" max="9" value="3"></label>
               <label>Batches<input id="prompt-evolution-total-batches" type="number" min="2" max="20" value="5"></label>
             </div>
-            <label>Metadata<select id="prompt-evolution-metadata"><option value="curated">Curated sections</option><option value="labels">Labels only</option><option value="image_only">Image only</option></select></label>
-            <label>Mode<select id="prompt-evolution-mode"><option value="auto">Full auto</option><option value="manual">Manual selection</option></select></label>
             <label>Optional starting positive prompt<textarea id="prompt-evolution-positive"></textarea></label>
             <label>Optional starting negative prompt<textarea id="prompt-evolution-negative"></textarea></label>
             <details class="prompt-evolution-checklist-editor">
               <summary>Character and costume checklists</summary>
-              <p class="status-text">Structured sidecars stored beside the selected Character.md and Costume_*.md. Valid categories are shown below.</p>
-              <div id="prompt-evolution-checklist-categories" class="status-text"></div>
+              <p class="status-text">Desired-condition regression checks stored beside the selected Character.md and Costume_*.md.</p>
               <label>Character / phase items (JSON array)<textarea id="prompt-evolution-character-checklist" spellcheck="false"></textarea></label>
               <button id="prompt-evolution-character-checklist-save" type="button">Save character / phase checklist</button>
               <label>Selected costume items (JSON array)<textarea id="prompt-evolution-costume-checklist" spellcheck="false"></textarea></label>
@@ -1469,7 +1469,7 @@
           </div>
           <details>
             <summary>LLM instruction templates</summary>
-            <label>Template<select id="prompt-evolution-template-name"><option>bootstrap</option><option>evaluation</option><option>checklist_evaluation</option><option>ranking</option><option>repair</option><option>refinement</option><option>directed_refinement</option></select></label>
+            <label>Template<select id="prompt-evolution-template-name"><option>bootstrap</option><option>visual_critic</option><option>regression_check</option><option>batch_synthesis</option><option>prompt_diagnosis</option><option>prompt_edit</option><option>repair</option><option>directed_refinement</option></select></label>
             <textarea id="prompt-evolution-template-text" class="prompt-evolution-template"></textarea>
             <button id="prompt-evolution-template-save" type="button">Save Template</button>
           </details>
