@@ -24,6 +24,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
             "Prompt_View_Text.json",
             "Prompt_View_Aliases.json",
             "Prompt_Background_Text.json",
+            "Prompt_Section_Metadata.json",
         ):
             shutil.copyfile(PROJECT_ROOT / "Config" / name, config_dir / name)
         shutil.copyfile(
@@ -106,16 +107,16 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->\n"
                 "* Front detail: `Visible center overlap.`.\n"
                 "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->",
-                "<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->\n"
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
                 "* Use anatomical left and right.\n"
                 "* Right side: `None.`.\n"
                 "* Left side: `None.`.\n"
                 "* Jewelry: `Small blue pendant.`.\n"
                 "* Primary weapon/tool: `N/A`.\n"
-                "<!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->",
-                "<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT -->\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->\n"
                 "* Front view should show `jewelry only; no equipment.`.\n"
-                "<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT -->",
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->",
             )
         )
 
@@ -176,12 +177,12 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
                 "* Silhouette: `Travel coat and boots.`.\n"
                 "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
-                "<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->\n"
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
                 "* Use anatomical left and right.\n"
                 "* Right side / right hip: `Ordered lantern.`.\n"
                 "* Left side / left hip: `Map satchel.`.\n"
                 "* Front-view reminder: anatomical right appears on the viewer's left; anatomical left appears on the viewer's right.\n"
-                "<!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->",
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
             )
         )
 
@@ -203,9 +204,9 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->\n"
                 "* Front view: `None.`.\n"
                 "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->",
-                "<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->\n"
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
                 "* Primary weapon/tool: `None.`.\n"
-                "<!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->",
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
             )
         )
 

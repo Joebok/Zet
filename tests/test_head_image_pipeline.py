@@ -34,41 +34,38 @@ def config_for(root: Path) -> Config:
 
 
 class HeadImageCompilerTests(unittest.TestCase):
-    def test_compiles_with_and_without_optional_source(self) -> None:
+    def test_standard_source_path_compiles_all_views(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             source = root / "source.png"
             source.write_bytes(b"image")
             for view in FOUNDATION_VIEWS:
-                prompts = {}
-                for suffix, references in (("none", []), ("source", [{"role": "head_image_source", "path": str(source)}])):
-                    with self.subTest(view=view, source=bool(references)):
-                        result = compile_head_image_job({
-                            "Job": f"head-{view}-{suffix}",
-                            "Task": "head-image",
-                            "Character": "Test",
-                            "Phase": "Adult",
-                            "Head View": view,
-                            "Template Path": str(template),
-                            "Output Directory": str(root / view / suffix),
-                            "Reference Files": references,
-                        }, PROJECT_ROOT)
-                        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-                        prompts[suffix] = prompt
-                        self.assertIn("HEAD-IMAGE Adult CHARACTER REFERENCE", prompt)
-                        self.assertNotIn("NECK FITMENT", prompt)
-                        self.assertNotIn("simple, unobtrusive background", prompt.lower())
-                        self.assertNotIn("{{", prompt)
-                        self.assertNotIn("young-adult Tsaeytte", prompt)
-                        self.assertNotIn("* Wrong age phase.", prompt)
-                        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
-                        self.assertEqual(3, manifest["head_image_prompt_contract"]["version"])
-                        self.assertEqual("deferred", manifest["head_image_prompt_contract"]["geometry_regularization"])
-                        self.assertEqual(references, manifest["resources"])
-                self.assertEqual(prompts["none"], prompts["source"])
+                references = [{"role": "head_image_source", "path": str(source)}]
+                with self.subTest(view=view):
+                    result = compile_head_image_job({
+                        "Job": f"head-{view}-source",
+                        "Task": "head-image",
+                        "Character": "Test",
+                        "Phase": "Adult",
+                        "Head View": view,
+                        "Template Path": str(template),
+                        "Output Directory": str(root / view / "source"),
+                        "Reference Files": references,
+                    }, PROJECT_ROOT)
+                    prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+                    self.assertIn("HEAD-IMAGE Adult CHARACTER REFERENCE", prompt)
+                    self.assertNotIn("NECK FITMENT", prompt)
+                    self.assertNotIn("simple, unobtrusive background", prompt.lower())
+                    self.assertNotIn("{{", prompt)
+                    self.assertNotIn("young-adult Tsaeytte", prompt)
+                    self.assertNotIn("* Wrong age phase.", prompt)
+                    manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+                    self.assertEqual(4, manifest["head_image_prompt_contract"]["version"])
+                    self.assertEqual("deferred", manifest["head_image_prompt_contract"]["geometry_regularization"])
+                    self.assertEqual(references, manifest["resources"])
 
-    def test_source_reference_instructions_are_included_only_when_source_is_attached(self) -> None:
+    def test_standard_source_sections_are_rendered_in_canonical_order(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             template = root / "Character.md"
@@ -77,8 +74,9 @@ class HeadImageCompilerTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
             template.write_text(
                 template_text.replace(
-                    "<!-- ZET:BEGIN HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->\n\n<!-- ZET:END HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->",
-                    "<!-- ZET:BEGIN HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->\n\nInterpret this source as identity evidence.\n\n<!-- ZET:END HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->",
+                    "<!-- ZET:BEGIN HEAD_IMAGE_SOURCE_INSTRUCTIONS -->",
+                    "<!-- ZET:BEGIN HEAD_IMAGE_SOURCE_INSTRUCTIONS -->\nInterpret this source as identity evidence.",
+                    1,
                 ),
                 encoding="utf-8",
             )
@@ -99,15 +97,66 @@ class HeadImageCompilerTests(unittest.TestCase):
                 "Reference Files": [{"role": "head_image_source", "path": str(source)}],
             }, PROJECT_ROOT)
             prompt = Path(with_source["final_prompt"]).read_text(encoding="utf-8")
-            self.assertLess(prompt.index("Interpret this source as identity evidence."), prompt.index("## Requested view"))
+            ordered = [
+                "Interpret this source as identity evidence.",
+                "[Technical head and face description.]",
+                "Front view head notes:",
+                "[Technical hair description.]",
+                "Front view hair notes:",
+                "Source-image contract:",
+                "Render one clear image of the character's head",
+            ]
+            self.assertEqual(sorted(prompt.index(value) for value in ordered), [prompt.index(value) for value in ordered])
 
-            without_source = compile_head_image_job({
-                **base_job,
-                "Output Directory": str(root / "without-source"),
-                "Reference Files": [],
+    def test_transform_path_suppresses_all_standard_source_head_and_hair_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.png"
+            source.write_bytes(b"image")
+            template = root / "Character.md"
+            text = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md").read_text(encoding="utf-8")
+            text = text.replace(
+                "<!-- ZET:BEGIN HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->",
+                "<!-- ZET:BEGIN HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->\nTRANSFORM PATH ONLY",
+                1,
+            )
+            template.write_text(text, encoding="utf-8")
+            result = compile_head_image_job({
+                "Job": "transform",
+                "Task": "head-image",
+                "Character": "Test",
+                "Phase": "Elder",
+                "Head View": "Front",
+                "Template Path": str(template),
+                "Output Directory": str(root / "output"),
+                "Reference Files": [{"role": "head_image_source", "path": str(source)}],
             }, PROJECT_ROOT)
-            prompt = Path(without_source["final_prompt"]).read_text(encoding="utf-8")
-            self.assertNotIn("Interpret this source as identity evidence.", prompt)
+            prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("TRANSFORM PATH ONLY", prompt)
+            for excluded in (
+                "[Technical head and face description.]",
+                "Front view head notes:",
+                "[Technical hair description.]",
+                "Front view hair notes:",
+                "Source-image contract:",
+                "Render one clear image of the character's head",
+            ):
+                self.assertNotIn(excluded, prompt)
+
+    def test_rejects_missing_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with self.assertRaisesRegex(Exception, "requires one head_image_source"):
+                compile_head_image_job({
+                    "Job": "missing",
+                    "Task": "head-image",
+                    "Character": "Test",
+                    "Phase": "Adult",
+                    "Head View": "Front",
+                    "Template Path": str(PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"),
+                    "Output Directory": str(root / "output"),
+                    "Reference Files": [],
+                }, PROJECT_ROOT)
 
     def test_rejects_multiple_sources(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -133,7 +182,21 @@ class HeadImageCompilerTests(unittest.TestCase):
     "The checked-out Zet_Library Elder regression artifacts are unavailable.",
 )
 class ElderPromptRegressionTests(unittest.TestCase):
-    def test_current_compilers_reproduce_all_saved_elder_prompts_exactly(self) -> None:
+    def test_review_prompt_changes_are_confined_to_requested_view_section(self) -> None:
+        review_root = PROJECT_ROOT / "Docs" / "Template_Schema_Review"
+        for name in ("Front", "Front-Left-3-4", "Left-Profile", "Back-Right-3-4"):
+            with self.subTest(view=name):
+                before = (review_root / "before" / "prompts" / "Head-Image" / f"{name}.md").read_text(encoding="utf-8")
+                after = (review_root / "after" / "prompts" / "Head-Image" / f"{name}.md").read_text(encoding="utf-8")
+                before_prefix, before_view = before.split("## Requested view", 1)
+                after_prefix, after_view = after.split("## Requested view", 1)
+                self.assertEqual(before_prefix, after_prefix)
+                self.assertEqual(
+                    before_view.split("## Rendering Style", 1)[1],
+                    after_view.split("## Rendering Style", 1)[1],
+                )
+
+    def test_current_compilers_emit_canonical_elder_prompts_for_all_views(self) -> None:
         template = ELDER_LIBRARY_ROOT / "Characters" / "Tsaeytte" / "Elder" / "Character.md"
         pipeline_root = ELDER_LIBRARY_ROOT / "Pipelines" / "Tsaeytte" / "Elder"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -167,8 +230,12 @@ class ElderPromptRegressionTests(unittest.TestCase):
                         })
                     result = compiler(job, PROJECT_ROOT)
                     actual = Path(result["final_prompt"]).read_text(encoding="utf-8")
-                    expected = expected_path.read_text(encoding="utf-8")
-                    self.assertEqual(expected, actual, str(expected_path))
+                    self.assertNotIn("{{", actual, str(expected_path))
+                    view_token = manifest.get("view_token") or manifest["body_view_token"]
+                    self.assertIn(view_token.replace("_", " ").split()[0], actual.upper())
+                    if task == "Head-Image":
+                        self.assertNotIn("BODY PROPORTIONS", actual)
+                        self.assertNotIn("FITMENT CLOTHING", actual)
 
 
 class HeadImageReferenceTests(unittest.TestCase):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 from dataclasses import dataclass, replace
@@ -119,16 +120,35 @@ class CostumeService:
         """Require uploaded costume markdown to follow the shared template structure."""
         template_path = self.path_service.shared_costume_template_path()
         try:
-            expected = set(load_template_sections(template_path))
+            shared_sections = load_template_sections(template_path)
+            expected = set(shared_sections)
             with tempfile.TemporaryDirectory() as temp_dir:
                 upload_path = Path(temp_dir) / "Costume.md"
                 upload_path.write_text(markdown, encoding="utf-8")
-                actual = set(load_template_sections(upload_path))
+                uploaded_sections = load_template_sections(upload_path)
+                actual = set(uploaded_sections)
         except TemplateCompileError as exc:
             raise CostumeServiceError(str(exc)) from exc
         missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
         if missing:
             raise CostumeServiceError(f"Costume template missing sections: {', '.join(missing)}")
+        if extra:
+            raise CostumeServiceError(f"Costume template has unsupported sections: {', '.join(extra)}")
+        metadata_path = self.path_service.project_root / "Config" / "Prompt_Section_Metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8")).get("sections", {})
+        for name, record in metadata.items():
+            if not isinstance(record, dict) or not record.get("required_content") or not name.startswith("COSTUME_"):
+                continue
+            names = [name.replace("{VIEW}", view) for view in TURNAROUND_VIEW_ORDER] if "{VIEW}" in name else [name]
+            for canonical_name in names:
+                if canonical_name not in expected:
+                    continue
+                value = str(uploaded_sections.get(canonical_name) or "").strip()
+                if not value:
+                    raise CostumeServiceError(f"{canonical_name} must be filled in.")
+                if value == str(shared_sections.get(canonical_name) or "").strip():
+                    raise CostumeServiceError(f"{canonical_name} still contains shared template placeholder text.")
 
     def _default_costume_markdown(self) -> str:
         """Return the shared costume template contents."""

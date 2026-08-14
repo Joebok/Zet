@@ -155,7 +155,7 @@ test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selec
   await refreshed;
 });
 
-test("head-image manifest selection shows only the optional source image", async ({ page }) => {
+test("head-image manifest selection shows only the required source image", async ({ page }) => {
   await page.route("**/api/head-image-manifest/tasks?*", (route) => route.fulfill({
     json: { tasks: [{ asset_id: 53, pipeline: "Head-Image", body_view: "Front", head_view: "Front" }] },
   }));
@@ -173,7 +173,22 @@ test("head-image manifest selection shows only the optional source image", async
 
   await expect(page.locator("#manifest-task-table tbody td")).toHaveText(["53", "Head-Image", "Front", "Ready"]);
   await expect(page.locator("#manifest-body-section")).toBeHidden();
-  await expect(page.locator("#manifest-head-heading")).toHaveText("Optional Source Image");
+  await expect(page.locator("#manifest-head-heading")).toHaveText("Required Source Image");
+  await expect(page.locator("#headshot-paste-zone")).toBeVisible();
+});
+
+test("manifest accepts a pasted source image", async ({ page }) => {
+  await openPage(page, "manifest");
+  await page.locator("#manifest-task-table tbody tr").first().click();
+  const upload = page.waitForRequest((request) => request.url().includes("/api/head-image-sources?") && request.method() === "POST");
+
+  await page.locator("#headshot-paste-zone").evaluate((target) => {
+    const clipboard = new DataTransfer();
+    clipboard.items.add(new File(["image"], "pasted.png", { type: "image/png" }));
+    target.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, clipboardData: clipboard }));
+  });
+
+  expect(new URL((await upload).url()).searchParams.get("filename")).toBe("pasted.png");
 });
 
 test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
@@ -192,6 +207,32 @@ test("toolbar is a keyboard-operable disclosure", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(toggle).toBeFocused();
+});
+
+test("template manuals open from Help and contextual links, copy, and download", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openPage(page, "assets");
+  await page.locator("#help-menu-button").click();
+  await page.locator("#help-menu button[data-page='help']").click();
+  await expect(page.locator("#help-page")).toHaveClass(/active/);
+  await expect(page.locator("#template-manual-content h1")).toHaveText("Character Template Instructions");
+
+  await page.locator("#template-manual-copy").click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("# Character Template Instructions");
+
+  await page.locator("#template-manual-select").selectOption("costume");
+  await expect(page.locator("#template-manual-content h1")).toHaveText("Costume Template Instructions");
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#template-manual-download").click();
+  expect((await downloadPromise).suggestedFilename()).toBe("Costume_Template_Instructions.md");
+
+  await page.evaluate(() => window.activatePage("onboarding", { skipAutosave: true }));
+  await page.locator("#character-setup-details").evaluate((element) => { element.open = true; });
+  await page.locator(".open-template-manual[data-manual='character']").click();
+  await expect(page.locator("#template-manual-select")).toHaveValue("character");
+  await page.evaluate(() => window.activatePage("costumes", { skipAutosave: true }));
+  await page.locator(".open-template-manual[data-manual='costume']").click();
+  await expect(page.locator("#template-manual-select")).toHaveValue("costume");
 });
 
 test("@desktop-smoke workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
@@ -285,6 +326,43 @@ test("New menu follows the active workspace", async ({ page }) => {
   await expect(page.locator("#new-story")).toBeVisible();
 });
 
+test("New Character shows an uncreated draft instead of the selected character", async ({ page }) => {
+  await openPage(page, "assets");
+  await page.locator("#new-menu-button").click();
+  await page.locator("#new-character").click();
+
+  await expect(page.locator("#onboarding-page")).toHaveClass(/active/);
+  await expect(page.locator("#onboarding-status")).toHaveText("New character — not created yet");
+  await expect(page.locator("#onboarding-title")).toHaveText("Adult");
+  await expect(page.locator("#onboarding-status-list")).toContainText("Not created until template upload");
+  await expect(page.locator("#character-phone-viewer")).toContainText("Character folder has not been created yet.");
+
+  await page.locator("#onboarding-character").fill("New Hero");
+  await expect(page.locator("#onboarding-title")).toHaveText("New Hero / Adult");
+  await expect(page.locator("#character-phone-viewer h2")).toHaveText("New Hero · Adult");
+});
+
+test("Failed character upload keeps the selected template for retry", async ({ page }) => {
+  await openPage(page, "assets");
+  await page.locator("#new-menu-button").click();
+  await page.locator("#new-character").click();
+  await page.locator("#onboarding-character").fill("New Hero");
+  await page.locator("#onboarding-template-file").setInputFiles({
+    name: "Character.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("template"),
+  });
+  await page.route("**/api/onboarding/template?*", (route) => route.fulfill({
+    status: 400,
+    json: { detail: "Upload failed." },
+  }));
+
+  await page.locator("#onboarding-upload-template").click();
+
+  await expect(page.locator("#onboarding-message")).toHaveText("Upload failed.");
+  await expect(page.locator("#onboarding-template-file")).toHaveValue(/Character\.md$/);
+});
+
 test("New Story and New Scene expose their creation controls", async ({ page }) => {
   await openPage(page, "stories");
   await page.locator("#new-menu-button").click();
@@ -304,11 +382,13 @@ test("New Story and New Scene expose their creation controls", async ({ page }) 
   await expect(page.locator("#scene-create")).toBeVisible();
 });
 
-test("Aux Images is accessible from the main button row", async ({ page }) => {
+test("Aux Images is accessible from Tools without changing workspace", async ({ page }) => {
   await openPage(page, "assets");
-  await page.locator("#workspace-story").click();
-  await page.getByRole("button", { name: "Aux Images" }).click();
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#toolbar-settings-button").click();
+  await page.locator("#toolbar-settings-menu button[data-page='auxiliary-resources']").click();
   await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
   const thumbnailFit = await page.evaluate(() => {
     const image = document.body.appendChild(document.createElement("img"));
     image.className = "aux-resource-thumb";

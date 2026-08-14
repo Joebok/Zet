@@ -12,9 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
+from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, write_json_file
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, select_prompt_sections, write_json_file
+from zet.services.prompt_template_service import PromptTemplateService
 from Scripts.Library_Paths import character_root, pipeline_root
 from zet.services.pipeline_compiler_support import (
     expected_output_for_job,
@@ -213,7 +214,7 @@ def normalize_costume_dressing_sections(
     )
     normalized["COSTUME_DESCRIPTION_FACTS"] = costume_facts
 
-    equipment_facts_name = "EQUIPMENT_DESCRIPTION_FACTS"
+    equipment_facts_name = "EQUIPMENT_JEWELRY_PROPS_FACTS"
     equipment_facts = normalized.get(equipment_facts_name, "")
     equipment_values = _labeled_values(equipment_facts)
     equipment_labels = {
@@ -241,7 +242,7 @@ def normalize_costume_dressing_sections(
 
     if not has_equipment and not has_jewelry:
         for name in list(normalized):
-            if name.startswith("EQUIPMENT_DESCRIPTION_"):
+            if name.startswith("EQUIPMENT_JEWELRY_PROPS_"):
                 normalized.pop(name, None)
                 normalized_sources.pop(name, None)
                 suppressed[name] = "no jewelry or equipment"
@@ -274,7 +275,7 @@ def normalize_costume_dressing_sections(
     }
     selected_view_names = {
         f"COSTUME_DESCRIPTION_VIEW_{body_view_token}",
-        f"EQUIPMENT_DESCRIPTION_VIEW_{body_view_token}",
+        f"EQUIPMENT_JEWELRY_PROPS_VIEW_{body_view_token}",
     }
     for name in selected_view_names:
         text = normalized.get(name, "")
@@ -338,16 +339,14 @@ def load_costume_dressing_section_data(
 ) -> tuple[dict[str, str], dict[str, dict]]:
     sections, sources = load_body_reference_section_data(project_root, character_template_path)
     for name in list(sections):
-        if name.startswith("COSTUME_") or name.startswith("EQUIPMENT_") or name == "IDENTITY_PRESERVATION_COSTUME":
+        if name.startswith("COSTUME_") or name.startswith("EQUIPMENT_JEWELRY_PROPS_"):
             sections.pop(name, None)
             sources.pop(name, None)
-    costume_sections, costume_sources = load_template_sections_with_sources(
-        costume_path,
-        source_kind="costume_template_section",
-        source_label=f"Costume template: {costume_path.name}",
-    )
+    costume_sections, costume_sources = PromptTemplateService(project_root).load_marked_sections([
+        (costume_path, "costume_template_section", f"Costume template: {costume_path.name}"),
+    ])
     for name, text in costume_sections.items():
-        if name.startswith("COSTUME_") or name.startswith("EQUIPMENT_") or name == "IDENTITY_PRESERVATION_COSTUME":
+        if name.startswith("COSTUME_") or name.startswith("EQUIPMENT_JEWELRY_PROPS_"):
             sections[name] = text
             sources[name] = costume_sources.get(name, {})
     return sections, sources
@@ -490,11 +489,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         section_sources,
         body_view_token,
     )
-    selection = select_sections(all_sections, bundle, body_view_token, section_sources)
-    if selection.missing_required:
-        raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
-    if selection.forbidden_matches:
-        raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
+    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token)
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -529,13 +524,13 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
     )
     body_view_display = re.sub(r"\s+VIEW$", "", str(body_view_data["label"]).upper())
     head_view_display = re.sub(r"\s+VIEW$", "", str(head_view_data["label"]).upper())
-    equipment_facts_selected = "EQUIPMENT_DESCRIPTION_FACTS" in selection.sections
-    equipment_view_selected = f"EQUIPMENT_DESCRIPTION_VIEW_{body_view_token}" in selection.sections
+    equipment_facts_selected = "EQUIPMENT_JEWELRY_PROPS_FACTS" in selection.sections
+    equipment_view_selected = f"EQUIPMENT_JEWELRY_PROPS_VIEW_{body_view_token}" in selection.sections
     equipment_heading = ""
     if equipment_facts_selected:
         equipment_heading = "# Equipment and Jewelry" if any(
             label != "jewelry" and _semantic_value(value) not in _EMPTY_SECTION_VALUES
-            for label, value in _labeled_values(selection.sections["EQUIPMENT_DESCRIPTION_FACTS"]).items()
+            for label, value in _labeled_values(selection.sections["EQUIPMENT_JEWELRY_PROPS_FACTS"]).items()
             if label in {"primary weapon/tool", "secondary weapon/tool", "containers", "magical objects"}
             or label.startswith("right side")
             or label.startswith("left side")
@@ -591,7 +586,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         metadata_values=metadata_values,
         metadata_sources=metadata_sources,
         selection=selection,
-        required_section_names=list(bundle.get("required_sections", [])),
+        required_section_names=[],
         view_token=body_view_token,
     )
     references = auxiliary_references_for_texts(

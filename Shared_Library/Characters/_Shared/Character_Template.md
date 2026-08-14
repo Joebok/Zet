@@ -8,126 +8,6 @@ Canonical Art Style: `[Painterly semi-realistic, anime-influenced facial proport
 
 ---
 
-# Compiler Notes
-
-<!-- ZET:BEGIN COMPILER_NOTES -->
-
-Use this file as a structured source document for image-prompt compilation.
-
-Recommended usage:
-
-* Use `*_FACTS` sections for technical/reference jobs such as body-reference, fitment, turnaround sheets, and consistency checks.
-* Use `*_PICARESQUE` sections for narrative, expressive, cinematic, or scene-based jobs.
-* Use `IDENTITY_PRESERVATION` sections whenever the character’s likeness must remain stable.
-* Use view-specific subsections when the task requests a specific camera/view angle.
-* Use `HEAD_IMAGE_REFERENCE_RULES` to define how an optional source image contributes identity and which phase changes are intentional.
-* If a view-specific subsection is empty, fall back to the general section above it.
-
-<!-- ZET:END COMPILER_NOTES -->
-
----
-
-# General Description
-
-## General Description — Just the Facts
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_FACTS -->
-
-[Brief factual summary of the character without mood, story, or emotional interpretation.]
-
-Example stub:
-
-* `[Character Name]` is a `[species/ancestry]` `[role/class/archetype]`.
-* Apparent age: `[adult / young adult / etc.]`.
-* Overall visual impression: `[short factual description]`.
-* Canonical style: `[style]`.
-
-<!-- ZET:END GENERAL_DESCRIPTION_FACTS -->
-
-### General Description — View Stubs
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT -->
-
-Front view notes:
-
-* `[Any front-view-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-Front-left 3/4 view notes:
-
-* `[Any front-left 3/4-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-Front-right 3/4 view notes:
-
-* `[Any front-right 3/4-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-Left profile view notes:
-
-* `[Any left-profile-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-Right profile view notes:
-
-* `[Any right-profile-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-Back-left 3/4 view notes:
-
-* `[Any back-left 3/4-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-Back-right 3/4 view notes:
-
-* `[Any back-right 3/4-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_VIEW_BACK -->
-
-Back view notes:
-
-* `[Any back-view-specific general information.]`
-
-<!-- ZET:END GENERAL_DESCRIPTION_VIEW_BACK -->
-
----
-
-## General Description — Picaresque
-
-<!-- ZET:BEGIN GENERAL_DESCRIPTION_PICARESQUE -->
-
-[Flavor-rich description of the character’s presence, attitude, role in the world, or visual storytelling identity.]
-
-Example stub:
-
-* `[Character Name]` carries herself with `[personality impression]`.
-* Her visual presence suggests `[story/worldbuilding impression]`.
-* In narrative scenes, she should feel like `[dramatic or emotional anchor]`.
-
-<!-- ZET:END GENERAL_DESCRIPTION_PICARESQUE -->
-
----
-
 # Body Description
 
 ## Body Description — Just the Facts
@@ -152,7 +32,7 @@ Suggested fields:
 
 <!-- ZET:END BODY_DESCRIPTION_FACTS -->
 
-### Body Description — View Stubs
+## Body Description — View-Specific
 
 <!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
 
@@ -220,21 +100,6 @@ Back view body notes:
 
 ---
 
-## Body Description — Picaresque
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_PICARESQUE -->
-
-[Expressive description of physical presence, gesture, grace, tension, confidence, awkwardness, athleticism, etc.]
-
-Example stub:
-
-* Her movement feels `[fluid / wary / buoyant / precise / theatrical]`.
-* Her posture communicates `[confidence / curiosity / nervousness / resolve]`.
-
-<!-- ZET:END BODY_DESCRIPTION_PICARESQUE -->
-
----
-
 # Head Description
 
 ## Head Description — Just the Facts
@@ -259,7 +124,7 @@ Suggested fields:
 
 <!-- ZET:END HEAD_DESCRIPTION_FACTS -->
 
-### Head Description — View Stubs
+## Head Description — View-Specific
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
 
@@ -327,21 +192,6 @@ Back view head notes:
 
 ---
 
-## Head Description — Picaresque
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_PICARESQUE -->
-
-[Expressive face/head description.]
-
-Example stub:
-
-* Her face tends to read as `[watchful / bright / mischievous / thoughtful / guarded]`.
-* Her expressions should preserve `[core emotional identity]`.
-
-<!-- ZET:END HEAD_DESCRIPTION_PICARESQUE -->
-
----
-
 # Hair Description
 
 ## Hair Description — Just the Facts
@@ -364,7 +214,7 @@ Suggested fields:
 
 <!-- ZET:END HAIR_DESCRIPTION_FACTS -->
 
-### Hair Description — View Stubs
+## Hair Description — View-Specific
 
 <!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT -->
 
@@ -432,24 +282,9 @@ Back view hair notes:
 
 ---
 
-## Hair Description — Picaresque
+# Expression
 
-<!-- ZET:BEGIN HAIR_DESCRIPTION_PICARESQUE -->
-
-[Flavor description of how the hair contributes to the character’s identity.]
-
-Example stub:
-
-* Her hair gives her silhouette `[distinctive impression]`.
-* In motion, it should `[swing / hook / frame / remain compact / etc.]`.
-
-<!-- ZET:END HAIR_DESCRIPTION_PICARESQUE -->
-
----
-
-# Expression and Emotional Range
-
-## Expression — Just the Facts
+## Expression Guidance
 
 <!-- ZET:BEGIN EXPRESSION_DESCRIPTION_FACTS -->
 
@@ -465,57 +300,11 @@ Suggested fields:
 
 <!-- ZET:END EXPRESSION_DESCRIPTION_FACTS -->
 
-## Expression — Picaresque
-
-<!-- ZET:BEGIN EXPRESSION_DESCRIPTION_PICARESQUE -->
-
-[Flavor description of the character's characteristic emotional range.]
-
-<!-- ZET:END EXPRESSION_DESCRIPTION_PICARESQUE -->
-
----
-
-# Pose and Gesture
-
-## Pose and Gesture — Just the Facts
-
-<!-- ZET:BEGIN POSE_GESTURE_FACTS -->
-
-[Technical pose rules.]
-
-Suggested fields:
-
-* Neutral standing pose:
-* Turnaround pose:
-* Fitment pose:
-* Action pose limits:
-* Hand behavior:
-* Foot placement:
-* Balance:
-* Forbidden pose drift:
-
-<!-- ZET:END POSE_GESTURE_FACTS -->
-
-## Pose and Gesture — Picaresque
-
-<!-- ZET:BEGIN POSE_GESTURE_PICARESQUE -->
-
-[Flavor description of movement and body language.]
-
-Example stub:
-
-* Her gestures should feel `[expressive / precise / playful / guarded / theatrical]`.
-* She carries energy through `[hands / shoulders / eyes / posture / step]`.
-
-<!-- ZET:END POSE_GESTURE_PICARESQUE -->
-
 ---
 
 # Identity Preservation
 
-## Identity Preservation — Core Rules
-
-These rules should be included whenever the image must preserve character identity.
+## Core
 
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->
 
@@ -533,7 +322,7 @@ The rendered character must be recognizably the same person across views, expres
 
 <!-- ZET:END IDENTITY_PRESERVATION_CORE -->
 
-## Identity Preservation — Face
+## Face
 
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_FACE -->
 
@@ -547,7 +336,7 @@ Face preservation rules:
 
 <!-- ZET:END IDENTITY_PRESERVATION_FACE -->
 
-## Identity Preservation — Eyes
+## Eyes
 
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_EYES -->
 
@@ -559,7 +348,7 @@ Eye preservation rules:
 
 <!-- ZET:END IDENTITY_PRESERVATION_EYES -->
 
-## Identity Preservation — Hair
+## Hair
 
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_HAIR -->
 
@@ -572,7 +361,7 @@ Hair preservation rules:
 
 <!-- ZET:END IDENTITY_PRESERVATION_HAIR -->
 
-## Identity Preservation — Ears
+## Ears
 
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_EARS -->
 
@@ -585,55 +374,69 @@ Ear preservation rules:
 
 <!-- ZET:END IDENTITY_PRESERVATION_EARS -->
 
-## Identity Preservation — Body
+---
 
-<!-- ZET:BEGIN IDENTITY_PRESERVATION_BODY -->
+# Scene Rendering
 
-Body preservation rules:
+## Scene Character Identity
 
-* Preserve `[canonical build]`.
-* Preserve `[height/proportion impression]`.
-* Preserve `[posture/movement identity]`.
-* Do not alter body type to match generic fantasy archetypes.
+<!-- ZET:BEGIN SCENE_CHARACTER_IDENTITY -->
 
-<!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
-## Scene Rendering Identity Preservation
 
-<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->
-
-<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->
+<!-- ZET:END SCENE_CHARACTER_IDENTITY -->
 
 ---
 
-# Technical Fitment / Reference-Only Rendering
+# Body Reference
 
-## Head-Image Reference Instructions
+## Character Requirements
 
-Optional character- or phase-specific instructions in this section are injected immediately after the Head Image Source attachment notice.
+<!-- ZET:BEGIN BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 
-<!-- ZET:BEGIN HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->
+Rendering priorities:
 
-<!-- ZET:END HEAD_IMAGE_REFERENCE_INSTRUCTIONS -->
+* `[Body-only art style without face or head traits.]`
 
-## Head-Image Reference Rules
+<!-- ZET:END BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 
-<!-- ZET:BEGIN HEAD_IMAGE_REFERENCE_RULES -->
+---
 
-Optional source-image contract:
+# Head Image
+
+## Transform Instructions
+
+<!-- ZET:BEGIN HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->
+
+
+
+<!-- ZET:END HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->
+
+## Source Instructions
+
+<!-- ZET:BEGIN HEAD_IMAGE_SOURCE_INSTRUCTIONS -->
+
+
+
+<!-- ZET:END HEAD_IMAGE_SOURCE_INSTRUCTIONS -->
+
+## Source Rules
+
+<!-- ZET:BEGIN HEAD_IMAGE_SOURCE_RULES -->
+
+Source-image contract:
 
 * Source identity authority: `[What likeness or design information should be taken from a supplied source image.]`
 * Preserve from source: `[Identity-defining shapes, proportions, expression, tilt, or other stable traits.]`
 * Intentional target-phase changes: `[Age, hair, species, condition, or other changes required by this Character.md.]`
 * Template precedence: the target-phase Character.md overrides the source only for explicitly described changes; preserve all other identity-defining source traits.
-* Without a source image: construct the character from the factual, identity-preservation, and requested-view sections in this Character.md.
 * The requested target view always overrides the source image's camera angle or head orientation.
 
-<!-- ZET:END HEAD_IMAGE_REFERENCE_RULES -->
+<!-- ZET:END HEAD_IMAGE_SOURCE_RULES -->
 
-## Head-Image Rendering Rules
+## Character Requirements
 
-<!-- ZET:BEGIN HEAD_IMAGE_RENDERING_RULES -->
+<!-- ZET:BEGIN HEAD_IMAGE_CHARACTER_REQUIREMENTS -->
 
 Rendering priorities:
 
@@ -644,272 +447,40 @@ Rendering priorities:
 * The visible shoulders, upper torso, and clothing are contextual only and do not define the final assembled body.
 * Do not add a narrative scene, prominent props, or unrelated characters.
 
-<!-- ZET:END HEAD_IMAGE_RENDERING_RULES -->
+<!-- ZET:END HEAD_IMAGE_CHARACTER_REQUIREMENTS -->
 
-## Body Reference Rendering Rules
+## Negative Guidance
 
-<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
-
-Rendering priorities:
-
-* `[Body-only art style without face or head traits.]`
-
-<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
-
-## Character-Assembly Rendering Rules
-
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_RENDERING_RULES -->
-
-<!-- ZET:END CHARACTER_ASSEMBLY_RENDERING_RULES -->
-
-## STANCE AND FOOT PLACEMENT — CRITICAL
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE -->
-
-Use a neutral anatomical reference stance.
-
-{FOOTWEAR_CONTACT}
-No raised-foot pose.
-No lifted foot.
-No tiptoe stance.
-No walking step.
-No crossed ankles.
-No ballet pose.
-No contrapposto.
-No weight-shift pose.
-
-The legs remain straight and relaxed, with only a slight natural knee softness.
-Both knees point in the same direction as the torso.
-Feet are placed directly under the hips, shoulder-width or slightly narrower.
-Left and right feet are parallel or nearly parallel.
-The feet must align with the requested body view.
-
-For {VIEW} view:
-<!-- ZET:END NEUTRAL_POSE_STANCE -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT -->
-
-- Feet are side-by-side and symmetrical.
-- Knees, ankles, and toes align vertically beneath the hips.
-- No staggered foot placement.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
-
-- {FOOTWEAR_GROUNDING}
-- The near foot and far foot may be offset only enough to show depth.
-- Do not turn the stance into a walking pose.
-- Do not cross the feet or place one foot behind the other dramatically.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4 -->
-
-- {FOOTWEAR_GROUNDING}
-- The near foot and far foot may be offset only enough to show depth.
-- Do not turn the stance into a walking pose.
-- Do not cross the feet or place one foot behind the other dramatically.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_LEFT_PROFILE -->
-
-- {FOOTWEAR_GROUNDING}
-- One foot may partially overlap the other because of the view angle, but neither foot is lifted.
-- The body is not stepping forward.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE -->
-
-- {FOOTWEAR_GROUNDING}
-- One foot may partially overlap the other because of the view angle, but neither foot is lifted.
-- The body is not stepping forward.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK_LEFT_3_4 -->
-
-- {FOOTWEAR_GROUNDING}
-- The near foot and far foot may be offset only enough to show depth.
-- Do not turn the stance into a walking pose.
-- Do not cross the feet or place one foot behind the other dramatically.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK_RIGHT_3_4 -->
-
-- {FOOTWEAR_GROUNDING}
-- The near foot and far foot may be offset only enough to show depth.
-- Do not turn the stance into a walking pose.
-- Do not cross the feet or place one foot behind the other dramatically.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN NEUTRAL_POSE_STANCE_VIEW_BACK -->
-
-- Feet are side-by-side and symmetrical.
-- Knees, ankles, and toes align vertically beneath the hips.
-- No staggered foot placement.
-
-Render the specified camera/view orientation while using the neutral stance, leg placement, weight distribution, hip alignment, and foot contact described above.
-
-<!-- ZET:END NEUTRAL_POSE_STANCE_VIEW_BACK -->
-
-Use simple neutral fitment clothing.
-
-## Technical Modesty / Safety Layer
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
-
-Clothing rules:
-
-* neutral tan sleeveless tank top.
-* neutral tan compression shorts.
-* Minimal detail and no additional garments.
-* Keep the body silhouette readable.
-
-<!-- ZET:END TECHNICAL_MODESTY_LAYER -->
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_FEMININE -->
-
-Use simple neutral fitment clothing.
-
-Clothing rules:
-
-* neutral tan tube top.
-* neutral tan compression shorts.
-* Minimal detail and no additional garments.
-* Keep the body silhouette readable.
-
-<!-- ZET:END TECHNICAL_MODESTY_LAYER_FEMININE -->
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_MASCULINE -->
-
-Use simple neutral fitment clothing.
-
-Clothing rules:
-
-* neutral tan compression shorts.
-* No shirt.
-* Minimal detail and no additional garments.
-* Keep the body silhouette readable.
-
-<!-- ZET:END TECHNICAL_MODESTY_LAYER_MASCULINE -->
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_YOUTH -->
-
-Use simple neutral fitment clothing.
-
-Clothing rules:
-
-* neutral tan shorts.
-* neutral tan t-shirt.
-* Minimal detail and no additional garments.
-* Keep the body silhouette readable.
-
-<!-- ZET:END TECHNICAL_MODESTY_LAYER_YOUTH -->
-
----
-
-# Scene / Narrative Rendering
-
-## Scene Rendering — Just the Facts
-
-<!-- ZET:BEGIN SCENE_RENDERING_FACTS -->
-
-[Technical scene rules.]
-
-Suggested fields:
-
-* Default camera:
-* Default framing:
-* Default lighting:
-* Default background treatment:
-* Character priority:
-* Prop priority:
-* Crowd/background rules:
-
-<!-- ZET:END SCENE_RENDERING_FACTS -->
-
-## Scene Rendering — Picaresque
-
-<!-- ZET:BEGIN SCENE_RENDERING_PICARESQUE -->
-
-[Flavor guidance for narrative images.]
-
-Example stub:
-
-* Scenes involving this character should emphasize `[theme / mood / visual contrast]`.
-* The environment should support the character without overpowering identity preservation.
-
-<!-- ZET:END SCENE_RENDERING_PICARESQUE -->
-
----
-
-# Negative Guidance / Drift Prevention
-
-## Head-Image Negative Guidance - General
-
-These rules are used by Head-Image compilation in place of body-oriented general negatives.
-
-<!-- ZET:BEGIN HEAD_IMAGE_NEGATIVE_GUIDANCE_GENERAL -->
-
-Avoid:
-
-* Generic replacement face or loss of character identity.
-* Wrong target phase or suppression of explicitly described phase changes.
-* Aging, de-aging, beautification, or weathering not supported by the target-phase description.
-* Sickly, skeletal, corpse-like, or otherwise unintended facial treatment.
-* Wrong species markers, rounded/human ears, or missing expected ear visibility.
-* Wrong hairstyle, hair color, length, texture, or silhouette.
-* Opaque, parchment, studio, scenic, textured, or colored background. The background must remain truly transparent.
-* Cropping any part of the head, hair silhouette, ear tips, jaw, chin, or required neck context.
-* Dramatic pose, expressive head tilt, independent head turn, or view drift.
-
-<!-- ZET:END HEAD_IMAGE_NEGATIVE_GUIDANCE_GENERAL -->
-
-## Head-Image Negative Guidance - Job Specific
-
-<!-- ZET:BEGIN HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_HEAD_IMAGE -->
 
 * Preserve the exact requested head orientation and view-specific facial visibility.
 * Keep the output a reusable head reference rather than a narrative portrait or scene.
 * Use only the natural neck and limited shoulder context needed to preserve the complete head and hairstyle silhouette.
 * Do not add extra weapons, props, jewelry, decorative accessories, labels, registration text, or visible guide marks.
 
-<!-- ZET:END HEAD_IMAGE_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+<!-- ZET:END NEGATIVE_GUIDANCE_HEAD_IMAGE -->
 
-## Character-Assembly Negative Guidance - Job Specific
+---
 
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+# Character Assembly
 
-<!-- ZET:END CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+## Character Requirements
 
-## Character-Assembly Acceptance Criteria
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA -->
 
-<!-- ZET:END CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA -->
 
-## General Negative Guidance
+<!-- ZET:END CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 
-<!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
+---
+
+# Expression Negative Guidance
+
+## Negative Guidance
+
+<!-- ZET:BEGIN NEGATIVE_GUIDANCE_EXPRESSION -->
+
+### General
 
 Avoid:
 
@@ -926,11 +497,7 @@ Avoid:
 * Dramatic pose when a technical pose is requested.
 * Narrative acting when a neutral reference is requested.
 
-<!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
-
-## Job-Specific Negative Guidance
-
-<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+### Phase-specific
 
 [Add task-specific avoid rules here.]
 
@@ -941,155 +508,4 @@ Examples:
 * For turnaround: avoid pose variation between views.
 * For expression sheets: avoid changing identity to exaggerate expression.
 
-<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
-
----
-
-# Compiler Section Bundles
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_BODY_REFERENCE -->
-
-Recommended sections for body-reference:
-
-* BODY_DESCRIPTION_FACTS
-* BODY_DESCRIPTION_VIEW_[REQUESTED_VIEW]
-* IDENTITY_PRESERVATION_BODY
-* BODY_REFERENCE_RENDERING_RULES
-* TECHNICAL_MODESTY_LAYER
-* NEUTRAL_POSE_STANCE
-* NEUTRAL_POSE_STANCE_VIEW_[REQUESTED_VIEW]
-
-<!-- ZET:END COMPILER_BUNDLE_BODY_REFERENCE -->
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_HEAD_IMAGE -->
-
-Use for Head-Image rotation jobs:
-
-* `GENERAL_DESCRIPTION_FACTS`
-* `HEAD_DESCRIPTION_FACTS`
-* `HEAD_DESCRIPTION_VIEW_{VIEW}`
-* `HAIR_DESCRIPTION_FACTS`
-* `HAIR_DESCRIPTION_VIEW_{VIEW}`
-* `IDENTITY_PRESERVATION_CORE`
-* `IDENTITY_PRESERVATION_FACE`
-* `IDENTITY_PRESERVATION_EYES`
-* `IDENTITY_PRESERVATION_HAIR`
-* `IDENTITY_PRESERVATION_EARS`
-* `HEAD_IMAGE_REFERENCE_INSTRUCTIONS` (optional; used only when a source image is attached)
-* `HEAD_IMAGE_REFERENCE_RULES`
-* `HEAD_IMAGE_RENDERING_RULES`
-* `NEGATIVE_GUIDANCE_GENERAL`
-
-<!-- ZET:END COMPILER_BUNDLE_HEAD_IMAGE -->
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_COSTUME_FITMENT -->
-
-Recommended sections for costume-fitment:
-
-* GENERAL_DESCRIPTION_FACTS
-* BODY_DESCRIPTION_FACTS
-* IDENTITY_PRESERVATION_COSTUME
-* COSTUME_DESCRIPTION_VIEW_[REQUESTED_VIEW]
-* EQUIPMENT_DESCRIPTION_FACTS
-* EQUIPMENT_DESCRIPTION_VIEW_[REQUESTED_VIEW]
-* IDENTITY_PRESERVATION_CORE
-* IDENTITY_PRESERVATION_BODY
-* IDENTITY_PRESERVATION_COSTUME
-* NEGATIVE_GUIDANCE_GENERAL
-
-<!-- ZET:END COMPILER_BUNDLE_COSTUME_FITMENT -->
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_TURNAROUND -->
-
-Recommended sections for turnaround sheets:
-
-* GENERAL_DESCRIPTION_FACTS
-* BODY_DESCRIPTION_FACTS
-* HEAD_DESCRIPTION_FACTS
-* HAIR_DESCRIPTION_FACTS
-* IDENTITY_PRESERVATION_COSTUME
-* EQUIPMENT_DESCRIPTION_FACTS
-* IDENTITY_PRESERVATION_CORE
-* IDENTITY_PRESERVATION_FACE
-* IDENTITY_PRESERVATION_HAIR
-* IDENTITY_PRESERVATION_EARS
-* IDENTITY_PRESERVATION_BODY
-* IDENTITY_PRESERVATION_COSTUME
-* NEGATIVE_GUIDANCE_GENERAL
-
-<!-- ZET:END COMPILER_BUNDLE_TURNAROUND -->
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_EXPRESSION_SHEET -->
-
-Recommended sections for expression sheets:
-
-* GENERAL_DESCRIPTION_FACTS
-* HEAD_DESCRIPTION_FACTS
-* HAIR_DESCRIPTION_FACTS
-* EXPRESSION_DESCRIPTION_FACTS
-* IDENTITY_PRESERVATION_CORE
-* IDENTITY_PRESERVATION_FACE
-* IDENTITY_PRESERVATION_HAIR
-* IDENTITY_PRESERVATION_EARS
-* NEGATIVE_GUIDANCE_GENERAL
-
-<!-- ZET:END COMPILER_BUNDLE_EXPRESSION_SHEET -->
-
-<!-- ZET:BEGIN COMPILER_BUNDLE_NARRATIVE_SCENE -->
-
-Recommended sections for narrative scene images:
-
-* GENERAL_DESCRIPTION_FACTS
-* GENERAL_DESCRIPTION_PICARESQUE
-* BODY_DESCRIPTION_FACTS
-* BODY_DESCRIPTION_PICARESQUE
-* HEAD_DESCRIPTION_FACTS
-* HEAD_DESCRIPTION_PICARESQUE
-* HAIR_DESCRIPTION_FACTS
-* HAIR_DESCRIPTION_PICARESQUE
-* IDENTITY_PRESERVATION_COSTUME
-* COSTUME_DESCRIPTION_PICARESQUE
-* EQUIPMENT_DESCRIPTION_FACTS
-* EQUIPMENT_DESCRIPTION_PICARESQUE
-* EXPRESSION_DESCRIPTION_FACTS
-* EXPRESSION_DESCRIPTION_PICARESQUE
-* POSE_GESTURE_FACTS
-* POSE_GESTURE_PICARESQUE
-* SCENE_RENDERING_FACTS
-* SCENE_RENDERING_PICARESQUE
-* IDENTITY_PRESERVATION_CORE
-* NEGATIVE_GUIDANCE_GENERAL
-
-<!-- ZET:END COMPILER_BUNDLE_NARRATIVE_SCENE -->
-
----
-
-# Freeform Notes
-
-<!-- ZET:BEGIN FREEFORM_NOTES -->
-
-[Human notes, unresolved decisions, experimental additions, or future compiler ideas.]
-
-<!-- ZET:END FREEFORM_NOTES -->
-
-<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->
-
-prompt:
-negative_prompt:
-denoising_strength:
-steps:
-cfg_scale:
-seed:
-s_noise:
-sd_model_checkpoint:
-sampler_name:
-scheduler:
-enable_hr:
-hr_upscaler:
-hr_second_pass_steps:
-hr_scale:
-orientation:
-restore_faces:
-
-<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->
-
+<!-- ZET:END NEGATIVE_GUIDANCE_EXPRESSION -->

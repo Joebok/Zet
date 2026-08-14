@@ -28,6 +28,7 @@ MARKER_RE = re.compile(
     r"<!--\s*ZET:(BEGIN|END)\s+([A-Z0-9_]+)\s*-->",
     flags=re.MULTILINE,
 )
+PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
 
 
 def resolve_section_name(section_name: str, view_token: str) -> str:
@@ -142,6 +143,49 @@ def select_sections(
         missing_required=missing_required,
         missing_optional=missing_optional,
         forbidden_matches=forbidden_matches,
+        sections=selected,
+        section_sources=selected_sources,
+    )
+
+
+def select_sections_for_prompt(
+    all_sections: dict[str, str],
+    template_text: str,
+    view_token: str,
+    section_sources: dict[str, dict] | None = None,
+    known_section_names: set[str] | None = None,
+) -> CompiledSelection:
+    """Select only marked sections referenced by one direct-token prompt template."""
+    selected: dict[str, str] = {}
+    selected_sources: dict[str, dict] = {}
+    included: list[str] = []
+    missing: list[str] = []
+    source_lookup = section_sources or {}
+    known_names = known_section_names or set()
+
+    for match in PLACEHOLDER_RE.finditer(template_text):
+        name = resolve_section_name(match.group(1), view_token)
+        if name in selected or name in missing:
+            continue
+        if name not in all_sections:
+            if name in known_names:
+                missing.append(name)
+            continue
+        value = str(all_sections.get(name) or "")
+        if value.strip():
+            included.append(name)
+            selected[name] = value
+            if name in source_lookup:
+                selected_sources[name] = source_lookup[name]
+        else:
+            missing.append(name)
+
+    return CompiledSelection(
+        included_required=[],
+        included_optional=included,
+        missing_required=[],
+        missing_optional=missing,
+        forbidden_matches=[],
         sections=selected,
         section_sources=selected_sources,
     )

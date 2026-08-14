@@ -861,12 +861,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         request: Request,
         character: str = Query(...),
         phase: str = Query(...),
+        create_only: bool = Query(False),
     ) -> dict[str, Any]:
         """Upload, validate, and initialize a character image template."""
         zet_app = _app(app.state.config_path)
         try:
             contents = (await request.body()).decode("utf-8")
-            status = zet_app.upload_character_template(character, phase, contents)
+            status = zet_app.upload_character_template(character, phase, contents, create_only=create_only)
             message = "Template validated and foundation assets initialized." if status.complete else "Template saved; validation still has issues."
             return {"status": _onboarding_status_payload(status), "message": message}
         except UnicodeDecodeError as exc:
@@ -1731,6 +1732,27 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return _app(app.state.config_path).prompt_evolution_options(character, phase)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/help/template-manuals")
+    def template_manuals() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        manuals = []
+        for item in zet_app.template_manual_service.list():
+            manuals.append({
+                **item,
+                "html": markdown.markdown(item["markdown"], extensions=["extra", "sane_lists"]),
+                "download_url": f"/api/help/template-manuals/{item['id']}/download",
+            })
+        return {"manuals": manuals}
+
+    @app.get("/api/help/template-manuals/{manual_id}/download")
+    def template_manual_download(manual_id: str) -> FileResponse:
+        zet_app = _app(app.state.config_path)
+        try:
+            item = zet_app.template_manual_service.get(manual_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Template manual not found.") from exc
+        return FileResponse(item["path"], filename=item["filename"], media_type="text/markdown")
 
     @app.get("/api/prompt-evolution/runs")
     def prompt_evolution_runs() -> dict[str, Any]:

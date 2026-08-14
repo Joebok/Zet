@@ -13,8 +13,8 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections, select_sections
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, select_prompt_sections, write_json_file
 from Scripts.Library_Paths import character_root
 from Scripts.Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 from zet.services.pipeline_compiler_support import (
@@ -168,11 +168,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     expected_output = expected_output_for_job(job, view_data)
 
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    selection = select_sections(all_sections, bundle, view_token, section_sources)
-    if selection.missing_required:
-        raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
-    if selection.forbidden_matches:
-        raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
+    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, view_token)
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -219,7 +215,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
             **background_treatment_source_map(project_root),
         },
         selection=selection,
-        required_section_names=list(bundle.get("required_sections", [])),
+        required_section_names=[],
         view_token=view_token,
     )
     references = auxiliary_references_for_texts(

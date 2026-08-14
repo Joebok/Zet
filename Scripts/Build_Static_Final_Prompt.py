@@ -9,9 +9,9 @@ from Scripts.Library_Paths import library_root
 from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE, auxiliary_resource_image_for_tag
 
 
-SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:([A-Z0-9_{}]+)\}\}")
 RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
-COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{SECTION:[A-Z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
+COMMENTED_SECTION_PLACEHOLDER_LINE_RE = re.compile(r"(?m)^[ \t]*~\{\{[A-Za-z0-9_{}]+\}\}[ \t]*(?:\r?\n)?")
+LEGACY_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{SECTION:[^}]+\}\}")
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^}]+(?:}[^}]*)?\}\}")
 SINGLE_BRACE_TOKEN_RE = re.compile(r"(?<!\{)\{([A-Z0-9_]+)\}(?!\})")
 
@@ -233,30 +233,23 @@ def render_static_prompt(
     required_section_names: list[str],
     view_token: str,
 ) -> str:
+    legacy = LEGACY_SECTION_PLACEHOLDER_RE.search(template_text)
+    if legacy:
+        raise TemplateCompileError("LEGACY_SECTION_PLACEHOLDER", f"Legacy section placeholder is not supported: {legacy.group(0)}")
     rendered = COMMENTED_SECTION_PLACEHOLDER_LINE_RE.sub("", template_text)
     single_brace_values = _single_brace_token_values(metadata, view_token)
     rendered = _replace_single_brace_tokens(rendered, single_brace_values)
-    for key, value in metadata.items():
-        rendered = rendered.replace("{{" + key + "}}", value)
-
     required_set = {resolve_section_name(name, view_token) for name in required_section_names}
-
-    def replace_section(match: re.Match) -> str:
-        name = resolve_section_name(match.group(1), view_token)
-        text = selection.sections.get(name, "")
-        if name in required_set and not text.strip():
-            raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
-        return _replace_single_brace_tokens(text, single_brace_values)
-
-    rendered = SECTION_PLACEHOLDER_RE.sub(replace_section, rendered)
 
     def replace_raw_section(match: re.Match) -> str:
         inner = match.group(1)
         metadata_key = inner if inner in metadata else inner.upper()
+        name = resolve_section_name(inner, view_token)
+        if metadata_key in metadata and name in selection.sections:
+            raise TemplateCompileError("PLACEHOLDER_NAMESPACE_COLLISION", f"Placeholder resolves to metadata and a marked section: {inner}")
         if metadata_key in metadata:
             return _replace_single_brace_tokens(metadata[metadata_key], single_brace_values)
-        name = resolve_section_name(inner, view_token)
-        text = selection.sections.get(name)
+        text = selection.sections.get(name, "" if name in selection.missing_optional else None)
         if text is None:
             return match.group(0)
         if name in required_set and not text.strip():
@@ -289,6 +282,9 @@ def render_static_prompt_with_source_map(
     view_token: str,
     final_prompt_name: str,
 ) -> tuple[str, dict]:
+    legacy = LEGACY_SECTION_PLACEHOLDER_RE.search(template_text)
+    if legacy:
+        raise TemplateCompileError("LEGACY_SECTION_PLACEHOLDER", f"Legacy section placeholder is not supported: {legacy.group(0)}")
     template_source = {
         "source_kind": "static_prompt_template",
         "source_path": str(template_path),
@@ -301,7 +297,7 @@ def render_static_prompt_with_source_map(
         single_brace_values,
     )
     required_set = {resolve_section_name(name, view_token) for name in required_section_names}
-    token_re = re.compile(rf"{AUXILIARY_RESOURCE_TAG_RE.pattern}|\{{\{{SECTION:[A-Z0-9_{{}}]+\}}\}}|\{{\{{[A-Za-z0-9_{{}}]+\}}\}}")
+    token_re = re.compile(rf"{AUXILIARY_RESOURCE_TAG_RE.pattern}|\{{\{{[A-Za-z0-9_{{}}]+\}}\}}")
     pieces: list[dict] = []
     cursor = 0
     auxiliary_resources = _load_auxiliary_resources(template_path)
@@ -325,15 +321,7 @@ def render_static_prompt_with_source_map(
         inner = placeholder[2:-2]
         text = placeholder
         source = template_source
-        if inner.startswith("SECTION:"):
-            name = resolve_section_name(inner.split(":", 1)[1], view_token)
-            text = selection.sections.get(name, "")
-            if name in required_set and not text.strip():
-                raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
-            text = _replace_single_brace_tokens(text, single_brace_values)
-            text = _replace_auxiliary_resource_tags(text, template_path, auxiliary_resources)
-            source = section_source(name)
-        elif inner.startswith("AUX:"):
+        if inner.startswith("AUX:"):
             try:
                 resource, image = auxiliary_resource_image_for_tag(auxiliary_resources, placeholder)
             except LookupError:
@@ -350,6 +338,8 @@ def render_static_prompt_with_source_map(
         else:
             name = resolve_section_name(inner, view_token)
             metadata_key = inner if inner in metadata else inner.upper()
+            if metadata_key in metadata and name in selection.sections:
+                raise TemplateCompileError("PLACEHOLDER_NAMESPACE_COLLISION", f"Placeholder resolves to metadata and a marked section: {inner}")
             if metadata_key in metadata:
                 text = _replace_single_brace_tokens(metadata[metadata_key], single_brace_values)
                 source = metadata_sources.get(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import json
 from pathlib import Path
 import unittest
 
@@ -9,10 +10,24 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
-from zet.services.pipeline_compiler_support import load_race_render_rules, load_view_data, view_instruction
+from zet.services.pipeline_compiler_support import load_race_render_rules, load_view_data, technical_modesty_variant, view_instruction
 
 
 class BodyReferenceRaceRulesTests(unittest.TestCase):
+    def test_technical_modesty_variant_matrix(self) -> None:
+        cases = {
+            ("Adult", "female"): "TECHNICAL_MODESTY_LAYER_ADULT_FEMININE",
+            ("adult", "Masculine man"): "TECHNICAL_MODESTY_LAYER_ADULT_MASCULINE",
+            ("Adult", "neutral"): "TECHNICAL_MODESTY_LAYER_DEFAULT",
+            ("Youth", "female"): "TECHNICAL_MODESTY_LAYER_YOUTH",
+            ("pre-youth", "male"): "TECHNICAL_MODESTY_LAYER_YOUTH",
+            ("Youth", "unknown"): "TECHNICAL_MODESTY_LAYER_YOUTH",
+            ("Elder", "feminine woman"): "TECHNICAL_MODESTY_LAYER_DEFAULT",
+            ("Ancient", "masculine man"): "TECHNICAL_MODESTY_LAYER_DEFAULT",
+        }
+        for values, expected in cases.items():
+            with self.subTest(phase=values[0], gender=values[1]):
+                self.assertEqual(expected, technical_modesty_variant(*values))
     def _write_config(self, root: Path) -> None:
         (root / "config.toml").write_text(
             f"""[BaseFolders]
@@ -76,9 +91,9 @@ Gender Presentation: `[Feminine adult woman]`
 * Preserve body proportions only.
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
-<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 * Painterly semi-realistic fantasy illustration.
-<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 * Use simple neutral fitment clothing: a plain tank top and shorts.
@@ -109,10 +124,9 @@ Gender Presentation: `[Feminine adult woman]`
             prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
             self.assertIn("Adult elf female", prompt)
             self.assertNotIn("{{CHARACTER_GENDER}}", prompt)
-            self.assertIn("Shared neutral stance.", prompt)
-            self.assertIn("For FRONT view.", prompt)
+            self.assertIn("Use a neutral anatomical reference stance.", prompt)
             self.assertNotIn("{VIEW}", prompt)
-            self.assertIn("Shared front stance.", prompt)
+            self.assertIn("For FRONT view:", prompt)
             self.assertIn("The mannequin head must face the same direct FRONT view as the body.", prompt)
             self.assertIn("Use a simplified neutral light-gray elf mannequin head.", prompt)
             self.assertIn("Long pointed elf ears rendered as neutral mannequin geometry.", prompt)
@@ -120,6 +134,12 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertEqual(prompt.count("MANNEQUIN HEAD — REQUIRED"), 1)
             self.assertIn("Painterly semi-realistic fantasy illustration.", prompt)
             self.assertIn("simple neutral fitment clothing", prompt)
+            self.assertIn("olive green tube top", prompt)
+            self.assertNotIn("tan tube top", prompt.lower())
+            self.assertNotIn("tan compression shorts", prompt.lower())
+            source_map = json.loads((Path(result["final_prompt"]).parent / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+            modesty = next(item for item in source_map["fragments"] if item.get("section_name") == "TECHNICAL_MODESTY_LAYER")
+            self.assertEqual("TECHNICAL_MODESTY_LAYER_ADULT_FEMININE", modesty["selected_variant"])
             self.assertIn("Lithe body proportions.", prompt)
             self.assertNotIn("Preserve body proportions only.", prompt)
             self.assertNotIn("Generic replacement face.", prompt)
@@ -166,9 +186,9 @@ Species / Ancestry: `[High elf]`
 <!-- ZET:BEGIN IDENTITY_PRESERVATION_BODY -->
 * Preserve body proportions only.
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
-<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 * Render as a technical fitment image.
-<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 <!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
 * Plain tank top and shorts.
 <!-- ZET:END TECHNICAL_MODESTY_LAYER -->
@@ -251,30 +271,13 @@ Species / Ancestry: `[High elf]`
 
         self.assertIn("The camera is positioned at a configured front-view location.", instruction)
 
-    def test_shared_feminine_modesty_layer_is_used_when_character_section_is_missing(self) -> None:
+    def test_global_feminine_modesty_layer_is_used_when_character_section_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             shutil.copytree(PROJECT_ROOT / "Config", root / "Config")
             self._write_config(root)
 
-            self._write_shared_stance_sections(
-                root,
-                """
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER -->
-* default shared fitment clothing.
-<!-- ZET:END TECHNICAL_MODESTY_LAYER -->
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_FEMININE -->
-* shared feminine tube top.
-* shared feminine compression shorts.
-<!-- ZET:END TECHNICAL_MODESTY_LAYER_FEMININE -->
-
-<!-- ZET:BEGIN TECHNICAL_MODESTY_LAYER_MASCULINE -->
-* shared masculine compression shorts.
-<!-- ZET:END TECHNICAL_MODESTY_LAYER_MASCULINE -->
-""",
-            )
+            self._write_shared_stance_sections(root)
 
             character_dir = root / "_Lib" / "Characters" / "Testa" / "Adult"
             character_dir.mkdir(parents=True)
@@ -298,9 +301,9 @@ Gender Presentation: `[Feminine adult woman]`
 * Preserve body proportions only.
 <!-- ZET:END IDENTITY_PRESERVATION_BODY -->
 
-<!-- ZET:BEGIN BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:BEGIN BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 * Render as a technical fitment image.
-<!-- ZET:END BODY_REFERENCE_RENDERING_RULES -->
+<!-- ZET:END BODY_REFERENCE_CHARACTER_REQUIREMENTS -->
 
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
 * No costume.
@@ -321,9 +324,10 @@ Gender Presentation: `[Feminine adult woman]`
             )
 
             prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-            self.assertIn("shared feminine tube top.", prompt)
-            self.assertIn("shared feminine compression shorts.", prompt)
-            self.assertNotIn("default shared fitment clothing", prompt)
+            self.assertIn("olive green tube top.", prompt)
+            self.assertIn("olive green compression shorts.", prompt)
+            self.assertNotIn("tan tube top", prompt.lower())
+            self.assertNotIn("tan compression shorts", prompt.lower())
 
     def test_unknown_species_fails_clearly(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

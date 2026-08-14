@@ -119,8 +119,8 @@ class StoryService:
             character_template = self.path_service.character_template_path(character, phase)
             costume_template = self.path_service.costume_template_path(character, phase, costume) if costume else Path()
             return {
-                "identity_preservation_core": self._source_section(character_template, "IDENTITY_PRESERVATION_SCENE"),
-                "identity_preservation_costume": self._source_section(costume_template, "IDENTITY_PRESERVATION_COSTUME_SCENE"),
+                "identity_preservation_core": self._source_section(character_template, "SCENE_CHARACTER_IDENTITY"),
+                "identity_preservation_costume": self._source_section(costume_template, "SCENE_COSTUME_IDENTITY"),
                 "identity_source": self._library_relative_path(character_template),
                 "costume_source": self._library_relative_path(costume_template) if costume else "",
             }
@@ -826,7 +826,7 @@ class StoryService:
                         "source_kind": "auxiliary_template_section" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "character_template_section",
                         "source_path": source_path,
                         "source_label": f"{current_element.get('display_name') or current_element.get('id')} identity",
-                        "section_name": "IDENTITY_PRESERVATION_SCENE",
+                        "section_name": "IDENTITY_PRESERVATION_SCENE" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "SCENE_CHARACTER_IDENTITY",
                         "editable": True,
                     }
             elif current_element and stripped.startswith("**Costume"):
@@ -837,7 +837,7 @@ class StoryService:
                         "source_kind": "auxiliary_template_section" if current_element.get("resource_type") == "Person" else "costume_template_section",
                         "source_path": source_path,
                         "source_label": f"{current_element.get('display_name') or current_element.get('id')} costume",
-                        "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE",
+                        "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE" if current_element.get("resource_type") == "Person" else "SCENE_COSTUME_IDENTITY",
                         "editable": True,
                     }
             if source:

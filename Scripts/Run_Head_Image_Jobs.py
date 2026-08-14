@@ -11,11 +11,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from Scripts.Compile_Character_Template import TemplateCompileError, select_sections
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, write_json_file
+from Scripts.Compile_Character_Template import TemplateCompileError
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, select_prompt_sections, write_json_file
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
-    apply_negative_guidance_overrides,
     job_get,
     load_body_reference_section_data,
     load_bundle,
@@ -47,7 +46,9 @@ def _source_reference(references: list[dict]) -> dict | None:
     sources = [item for item in references if item.get("role") == "head_image_source"]
     if len(sources) > 1:
         raise TemplateCompileError("INVALID_REFERENCE", "Head-Image accepts at most one head_image_source reference.")
-    return sources[0] if sources else None
+    if not sources:
+        raise TemplateCompileError("MISSING_REFERENCE", "Head-Image requires one head_image_source reference.")
+    return sources[0]
 
 
 def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
@@ -68,26 +69,21 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
 
     references = reference_files_for_job(job)
     source_reference = _source_reference(references)
-    if source_reference is not None:
-        validate_reference(source_reference, "head_image_source", project_root)
-        source_block = (
-            "Use the attached source image as an identity reference for the same person."
-        )
-    else:
-        source_block = (
-            "No source image is supplied. Construct the requested character phase from the factual character, head, "
-            "hair, and requested-view descriptions below."
-        )
+    validate_reference(source_reference, "head_image_source", project_root)
 
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    sections, section_sources = apply_negative_guidance_overrides(sections, section_sources, "HEAD_IMAGE")
-    if source_reference is None:
-        sections["HEAD_IMAGE_REFERENCE_INSTRUCTIONS"] = ""
-    selection = select_sections(sections, bundle, view_token, section_sources)
-    if selection.missing_required:
-        raise TemplateCompileError("MISSING_REQUIRED_SECTION", "Missing required sections: " + ", ".join(selection.missing_required))
-    if selection.forbidden_matches:
-        raise TemplateCompileError("FORBIDDEN_SECTION_INCLUDED", "Forbidden sections selected: " + ", ".join(selection.forbidden_matches))
+    if str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
+        for name in (
+            "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
+            "HEAD_DESCRIPTION_FACTS",
+            f"HEAD_DESCRIPTION_VIEW_{view_token}",
+            "HAIR_DESCRIPTION_FACTS",
+            f"HAIR_DESCRIPTION_VIEW_{view_token}",
+            "HEAD_IMAGE_SOURCE_RULES",
+            "HEAD_IMAGE_CHARACTER_REQUIREMENTS",
+        ):
+            sections[name] = ""
+    selection = select_prompt_sections(project_root, bundle, sections, section_sources, view_token)
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -109,7 +105,6 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "VIEW_TOKEN": view_token,
         "VIEW_LABEL": str(view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(view_data, "head", task, include_intro=True),
-        "SOURCE_REFERENCE_BLOCK": source_block,
         **template_metadata(template_path),
     }
     config_path = project_root / "Config" / "Prompt_View_Text.json"
@@ -117,7 +112,6 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Head view token", "editable": False},
         "VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view label", "json_pointer": f"/views/{view_token}/label", "editable": True},
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
-        "SOURCE_REFERENCE_BLOCK": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Optional source-image state", "editable": False},
     }
     render_static_prompt_artifacts(
         project_root=project_root,
@@ -129,16 +123,16 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         metadata_values=metadata_values,
         metadata_sources=metadata_sources,
         selection=selection,
-        required_section_names=list(bundle.get("required_sections", [])),
+        required_section_names=[],
         view_token=view_token,
     )
     write_json_file(paths["dependency_manifest"], {
         **metadata,
         "resources_allowed": True,
         "resources": references,
-        "optional_reference_roles": ["head_image_source"],
+        "required_reference_roles": ["head_image_source"],
         "head_image_prompt_contract": {
-            "version": 3,
+            "version": 4,
             "primary_focus": "phase_transformation_identity_and_view",
             "geometry_regularization": "deferred",
             "background": "transparent",
@@ -161,7 +155,7 @@ Reviewed At:
 ## Checklist
 
 - [ ] The requested head view is exact and not mirrored.
-- [ ] The result is recognizably the same character as the supplied source, when one is present.
+- [ ] The result is recognizably the same character as the required supplied source.
 - [ ] Explicit target-phase changes are clearly visible rather than being suppressed by the source appearance.
 - [ ] If the target phase changes apparent age, the face itself communicates that age change without relying only on hair color.
 - [ ] Head and hair appearance match the Character.md factual and view-specific rules.
@@ -183,7 +177,7 @@ Reviewed At:
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,
-        "head_image_prompt_contract_version": 3,
+        "head_image_prompt_contract_version": 4,
         "reference_files": references,
     }
 

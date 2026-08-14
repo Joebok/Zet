@@ -8,6 +8,9 @@ const state = {
   onboardingStatuses: {},
   headerPreviews: {},
   onboardingOptions: { species_ancestry: [], gender_presentation: [] },
+  onboardingMode: null,
+  templateManuals: [],
+  selectedTemplateManual: "character",
   auxiliaryResourceCategories: [],
   character: null,
   phase: null,
@@ -130,9 +133,9 @@ const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "expressions", "phase-comparison"]);
-const STORY_PAGES = new Set(["stories", "scenes", "scene-builder", "auxiliary-resources", "zine"]);
+const STORY_PAGES = new Set(["stories", "scenes", "scene-builder", "zine"]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
-const GLOBAL_PAGES = new Set(["template-editor", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-inspection", "pipeline-controls"]);
+const GLOBAL_PAGES = new Set(["auxiliary-resources", "template-editor", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-inspection", "pipeline-controls", "help"]);
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
@@ -159,6 +162,13 @@ const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
+const helpMenuButton = document.querySelector("#help-menu-button");
+const helpMenu = document.querySelector("#help-menu");
+const helpStatus = document.querySelector("#help-status");
+const templateManualSelect = document.querySelector("#template-manual-select");
+const templateManualCopy = document.querySelector("#template-manual-copy");
+const templateManualDownload = document.querySelector("#template-manual-download");
+const templateManualContent = document.querySelector("#template-manual-content");
 const promptEvolutionStatus = document.querySelector("#prompt-evolution-status");
 const promptEvolutionMessage = document.querySelector("#prompt-evolution-message");
 const promptEvolutionAsset = document.querySelector("#prompt-evolution-asset");
@@ -424,6 +434,7 @@ const manifestHeadHeading = document.querySelector("#manifest-head-heading");
 const bodyReferenceSelect = document.querySelector("#body-reference-select");
 const headshotReferenceSelect = document.querySelector("#headshot-reference-select");
 const headshotUpload = document.querySelector("#headshot-upload");
+const headshotPasteZone = document.querySelector("#headshot-paste-zone");
 const bodyReferencePreview = document.querySelector("#body-reference-preview");
 const headshotReferencePreview = document.querySelector("#headshot-reference-preview");
 const manifestReferenceJson = document.querySelector("#manifest-reference-json");
@@ -1476,15 +1487,16 @@ const RESPONSIVE_WORKSPACE_PAGES = {
   ],
   story: [
     ["stories", "Overview"], ["scenes", "Scenes"], ["scene-builder", "Scene Builder"],
-    ["auxiliary-resources", "Aux Images"], ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
+    ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
     ["render-console", "Render Console"], ["local-image-review", "Local Variants"], ["render-review", "Image Review"],
   ],
 };
 
 const RESPONSIVE_TOOL_PAGES = [
-  ["template-editor", "Template Editor"], ["ai-controls", "AI Controls"],
+  ["auxiliary-resources", "Aux Images"], ["template-editor", "Template Editor"], ["ai-controls", "AI Controls"],
   ["local-image-config", "Image Config"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
   ["pipeline-controls", "Pipeline Controls"],
+  ["help", "Template Instruction Manuals"],
 ];
 
 function renderResponsiveSectionMenu(selectedPage = activePageName() || state.lastWorkspacePages[state.workspace]) {
@@ -1581,7 +1593,7 @@ function overviewMetric(value, label) {
 }
 
 function renderCharacterOverview() {
-  const summary = state.workspaceSummary.character;
+  const summary = state.onboardingMode ? null : state.workspaceSummary.character;
   renderCharacterPhoneViewer();
   characterWorkflow.replaceChildren();
   characterOverviewMetrics.replaceChildren();
@@ -1619,11 +1631,14 @@ function renderCharacterOverview() {
 
 function renderCharacterPhoneViewer() {
   characterPhoneViewer.replaceChildren();
-  const preview = state.headerPreviews?.[state.character]?.[state.phase] || null;
+  const isDraft = Boolean(state.onboardingMode);
+  const character = isDraft ? onboardingCharacter.value.trim() : state.character;
+  const phase = isDraft ? onboardingPhase.value.trim() : state.phase;
+  const preview = isDraft ? null : state.headerPreviews?.[state.character]?.[state.phase] || null;
   const heading = document.createElement("div");
   heading.className = "phone-viewer-heading";
   const title = document.createElement("h2");
-  title.textContent = [state.character, state.phase].filter(Boolean).join(" · ") || "Character references";
+  title.textContent = [character, phase].filter(Boolean).join(" · ") || "New character";
   heading.append(title);
   const imageHost = document.createElement("div");
   imageHost.className = "phone-viewer-image";
@@ -1633,7 +1648,7 @@ function renderCharacterPhoneViewer() {
     image.alt = `${title.textContent} reference`;
     imageHost.append(enableFullscreenImage(image));
   } else {
-    imageHost.textContent = "No locked character reference yet.";
+    imageHost.textContent = isDraft ? "Character folder has not been created yet." : "No locked character reference yet.";
   }
   const navigation = document.createElement("div");
   navigation.className = "phone-viewer-navigation character-phone-links";
@@ -1860,6 +1875,7 @@ function onboardingHelperPrompt(templatePath = "") {
 
 I will attach:
 - The draft markdown file named Character.md${templatePath ? ` from ${templatePath}` : ""}
+- The Character Template Instructions manual from Zet Help
 - One or more reference images for the character/phase
 
 Your task:
@@ -1881,7 +1897,8 @@ Hard rules:
 - Do not summarize the file in the final answer.
 - Return the completed markdown file itself, suitable for saving directly as Character.md.
 - Keep prompt language factual, visual, and render-facing.
-- Avoid story, personality, mood, scene action, or narrative unless the section explicitly asks for picaresque/flavor text.
+- Avoid story, personality, mood, scene action, and narrative.
+- Do not add technical modesty or fitment-clothing instructions; Zet supplies those globally.
 - Preserve the template's existing structure, headings, bullet style, and metadata fields.
 
 Content guidance:
@@ -1904,22 +1921,25 @@ function updateOnboardingHelperPrompt(templatePath = "") {
 }
 
 function renderOnboarding() {
-  const status = selectedOnboardingStatus();
-  const ready = selectedPhaseReady();
+  const isDraft = Boolean(state.onboardingMode);
+  const status = isDraft ? null : selectedOnboardingStatus();
+  const ready = !isDraft && selectedPhaseReady();
   for (const button of characterNavigation.querySelectorAll(".workflow-tab")) {
     const page = button.dataset.page || "";
     button.disabled = !ready && page !== "phase-comparison";
   }
   characterProductionMenu.disabled = !ready;
-  onboardingStatus.textContent = ready ? "Ready for character production" : "Setup incomplete";
-  const characterName = status?.character_name || state.character || "";
-  const phaseName = state.phase || "";
-  onboardingTitle.textContent = characterName && phaseName ? `${characterName} / ${phaseName}` : "Character Setup";
-  onboardingCharacter.value = characterName;
-  onboardingPhase.value = phaseName;
-  setSelectValueCaseInsensitive(onboardingSpecies, status?.species_ancestry || onboardingSpecies.value);
-  setSelectValueCaseInsensitive(onboardingGender, status?.gender_presentation || onboardingGender.value);
-  onboardingArtStyle.value = status?.canonical_art_style || onboardingArtStyle.value || "";
+  onboardingStatus.textContent = isDraft ? "New character — not created yet" : ready ? "Ready for character production" : "Setup incomplete";
+  const characterName = isDraft ? onboardingCharacter.value.trim() : status?.character_name || state.character || "";
+  const phaseName = isDraft ? onboardingPhase.value.trim() : state.phase || "";
+  onboardingTitle.textContent = [characterName, phaseName].filter(Boolean).join(" / ") || "New Character";
+  if (!isDraft) {
+    onboardingCharacter.value = characterName;
+    onboardingPhase.value = phaseName;
+    setSelectValueCaseInsensitive(onboardingSpecies, status?.species_ancestry || onboardingSpecies.value);
+    setSelectValueCaseInsensitive(onboardingGender, status?.gender_presentation || onboardingGender.value);
+    onboardingArtStyle.value = status?.canonical_art_style || onboardingArtStyle.value || "";
+  }
   onboardingDownloadTemplate.hidden = !status?.template_path;
   onboardingAddHeadImages.disabled = !status?.assets_exists || !status?.pipelines_exists;
   if (status?.template_path) {
@@ -1928,7 +1948,21 @@ function renderOnboarding() {
   }
   updateOnboardingHelperPrompt(status?.template_path || "");
   onboardingStatusList.replaceChildren();
-  if (status) {
+  if (isDraft) {
+    const rows = [
+      ["Character", characterName || "Not entered"],
+      ["Phase", phaseName || "Not entered"],
+      ["Folder", "Not created until template upload"],
+    ];
+    for (const [label, value] of rows) {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      onboardingStatusList.append(dt, dd);
+    }
+    onboardingValidation.textContent = "Upload the completed Character.md to create this character.";
+  } else if (status) {
     const rows = [
       ["Template", status.template_exists ? "present" : "missing"],
       ["Pipelines", status.pipelines_exists ? "present" : "missing"],
@@ -1970,16 +2004,19 @@ async function prefillOnboarding(character, sourcePhase = "") {
 
 async function startNewPhase() {
   state.workspace = "character";
+  state.onboardingMode = "new-phase";
   await activatePage("onboarding", { skipAutosave: true });
   characterSetupDetails.open = true;
   onboardingCharacter.value = state.character || "";
   onboardingPhase.value = "";
   onboardingArtStyle.value = "";
+  renderOnboarding();
   prefillOnboarding(state.character || "", state.phase || "").catch((error) => showOnboardingMessage(error.message, "error"));
 }
 
 async function startNewCharacter() {
   state.workspace = "character";
+  state.onboardingMode = "new-character";
   await activatePage("onboarding", { skipAutosave: true });
   characterSetupDetails.open = true;
   onboardingCharacter.value = "";
@@ -1991,6 +2028,7 @@ async function startNewCharacter() {
   if (onboardingGender.options.length) {
     onboardingGender.selectedIndex = 0;
   }
+  renderOnboarding();
 }
 
 async function startNewStory() {
@@ -2026,6 +2064,7 @@ async function saveOnboardingDraft() {
     });
     state.character = payload.draft?.character || onboardingCharacter.value;
     state.phase = payload.draft?.phase || onboardingPhase.value;
+    state.onboardingMode = null;
     showOnboardingMessage(payload.message || "Draft saved.");
     await refreshCurrentContext();
     const templatePath = payload.draft?.template_path;
@@ -2047,22 +2086,34 @@ async function uploadOnboardingTemplate() {
     return;
   }
   try {
-    const params = new URLSearchParams({ character: state.character, phase: state.phase });
+    const character = onboardingCharacter.value.trim();
+    const phase = onboardingPhase.value.trim();
+    if (!character || !phase) {
+      showOnboardingMessage("Character and phase are required.", "error");
+      return;
+    }
+    const params = new URLSearchParams({
+      character,
+      phase,
+      create_only: state.onboardingMode ? "true" : "false",
+    });
     const payload = await fetchJson(`/api/onboarding/template?${params.toString()}`, {
       method: "POST",
       headers: { "Content-Type": file.type || "text/markdown" },
       body: file,
     });
+    state.character = payload.status?.character || character;
+    state.phase = payload.status?.phase || phase;
+    state.onboardingMode = null;
     showOnboardingMessage(payload.message || "Template uploaded.");
     await refreshCurrentContext();
     renderOnboarding();
     if (payload.status?.complete) {
       activatePage("assets");
     }
+    onboardingTemplateFile.value = "";
   } catch (error) {
     showOnboardingMessage(error.message, "error");
-  } finally {
-    onboardingTemplateFile.value = "";
   }
 }
 
@@ -2640,6 +2691,35 @@ async function saveBeforePageNavigation(nextPage) {
   return guardCurrentEditor();
 }
 
+function renderTemplateManual() {
+  const manual = state.templateManuals.find((item) => item.id === state.selectedTemplateManual) || state.templateManuals[0];
+  if (!manual) {
+    helpStatus.textContent = "No manuals available.";
+    templateManualContent.replaceChildren();
+    return;
+  }
+  state.selectedTemplateManual = manual.id;
+  templateManualSelect.value = manual.id;
+  templateManualContent.innerHTML = manual.html;
+  templateManualDownload.href = manual.download_url;
+  templateManualDownload.download = manual.filename;
+  helpStatus.textContent = manual.title;
+}
+
+async function loadTemplateManuals() {
+  if (!state.templateManuals.length) {
+    const payload = await fetchJson("/api/help/template-manuals");
+    state.templateManuals = payload.manuals || [];
+    templateManualSelect.replaceChildren(...state.templateManuals.map((item) => option(item.id, item.title)));
+  }
+  renderTemplateManual();
+}
+
+async function openTemplateManual(manualId) {
+  state.selectedTemplateManual = manualId;
+  await activatePage("help", { skipAutosave: true });
+}
+
 async function activatePage(page, options = {}) {
   if (
     !selectedPhaseReady()
@@ -2684,11 +2764,12 @@ async function activatePage(page, options = {}) {
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
   document.querySelector("#local-image-review-page").classList.toggle("active", page === "local-image-review");
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
+  document.querySelector("#help-page").classList.toggle("active", page === "help");
   document
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
     );
   renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -2760,6 +2841,9 @@ async function activatePage(page, options = {}) {
     renderOnboarding();
     await loadWorkspaceSummary();
   }
+  if (page === "help") {
+    await loadTemplateManuals();
+  }
   return true;
 }
 
@@ -2778,6 +2862,7 @@ function setupTabs() {
         state.identityKeyMode = "list";
       }
       closeToolbarSettingsMenu();
+      closeHelpMenu();
       await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
     });
   }
@@ -4730,10 +4815,39 @@ function builderApplyChange(event) {
     return;
   }
   builderSyncControls();
+  const changedElement = builderSelectedElement();
+  const changedField = event?.target?.dataset?.builderElementField || "";
+  if (changedElement && changedField === "resource_type") {
+    changedElement.element_type = builderElementTypeForResourceType(changedElement.resource_type);
+    changedElement.reference_images = [];
+    if (changedElement.resource_type === "Character") {
+      changedElement.aux_category = "";
+      changedElement.aux_resource_id = "";
+      const matchingCharacter = (state.characters || []).find((item) => item.toLowerCase() === (changedElement.display_name || "").toLowerCase()) || "";
+      changedElement.character = matchingCharacter;
+      changedElement.phase = (state.phasesByCharacter[matchingCharacter] || [])[0] || "";
+    } else {
+      changedElement.character = "";
+      changedElement.phase = "";
+      changedElement.costume = "";
+    }
+  }
+  if (changedElement && changedField === "character") {
+    changedElement.phase = (state.phasesByCharacter[changedElement.character] || [])[0] || "";
+    changedElement.costume = "";
+    changedElement.reference_images = [];
+  }
+  if (changedElement && changedField === "phase") {
+    changedElement.costume = "";
+    changedElement.reference_images = [];
+  }
   if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea")) {
     return;
   }
   renderSceneBuilder();
+  if (changedElement && ["resource_type", "character", "phase"].includes(changedField)) {
+    builderLoadSelectedElementCostumes(changedElement).then(() => renderSceneBuilder()).catch((error) => showSceneBuilderMessage(error.message, "error"));
+  }
 }
 
 function builderPlacementForElement(elementId) {
@@ -5013,6 +5127,8 @@ function builderRenderElementEditor() {
   const referenceThumbnail = reference?.thumbnail_path
     ? `<span class="scene-builder-reference-preview"><img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}" data-story-slug="${escapeHtml(reference.story_slug || "")}" data-scene-slug="${escapeHtml(reference.scene_slug || "")}" data-candidate-pending="${reference.candidate_pending ? "true" : "false"}">${reference.candidate_pending ? `<a class="candidate-pending-overlay" href="${sceneImageReviewUrl(reference.story_slug, reference.scene_slug)}">Candidate Image Pending</a>` : ""}</span>`
     : "";
+  const characterOptions = `<option value=""></option>` + (state.characters || []).map((character) => `<option value="${escapeHtml(character)}"${character === element.character ? " selected" : ""}>${escapeHtml(character)}</option>`).join("");
+  const phaseOptions = `<option value=""></option>` + (state.phasesByCharacter[element.character] || []).map((phase) => `<option value="${escapeHtml(phase)}"${phase === element.phase ? " selected" : ""}>${escapeHtml(phase)}</option>`).join("");
   return `
     <section class="scene-builder-editor-section">
       <h5>Identity and reference</h5>
@@ -5020,6 +5136,8 @@ function builderRenderElementEditor() {
         <label>${builderCaption("Display name", "scene_elements[].display_name")}<input value="${escapeHtml(element.display_name || "")}" data-builder-element-field="display_name"></label>
         <label>${builderCaption("Resource type", "scene_elements[].resource_type")}<select data-builder-element-field="resource_type">${builderResourceTypeOptions(element.resource_type || "Character")}</select></label>
         <label>${builderCaption("Type", "scene_elements[].element_type")}<select data-builder-element-field="element_type"><option value="Character"${element.element_type === "Character" ? " selected" : ""}>Character</option><option value="Monster"${element.element_type === "Monster" ? " selected" : ""}>Monster</option><option value="Prop"${element.element_type === "Prop" ? " selected" : ""}>Prop</option><option value="Backdrop"${element.element_type === "Backdrop" ? " selected" : ""}>Backdrop</option></select></label>
+        ${element.resource_type === "Character" ? `<label>${builderCaption("Character", "scene_elements[].character")}<select data-builder-element-field="character">${characterOptions}</select></label>` : ""}
+        ${element.resource_type === "Character" ? `<label>${builderCaption("Phase", "scene_elements[].phase")}<select data-builder-element-field="phase">${phaseOptions}</select></label>` : ""}
         ${element.resource_type === "Character" ? `<label>${builderCaption("Costume", "scene_elements[].costume")}<select data-builder-element-field="costume">${builderCostumeOptions(element)}</select></label>` : ""}
         <div class="scene-builder-reference-field full">${referenceThumbnail}<label>${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label></div>
         <label class="full">${builderCaption("(Element visual override) Element Override: ...", "scene_elements[].element_visual_override")}<textarea data-builder-element-field="element_visual_override">${escapeHtml(element.element_visual_override || "")}</textarea></label>
@@ -8283,6 +8401,20 @@ function startLocalImageReviewHarvestTimer() {
   state.localImageReviewHarvestTimer = window.setInterval(runLocalImageReviewHarvestTick, 30000);
 }
 
+function toggleHelpMenu() {
+  const isHidden = helpMenu.hidden;
+  helpMenu.hidden = !isHidden;
+  helpMenuButton.setAttribute("aria-expanded", isHidden ? "true" : "false");
+  if (isHidden) helpMenu.querySelector("button")?.focus();
+}
+
+function closeHelpMenu(returnFocus = false) {
+  const wasOpen = !helpMenu.hidden;
+  helpMenu.hidden = true;
+  helpMenuButton.setAttribute("aria-expanded", "false");
+  if (returnFocus && wasOpen) helpMenuButton.focus();
+}
+
 function promptEvolutionFileUrl(path) { return path ? `/api/file?path=${encodeURIComponent(path)}` : ""; }
 function selectedPromptEvolutionAsset() { return state.promptEvolutionAssets.find((item) => String(item.asset_id) === promptEvolutionAsset.value) || null; }
 const PROMPT_EVOLUTION_SETTINGS_KEY = "zet:prompt-evolution-settings";
@@ -8708,6 +8840,7 @@ function clearManifest() {
   manifestReferenceJson.textContent = "";
   manifestBodySection.hidden = false;
   headshotUpload.hidden = false;
+  headshotPasteZone.hidden = false;
   saveManifestReferencesButton.disabled = true;
   manifestPrev.disabled = true;
   manifestNext.disabled = true;
@@ -8721,8 +8854,9 @@ function renderManifest(detail) {
   const isHeadImage = asset.pipeline === "Head-Image";
   const isCharacterAssembly = asset.pipeline === "Character-Assembly";
   manifestBodySection.hidden = isHeadImage;
-  manifestHeadHeading.textContent = isHeadImage ? "Optional Source Image" : "Head Image";
+  manifestHeadHeading.textContent = isHeadImage ? "Required Source Image" : "Head Image";
   headshotUpload.hidden = isCharacterAssembly;
+  headshotPasteZone.hidden = isCharacterAssembly;
   fillReferenceSelect(bodyReferenceSelect, detail.body_reference_options || [], detail.selected_body_reference?.path || "");
   const headOptions = isHeadImage
     ? (detail.source_options || [])
@@ -8735,6 +8869,8 @@ function renderManifest(detail) {
   bodyReferenceSelect.disabled = !detail.is_manifest_editable;
   headshotReferenceSelect.disabled = !detail.is_manifest_editable;
   headshotUpload.disabled = !detail.is_manifest_editable;
+  headshotPasteZone.tabIndex = detail.is_manifest_editable ? 0 : -1;
+  headshotPasteZone.setAttribute("aria-disabled", detail.is_manifest_editable ? "false" : "true");
   saveManifestReferencesButton.disabled = !detail.is_manifest_editable;
   updateManifestPreviews();
   updateManifestNavigation();
@@ -8813,8 +8949,7 @@ async function saveManifestReferences() {
   }
 }
 
-async function uploadHeadshotReference() {
-  const file = headshotUpload.files?.[0];
+async function uploadHeadshotReference(file = headshotUpload.files?.[0]) {
   if (!file) {
     return;
   }
@@ -8853,6 +8988,7 @@ characterSelect.addEventListener("change", async () => {
     return;
   }
   characterSelect.value = requestedCharacter;
+  state.onboardingMode = null;
   state.character = requestedCharacter;
   state.phase = null;
   saveStoredContext();
@@ -8923,6 +9059,7 @@ phaseSelect.addEventListener("change", async () => {
     return;
   }
   phaseSelect.value = requestedPhase;
+  state.onboardingMode = null;
   state.phase = requestedPhase;
   saveStoredContext();
   updateHeaderFitmentPreview();
@@ -9088,6 +9225,10 @@ toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleToolbarSettingsMenu();
 });
+helpMenuButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleHelpMenu();
+});
 toolbarHarvestAi.addEventListener("click", (event) => {
   event.stopPropagation();
   harvestAiFromToolbar();
@@ -9096,6 +9237,9 @@ document.addEventListener("click", (event) => {
   if (!toolbarSettingsMenu.hidden && !toolbarSettingsMenu.contains(event.target) && event.target !== toolbarSettingsButton) {
     closeToolbarSettingsMenu(true);
   }
+  if (!helpMenu.hidden && !helpMenu.contains(event.target) && event.target !== helpMenuButton) {
+    closeHelpMenu(true);
+  }
   if (!newMenu.hidden && !newMenu.contains(event.target) && event.target !== newMenuButton) {
     closeNewMenu();
   }
@@ -9103,6 +9247,7 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeToolbarSettingsMenu(true);
+    closeHelpMenu(true);
     closeNewMenu(true);
   }
 });
@@ -9128,13 +9273,30 @@ promptAnalysisDialog.addEventListener("close", () => {
 });
 onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
 onboardingCopyGptPrompt.addEventListener("click", () => copyText(onboardingGptPrompt.value, "ChatGPT prompt copied."));
-onboardingCharacter.addEventListener("input", () => updateOnboardingHelperPrompt());
-onboardingPhase.addEventListener("input", () => updateOnboardingHelperPrompt());
+onboardingCharacter.addEventListener("input", () => {
+  updateOnboardingHelperPrompt();
+  if (state.onboardingMode) renderOnboarding();
+});
+onboardingPhase.addEventListener("input", () => {
+  updateOnboardingHelperPrompt();
+  if (state.onboardingMode) renderOnboarding();
+});
 onboardingSpecies.addEventListener("change", () => updateOnboardingHelperPrompt());
 onboardingGender.addEventListener("change", () => updateOnboardingHelperPrompt());
 onboardingArtStyle.addEventListener("input", () => updateOnboardingHelperPrompt());
 onboardingUploadTemplate.addEventListener("click", uploadOnboardingTemplate);
 onboardingAddHeadImages.addEventListener("click", addMissingHeadImages);
+templateManualSelect.addEventListener("change", () => {
+  state.selectedTemplateManual = templateManualSelect.value;
+  renderTemplateManual();
+});
+templateManualCopy.addEventListener("click", () => {
+  const manual = state.templateManuals.find((item) => item.id === state.selectedTemplateManual);
+  if (manual) copyText(manual.markdown, "Template manual copied.");
+});
+for (const button of document.querySelectorAll(".open-template-manual")) {
+  button.addEventListener("click", () => openTemplateManual(button.dataset.manual));
+}
 assetFilterTodo.addEventListener("change", applyAssetFilters);
 assetFilterHideBase.addEventListener("change", applyAssetFilters);
 assetFilterPipeline.addEventListener("change", applyAssetFilters);
@@ -9632,7 +9794,15 @@ renderConsoleSaveImage.addEventListener("click", saveRenderConsoleImage);
 renderConsoleFailTask.addEventListener("click", failRenderConsoleTask);
 bodyReferenceSelect.addEventListener("change", updateManifestPreviews);
 headshotReferenceSelect.addEventListener("change", updateManifestPreviews);
-headshotUpload.addEventListener("change", uploadHeadshotReference);
+headshotUpload.addEventListener("change", () => uploadHeadshotReference());
+headshotPasteZone.addEventListener("paste", (event) => {
+  if (headshotPasteZone.getAttribute("aria-disabled") === "true") return;
+  const file = imageBlobFromPasteEvent(event);
+  if (file) {
+    event.preventDefault();
+    uploadHeadshotReference(file);
+  }
+});
 saveManifestReferencesButton.addEventListener("click", saveManifestReferences);
 manifestPrev.addEventListener("click", () => {
   const index = state.manifestTasks.findIndex((task) => task.asset_id === state.selectedManifestAssetId);

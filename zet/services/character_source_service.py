@@ -17,7 +17,6 @@ from zet.services.view_service import ViewService
 
 SECTION_GROUPS = {
     "identity anchors": (
-        "GENERAL_DESCRIPTION_FACTS",
         "IDENTITY_PRESERVATION_CORE",
     ),
     "face": (
@@ -35,27 +34,26 @@ SECTION_GROUPS = {
     "body proportions": (
         "BODY_DESCRIPTION_FACTS",
         "BODY_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_BODY",
     ),
-    "age": ("GENERAL_DESCRIPTION_FACTS",),
-    "canonical art style": ("GENERAL_DESCRIPTION_FACTS",),
+    "age": ("IDENTITY_PRESERVATION_CORE",),
+    "canonical art style": ("IDENTITY_PRESERVATION_CORE",),
     "selected costume": (
         "COSTUME_DESCRIPTION_FACTS",
         "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_COSTUME",
+        "COSTUME_IDENTITY_RULES",
     ),
     "signature worn items": (
-        "EQUIPMENT_DESCRIPTION_FACTS",
-        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}",
+        "EQUIPMENT_JEWELRY_PROPS_FACTS",
+        "EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}",
     ),
     "view/orientation requirements": (
         "BODY_DESCRIPTION_VIEW_{VIEW}",
         "HEAD_DESCRIPTION_VIEW_{VIEW}",
         "HAIR_DESCRIPTION_VIEW_{VIEW}",
         "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}",
+        "EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}",
     ),
-    "negative or forbidden traits": ("NEGATIVE_GUIDANCE_GENERAL",),
+    "negative or forbidden traits": ("NEGATIVE_GUIDANCE_EXPRESSION",),
 }
 
 NON_CONTENT_SECTION_OVERLAPS = {"COMPILER_NOTES", "LOCAL_IMAGE_GEN_OVERRIDES"}
@@ -216,11 +214,11 @@ class CharacterSourceService:
         for name, text in selection.sections.items():
             if name.startswith("NEGATIVE_"):
                 locked["forbidden_elements"].append(text)
-            elif name.startswith(("COSTUME_", "IDENTITY_PRESERVATION_COSTUME")):
+            elif name.startswith("COSTUME_"):
                 locked["costume"].append(text)
             elif name.startswith("EQUIPMENT_"):
                 locked["required_elements"].append(text)
-            elif name.startswith(("BODY_", "IDENTITY_PRESERVATION_BODY")):
+            elif name.startswith("BODY_"):
                 locked["body_proportions"].append(text)
             else:
                 locked["identity"].append(text)
@@ -385,7 +383,7 @@ class CharacterSourceService:
                 names = (label.strip().upper().replace(" ", "_"),)
             for name in names:
                 if not include_costume and name.startswith(
-                    ("COSTUME_", "EQUIPMENT_", "IDENTITY_PRESERVATION_COSTUME")
+                    ("COSTUME_", "EQUIPMENT_JEWELRY_PROPS_")
                 ):
                     continue
                 resolved = name.replace("{VIEW}", view_token)

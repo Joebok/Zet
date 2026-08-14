@@ -9,30 +9,9 @@ Footwear Contact: `[How the footwear or feet should contact the ground in a neut
 
 ---
 
-# Compiler Notes
-
-<!-- ZET:BEGIN COMPILER_NOTES -->
-
-Use this file as the source document for a swappable costume.
-
-Recommended usage:
-
-* Keep character body, face, hair, race, age, and canonical art style in `Character.md`.
-* Put stable clothing, jewelry, equipment, material, color, and placement rules in this costume file.
-* Use short declarative instructions.
-* Use anatomical left and right for equipment placement.
-* Avoid optional expansions unless they are part of the costume identity.
-* Prefer strict drift controls for turnaround-source images.
-* Describe how the clothing follows the existing body without changing anatomy, pose, stance, camera, or framing.
-* For formal clothing, explicitly state hem behavior and footwear visibility to avoid trains, high-low hems, and hidden or overexposed feet.
-
-<!-- ZET:END COMPILER_NOTES -->
-
----
-
 # Costume Description
 
-## Costume Description - Just the Facts
+## Costume Description — Just the Facts
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->
 
@@ -52,7 +31,7 @@ Recommended usage:
 
 <!-- ZET:END COSTUME_DESCRIPTION_FACTS -->
 
-### Costume Description - View Stubs
+## Costume Description — View-Specific
 
 <!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->
 
@@ -106,11 +85,11 @@ Recommended usage:
 
 ---
 
-# Equipment, Jewelry, And Props
+# Equipment, Jewelry, and Props
 
-## Equipment, Jewelry, And Props - Just the Facts
+## Equipment, Jewelry, and Props — Just the Facts
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_FACTS -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->
 
 * Use anatomical left and right.
 * Right side / right wrist / right hip: `[items on character's own right side]`.
@@ -124,66 +103,66 @@ Recommended usage:
 * Scale rules: `[size relative to character/body]`.
 * Forbidden drift: no extra weapons, large props, swapped left/right placement, or unlisted attachments.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_FACTS -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->
 
-### Equipment, Jewelry, And Props - View Stubs
+## Equipment, Jewelry, and Props — View-Specific
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->
 
 * Front view should show `[front-visible equipment and jewelry]`.
 * In front view, anatomical right appears on the viewer's left and anatomical left appears on the viewer's right.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_LEFT_3_4 -->
 
 * Front-left 3/4 should clarify `[left/right placement and overlap]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_LEFT_3_4 -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_RIGHT_3_4 -->
 
 * Front-right 3/4 should clarify `[left/right placement and overlap]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_RIGHT_3_4 -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_LEFT_PROFILE -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_LEFT_PROFILE -->
 
 * Left profile should show `[left-side equipment and jewelry]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_LEFT_PROFILE -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_LEFT_PROFILE -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_RIGHT_PROFILE -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_RIGHT_PROFILE -->
 
 * Right profile should show `[right-side equipment and jewelry]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_RIGHT_PROFILE -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_RIGHT_PROFILE -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_LEFT_3_4 -->
 
 * Back-left 3/4 should show `[rear-left equipment]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_LEFT_3_4 -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_RIGHT_3_4 -->
 
 * Back-right 3/4 should show `[rear-right equipment]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_RIGHT_3_4 -->
 
-<!-- ZET:BEGIN EQUIPMENT_DESCRIPTION_VIEW_BACK -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_BACK -->
 
 * Back view should show `[rear-visible equipment and jewelry if any]`.
 
-<!-- ZET:END EQUIPMENT_DESCRIPTION_VIEW_BACK -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_BACK -->
 
 ---
 
-# Identity Preservation
+# Costume Identity
 
-## Identity Preservation - Costume
+## Costume Identity Rules
 
-<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME -->
+<!-- ZET:BEGIN COSTUME_IDENTITY_RULES -->
 
 Costume preservation rules:
 
@@ -194,32 +173,12 @@ Costume preservation rules:
 * Preserve anatomical left/right placement.
 * Do not simplify away key costume identity elements.
 
-<!-- ZET:END IDENTITY_PRESERVATION_COSTUME -->
+<!-- ZET:END COSTUME_IDENTITY_RULES -->
 
-## Scene Rendering Costume Preservation
+## Scene Costume Identity
 
-<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME_SCENE -->
+<!-- ZET:BEGIN SCENE_COSTUME_IDENTITY -->
 
-<!-- ZET:END IDENTITY_PRESERVATION_COSTUME_SCENE -->
 
-<!-- ZET:BEGIN LOCAL_IMAGE_GEN_OVERRIDES -->
 
-prompt:
-negative_prompt:
-denoising_strength:
-steps:
-cfg_scale:
-seed:
-s_noise:
-sd_model_checkpoint:
-sampler_name:
-scheduler:
-enable_hr:
-hr_upscaler:
-hr_second_pass_steps:
-hr_scale:
-orientation:
-restore_faces:
-
-<!-- ZET:END LOCAL_IMAGE_GEN_OVERRIDES -->
-
+<!-- ZET:END SCENE_COSTUME_IDENTITY -->

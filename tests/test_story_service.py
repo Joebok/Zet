@@ -1057,11 +1057,11 @@ Two students meet at the arch.
             service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
             (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
             (character_dir / "Character.md").write_text(
-                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\ncore identity from character\n<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
+                "<!-- ZET:BEGIN SCENE_CHARACTER_IDENTITY -->\ncore identity from character\n<!-- ZET:END SCENE_CHARACTER_IDENTITY -->\n",
                 encoding="utf-8",
             )
             (character_dir / "Costume_Canonical_Adventure_Gear.md").write_text(
-                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME_SCENE -->\ncostume identity from costume\n<!-- ZET:END IDENTITY_PRESERVATION_COSTUME_SCENE -->\n",
+                "<!-- ZET:BEGIN SCENE_COSTUME_IDENTITY -->\ncostume identity from costume\n<!-- ZET:END SCENE_COSTUME_IDENTITY -->\n",
                 encoding="utf-8",
             )
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")
@@ -1088,8 +1088,8 @@ Two students meet at the arch.
             costume_source = next(
                 fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Tsaeytte costume"
             )
-            self.assertEqual("IDENTITY_PRESERVATION_SCENE", identity_source["section_name"])
-            self.assertEqual("IDENTITY_PRESERVATION_COSTUME_SCENE", costume_source["section_name"])
+            self.assertEqual("SCENE_CHARACTER_IDENTITY", identity_source["section_name"])
+            self.assertEqual("SCENE_COSTUME_IDENTITY", costume_source["section_name"])
 
     def test_stage_scene_render_omits_costume_information_when_costume_is_blank(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1103,11 +1103,11 @@ Two students meet at the arch.
             service.save_story_settings(story_dir / "FirstDay.story.json", service.create_default_story_settings(story_dir / "FirstDay.md"))
             (story_dir / "At-the-Arch.md").write_text("<!-- ZET:BEGIN SCENE_NAME -->\nAt the Arch\n<!-- ZET:END SCENE_NAME -->\n", encoding="utf-8")
             (character_dir / "Character.md").write_text(
-                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\ncore identity from character\n<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
+                "<!-- ZET:BEGIN SCENE_CHARACTER_IDENTITY -->\ncore identity from character\n<!-- ZET:END SCENE_CHARACTER_IDENTITY -->\n",
                 encoding="utf-8",
             )
             (character_dir / "Costume_Canonical_Adventure_Gear.md").write_text(
-                "<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME_SCENE -->\ncostume identity from costume\n<!-- ZET:END IDENTITY_PRESERVATION_COSTUME_SCENE -->\n",
+                "<!-- ZET:BEGIN SCENE_COSTUME_IDENTITY -->\ncostume identity from costume\n<!-- ZET:END SCENE_COSTUME_IDENTITY -->\n",
                 encoding="utf-8",
             )
             data = service.create_default_scene_builder_data("FirstDay", "At-the-Arch")

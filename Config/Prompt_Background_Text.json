@@ -3,7 +3,7 @@
   "backgrounds": {
     "turnaround_source": {
       "label": "Turnaround source background",
-      "text": "Use a plain smooth very light desaturated blue-gray studio background. Even studio lighting. No cast shadows, floor shadows, contact shadows, vignette, or halo around the character."
+      "text": "Use a plain smooth very light desaturated blue-gray studio background. Add a flat matte light neutral-gray studio floor, slightly darker than the background, with a subtle horizontal floor/background boundary. Keep both surfaces featureless and uniform. Even studio lighting."
     }
   }
 }

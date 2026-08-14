@@ -332,6 +332,43 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("## Dialogue Panel 2", prompt)
         self.assertIn("- **Special instructions:** make this dialog panel smaller to indicate muttering", prompt)
 
+    def test_enabled_story_dialogue_style_is_included_with_dialogue(self):
+        scene = {"setup": {"environment": {}}, "dialogue": [{"text": "Hello."}]}
+        story = {
+            "style_defaults": {},
+            "dialogue_styles": [{
+                "display_name": "Compact parchment dialogue panel",
+                "enabled_by_default": True,
+                "panel_prompt": "Warm ivory parchment panel.",
+                "pointer_prompt": "Short pointer toward the speaker.",
+                "lettering_prompt": "Crisp sans-serif lettering.",
+                "layout_rules": ["Do not obscure faces"],
+                "avoid": ["oversized speech panel"],
+            }],
+            "compiler_profiles": {"final_image_prompt": {"include_dialogue_when_scene_has_dialogue": True}},
+        }
+
+        prompt = final_image_prompt_text(compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS))
+
+        self.assertIn("## Compact parchment dialogue panel", prompt)
+        self.assertIn("- **Panel:** Warm ivory parchment panel.", prompt)
+        self.assertIn("- **Pointer:** Short pointer toward the speaker.", prompt)
+        self.assertIn("- **Lettering:** Crisp sans-serif lettering.", prompt)
+        self.assertIn("- **Layout:** Do not obscure faces.", prompt)
+        self.assertIn("- **Avoid:** oversized speech panel.", prompt)
+
+    def test_dialogue_style_is_omitted_when_profile_disables_dialogue(self):
+        scene = {"setup": {"environment": {}}, "dialogue": [{"text": "Hello."}]}
+        story = {
+            "style_defaults": {},
+            "dialogue_styles": [{"enabled_by_default": True, "panel_prompt": "Hidden style."}],
+            "compiler_profiles": {"final_image_prompt": {"include_dialogue_when_scene_has_dialogue": False}},
+        }
+
+        prompt = final_image_prompt_text(compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS))
+
+        self.assertNotIn("Hidden style", prompt)
+
     def test_local_render_prompt_is_composition_first(self):
         story = {
             "style_defaults": {

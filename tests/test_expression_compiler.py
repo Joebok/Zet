@@ -29,6 +29,7 @@ class ExpressionCompilerTests(unittest.TestCase):
             "Prompt_View_Text.json",
             "Prompt_View_Aliases.json",
             "Prompt_Background_Text.json",
+            "Prompt_Section_Metadata.json",
         ):
             shutil.copyfile(PROJECT_ROOT / "Config" / name, config_dir / name)
         shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Templates" / "expression_v1.md", prompt_dir / "expression_v1.md")
@@ -52,14 +53,15 @@ class ExpressionCompilerTests(unittest.TestCase):
             + _section("EXPRESSION_DESCRIPTION_FACTS", "Keep expressions readable.")
             + _section("IDENTITY_PRESERVATION_CORE", "Preserve core identity.")
             + _section("IDENTITY_PRESERVATION_FACE", "Preserve the face.")
+            + _section("IDENTITY_PRESERVATION_EYES", "Preserve the eyes.")
             + _section("IDENTITY_PRESERVATION_HAIR", "Preserve the hair.")
             + _section("IDENTITY_PRESERVATION_EARS", "Preserve the ears.")
-            + _section("NEGATIVE_GUIDANCE_GENERAL", "Avoid identity drift."),
+            + _section("NEGATIVE_GUIDANCE_EXPRESSION", "Avoid identity drift."),
             encoding="utf-8",
         )
         self.costume = self.character_dir / "Costume_Travel_Gear.md"
         self.costume.write_text(
-            _section("IDENTITY_PRESERVATION_COSTUME", "Preserve the blue travel coat."),
+            _section("COSTUME_IDENTITY_RULES", "Preserve the blue travel coat."),
             encoding="utf-8",
         )
         self.definition = self.character_dir / "Expressions" / "Happy.md"
@@ -93,7 +95,7 @@ class ExpressionCompilerTests(unittest.TestCase):
         source_map = json.loads((output / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
         self.assertIn("Preserve the blue travel coat.", prompt)
         costume_fragments = [
-            item for item in source_map["fragments"] if item.get("section_name") == "IDENTITY_PRESERVATION_COSTUME"
+            item for item in source_map["fragments"] if item.get("section_name") == "COSTUME_IDENTITY_RULES"
         ]
         self.assertTrue(costume_fragments)
         self.assertEqual(str(self.costume), costume_fragments[0]["source_path"])

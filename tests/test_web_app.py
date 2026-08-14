@@ -378,9 +378,9 @@ Plain tan tank top and shorts.
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_GENERAL -->
 Avoid drift.
 <!-- ZET:END NEGATIVE_GUIDANCE_GENERAL -->
-<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 Avoid assembly drift.
-<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
+<!-- ZET:END CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 """.lstrip(),
             encoding="utf-8",
         )
@@ -590,12 +590,16 @@ Backend = "manual_chatgpt"
                 html.index('<option value="render-review">Image Review</option>'),
             )
             self.assertLess(
-                html.index('data-page="scenes">Scenes</button>'),
+                html.index('id="toolbar-settings-menu"'),
                 html.index('data-page="auxiliary-resources">Aux Images</button>'),
             )
             self.assertLess(
                 html.index('data-page="auxiliary-resources">Aux Images</button>'),
-                html.index('data-page="zine">Zines</button>'),
+                html.index('data-page="template-editor">Template Editor</button>'),
+            )
+            self.assertLess(
+                html.index('id="toolbar-harvest-ai"'),
+                html.index('id="toolbar-todo-button"'),
             )
             self.assertIn('id="local-image-review-count"', html)
             self.assertIn('id="local-image-review-generate-all-models"', html)
@@ -1875,6 +1879,25 @@ Backend = "manual_chatgpt"
             self.assertEqual(200, response.status_code)
             self.assertEqual([], response.json()["source_scenes"])
             self.assertEqual(["Opening"], [item["slug"] for item in response.json()["target_scenes"]])
+
+    def test_template_manual_help_api_renders_and_downloads_markdown(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            client = TestClient(create_app(self._write_fixture(Path(temp_dir))))
+            response = client.get("/api/help/template-manuals")
+            self.assertEqual(200, response.status_code, response.text)
+            manuals = {item["id"]: item for item in response.json()["manuals"]}
+            self.assertEqual({"character", "costume"}, set(manuals))
+            self.assertIn("<h1", manuals["character"]["html"])
+            self.assertIn("global modesty layer", manuals["character"]["markdown"])
+            download = client.get(manuals["costume"]["download_url"])
+            self.assertEqual(200, download.status_code)
+            self.assertIn("Costume Template Instructions", download.text)
+
+            page = client.get("/").text
+            self.assertIn('id="help-menu"', page)
+            self.assertIn('id="help-page"', page)
+            self.assertIn('data-manual="character"', page)
+            self.assertIn('data-manual="costume"', page)
 
 
 if __name__ == "__main__":

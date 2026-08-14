@@ -39,6 +39,7 @@ from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisServic
 from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
+from zet.services.template_manual_service import TemplateManualService
 from zet.services.worker_service import WorkerService
 from zet.services.workspace_summary_service import WorkspaceSummaryService
 from zet.services.zine_service import ZineService
@@ -170,6 +171,7 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
         self.workspace_summary_service = WorkspaceSummaryService(
             character_onboarding_service,
@@ -626,9 +628,9 @@ class ZetApp:
         """Create or update a draft character phase template."""
         return self.character_onboarding_service.save_draft(payload)
 
-    def upload_character_template(self, character: str, phase: str, contents: str):
+    def upload_character_template(self, character: str, phase: str, contents: str, create_only: bool = False):
         """Install and validate an uploaded character image template."""
-        return self.character_onboarding_service.upload_template(character, phase, contents)
+        return self.character_onboarding_service.upload_template(character, phase, contents, create_only=create_only)
 
     def initialize_character_foundation(self, character: str, phase: str) -> None:
         """Create foundation assets for a validated character phase."""

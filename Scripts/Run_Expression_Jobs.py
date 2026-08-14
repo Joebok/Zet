@@ -12,9 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources, select_sections
+from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, write_json_file
+from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, select_prompt_sections, write_json_file
+from zet.services.prompt_template_service import PromptTemplateService
 from Scripts.Library_Paths import character_root, pipeline_root
 from zet.services.pipeline_compiler_support import (
     job_get,
@@ -31,16 +32,15 @@ from zet.services.pipeline_compiler_support import (
 )
 
 PROMPT_INSERT_RE = re.compile(r"\{\{PROMPT_INSERT\}\}(.*?)\{\{/PROMPT_INSERT\}\}", re.DOTALL)
-SECTION_MARKER_RE = re.compile(r"^~?\{\{SECTION:([A-Z0-9_{}]+)\}\}$")
+SECTION_MARKER_RE = re.compile(r"^~?\{\{([A-Z0-9_{}]+)\}\}$")
 PROMPT_INSERT_SECTIONS = [
     "EXPRESSION_DESCRIPTION_FACTS",
     "IDENTITY_PRESERVATION_CORE",
     "IDENTITY_PRESERVATION_FACE",
     "IDENTITY_PRESERVATION_HAIR",
     "IDENTITY_PRESERVATION_EARS",
-    "IDENTITY_PRESERVATION_COSTUME",
-    "NEGATIVE_GUIDANCE_GENERAL",
-    "NEGATIVE_GUIDANCE_JOB_SPECIFIC",
+    "COSTUME_IDENTITY_RULES",
+    "NEGATIVE_GUIDANCE_EXPRESSION",
 ]
 
 
@@ -270,15 +270,13 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     if costume_path is not None:
         if not costume_path.is_file():
             raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")
-        costume_sections, costume_sources = load_template_sections_with_sources(
-            costume_path,
-            source_kind="costume_template_section",
-            source_label=f"Costume template: {costume_path.name}",
-        )
-        if "IDENTITY_PRESERVATION_COSTUME" in costume_sections:
-            sections["IDENTITY_PRESERVATION_COSTUME"] = costume_sections["IDENTITY_PRESERVATION_COSTUME"]
-            section_sources["IDENTITY_PRESERVATION_COSTUME"] = costume_sources["IDENTITY_PRESERVATION_COSTUME"]
-    selection = select_sections(sections, bundle, "EXPRESSION", section_sources)
+        costume_sections, costume_sources = PromptTemplateService(project_root).load_marked_sections([
+            (costume_path, "costume_template_section", f"Costume template: {costume_path.name}"),
+        ])
+        if "COSTUME_IDENTITY_RULES" in costume_sections:
+            sections["COSTUME_IDENTITY_RULES"] = costume_sections["COSTUME_IDENTITY_RULES"]
+            section_sources["COSTUME_IDENTITY_RULES"] = costume_sources["COSTUME_IDENTITY_RULES"]
+    selection = select_prompt_sections(project_root, bundle, sections, section_sources, "EXPRESSION")
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
         "compiled_sections": "Compiled_Sections.md",
@@ -343,7 +341,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         metadata_values=metadata_values,
         metadata_sources=metadata_sources,
         selection=selection,
-        required_section_names=list(bundle.get("required_sections", [])),
+        required_section_names=[],
         view_token="EXPRESSION",
         ensure_ascii_source_map=True,
     )

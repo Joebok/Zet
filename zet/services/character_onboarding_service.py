@@ -19,8 +19,8 @@ from zet.services.path_service import PathService
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 
-from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections, select_sections
-from zet.services.pipeline_compiler_support import extract_template_field, load_body_reference_section_data, load_bundle
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
+from zet.services.pipeline_compiler_support import extract_template_field
 
 
 FOUNDATION_VIEWS = [
@@ -33,23 +33,6 @@ FOUNDATION_VIEWS = [
     "Back-Right-3-4",
     "Back",
 ]
-
-CHARACTER_CONTENT_SECTIONS = [
-    "GENERAL_DESCRIPTION_FACTS",
-    "BODY_DESCRIPTION_FACTS",
-    "HEAD_DESCRIPTION_FACTS",
-    "HAIR_DESCRIPTION_FACTS",
-    "EXPRESSION_DESCRIPTION_FACTS",
-    "IDENTITY_PRESERVATION_CORE",
-    "IDENTITY_PRESERVATION_FACE",
-    "IDENTITY_PRESERVATION_EYES",
-    "IDENTITY_PRESERVATION_HAIR",
-    "IDENTITY_PRESERVATION_EARS",
-    "IDENTITY_PRESERVATION_BODY",
-    "IDENTITY_PRESERVATION_SCENE",
-    "HEAD_IMAGE_REFERENCE_RULES",
-]
-
 
 class CharacterOnboardingError(Exception):
     """Report invalid character onboarding actions."""
@@ -152,11 +135,17 @@ class CharacterOnboardingService:
         template_path.write_text(self._render_template(payload, character, phase), encoding="utf-8")
         return CharacterOnboardingDraft(character, phase, str(template_path), self.status(character, phase))
 
-    def upload_template(self, character: str, phase: str, contents: str) -> CharacterOnboardingStatus:
+    def upload_template(self, character: str, phase: str, contents: str, create_only: bool = False) -> CharacterOnboardingStatus:
         """Validate and install an uploaded character image template."""
         if not contents.strip():
             raise CharacterOnboardingError("Uploaded template is empty.")
+        character = self._clean_folder_name(character, "Character")
+        phase = self._clean_folder_name(phase, "Phase")
+        if not character or not phase:
+            raise CharacterOnboardingError("Character and phase are required.")
         phase_path = self.path_service.character_path(character, phase)
+        if create_only and phase_path.exists() and any(path.is_file() for path in phase_path.rglob("*")):
+            raise CharacterOnboardingError(f"{character} / {phase} already exists. Select it before replacing its template.")
         phase_path.mkdir(parents=True, exist_ok=True)
         self._ensure_phase_scaffold(character, phase, "")
         template_path = self.path_service.character_template_path(character, phase)
@@ -214,27 +203,30 @@ class CharacterOnboardingService:
         try:
             template_sections = load_template_sections(template_path)
             shared_sections = load_template_sections(self.path_service.shared_character_path() / "Character_Template.md")
-            character_sections = list(CHARACTER_CONTENT_SECTIONS)
-            for prefix in ["BODY_DESCRIPTION_VIEW_", "HEAD_DESCRIPTION_VIEW_", "HAIR_DESCRIPTION_VIEW_"]:
-                character_sections.extend(f"{prefix}{view}" for view in self._view_tokens())
-            for name in character_sections:
+            missing = sorted(set(shared_sections) - set(template_sections))
+            extra = sorted(set(template_sections) - set(shared_sections))
+            if missing:
+                errors.append(f"Missing canonical sections: {', '.join(missing)}")
+            if extra:
+                errors.append(f"Unsupported sections: {', '.join(extra)}")
+            metadata_path = self.project_root / "Config" / "Prompt_Section_Metadata.json"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8")).get("sections", {})
+            required_sections: list[str] = []
+            for name, record in metadata.items():
+                if not isinstance(record, dict) or not record.get("required_content"):
+                    continue
+                if name in shared_sections:
+                    required_sections.append(name)
+                elif "{VIEW}" in name:
+                    required_sections.extend(name.replace("{VIEW}", view) for view in self._view_tokens())
+            for name in required_sections:
+                if name not in shared_sections:
+                    continue
                 value = str(template_sections.get(name) or "").strip()
                 if not value:
                     errors.append(f"{name} must be filled in.")
                 elif value == str(shared_sections.get(name) or "").strip():
                     errors.append(f"{name} still contains shared template placeholder text.")
-            sections, sources = load_body_reference_section_data(self.project_root, template_path)
-            for bundle_name in ["body-reference", "head-image", "character-assembly"]:
-                bundle = load_bundle(self.project_root, bundle_name)
-                for view in self._view_tokens():
-                    selection = select_sections(sections, bundle, view, sources)
-                    if selection.missing_required:
-                        errors.append(f"{bundle_name} {view} missing: {', '.join(selection.missing_required)}")
-                    if selection.forbidden_matches:
-                        errors.append(f"{bundle_name} {view} includes forbidden sections: {', '.join(selection.forbidden_matches)}")
-            expression = select_sections(sections, load_bundle(self.project_root, "expression"), "EXPRESSION", sources)
-            if expression.missing_required:
-                errors.append(f"expression missing: {', '.join(expression.missing_required)}")
         except TemplateCompileError as exc:
             errors.append(str(exc))
         except Exception as exc:
@@ -254,8 +246,8 @@ class CharacterOnboardingService:
             folder.mkdir(parents=True, exist_ok=True)
         pipelines_path = phase_path / "Pipelines.json"
         if not pipelines_path.exists():
-            source = self.path_service.character_path(character, source_phase) / "Pipelines.json" if source_phase else Path()
-            if not source.exists():
+            source = self.path_service.character_path(character, source_phase) / "Pipelines.json" if source_phase else None
+            if source is None or not source.exists():
                 source = self.path_service.character_path("Tsaeytte", "Adult") / "Pipelines.json"
             if source.exists():
                 shutil.copy2(source, pipelines_path)

@@ -138,18 +138,11 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
     def test_prompt_uses_character_template_assembly_sections(self) -> None:
         self.template_path.write_text(
             """Canonical Art Style: `[Test canonical style]`
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_RENDERING_RULES -->
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 Use the character-specific assembly rules.
-<!-- ZET:END CHARACTER_ASSEMBLY_RENDERING_RULES -->
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
 Do not alter the character-specific head.
-<!-- ZET:END CHARACTER_ASSEMBLY_NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
-<!-- ZET:BEGIN NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
-This generic negative must be replaced.
-<!-- ZET:END NEGATIVE_GUIDANCE_JOB_SPECIFIC -->
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA -->
 The character-specific head and body remain recognizable.
-<!-- ZET:END CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA -->
+<!-- ZET:END CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 """,
             encoding="utf-8",
         )
@@ -158,7 +151,6 @@ The character-specific head and body remain recognizable.
 
         self.assertIn("Use the character-specific assembly rules.", prompt)
         self.assertIn("Do not alter the character-specific head.", prompt)
-        self.assertNotIn("This generic negative must be replaced.", prompt)
         self.assertIn("The character-specific head and body remain recognizable.", prompt)
         self.assertNotIn("{{", prompt)
 

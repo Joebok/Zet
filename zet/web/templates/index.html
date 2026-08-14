@@ -92,7 +92,6 @@
       <button class="tab workflow-tab" data-page="stories">Overview</button>
       <button class="tab workflow-tab" data-page="scenes">Scenes</button>
       <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
-      <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Images</button>
       <button class="tab workflow-tab" data-page="zine">Zines</button>
       <select id="story-production-menu" class="tab" aria-label="Story production tools">
         <option value="" selected>Production ▾</option>
@@ -105,7 +104,7 @@
     <div class="toolbar-menu">
       <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
       <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
-        <button id="toolbar-todo-button" type="button">To Do</button>
+        <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Images</button>
         <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
         <button class="tab workflow-tab" data-page="local-image-config">Image Config</button>
@@ -113,6 +112,13 @@
         <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
         <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
         <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
+        <button id="toolbar-todo-button" type="button">To Do</button>
+      </div>
+    </div>
+    <div class="toolbar-menu">
+      <button id="help-menu-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="help-menu">Help ▾</button>
+      <div id="help-menu" class="toolbar-settings-menu" hidden>
+        <button class="tab workflow-tab" data-page="help">Template Instruction Manuals</button>
       </div>
     </div>
   </nav>
@@ -165,6 +171,7 @@
             <button id="onboarding-save-draft" class="primary-action" type="button">Save Draft</button>
             <a id="onboarding-download-template" class="button-link" href="#" download hidden>Download Template</a>
             <button id="onboarding-copy-gpt-prompt" type="button" disabled>Copy ChatGPT Prompt</button>
+            <button class="open-template-manual" data-manual="character" type="button">Character Template Instructions</button>
           </div>
           <section class="onboarding-helper">
             <h3>ChatGPT Prompt</h3>
@@ -501,12 +508,31 @@
             <input id="costume-template-file" type="file" accept=".md,text/markdown,text/plain">
           </label>
           <button id="costume-create" class="primary-action" type="button">Save Costume</button>
+          <button class="open-template-manual" data-manual="costume" type="button">Costume Template Instructions</button>
           <section id="costume-preview-section" class="item-preview-section" hidden>
             <h3>Locked Turnaround</h3>
             <div id="costume-preview" class="render-image-viewer small-preview">No locked turnaround.</div>
           </section>
         </aside>
       </div>
+    </section>
+
+    <section id="help-page" class="page">
+      <div class="page-title-row">
+        <h1>Template Instruction Manuals</h1>
+        <div id="help-status" class="status-text"></div>
+      </div>
+      <section class="control-panel template-manual-controls">
+        <label>
+          Manual
+          <select id="template-manual-select"></select>
+        </label>
+        <div class="button-row compact">
+          <button id="template-manual-copy" type="button">Copy Markdown</button>
+          <a id="template-manual-download" class="button-link" href="#" download>Download Markdown</a>
+        </div>
+      </section>
+      <article id="template-manual-content" class="control-panel template-manual-content"></article>
     </section>
 
     <section id="expressions-page" class="page">
@@ -922,6 +948,9 @@
               <h3 id="manifest-head-heading">Head Image</h3>
               <select id="headshot-reference-select"></select>
               <input id="headshot-upload" type="file" accept="image/*">
+              <div id="headshot-paste-zone" class="paste-zone manifest-paste-zone" tabindex="0" role="button" aria-label="Paste an image from the clipboard">
+                <p>Click here, then press Ctrl+V to paste an image.</p>
+              </div>
               <div id="headshot-reference-preview" class="image-placeholder">No headshot selected.</div>
             </section>
           </div>

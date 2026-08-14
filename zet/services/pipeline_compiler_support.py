@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 import re
 
-from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections_with_sources
-from Scripts.Library_Paths import character_root, resolve_library_path, shared_library_root
+from Scripts.Compile_Character_Template import TemplateCompileError
+from Scripts.Library_Paths import character_root, resolve_library_path
+from zet.services.prompt_template_service import PromptTemplateService
 from zet.services.view_service import UnknownViewError, ViewService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -92,31 +93,6 @@ def body_reference_head_facing_rule(view_data: dict) -> str:
     if qualifier:
         direction = re.sub(r"^DIRECT\s+", "", direction)
     return f"The mannequin head must face the same {qualifier}{direction} view as the body."
-
-
-def apply_negative_guidance_overrides(
-    sections: dict[str, str],
-    sources: dict[str, dict],
-    section_prefix: str,
-) -> tuple[dict[str, str], dict[str, dict]]:
-    """Map task-specific negative sections onto the bundle's shared negative slots.
-
-    This preserves the existing Prompt_Task_Bundles.json contract while preventing
-    unrelated task negatives from leaking into the compiled prompt.
-    """
-    mappings = {
-        target: f"{section_prefix}_{target}"
-        for target in ("NEGATIVE_GUIDANCE_GENERAL", "NEGATIVE_GUIDANCE_JOB_SPECIFIC")
-    }
-    for target, source in mappings.items():
-        value = str(sections.get(source) or "").strip()
-        if not value:
-            continue
-        sections[target] = value
-        source_meta = sources.get(source)
-        if isinstance(source_meta, dict):
-            sources[target] = dict(source_meta, section_name=target)
-    return sections, sources
 
 
 def view_instruction(view_data: dict, role: str, task: str, include_intro: bool = False) -> str:
@@ -355,15 +331,16 @@ def load_race_render_rules(project_root: Path, template_path: Path, view_token: 
     }
 
 
-def _technical_modesty_variant_for_gender(gender_presentation: str) -> str:
-    value = _race_key(gender_presentation)
-    if "youth" in value.split():
+def technical_modesty_variant(character_phase: str, gender_presentation: str) -> str:
+    phase_terms = set(_race_key(character_phase).split())
+    gender_terms = set(_race_key(gender_presentation).split())
+    if "youth" in phase_terms:
         return "TECHNICAL_MODESTY_LAYER_YOUTH"
-    if any(term in value.split() for term in ("female", "feminine", "woman", "girl")):
-        return "TECHNICAL_MODESTY_LAYER_FEMININE"
-    if any(term in value.split() for term in ("male", "masculine", "man", "boy")):
-        return "TECHNICAL_MODESTY_LAYER_MASCULINE"
-    return ""
+    if "adult" in phase_terms and gender_terms.intersection({"female", "feminine", "woman", "girl"}):
+        return "TECHNICAL_MODESTY_LAYER_ADULT_FEMININE"
+    if "adult" in phase_terms and gender_terms.intersection({"male", "masculine", "man", "boy"}):
+        return "TECHNICAL_MODESTY_LAYER_ADULT_MASCULINE"
+    return "TECHNICAL_MODESTY_LAYER_DEFAULT"
 
 
 def load_body_reference_sections(project_root: Path, template_path: Path) -> dict[str, str]:
@@ -371,41 +348,37 @@ def load_body_reference_sections(project_root: Path, template_path: Path) -> dic
 
 
 def load_body_reference_section_data(project_root: Path, template_path: Path) -> tuple[dict[str, str], dict[str, dict]]:
-    shared_path = shared_library_root(project_root) / "Characters" / "_Shared" / "Character_Template.md"
-    sections, sources = load_template_sections_with_sources(
-        template_path,
-        source_kind="character_template_section",
-        source_label=f"Character template: {template_path.name}",
-    )
-    if shared_path.exists():
-        shared_sections, shared_sources = load_template_sections_with_sources(
-            shared_path,
-            source_kind="shared_template_section",
-            source_label="Shared character template",
-        )
+    global_path = project_root / "Config" / "Prompt_Global_Sections.md"
+    prompt_templates = PromptTemplateService(project_root)
+    sections, sources = prompt_templates.load_marked_sections([
+        (template_path, "character_template_section", f"Character template: {template_path.name}"),
+    ])
+    if global_path.exists():
+        global_sections, global_sources = prompt_templates.load_marked_sections([
+            (global_path, "global_prompt_section", "Global prompt sections"),
+        ])
     else:
-        shared_sections, shared_sources = {}, {}
+        global_sections, global_sources = {}, {}
 
-    shared_section_names = [
-        "TECHNICAL_MODESTY_LAYER",
-        "TECHNICAL_MODESTY_LAYER_FEMININE",
-        "TECHNICAL_MODESTY_LAYER_MASCULINE",
-        "TECHNICAL_MODESTY_LAYER_YOUTH",]
-    shared_section_names.extend(
-        name for name in shared_sections
+    global_section_names = list(
+        name for name in global_sections
         if name == "NEUTRAL_POSE_STANCE" or name.startswith("NEUTRAL_POSE_STANCE_VIEW_")
     )
-    for name in shared_section_names:
-        if name in shared_sections:
-            sections[name] = shared_sections[name]
-            sources[name] = shared_sources.get(name, {})
+    for name in global_section_names:
+        sections[name] = global_sections[name]
+        sources[name] = global_sources.get(name, {})
 
+    character_phase = extract_template_field(template_path, ["Character Phase", "Phase"])
     gender_presentation = extract_template_field(template_path, ["Gender Presentation", "Gender"])
-    variant_name = _technical_modesty_variant_for_gender(gender_presentation)
-    if variant_name and variant_name in sections:
-        sections["TECHNICAL_MODESTY_LAYER"] = sections[variant_name]
-        if variant_name in sources:
-            sources["TECHNICAL_MODESTY_LAYER"] = dict(sources[variant_name], section_name="TECHNICAL_MODESTY_LAYER")
+    variant_name = technical_modesty_variant(character_phase, gender_presentation)
+    if variant_name in global_sections:
+        sections["TECHNICAL_MODESTY_LAYER"] = global_sections[variant_name]
+        if variant_name in global_sources:
+            sources["TECHNICAL_MODESTY_LAYER"] = dict(
+                global_sources[variant_name],
+                section_name="TECHNICAL_MODESTY_LAYER",
+                selected_variant=variant_name,
+            )
     return sections, sources
 
 

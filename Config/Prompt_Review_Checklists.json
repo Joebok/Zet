@@ -19,14 +19,13 @@
       ],
       "required_sections": [
         "BODY_DESCRIPTION_FACTS",
-        "IDENTITY_PRESERVATION_BODY",
-        "BODY_REFERENCE_RENDERING_RULES",
+        "BODY_REFERENCE_CHARACTER_REQUIREMENTS",
         "TECHNICAL_MODESTY_LAYER"
       ],
       "forbidden_section_patterns": [
         "*_PICARESQUE",
         "COSTUME_DESCRIPTION_*",
-        "EQUIPMENT_DESCRIPTION_*",
+        "EQUIPMENT_JEWELRY_PROPS_*",
         "SCENE_RENDERING_*",
         "EXPRESSION_DESCRIPTION_*"
       ],

@@ -4,26 +4,6 @@
     "body-reference": {
       "description": "Static technical full-body reference prompt. No AI prompt finalizer.",
       "prompt_builder": "static",
-        "required_sections": [
-          "BODY_DESCRIPTION_FACTS",
-          "IDENTITY_PRESERVATION_BODY",
-          "BODY_REFERENCE_RENDERING_RULES",
-          "TECHNICAL_MODESTY_LAYER",
-          "NEUTRAL_POSE_STANCE",
-          "NEUTRAL_POSE_STANCE_VIEW_{VIEW}"
-      ],
-      "optional_sections": [
-        "BODY_DESCRIPTION_VIEW_{VIEW}"
-      ],
-      "forbidden_sections": [
-        "*_PICARESQUE",
-        "HEAD_DESCRIPTION_*",
-        "HAIR_DESCRIPTION_*",
-        "COSTUME_DESCRIPTION_*",
-        "EQUIPMENT_DESCRIPTION_*",
-        "EXPRESSION_DESCRIPTION_*",
-        "SCENE_RENDERING_*"
-      ],
       "static_prompt_template": "body_reference_v1",
       "review_checklist": "body_reference_prompt_review_v1",
       "resources": {
@@ -41,37 +21,11 @@
       "next_actor": "AI_AGENT"
     },
     "head-image": {
-      "description": "Static head rotation prompt with an optional source image.",
+      "description": "Static head prompt using exactly one required source image and either transform or standard character sections.",
       "prompt_builder": "static",
-      "required_sections": [
-        "GENERAL_DESCRIPTION_FACTS",
-        "HEAD_DESCRIPTION_FACTS",
-        "HEAD_DESCRIPTION_VIEW_{VIEW}",
-        "HAIR_DESCRIPTION_FACTS",
-        "HAIR_DESCRIPTION_VIEW_{VIEW}",
-        "IDENTITY_PRESERVATION_CORE",
-        "IDENTITY_PRESERVATION_FACE",
-        "IDENTITY_PRESERVATION_EYES",
-        "IDENTITY_PRESERVATION_HAIR",
-        "IDENTITY_PRESERVATION_EARS",
-        "HEAD_IMAGE_REFERENCE_RULES",
-        "HEAD_IMAGE_RENDERING_RULES",
-        "NEGATIVE_GUIDANCE_GENERAL"
-      ],
-      "optional_sections": [
-        "HEAD_IMAGE_REFERENCE_INSTRUCTIONS",
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
-      ],
-      "forbidden_sections": [
-        "*_PICARESQUE",
-        "BODY_DESCRIPTION_*",
-        "COSTUME_DESCRIPTION_*",
-        "EQUIPMENT_DESCRIPTION_*",
-        "SCENE_RENDERING_*"
-      ],
       "static_prompt_template": "head_image_v1",
       "resources": {
-        "optional_reference_roles": [
+        "required_reference_roles": [
           "head_image_source"
         ]
       },
@@ -87,15 +41,6 @@
     "character-assembly": {
       "description": "Static full-character assembly prompt using locked body-reference and Head-Image references. No prompt review.",
       "prompt_builder": "static",
-      "required_sections": [],
-      "optional_sections": [
-        "CHARACTER_ASSEMBLY_RENDERING_RULES",
-        "CHARACTER_ASSEMBLY_ACCEPTANCE_CRITERIA",
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
-      ],
-      "forbidden_sections": [
-        "*_PICARESQUE"
-      ],
       "static_prompt_template": "character_assembly_v1",
       "resources": {
         "required_reference_roles": [
@@ -115,17 +60,6 @@
     "costume-dressing": {
       "description": "Static costume dressing prompt using a locked assembled character reference and a selected costume markdown file.",
       "prompt_builder": "static",
-      "required_sections": [
-        "COSTUME_DESCRIPTION_FACTS"
-      ],
-      "optional_sections": [
-        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "EQUIPMENT_DESCRIPTION_FACTS",
-        "EQUIPMENT_DESCRIPTION_VIEW_{VIEW}"
-      ],
-      "forbidden_sections": [
-        "*_PICARESQUE"
-      ],
       "static_prompt_template": "costume_dressing_v1",
       "resources": {
         "required_reference_roles": [
@@ -144,23 +78,6 @@
     "expression": {
       "description": "Static standalone expression prompt using a selected Identity Key and one expression definition markdown file.",
       "prompt_builder": "static",
-      "required_sections": [
-        "EXPRESSION_DESCRIPTION_FACTS",
-        "IDENTITY_PRESERVATION_CORE",
-        "IDENTITY_PRESERVATION_FACE",
-        "IDENTITY_PRESERVATION_HAIR",
-        "IDENTITY_PRESERVATION_EARS",
-        "NEGATIVE_GUIDANCE_GENERAL"
-      ],
-      "optional_sections": [
-        "IDENTITY_PRESERVATION_COSTUME",
-        "NEGATIVE_GUIDANCE_JOB_SPECIFIC"
-      ],
-      "forbidden_sections": [
-        "*_PICARESQUE",
-        "BODY_DESCRIPTION_VIEW_*",
-        "SCENE_RENDERING_*"
-      ],
       "static_prompt_template": "expression_v1",
       "resources": {
         "required_reference_roles": [

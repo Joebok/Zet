@@ -32,15 +32,15 @@ def _write_fixture(tmp_path: Path) -> tuple[ZetApp, CheckpointLabService, Path]:
         }],
     }), encoding="utf-8")
     (character / "Character.md").write_text(
-        "<!-- ZET:BEGIN IDENTITY_PRESERVATION_SCENE -->\n"
+        "<!-- ZET:BEGIN SCENE_CHARACTER_IDENTITY -->\n"
         "Ada has unmistakable silver hair and green eyes.\n"
-        "<!-- ZET:END IDENTITY_PRESERVATION_SCENE -->\n",
+        "<!-- ZET:END SCENE_CHARACTER_IDENTITY -->\n",
         encoding="utf-8",
     )
     (character / "Costume_Field_Gear.md").write_text(
-        "<!-- ZET:BEGIN IDENTITY_PRESERVATION_COSTUME_SCENE -->\n"
+        "<!-- ZET:BEGIN SCENE_COSTUME_IDENTITY -->\n"
         "Brown field jacket and sturdy boots.\n"
-        "<!-- ZET:END IDENTITY_PRESERVATION_COSTUME_SCENE -->\n",
+        "<!-- ZET:END SCENE_COSTUME_IDENTITY -->\n",
         encoding="utf-8",
     )
     config = tmp_path / "config.toml"

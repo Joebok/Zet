@@ -59,6 +59,15 @@ def _style_text(story_settings: dict[str, Any]) -> str:
     return _clean(story_settings.get("style_defaults", {}).get("canonical_art_style", {}).get("full_prompt_text"))
 
 
+def _dialogue_styles(story_settings: dict[str, Any], dialogue: list[dict[str, Any]], profile: dict[str, Any]) -> list[dict[str, Any]]:
+    if not dialogue or profile.get("include_dialogue_when_scene_has_dialogue") is False:
+        return []
+    return [
+        item for item in _items(story_settings.get("dialogue_styles"))
+        if item.get("enabled_by_default") is not False
+    ]
+
+
 def compile_scene_render_ir(
     scene_data: dict[str, Any],
     story_settings: dict[str, Any],
@@ -122,6 +131,7 @@ def compile_scene_render_ir(
         "interactions": _items(scene_data.get("interactions")),
         "custom_interactions": _clean(scene_data.get("custom_interactions")),
         "dialogue": dialogue,
+        "dialogue_styles": _dialogue_styles(story_settings, dialogue, story_profile),
         "references": references,
         "final_image_prompt_sections": prompt_sections,
         "resolved_sources": resolved_sources or {},
@@ -869,6 +879,20 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     if ir.get("dialogue"):
         dialogue = ir["dialogue"]
         lines.extend(["", "# Dialogue Panel" if len(dialogue) == 1 else "# Dialogue Panels", ""])
+        for style in ir.get("dialogue_styles", []):
+            display_name = clean_prompt_sentence(style.get("display_name"))
+            if display_name:
+                lines.extend([f"## {display_name}", ""])
+            for label, key in (("Panel", "panel_prompt"), ("Pointer", "pointer_prompt"), ("Lettering", "lettering_prompt")):
+                value = clean_prompt_sentence(style.get(key))
+                if value:
+                    lines.append(f"- **{label}:** {_sentence(value)}")
+            for label, key in (("Layout", "layout_rules"), ("Avoid", "avoid")):
+                values = _lines(style.get(key))
+                if values:
+                    lines.append(f"- **{label}:** {_sentence('; '.join(values))}")
+            if display_name or any(style.get(key) for key in ("panel_prompt", "pointer_prompt", "lettering_prompt", "layout_rules", "avoid")):
+                lines.append("")
         for index, item in enumerate(dialogue, start=1):
             if len(dialogue) > 1:
                 lines.extend([f"## Dialogue Panel {index}", ""])
