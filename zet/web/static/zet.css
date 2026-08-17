@@ -1990,6 +1990,8 @@ summary:focus-visible {
 .prompt-evolution-summary-controls { display: grid; gap: 8px; margin-top: 12px; }
 .prompt-evolution-summary-controls textarea { min-height: 90px; width: 100%; }
 .prompt-evolution-summary > label textarea, .prompt-evolution-batch > label textarea { min-height: 80px; width: 100%; }
+.prompt-evolution-manual-review > label { display: block; margin-top: 12px; }
+.prompt-evolution-manual-review details { margin-bottom: 12px; }
 .prompt-diff-added { background: color-mix(in srgb, #2eaf5d 25%, transparent); color: var(--text); }
 .prompt-diff-deleted { background: color-mix(in srgb, #d84a4a 20%, transparent); color: var(--muted); text-decoration: line-through; }
 

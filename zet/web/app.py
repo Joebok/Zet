@@ -1796,6 +1796,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except (PromptEvolutionError, FileNotFoundError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/prompt-evolution/runs/{run_id}/prompt-review")
+    def prompt_evolution_prompt_review(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).accept_prompt_evolution_review(
+                run_id, str(payload.get("positive_core") or ""), str(payload.get("negative_core") or ""),
+            )
+        except (PromptEvolutionError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/prompt-evolution/runs/{run_id}/abort")
     def prompt_evolution_abort(run_id: str) -> dict[str, Any]:
         try:

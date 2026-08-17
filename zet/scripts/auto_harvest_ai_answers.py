@@ -45,7 +45,7 @@ def harvest_once(config_path: str) -> int:
 
 def active_prompt_evolution_runs(config_path: str) -> bool:
     app = ZetApp.from_config(config_path)
-    terminal = {"COMPLETE", "ABORTED", "FAILED", "AWAITING_USER"}
+    terminal = {"COMPLETE", "ABORTED", "FAILED", "AWAITING_USER", "AWAITING_PROMPT_REVIEW", "AWAITING_FINAL_REVIEW"}
     return any(run.get("status") not in terminal for run in app.list_prompt_evolution_runs())
 
 

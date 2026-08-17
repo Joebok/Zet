@@ -725,6 +725,9 @@ class ZetApp:
     def prompt_evolution_run(self, run_id: str):
         return self.prompt_evolution_service.detail(run_id)
 
+    def accept_prompt_evolution_review(self, run_id: str, positive_core: str, negative_core: str):
+        return self.prompt_evolution_service.accept_prompt_review(run_id, positive_core, negative_core)
+
     def run_available_workers(self, character: str, phase: str):
         return self.asset_service.run_available_workers(character, phase)
 

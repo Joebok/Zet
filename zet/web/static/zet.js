@@ -8498,6 +8498,8 @@ function renderPromptEvolutionDetail(run) {
     return `<details class="prompt-evolution-prompt-history"><summary>Effective prompts${previous ? " and diff" : ""}</summary><div class="prompt-evolution-summary-prompts"><strong>Positive prompt</strong><p>${escapeHtml(positive)}</p><strong>Negative prompt</strong><p>${escapeHtml(negative)}</p></div>${diff}</details>`;
   };
   const promptHistory = run.status === "AWAITING_FINAL_REVIEW" ? `<section class="prompt-evolution-prompt-versions"><h2>Prompt history</h2>${(run.batches || []).map((batch, index, all) => `<article><h3>Prompt version ${Number(batch.index) + 1}</h3>${promptDetails(batch, all[index - 1])}</article>`).join("")}</section>` : "";
+  const reviewBatch = run.status === "AWAITING_PROMPT_REVIEW" ? (run.batches || []).find((batch) => Number(batch.index) === Number(run.current_batch)) : null;
+  const promptReview = reviewBatch ? `<section class="prompt-evolution-summary prompt-evolution-manual-review"><h2>Review the proposed prompt for the next round</h2><p>Edit either prompt below, then approve it to start the next batch.</p><details open><summary>Reasoning for this change</summary><h4>Cross-seed priorities</h4><pre>${escapeHtml(JSON.stringify(reviewBatch.synthesis?.next_round_priorities || [], null, 2))}</pre><h4>Diagnosis and rationale</h4><pre>${escapeHtml(JSON.stringify(reviewBatch.diagnosis?.interventions || [], null, 2))}</pre><h4>Proposed changes and reasons</h4><pre>${escapeHtml(JSON.stringify(reviewBatch.edit?.changes || [], null, 2))}</pre></details><label>Positive prompt core<textarea data-prompt-evolution-review-positive>${escapeHtml(reviewBatch.edit?.positive_core || reviewBatch.positive_core || "")}</textarea></label><label>Negative prompt core<textarea data-prompt-evolution-review-negative>${escapeHtml(reviewBatch.edit?.negative_core || reviewBatch.negative_core || "")}</textarea></label><button type="button" class="primary-action" data-prompt-evolution-review-accept>Approve and render next batch</button></section>` : "";
   const batches = run.status === "AWAITING_FINAL_REVIEW" ? "" : (run.batches || []).map((batch, index, all) => {
     const previous = all[index - 1];
     return `<section class="prompt-evolution-batch"><h3>Prompt version ${Number(batch.index) + 1} · ${escapeHtml(batch.status || "Pending")}</h3>${imageGrid(batch.renders)}${promptDetails(batch, previous)}${run.status === "COMPLETE" ? `<details><summary>Automatic decision audit</summary><h4>Candidate observations and checks</h4><pre>${escapeHtml(JSON.stringify(batch.candidates || [], null, 2))}</pre><h4>Cross-seed synthesis</h4><pre>${escapeHtml(JSON.stringify(batch.synthesis || {}, null, 2))}</pre><h4>Prompt diagnosis</h4><pre>${escapeHtml(JSON.stringify(batch.diagnosis || {}, null, 2))}</pre><h4>Editor decision</h4><pre>${escapeHtml(JSON.stringify(batch.edit || {}, null, 2))}</pre></details>` : ""}<button type="button" data-prompt-evolution-clone="${escapeHtml(batch.index)}">Clone from this version</button></section>`;
@@ -8508,7 +8510,7 @@ function renderPromptEvolutionDetail(run) {
   promptEvolutionDetail.innerHTML = `<div class="summary-bar">${escapeHtml(run.character)} · ${escapeHtml(run.phase)} · ${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
     ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
     ${run.stop_reason ? `<div class="action-message">${escapeHtml(run.stop_reason)}</div>` : ""}
-    <div class="button-row compact prompt-evolution-run-actions"><span><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint || "—")}</span><a class="button-link" href="/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/audit-bundle" download>Download audit bundle</a>${["COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"].includes(run.status) ? '<button type="button" data-prompt-evolution-action="restart">Restart</button>' : ""}${run.status === "FAILED" ? '<button type="button" data-prompt-evolution-action="retry">Resume failed stage</button>' : ""}${!["COMPLETE", "ABORTED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="abort">Abort</button>' : ""}${["COMPLETE", "ABORTED", "FAILED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="delete">Delete run</button>' : ""}</div>${activityLog}${summary}${finalReview}${promptHistory}${batches || (run.status === "AWAITING_FINAL_REVIEW" ? "" : "No batches yet.")}`;
+    <div class="button-row compact prompt-evolution-run-actions"><span><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint || "—")}</span><a class="button-link" href="/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/audit-bundle" download>Download audit bundle</a>${["COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"].includes(run.status) ? '<button type="button" data-prompt-evolution-action="restart">Restart</button>' : ""}${run.status === "FAILED" ? '<button type="button" data-prompt-evolution-action="retry">Resume failed stage</button>' : ""}${!["COMPLETE", "ABORTED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="abort">Abort</button>' : ""}${["COMPLETE", "ABORTED", "FAILED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="delete">Delete run</button>' : ""}</div>${activityLog}${summary}${promptReview}${finalReview}${promptHistory}${batches || (run.status === "AWAITING_FINAL_REVIEW" ? "" : "No batches yet.")}`;
   const activityList = promptEvolutionDetail.querySelector(".prompt-evolution-log ol");
   if (activityList) activityList.scrollTop = activityList.scrollHeight;
   promptEvolutionDetail.querySelectorAll(".prompt-evolution-candidate img, .prompt-evolution-summary img").forEach((image) => enableFullscreenImage(image));
@@ -9693,6 +9695,7 @@ promptEvolutionDetail.addEventListener("click", async (event) => {
   const clone = event.target.closest("[data-prompt-evolution-clone]");
   const saveName = event.target.closest("[data-prompt-evolution-save-name]");
   const directed = event.target.closest("[data-prompt-evolution-directed-start]");
+  const promptReview = event.target.closest("[data-prompt-evolution-review-accept]");
   const runLink = event.target.closest("[data-prompt-evolution-run-link]");
   const summaryDiff = event.target.closest("[data-prompt-evolution-summary-diff]");
   try {
@@ -9712,6 +9715,14 @@ promptEvolutionDetail.addEventListener("click", async (event) => {
     if (directed) {
       const instructions = promptEvolutionDetail.querySelector("[data-prompt-evolution-directed]")?.value || "";
       renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/directed-refinement`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions }) }));
+      return;
+    }
+    if (promptReview) {
+      const positiveCore = promptEvolutionDetail.querySelector("[data-prompt-evolution-review-positive]")?.value || "";
+      const negativeCore = promptEvolutionDetail.querySelector("[data-prompt-evolution-review-negative]")?.value || "";
+      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/prompt-review`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positive_core: positiveCore, negative_core: negativeCore }),
+      }));
       return;
     }
     if (finalVersion) {

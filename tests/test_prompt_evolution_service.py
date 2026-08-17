@@ -237,6 +237,36 @@ class PromptEvolutionServiceV3Tests(TestCase):
             self.assertEqual("prompt-001", core["prompt_version_id"])
             self.assertEqual("COMPLETE", run["status"])
 
+    def test_prompt_review_persists_manual_edit_and_starts_next_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            batch_path = root / "batches" / "000"
+            batch_path.mkdir(parents=True)
+            PromptEvolutionService._write_json(batch_path / "batch.json", {
+                "index": 0, "status": "AWAITING_PROMPT_REVIEW",
+                "edit": {"positive_core": "proposed coat", "negative_core": "blue coat"},
+            })
+            run = {
+                "root": str(root), "current_batch": 0, "status": "AWAITING_PROMPT_REVIEW",
+                "fixed_seeds": [11], "fresh_seeds": [22], "seeds": [11, 22],
+            }
+            service = object.__new__(PromptEvolutionService)
+            service._find_run = Mock(return_value=run)
+            service._save_run = Mock()
+            service._log = Mock()
+            service._new_fresh_seeds = Mock(return_value=[33])
+            service._start_batch = Mock()
+            service.detail = Mock(return_value={"status": "RENDERING"})
+
+            result = service.accept_prompt_review("run-1", "edited red coat", "blue coat")
+
+            review = PromptEvolutionService._read_json(batch_path / "batch.json")["prompt_review"]
+            self.assertTrue(review["manually_edited"])
+            self.assertEqual("edited red coat", review["accepted_positive_core"])
+            self.assertEqual(1, run["current_batch"])
+            service._start_batch.assert_called_once_with(run, "edited red coat", "blue coat")
+            self.assertEqual("RENDERING", result["status"])
+
     def test_list_runs_excludes_legacy_schema(self) -> None:
         service = object.__new__(PromptEvolutionService)
         service._run_paths = Mock(return_value=[])

@@ -1048,7 +1048,7 @@ class PromptEvolutionService:
 
     def _advance_v3_unlocked(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run["status"] in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"}:
+        if run["status"] in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_PROMPT_REVIEW", "AWAITING_FINAL_REVIEW"}:
             return self.detail(run_id)
         try:
             root = Path(run["root"])
@@ -1223,17 +1223,12 @@ class PromptEvolutionService:
                         warnings=warnings,
                     )
                     self._log_validation_warnings(run, warnings)
-                    self._log(run, f"Batch {int(run['current_batch']) + 1} — prompt edit accepted; preparing the next batch.")
+                    self._log(run, f"Batch {int(run['current_batch']) + 1} — proposed prompt edit is ready for review.")
                     batch["edit"] = edit
-                    batch["status"] = "REVIEWED"
+                    batch["status"] = "AWAITING_PROMPT_REVIEW"
                     self._write_json(batch_path / "batch.json", batch)
-                    if edit["positive_core"] == self._clean_prompt_terms(batch["positive_core"]) and edit["negative_core"] == self._clean_prompt_terms(batch["negative_core"]):
-                        self._finish_v3(run, "Prompt-editor retry produced no usable prompt change.")
-                        return self.detail(run_id)
-                    run["fresh_seeds"] = self._new_fresh_seeds(run)
-                    run["seeds"] = [*run["fixed_seeds"], *run["fresh_seeds"]]
-                    run["current_batch"] = int(run["current_batch"]) + 1
-                    self._start_batch(run, edit["positive_core"], edit["negative_core"])
+                    run["status"] = "AWAITING_PROMPT_REVIEW"
+                    self._save_run(run)
             elif run["status"] == "DIRECTED_REFINING":
                 directed = run.get("directed_refinement") or {}
                 output = Path(str(directed.get("output") or ""))
@@ -1264,6 +1259,34 @@ class PromptEvolutionService:
         run["status"] = "ABORTED"
         self._log(run, "Run aborted by the user.", "warning")
         self._save_run(run)
+        return self.detail(run_id)
+
+    def accept_prompt_review(self, run_id: str, positive_core: str, negative_core: str) -> dict[str, Any]:
+        run = self._find_run(run_id)
+        if run["status"] != "AWAITING_PROMPT_REVIEW":
+            raise PromptEvolutionError("Run is not awaiting prompt review.")
+        positive = self._clean_prompt_terms(positive_core)
+        negative = self._clean_prompt_terms(negative_core)
+        if not positive:
+            raise PromptEvolutionError("Positive prompt core cannot be empty.")
+        batch_path = Path(run["root"]) / "batches" / f"{int(run['current_batch']):03d}"
+        batch = self._read_json(batch_path / "batch.json")
+        proposed = batch.get("edit") or {}
+        batch["prompt_review"] = {
+            "reviewed_at": self._now(),
+            "proposed_positive_core": proposed.get("positive_core", ""),
+            "proposed_negative_core": proposed.get("negative_core", ""),
+            "accepted_positive_core": positive,
+            "accepted_negative_core": negative,
+            "manually_edited": positive != proposed.get("positive_core") or negative != proposed.get("negative_core"),
+        }
+        batch["status"] = "REVIEWED"
+        self._write_json(batch_path / "batch.json", batch)
+        self._log(run, f"Batch {int(run['current_batch']) + 1} — prompt review accepted; preparing the next batch.")
+        run["fresh_seeds"] = self._new_fresh_seeds(run)
+        run["seeds"] = [*run["fixed_seeds"], *run["fresh_seeds"]]
+        run["current_batch"] = int(run["current_batch"]) + 1
+        self._start_batch(run, positive, negative)
         return self.detail(run_id)
 
     def rename(self, run_id: str, name: str) -> dict[str, Any]:
@@ -1298,7 +1321,7 @@ class PromptEvolutionService:
 
     def delete(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
-        if run["status"] in {"BOOTSTRAPPING", "RENDERING", "OBSERVING", "SYNTHESIZING", "DIAGNOSING", "EDITING", "DIRECTED_REFINING", "AWAITING_FINAL_REVIEW"}:
+        if run["status"] in {"BOOTSTRAPPING", "RENDERING", "OBSERVING", "SYNTHESIZING", "DIAGNOSING", "EDITING", "DIRECTED_REFINING", "AWAITING_PROMPT_REVIEW", "AWAITING_FINAL_REVIEW"}:
             raise PromptEvolutionError("Abort the active run before deleting it.")
         root = Path(run["root"]).resolve()
         pipeline_root = Path(self.app.config.base_pipeline_path).resolve()
@@ -1521,6 +1544,6 @@ class PromptEvolutionService:
     def advance_active_runs(self) -> list[dict[str, Any]]:
         results = []
         for run in self.list_runs():
-            if run["status"] not in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"}:
+            if run["status"] not in {"COMPLETE", "ABORTED", "FAILED", "AWAITING_PROMPT_REVIEW", "AWAITING_FINAL_REVIEW"}:
                 results.append(self.advance_run(run["run_id"]))
         return results

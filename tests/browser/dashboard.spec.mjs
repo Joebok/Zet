@@ -129,6 +129,18 @@ test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selec
   await expect(activePromptHistory).toContainText("hidden black bob, teal coat");
   await expect(activePromptHistory.locator(".prompt-diff-added")).toContainText("teal coat");
 
+  await page.evaluate(({ run, sourceBatch }) => renderPromptEvolutionDetail({
+    ...run,
+    batches: [{ ...sourceBatch, status: "AWAITING_PROMPT_REVIEW", synthesis: { next_round_priorities: [{ problem: "coat color" }] }, diagnosis: { interventions: [{ rationale: "color drift" }] }, edit: { positive_core: "black bob, red coat", negative_core: "blue coat", changes: [{ reason: "correct drift" }] } }],
+  }), { run: {
+    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
+    reference_image: "reference.png", checkpoint: "checkpoint", status: "AWAITING_PROMPT_REVIEW", current_batch: 0,
+  }, sourceBatch: batch });
+  await expect(page.locator(".prompt-evolution-manual-review")).toContainText("Reasoning for this change");
+  await expect(page.locator("[data-prompt-evolution-review-positive]")).toHaveValue("black bob, red coat");
+  await expect(page.locator("[data-prompt-evolution-review-negative]")).toHaveValue("blue coat");
+  await expect(page.locator("[data-prompt-evolution-review-accept]")).toBeVisible();
+
   await page.evaluate((value) => renderPromptEvolutionDetail(value), {
     version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
     reference_image: "reference.png", checkpoint: "checkpoint", status: "AWAITING_FINAL_REVIEW",
