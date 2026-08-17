@@ -92,6 +92,7 @@ const state = {
   sceneBuilderOptions: {},
   sceneBuilderReferences: [],
   sceneBuilderOpen: false,
+  sceneBuilderInterview: null,
   selectedBuilderPlacementId: null,
   selectedBuilderElementId: null,
   sceneBuilderRendering: false,
@@ -566,6 +567,15 @@ const sceneBuilderPrevious = document.querySelector("#scene-builder-previous");
 const sceneBuilderNext = document.querySelector("#scene-builder-next");
 const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
+const sceneBuilderInterviewModal = document.querySelector("#scene-builder-interview-modal");
+const sceneBuilderInterviewClose = document.querySelector("#scene-builder-interview-close");
+const sceneBuilderInterviewStatus = document.querySelector("#scene-builder-interview-status");
+const sceneBuilderInterviewNarrativeLabel = document.querySelector("#scene-builder-interview-narrative-label");
+const sceneBuilderInterviewNarrative = document.querySelector("#scene-builder-interview-narrative");
+const sceneBuilderInterviewQuestions = document.querySelector("#scene-builder-interview-questions");
+const sceneBuilderInterviewCancel = document.querySelector("#scene-builder-interview-cancel");
+const sceneBuilderInterviewNext = document.querySelector("#scene-builder-interview-next");
+const sceneBuilderInterviewApply = document.querySelector("#scene-builder-interview-apply");
 const builderImagePickerModal = document.querySelector("#builder-image-picker-modal");
 const builderElementModal = document.querySelector("#builder-element-modal");
 const builderContinueModal = document.querySelector("#builder-continue-modal");
@@ -5378,6 +5388,89 @@ function builderRenderDatalists() {
   `;
 }
 
+function renderSceneBuilderInterview(payload = state.sceneBuilderInterview) {
+  const started = Boolean(payload?.session);
+  const questions = payload?.questions || [];
+  sceneBuilderInterviewNarrativeLabel.hidden = started;
+  sceneBuilderInterviewQuestions.innerHTML = questions.map((item, index) => `
+    <label>
+      ${escapeHtml(item.question || `Question ${index + 1}`)}
+      <textarea rows="3" data-interview-answer="${escapeHtml(item.id || `question_${index + 1}`)}"></textarea>
+    </label>
+  `).join("");
+  sceneBuilderInterviewStatus.textContent = !started
+    ? "Paste a narrative description. The interview will infer technical Scene Builder details."
+    : payload.complete
+      ? `Complete · ${payload.total_phases || 0} focused passes`
+      : `${payload.phase_label || "Analyzing"} · ${payload.completed_phases || 0} of ${payload.total_phases || 0} complete`;
+  sceneBuilderInterviewNext.hidden = Boolean(payload?.complete);
+  sceneBuilderInterviewNext.textContent = started ? "Continue" : "Begin Interview";
+  sceneBuilderInterviewApply.hidden = !payload?.complete;
+}
+
+function openSceneBuilderInterview() {
+  if (!state.sceneBuilder) return;
+  builderSyncControls();
+  state.sceneBuilderInterview = null;
+  sceneBuilderInterviewNarrative.value = "";
+  renderSceneBuilderInterview();
+  sceneBuilderInterviewModal.showModal();
+  sceneBuilderInterviewNarrative.focus();
+}
+
+async function runSceneBuilderInterview() {
+  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) return;
+  const started = Boolean(state.sceneBuilderInterview?.session);
+  const answers = {};
+  if (started) {
+    for (const control of sceneBuilderInterviewQuestions.querySelectorAll("[data-interview-answer]")) {
+      answers[control.dataset.interviewAnswer] = control.value.trim();
+    }
+  }
+  sceneBuilderInterviewNext.disabled = true;
+  sceneBuilderInterviewStatus.textContent = started ? "Processing clarification..." : "Identifying scene elements...";
+  try {
+    const base = `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/interview`;
+    let payload = await fetchJson(started ? `${base}/step` : base, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(started
+        ? { session: state.sceneBuilderInterview.session, answers }
+        : { narrative: sceneBuilderInterviewNarrative.value, data: state.sceneBuilder }),
+    });
+    state.sceneBuilderInterview = payload;
+    renderSceneBuilderInterview(payload);
+    while (!payload.complete && !(payload.questions || []).length) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      sceneBuilderInterviewStatus.textContent = `Analyzing ${payload.phase_label || "scene"}...`;
+      payload = await fetchJson(`${base}/step`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session: payload.session, answers: {} }),
+      });
+      state.sceneBuilderInterview = payload;
+      renderSceneBuilderInterview(payload);
+    }
+    sceneBuilderInterviewQuestions.querySelector("textarea")?.focus();
+  } catch (error) {
+    sceneBuilderInterviewStatus.textContent = error.message;
+  } finally {
+    sceneBuilderInterviewNext.disabled = false;
+  }
+}
+
+async function applySceneBuilderInterview() {
+  const draft = state.sceneBuilderInterview?.draft;
+  if (!draft) return;
+  state.sceneBuilder = draft;
+  state.selectedBuilderElementId = draft.scene_elements?.[0]?.id || null;
+  state.selectedBuilderPlacementId = draft.placements?.[0]?.id || null;
+  renderSceneBuilder();
+  sceneBuilderInterviewModal.close();
+  const saved = await saveSceneBuilder(false);
+  if (saved) showSceneBuilderMessage("Scene-Builder Interview applied and saved.", "success");
+}
+
 function renderSceneBuilder() {
   if (!state.sceneBuilder) {
     return;
@@ -5394,6 +5487,7 @@ function renderSceneBuilder() {
         <span id="scene-builder-save-state" class="save-state" aria-live="polite"></span>
       </div>
       <div class="scene-builder-primary-actions">
+        <button type="button" data-builder-action="interview">Interview</button>
         <button type="button" class="scene-builder-save" data-builder-action="save">Save</button>
         <button type="button" class="primary-action scene-builder-render" data-builder-action="render">Render</button>
         ${builderRenderMoreMenu()}
@@ -5709,6 +5803,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   } else {
     const action = target.dataset.builderAction;
     if (action === "builder-section") setBuilderResponsiveSection(target.dataset.builderSection);
+    if (action === "interview") openSceneBuilderInterview();
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
@@ -5742,6 +5837,10 @@ sceneBuilderPanel.addEventListener("click", (event) => {
 
 builderContinueCancel.addEventListener("click", closeBuilderContinueDialog);
 builderContinueConfirm.addEventListener("click", continueSceneBuilderFrom);
+sceneBuilderInterviewClose.addEventListener("click", () => sceneBuilderInterviewModal.close());
+sceneBuilderInterviewCancel.addEventListener("click", () => sceneBuilderInterviewModal.close());
+sceneBuilderInterviewNext.addEventListener("click", runSceneBuilderInterview);
+sceneBuilderInterviewApply.addEventListener("click", applySceneBuilderInterview);
 
 async function loadImagePickerReferences(picker) {
   picker.status.textContent = "Loading references...";

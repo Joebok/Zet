@@ -1924,6 +1924,27 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.scene-builder-interview-dialog {
+  gap: 14px;
+  max-width: 760px;
+  width: min(760px, calc(100vw - 32px));
+}
+
+.scene-builder-interview-dialog textarea {
+  min-height: 110px;
+  width: 100%;
+}
+
+#scene-builder-interview-questions {
+  display: grid;
+  gap: 12px;
+}
+
+#scene-builder-interview-questions label {
+  display: grid;
+  gap: 6px;
+}
+
 .template-manual-controls {
   display: flex;
   align-items: end;

@@ -50,3 +50,29 @@ class OllamaModelService:
             "models": vision_models if filtered else names,
             "vision_filtered": filtered,
         }
+
+    def generate_json(self, model: str, system: str, prompt: str, schema: dict) -> dict:
+        """Generate one structured JSON response with a local Ollama model."""
+        response = self._request_json(
+            "/api/chat",
+            {
+                "model": model,
+                "stream": False,
+                "format": schema,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "options": {"temperature": 0.2},
+            },
+        )
+        content = response.get("message", {}).get("content")
+        if not isinstance(content, str):
+            raise RuntimeError("Ollama returned no structured response.")
+        try:
+            value = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Ollama returned invalid JSON.") from exc
+        if not isinstance(value, dict):
+            raise RuntimeError("Ollama JSON response must be an object.")
+        return value

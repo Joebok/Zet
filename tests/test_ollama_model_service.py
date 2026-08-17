@@ -1,4 +1,5 @@
 import unittest
+import json
 
 from zet.services.ollama_model_service import OllamaModelService
 
@@ -41,6 +42,16 @@ class OllamaModelServiceTests(unittest.TestCase):
         self.assertEqual(
             service.list_models(),
             {"models": ["Alpha", "zeta"], "vision_filtered": False},
+        )
+
+    def test_generates_structured_json_with_chat_api(self):
+        service = StubOllamaModelService({
+            ("/api/chat", "local-model"): {"message": {"content": json.dumps({"answer": "ok"})}},
+        })
+
+        self.assertEqual(
+            service.generate_json("local-model", "system", "prompt", {"type": "object"}),
+            {"answer": "ok"},
         )
 
 

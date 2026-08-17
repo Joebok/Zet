@@ -831,6 +831,28 @@
       </div>
       <div id="scene-builder-message" class="action-message" hidden></div>
       <div id="scene-builder-panel" class="scene-builder-panel"></div>
+      <dialog id="scene-builder-interview-modal" class="image-picker-modal" aria-labelledby="scene-builder-interview-title">
+        <div class="image-picker-dialog scene-builder-interview-dialog">
+          <div class="review-header">
+            <div>
+              <span class="eyebrow">Narrative to scene</span>
+              <h2 id="scene-builder-interview-title">Scene-Builder Interview</h2>
+            </div>
+            <button id="scene-builder-interview-close" type="button">Close</button>
+          </div>
+          <div id="scene-builder-interview-status" class="status-text" role="status"></div>
+          <label id="scene-builder-interview-narrative-label">
+            Describe the scene in story terms
+            <textarea id="scene-builder-interview-narrative" rows="10" placeholder="Paste a narrative description of the moment, who is present, what happens, and how it should feel..."></textarea>
+          </label>
+          <div id="scene-builder-interview-questions"></div>
+          <div class="button-row compact">
+            <button id="scene-builder-interview-cancel" type="button">Cancel</button>
+            <button id="scene-builder-interview-next" class="primary-action" type="button">Begin Interview</button>
+            <button id="scene-builder-interview-apply" class="primary-action" type="button" hidden>Apply to Scene</button>
+          </div>
+        </div>
+      </dialog>
       <dialog id="builder-element-modal" class="image-picker-modal" aria-labelledby="builder-element-modal-title">
         <div class="image-picker-dialog">
           <div class="review-header">

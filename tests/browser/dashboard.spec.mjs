@@ -717,6 +717,66 @@ test("Scene Builder hierarchy streamlines authoring and preserves hidden legacy 
   await expect(page.locator(".scene-builder-technical-details")).toContainText("Scene image");
 });
 
+test("Scene-Builder Interview asks clarification and applies the completed draft", async ({ page }) => {
+  await openPage(page, "scenes");
+  let submittedAnswer = "";
+  await page.route("**/builder/interview**", async (route) => {
+    const body = route.request().postDataJSON();
+    if (route.request().url().endsWith("/step")) {
+      submittedAnswer = body.answers.figure_role;
+      const draft = body.session.draft;
+      draft.scene.story_beat = "Mara recognizes the watcher across the rain-soaked platform.";
+      draft.setup.environment.location = "Rain-soaked railway platform";
+      draft.setup.environment.lighting = "Cold station lamps";
+      draft.scene_elements = [{
+        id: "Mara", display_name: "Mara", resource_type: "Character", element_type: "Character",
+        fallback_visual_description: "A courier in a red coat", reference_images: [], notes: "",
+      }];
+      draft.placements = [{
+        id: "placement_Mara", scene_element_id: "Mara", position_within_cell: "left", depth: "midground",
+        pose: {}, motion: { state: "stationary", direction_screen: "", cue: "" }, placement_notes: "",
+      }];
+      draft.setup.composition = { focal_point: "Mara", left_to_right: ["Mara"], composition_notes: "" };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          session: { ...body.session, draft, phase_index: 7, questions: [], complete: true },
+          draft, questions: [], complete: true, phase: "relationships", phase_label: "Complete",
+          completed_phases: 7, total_phases: 7,
+        }),
+      });
+      return;
+    }
+    const question = { id: "figure_role", question: "Should the distant figure feel threatening or protective?" };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: {
+          narrative: body.narrative, draft: body.data, phase_index: 0, questions: [question], history: [], complete: false,
+        },
+        draft: body.data, questions: [question], complete: false, phase: "elements", phase_label: "Scene elements",
+        completed_phases: 0, total_phases: 7,
+      }),
+    });
+  });
+
+  await page.locator("#scene-builder-open").click();
+  await page.getByRole("button", { name: "Interview", exact: true }).click();
+  await page.locator("#scene-builder-interview-narrative").fill("Mara spots a distant figure through the rain.");
+  await page.getByRole("button", { name: "Begin Interview", exact: true }).click();
+  await expect(page.locator("#scene-builder-interview-questions")).toContainText("threatening or protective");
+  await page.locator('[data-interview-answer="figure_role"]').fill("Threatening, but keep their identity unreadable.");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.locator("#scene-builder-interview-status")).toContainText("Complete");
+  await page.getByRole("button", { name: "Apply to Scene", exact: true }).click();
+
+  expect(submittedAnswer).toBe("Threatening, but keep their identity unreadable.");
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toHaveValue("Mara recognizes the watcher across the rain-soaked platform.");
+  await expect(page.locator("#scene-builder-message")).toContainText("applied and saved");
+});
+
 test("iPad uses compact navigation and a two-pane sectioned Scene Builder", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await openPage(page, "scenes");

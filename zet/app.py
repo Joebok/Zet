@@ -36,6 +36,7 @@ from zet.services.prompt_evolution_service import PromptEvolutionService
 from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
+from zet.services.scene_builder_interview_service import SceneBuilderInterviewService
 from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
@@ -196,6 +197,7 @@ class ZetApp:
         )
         self.zine_service = ZineService(path_service, story_service)
         self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
+        self.scene_builder_interview_service = SceneBuilderInterviewService(config.ai_prompt_analysis_model)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -468,6 +470,14 @@ class ZetApp:
     def scene_builder_options(self) -> dict:
         """Return Scene Builder option lists."""
         return self.story_service.scene_builder_options()
+
+    def start_scene_builder_interview(self, narrative: str, data: dict) -> dict:
+        """Start a narrative-to-Scene-Builder interview."""
+        return self.scene_builder_interview_service.start(narrative, data)
+
+    def continue_scene_builder_interview(self, session: dict, answers: dict | None = None) -> dict:
+        """Run one focused phase of a Scene Builder interview."""
+        return self.scene_builder_interview_service.step(session, answers)
 
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""
