@@ -54,15 +54,33 @@ def render_preview(
     aspect_ratio: str = "",
     reference_files: list[dict[str, Any]] | None = None,
     seed: int | None = None,
+    render_overrides: dict[str, Any] | None = None,
+    checkpoint: str | None = None,
 ) -> LocalRenderResult:
     profile = _load_profile(project_root, profile_name)
+    allowed_overrides = {
+        "steps", "cfg", "sampler_name", "scheduler", "denoise",
+        "control_preprocessor", "controlnet_model", "control_strength",
+        "control_start", "control_end",
+    }
+    profile = {
+        **profile,
+        **{
+            key: value for key, value in (render_overrides or {}).items()
+            if key in allowed_overrides
+        },
+    }
     config = _load_config(project_root)
-    checkpoint = str(config.get("Checkpoint") or "")
+    selected_checkpoint = str(checkpoint if checkpoint is not None else config.get("Checkpoint") or "")
     positive_globals = str(config.get("PositivePromptGlobals") or "")
     negative_globals = str(config.get("NegativePromptGlobals") or "")
     profile_seed = profile.get("seed")
     selected_seed = seed if seed is not None else profile_seed
-    workflow_kind = str(profile.get("workflow_kind") or "core_txt2img_scene_preview")
+    workflow_kind = str(
+        profile.get("workflow_kind")
+        or profile.get("prompt_workflow_kind")
+        or "core_txt2img_scene_preview"
+    )
     server_url = str(config.get("ServerURL") or "http://127.0.0.1:8188")
 
     ir: dict[str, Any] | None = None
@@ -75,7 +93,7 @@ def render_preview(
         compilation = compile_ir_to_comfyui_workflow(
             ir,
             profile,
-            checkpoint=checkpoint,
+            checkpoint=selected_checkpoint,
             positive_prompt_globals=positive_globals,
             negative_prompt_globals=negative_globals,
             seed=None if str(selected_seed).lower() == "random" else int(selected_seed),
@@ -93,11 +111,17 @@ def render_preview(
             positive,
             negative,
             profile,
-            checkpoint=checkpoint,
+            checkpoint=selected_checkpoint,
             positive_prompt_globals=positive_globals,
             negative_prompt_globals=negative_globals,
             seed=None if str(selected_seed).lower() == "random" else int(selected_seed),
             aspect_ratio=aspect_ratio,
+            reference_files=reference_files,
+            available_node_types=(
+                list_comfyui_node_types(server_url)
+                if workflow_kind != "core_txt2img_prompt_only"
+                else None
+            ),
         )
 
     workflow_path = job_output_dir / "ComfyUI_Workflow_API.json"
@@ -135,7 +159,7 @@ def render_preview(
         "workflow_kind": compilation.workflow_kind,
         "profile_settings": profile,
         "server_url": server_url,
-        "checkpoint": checkpoint,
+        "checkpoint": selected_checkpoint,
         "scene_render_ir": str(scene_render_ir_path) if scene_render_ir_path else None,
         "scene_render_ir_sha256": ir_hash or None,
         "final_prompt": str(final_prompt_path),

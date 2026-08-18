@@ -344,6 +344,15 @@ class AIProxyService:
             return str(profile["workflow_kind"])
         return "core_txt2img_scene_preview"
 
+    def _workflow_kind_for_preset(self, profile_name: str) -> str:
+        profiles = self._read_json_if_exists(
+            self.path_service.project_root / "Config" / "Local_Render_Presets.json"
+        )
+        profile = profiles.get(profile_name) if isinstance(profiles, dict) else None
+        if not isinstance(profile, dict):
+            return ""
+        return str(profile.get("prompt_workflow_kind") or profile.get("workflow_kind") or "").strip()
+
     def _prompt_condense_model(self) -> str:
         return str(getattr(self.path_service.config, "prompt_condense_model", "llama3.2-vision:11b"))
 
@@ -555,6 +564,8 @@ class AIProxyService:
         checkpoint: str | None = None,
         render_overrides: dict | None = None,
         render_preset: str | None = None,
+        image_generation: str | None = None,
+        reference_files: list[dict] | None = None,
     ) -> dict:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
@@ -582,9 +593,11 @@ class AIProxyService:
             "target_output_file": target_output_file,
             "render_preset": render_preset or self._local_render_preset(),
             "image_generation": str(
-                getattr(self.path_service.config, "local_render_backend", "stable_matrix")
+                image_generation or getattr(self.path_service.config, "local_render_backend", "stable_matrix")
             ).strip().lower(),
-            "reference_files": reference_files_payload(manifest.get("reference_files") or []),
+            "reference_files": reference_files_payload(
+                reference_files if reference_files is not None else manifest.get("reference_files") or []
+            ),
         }
         ask_manifest["checkpoint"] = checkpoint if checkpoint is not None else str(
             getattr(
@@ -595,7 +608,9 @@ class AIProxyService:
                 "",
             )
         )
-        workflow_kind = self._local_render_workflow_kind()
+        workflow_kind = self._workflow_kind_for_preset(str(ask_manifest["render_preset"]))
+        if not workflow_kind and ask_manifest["image_generation"] == "comfyui":
+            workflow_kind = self._local_render_workflow_kind()
         if workflow_kind:
             ask_manifest["workflow_kind"] = workflow_kind
         if seed is not None:
@@ -623,6 +638,8 @@ class AIProxyService:
         checkpoint: str | None = None,
         render_overrides: dict | None = None,
         render_preset: str | None = None,
+        image_generation: str | None = None,
+        reference_files: list[dict] | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
         if not allow_parallel:
@@ -642,6 +659,8 @@ class AIProxyService:
             checkpoint,
             render_overrides,
             render_preset,
+            image_generation,
+            reference_files,
         )
         ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)

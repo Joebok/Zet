@@ -320,6 +320,8 @@ The next enhanced stage is `openpose_scene_preview`. Its expected input is `Comf
 
 If no IR is supplied, the adapter compiles the labeled positive and negative prompt into a plain core-node txt2img workflow. This permits character-asset local previews when ComfyUI is selected.
 
+Prompt Evolution additionally registers managed prompt-only SD 1.5 compilers for img2img, ControlNet, and combined img2img/ControlNet rendering. These workflows consume immutable `prompt_evolution_init` and `prompt_evolution_pose` reference roles, accept per-run checkpoint and generation overrides, and persist the effective recipe with the run. Missing required nodes or models fail explicitly without fallback.
+
 ### Dimensions
 
 The compiler preserves the requested aspect ratio subject to profile limits:

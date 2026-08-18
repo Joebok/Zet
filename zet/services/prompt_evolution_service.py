@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ import tempfile
 from typing import Any
 import zipfile
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.services.ai_proxy_path_service import AIProxyPathService
@@ -251,8 +252,30 @@ class PromptEvolutionService:
                 })
         profiles_path = self.project_root / "Config" / "Local_Render_Presets.json"
         profiles = self._read_json(profiles_path) if profiles_path.is_file() else {}
-        stable_profiles = sorted(name for name, value in profiles.items() if isinstance(value, dict) and value.get("backend") == "stable_matrix")
-        return {"assets": assets, "profiles": stable_profiles, "width": CANVAS_WIDTH, "height": CANVAS_HEIGHT}
+        profiles_by_backend = {
+            backend: sorted(
+                name for name, value in profiles.items()
+                if isinstance(value, dict)
+                and value.get("backend") == backend
+                and (backend != "comfyui" or name.startswith("prompt-evolution-"))
+            )
+            for backend in ("stable_matrix", "comfyui")
+        }
+        conditioning_images = []
+        for row in self.app.image_reference_rows(scope="all", include_unavailable=False):
+            if row.tag and Path(row.image_path).is_file():
+                conditioning_images.append({
+                    "tag": row.tag, "label": row.label, "kind": row.kind,
+                    "image_path": row.image_path, "thumbnail_path": row.thumbnail_path,
+                })
+        return {
+            "assets": assets,
+            "profiles": profiles_by_backend["stable_matrix"],
+            "profiles_by_backend": profiles_by_backend,
+            "conditioning_images": conditioning_images,
+            "width": CANVAS_WIDTH,
+            "height": CANVAS_HEIGHT,
+        }
 
     def _source_asset(self, character: str, phase: str, costume: str, view: str):
         matches = [
@@ -349,7 +372,138 @@ class PromptEvolutionService:
             "placement_box": placement,
         }
 
-    def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _conditioning_input(
+        self,
+        *,
+        role: str,
+        source: Path,
+        source_kind: str,
+        inputs_root: Path,
+    ) -> dict[str, Any]:
+        if not source.is_file():
+            raise PromptEvolutionError(f"Conditioning image is unavailable: {source}")
+        original = inputs_root / f"{role}_original{source.suffix.lower() or '.img'}"
+        shutil.copy2(source, original)
+        try:
+            with Image.open(original) as opened:
+                image = ImageOps.exif_transpose(opened).convert("RGB")
+        except Exception as exc:
+            raise PromptEvolutionError(f"Conditioning input is not a valid image: {source.name}") from exc
+        source_size = [image.width, image.height]
+        image.thumbnail((CANVAS_WIDTH, CANVAS_HEIGHT), Image.Resampling.LANCZOS)
+        left, top = (CANVAS_WIDTH - image.width) // 2, (CANVAS_HEIGHT - image.height) // 2
+        normalized = inputs_root / f"{role}_768x1024.png"
+        canvas = Image.new("RGB", (CANVAS_WIDTH, CANVAS_HEIGHT), (128, 128, 128))
+        canvas.paste(image, (left, top))
+        canvas.save(normalized, "PNG")
+        return {
+            "role": f"prompt_evolution_{role}",
+            "source_kind": source_kind,
+            "source_path": str(source.resolve()),
+            "original_path": str(original.resolve()),
+            "path": str(normalized.resolve()),
+            "sha256": self._sha256(normalized),
+            "source_size": source_size,
+            "output_size": [CANVAS_WIDTH, CANVAS_HEIGHT],
+            "placement_box": [left, top, left + image.width, top + image.height],
+        }
+
+    def _resolve_conditioning_source(
+        self,
+        payload: dict[str, Any],
+        uploads: dict[str, tuple[str, bytes]],
+        role: str,
+        canonical: Path,
+        inputs_root: Path,
+    ) -> tuple[Path, str]:
+        uploaded = uploads.get(role)
+        if uploaded is not None:
+            filename, contents = uploaded
+            if not contents:
+                raise PromptEvolutionError(f"Uploaded {role} image is empty.")
+            suffix = Path(filename).suffix.lower()
+            if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+                raise PromptEvolutionError(f"Uploaded {role} image must be PNG, JPG, JPEG, or WEBP.")
+            source = inputs_root / f"uploaded_{role}{suffix}"
+            source.write_bytes(contents)
+            return source, "upload"
+        tag = str(payload.get(f"{role}_source_tag") or "").strip()
+        if tag:
+            record = self.app.resolve_image_reference_tag(tag)
+            return Path(str(record.get("path") or "")).resolve(), f"library:{tag}"
+        existing_path = str(payload.get(f"{role}_source_path") or "").strip()
+        if existing_path:
+            source = Path(existing_path).resolve()
+            pipeline_root = Path(self.app.config.base_pipeline_path).resolve()
+            if not source.is_relative_to(pipeline_root) or not source.is_file():
+                raise PromptEvolutionError(f"Invalid preserved {role} conditioning input.")
+            return source, "preserved_run"
+        return canonical, "canonical"
+
+    @staticmethod
+    def _render_controls(payload: dict[str, Any], profile: dict[str, Any], cfg_scale: float, steps: int) -> dict[str, Any]:
+        controls = {
+            "cfg": cfg_scale,
+            "steps": steps,
+            "sampler_name": str(payload.get("sampler_name") or profile.get("sampler_name") or "dpmpp_2m"),
+            "scheduler": str(payload.get("scheduler") or profile.get("scheduler") or "karras"),
+            "denoise": float(payload.get("denoise", profile.get("denoise", 1.0))),
+            "control_preprocessor": str(payload.get("control_preprocessor") or profile.get("control_preprocessor") or "dwpose"),
+            "controlnet_model": str(payload.get("controlnet_model") or profile.get("controlnet_model") or ""),
+            "control_strength": float(payload.get("control_strength", profile.get("control_strength", 0.8))),
+            "control_start": float(payload.get("control_start", profile.get("control_start", 0.0))),
+            "control_end": float(payload.get("control_end", profile.get("control_end", 0.85))),
+        }
+        if not 0 <= controls["denoise"] <= 1:
+            raise PromptEvolutionError("Img2img denoise must be 0–1.")
+        if controls["control_strength"] < 0:
+            raise PromptEvolutionError("ControlNet strength cannot be negative.")
+        if not 0 <= controls["control_start"] < controls["control_end"] <= 1:
+            raise PromptEvolutionError("ControlNet start/end must satisfy 0 ≤ start < end ≤ 1.")
+        if controls["control_preprocessor"] not in {"dwpose", "depth", "canny"}:
+            raise PromptEvolutionError("ControlNet preprocessor must be dwpose, depth, or canny.")
+        model_name = controls["controlnet_model"].casefold()
+        model_kind = next((
+            kind for kind, markers in (
+                ("dwpose", ("openpose", "dwpose")),
+                ("depth", ("depth",)),
+                ("canny", ("canny",)),
+            ) if any(marker in model_name for marker in markers)
+        ), "")
+        if model_kind and model_kind != controls["control_preprocessor"]:
+            raise PromptEvolutionError(
+                f"The {controls['control_preprocessor']} preprocessor requires a matching ControlNet model; "
+                f"selected {controls['controlnet_model']}."
+            )
+        return controls
+
+    @staticmethod
+    def _recipe_creation_settings(run: dict[str, Any]) -> dict[str, Any]:
+        recipe = run.get("render_recipe") or {}
+        settings = {
+            "backend": str(run.get("backend") or recipe.get("backend") or "stable_matrix"),
+            **dict(recipe.get("controls") or {}),
+        }
+        for item in recipe.get("inputs") or []:
+            role = str(item.get("role") or "").removeprefix("prompt_evolution_")
+            if role in {"init", "pose"} and item.get("path"):
+                settings[f"{role}_source_path"] = str(item["path"])
+        return settings
+
+    def create_run(
+        self,
+        payload: dict[str, Any],
+        uploads: dict[str, tuple[str, bytes]] | None = None,
+    ) -> dict[str, Any]:
+        uploads = uploads or {}
         character, phase = str(payload.get("character") or ""), str(payload.get("phase") or "")
         costume, view = str(payload.get("costume") or ""), str(payload.get("view") or "")
         asset = self._source_asset(character, phase, costume, view)
@@ -362,11 +516,28 @@ class PromptEvolutionService:
         cfg_scale, steps = float(payload.get("cfg_scale", 7.0)), int(payload.get("steps", 25))
         if not 0 <= cfg_scale <= 30 or not 1 <= steps <= 150:
             raise PromptEvolutionError("CFG must be 0–30 and steps must be 1–150.")
-        if str(self.app.config.local_render_backend).lower() != "stable_matrix":
-            raise PromptEvolutionError("Prompt Evolution currently requires the Stable Matrix backend.")
-        profile = str(payload.get("profile") or self.app.config.local_render_preset)
-        if profile not in self.options(character, phase)["profiles"]:
-            raise PromptEvolutionError(f"Unknown Stable Matrix render profile: {profile}")
+        backend = str(payload.get("backend") or "stable_matrix").strip().lower()
+        if backend not in {"stable_matrix", "comfyui"}:
+            raise PromptEvolutionError(f"Unsupported Prompt Evolution backend: {backend}")
+        default_profile = (
+            self.app.config.comfyui_profile if backend == "comfyui" else self.app.config.local_render_preset
+        )
+        profile = str(payload.get("profile") or default_profile)
+        profiles_path = self.project_root / "Config" / "Local_Render_Presets.json"
+        profiles = self._read_json(profiles_path) if profiles_path.is_file() else {}
+        profile_settings = profiles.get(profile)
+        if not isinstance(profile_settings, dict) or profile_settings.get("backend") != backend:
+            raise PromptEvolutionError(f"Unknown {backend} render profile: {profile}")
+        if backend == "comfyui" and not profile.startswith("prompt-evolution-"):
+            raise PromptEvolutionError("Prompt Evolution requires a managed ComfyUI profile.")
+        controls = self._render_controls(payload, profile_settings, cfg_scale, steps)
+        workflow_kind = str(
+            profile_settings.get("prompt_workflow_kind") or profile_settings.get("workflow_kind") or ""
+        )
+        uses_img2img = workflow_kind in {"core_img2img_prompt_only", "img2img_controlnet_prompt_only"}
+        uses_control = workflow_kind in {"controlnet_prompt_only", "img2img_controlnet_prompt_only"}
+        if backend == "comfyui" and uses_control and not controls["controlnet_model"]:
+            raise PromptEvolutionError("A ControlNet model is required for the selected workflow.")
         templates = {name: self.template(name) for name in TEMPLATE_NAMES}
         checklist = self.scoped_checklists(character, phase, costume)["merged"]
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -375,6 +546,24 @@ class PromptEvolutionService:
         source = self.app.path_service.locked_image_path(asset)
         derivative = root / "reference_768x1024.png"
         crop = self._reference_derivative(source, derivative, self._detection_tolerance(character, phase, costume))
+        inputs: list[dict[str, Any]] = []
+        if backend == "comfyui" and (uses_img2img or uses_control):
+            inputs_root = root / "inputs"
+            inputs_root.mkdir(parents=True)
+            if uses_img2img:
+                init_source, init_kind = self._resolve_conditioning_source(
+                    payload, uploads, "init", derivative, inputs_root
+                )
+                inputs.append(self._conditioning_input(
+                    role="init", source=init_source, source_kind=init_kind, inputs_root=inputs_root
+                ))
+            if uses_control:
+                pose_source, pose_kind = self._resolve_conditioning_source(
+                    payload, uploads, "pose", derivative, inputs_root
+                )
+                inputs.append(self._conditioning_input(
+                    role="pose", source=pose_source, source_kind=pose_kind, inputs_root=inputs_root
+                ))
         self._write_json(root / "template_snapshot.json", templates)
         self._write_json(root / "checklist_snapshot.json", checklist)
         generator = random.SystemRandom()
@@ -385,6 +574,9 @@ class PromptEvolutionService:
                 seeds.append(value)
         fixed_seeds, fresh_seeds = seeds[:fixed_seed_count], seeds[fixed_seed_count:]
         created_at = self._now()
+        checkpoint = str(payload.get("checkpoint") or (
+            self.app.config.comfyui_checkpoint if backend == "comfyui" else self.app.config.local_render_checkpoint
+        ))
         run = {
             "version": RUN_VERSION,
             "run_id": run_id, "root": str(root.resolve()), "asset_id": asset.asset_id,
@@ -394,8 +586,19 @@ class PromptEvolutionService:
             "critic_model_b": str(payload.get("critic_model_b") or DEFAULT_CHECKLIST_MODEL),
             "analysis_model": str(payload.get("analysis_model") or DEFAULT_VISION_MODEL),
             "check_model": str(payload.get("check_model") or DEFAULT_CHECKLIST_MODEL),
-            "checkpoint": str(payload.get("checkpoint") or self.app.config.local_render_checkpoint),
+            "backend": backend,
+            "checkpoint": checkpoint,
             "profile": profile,
+            "render_recipe": {
+                "version": 1,
+                "backend": backend,
+                "profile": profile,
+                "workflow_kind": workflow_kind,
+                "model_family": str(profile_settings.get("model_family") or ""),
+                "checkpoint": checkpoint,
+                "controls": controls,
+                "inputs": inputs,
+            },
             "cfg_scale": cfg_scale, "steps": steps,
             "width": CANVAS_WIDTH, "height": CANVAS_HEIGHT, "batch_size": batch_size,
             "fixed_seed_count": fixed_seed_count, "total_batches": total_batches,
@@ -608,10 +811,21 @@ class PromptEvolutionService:
         }
         self._log(run, f"Batch {index + 1} — starting renders for {len(run['seeds'])} seeds.", batch=index + 1)
         for seed in run["seeds"]:
+            recipe = run.get("render_recipe") or {}
             ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
                 manifest, prompt_path, batch, allow_parallel=True, seed=seed, checkpoint=run["checkpoint"],
-                render_overrides={"width": CANVAS_WIDTH, "height": CANVAS_HEIGHT, "cfg_scale": run["cfg_scale"], "steps": run["steps"]},
+                render_overrides={
+                    "width": CANVAS_WIDTH,
+                    "height": CANVAS_HEIGHT,
+                    "cfg_scale": run["cfg_scale"],
+                    **dict(recipe.get("controls") or {}),
+                },
                 render_preset=run["profile"],
+                image_generation=str(run.get("backend") or "stable_matrix"),
+                reference_files=[
+                    {key: item[key] for key in ("role", "path", "sha256", "source_kind") if key in item}
+                    for item in recipe.get("inputs") or []
+                ],
             )
             ask = self._read_json(ask_path / "ask_manifest.json")
             asks.append({"ask_id": ask["ask_id"], "seed": seed, "file": str(batch / "Local_Test_Renders" / ask["expected_output"])})
@@ -1057,7 +1271,14 @@ class PromptEvolutionService:
             elif run["status"] == "RENDERING":
                 batch_path = root / "batches" / f"{int(run['current_batch']):03d}"
                 batch = self._read_json(batch_path / "batch.json")
-                if all(Path(item["file"]).is_file() for item in batch["renders"]):
+                renders_complete = all(Path(item["file"]).is_file() for item in batch["renders"])
+                if not renders_complete:
+                    failure = self._render_failure(run_id, batch["renders"])
+                    if failure:
+                        raise PromptEvolutionError(
+                            f"Render {failure['ask_id']} failed: {failure['error_message']}"
+                        )
+                if renders_complete:
                     checks = self._read_json(root / "checklist_snapshot.json")
                     questions = self._checklist_questions(checks)
                     configured_ids = [str(row["id"]) for row in checks.get("items", [])]
@@ -1238,7 +1459,9 @@ class PromptEvolutionService:
                         "character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model",
                         "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches",
                     )}
-                    new_run = self.create_run(payload | {"positive_prompt": positive, "negative_prompt": negative})
+                    new_run = self.create_run(payload | self._recipe_creation_settings(run) | {
+                        "positive_prompt": positive, "negative_prompt": negative,
+                    })
                     directed.update({"status": "COMPLETE", "new_run_id": new_run["run_id"]})
                     run["directed_refinement"] = directed
                     run["status"] = "COMPLETE"
@@ -1342,17 +1565,56 @@ class PromptEvolutionService:
 
     def _audit_proxy_records(self, run_id: str) -> list[tuple[str, Path]]:
         paths = AIProxyPathService(self.app.config)
-        prefix = f"Ask_Prompt_Evolution_{run_id}_"
+        prefixes = (
+            f"Ask_Prompt_Evolution_{run_id}_",
+            f"Ask_Render_Task_PromptEvolution_{run_id}_",
+        )
         records: list[tuple[str, Path]] = []
         for state, root in (("ask", paths.ask_root()), ("running", paths.running_root()), ("answer", paths.answer_root())):
             if root.is_dir():
-                records.extend((state, path) for path in root.iterdir() if path.is_dir() and path.name.startswith(prefix))
+                records.extend((state, path) for path in root.iterdir() if path.is_dir() and path.name.startswith(prefixes))
         archive = paths.harvested_archive_root()
         if archive.is_dir():
-            records.extend(("harvested", path) for path in archive.glob(f"*/{prefix}*") if path.is_dir())
+            records.extend(
+                ("harvested", path)
+                for day in archive.iterdir() if day.is_dir()
+                for path in day.iterdir() if path.is_dir() and path.name.startswith(prefixes)
+            )
         return sorted(records, key=lambda item: (
             str(self._optional_json(item[1] / "job.json").get("created_at") or ""), item[1].name,
         ))
+
+    @staticmethod
+    def _concise_render_error(message: str) -> str:
+        prefix = "ComfyUI execution failed: "
+        if message.startswith(prefix):
+            try:
+                payload = json.loads(message[len(prefix):])
+                for kind, details in payload.get("messages", []):
+                    if kind == "execution_error" and isinstance(details, dict):
+                        error = str(details.get("exception_message") or message).strip()
+                        if "mat1 and mat2 shapes cannot be multiplied" in error:
+                            return (
+                                "The checkpoint and ControlNet use incompatible model families. "
+                                "Use an SDXL ControlNet with this SDXL checkpoint, or select an SD1.5 checkpoint."
+                            )
+                        return error
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        return message.strip()
+
+    def _render_failure(self, run_id: str, renders: list[dict[str, Any]]) -> dict[str, str] | None:
+        ask_ids = {str(item.get("ask_id") or "") for item in renders}
+        for _, record_path in self._audit_proxy_records(run_id):
+            if record_path.name not in ask_ids:
+                continue
+            answer = self._optional_json(record_path / "answer_manifest.json")
+            result = self._optional_json(record_path / "proxy_result.json")
+            if str(answer.get("status") or "").upper() != "ERROR" and str(result.get("status") or "").upper() != "FAILED":
+                continue
+            message = str(answer.get("error_message") or result.get("error_message") or "Render worker failed.")
+            return {"ask_id": record_path.name, "error_message": self._concise_render_error(message)}
+        return None
 
     def create_audit_bundle(self, run_id: str) -> Path:
         run = self._find_run(run_id)
@@ -1440,7 +1702,7 @@ class PromptEvolutionService:
         }
         settings["batch_size"] = max(2, int(settings.get("batch_size", 5)))
         settings["total_batches"] = max(2, int(settings.get("total_batches", 5)))
-        return self.create_run(settings | {
+        return self.create_run(settings | self._recipe_creation_settings(run) | {
             "positive_prompt": batch.get("positive_core", batch["positive_prompt"]),
             "negative_prompt": batch.get("negative_core", batch["negative_prompt"]),
         })
@@ -1459,7 +1721,7 @@ class PromptEvolutionService:
         }
         settings["batch_size"] = max(2, int(settings.get("batch_size", 5)))
         settings["total_batches"] = max(2, int(settings.get("total_batches", 5)))
-        restarted = self.create_run(settings)
+        restarted = self.create_run(settings | self._recipe_creation_settings(run))
         fresh = self._find_run(restarted["run_id"])
         fresh["restarted_from_run_id"] = run_id
         if run.get("display_name"):
@@ -1504,7 +1766,10 @@ class PromptEvolutionService:
 
     def list_runs(self) -> list[dict[str, Any]]:
         runs = [self._read_json(path) for path in self._run_paths()]
-        return [run for run in runs if int(run.get("version", 0)) == RUN_VERSION]
+        return [
+            {**run, "backend": str(run.get("backend") or "stable_matrix")}
+            for run in runs if int(run.get("version", 0)) == RUN_VERSION
+        ]
 
     def detail(self, run_id: str) -> dict[str, Any]:
         run = self._find_run(run_id)
@@ -1517,7 +1782,12 @@ class PromptEvolutionService:
             "fresh_renders": [item for item in batch.get("renders", []) if item.get("seed_role") == "fresh"],
         } for batch in batches]
         random.Random(f"{run_id}:prompt-versions").shuffle(versions)
-        return {**run, "batches": batches, "prompt_versions": versions}
+        return {
+            **run,
+            "backend": str(run.get("backend") or "stable_matrix"),
+            "batches": batches,
+            "prompt_versions": versions,
+        }
 
     def select_prompt_version(self, run_id: str, prompt_version_id: str, selection_reason: str = "") -> dict[str, Any]:
         run = self._find_run(run_id)
@@ -1538,6 +1808,17 @@ class PromptEvolutionService:
             "checkpoint": run.get("checkpoint", ""),
         })
         self._write_json(root / "evaluation_wrapper.json", selected["evaluation_wrapper"])
+        self._write_json(root / "render_recipe.json", {
+            **dict(run.get("render_recipe") or {
+                "version": 1,
+                "backend": "stable_matrix",
+                "profile": run.get("profile", ""),
+                "workflow_kind": "",
+                "controls": {"cfg": run.get("cfg_scale"), "steps": run.get("steps")},
+                "inputs": [],
+            }),
+            "checkpoint": run.get("checkpoint", ""),
+        })
         self._save_run(run)
         return self.detail(run_id)
 

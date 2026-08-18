@@ -1787,11 +1787,33 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/prompt-evolution/runs")
-    def prompt_evolution_create(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    async def prompt_evolution_create(request: Request) -> dict[str, Any]:
         try:
-            return _app(app.state.config_path).create_prompt_evolution_run(payload)
+            content_type = request.headers.get("content-type", "")
+            uploads: dict[str, tuple[str, bytes]] = {}
+            if content_type.startswith("multipart/form-data"):
+                form = await request.form()
+                payload = json.loads(str(form.get("settings") or "{}"))
+                for role, field in (("init", "init_image"), ("pose", "pose_image")):
+                    upload = form.get(field)
+                    if upload is not None and getattr(upload, "filename", ""):
+                        uploads[role] = (str(upload.filename), await upload.read())
+            else:
+                payload = await request.json()
+            if not isinstance(payload, dict):
+                raise ValueError("Prompt Evolution settings must be a JSON object.")
+            return _app(app.state.config_path).create_prompt_evolution_run(payload, uploads)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/prompt-evolution/comfyui-options")
+    def prompt_evolution_comfyui_options() -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            profiles_path = Path(app.state.config_path).resolve().parent / "Config" / "Local_Render_Presets.json"
+            return LocalRenderBackendService(profiles_path).comfyui_options(zet_app.config.comfyui_server_url)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/prompt-evolution/runs/{run_id}")
     def prompt_evolution_detail(run_id: str) -> dict[str, Any]:

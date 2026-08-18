@@ -726,8 +726,8 @@ class ZetApp:
     def prompt_evolution_options(self, character: str, phase: str):
         return self.prompt_evolution_service.options(character, phase)
 
-    def create_prompt_evolution_run(self, payload: dict):
-        return self.prompt_evolution_service.create_run(payload)
+    def create_prompt_evolution_run(self, payload: dict, uploads: dict | None = None):
+        return self.prompt_evolution_service.create_run(payload, uploads)
 
     def list_prompt_evolution_runs(self):
         return self.prompt_evolution_service.list_runs()

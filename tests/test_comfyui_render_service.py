@@ -115,6 +115,63 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
         self.assertEqual((640, 800), (compilation.width, compilation.height))
         self.assertEqual("core_txt2img_prompt_only", compilation.workflow_kind)
 
+    def test_compile_prompt_builds_img2img_controlnet_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            init = root / "init.png"
+            pose = root / "pose.png"
+            init.write_bytes(b"init")
+            pose.write_bytes(b"pose")
+            profile = self._profile() | {
+                "prompt_workflow_kind": "img2img_controlnet_prompt_only",
+                "control_preprocessor": "dwpose",
+                "controlnet_model": "openpose.safetensors",
+                "denoise": 0.55,
+                "control_strength": 0.8,
+                "control_start": 0.0,
+                "control_end": 0.85,
+            }
+
+            compilation = compile_prompt_to_comfyui_workflow(
+                "one character", "blurry", profile,
+                checkpoint="model.safetensors", seed=9,
+                reference_files=[
+                    {"role": "prompt_evolution_init", "path": str(init)},
+                    {"role": "prompt_evolution_pose", "path": str(pose)},
+                ],
+                available_node_types={
+                    "LoadImage", "DWPreprocessor", "ControlNetLoader", "ControlNetApplyAdvanced",
+                },
+            )
+
+        classes = [node["class_type"] for node in compilation.workflow.values()]
+        self.assertIn("VAEEncode", classes)
+        self.assertIn("DWPreprocessor", classes)
+        self.assertIn("ControlNetApplyAdvanced", classes)
+        sampler = next(node for node in compilation.workflow.values() if node["class_type"] == "KSampler")
+        self.assertEqual(0.55, sampler["inputs"]["denoise"])
+        control = next(node for node in compilation.workflow.values() if node["class_type"] == "ControlNetApplyAdvanced")
+        self.assertEqual(0.8, control["inputs"]["strength"])
+        self.assertEqual("img2img_controlnet_prompt_only", compilation.workflow_kind)
+        self.assertEqual(2, len(compilation.debug["references_used"]))
+
+    def test_controlnet_prompt_fails_when_required_node_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pose = Path(temp_dir) / "pose.png"
+            pose.write_bytes(b"pose")
+            with self.assertRaisesRegex(LocalRenderError, "DWPreprocessor"):
+                compile_prompt_to_comfyui_workflow(
+                    "one character", "blurry",
+                    self._profile() | {
+                        "prompt_workflow_kind": "controlnet_prompt_only",
+                        "control_preprocessor": "dwpose",
+                        "controlnet_model": "openpose.safetensors",
+                    },
+                    checkpoint="model.safetensors",
+                    reference_files=[{"role": "prompt_evolution_pose", "path": str(pose)}],
+                    available_node_types={"LoadImage", "ControlNetLoader", "ControlNetApplyAdvanced"},
+                )
+
     def test_prompt_only_uses_core_compiler_with_enhanced_scene_profile(self) -> None:
         compilation = compile_prompt_to_comfyui_workflow(
             "one character",
@@ -560,6 +617,23 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 )
 
         self.assertEqual(["one.safetensors", "two.safetensors"], [item["title"] for item in checkpoints])
+
+    def test_comfyui_options_discovers_controlnet_and_sampler_choices(self) -> None:
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [["model.safetensors"]]}}},
+            "ControlNetLoader": {"input": {"required": {"control_net_name": [["pose.safetensors"]]}}},
+            "KSampler": {"input": {"required": {
+                "sampler_name": [["dpmpp_2m"]], "scheduler": [["karras"]],
+            }}},
+            "DWPreprocessor": {"input": {"required": {}}},
+        }).encode()
+        with patch("zet.services.local_render_backend_service.urlopen", return_value=response):
+            options = LocalRenderBackendService("missing.json").comfyui_options("http://127.0.0.1:8188")
+
+        self.assertEqual(["pose.safetensors"], options["controlnet_models"])
+        self.assertEqual(["dpmpp_2m"], options["samplers"])
+        self.assertIn("DWPreprocessor", options["node_types"])
 
     def test_cli_compile_only_writes_workflow_beside_ir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

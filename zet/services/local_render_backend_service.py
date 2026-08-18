@@ -62,3 +62,28 @@ class LocalRenderBackendService:
                     "hash": str(item.get("hash") or ""),
                 })
         return checkpoints
+
+    def comfyui_options(self, server_url: str) -> dict[str, Any]:
+        request = Request(str(server_url).rstrip("/") + "/object_info", method="GET")
+        try:
+            with urlopen(request, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except URLError as exc:
+            raise RuntimeError("ComfyUI unavailable.") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("ComfyUI returned invalid object_info.")
+
+        def choices(node_type: str, input_name: str) -> list[str]:
+            node = data.get(node_type, {})
+            required = node.get("input", {}).get("required", {}) if isinstance(node, dict) else {}
+            value = required.get(input_name, []) if isinstance(required, dict) else []
+            values = value[0] if isinstance(value, list) and value and isinstance(value[0], list) else []
+            return [str(item) for item in values if str(item).strip()]
+
+        return {
+            "checkpoints": choices("CheckpointLoaderSimple", "ckpt_name"),
+            "controlnet_models": choices("ControlNetLoader", "control_net_name"),
+            "samplers": choices("KSampler", "sampler_name"),
+            "schedulers": choices("KSampler", "scheduler"),
+            "node_types": sorted(str(name) for name in data),
+        }

@@ -10,6 +10,35 @@ from zet.services.prompt_evolution_service import PromptEvolutionError, PromptEv
 
 
 class PromptEvolutionServiceV3Tests(TestCase):
+    def test_comfyui_render_controls_validate_and_recreate_recipe(self) -> None:
+        controls = PromptEvolutionService._render_controls({
+            "denoise": 0.6,
+            "control_preprocessor": "depth",
+            "controlnet_model": "depth.safetensors",
+            "control_strength": 0.75,
+            "control_start": 0.1,
+            "control_end": 0.9,
+        }, {}, 6.5, 30)
+        self.assertEqual("depth", controls["control_preprocessor"])
+        self.assertEqual(6.5, controls["cfg"])
+        settings = PromptEvolutionService._recipe_creation_settings({
+            "backend": "comfyui",
+            "render_recipe": {
+                "controls": controls,
+                "inputs": [{"role": "prompt_evolution_pose", "path": "pose.png"}],
+            },
+        })
+        self.assertEqual("comfyui", settings["backend"])
+        self.assertEqual("pose.png", settings["pose_source_path"])
+        with self.assertRaises(PromptEvolutionError):
+            PromptEvolutionService._render_controls({
+                "control_start": 0.9, "control_end": 0.5,
+            }, {}, 7, 25)
+        with self.assertRaisesRegex(PromptEvolutionError, "sdxl_depth.safetensors"):
+            PromptEvolutionService._render_controls({
+                "control_preprocessor": "dwpose", "controlnet_model": "sdxl_depth.safetensors",
+            }, {}, 7, 25)
+
     def test_regression_check_contract_is_breaking_and_unambiguous(self) -> None:
         items = PromptEvolutionService._validated_checklist_items({"items": [{
             "id": "hair-black", "requirement": "Base hair is black",
@@ -120,6 +149,43 @@ class PromptEvolutionServiceV3Tests(TestCase):
                 self.assertNotIn("secret positive", item["prompt"])
                 self.assertNotIn("secret negative", item["prompt"])
             self.assertTrue(all(len(item["images"]) == 2 for item in queued))
+
+    def test_render_worker_error_fails_run_instead_of_stalling(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            batch_path = root / "batches" / "000"
+            batch_path.mkdir(parents=True)
+            PromptEvolutionService._write_json(batch_path / "batch.json", {
+                "renders": [{"ask_id": "render-1", "seed": 11, "file": str(batch_path / "missing.png")}],
+                "status": "RENDERING",
+            })
+            run = {"run_id": "run-1", "root": str(root), "status": "RENDERING", "current_batch": 0}
+            service = object.__new__(PromptEvolutionService)
+            service._find_run = Mock(return_value=run)
+            service._render_failure = Mock(return_value={
+                "ask_id": "render-1", "error_message": "model families do not match",
+            })
+            service._save_run = Mock()
+            service.detail = Mock(return_value=run)
+
+            service._advance_v3_unlocked("run-1")
+
+            self.assertEqual("FAILED", run["status"])
+            self.assertEqual("RENDERING", run["failed_stage"])
+            self.assertIn("model families do not match", run["error"])
+
+    def test_comfyui_worker_error_is_condensed_for_dashboard(self) -> None:
+        message = "ComfyUI execution failed: " + __import__("json").dumps({
+            "messages": [["execution_error", {"exception_message": "shape mismatch\nuse an SDXL ControlNet"}]],
+        })
+        self.assertEqual(
+            "shape mismatch\nuse an SDXL ControlNet",
+            PromptEvolutionService._concise_render_error(message),
+        )
+        shape_message = "ComfyUI execution failed: " + __import__("json").dumps({
+            "messages": [["execution_error", {"exception_message": "mat1 and mat2 shapes cannot be multiplied (1x2 and 3x4)"}]],
+        })
+        self.assertIn("incompatible model families", PromptEvolutionService._concise_render_error(shape_message))
 
     def test_fixed_seeds_are_reused_and_fresh_seeds_are_replaced(self) -> None:
         run = {"fixed_seeds": [1, 2, 3], "batch_size": 6, "fixed_seed_count": 3}

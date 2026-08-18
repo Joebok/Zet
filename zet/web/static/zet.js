@@ -51,6 +51,10 @@ const state = {
   promptEvolutionRuns: [],
   promptEvolutionRun: null,
   promptEvolutionTemplates: {},
+  promptEvolutionProfilesByBackend: {},
+  promptEvolutionConditioningImages: [],
+  promptEvolutionComfyNodeTypes: [],
+  promptEvolutionComfyMissing: [],
   promptEvolutionRefreshTimer: null,
   turnaroundRows: [],
   selectedTurnaroundId: null,
@@ -179,8 +183,27 @@ const promptEvolutionCriticModelA = document.querySelector("#prompt-evolution-cr
 const promptEvolutionCriticModelB = document.querySelector("#prompt-evolution-critic-model-b");
 const promptEvolutionAnalysisModel = document.querySelector("#prompt-evolution-analysis-model");
 const promptEvolutionCheckModel = document.querySelector("#prompt-evolution-check-model");
+const promptEvolutionBackend = document.querySelector("#prompt-evolution-backend");
 const promptEvolutionCheckpoint = document.querySelector("#prompt-evolution-checkpoint");
 const promptEvolutionProfile = document.querySelector("#prompt-evolution-profile");
+const promptEvolutionComfyControls = document.querySelector("#prompt-evolution-comfy-controls");
+const promptEvolutionComfyStatus = document.querySelector("#prompt-evolution-comfy-status");
+const promptEvolutionSampler = document.querySelector("#prompt-evolution-sampler");
+const promptEvolutionScheduler = document.querySelector("#prompt-evolution-scheduler");
+const promptEvolutionDenoise = document.querySelector("#prompt-evolution-denoise");
+const promptEvolutionInitSource = document.querySelector("#prompt-evolution-init-source");
+const promptEvolutionInitUpload = document.querySelector("#prompt-evolution-init-upload");
+const promptEvolutionInitPreview = document.querySelector("#prompt-evolution-init-preview");
+const promptEvolutionPoseSource = document.querySelector("#prompt-evolution-pose-source");
+const promptEvolutionPoseUpload = document.querySelector("#prompt-evolution-pose-upload");
+const promptEvolutionPosePreview = document.querySelector("#prompt-evolution-pose-preview");
+const promptEvolutionImg2imgControls = document.querySelector("#prompt-evolution-img2img-controls");
+const promptEvolutionPoseControls = document.querySelector("#prompt-evolution-pose-controls");
+const promptEvolutionPreprocessor = document.querySelector("#prompt-evolution-preprocessor");
+const promptEvolutionControlnetModel = document.querySelector("#prompt-evolution-controlnet-model");
+const promptEvolutionControlStrength = document.querySelector("#prompt-evolution-control-strength");
+const promptEvolutionControlStart = document.querySelector("#prompt-evolution-control-start");
+const promptEvolutionControlEnd = document.querySelector("#prompt-evolution-control-end");
 const promptEvolutionCfg = document.querySelector("#prompt-evolution-cfg");
 const promptEvolutionSteps = document.querySelector("#prompt-evolution-steps");
 const promptEvolutionBatchSize = document.querySelector("#prompt-evolution-batch-size");
@@ -8517,7 +8540,7 @@ function closeHelpMenu(returnFocus = false) {
 function promptEvolutionFileUrl(path) { return path ? `/api/file?path=${encodeURIComponent(path)}` : ""; }
 function selectedPromptEvolutionAsset() { return state.promptEvolutionAssets.find((item) => String(item.asset_id) === promptEvolutionAsset.value) || null; }
 const PROMPT_EVOLUTION_SETTINGS_KEY = "zet:prompt-evolution-settings";
-const promptEvolutionSettingControls = () => [promptEvolutionAsset, promptEvolutionCriticModelA, promptEvolutionCriticModelB, promptEvolutionAnalysisModel, promptEvolutionCheckModel, promptEvolutionCheckpoint, promptEvolutionProfile, promptEvolutionCfg, promptEvolutionSteps, promptEvolutionBatchSize, promptEvolutionFixedSeedCount, promptEvolutionTotalBatches, promptEvolutionPositive, promptEvolutionNegative];
+const promptEvolutionSettingControls = () => [promptEvolutionAsset, promptEvolutionCriticModelA, promptEvolutionCriticModelB, promptEvolutionAnalysisModel, promptEvolutionCheckModel, promptEvolutionBackend, promptEvolutionCheckpoint, promptEvolutionProfile, promptEvolutionSampler, promptEvolutionScheduler, promptEvolutionDenoise, promptEvolutionInitSource, promptEvolutionPoseSource, promptEvolutionPreprocessor, promptEvolutionControlnetModel, promptEvolutionControlStrength, promptEvolutionControlStart, promptEvolutionControlEnd, promptEvolutionCfg, promptEvolutionSteps, promptEvolutionBatchSize, promptEvolutionFixedSeedCount, promptEvolutionTotalBatches, promptEvolutionPositive, promptEvolutionNegative];
 function savePromptEvolutionSettings() {
   localStorage.setItem(PROMPT_EVOLUTION_SETTINGS_KEY, JSON.stringify(Object.fromEntries(promptEvolutionSettingControls().map((control) => [control.id, control.value]))));
 }
@@ -8550,6 +8573,87 @@ function renderPromptEvolutionAsset() {
   const asset = selectedPromptEvolutionAsset();
   promptEvolutionSourcePreview.src = asset ? promptEvolutionFileUrl(asset.image_path) : "";
   promptEvolutionDerivativePreview.src = asset ? `/api/prompt-evolution/reference-preview?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}&costume=${encodeURIComponent(asset.costume)}&view=${encodeURIComponent(asset.view)}` : "";
+  renderPromptEvolutionConditioningPreviews();
+}
+
+function renderPromptEvolutionConditioningPreviews() {
+  const preview = (select, upload, image) => {
+    const file = upload.files?.[0];
+    if (file) {
+      image.src = URL.createObjectURL(file);
+      return;
+    }
+    const selected = state.promptEvolutionConditioningImages.find((item) => item.tag === select.value);
+    image.src = selected ? promptEvolutionFileUrl(selected.thumbnail_path || selected.image_path) : promptEvolutionDerivativePreview.src;
+  };
+  preview(promptEvolutionInitSource, promptEvolutionInitUpload, promptEvolutionInitPreview);
+  preview(promptEvolutionPoseSource, promptEvolutionPoseUpload, promptEvolutionPosePreview);
+}
+
+function promptEvolutionWorkflowFlags() {
+  const profile = promptEvolutionProfile.value || "";
+  return {
+    img2img: profile.includes("img2img"),
+    pose: profile.includes("controlnet"),
+  };
+}
+
+function syncPromptEvolutionControlnetModel() {
+  const markers = {
+    dwpose: ["openpose", "dwpose"],
+    depth: ["depth"],
+    canny: ["canny"],
+  }[promptEvolutionPreprocessor.value] || [];
+  const matching = Array.from(promptEvolutionControlnetModel.options).find((option) =>
+    markers.some((marker) => option.value.toLocaleLowerCase().includes(marker))
+  );
+  if (matching) promptEvolutionControlnetModel.value = matching.value;
+}
+
+function syncPromptEvolutionBackendControls() {
+  const backend = promptEvolutionBackend.value || "stable_matrix";
+  const previous = promptEvolutionProfile.value;
+  setSelectOptions(promptEvolutionProfile, state.promptEvolutionProfilesByBackend[backend] || []);
+  if (Array.from(promptEvolutionProfile.options).some((option) => option.value === previous)) promptEvolutionProfile.value = previous;
+  promptEvolutionComfyControls.hidden = backend !== "comfyui";
+  const flags = promptEvolutionWorkflowFlags();
+  promptEvolutionImg2imgControls.hidden = !flags.img2img;
+  promptEvolutionPoseControls.hidden = !flags.pose;
+  promptEvolutionDenoise.disabled = !flags.img2img;
+  if (backend === "comfyui" && state.promptEvolutionComfyNodeTypes.length) {
+    const required = new Set();
+    if (flags.img2img || flags.pose) required.add("LoadImage");
+    if (flags.pose) {
+      required.add("ControlNetLoader"); required.add("ControlNetApplyAdvanced");
+      required.add({ dwpose: "DWPreprocessor", depth: "MiDaS-DepthMapPreprocessor", canny: "CannyEdgePreprocessor" }[promptEvolutionPreprocessor.value]);
+    }
+    state.promptEvolutionComfyMissing = [...required].filter((name) => !state.promptEvolutionComfyNodeTypes.includes(name));
+    promptEvolutionComfyStatus.textContent = state.promptEvolutionComfyMissing.length
+      ? `Missing required ComfyUI nodes: ${state.promptEvolutionComfyMissing.join(", ")}`
+      : `${state.promptEvolutionComfyNodeTypes.length} ComfyUI node types available.`;
+  }
+}
+
+async function loadPromptEvolutionComfyOptions() {
+  if (promptEvolutionBackend.value !== "comfyui") return;
+  promptEvolutionComfyStatus.textContent = "Checking ComfyUI capabilities...";
+  try {
+    const payload = await fetchJson("/api/prompt-evolution/comfyui-options");
+    const previousCheckpoint = promptEvolutionCheckpoint.value || storedPromptEvolutionSettings()[promptEvolutionCheckpoint.id];
+    const previousControlnet = promptEvolutionControlnetModel.value || storedPromptEvolutionSettings()[promptEvolutionControlnetModel.id];
+    setSelectOptions(promptEvolutionCheckpoint, payload.checkpoints || []);
+    setSelectOptions(promptEvolutionControlnetModel, payload.controlnet_models || []);
+    setSelectOptions(promptEvolutionSampler, payload.samplers || []);
+    setSelectOptions(promptEvolutionScheduler, payload.schedulers || []);
+    state.promptEvolutionComfyNodeTypes = payload.node_types || [];
+    if (Array.from(promptEvolutionCheckpoint.options).some((option) => option.value === previousCheckpoint)) promptEvolutionCheckpoint.value = previousCheckpoint;
+    if (Array.from(promptEvolutionControlnetModel.options).some((option) => option.value === previousControlnet)) promptEvolutionControlnetModel.value = previousControlnet;
+    syncPromptEvolutionControlnetModel();
+    syncPromptEvolutionBackendControls();
+  } catch (error) {
+    promptEvolutionComfyStatus.textContent = error.message;
+    throw error;
+  }
 }
 
 async function loadPromptEvolutionChecklists() {
@@ -8609,7 +8713,7 @@ function renderPromptEvolutionDetail(run) {
   promptEvolutionDetail.innerHTML = `<div class="summary-bar">${escapeHtml(run.character)} · ${escapeHtml(run.phase)} · ${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
     ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
     ${run.stop_reason ? `<div class="action-message">${escapeHtml(run.stop_reason)}</div>` : ""}
-    <div class="button-row compact prompt-evolution-run-actions"><span><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint || "—")}</span><a class="button-link" href="/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/audit-bundle" download>Download audit bundle</a>${["COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"].includes(run.status) ? '<button type="button" data-prompt-evolution-action="restart">Restart</button>' : ""}${run.status === "FAILED" ? '<button type="button" data-prompt-evolution-action="retry">Resume failed stage</button>' : ""}${!["COMPLETE", "ABORTED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="abort">Abort</button>' : ""}${["COMPLETE", "ABORTED", "FAILED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="delete">Delete run</button>' : ""}</div>${activityLog}${summary}${promptReview}${finalReview}${promptHistory}${batches || (run.status === "AWAITING_FINAL_REVIEW" ? "" : "No batches yet.")}`;
+    <div class="button-row compact prompt-evolution-run-actions"><span><strong>Backend:</strong> ${escapeHtml(run.backend === "comfyui" ? "ComfyUI" : "Stable Matrix")}</span><span><strong>Workflow:</strong> ${escapeHtml(run.render_recipe?.workflow_kind || run.profile || "—")}</span><span><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint || "—")}</span><a class="button-link" href="/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/audit-bundle" download>Download audit bundle</a>${["COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"].includes(run.status) ? '<button type="button" data-prompt-evolution-action="restart">Restart</button>' : ""}${run.status === "FAILED" ? '<button type="button" data-prompt-evolution-action="retry">Resume failed stage</button>' : ""}${!["COMPLETE", "ABORTED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="abort">Abort</button>' : ""}${["COMPLETE", "ABORTED", "FAILED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="delete">Delete run</button>' : ""}</div>${activityLog}${summary}${promptReview}${finalReview}${promptHistory}${batches || (run.status === "AWAITING_FINAL_REVIEW" ? "" : "No batches yet.")}`;
   const activityList = promptEvolutionDetail.querySelector(".prompt-evolution-log ol");
   if (activityList) activityList.scrollTop = activityList.scrollHeight;
   promptEvolutionDetail.querySelectorAll(".prompt-evolution-candidate img, .prompt-evolution-summary img").forEach((image) => enableFullscreenImage(image));
@@ -8651,23 +8755,26 @@ async function refreshPromptEvolutionRuns() {
 async function loadPromptEvolution() {
   if (!state.character || !state.phase) return;
   const stickySettings = storedPromptEvolutionSettings();
-  const [options, runs, models, checkpoints, templates] = await Promise.all([
+  const [options, runs, models, templates] = await Promise.all([
     fetchJson(`/api/prompt-evolution/options?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}`), fetchJson("/api/prompt-evolution/runs"),
-    fetchJson("/api/ai-controls/ollama-models").catch(() => ({ models: [] })), fetchJson("/api/local-image/checkpoints?preset=body-reference-preview&backend=stable_matrix").catch(() => ({ checkpoints: [] })),
+    fetchJson("/api/ai-controls/ollama-models").catch(() => ({ models: [] })),
     fetchJson("/api/prompt-evolution/templates"),
   ]);
   state.promptEvolutionAssets = options.assets || []; state.promptEvolutionRuns = runs.runs || []; state.promptEvolutionTemplates = templates.templates || {};
+  state.promptEvolutionProfilesByBackend = options.profiles_by_backend || { stable_matrix: options.profiles || [], comfyui: [] };
+  state.promptEvolutionConditioningImages = options.conditioning_images || [];
   setSelectOptionsWithLabels(promptEvolutionAsset, state.promptEvolutionAssets.map((item) => ({ value: String(item.asset_id), label: `${item.costume} · ${item.view}` })));
   [promptEvolutionCriticModelA, promptEvolutionCriticModelB, promptEvolutionAnalysisModel, promptEvolutionCheckModel].forEach((control) => setSelectOptions(control, models.models || []));
-  setSelectOptions(promptEvolutionProfile, options.profiles || []);
-  setSelectOptionsWithLabels(promptEvolutionCheckpoint, (checkpoints.checkpoints || []).map((item) => ({ value: item.title, label: item.title })));
+  const sourceOptions = [{ value: "", label: "Canonical locked reference" }, ...state.promptEvolutionConditioningImages.map((item) => ({ value: item.tag, label: `${item.label} · ${item.kind}` }))];
+  [promptEvolutionInitSource, promptEvolutionPoseSource].forEach((control) => setSelectOptionsWithLabels(control, sourceOptions));
+  if (stickySettings[promptEvolutionBackend.id]) promptEvolutionBackend.value = stickySettings[promptEvolutionBackend.id];
+  syncPromptEvolutionBackendControls();
   restorePromptEvolutionSettings(stickySettings);
+  syncPromptEvolutionBackendControls();
   [promptEvolutionCriticModelA, promptEvolutionAnalysisModel].forEach((control) => { if (!stickySettings[control.id] && Array.from(control.options).some((option) => option.value === "qwen3.5-prompt-evo")) control.value = "qwen3.5-prompt-evo"; });
   [promptEvolutionCriticModelB, promptEvolutionCheckModel].forEach((control) => { if (!stickySettings[control.id] && Array.from(control.options).some((option) => option.value === "qwen3-VL-prompt-evo")) control.value = "qwen3-VL-prompt-evo"; });
-  if (stickySettings[promptEvolutionProfile.id] && promptEvolutionProfile.value !== "body-reference-preview") {
-    await refreshPromptEvolutionCheckpoints();
-    restorePromptEvolutionSettings(stickySettings);
-  }
+  await refreshPromptEvolutionCheckpoints();
+  restorePromptEvolutionSettings(stickySettings);
   if (!stickySettings[promptEvolutionCheckpoint.id]) {
     const preferredCheckpoint = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("perfectdeliberate_v90"));
     if (preferredCheckpoint) promptEvolutionCheckpoint.value = preferredCheckpoint.value;
@@ -8682,20 +8789,56 @@ async function startPromptEvolutionRun() {
   const asset = selectedPromptEvolutionAsset(); if (!asset) return;
   promptEvolutionStart.disabled = true; showPromptEvolutionMessage("Creating run…");
   try {
-    const run = await fetchJson("/api/prompt-evolution/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+    const workflowFlags = promptEvolutionWorkflowFlags();
+    if (promptEvolutionBackend.value === "comfyui" && state.promptEvolutionComfyMissing.length) {
+      throw new Error(`Missing required ComfyUI nodes: ${state.promptEvolutionComfyMissing.join(", ")}`);
+    }
+    if (promptEvolutionBackend.value === "comfyui" && workflowFlags.pose && !promptEvolutionControlnetModel.value) {
+      throw new Error("Select a ControlNet model for the pose workflow.");
+    }
+    const settings = {
       character: state.character, phase: state.phase, costume: asset.costume, view: asset.view,
       critic_model_a: promptEvolutionCriticModelA.value, critic_model_b: promptEvolutionCriticModelB.value, analysis_model: promptEvolutionAnalysisModel.value, check_model: promptEvolutionCheckModel.value,
+      backend: promptEvolutionBackend.value,
       checkpoint: promptEvolutionCheckpoint.value, profile: promptEvolutionProfile.value,
+      sampler_name: promptEvolutionSampler.value, scheduler: promptEvolutionScheduler.value,
+      denoise: Number(promptEvolutionDenoise.value),
+      init_source_tag: promptEvolutionInitSource.value, pose_source_tag: promptEvolutionPoseSource.value,
+      control_preprocessor: promptEvolutionPreprocessor.value,
+      controlnet_model: promptEvolutionControlnetModel.value,
+      control_strength: Number(promptEvolutionControlStrength.value),
+      control_start: Number(promptEvolutionControlStart.value), control_end: Number(promptEvolutionControlEnd.value),
       cfg_scale: Number(promptEvolutionCfg.value), steps: Number(promptEvolutionSteps.value), batch_size: Number(promptEvolutionBatchSize.value), fixed_seed_count: Number(promptEvolutionFixedSeedCount.value), total_batches: Number(promptEvolutionTotalBatches.value),
       positive_prompt: promptEvolutionPositive.value, negative_prompt: promptEvolutionNegative.value,
-    }) });
+    };
+    const initFile = promptEvolutionInitUpload.files?.[0];
+    const poseFile = promptEvolutionPoseUpload.files?.[0];
+    let request;
+    if (initFile || poseFile) {
+      const form = new FormData();
+      form.append("settings", JSON.stringify(settings));
+      if (initFile) form.append("init_image", initFile);
+      if (poseFile) form.append("pose_image", poseFile);
+      request = { method: "POST", body: form };
+    } else {
+      request = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) };
+    }
+    const run = await fetchJson("/api/prompt-evolution/runs", request);
     state.promptEvolutionRun = run; showPromptEvolutionMessage(`Created ${run.run_id}.`, "success"); await loadPromptEvolution();
   } catch (error) { showPromptEvolutionMessage(error.message, "error"); } finally { promptEvolutionStart.disabled = false; }
 }
 
 async function refreshPromptEvolutionCheckpoints() {
   const previous = promptEvolutionCheckpoint.value || storedPromptEvolutionSettings()[promptEvolutionCheckpoint.id];
-  const payload = await fetchJson(`/api/local-image/checkpoints?preset=${encodeURIComponent(promptEvolutionProfile.value || "body-reference-preview")}&backend=stable_matrix`);
+  syncPromptEvolutionBackendControls();
+  if (promptEvolutionBackend.value === "comfyui") {
+    await loadPromptEvolutionComfyOptions();
+    restorePromptEvolutionSettings(storedPromptEvolutionSettings());
+    syncPromptEvolutionBackendControls();
+    savePromptEvolutionSettings();
+    return;
+  }
+  const payload = await fetchJson(`/api/local-image/checkpoints?preset=${encodeURIComponent(promptEvolutionProfile.value || "body-reference-preview")}&backend=${encodeURIComponent(promptEvolutionBackend.value || "stable_matrix")}`);
   setSelectOptionsWithLabels(promptEvolutionCheckpoint, (payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title })));
   const preferred = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value === previous)
     || Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("perfectdeliberate_v90"));
@@ -9776,7 +9919,22 @@ promptEvolutionAsset.addEventListener("change", () => {
   loadPromptEvolutionChecklists().catch((error) => showPromptEvolutionMessage(error.message, "error"));
 });
 promptEvolutionSettingControls().forEach((control) => control.addEventListener(control.tagName === "TEXTAREA" || control.tagName === "INPUT" ? "input" : "change", savePromptEvolutionSettings));
-promptEvolutionProfile.addEventListener("change", () => refreshPromptEvolutionCheckpoints().catch((error) => showPromptEvolutionMessage(error.message, "error")));
+promptEvolutionBackend.addEventListener("change", () => {
+  syncPromptEvolutionBackendControls();
+  refreshPromptEvolutionCheckpoints().catch((error) => showPromptEvolutionMessage(error.message, "error"));
+});
+promptEvolutionProfile.addEventListener("change", () => {
+  syncPromptEvolutionBackendControls();
+  refreshPromptEvolutionCheckpoints().catch((error) => showPromptEvolutionMessage(error.message, "error"));
+});
+promptEvolutionPreprocessor.addEventListener("change", () => {
+  syncPromptEvolutionControlnetModel();
+  syncPromptEvolutionBackendControls();
+});
+promptEvolutionInitSource.addEventListener("change", renderPromptEvolutionConditioningPreviews);
+promptEvolutionPoseSource.addEventListener("change", renderPromptEvolutionConditioningPreviews);
+promptEvolutionInitUpload.addEventListener("change", renderPromptEvolutionConditioningPreviews);
+promptEvolutionPoseUpload.addEventListener("change", renderPromptEvolutionConditioningPreviews);
 promptEvolutionStart.addEventListener("click", startPromptEvolutionRun);
 promptEvolutionRefresh.addEventListener("click", loadPromptEvolution);
 promptEvolutionTemplateName.addEventListener("change", () => { promptEvolutionTemplateText.value = state.promptEvolutionTemplates[promptEvolutionTemplateName.value] || ""; });

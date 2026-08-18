@@ -164,6 +164,7 @@ def render_preview(
     render_layout: dict[str, Any] | None = None,
     seed: int | None = None,
     render_overrides: dict[str, Any] | None = None,
+    checkpoint: str | None = None,
 ) -> LocalRenderResult:
     preset = load_preset(project_root, preset_name)
     prompt_text = final_prompt_path.read_text(encoding="utf-8")
@@ -177,7 +178,7 @@ def render_preview(
             preset_name=preset_name,
             positive_prompt_globals=local_render_config.get("positive_prompt_globals", ""),
             negative_prompt_globals=local_render_config.get("negative_prompt_globals", ""),
-            checkpoint=local_render_config.get("checkpoint", ""),
+            checkpoint=checkpoint if checkpoint is not None else local_render_config.get("checkpoint", ""),
             aspect_ratio=aspect_ratio,
             render_layout=render_layout,
             seed=seed,

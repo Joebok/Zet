@@ -26,6 +26,7 @@ class LocalRenderRequest:
     render_layout: dict[str, Any] | None = None
     seed: int | None = None
     render_overrides: dict[str, Any] | None = None
+    checkpoint: str | None = None
 
 
 @dataclass

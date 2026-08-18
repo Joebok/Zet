@@ -141,6 +141,9 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
     if "render_overrides" in parameters:
         value = ask_manifest.get("render_overrides")
         kwargs["render_overrides"] = value if isinstance(value, dict) else None
+    if "checkpoint" in parameters:
+        value = ask_manifest.get("checkpoint")
+        kwargs["checkpoint"] = str(value) if value is not None else None
     return kwargs
 
 

@@ -1496,8 +1496,34 @@
             <label>Visual critic B<select id="prompt-evolution-critic-model-b"></select></label>
             <label>Analysis and editor model<select id="prompt-evolution-analysis-model"></select></label>
             <label>Regression-check model<select id="prompt-evolution-check-model"></select></label>
+            <label>Image backend<select id="prompt-evolution-backend"><option value="stable_matrix">Stable Matrix</option><option value="comfyui">ComfyUI</option></select></label>
+            <label>Workflow<select id="prompt-evolution-profile"></select></label>
             <label>Checkpoint<select id="prompt-evolution-checkpoint"></select></label>
-            <label>Render profile<select id="prompt-evolution-profile"></select></label>
+            <div id="prompt-evolution-comfy-controls" class="settings-form" hidden>
+              <div id="prompt-evolution-comfy-status" class="status-text"></div>
+              <div class="form-grid compact">
+                <label>Sampler<select id="prompt-evolution-sampler"></select></label>
+                <label>Scheduler<select id="prompt-evolution-scheduler"></select></label>
+                <label>Img2img denoise<input id="prompt-evolution-denoise" type="number" min="0" max="1" step="0.05" value="0.55"></label>
+              </div>
+              <div id="prompt-evolution-img2img-controls">
+                <label>Img2img source<select id="prompt-evolution-init-source"></select></label>
+                <label>Or upload img2img source<input id="prompt-evolution-init-upload" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                <figure><figcaption>Img2img conditioning</figcaption><img id="prompt-evolution-init-preview" alt="Selected img2img conditioning source"></figure>
+              </div>
+              <div id="prompt-evolution-pose-controls">
+                <label>Pose source<select id="prompt-evolution-pose-source"></select></label>
+                <label>Or upload pose source<input id="prompt-evolution-pose-upload" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                <figure><figcaption>Pose conditioning</figcaption><img id="prompt-evolution-pose-preview" alt="Selected pose conditioning source"></figure>
+                <div class="form-grid compact">
+                  <label>Pose preprocessing<select id="prompt-evolution-preprocessor"><option value="dwpose">DWPose / OpenPose</option><option value="depth">MiDaS depth</option><option value="canny">Canny</option></select></label>
+                  <label>ControlNet model<select id="prompt-evolution-controlnet-model"></select></label>
+                  <label>Strength<input id="prompt-evolution-control-strength" type="number" min="0" step="0.05" value="0.8"></label>
+                  <label>Start<input id="prompt-evolution-control-start" type="number" min="0" max="1" step="0.05" value="0"></label>
+                  <label>End<input id="prompt-evolution-control-end" type="number" min="0" max="1" step="0.05" value="0.85"></label>
+                </div>
+              </div>
+            </div>
             <div class="form-grid compact">
               <label>CFG<input id="prompt-evolution-cfg" type="number" min="0" max="30" step="0.5" value="7"></label>
               <label>Steps<input id="prompt-evolution-steps" type="number" min="1" max="150" value="32"></label>

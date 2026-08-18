@@ -12,6 +12,9 @@ from zet.services.scene_layout_planner import plan_scene_layout
 
 CORE_SCENE_WORKFLOW = "core_txt2img_scene_preview"
 CORE_PROMPT_WORKFLOW = "core_txt2img_prompt_only"
+IMG2IMG_PROMPT_WORKFLOW = "core_img2img_prompt_only"
+CONTROLNET_PROMPT_WORKFLOW = "controlnet_prompt_only"
+IMG2IMG_CONTROLNET_PROMPT_WORKFLOW = "img2img_controlnet_prompt_only"
 IPADAPTER_SCENE_WORKFLOW = "ipadapter_scene_preview"
 OPENPOSE_SCENE_WORKFLOW = "openpose_scene_preview"
 
@@ -403,6 +406,176 @@ def _core_prompt_compiler(
     )
 
 
+def _prompt_reference(
+    reference_files: list[dict[str, Any]] | None, role: str,
+) -> dict[str, Any]:
+    for reference in reference_files or []:
+        if not isinstance(reference, dict) or str(reference.get("role") or "") != role:
+            continue
+        path = Path(str(reference.get("path") or "")).expanduser()
+        if not path.is_file():
+            raise LocalRenderError(f"ComfyUI {role} image file is missing: {path}")
+        input_name = str(reference.get("comfyui_input_name") or "").strip()
+        if not input_name:
+            path_key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:12]
+            input_name = f"Zet/{path_key}/{path.name}"
+        return {**reference, "path": str(path), "comfyui_input_name": input_name}
+    raise LocalRenderError(f"ComfyUI workflow requires a {role} image.")
+
+
+def _controlled_prompt_compiler(
+    positive_prompt: str,
+    negative_prompt: str,
+    profile: dict[str, Any],
+    *,
+    checkpoint: str,
+    seed: int,
+    width: int,
+    height: int,
+    positive_prompt_globals: str,
+    negative_prompt_globals: str,
+    output_prefix: str,
+    reference_files: list[dict[str, Any]] | None = None,
+    available_node_types: set[str] | None = None,
+    workflow_kind: str,
+    **_kwargs: Any,
+) -> ComfyUICompilation:
+    if not checkpoint.strip():
+        raise LocalRenderError("ComfyUI checkpoint cannot be blank.")
+    use_img2img = workflow_kind in {IMG2IMG_PROMPT_WORKFLOW, IMG2IMG_CONTROLNET_PROMPT_WORKFLOW}
+    use_control = workflow_kind in {CONTROLNET_PROMPT_WORKFLOW, IMG2IMG_CONTROLNET_PROMPT_WORKFLOW}
+    preprocessor = str(profile.get("control_preprocessor") or "dwpose").strip().lower()
+    preprocessor_nodes = {
+        "dwpose": "DWPreprocessor",
+        "depth": "MiDaS-DepthMapPreprocessor",
+        "canny": "CannyEdgePreprocessor",
+    }
+    required = {"LoadImage"}
+    if use_control:
+        if preprocessor not in preprocessor_nodes:
+            raise LocalRenderError(f"Unsupported ComfyUI ControlNet preprocessor: {preprocessor}")
+        required.update({preprocessor_nodes[preprocessor], "ControlNetLoader", "ControlNetApplyAdvanced"})
+    missing = sorted(required - (available_node_types or set()))
+    if missing:
+        raise LocalRenderError("ComfyUI workflow requires unavailable nodes: " + ", ".join(missing))
+
+    positive = append_prompt_globals(positive_prompt, positive_prompt_globals)
+    negative = append_prompt_globals(negative_prompt, negative_prompt_globals)
+    workflow: dict[str, Any] = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
+        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["1", 1]}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["1", 1]}},
+    }
+    references_used: list[dict[str, Any]] = []
+    next_id = 4
+    if use_img2img:
+        init = _prompt_reference(reference_files, "prompt_evolution_init")
+        references_used.append(init)
+        workflow[str(next_id)] = {"class_type": "LoadImage", "inputs": {"image": init["comfyui_input_name"]}}
+        workflow[str(next_id + 1)] = {
+            "class_type": "VAEEncode", "inputs": {"pixels": [str(next_id), 0], "vae": ["1", 2]},
+        }
+        latent: list[Any] = [str(next_id + 1), 0]
+        next_id += 2
+    else:
+        workflow[str(next_id)] = {
+            "class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1},
+        }
+        latent = [str(next_id), 0]
+        next_id += 1
+
+    positive_conditioning: list[Any] = ["2", 0]
+    negative_conditioning: list[Any] = ["3", 0]
+    control_debug: dict[str, Any] = {}
+    if use_control:
+        pose = _prompt_reference(reference_files, "prompt_evolution_pose")
+        references_used.append(pose)
+        control_model = str(profile.get("controlnet_model") or "").strip()
+        if not control_model:
+            raise LocalRenderError("ComfyUI ControlNet model cannot be blank.")
+        load_id, preprocess_id, model_id, apply_id = (str(next_id + offset) for offset in range(4))
+        workflow[load_id] = {"class_type": "LoadImage", "inputs": {"image": pose["comfyui_input_name"]}}
+        resolution = int(profile.get("preprocessor_resolution", 768))
+        preprocessor_inputs: dict[str, Any] = {"image": [load_id, 0], "resolution": resolution}
+        if preprocessor == "dwpose":
+            preprocessor_inputs.update({
+                "detect_hand": "disable", "detect_body": "enable", "detect_face": "disable",
+                "bbox_detector": str(profile.get("dwpose_bbox_detector") or "yolox_l.onnx"),
+                "pose_estimator": str(profile.get("dwpose_pose_estimator") or "dw-ll_ucoco_384.onnx"),
+                "scale_stick_for_xinsr_cn": "disable",
+            })
+        elif preprocessor == "depth":
+            preprocessor_inputs.update({"a": 6.283185307179586, "bg_threshold": 0.1})
+        else:
+            preprocessor_inputs.update({"low_threshold": 100, "high_threshold": 200})
+        workflow[preprocess_id] = {
+            "class_type": preprocessor_nodes[preprocessor],
+            "inputs": preprocessor_inputs,
+        }
+        workflow[model_id] = {"class_type": "ControlNetLoader", "inputs": {"control_net_name": control_model}}
+        control_inputs = {
+            "positive": positive_conditioning,
+            "negative": negative_conditioning,
+            "control_net": [model_id, 0],
+            "image": [preprocess_id, 0],
+            "strength": float(profile.get("control_strength", 0.8)),
+            "start_percent": float(profile.get("control_start", 0.0)),
+            "end_percent": float(profile.get("control_end", 0.85)),
+        }
+        workflow[apply_id] = {"class_type": "ControlNetApplyAdvanced", "inputs": control_inputs}
+        positive_conditioning, negative_conditioning = [apply_id, 0], [apply_id, 1]
+        control_debug = {
+            "preprocessor": preprocessor,
+            "preprocessor_node": preprocessor_nodes[preprocessor],
+            "controlnet_model": control_model,
+            "strength": control_inputs["strength"],
+            "start_percent": control_inputs["start_percent"],
+            "end_percent": control_inputs["end_percent"],
+        }
+        next_id += 4
+
+    sampler_id, decode_id, save_id = (str(next_id + offset) for offset in range(3))
+    workflow[sampler_id] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "seed": seed,
+            "steps": int(profile.get("steps", 28)),
+            "cfg": float(profile.get("cfg", 7.0)),
+            "sampler_name": str(profile.get("sampler_name", "dpmpp_2m")),
+            "scheduler": str(profile.get("scheduler", "karras")),
+            "denoise": float(profile.get("denoise", 0.55 if use_img2img else 1.0)),
+            "model": ["1", 0],
+            "positive": positive_conditioning,
+            "negative": negative_conditioning,
+            "latent_image": latent,
+        },
+    }
+    workflow[decode_id] = {"class_type": "VAEDecode", "inputs": {"samples": [sampler_id, 0], "vae": ["1", 2]}}
+    workflow[save_id] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": [decode_id, 0]}}
+    prompts = {"global": positive, "negative": negative, "regions": [], "region_records": []}
+    return ComfyUICompilation(
+        workflow=workflow,
+        prompts=prompts,
+        seed=seed,
+        width=width,
+        height=height,
+        workflow_kind=workflow_kind,
+        debug={"references_used": references_used, "controlnet": control_debug},
+    )
+
+
+def _img2img_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=IMG2IMG_PROMPT_WORKFLOW)
+
+
+def _controlnet_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=CONTROLNET_PROMPT_WORKFLOW)
+
+
+def _img2img_controlnet_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=IMG2IMG_CONTROLNET_PROMPT_WORKFLOW)
+
+
 def compile_scene_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> ComfyUICompilation:
     compiler = _SCENE_COMPILERS.get(workflow_kind)
     if compiler is None:
@@ -422,3 +595,6 @@ def compile_prompt_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> Co
 register_scene_compiler(CORE_SCENE_WORKFLOW, _core_scene_compiler)
 register_scene_compiler(IPADAPTER_SCENE_WORKFLOW, _ipadapter_scene_compiler)
 register_prompt_compiler(CORE_PROMPT_WORKFLOW, _core_prompt_compiler)
+register_prompt_compiler(IMG2IMG_PROMPT_WORKFLOW, _img2img_prompt_compiler)
+register_prompt_compiler(CONTROLNET_PROMPT_WORKFLOW, _controlnet_prompt_compiler)
+register_prompt_compiler(IMG2IMG_CONTROLNET_PROMPT_WORKFLOW, _img2img_controlnet_prompt_compiler)

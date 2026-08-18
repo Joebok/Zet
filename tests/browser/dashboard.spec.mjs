@@ -104,6 +104,9 @@ test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selec
   await expect(page.locator("#prompt-evolution-critic-model-b")).toBeVisible();
   await expect(page.locator("#prompt-evolution-analysis-model")).toBeVisible();
   await expect(page.locator("#prompt-evolution-check-model")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-backend")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-backend")).toHaveValue("stable_matrix");
+  await expect(page.locator("#prompt-evolution-comfy-controls")).toBeHidden();
   await expect(page.locator("#prompt-evolution-fixed-seed-count")).toHaveValue("3");
   await expect(page.locator("#prompt-evolution-mode, #prompt-evolution-metadata")).toHaveCount(0);
 

@@ -37,6 +37,7 @@ def render_image(
     scene_render_ir_path: Path | None = None,
     seed: int | None = None,
     render_overrides: dict[str, Any] | None = None,
+    checkpoint: str | None = None,
 ) -> LocalRenderResult:
     request = LocalRenderRequest(
         project_root=project_root,
@@ -50,6 +51,7 @@ def render_image(
         render_layout=render_layout,
         seed=seed,
         render_overrides=render_overrides,
+        checkpoint=checkpoint,
     )
     return render_request(request)
 
@@ -71,6 +73,7 @@ def render_request(request: LocalRenderRequest) -> LocalRenderResult:
             render_layout=request.render_layout,
             seed=request.seed,
             render_overrides=request.render_overrides,
+            checkpoint=request.checkpoint,
         )
     if backend == "comfyui":
         from Scripts.Local_Render_Adapters.comfyui_adapter import render_preview
@@ -85,5 +88,7 @@ def render_request(request: LocalRenderRequest) -> LocalRenderResult:
             aspect_ratio=request.aspect_ratio,
             reference_files=request.reference_files,
             seed=request.seed,
+            render_overrides=request.render_overrides,
+            checkpoint=request.checkpoint,
         )
     raise LocalRenderError(f"Unsupported local render backend for profile {request.profile_name}: {backend}")

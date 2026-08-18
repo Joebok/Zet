@@ -104,6 +104,8 @@ def compile_prompt_to_comfyui_workflow(
     seed: int | None = None,
     aspect_ratio: str = "",
     output_prefix: str = "Zet/Preview",
+    reference_files: list[dict[str, Any]] | None = None,
+    available_node_types: set[str] | None = None,
 ) -> ComfyUICompilation:
     resolved_seed = _resolved_seed(profile, seed)
     width, height = _render_size({"canvas": {"aspect_ratio": aspect_ratio}}, profile)
@@ -119,6 +121,8 @@ def compile_prompt_to_comfyui_workflow(
         positive_prompt_globals=positive_prompt_globals,
         negative_prompt_globals=negative_prompt_globals,
         output_prefix=output_prefix,
+        reference_files=reference_files,
+        available_node_types=available_node_types,
     )
 
 
