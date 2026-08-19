@@ -38,7 +38,14 @@ class AutomationSettings:
     comfyui_negative_prompt_globals: str = ""
     comfyui_poll_seconds: float = 1.0
     comfyui_timeout_seconds: float = 300.0
-    ai_prompt_analysis_model: str = "qwen3.5:9b-instruct"
+    ai_asset_workflow_model: str = "general-purpose:latest"
+    prompt_condense_model: str = "structured-reasoning:latest"
+    ai_prompt_analysis_model: str = "structured-reasoning:latest"
+    ai_scene_builder_model: str = "structured-reasoning:latest"
+    ai_prompt_evolution_critic_model_a: str = "vision-analysis:latest"
+    ai_prompt_evolution_critic_model_b: str = "vision-analysis-alt:latest"
+    ai_prompt_evolution_analysis_model: str = "vision-analysis:latest"
+    ai_prompt_evolution_check_model: str = "vision-analysis-alt:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     zine_print_scale: float = 0.978
     zine_page_margin: int = 4
@@ -139,7 +146,14 @@ class PipelineControlService:
             comfyui_negative_prompt_globals=str(self.config.comfyui_negative_prompt_globals),
             comfyui_poll_seconds=float(self.config.comfyui_poll_seconds),
             comfyui_timeout_seconds=float(self.config.comfyui_timeout_seconds),
+            ai_asset_workflow_model=str(self.config.ai_asset_workflow_model),
+            prompt_condense_model=str(self.config.prompt_condense_model),
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
+            ai_scene_builder_model=str(self.config.ai_scene_builder_model),
+            ai_prompt_evolution_critic_model_a=str(self.config.ai_prompt_evolution_critic_model_a),
+            ai_prompt_evolution_critic_model_b=str(self.config.ai_prompt_evolution_critic_model_b),
+            ai_prompt_evolution_analysis_model=str(self.config.ai_prompt_evolution_analysis_model),
+            ai_prompt_evolution_check_model=str(self.config.ai_prompt_evolution_check_model),
             ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
             zine_print_scale=float(self.config.zine_print_scale),
             zine_page_margin=int(self.config.zine_page_margin),
@@ -186,7 +200,14 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
-            {"Scope": "Project config", "Setting": "AIPromptAnalysis.Model", "Value": self.config.ai_prompt_analysis_model},
+            {"Scope": "Project config", "Setting": "AIModels.AssetWorkflow", "Value": self.config.ai_asset_workflow_model},
+            {"Scope": "Project config", "Setting": "AIModels.PromptCondense", "Value": self.config.prompt_condense_model},
+            {"Scope": "Project config", "Setting": "AIModels.PromptAnalysis", "Value": self.config.ai_prompt_analysis_model},
+            {"Scope": "Project config", "Setting": "AIModels.SceneBuilder", "Value": self.config.ai_scene_builder_model},
+            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticA", "Value": self.config.ai_prompt_evolution_critic_model_a},
+            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticB", "Value": self.config.ai_prompt_evolution_critic_model_b},
+            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionAnalysis", "Value": self.config.ai_prompt_evolution_analysis_model},
+            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCheck", "Value": self.config.ai_prompt_evolution_check_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
 
@@ -223,7 +244,14 @@ class PipelineControlService:
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
-            ("AIPromptAnalysis", "Model"): settings.ai_prompt_analysis_model,
+            ("AIModels", "AssetWorkflow"): settings.ai_asset_workflow_model,
+            ("AIModels", "PromptCondense"): settings.prompt_condense_model,
+            ("AIModels", "PromptAnalysis"): settings.ai_prompt_analysis_model,
+            ("AIModels", "SceneBuilder"): settings.ai_scene_builder_model,
+            ("AIModels", "PromptEvolutionCriticA"): settings.ai_prompt_evolution_critic_model_a,
+            ("AIModels", "PromptEvolutionCriticB"): settings.ai_prompt_evolution_critic_model_b,
+            ("AIModels", "PromptEvolutionAnalysis"): settings.ai_prompt_evolution_analysis_model,
+            ("AIModels", "PromptEvolutionCheck"): settings.ai_prompt_evolution_check_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
         self._update_config_values(updates)
@@ -261,8 +289,19 @@ class PipelineControlService:
             raise PipelineControlServiceError(
                 f"Zine page margin must be between 0 and {max_page_margin} pixels."
             )
-        if not settings.ai_prompt_analysis_model.strip():
-            raise PipelineControlServiceError("AI prompt analysis model cannot be blank.")
+        model_settings = (
+            ("Asset workflow", settings.ai_asset_workflow_model),
+            ("Prompt condensation", settings.prompt_condense_model),
+            ("AI prompt analysis", settings.ai_prompt_analysis_model),
+            ("Scene Builder", settings.ai_scene_builder_model),
+            ("Prompt Evolution critic A", settings.ai_prompt_evolution_critic_model_a),
+            ("Prompt Evolution critic B", settings.ai_prompt_evolution_critic_model_b),
+            ("Prompt Evolution analysis", settings.ai_prompt_evolution_analysis_model),
+            ("Prompt Evolution regression check", settings.ai_prompt_evolution_check_model),
+        )
+        for label, model in model_settings:
+            if not model.strip():
+                raise PipelineControlServiceError(f"{label} model cannot be blank.")
         if not settings.ai_prompt_analysis_instructions_file.strip():
             raise PipelineControlServiceError("AI prompt analysis instructions file cannot be blank.")
 

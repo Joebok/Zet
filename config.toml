@@ -15,8 +15,17 @@ BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
 Enabled = false
-Model = "qwen2.5vl:3b"
 PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
+
+[AIModels]
+AssetWorkflow = "general-purpose:latest"
+PromptCondense = "structured-reasoning:latest"
+PromptAnalysis = "structured-reasoning:latest"
+SceneBuilder = "structured-reasoning:latest"
+PromptEvolutionCriticA = "vision-analysis:latest"
+PromptEvolutionCriticB = "vision-analysis-alt:latest"
+PromptEvolutionAnalysis = "vision-analysis:latest"
+PromptEvolutionCheck = "vision-analysis-alt:latest"
 
 [LocalRender]
 AutoQueueAfterCondense = false
@@ -56,5 +65,4 @@ IntervalSeconds = 60
 Backend = "manual_chatgpt"
 
 [AIPromptAnalysis]
-Model = "qwen3.5:9b"
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"

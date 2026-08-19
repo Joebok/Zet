@@ -10,6 +10,22 @@ from zet.services.prompt_evolution_service import PromptEvolutionError, PromptEv
 
 
 class PromptEvolutionServiceV3Tests(TestCase):
+    def test_prompt_evolution_models_come_from_global_config(self) -> None:
+        service = object.__new__(PromptEvolutionService)
+        service.app = SimpleNamespace(config=SimpleNamespace(
+            ai_prompt_evolution_critic_model_a="critic-a",
+            ai_prompt_evolution_critic_model_b="critic-b",
+            ai_prompt_evolution_analysis_model="analysis",
+            ai_prompt_evolution_check_model="check",
+        ))
+
+        self.assertEqual({
+            "critic_model_a": "critic-a",
+            "critic_model_b": "critic-b",
+            "analysis_model": "analysis",
+            "check_model": "check",
+        }, service._configured_models())
+
     def test_comfyui_render_controls_validate_and_recreate_recipe(self) -> None:
         controls = PromptEvolutionService._render_controls({
             "denoise": 0.6,
@@ -81,6 +97,17 @@ class PromptEvolutionServiceV3Tests(TestCase):
         synthesis["next_round_priorities"] = [1, 2, 3, 4]
         with self.assertRaises(PromptEvolutionError):
             PromptEvolutionService._validate_synthesis(synthesis)
+
+    def test_synthesis_promotes_recurring_findings_when_model_omits_priorities(self) -> None:
+        synthesis = {
+            "recurrent_deviations": [{
+                "finding": "coat color drift", "seeds": [1, 2], "observer_agreement": "dual",
+            }],
+            "intermittent_deviations": [], "isolated_deviations": [],
+            "stable_successes": [], "cross_feature_patterns": [], "next_round_priorities": [],
+        }
+        validated = PromptEvolutionService._validate_synthesis(synthesis)
+        self.assertEqual("coat color drift", validated["next_round_priorities"][0]["problem"])
 
     def test_diagnosis_retry_uses_safe_defaults_and_warnings(self) -> None:
         response = {"interventions": [{
@@ -237,6 +264,53 @@ class PromptEvolutionServiceV3Tests(TestCase):
             self.assertEqual("check_11", service._queue_ollama.call_args.kwargs["task"])
             self.assertEqual("OBSERVING", run["status"])
             self.assertTrue(any("rejected regression check" in event["message"] for event in run["activity_log"]))
+
+    def test_observing_requeues_archived_worker_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            batch_path = root / "batches" / "000"
+            batch_path.mkdir(parents=True)
+            PromptEvolutionService._write_json(batch_path / "batch.json", {
+                "observations": [{
+                    "seed": 11, "file": str(batch_path / "candidate.png"),
+                    "critics": {"a": {"ask_id": "failed-critic", "output": str(batch_path / "critic.json")}},
+                }],
+            })
+            run = {"run_id": "run-1", "root": str(root), "current_batch": 0, "status": "OBSERVING"}
+            service = object.__new__(PromptEvolutionService)
+            service._find_run = Mock(return_value=run)
+            service._proxy_failures = Mock(return_value={"failed-critic": "worker interrupted"})
+            service._retry_observation_output = Mock(return_value=True)
+            service.detail = Mock(return_value=run)
+
+            service._advance_v3_unlocked("run-1")
+
+            service._retry_observation_output.assert_called_once()
+
+    def test_detail_exposes_partial_critic_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            batch_path = root / "batches" / "000"
+            batch_path.mkdir(parents=True)
+            critic = batch_path / "critic.json"
+            critic.write_text('{"stable_matches":["black hair"]}', encoding="utf-8")
+            PromptEvolutionService._write_json(batch_path / "batch.json", {
+                "prompt_version_id": "prompt-000", "renders": [],
+                "observations": [{
+                    "seed": 11, "seed_role": "fixed", "file": "candidate.png",
+                    "critics": {
+                        "a": {"output": str(critic)},
+                        "b": {"output": str(batch_path / "pending.json")},
+                    },
+                }],
+            })
+            service = object.__new__(PromptEvolutionService)
+            service._find_run = Mock(return_value={"run_id": "run-1", "root": str(root)})
+
+            result = service.detail("run-1")["batches"][0]["observation_results"][0]
+
+            self.assertEqual(["black hair"], result["critics"]["a"]["stable_matches"])
+            self.assertEqual(["critic_b"], result["pending"])
 
     def test_synthesis_retry_includes_prior_failure_and_is_queued_only_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

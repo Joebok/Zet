@@ -165,7 +165,7 @@ class AIProxyService:
             pipeline_stage=asset.pipeline_stage,
             ollama_attempt_id=attempt_id,
             worker_type="ollama_generate",
-            ollama_model="llama3.2:3b",
+            ollama_model=str(getattr(self.path_service.config, "ai_asset_workflow_model", "general-purpose:latest")),
             prompt_file="OLLAMA_PROMPT.md",
             expected_output="OLLAMA_RESPONSE.md",
             candidate_output_file=asset.final_image_output,
@@ -354,7 +354,7 @@ class AIProxyService:
         return str(profile.get("prompt_workflow_kind") or profile.get("workflow_kind") or "").strip()
 
     def _prompt_condense_model(self) -> str:
-        return str(getattr(self.path_service.config, "prompt_condense_model", "llama3.2-vision:11b"))
+        return str(getattr(self.path_service.config, "prompt_condense_model", "structured-reasoning:latest"))
 
     def _prompt_condense_file(self) -> Path:
         configured_path = Path(str(getattr(

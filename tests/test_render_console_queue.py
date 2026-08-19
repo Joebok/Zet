@@ -214,7 +214,9 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             )
 
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            job = json.loads((ask_path / "job.json").read_text(encoding="utf-8"))
             self.assertEqual("local_image_render", manifest["worker_type"])
+            self.assertEqual("image:stable_matrix:override-model.safetensors", job["resource_key"])
             self.assertEqual("local_test_render", manifest["task_type"])
             self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
             self.assertEqual("override-model.safetensors", manifest["checkpoint"])

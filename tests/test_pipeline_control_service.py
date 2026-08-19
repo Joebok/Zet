@@ -102,6 +102,14 @@ Backend = "local_image"
                     ai_harvest_auto_enabled=True,
                     ai_harvest_interval_seconds=300,
                     render_backend="manual_chatgpt",
+                    ai_asset_workflow_model="asset-model",
+                    prompt_condense_model="condense-model",
+                    ai_prompt_analysis_model="analysis-model",
+                    ai_scene_builder_model="scene-builder-model",
+                    ai_prompt_evolution_critic_model_a="critic-a-model",
+                    ai_prompt_evolution_critic_model_b="critic-b-model",
+                    ai_prompt_evolution_analysis_model="evolution-analysis-model",
+                    ai_prompt_evolution_check_model="check-model",
                     zine_print_scale=0.965,
                     zine_page_margin=8,
                     zine_width=3344,
@@ -116,6 +124,14 @@ Backend = "local_image"
             self.assertEqual(reloaded.local_render_checkpoint, "new-checkpoint")
             self.assertEqual(reloaded.ai_harvest_interval_seconds, 300)
             self.assertEqual(reloaded.render_backend, "manual_chatgpt")
+            self.assertEqual(reloaded.ai_asset_workflow_model, "asset-model")
+            self.assertEqual(reloaded.prompt_condense_model, "condense-model")
+            self.assertEqual(reloaded.ai_prompt_analysis_model, "analysis-model")
+            self.assertEqual(reloaded.ai_scene_builder_model, "scene-builder-model")
+            self.assertEqual(reloaded.ai_prompt_evolution_critic_model_a, "critic-a-model")
+            self.assertEqual(reloaded.ai_prompt_evolution_critic_model_b, "critic-b-model")
+            self.assertEqual(reloaded.ai_prompt_evolution_analysis_model, "evolution-analysis-model")
+            self.assertEqual(reloaded.ai_prompt_evolution_check_model, "check-model")
             self.assertEqual(reloaded.zine_print_scale, 0.965)
             self.assertEqual(reloaded.zine_page_margin, 8)
             self.assertEqual(reloaded.zine_width, 3344)

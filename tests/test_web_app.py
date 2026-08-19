@@ -608,8 +608,13 @@ Backend = "manual_chatgpt"
             self.assertIn('id="comfyui-settings" hidden', html)
             self.assertIn('id="setting-comfyui-checkpoint"', html)
             self.assertIn('id="prompt-evolution-backend"', html)
+            self.assertIn('id="prompt-evolution-show-setup"', html)
+            self.assertIn('id="prompt-evolution-show-review"', html)
             self.assertIn('id="prompt-evolution-comfy-controls"', html)
             self.assertIn('id="prompt-evolution-controlnet-model"', html)
+            self.assertNotIn('id="prompt-evolution-critic-model-a"', html)
+            self.assertIn('id="setting-ai-asset-workflow-model"', html)
+            self.assertIn('id="setting-ai-prompt-evolution-check-model"', html)
             self.assertIn('class="control-panel ai-automation-panel local-image-config-panel"', html)
             self.assertIn('document.querySelectorAll("button.tab")', (Path(__file__).parents[1] / "zet" / "web" / "static" / "zet.js").read_text(encoding="utf-8"))
             self.assertNotIn('data-action="retouch"', html)
@@ -941,6 +946,14 @@ Backend = "manual_chatgpt"
                     "comfyui_timeout_seconds": 120,
                     "ai_harvest_auto_enabled": True,
                     "ai_harvest_interval_seconds": 600,
+                    "ai_asset_workflow_model": "asset-model",
+                    "prompt_condense_model": "condense-model",
+                    "ai_prompt_analysis_model": "analysis-model",
+                    "ai_scene_builder_model": "scene-builder-model",
+                    "ai_prompt_evolution_critic_model_a": "critic-a-model",
+                    "ai_prompt_evolution_critic_model_b": "critic-b-model",
+                    "ai_prompt_evolution_analysis_model": "evolution-analysis-model",
+                    "ai_prompt_evolution_check_model": "check-model",
                     "render_backend": "manual_chatgpt",
                 },
             )
@@ -951,8 +964,12 @@ Backend = "manual_chatgpt"
             self.assertEqual(saved.json()["automation"]["local_render_backend"], "comfyui")
             self.assertEqual(saved.json()["automation"]["comfyui_checkpoint"], "comfy-checkpoint.safetensors")
             self.assertEqual(saved.json()["automation"]["render_backend"], "manual_chatgpt")
+            self.assertEqual(saved.json()["automation"]["ai_asset_workflow_model"], "asset-model")
+            self.assertEqual(saved.json()["automation"]["ai_scene_builder_model"], "scene-builder-model")
+            self.assertEqual(saved.json()["automation"]["ai_prompt_evolution_check_model"], "check-model")
             self.assertIn('Checkpoint = "test-checkpoint"', config_path.read_text(encoding="utf-8"))
             self.assertIn('[ComfyUI]', config_path.read_text(encoding="utf-8"))
+            self.assertIn('[AIModels]', config_path.read_text(encoding="utf-8"))
             self.assertIsNot(web_app.state.zet_app, original_zet_app)
 
     def test_pipeline_controls_api_can_batch_reset_to_render(self):

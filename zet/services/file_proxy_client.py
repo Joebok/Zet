@@ -59,6 +59,7 @@ class FileProxyClient:
         if worker is None:
             raise ValueError(f"Unsupported Zet file-proxy worker type: {worker_type}")
         route_required = self._externalize_routes(staging, job_id)
+        resource_key = self._resource_key(staging, worker_type)
         job_manifest = {
             "protocol_version": 1,
             "job_id": job_id,
@@ -68,6 +69,7 @@ class FileProxyClient:
             "files": self._file_inventory(staging),
             "route_required": route_required,
             "producer_id": socket.gethostname(),
+            "resource_key": resource_key,
         }
         temp = staging / ".job.json.tmp"
         temp.write_text(json.dumps(job_manifest, indent=2) + "\n", encoding="utf-8")
@@ -75,6 +77,16 @@ class FileProxyClient:
         ready = self.ready_path(job_id)
         self._replace_with_retry(staging, ready)
         return ready
+
+    @staticmethod
+    def _resource_key(staging: Path, worker_type: str) -> str:
+        manifest = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
+        if worker_type == "ollama_generate":
+            model = str(manifest.get("ollama_model") or "").strip() or "general-purpose:latest"
+            return f"ollama:{model}"
+        backend = str(manifest.get("image_generation") or "").strip().lower() or "stable_matrix"
+        checkpoint = str(manifest.get("checkpoint") or "").strip() or "default"
+        return f"image:{backend}:{checkpoint}"
 
     @staticmethod
     def _replace_with_retry(source: Path, destination: Path, timeout_seconds: float = 15.0) -> None:

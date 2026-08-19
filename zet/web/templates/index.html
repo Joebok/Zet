@@ -1326,13 +1326,18 @@
           <form id="automation-form" class="settings-form">
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
             <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
-            <label>
-              AI prompt analysis model
-              <span class="inline-field">
-                <select id="setting-ai-prompt-analysis-model"></select>
-                <button id="refresh-ollama-models" type="button">Refresh Models</button>
-              </span>
-            </label>
+            <fieldset>
+              <legend>Managed LLM roles</legend>
+              <label>Asset workflow model<select id="setting-ai-asset-workflow-model"></select></label>
+              <label>Prompt condensation model<select id="setting-prompt-condense-model"></select></label>
+              <label>AI prompt analysis model<select id="setting-ai-prompt-analysis-model"></select></label>
+              <label>Scene Builder model<select id="setting-ai-scene-builder-model"></select></label>
+              <label>Prompt Evolution critic A<select id="setting-ai-prompt-evolution-critic-a-model"></select></label>
+              <label>Prompt Evolution critic B<select id="setting-ai-prompt-evolution-critic-b-model"></select></label>
+              <label>Prompt Evolution analysis and editor<select id="setting-ai-prompt-evolution-analysis-model"></select></label>
+              <label>Prompt Evolution regression check<select id="setting-ai-prompt-evolution-check-model"></select></label>
+              <button id="refresh-ollama-models" type="button">Refresh Models</button>
+            </fieldset>
             <label>AI prompt analysis instructions<input id="setting-ai-prompt-analysis-file" type="text"></label>
             <label>
               Final render backend
@@ -1483,8 +1488,12 @@
         <div id="prompt-evolution-status" class="status-text"></div>
       </div>
       <div id="prompt-evolution-message" class="action-message" hidden></div>
+      <div class="button-row prompt-evolution-pane-switch" role="tablist" aria-label="Prompt Evolution view">
+        <button id="prompt-evolution-show-setup" type="button" role="tab" aria-controls="prompt-evolution-setup-pane">Setup</button>
+        <button id="prompt-evolution-show-review" type="button" role="tab" aria-controls="prompt-evolution-review-pane">Running &amp; Review</button>
+      </div>
       <div class="prompt-evolution-layout">
-        <section class="control-panel prompt-evolution-setup">
+        <section id="prompt-evolution-setup-pane" class="control-panel prompt-evolution-pane prompt-evolution-setup" role="tabpanel">
           <h2>New Run</h2>
           <div class="settings-form">
             <label>Costume / view<select id="prompt-evolution-asset"></select></label>
@@ -1492,10 +1501,6 @@
               <figure><figcaption>Locked source</figcaption><img id="prompt-evolution-source-preview" alt="Selected locked costume reference"></figure>
               <figure><figcaption>768 × 1024 derivative</figcaption><img id="prompt-evolution-derivative-preview" alt="Processed prompt evolution reference"></figure>
             </div>
-            <label>Visual critic A<select id="prompt-evolution-critic-model-a"></select></label>
-            <label>Visual critic B<select id="prompt-evolution-critic-model-b"></select></label>
-            <label>Analysis and editor model<select id="prompt-evolution-analysis-model"></select></label>
-            <label>Regression-check model<select id="prompt-evolution-check-model"></select></label>
             <label>Image backend<select id="prompt-evolution-backend"><option value="stable_matrix">Stable Matrix</option><option value="comfyui">ComfyUI</option></select></label>
             <label>Workflow<select id="prompt-evolution-profile"></select></label>
             <label>Checkpoint<select id="prompt-evolution-checkpoint"></select></label>
@@ -1551,7 +1556,7 @@
             <button id="prompt-evolution-template-save" type="button">Save Template</button>
           </details>
         </section>
-        <section class="review-main">
+        <section id="prompt-evolution-review-pane" class="review-main prompt-evolution-pane" role="tabpanel" hidden>
           <div class="review-header"><h2>Runs</h2><button id="prompt-evolution-refresh" type="button">Refresh</button></div>
           <div id="prompt-evolution-runs" class="prompt-evolution-runs"></div>
           <div id="prompt-evolution-detail" class="prompt-evolution-detail"></div>

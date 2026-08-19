@@ -197,7 +197,7 @@ class ZetApp:
         )
         self.zine_service = ZineService(path_service, story_service)
         self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
-        self.scene_builder_interview_service = SceneBuilderInterviewService(config.ai_prompt_analysis_model)
+        self.scene_builder_interview_service = SceneBuilderInterviewService(config.ai_scene_builder_model)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,

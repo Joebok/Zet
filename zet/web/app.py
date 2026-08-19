@@ -643,7 +643,30 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ),
         comfyui_poll_seconds=float(payload.get("comfyui_poll_seconds", defaults.comfyui_poll_seconds)),
         comfyui_timeout_seconds=float(payload.get("comfyui_timeout_seconds", defaults.comfyui_timeout_seconds)),
+        ai_asset_workflow_model=str(
+            payload.get("ai_asset_workflow_model", defaults.ai_asset_workflow_model)
+        ),
+        prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
         ai_prompt_analysis_model=str(payload.get("ai_prompt_analysis_model", defaults.ai_prompt_analysis_model)),
+        ai_scene_builder_model=str(payload.get("ai_scene_builder_model", defaults.ai_scene_builder_model)),
+        ai_prompt_evolution_critic_model_a=str(
+            payload.get(
+                "ai_prompt_evolution_critic_model_a", defaults.ai_prompt_evolution_critic_model_a
+            )
+        ),
+        ai_prompt_evolution_critic_model_b=str(
+            payload.get(
+                "ai_prompt_evolution_critic_model_b", defaults.ai_prompt_evolution_critic_model_b
+            )
+        ),
+        ai_prompt_evolution_analysis_model=str(
+            payload.get(
+                "ai_prompt_evolution_analysis_model", defaults.ai_prompt_evolution_analysis_model
+            )
+        ),
+        ai_prompt_evolution_check_model=str(
+            payload.get("ai_prompt_evolution_check_model", defaults.ai_prompt_evolution_check_model)
+        ),
         ai_prompt_analysis_instructions_file=str(
             payload.get("ai_prompt_analysis_instructions_file", defaults.ai_prompt_analysis_instructions_file)
         ),

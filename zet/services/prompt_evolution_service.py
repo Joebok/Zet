@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 import shutil
 import tempfile
+import time
 from typing import Any
 import zipfile
 
@@ -21,8 +22,8 @@ from zet.services.character_grid_service import CharacterGridOptions, CharacterG
 CANVAS_WIDTH = 768
 CANVAS_HEIGHT = 1024
 RUN_VERSION = 3
-DEFAULT_VISION_MODEL = "qwen3.5-prompt-evo"
-DEFAULT_CHECKLIST_MODEL = "qwen3-VL-prompt-evo"
+DEFAULT_VISION_MODEL = "vision-analysis:latest"
+DEFAULT_CHECKLIST_MODEL = "vision-analysis-alt:latest"
 TEMPLATE_NAMES = (
     "bootstrap", "visual_critic", "regression_check", "batch_synthesis",
     "prompt_diagnosis", "prompt_edit", "repair", "directed_refinement",
@@ -125,7 +126,15 @@ class PromptEvolutionService:
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name(f".{path.name}.tmp")
         temp.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        os.replace(temp, path)
+        deadline = time.monotonic() + 2.0
+        while True:
+            try:
+                os.replace(temp, path)
+                break
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
 
     @staticmethod
     def _read_json(path: Path) -> dict[str, Any]:
@@ -498,6 +507,22 @@ class PromptEvolutionService:
                 settings[f"{role}_source_path"] = str(item["path"])
         return settings
 
+    def _configured_models(self) -> dict[str, str]:
+        return {
+            "critic_model_a": str(
+                getattr(self.app.config, "ai_prompt_evolution_critic_model_a", DEFAULT_VISION_MODEL)
+            ),
+            "critic_model_b": str(
+                getattr(self.app.config, "ai_prompt_evolution_critic_model_b", DEFAULT_CHECKLIST_MODEL)
+            ),
+            "analysis_model": str(
+                getattr(self.app.config, "ai_prompt_evolution_analysis_model", DEFAULT_VISION_MODEL)
+            ),
+            "check_model": str(
+                getattr(self.app.config, "ai_prompt_evolution_check_model", DEFAULT_CHECKLIST_MODEL)
+            ),
+        }
+
     def create_run(
         self,
         payload: dict[str, Any],
@@ -582,10 +607,7 @@ class PromptEvolutionService:
             "run_id": run_id, "root": str(root.resolve()), "asset_id": asset.asset_id,
             "character": character, "phase": phase, "costume": costume, "view": view,
             "source_image": str(source.resolve()), "reference_image": str(derivative.resolve()), "crop": crop,
-            "critic_model_a": str(payload.get("critic_model_a") or DEFAULT_VISION_MODEL),
-            "critic_model_b": str(payload.get("critic_model_b") or DEFAULT_CHECKLIST_MODEL),
-            "analysis_model": str(payload.get("analysis_model") or DEFAULT_VISION_MODEL),
-            "check_model": str(payload.get("check_model") or DEFAULT_CHECKLIST_MODEL),
+            **self._configured_models(),
             "backend": backend,
             "checkpoint": checkpoint,
             "profile": profile,
@@ -735,7 +757,10 @@ class PromptEvolutionService:
                     "REQUEST": path.stem,
                     "RESPONSE": path.read_text(encoding="utf-8", errors="replace"),
                 })
-                repair_model = str(run.get("check_model") or DEFAULT_CHECKLIST_MODEL) if path.stem.startswith("regression_check_") else None
+                repair_model = (
+                    str(run.get("check_model") or self._configured_models()["check_model"])
+                    if path.stem.startswith("regression_check_") else None
+                )
                 self._queue_ollama(
                     run, task=f"repair_{path.stem}", prompt=prompt, output=repair_path, images=[], model=repair_model,
                 )
@@ -945,6 +970,16 @@ class PromptEvolutionService:
             if len(priorities) > 3:
                 warning_list.append("Synthesis returned more than three priorities; kept the first three.")
             data["next_round_priorities"] = priorities[:3]
+            if not data["next_round_priorities"]:
+                findings = data["recurrent_deviations"] + data["intermittent_deviations"]
+                data["next_round_priorities"] = [{
+                    "problem": item["finding"],
+                    "evidence": f"Reported as a recurring deviation across {len(item['seeds'])} seed(s).",
+                    "seeds": item["seeds"],
+                    "observer_agreement": item["observer_agreement"],
+                } for item in findings[:3]]
+                if findings:
+                    warning_list.append("Synthesis omitted priorities; promoted its leading recurring deviations.")
             return data
         for name in ("recurrent_deviations", "intermittent_deviations", "isolated_deviations", "stable_successes", "cross_feature_patterns", "next_round_priorities"):
             cls._array(data, name)
@@ -959,6 +994,14 @@ class PromptEvolutionService:
                 raise PromptEvolutionError("Synthesis returned an invalid next-round priority.")
         if any(not isinstance(item, str) or not item.strip() for name in ("stable_successes", "cross_feature_patterns") for item in data[name]):
             raise PromptEvolutionError("Synthesis returned an invalid stable success or cross-feature pattern.")
+        if not data["next_round_priorities"]:
+            findings = data["recurrent_deviations"] + data["intermittent_deviations"]
+            data["next_round_priorities"] = [{
+                "problem": item["finding"],
+                "evidence": f"Reported as a recurring deviation across {len(item['seeds'])} seed(s).",
+                "seeds": item["seeds"],
+                "observer_agreement": item["observer_agreement"],
+            } for item in findings[:3]]
         return data
 
     @classmethod
@@ -1312,6 +1355,24 @@ class PromptEvolutionService:
                 batch = self._read_json(batch_path / "batch.json")
                 outputs = [Path(role["output"]) for item in batch["observations"] for role in item["critics"].values()]
                 outputs += [Path(item["check"]["output"]) for item in batch["observations"] if item.get("check")]
+                if not all(path.is_file() for path in outputs):
+                    failures = self._proxy_failures(run_id)
+                    retried = False
+                    for item in batch["observations"]:
+                        for role, record in item["critics"].items():
+                            failure = failures.get(str(record.get("ask_id") or ""))
+                            if not Path(record["output"]).is_file() and failure:
+                                if not self._retry_observation_output(run, batch, item, f"critic_{role}", failure):
+                                    raise PromptEvolutionError(f"Critic {role.upper()} failed for seed {item['seed']}: {failure}")
+                                retried = True
+                        record = item.get("check")
+                        failure = failures.get(str((record or {}).get("ask_id") or ""))
+                        if record and not Path(record["output"]).is_file() and failure:
+                            if not self._retry_observation_output(run, batch, item, "check", failure):
+                                raise PromptEvolutionError(f"Regression check failed for seed {item['seed']}: {failure}")
+                            retried = True
+                    if retried:
+                        return self.detail(run_id)
                 if all(path.is_file() for path in outputs):
                     self._log(run, f"Batch {int(run['current_batch']) + 1} — analyzing critic reports and regression-check responses.")
                     evidence = []
@@ -1456,7 +1517,7 @@ class PromptEvolutionService:
                 if output.is_file():
                     positive, negative = self._prompt_json(run, output)
                     payload = {key: run[key] for key in (
-                        "character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model",
+                        "character", "phase", "costume", "view",
                         "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches",
                     )}
                     new_run = self.create_run(payload | self._recipe_creation_settings(run) | {
@@ -1605,16 +1666,22 @@ class PromptEvolutionService:
 
     def _render_failure(self, run_id: str, renders: list[dict[str, Any]]) -> dict[str, str] | None:
         ask_ids = {str(item.get("ask_id") or "") for item in renders}
+        failures = self._proxy_failures(run_id)
+        for ask_id in ask_ids:
+            if ask_id in failures:
+                return {"ask_id": ask_id, "error_message": failures[ask_id]}
+        return None
+
+    def _proxy_failures(self, run_id: str) -> dict[str, str]:
+        failures: dict[str, str] = {}
         for _, record_path in self._audit_proxy_records(run_id):
-            if record_path.name not in ask_ids:
-                continue
             answer = self._optional_json(record_path / "answer_manifest.json")
             result = self._optional_json(record_path / "proxy_result.json")
             if str(answer.get("status") or "").upper() != "ERROR" and str(result.get("status") or "").upper() != "FAILED":
                 continue
             message = str(answer.get("error_message") or result.get("error_message") or "Render worker failed.")
-            return {"ask_id": record_path.name, "error_message": self._concise_render_error(message)}
-        return None
+            failures[record_path.name] = self._concise_render_error(message)
+        return failures
 
     def create_audit_bundle(self, run_id: str) -> Path:
         run = self._find_run(run_id)
@@ -1698,7 +1765,7 @@ class PromptEvolutionService:
             raise PromptEvolutionError(f"Batch does not exist: {batch_index}")
         batch = self._read_json(batch_path)
         settings = {
-            key: run[key] for key in ("character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model", "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches") if key in run
+            key: run[key] for key in ("character", "phase", "costume", "view", "checkpoint", "profile", "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches") if key in run
         }
         settings["batch_size"] = max(2, int(settings.get("batch_size", 5)))
         settings["total_batches"] = max(2, int(settings.get("total_batches", 5)))
@@ -1714,7 +1781,7 @@ class PromptEvolutionService:
         settings = {
             key: run[key]
             for key in (
-                "character", "phase", "costume", "view", "critic_model_a", "critic_model_b", "analysis_model", "check_model", "checkpoint", "profile",
+                "character", "phase", "costume", "view", "checkpoint", "profile",
                 "cfg_scale", "steps", "batch_size", "fixed_seed_count", "total_batches",
             )
             if key in run
@@ -1775,7 +1842,27 @@ class PromptEvolutionService:
         run = self._find_run(run_id)
         batches = []
         for path in sorted((Path(run["root"]) / "batches").glob("*/batch.json")) if (Path(run["root"]) / "batches").exists() else []:
-            batches.append(self._read_json(path))
+            batch = self._read_json(path)
+            observation_results = []
+            for item in batch.get("observations", []):
+                critics = {
+                    role: self._optional_json(Path(record["output"]))
+                    for role, record in item.get("critics", {}).items()
+                    if Path(record["output"]).is_file()
+                }
+                check_record = item.get("check") or {}
+                check_path = Path(str(check_record.get("output") or ""))
+                observation_results.append({
+                    "seed": item.get("seed"), "seed_role": item.get("seed_role"), "file": item.get("file"),
+                    "critics": critics,
+                    "check": self._optional_json(check_path) if check_path.is_file() else None,
+                    "pending": [
+                        f"critic_{role}" for role in item.get("critics", {}) if role not in critics
+                    ] + (["check"] if check_record and not check_path.is_file() else []),
+                })
+            if observation_results:
+                batch["observation_results"] = observation_results
+            batches.append(batch)
         versions = [{
             "prompt_version_id": batch["prompt_version_id"],
             "fixed_renders": [item for item in batch.get("renders", []) if item.get("seed_role") == "fixed"],

@@ -304,8 +304,8 @@ Pipeline Controls shows project-level automation settings beside the selected ch
 It can edit known safe settings in `config.toml`:
 
 - `PromptCondense.Enabled`
-- `PromptCondense.Model`
 - `PromptCondense.PromptFile`
+- `AIModels.*`
 - `LocalRender.AutoQueueAfterCondense`
 - `LocalRender.Preset`
 - `AIHarvest.AutoEnabled`
@@ -369,8 +369,10 @@ Prompt condensing is an optional auxiliary AI task controlled by:
 ```toml
 [PromptCondense]
 Enabled = true
-Model = "llama3.2-vision:11b"
 PromptFile = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
+
+[AIModels]
+PromptCondense = "structured-reasoning:latest"
 
 [LocalRender]
 AutoQueueAfterCondense = true

@@ -98,24 +98,28 @@ test("shared action roles and control states use the semantic design system", as
   await expect(page.locator(".fullscreen-image-close")).toBeHidden();
 });
 
-test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selection audits", async ({ page }) => {
+test("Prompt Evolution v3 uses global role models, blinded prompt grids, and post-selection audits", async ({ page }) => {
   await openPage(page, "prompt-evolution");
-  await expect(page.locator("#prompt-evolution-critic-model-a")).toBeVisible();
-  await expect(page.locator("#prompt-evolution-critic-model-b")).toBeVisible();
-  await expect(page.locator("#prompt-evolution-analysis-model")).toBeVisible();
-  await expect(page.locator("#prompt-evolution-check-model")).toBeVisible();
+  await page.locator("#prompt-evolution-show-setup").click();
+  await expect(page.locator("#prompt-evolution-setup-pane")).toBeVisible();
+  await page.locator("#prompt-evolution-show-review").click();
+  await expect(page.locator("#prompt-evolution-review-pane")).toBeVisible();
+  await expect(page.locator("#prompt-evolution-setup-pane")).toBeHidden();
+  await page.locator("#prompt-evolution-show-setup").click();
+  await expect(page.locator("#prompt-evolution-critic-model-a, #prompt-evolution-critic-model-b, #prompt-evolution-analysis-model, #prompt-evolution-check-model")).toHaveCount(0);
   await expect(page.locator("#prompt-evolution-backend")).toBeVisible();
   await expect(page.locator("#prompt-evolution-backend")).toHaveValue("stable_matrix");
   await expect(page.locator("#prompt-evolution-comfy-controls")).toBeHidden();
   await expect(page.locator("#prompt-evolution-fixed-seed-count")).toHaveValue("3");
   await expect(page.locator("#prompt-evolution-mode, #prompt-evolution-metadata")).toHaveCount(0);
+  await page.locator("#prompt-evolution-show-review").click();
 
   const batch = {
     index: 0, prompt_version_id: "prompt-000", status: "REVIEWED",
     positive_prompt: "hidden black bob, gray background", negative_prompt: "hidden blonde hair, cropped",
     positive_core: "hidden black bob", negative_core: "hidden blonde hair",
     renders: [{ seed: 11, seed_role: "fixed", file: "fixed.png" }, { seed: 22, seed_role: "fresh", file: "fresh.png" }],
-    candidates: [{ seed: 11, critics: { a: { stable_matches: ["black bob"] }, b: { stable_matches: ["black bob"] } } }],
+    candidates: [{ seed: 11, seed_role: "fixed", file: "fixed.png", critics: { a: { major_differences: [{ reference: "teal coat", candidate: "blue coat" }], stable_matches: ["black bob"] }, b: { stable_matches: ["black bob"] } }, checks: [{ id: "hair", pass: true, evidence: "Hair is black." }] }],
     synthesis: { recurrent_deviations: [], stable_successes: ["black bob"] },
     diagnosis: { interventions: [] }, edit: {},
   };
@@ -140,6 +144,8 @@ test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selec
     reference_image: "reference.png", checkpoint: "checkpoint", status: "AWAITING_PROMPT_REVIEW", current_batch: 0,
   }, sourceBatch: batch });
   await expect(page.locator(".prompt-evolution-manual-review")).toContainText("Reasoning for this change");
+  await expect(page.locator(".prompt-evolution-change-list")).toContainText("correct drift");
+  await expect(page.locator(".prompt-evolution-summary-diff")).toContainText("red coat");
   await expect(page.locator("[data-prompt-evolution-review-positive]")).toHaveValue("black bob, red coat");
   await expect(page.locator("[data-prompt-evolution-review-negative]")).toHaveValue("blue coat");
   await expect(page.locator("[data-prompt-evolution-review-accept]")).toBeVisible();
@@ -162,8 +168,10 @@ test("Prompt Evolution v3 uses role models, blinded prompt grids, and post-selec
   await expect(page.locator("#prompt-evolution-detail")).toContainText("Selected prompt version");
   await expect(page.locator(".prompt-evolution-log")).toContainText("queued seed 11 for Critic A");
   await page.locator("#prompt-evolution-detail details").filter({ hasText: "Automatic decision audit" }).click();
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("Cross-seed synthesis");
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("Cross-seed priorities");
   await expect(page.locator("#prompt-evolution-detail")).toContainText("black bob");
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("teal coat");
+  await expect(page.locator("#prompt-evolution-detail")).toContainText("Hair is black.");
 
   const refreshed = page.waitForResponse((response) => response.url().endsWith("/api/prompt-evolution/runs") && response.ok());
   await page.locator("#prompt-evolution-refresh").click();
@@ -1248,6 +1256,14 @@ test("scoped destructive confirmations cancel and complete explicitly", async ({
 
 test("AI Controls stacks queue lists and manages Zet processes", async ({ page }) => {
   await openPage(page, "ai-controls");
+  await expect(page.locator("#setting-ai-asset-workflow-model")).toBeVisible();
+  await expect(page.locator("#setting-prompt-condense-model")).toBeVisible();
+  await expect(page.locator("#setting-ai-prompt-analysis-model")).toBeVisible();
+  await expect(page.locator("#setting-ai-scene-builder-model")).toBeVisible();
+  await expect(page.locator("#setting-ai-prompt-evolution-critic-a-model")).toBeVisible();
+  await expect(page.locator("#setting-ai-prompt-evolution-critic-b-model")).toBeVisible();
+  await expect(page.locator("#setting-ai-prompt-evolution-analysis-model")).toBeVisible();
+  await expect(page.locator("#setting-ai-prompt-evolution-check-model")).toBeVisible();
   const queueSections = page.locator(".queue-tables > section");
   await expect(queueSections.locator("h3")).toHaveText(["Running", "Ask", "Answer"]);
   const widths = await queueSections.evaluateAll((sections) => sections.map((section) => section.getBoundingClientRect().width));

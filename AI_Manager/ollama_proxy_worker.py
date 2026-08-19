@@ -36,6 +36,7 @@ from zet.services.atomic_file_service import write_json_atomic, write_text_atomi
 from AI_Manager.proxy_worker_output import log_job
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
+DEFAULT_KEEP_ALIVE = "5m"
 
 ANSI_RESET = "\033[0m"
 ANSI_YELLOW = "\033[33m"
@@ -164,6 +165,7 @@ def call_ollama_once(
     images: list[str] | None = None,
     json_output: bool = False,
     response_schema: dict | None = None,
+    keep_alive: str | int = 0,
 ) -> str:
     multimodal_chat = bool(images and len(images) > 1)
     if multimodal_chat:
@@ -173,7 +175,7 @@ def call_ollama_once(
             "messages": [{"role": "user", "content": prompt, "images": images}],
             "stream": False,
             "think": False,
-            "keep_alive": 0,
+            "keep_alive": keep_alive,
             "options": {"temperature": temperature},
         }
         request_url = ollama_chat_url(url)
@@ -183,7 +185,7 @@ def call_ollama_once(
             "prompt": prompt,
             "stream": False,
             "think": False,
-            "keep_alive": 0,
+            "keep_alive": keep_alive,
             "options": {"temperature": temperature},
         }
         if images:
@@ -235,6 +237,7 @@ def call_ollama(
     images: list[str] | None = None,
     json_output: bool = False,
     response_schema: dict | None = None,
+    keep_alive: str | int = 0,
 ) -> str:
     if preflight_attempts > 0:
         wait_for_ollama(url, attempts=preflight_attempts, delay_seconds=retry_seconds, timeout=min(timeout, 10))
@@ -246,6 +249,7 @@ def call_ollama(
             return call_ollama_once(
                 url, model, prompt, temperature=temperature, num_ctx=num_ctx,
                 timeout=timeout, images=images, json_output=json_output, response_schema=response_schema,
+                keep_alive=keep_alive,
             )
         except Exception as exc:
             if not is_transient_ollama_error(exc):
@@ -257,6 +261,13 @@ def call_ollama(
             time.sleep(retry_seconds)
 
     raise TransientOllamaConnectionError(f"Ollama unavailable after {total_attempts} attempt(s): {last_exc}")
+
+
+def scheduled_keep_alive(model: str) -> str | int:
+    if os.environ.get("AI_PROXY_NEXT_JOB_PRESENT") != "1":
+        return DEFAULT_KEEP_ALIVE
+    current_key = os.environ.get("AI_PROXY_CURRENT_RESOURCE_KEY") or f"ollama:{model}"
+    return DEFAULT_KEEP_ALIVE if os.environ.get("AI_PROXY_NEXT_RESOURCE_KEY") == current_key else 0
 
 
 def ollama_generation_options(ask_manifest: dict) -> tuple[float, int | None]:
@@ -300,7 +311,7 @@ def process_claimed(
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     prompt_file = str(ask_manifest.get("prompt_file") or "")
     expected_output = str(ask_manifest.get("expected_output") or "")
-    model = str(ask_manifest.get("ollama_model") or "llama3.2:3b")
+    model = str(ask_manifest.get("ollama_model") or "general-purpose:latest")
     job_id = str(ask_manifest.get("ask_id") or folder.name)
     asset_id = str(ask_manifest.get("asset_id") or "")
     attempt_id = str(ask_manifest.get("ollama_attempt_id") or "")
@@ -352,6 +363,7 @@ def process_claimed(
             images=encoded_images,
             json_output=bool(ask_manifest.get("json_output")),
             response_schema=ask_manifest.get("response_schema"),
+            keep_alive=scheduled_keep_alive(model),
         )
         write_text_atomic(folder / expected_output, response)
         answer_manifest["status"] = "SUCCESS"

@@ -14,6 +14,7 @@ def test_atomic_publication_writes_generic_job_manifest(tmp_path: Path) -> None:
             {
                 "ask_id": "job-1",
                 "worker_type": "ollama_generate",
+                "ollama_model": "vision-analysis:latest",
                 "prompt_file": "prompt.md",
                 "target_output_dir": str((tmp_path / "outputs").resolve()),
             }
@@ -30,6 +31,7 @@ def test_atomic_publication_writes_generic_job_manifest(tmp_path: Path) -> None:
     assert job["subscriber_id"] == "zet"
     assert job["worker"] == "ollama"
     assert job["producer_id"] == socket.gethostname()
+    assert job["resource_key"] == "ollama:vision-analysis:latest"
     assert {item["path"] for item in job["files"]} == {"ask_manifest.json", "prompt.md"}
     assert job["route_required"] is True
     ask = json.loads((ready / "ask_manifest.json").read_text(encoding="utf-8"))
@@ -47,6 +49,8 @@ def test_reference_inputs_are_copied_inside_job(tmp_path: Path) -> None:
             {
                 "ask_id": "image-1",
                 "worker_type": "local_image_render",
+                "image_generation": "comfyui",
+                "checkpoint": "portrait.safetensors",
                 "reference_files": [{"path": str(source.resolve())}],
             }
         ),
@@ -55,9 +59,50 @@ def test_reference_inputs_are_copied_inside_job(tmp_path: Path) -> None:
 
     ready = client.publish(staging, "image-1", "local_image_render")
 
+    job = json.loads((ready / "job.json").read_text(encoding="utf-8"))
+    assert job["resource_key"] == "image:comfyui:portrait.safetensors"
     manifest = json.loads((ready / "ask_manifest.json").read_text(encoding="utf-8"))
     assert manifest["reference_files"][0]["path"] == "references/source.png"
     assert (ready / "references" / "source.png").read_bytes() == b"image"
+
+
+def test_resource_keys_group_equal_resources_and_separate_different_resources(tmp_path: Path) -> None:
+    client = FileProxyClient(tmp_path / "queue")
+
+    def publish(job_id: str, worker_type: str, **manifest_fields) -> str:
+        staging = client.create_staging(job_id)
+        (staging / "ask_manifest.json").write_text(
+            json.dumps({"ask_id": job_id, "worker_type": worker_type, **manifest_fields}),
+            encoding="utf-8",
+        )
+        ready = client.publish(staging, job_id, worker_type)
+        return json.loads((ready / "job.json").read_text(encoding="utf-8"))["resource_key"]
+
+    assert publish("ollama-1", "ollama_generate", ollama_model="vision:latest", seed=1) == publish(
+        "ollama-2", "ollama_generate", ollama_model="vision:latest", seed=2
+    )
+    assert publish("ollama-3", "ollama_generate", ollama_model="reasoning:latest") != publish(
+        "ollama-4", "ollama_generate", ollama_model="vision:latest"
+    )
+    assert publish("image-1", "local_image_render", image_generation="comfyui", checkpoint="a.safetensors") == publish(
+        "image-2", "local_image_render", image_generation="COMFYUI", checkpoint="a.safetensors", seed=99
+    )
+    assert publish("image-3", "local_image_render", image_generation="comfyui", checkpoint="a.safetensors") != publish(
+        "image-4", "local_image_render", image_generation="comfyui", checkpoint="b.safetensors"
+    )
+
+
+def test_resource_keys_use_managed_defaults_for_blank_fields(tmp_path: Path) -> None:
+    client = FileProxyClient(tmp_path / "queue")
+    ollama = client.create_staging("ollama-default")
+    (ollama / "ask_manifest.json").write_text(json.dumps({"ollama_model": "  "}), encoding="utf-8")
+    image = client.create_staging("image-default")
+    (image / "ask_manifest.json").write_text(
+        json.dumps({"image_generation": " ", "checkpoint": ""}), encoding="utf-8"
+    )
+
+    assert FileProxyClient._resource_key(ollama, "ollama_generate") == "ollama:general-purpose:latest"
+    assert FileProxyClient._resource_key(image, "local_image_render") == "image:stable_matrix:default"
 
 
 def test_nested_scene_ir_paths_are_localized(tmp_path: Path) -> None:
