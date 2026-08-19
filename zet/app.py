@@ -37,6 +37,7 @@ from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
 from zet.services.scene_builder_interview_service import SceneBuilderInterviewService
+from zet.services.scene_candidate_import_service import SceneCandidateImportService
 from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
@@ -198,6 +199,7 @@ class ZetApp:
         self.zine_service = ZineService(path_service, story_service)
         self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
         self.scene_builder_interview_service = SceneBuilderInterviewService(config.ai_scene_builder_model)
+        self.scene_candidate_import_service = SceneCandidateImportService(config, story_service)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -343,6 +345,26 @@ class ZetApp:
         """List story folders in the shared library."""
         return self.story_service.list_stories()
 
+    def list_scene_candidate_sources(self):
+        return self.scene_candidate_import_service.list_sources()
+
+    def list_scene_candidates(self, source_key: str):
+        return self.scene_candidate_import_service.list_candidates(source_key)
+
+    def get_scene_candidate(self, source_key: str, candidate_id: str):
+        return self.scene_candidate_import_service.get_candidate(source_key, candidate_id)
+
+    def import_scene_candidate(self, source_key: str, candidate_id: str, story_slug: str, confirm_update: bool = False):
+        return self.scene_candidate_import_service.import_candidate(
+            source_key,
+            candidate_id,
+            story_slug,
+            confirm_update,
+        )
+
+    def scene_readiness(self, data: dict) -> dict:
+        return self.scene_candidate_import_service.readiness(data)
+
     def create_story(self, title: str) -> StoryDocument:
         """Create a story folder and main story markdown file."""
         return self.story_service.create_story(title)
@@ -471,9 +493,9 @@ class ZetApp:
         """Return Scene Builder option lists."""
         return self.story_service.scene_builder_options()
 
-    def start_scene_builder_interview(self, narrative: str, data: dict) -> dict:
+    def start_scene_builder_interview(self, narrative: str, data: dict, phases: list[str] | None = None) -> dict:
         """Start a narrative-to-Scene-Builder interview."""
-        return self.scene_builder_interview_service.start(narrative, data)
+        return self.scene_builder_interview_service.start(narrative, data, phases)
 
     def continue_scene_builder_interview(self, session: dict, answers: dict | None = None) -> dict:
         """Run one focused phase of a Scene Builder interview."""

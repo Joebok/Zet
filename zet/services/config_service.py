@@ -10,6 +10,15 @@ class ConfigServiceError(Exception):
 
 
 @dataclass(frozen=True)
+class SceneCandidateSourceConfig:
+    key: str
+    label: str
+    path: str
+    default_story_slug: str = ""
+    read_only: bool = True
+
+
+@dataclass(frozen=True)
 class Config:
     base_library_path: str
     base_character_path: str
@@ -50,6 +59,7 @@ class Config:
     render_backend: str = "local_image"
     ai_prompt_analysis_model: str = "structured-reasoning:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
+    scene_candidate_sources: tuple[SceneCandidateSourceConfig, ...] = ()
 
 
 class ConfigService:
@@ -133,6 +143,31 @@ class ConfigService:
     def _ai_prompt_analysis_config(payload: dict) -> dict:
         analysis = payload.get("AIPromptAnalysis", {})
         return analysis if isinstance(analysis, dict) else {}
+
+    @staticmethod
+    def _scene_candidate_sources(payload: dict) -> tuple[SceneCandidateSourceConfig, ...]:
+        records = payload.get("SceneCandidateSources", [])
+        if not isinstance(records, list):
+            raise ConfigServiceError("SceneCandidateSources must be an array of tables.")
+        sources = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            key = str(record.get("Key") or "").strip()
+            label = str(record.get("Label") or key).strip()
+            path = ConfigService._normalize_path_value(record.get("Path") or "")
+            if not key or not path:
+                raise ConfigServiceError("Each scene candidate source requires Key and Path.")
+            sources.append(SceneCandidateSourceConfig(
+                key=key,
+                label=label,
+                path=path,
+                default_story_slug=str(record.get("DefaultStorySlug") or "").strip(),
+                read_only=bool(record.get("ReadOnly", True)),
+            ))
+        if len({source.key for source in sources}) != len(sources):
+            raise ConfigServiceError("Scene candidate source keys must be unique.")
+        return tuple(sources)
 
     @staticmethod
     def load(config_path: str | Path) -> Config:
@@ -225,6 +260,7 @@ class ConfigService:
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),
+                scene_candidate_sources=ConfigService._scene_candidate_sources(payload),
             )
         except Exception as exc:
             raise ConfigServiceError(f"Config file is missing required BaseFolders entries: {path}") from exc

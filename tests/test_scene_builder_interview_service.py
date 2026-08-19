@@ -158,6 +158,19 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(SceneBuilderInterviewError, "Answer each"):
             service.step(first["session"], {})
 
+    def test_runs_only_requested_phases(self):
+        llm = ScriptedLlm([
+            {"result": {"story_beat": "Mara chooses to stay."}, "questions": []},
+        ])
+        service = SceneBuilderInterviewService("qwen-local", llm)
+
+        payload = service.start("Mara remains at the station.", self._data(), ["story"])
+
+        self.assertTrue(payload["complete"])
+        self.assertEqual(payload["total_phases"], 1)
+        self.assertEqual(payload["draft"]["scene"]["story_beat"], "Mara chooses to stay.")
+        self.assertEqual(len(llm.calls), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

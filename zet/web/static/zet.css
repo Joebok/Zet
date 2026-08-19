@@ -3507,3 +3507,51 @@ dd {
     flex-direction: column;
   }
 }
+.scene-candidate-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.scene-candidate-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.8fr) minmax(24rem, 2fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.scene-candidate-list {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+.scene-candidate-card {
+  text-align: left;
+  padding: 0.75rem;
+}
+
+.scene-candidate-card.active {
+  outline: 2px solid var(--accent, #8c6f44);
+}
+
+.scene-candidate-card small,
+.scene-candidate-card span {
+  display: block;
+}
+
+.scene-candidate-detail {
+  min-width: 0;
+}
+
+.scene-candidate-detail pre {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 850px) {
+  .scene-candidate-layout {
+    grid-template-columns: 1fr;
+  }
+}

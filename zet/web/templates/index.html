@@ -91,6 +91,7 @@
     <div id="story-navigation" class="workspace-navigation" hidden>
       <button class="tab workflow-tab" data-page="stories">Overview</button>
       <button class="tab workflow-tab" data-page="scenes">Scenes</button>
+      <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
       <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
       <button class="tab workflow-tab" data-page="zine">Zines</button>
       <select id="story-production-menu" class="tab" aria-label="Story production tools">
@@ -816,6 +817,37 @@
             <h3>Print Layout</h3>
             <img id="zine-preview" alt="Zine print layout">
           </section>
+        </section>
+      </div>
+    </section>
+
+    <section id="scene-candidates-page" class="page">
+      <div class="page-title-row">
+        <h1>Scene Candidates</h1>
+        <div id="scene-candidate-status" class="status-text"></div>
+      </div>
+      <div id="scene-candidate-message" class="action-message" hidden></div>
+      <div class="scene-candidate-toolbar">
+        <label>Source<select id="scene-candidate-source"></select></label>
+        <label>Filter
+          <select id="scene-candidate-filter">
+            <option value="all">All</option>
+            <option value="available">Available</option>
+            <option value="draft">Draft</option>
+            <option value="needs_attention">Needs attention</option>
+            <option value="ready">Ready</option>
+            <option value="rendered">Rendered</option>
+            <option value="source_changed">Source changed</option>
+          </select>
+        </label>
+        <label>Target story<select id="scene-candidate-story"></select></label>
+        <button id="scene-candidate-refresh" type="button">Refresh</button>
+      </div>
+      <div id="scene-candidate-source-meta" class="status-text"></div>
+      <div class="scene-candidate-layout">
+        <aside id="scene-candidate-list" class="scene-candidate-list"></aside>
+        <section id="scene-candidate-detail" class="scene-candidate-detail">
+          <p>Select a scene candidate.</p>
         </section>
       </div>
     </section>

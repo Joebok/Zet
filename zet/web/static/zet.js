@@ -93,10 +93,16 @@ const state = {
   scenePickerCharacter: "",
   scenePickerSearch: "",
   sceneBuilder: null,
+  sceneBuilderReadiness: null,
   sceneBuilderOptions: {},
   sceneBuilderReferences: [],
   sceneBuilderOpen: false,
   sceneBuilderInterview: null,
+  sceneBuilderInterviewSeed: null,
+  sceneCandidateSources: [],
+  sceneCandidates: [],
+  selectedSceneCandidateSource: null,
+  selectedSceneCandidateId: null,
   selectedBuilderPlacementId: null,
   selectedBuilderElementId: null,
   sceneBuilderRendering: false,
@@ -138,7 +144,7 @@ const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "expressions", "phase-comparison"]);
-const STORY_PAGES = new Set(["stories", "scenes", "scene-builder", "zine"]);
+const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
 const GLOBAL_PAGES = new Set(["auxiliary-resources", "template-editor", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-inspection", "pipeline-controls", "help"]);
 
@@ -563,6 +569,15 @@ const sceneRename = document.querySelector("#scene-rename");
 const sceneMoveStory = document.querySelector("#scene-move-story");
 const sceneMove = document.querySelector("#scene-move");
 const sceneValidation = document.querySelector("#scene-validation");
+const sceneCandidateStatus = document.querySelector("#scene-candidate-status");
+const sceneCandidateMessage = document.querySelector("#scene-candidate-message");
+const sceneCandidateSource = document.querySelector("#scene-candidate-source");
+const sceneCandidateFilter = document.querySelector("#scene-candidate-filter");
+const sceneCandidateStory = document.querySelector("#scene-candidate-story");
+const sceneCandidateRefresh = document.querySelector("#scene-candidate-refresh");
+const sceneCandidateSourceMeta = document.querySelector("#scene-candidate-source-meta");
+const sceneCandidateList = document.querySelector("#scene-candidate-list");
+const sceneCandidateDetail = document.querySelector("#scene-candidate-detail");
 const sceneImagePanel = document.querySelector("#scene-image-panel");
 const sceneImagePreview = document.querySelector("#scene-image-preview");
 const sceneImageCandidateLink = document.querySelector("#scene-image-candidate-link");
@@ -2794,6 +2809,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
   document.querySelector("#stories-page").classList.toggle("active", page === "stories");
   document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
+  document.querySelector("#scene-candidates-page").classList.toggle("active", page === "scene-candidates");
   document.querySelector("#zine-page").classList.toggle("active", page === "zine");
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
@@ -2809,7 +2825,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
     );
   renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -2847,6 +2863,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "scenes") {
     await loadScenesPage();
+  }
+  if (page === "scene-candidates") {
+    await loadSceneCandidates();
   }
   if (page === "zine") {
     await loadZines();
@@ -5418,6 +5437,148 @@ function builderRenderDatalists() {
   `;
 }
 
+function showSceneCandidateMessage(message, type = "info") {
+  sceneCandidateMessage.textContent = message || "";
+  sceneCandidateMessage.className = `action-message ${type}`;
+  sceneCandidateMessage.hidden = !message;
+}
+
+function selectedSceneCandidate() {
+  return state.sceneCandidates.find((item) => item.candidate_id === state.selectedSceneCandidateId) || null;
+}
+
+function renderSceneCandidateStoryOptions(defaultStory = "") {
+  const selected = sceneCandidateStory.value || state.selectedStorySlug || defaultStory;
+  sceneCandidateStory.replaceChildren(...state.stories.map((story) => option(story.slug, story.title)));
+  if (state.stories.some((story) => story.slug === selected)) sceneCandidateStory.value = selected;
+}
+
+function renderSceneCandidateDetail() {
+  const candidate = selectedSceneCandidate();
+  if (!candidate) {
+    sceneCandidateDetail.innerHTML = "<p>Select a scene candidate.</p>";
+    return;
+  }
+  const fields = Object.entries(candidate.fields || {}).map(([label, value]) => {
+    const text = Array.isArray(value) ? value.map((item) => `• ${item}`).join("\n") : String(value || "");
+    return `<section><h3>${escapeHtml(label)}</h3><pre>${escapeHtml(text)}</pre></section>`;
+  }).join("");
+  const readiness = candidate.readiness || {};
+  const findings = [...(candidate.warnings || []), ...(readiness.blockers || [])];
+  const imported = Boolean(candidate.imported_scene_slug);
+  const actionLabel = imported
+    ? (candidate.import_state === "source_changed" ? "Re-import and Interview" : "Open Scene")
+    : "Import and Interview";
+  sceneCandidateDetail.innerHTML = `
+    <div class="review-header">
+      <div><span class="eyebrow">${escapeHtml(candidate.session || "Unknown session")}</span><h2>${escapeHtml(candidate.title)}</h2></div>
+      <span class="status-badge">${escapeHtml(candidate.import_state.replaceAll("_", " "))}</span>
+    </div>
+    ${findings.length ? `<div class="action-message info">${findings.map((item) => escapeHtml(item)).join("<br>")}</div>` : ""}
+    <div class="button-row compact"><button id="scene-candidate-import" class="primary-action" type="button">${actionLabel}</button></div>
+    ${fields}
+  `;
+  document.querySelector("#scene-candidate-import")?.addEventListener("click", importSelectedSceneCandidate);
+}
+
+function renderSceneCandidates() {
+  const filter = sceneCandidateFilter.value || "all";
+  const candidates = state.sceneCandidates.filter((item) => filter === "all" || item.import_state === filter);
+  sceneCandidateList.replaceChildren();
+  for (const candidate of candidates) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `scene-candidate-card${candidate.candidate_id === state.selectedSceneCandidateId ? " active" : ""}`;
+    button.innerHTML = `<strong>${escapeHtml(candidate.title)}</strong><small>${escapeHtml(candidate.session || candidate.candidate_id)}</small><span>${escapeHtml(candidate.import_state.replaceAll("_", " "))}</span>`;
+    button.addEventListener("click", () => {
+      state.selectedSceneCandidateId = candidate.candidate_id;
+      renderSceneCandidates();
+      renderSceneCandidateDetail();
+    });
+    sceneCandidateList.append(button);
+  }
+  if (!candidates.length) sceneCandidateList.innerHTML = "<p>No candidates match this filter.</p>";
+  renderSceneCandidateDetail();
+}
+
+async function loadSceneCandidates() {
+  sceneCandidateStatus.textContent = "Loading candidates...";
+  showSceneCandidateMessage("");
+  try {
+    if (!state.stories.length) await loadStories();
+    const sourcesPayload = await fetchJson("/api/scene-candidate-sources");
+    state.sceneCandidateSources = sourcesPayload.sources || [];
+    if (!state.selectedSceneCandidateSource || !state.sceneCandidateSources.some((item) => item.key === state.selectedSceneCandidateSource)) {
+      state.selectedSceneCandidateSource = state.sceneCandidateSources[0]?.key || null;
+    }
+    sceneCandidateSource.replaceChildren(...state.sceneCandidateSources.map((item) => option(item.key, item.label)));
+    sceneCandidateSource.value = state.selectedSceneCandidateSource || "";
+    const source = state.sceneCandidateSources.find((item) => item.key === state.selectedSceneCandidateSource);
+    if (!source) {
+      state.sceneCandidates = [];
+      sceneCandidateStatus.textContent = "No candidate sources configured.";
+      renderSceneCandidates();
+      return;
+    }
+    sceneCandidateSourceMeta.textContent = `${source.path} • modified ${source.modified_at || "unknown"} • read-only`;
+    renderSceneCandidateStoryOptions(source.default_story_slug);
+    const payload = await fetchJson(`/api/scene-candidates?source_key=${encodeURIComponent(source.key)}`);
+    state.sceneCandidates = payload.candidates || [];
+    if (!state.sceneCandidates.some((item) => item.candidate_id === state.selectedSceneCandidateId)) {
+      state.selectedSceneCandidateId = state.sceneCandidates[0]?.candidate_id || null;
+    }
+    sceneCandidateStatus.textContent = `${state.sceneCandidates.length} candidate${state.sceneCandidates.length === 1 ? "" : "s"}`;
+    renderSceneCandidates();
+  } catch (error) {
+    sceneCandidateStatus.textContent = "Load failed.";
+    showSceneCandidateMessage(error.message, "error");
+  }
+}
+
+async function importSelectedSceneCandidate() {
+  const candidate = selectedSceneCandidate();
+  if (!candidate) return;
+  if (candidate.imported_scene_slug && candidate.import_state !== "source_changed") {
+    state.selectedStorySlug = candidate.imported_story_slug;
+    state.selectedSceneSlug = candidate.imported_scene_slug;
+    await activatePage("scene-builder", { skipAutosave: true });
+    return;
+  }
+  const storySlug = sceneCandidateStory.value;
+  if (!storySlug) {
+    showSceneCandidateMessage("Choose a target story.", "error");
+    return;
+  }
+  const confirmUpdate = candidate.import_state === "source_changed";
+  if (confirmUpdate && !window.confirm("The source candidate changed. Re-importing will rebuild this draft from the current candidate. Continue?")) return;
+  showSceneCandidateMessage("Creating scene draft...");
+  try {
+    const payload = await fetchJson(`/api/scene-candidates/${encodeURIComponent(candidate.source_key)}/${encodeURIComponent(candidate.candidate_id)}/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ story_slug: storySlug, confirm_update: confirmUpdate }),
+    });
+    const result = payload.result;
+    state.selectedStorySlug = result.story_slug;
+    state.selectedSceneSlug = result.scene_slug;
+    state.scenes = payload.scenes || [];
+    state.sceneBuilder = payload.document?.data || result.data;
+    state.sceneBuilderInterviewSeed = {
+      narrative: result.interview_narrative,
+      phases: result.interview_phases || [],
+    };
+    updateStoryGitWarning(payload.has_story_changes);
+    await activatePage("scene-builder", { skipAutosave: true });
+    if (state.sceneBuilderInterviewSeed.phases.length) {
+      openSceneBuilderInterview(state.sceneBuilderInterviewSeed);
+    } else {
+      showSceneBuilderMessage("Candidate imported. Review the scene before rendering.", "success");
+    }
+  } catch (error) {
+    showSceneCandidateMessage(error.message, "error");
+  }
+}
+
 function renderSceneBuilderInterview(payload = state.sceneBuilderInterview) {
   const started = Boolean(payload?.session);
   const questions = payload?.questions || [];
@@ -5438,11 +5599,12 @@ function renderSceneBuilderInterview(payload = state.sceneBuilderInterview) {
   sceneBuilderInterviewApply.hidden = !payload?.complete;
 }
 
-function openSceneBuilderInterview() {
+function openSceneBuilderInterview(seed = null) {
   if (!state.sceneBuilder) return;
   builderSyncControls();
   state.sceneBuilderInterview = null;
-  sceneBuilderInterviewNarrative.value = "";
+  state.sceneBuilderInterviewSeed = seed || null;
+  sceneBuilderInterviewNarrative.value = seed?.narrative || "";
   renderSceneBuilderInterview();
   sceneBuilderInterviewModal.showModal();
   sceneBuilderInterviewNarrative.focus();
@@ -5466,9 +5628,14 @@ async function runSceneBuilderInterview() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(started
         ? { session: state.sceneBuilderInterview.session, answers }
-        : { narrative: sceneBuilderInterviewNarrative.value, data: state.sceneBuilder }),
+        : {
+            narrative: sceneBuilderInterviewNarrative.value,
+            data: state.sceneBuilder,
+            phases: state.sceneBuilderInterviewSeed?.phases || null,
+          }),
     });
     state.sceneBuilderInterview = payload;
+    await persistSceneBuilderInterviewProgress(payload);
     renderSceneBuilderInterview(payload);
     while (!payload.complete && !(payload.questions || []).length) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -5479,6 +5646,7 @@ async function runSceneBuilderInterview() {
         body: JSON.stringify({ session: payload.session, answers: {} }),
       });
       state.sceneBuilderInterview = payload;
+      await persistSceneBuilderInterviewProgress(payload);
       renderSceneBuilderInterview(payload);
     }
     sceneBuilderInterviewQuestions.querySelector("textarea")?.focus();
@@ -5487,6 +5655,21 @@ async function runSceneBuilderInterview() {
   } finally {
     sceneBuilderInterviewNext.disabled = false;
   }
+}
+
+async function persistSceneBuilderInterviewProgress(payload) {
+  if (!payload?.draft || (payload.questions || []).length) return;
+  const response = await fetchJson(
+    `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload.draft),
+    },
+  );
+  state.sceneBuilder = response.document?.data || payload.draft;
+  state.sceneBuilderReadiness = response.document?.readiness || null;
+  updateStoryGitWarning(response.has_story_changes);
 }
 
 async function applySceneBuilderInterview() {
@@ -5523,6 +5706,7 @@ function renderSceneBuilder() {
         ${builderRenderMoreMenu()}
       </div>
     </div>
+    ${builderRenderImportContext()}
     ${builderRenderSectionSwitcher()}
     <div class="scene-builder-grid">
       ${builderPhoneSectionToggle("scene", "Scene")}
@@ -5569,6 +5753,25 @@ function renderSceneBuilder() {
   updateDirtyIndicators();
 }
 
+function builderRenderImportContext() {
+  const provenance = state.sceneBuilder?.source_provenance;
+  if (!provenance) return "";
+  const readiness = state.sceneBuilderReadiness || {};
+  const constraints = provenance.constraints || {};
+  const blockers = readiness.blockers || [];
+  const exact = constraints.exact_details || [];
+  const continuity = constraints.continuity_requirements || [];
+  return `
+    <section class="scene-builder-card">
+      <span class="eyebrow">Imported candidate</span>
+      <h3>${escapeHtml(provenance.candidate_id || "Scene candidate")} · ${escapeHtml(readiness.status || "draft")}</h3>
+      ${blockers.length ? `<p><strong>Needs attention:</strong> ${blockers.map((item) => escapeHtml(item)).join(" · ")}</p>` : "<p>Ready for manual review and rendering.</p>"}
+      ${exact.length ? `<p><strong>Exact details:</strong> ${exact.map((item) => escapeHtml(item)).join(" · ")}</p>` : ""}
+      ${continuity.length ? `<details><summary>Continuity requirements</summary><ul>${continuity.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></details>` : ""}
+    </section>
+  `;
+}
+
 async function openSceneBuilder() {
   if (!state.selectedStorySlug || !state.selectedSceneSlug) {
     showSceneBuilderMessage("Select a scene first.", "error");
@@ -5587,6 +5790,7 @@ async function openSceneBuilder() {
       return;
     }
     state.sceneBuilder = document.data || {};
+    state.sceneBuilderReadiness = document.readiness || null;
     state.sceneBuilderOptions = payload.options || {};
     state.sceneBuilderReferences = payload.references || [];
     state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis`);
@@ -5627,6 +5831,7 @@ async function saveSceneBuilder(autosave = false) {
       body: JSON.stringify(state.sceneBuilder),
     });
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilderReadiness = payload.document?.readiness || null;
     state.sceneBuilder._validation_warnings = payload.document?.validation_warnings || state.sceneBuilder._validation_warnings || [];
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
@@ -5871,6 +6076,16 @@ sceneBuilderInterviewClose.addEventListener("click", () => sceneBuilderInterview
 sceneBuilderInterviewCancel.addEventListener("click", () => sceneBuilderInterviewModal.close());
 sceneBuilderInterviewNext.addEventListener("click", runSceneBuilderInterview);
 sceneBuilderInterviewApply.addEventListener("click", applySceneBuilderInterview);
+sceneCandidateSource.addEventListener("change", async () => {
+  state.selectedSceneCandidateSource = sceneCandidateSource.value;
+  state.selectedSceneCandidateId = null;
+  await loadSceneCandidates();
+});
+sceneCandidateFilter.addEventListener("change", renderSceneCandidates);
+sceneCandidateRefresh.addEventListener("click", loadSceneCandidates);
+sceneCandidateStory.addEventListener("change", () => {
+  state.selectedStorySlug = sceneCandidateStory.value || state.selectedStorySlug;
+});
 
 async function loadImagePickerReferences(picker) {
   picker.status.textContent = "Loading references...";

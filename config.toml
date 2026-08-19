@@ -66,3 +66,10 @@ Backend = "manual_chatgpt"
 
 [AIPromptAnalysis]
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"
+
+[[SceneCandidateSources]]
+Key = "moonsea"
+Label = "Moonsea Adventures"
+Path = "C:/Users/Joe/Projects/Adventure Log/Moonsea/characters/Scene_Candidate_Index.md"
+DefaultStorySlug = "Phlan-Adventures"
+ReadOnly = true

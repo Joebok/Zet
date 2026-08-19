@@ -287,6 +287,7 @@ def _scene_builder_document_payload(zet_app: ZetApp, document) -> dict[str, Any]
         "validation_warnings": list(document.validation_warnings),
         "blocked": document.blocked,
         "error": document.error,
+        "readiness": zet_app.scene_readiness(document.data) if document.data else {"status": "draft", "blockers": [], "advisories": []},
     }
 
 
@@ -1380,12 +1381,62 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/scene-candidate-sources")
+    def scene_candidate_sources() -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"sources": [asdict(source) for source in zet_app.list_scene_candidate_sources()]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/scene-candidates")
+    def scene_candidates(source_key: str = Query(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"candidates": [asdict(candidate) for candidate in zet_app.list_scene_candidates(source_key)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/scene-candidates/{source_key}/{candidate_id}")
+    def scene_candidate_detail(source_key: str, candidate_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return {"candidate": asdict(zet_app.get_scene_candidate(source_key, candidate_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/scene-candidates/{source_key}/{candidate_id}/import")
+    def scene_candidate_import(source_key: str, candidate_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.import_scene_candidate(
+                source_key,
+                candidate_id,
+                data.get("story_slug"),
+                bool(data.get("confirm_update")),
+            )
+            return {
+                "result": asdict(result),
+                "document": _scene_builder_document_payload(
+                    zet_app,
+                    zet_app.load_scene_builder(result.story_slug, result.scene_slug),
+                ),
+                "scenes": [_scene_record_payload(item) for item in zet_app.list_scenes(result.story_slug)],
+                "has_story_changes": zet_app.story_git_has_changes(),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/interview")
     def scene_builder_interview_start(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
         """Start a focused local-LLM Scene Builder interview."""
         zet_app = _app(app.state.config_path)
         try:
-            return _jsonable(zet_app.start_scene_builder_interview(data.get("narrative"), data.get("data")))
+            return _jsonable(zet_app.start_scene_builder_interview(
+                data.get("narrative"),
+                data.get("data"),
+                data.get("phases"),
+            ))
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
