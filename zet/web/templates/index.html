@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css">
+  <link rel="stylesheet" href="/static/zet.css?v=20260823-production-work">
 </head>
 <body>
   <header class="app-header">
@@ -79,7 +79,12 @@
       <button class="tab workflow-tab" data-page="costumes">Costumes</button>
       <button class="tab workflow-tab" data-page="expressions">Expressions</button>
       <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
-      <select id="character-production-menu" class="tab" aria-label="Character production tools">
+      <div class="production-navigation" aria-label="Character production">
+        <button class="tab production-tab" data-page="prompt-review">Prompts <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
+        <button class="tab production-tab" data-page="render-console">Render <span class="production-count" data-production-count="render_waiting" hidden></span></button>
+        <button class="tab production-tab" data-page="render-review">Image Review <span class="production-count" data-production-count="image_review_waiting" hidden></span></button>
+      </div>
+      <select id="character-production-menu" class="tab production-menu" aria-label="Character production tools">
         <option value="" selected>Production ▾</option>
         <option value="manifest">Manifest</option>
         <option value="prompt-review">Prompts</option>
@@ -94,7 +99,12 @@
       <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
       <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
       <button class="tab workflow-tab" data-page="zine">Zines</button>
-      <select id="story-production-menu" class="tab" aria-label="Story production tools">
+      <div class="production-navigation" aria-label="Story production">
+        <button class="tab production-tab" data-page="prompt-review">Prompt / Analysis <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
+        <button class="tab production-tab" data-page="render-console">Render Console <span class="production-count" data-production-count="render_waiting" hidden></span></button>
+        <button class="tab production-tab" data-page="render-review">Image Review <span class="production-count" data-production-count="image_review_waiting" hidden></span></button>
+      </div>
+      <select id="story-production-menu" class="tab production-menu" aria-label="Story production tools">
         <option value="" selected>Production ▾</option>
         <option value="prompt-review">Prompt / Analysis</option>
         <option value="render-console">Render Console</option>
@@ -1037,6 +1047,8 @@
             </thead>
             <tbody></tbody>
           </table>
+          <h3>Scene analyses</h3>
+          <div id="prompt-analysis-task-list" class="production-task-list"></div>
         </aside>
         <section class="review-main">
           <div class="review-header">
@@ -1045,8 +1057,8 @@
               <button id="prompt-review-scene-builder" class="navigation-action" hidden>Scene Builder</button>
               <button id="prompt-review-render-console" class="navigation-action" disabled>Render Console</button>
               <button id="copy-prompt">Copy Prompt</button>
-              <button id="analyze-prompt" type="button" disabled>Analyze Prompt</button>
-              <button id="view-prompt-analysis" class="scene-builder-analysis-view" type="button" aria-label="View prompt analysis" title="View prompt analysis" disabled>&#128065;</button>
+              <button id="analyze-prompt" type="button" disabled>Run analysis</button>
+              <button id="view-prompt-analysis" class="scene-builder-analysis-view" type="button" disabled>View analysis</button>
             </div>
           </div>
           <div id="prompt-review-message" class="action-message" hidden></div>
@@ -1086,9 +1098,7 @@
           <table id="render-review-task-table">
             <thead>
               <tr>
-                <th>item</th>
-                <th>type</th>
-                <th>image</th>
+                <th>waiting for review</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -1162,7 +1172,7 @@
             <h2 id="render-console-title">Select a render task</h2>
             <div class="button-row compact">
               <button id="render-console-scene-builder" class="navigation-action" hidden>Scene Builder</button>
-              <button id="render-console-review-prompt" disabled>Review Prompt</button>
+              <button id="render-console-review-prompt" disabled>Open Prompt</button>
               <button id="render-console-copy-prompt" disabled>Copy Prompt</button>
             </div>
           </div>
@@ -1785,6 +1795,6 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js"></script>
+  <script src="/static/zet.js?v=20260823-production-work"></script>
 </body>
 </html>

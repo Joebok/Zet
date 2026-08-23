@@ -66,6 +66,39 @@ class ScenePromptAnalysisService:
         pending = self._has_pending(story_slug, scene_slug)
         return {"pending": pending, "complete": result_path.exists() and not pending, "result_path": str(result_path)}
 
+    def pending_count(self, story_slug: str = "", scene_slug: str = "") -> int:
+        count = 0
+        for path in self.path_service.task_paths("ask", "answer", "running"):
+            if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():
+                continue
+            manifest = self.path_service.read_ask_manifest(path)
+            if manifest.get("task_type") != self.TASK_TYPE:
+                continue
+            if story_slug and manifest.get("story_slug") != story_slug:
+                continue
+            if scene_slug and manifest.get("scene_slug") != scene_slug:
+                continue
+            count += 1
+        return count
+
+    def list_statuses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
+        rows = []
+        for story in self.story_service.list_stories():
+            if story_slug and story.slug != story_slug:
+                continue
+            for scene in self.story_service.list_scenes(story.slug):
+                if scene_slug and scene.slug != scene_slug:
+                    continue
+                status = self.status(story.slug, scene.slug)
+                if status["pending"] or status["complete"]:
+                    rows.append({
+                        "story_slug": story.slug,
+                        "scene_slug": scene.slug,
+                        "title": scene.title,
+                        **status,
+                    })
+        return rows
+
     def _has_pending(self, story_slug: str, scene_slug: str) -> bool:
         for path in self.path_service.task_paths("ask", "answer", "running"):
             if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():

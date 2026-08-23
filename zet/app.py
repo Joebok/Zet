@@ -33,6 +33,7 @@ from zet.services.pipeline_inspection_service import PipelineInspectionService
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.prompt_evolution_service import PromptEvolutionService
+from zet.services.production_work_summary_service import ProductionWorkSummaryService
 from zet.services.reference_service import ReferenceService
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
@@ -198,6 +199,12 @@ class ZetApp:
         )
         self.zine_service = ZineService(path_service, story_service)
         self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
+        self.production_work_summary_service = ProductionWorkSummaryService(
+            config,
+            asset_repository,
+            self.scene_image_review_service,
+            self.scene_prompt_analysis_service,
+        )
         self.scene_builder_interview_service = SceneBuilderInterviewService(config.ai_scene_builder_model)
         self.scene_candidate_import_service = SceneCandidateImportService(config, story_service)
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
@@ -460,6 +467,25 @@ class ZetApp:
     def list_pending_scene_image_reviews(self, story_slug: str = "", scene_slug: str = ""):
         return self.scene_image_review_service.list_pending(story_slug, scene_slug)
 
+    def list_pending_asset_image_reviews(self, character: str = "", phase: str = ""):
+        return self.production_work_summary_service.list_asset_reviews(character, phase)
+
+    def production_work_summary(
+        self,
+        workspace: str,
+        character: str = "",
+        phase: str = "",
+        story_slug: str = "",
+        scene_slug: str = "",
+    ) -> dict:
+        return self.production_work_summary_service.summary(
+            workspace,
+            character,
+            phase,
+            story_slug,
+            scene_slug,
+        )
+
     def promote_scene_image(self, story_slug: str, scene_slug: str):
         return self.scene_image_review_service.promote(story_slug, scene_slug)
 
@@ -515,6 +541,9 @@ class ZetApp:
 
     def scene_prompt_analysis_status(self, story_slug: str, scene_slug: str) -> dict:
         return self.scene_prompt_analysis_service.status(story_slug, scene_slug)
+
+    def list_scene_prompt_analyses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
+        return self.scene_prompt_analysis_service.list_statuses(story_slug, scene_slug)
 
     def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
         """List copyable image references for the scene editor."""

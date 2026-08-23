@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from zet.models.scene_candidate import SceneCandidate, SceneCandidateImportResult, SceneCandidateSource
+from zet.services.story_cast_service import StoryCastService
 
 
 class SceneCandidateImportError(Exception):
@@ -24,6 +25,7 @@ class SceneCandidateImportService:
     def __init__(self, config, story_service):
         self.config = config
         self.story_service = story_service
+        self.story_cast_service = StoryCastService(story_service)
 
     @staticmethod
     def _normalize(value: str) -> str:
@@ -272,6 +274,7 @@ class SceneCandidateImportService:
     def _candidate_data(self, candidate: SceneCandidate, story_slug: str, scene_slug: str) -> dict:
         data = self.story_service.create_default_scene_builder_data(story_slug, scene_slug)
         visual_details = self._named_details(candidate, "Known Visual Facts", "Visible Elements")
+        character_references = self._named_details(candidate, "Character References")
         acting = self._named_details(candidate, "Acting and Placement", "Visual Action")
         visible = self._list_field(candidate, "Visible Elements", "Characters Present")
         present_names = {
@@ -290,7 +293,21 @@ class SceneCandidateImportService:
                     continue
                 seen.add(key)
                 element_type = "Character" if key in present_names else "Prop"
-                elements.append(self._element(clean_name, element_type, visual_details.get(key, ""), characters, auxiliary))
+                element = self._element(clean_name, element_type, visual_details.get(key, ""), characters, auxiliary)
+                if element["resource_type"] == "Character":
+                    resolved = self.story_cast_service.resolve(
+                        story_slug,
+                        element["character"],
+                        element["phase"],
+                        character_references.get(key, ""),
+                    )
+                    element["phase"] = resolved["phase"] or element["phase"]
+                    element["costume"] = resolved["costume"]
+                    if resolved["tag"]:
+                        element["reference_images"] = [{"tag": resolved["tag"]}]
+                    else:
+                        element["notes"] = f"UNRESOLVED: {resolved['error']}"
+                elements.append(element)
         for name in props:
             clean_name = re.split(r"\s*(?::|—)\s*", name, maxsplit=1)[0].strip()
             key = self._normalize(clean_name)
@@ -423,6 +440,8 @@ class SceneCandidateImportService:
                 blockers.append(f"{element.get('display_name')} has no placement.")
             if str(element.get("notes") or "").startswith("UNRESOLVED:"):
                 blockers.append(f"{element.get('display_name')} has an unresolved canonical resource or appearance.")
+            if element.get("resource_type") == "Character" and not element.get("reference_images"):
+                blockers.append(f"{element.get('display_name')} has no canonical character image reference.")
             if not (element.get("reference_images") or str(element.get("fallback_visual_description") or "").strip()):
                 blockers.append(f"{element.get('display_name')} has no visual source or fallback description.")
         if not str(environment.get("location") or "").strip():
@@ -448,7 +467,12 @@ class SceneCandidateImportService:
     def _interview_phases(self, data: dict) -> list[str]:
         phases = []
         elements = data.get("scene_elements") or []
-        if any(str(item.get("notes") or "").startswith("UNRESOLVED:") for item in elements if isinstance(item, dict)):
+        if any(
+            str(item.get("notes") or "").startswith("UNRESOLVED:")
+            or (item.get("resource_type") == "Character" and not item.get("reference_images"))
+            for item in elements
+            if isinstance(item, dict)
+        ):
             phases.append("elements")
         if not str((data.get("scene") or {}).get("story_beat") or "").strip():
             phases.append("story")

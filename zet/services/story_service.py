@@ -917,6 +917,7 @@ class StoryService:
                     "notes": "",
                 },
             },
+            "cast_defaults": [],
             "dialogue_styles": [
                 {
                     "id": "compact_parchment",

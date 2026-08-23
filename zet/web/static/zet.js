@@ -1,6 +1,9 @@
 const state = {
   workspace: "character",
   showAllProductionWork: false,
+  productionWorkSummary: { current: {}, project: {} },
+  productionWorkRequest: 0,
+  productionWorkTimer: null,
   workspaceSummary: { character: null, story: null },
   lastWorkspacePages: { character: "onboarding", story: "scenes" },
   characters: [],
@@ -26,6 +29,7 @@ const state = {
   promptReviewTasks: [],
   selectedPromptReviewAskId: null,
   promptReviewDetail: null,
+  promptAnalysisTasks: [],
   renderReviewTasks: [],
   selectedRenderReviewKey: null,
   renderReviewDetail: null,
@@ -283,6 +287,7 @@ const promptReviewTaskBody = document.querySelector("#prompt-review-task-table t
 const promptReviewPrev = document.querySelector("#prompt-review-prev");
 const promptReviewNext = document.querySelector("#prompt-review-next");
 const promptReviewRefresh = document.querySelector("#prompt-review-refresh");
+const promptAnalysisTaskList = document.querySelector("#prompt-analysis-task-list");
 const promptReviewTitle = document.querySelector("#prompt-review-title");
 const promptReviewMessage = document.querySelector("#prompt-review-message");
 const promptSearch = document.querySelector("#prompt-search");
@@ -1416,7 +1421,67 @@ function renderProductionScope() {
   }
   for (const item of document.querySelectorAll(".production-scope-label")) item.textContent = label;
   for (const button of document.querySelectorAll(".production-scope-toggle")) {
-    button.textContent = state.showAllProductionWork ? "Use current context" : "Show all work";
+    const page = activePageName();
+    const key = page === "render-review" ? "image_review_waiting" : "render_waiting";
+    const projectCount = Number(state.productionWorkSummary.project?.[key] || 0);
+    button.textContent = state.showAllProductionWork ? "Use current context" : `Show all work${projectCount ? ` (${projectCount})` : ""}`;
+  }
+}
+
+function productionSummaryQuery() {
+  const params = new URLSearchParams({ workspace: state.workspace });
+  if (state.workspace === "story") {
+    if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
+    if (state.selectedSceneSlug) params.set("scene_slug", state.selectedSceneSlug);
+  } else {
+    if (state.character) params.set("character", state.character);
+    if (state.phase) params.set("phase", state.phase);
+  }
+  return params;
+}
+
+function renderProductionWorkSummary() {
+  const project = state.productionWorkSummary.project || {};
+  for (const badge of document.querySelectorAll("[data-production-count]")) {
+    const count = Number(project[badge.dataset.productionCount] || 0);
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.hidden = count === 0;
+    const label = badge.dataset.productionCount === "image_review_waiting" ? "images waiting" : "tasks waiting";
+    badge.setAttribute("aria-label", `${count} ${label} project-wide`);
+  }
+  const analysisPending = Number(project.analysis_pending || 0);
+  for (const badge of document.querySelectorAll("[data-analysis-pending]")) {
+    badge.textContent = `↻${analysisPending > 99 ? "99+" : analysisPending}`;
+    badge.hidden = analysisPending === 0;
+    badge.title = `${analysisPending} prompt analysis task(s) running`;
+  }
+  for (const menu of [characterProductionMenu, storyProductionMenu]) {
+    const waitingAreas = [project.prompt_available, project.render_waiting, project.image_review_waiting]
+      .filter((count) => Number(count || 0) > 0).length;
+    menu.options[0].textContent = waitingAreas ? `Production · ${waitingAreas} waiting ▾` : "Production ▾";
+    const labels = {
+      "prompt-review": menu === storyProductionMenu ? "Prompt / Analysis" : "Prompts",
+      "render-console": menu === storyProductionMenu ? "Render Console" : "Render",
+      "render-review": "Image Review",
+    };
+    for (const [value, key] of [["prompt-review", "prompt_available"], ["render-console", "render_waiting"], ["render-review", "image_review_waiting"]]) {
+      const item = Array.from(menu.options).find((option) => option.value === value);
+      if (item) item.textContent = `${labels[value]}${Number(project[key] || 0) ? ` · ${project[key]}` : ""}`;
+    }
+  }
+  renderProductionScope();
+  renderResponsiveSectionMenu();
+}
+
+async function refreshProductionWorkSummary() {
+  const request = ++state.productionWorkRequest;
+  try {
+    const payload = await fetchJson(`/api/production-work-summary?${productionSummaryQuery().toString()}`);
+    if (request !== state.productionWorkRequest) return;
+    state.productionWorkSummary = payload;
+    renderProductionWorkSummary();
+  } catch (error) {
+    console.error("Unable to refresh production work summary.", error);
   }
 }
 
@@ -1426,6 +1491,7 @@ async function reloadActiveProductionPage() {
   if (page === "render-review") await loadRenderReviewTasks();
   if (page === "render-console") await loadRenderConsoleTasks();
   if (page === "local-image-review") await loadLocalImageReviewTasks();
+  await refreshProductionWorkSummary();
 }
 
 function loadStoredContext() {
@@ -1558,8 +1624,10 @@ function renderResponsiveSectionMenu(selectedPage = activePageName() || state.la
   responsiveSectionMenu.replaceChildren();
   const sectionGroup = document.createElement("optgroup");
   sectionGroup.label = state.workspace === "story" ? "Story Telling" : "Character Development";
+  const countKeys = { "prompt-review": "prompt_available", "render-console": "render_waiting", "render-review": "image_review_waiting" };
   for (const [value, label] of RESPONSIVE_WORKSPACE_PAGES[state.workspace]) {
-    sectionGroup.append(option(value, label));
+    const count = Number(state.productionWorkSummary.project?.[countKeys[value]] || 0);
+    sectionGroup.append(option(value, `${label}${count ? ` · ${count}` : ""}`));
   }
   const toolsGroup = document.createElement("optgroup");
   toolsGroup.label = "Tools";
@@ -2903,6 +2971,7 @@ async function activatePage(page, options = {}) {
   if (page === "help") {
     await loadTemplateManuals();
   }
+  await refreshProductionWorkSummary();
   return true;
 }
 
@@ -6648,8 +6717,15 @@ function movePhaseComparison(delta) {
 
 async function loadPromptReviewTasks(preferredAskId = null) {
   promptReviewStatus.textContent = "Loading prompt reviews...";
-  const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
+  const analysisRequest = state.workspace === "story"
+    ? fetchJson(`/api/prompt-analysis/tasks?${productionQuery().toString()}`)
+    : Promise.resolve({ tasks: [] });
+  const [payload, analyses] = await Promise.all([
+    fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`),
+    analysisRequest,
+  ]);
   state.promptReviewTasks = payload.tasks || [];
+  state.promptAnalysisTasks = analyses.tasks || [];
   const taskIds = new Set(state.promptReviewTasks.map((task) => task.ask_id));
   state.selectedPromptReviewAskId =
     preferredAskId || state.selectedPromptReviewAskId || state.promptReviewTasks[0]?.ask_id || null;
@@ -6657,11 +6733,34 @@ async function loadPromptReviewTasks(preferredAskId = null) {
     state.selectedPromptReviewAskId = state.promptReviewTasks[0]?.ask_id || null;
   }
   renderPromptReviewTaskTable();
+  renderPromptAnalysisTaskList();
   promptReviewStatus.textContent = `${state.promptReviewTasks.length} render prompt(s)`;
   if (state.selectedPromptReviewAskId) {
     await selectPromptReviewTask(state.selectedPromptReviewAskId);
   } else {
     clearPromptReview();
+  }
+  refreshProductionWorkSummary();
+}
+
+function renderPromptAnalysisTaskList() {
+  promptAnalysisTaskList.replaceChildren();
+  if (!state.promptAnalysisTasks.length) {
+    promptAnalysisTaskList.textContent = "No running or completed scene analyses.";
+    return;
+  }
+  for (const task of state.promptAnalysisTasks) {
+    const row = document.createElement("div");
+    row.className = "production-task-item";
+    const label = document.createElement("span");
+    label.textContent = `${task.story_slug} / ${task.title || task.scene_slug}`;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.textContent = task.pending ? "Analysis running" : "View analysis";
+    action.disabled = Boolean(task.pending);
+    action.addEventListener("click", () => openPromptAnalysisDialog(task.story_slug, task.scene_slug));
+    row.append(label, action);
+    promptAnalysisTaskList.append(row);
   }
 }
 
@@ -6708,19 +6807,21 @@ function renderPromptReview(detail) {
     ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
     : "";
   promptReviewTitle.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
-  promptPath.textContent = detail.prompt_path || "No prompt file found.";
+  const fullPromptPath = detail.prompt_path || "";
+  promptPath.textContent = compactPath(fullPromptPath) || "No prompt file found.";
+  promptPath.title = fullPromptPath;
   renderPromptText();
   copyPromptButton.disabled = !detail.prompt;
   promptReviewSceneBuilder.hidden = !storyLabel;
   promptReviewSceneBuilder.disabled = !storyLabel;
   promptReviewRenderConsole.disabled = !task.ask_id;
-  analyzePromptButton.disabled = !storyLabel;
-  viewPromptAnalysisButton.disabled = !storyLabel || !(detail.prompt_analysis?.pending || detail.prompt_analysis?.complete);
+  analyzePromptButton.disabled = !storyLabel || Boolean(detail.prompt_analysis?.pending);
+  analyzePromptButton.textContent = detail.prompt_analysis?.complete ? "Run analysis again" : (detail.prompt_analysis?.pending ? "Analysis running" : "Run analysis");
+  viewPromptAnalysisButton.disabled = !storyLabel || !detail.prompt_analysis?.complete;
   viewPromptAnalysisButton.classList.toggle("complete", Boolean(detail.prompt_analysis?.complete));
   viewPromptAnalysisButton.classList.toggle("pending", Boolean(detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete));
-  const analysisLabel = detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete
-    ? "Prompt analysis pending"
-    : "View prompt analysis";
+  const analysisLabel = detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete ? "Analysis running" : "View analysis";
+  viewPromptAnalysisButton.textContent = analysisLabel;
   viewPromptAnalysisButton.title = analysisLabel;
   viewPromptAnalysisButton.setAttribute("aria-label", analysisLabel);
   clearSourceInspector();
@@ -6754,19 +6855,19 @@ async function analyzePromptReview() {
 async function viewPromptReviewAnalysis() {
   const scene = selectedPromptReviewScene();
   if (!scene) return;
-  let analysis = state.promptReviewDetail?.prompt_analysis || {};
+  const analysis = state.promptReviewDetail?.prompt_analysis || {};
   if (analysis.complete && analysis.result_path) {
     openPromptAnalysisDialog(scene.storySlug, scene.sceneSlug);
     return;
   }
-  try {
-    analysis = await fetchJson(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis/harvest`, { method: "POST" });
-    state.promptReviewDetail.prompt_analysis = analysis;
-    renderPromptReview(state.promptReviewDetail);
-    showPromptMessage(analysis.message || "AI answers harvested.", "success");
-  } catch (error) {
-    showPromptMessage(error.message, "error");
-  }
+  showPromptMessage("Analysis is still running. Refresh after the AI worker finishes.");
+}
+
+function compactPath(value) {
+  const fullPath = String(value || "");
+  if (!fullPath) return "";
+  const parts = fullPath.split(/[\\/]+/).filter(Boolean);
+  return parts.slice(-2).join(" / ") || fullPath;
 }
 
 function openPromptAnalysisDialog(storySlug, sceneSlug) {
@@ -7099,12 +7200,13 @@ async function loadRenderReviewTasks(preferredReviewKey = null) {
   } else {
     clearRenderReview();
   }
+  refreshProductionWorkSummary();
 }
 
 function renderRenderReviewTaskTable() {
   renderReviewTaskBody.replaceChildren();
   if (!state.renderReviewTasks.length) {
-    renderEmptyRow(renderReviewTaskBody, 3, "No render candidates are waiting. Complete a render to create review work.");
+    renderEmptyRow(renderReviewTaskBody, 1, "No render candidates are waiting. Complete a render to create review work.");
     return;
   }
   for (const task of state.renderReviewTasks) {
@@ -7113,12 +7215,15 @@ function renderRenderReviewTaskTable() {
     row.classList.toggle("selected", task.review_key === state.selectedRenderReviewKey);
     const isScene = task.review_kind === "scene";
     const label = isScene ? `${task.story_slug}/${task.scene_slug}` : task.asset_id;
-    const candidateExists = isScene ? task.candidate_exists : task.candidate_image_exists;
-    for (const value of [label, isScene ? "Scene" : task.body_view, candidateExists ? "CAMERA" : ""]) {
-      const cell = document.createElement("td");
-      cell.textContent = value ?? "";
-      row.append(cell);
-    }
+    const cell = document.createElement("td");
+    const title = document.createElement("span");
+    title.className = "review-task-title";
+    title.textContent = label ?? "";
+    const meta = document.createElement("span");
+    meta.className = "review-task-meta";
+    meta.textContent = `${isScene ? "Scene" : (task.body_view || "Asset")} · Candidate ready`;
+    cell.append(title, meta);
+    row.append(cell);
     makeSelectableRow(row, isScene ? `Scene ${label}` : `Asset ${task.asset_id}`, task.review_key === state.selectedRenderReviewKey, () => selectRenderReview(task.review_key));
     renderReviewTaskBody.append(row);
   }
@@ -7175,7 +7280,9 @@ function renderRenderReview(detail) {
   renderReviewTitle.textContent = isScene
     ? `${detail.title || detail.scene_slug} | ${detail.story_slug}`
     : `Asset ${asset.asset_id} | ${asset.body_view}`;
-  renderReviewPath.textContent = detail.candidate_image_path || "";
+  const fullCandidatePath = detail.candidate_image_path || "";
+  renderReviewPath.textContent = compactPath(fullCandidatePath);
+  renderReviewPath.title = fullCandidatePath;
   renderReviewComment.value = detail.render_review_comment || "";
   renderStageText.textContent = detail.stage_text || "No stage marker found.";
   renderHistoryText.textContent = detail.history_text || "No history found.";
@@ -7271,6 +7378,16 @@ async function runRenderReviewAction(action) {
   const task = selectedRenderReviewTask();
   if (!task) return;
   const resolvedAction = task.review_kind === "scene" ? "discard-candidate" : action;
+  const itemLabel = task.review_kind === "scene"
+    ? `${task.story_slug} / ${task.scene_slug}`
+    : `Asset ${task.asset_id}`;
+  const labels = {
+    "discard-candidate": ["Discard candidate", `Discard the candidate image for ${itemLabel}?`, "Discard Candidate"],
+    "fail-to-render": ["Fail to RENDER", `Fail ${itemLabel} back to RENDER?`, "Fail to RENDER"],
+    "fail-to-regenerate": ["Fail to REGENERATE", `Fail ${itemLabel} back to REGENERATE?`, "Fail to REGENERATE"],
+  };
+  const confirmation = labels[resolvedAction];
+  if (confirmation && !await confirmAction(...confirmation)) return;
   showRenderMessage("Working...");
   try {
     const payload = await fetchJson(
@@ -8305,6 +8422,7 @@ async function loadRenderConsoleTasks(preferredAskId = null) {
   } else {
     clearRenderConsole();
   }
+  refreshProductionWorkSummary();
 }
 
 function renderRenderConsoleTaskTable() {
@@ -9294,7 +9412,12 @@ async function failRenderConsoleTask() {
   if (!state.selectedRenderConsoleAskId) {
     return;
   }
-  if (!window.confirm("Fail this manual render task? The asset will be blocked when harvested.")) {
+  const label = state.renderConsoleDetail?.task?.display_label || state.selectedRenderConsoleAskId;
+  if (!await confirmAction(
+    "Fail render task",
+    `Fail ${label}? The asset will be blocked when harvested.`,
+    "Fail Task",
+  )) {
     return;
   }
   renderConsoleFailTask.disabled = true;
@@ -10199,10 +10322,6 @@ renderConsoleSceneBuilder.addEventListener("click", async () => {
 renderConsoleReviewPrompt.addEventListener("click", async () => {
   const askId = state.renderConsoleDetail?.task?.ask_id;
   if (!askId) return;
-  const manifest = state.renderConsoleDetail?.manifest || {};
-  if (manifest.story_slug && manifest.scene_slug) {
-    await fetchJson(`/api/stories/${encodeURIComponent(manifest.story_slug)}/scenes/${encodeURIComponent(manifest.scene_slug)}/prompt-analysis`, { method: "POST" });
-  }
   await activatePage("prompt-review", { skipAutosave: true });
   await loadPromptReviewTasks(askId);
 });
@@ -10469,7 +10588,18 @@ async function main() {
     assetStatus.textContent = error.message;
   } finally {
     document.body.dataset.dashboardReady = "true";
+    if (!state.productionWorkTimer) {
+      state.productionWorkTimer = window.setInterval(() => {
+        if (!document.hidden) refreshProductionWorkSummary();
+      }, 45000);
+    }
   }
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && document.body.dataset.dashboardReady === "true") {
+    refreshProductionWorkSummary();
+  }
+});
 
 main();

@@ -134,6 +134,29 @@ class SceneCandidateImportServiceTests(unittest.TestCase):
             self.assertIn("elements", first.interview_phases)
             self.assertEqual(service.list_candidates("moonsea")[0].imported_scene_slug, first.scene_slug)
 
+    def test_import_applies_resolved_story_cast_reference(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Characters" / "Tsaeytte" / "Adult").mkdir(parents=True)
+            _, _, service = self._setup(root, self._candidate())
+            service.story_cast_service.resolve = lambda *_args: {
+                "phase": "Adult",
+                "costume": "Canonical Adventure Gear",
+                "tag": "{{ASSET:Tsaeytte:Adult:25:Costume | Front | Canonical Adventure Gear}}",
+                "error": "",
+            }
+
+            imported = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea")
+
+            tsaeytte = next(item for item in imported.data["scene_elements"] if item["display_name"] == "Tsaeytte")
+            self.assertEqual(tsaeytte["phase"], "Adult")
+            self.assertEqual(tsaeytte["costume"], "Canonical Adventure Gear")
+            self.assertEqual(
+                tsaeytte["reference_images"],
+                [{"tag": "{{ASSET:Tsaeytte:Adult:25:Costume | Front | Canonical Adventure Gear}}"}],
+            )
+            self.assertFalse(tsaeytte["notes"].startswith("UNRESOLVED:"))
+
     def test_changed_source_requires_confirmation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

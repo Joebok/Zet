@@ -1030,6 +1030,7 @@ test("scene fullscreen navigation follows scene order and reports missing images
 });
 
 test("pending scene image links open the matching side-by-side review", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
   await openPage(page, "scenes");
   await page.locator('#scene-table tr[data-scene-slug="Closing-Scene"] .row-selection-button').click();
   await page.locator("#scene-toggle-image").click();
@@ -1040,8 +1041,12 @@ test("pending scene image links open the matching side-by-side review", async ({
 
   await expect(page.locator("#render-review-page")).toHaveClass(/active/);
   await expect(page.locator("#render-review-title")).toContainText("Closing Scene");
+  await expect(page.locator("#render-review-task-table tbody")).toContainText("Scene · Candidate ready");
   await expect(page.locator("#candidate-render img")).toBeVisible();
   await expect(page.locator("#locked-render img")).toBeVisible();
+  expect(await page.locator(".render-review-layout").evaluate((element) => (
+    getComputedStyle(element).gridTemplateColumns.split(" ").length
+  ))).toBe(3);
 });
 
 test("View Story opens the selected story in scene order", async ({ page }) => {
@@ -1084,6 +1089,11 @@ test("@desktop-smoke scene workflow keeps context and production tools default t
   await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
   await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
   await expect(page.locator("#render-console-page .production-scope-label")).toContainText("Alpha-Story / Closing-Scene");
+  await expect(page.locator("#story-navigation [data-production-count='render_waiting']")).toHaveText(/[1-9]/);
+  await expect(page.locator("#story-navigation [data-production-count='image_review_waiting']")).toHaveText(/[1-9]/);
+  expect(await page.locator(".render-console-layout").evaluate((element) => (
+    getComputedStyle(element).gridTemplateColumns.split(" ").length
+  ))).toBe(3);
 
   const allRequest = page.waitForRequest((request) => request.url().includes("/api/render-console/tasks?"));
   await page.locator("#render-console-page .production-scope-toggle").click();
@@ -1131,7 +1141,7 @@ test("scene prompts and Scene Builder show analysis in a dismissible popup", asy
   await page.locator('#scene-table tr[data-scene-slug="Opening-Scene"] .row-selection-button').click();
   await page.locator("#scene-stage-render").click();
   await expect(page.locator("#render-console-scene-builder")).toBeVisible();
-  await page.locator("#story-production-menu").selectOption("prompt-review");
+  await page.locator("#story-navigation button[data-page='prompt-review']").click();
   await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
 
   const sceneBuilder = page.locator("#prompt-review-scene-builder");
@@ -1156,16 +1166,19 @@ test("scene prompts and Scene Builder show analysis in a dismissible popup", asy
   await page.mouse.click(1, 1);
   await expect(analysisDialog).not.toBeVisible();
 
-  await page.locator("#story-production-menu").selectOption("render-console");
-  const queued = page.waitForRequest((request) => (
-    request.method() === "POST" && request.url().includes("/prompt-analysis")
-  ));
+  await page.locator("#story-navigation button[data-page='render-console']").click();
+  const analysisRequests = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/prompt-analysis")) {
+      analysisRequests.push(request.url());
+    }
+  });
   await page.locator("#render-console-review-prompt").click();
-  await queued;
   await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
-  await expect(promptEye).toHaveClass(/pending/);
-  await expect(promptEye).toHaveAttribute("title", "Prompt analysis pending");
-  await expect(promptEye).toHaveAttribute("aria-label", "Prompt analysis pending");
+  expect(analysisRequests).toEqual([]);
+  await expect(promptEye).toHaveClass(/complete/);
+  await expect(promptEye).toHaveAttribute("title", "View analysis");
+  await expect(promptEye).toHaveAttribute("aria-label", "View analysis");
   const promptActions = await page.locator("#prompt-review-title + .button-row button").allTextContents();
   expect(promptActions.slice(0, 3)).toEqual(["Scene Builder", "Render Console", "Copy Prompt"]);
   await page.locator("#prompt-review-render-console").click();

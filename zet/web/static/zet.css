@@ -299,6 +299,52 @@ button:not(:disabled):hover,
   max-width: 180px;
 }
 
+.production-navigation {
+  display: flex;
+  gap: 4px;
+}
+
+.production-menu {
+  display: none;
+}
+
+.production-tab {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.production-count,
+.production-analysis-count {
+  align-items: center;
+  background: var(--danger);
+  border-radius: 999px;
+  color: white;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  min-height: 19px;
+  min-width: 19px;
+  padding: 2px 5px;
+}
+
+.production-analysis-count {
+  background: var(--warning);
+  color: white;
+}
+
+@media (max-width: 1100px) {
+  .production-navigation {
+    display: none;
+  }
+
+  .production-menu {
+    display: inline-block;
+  }
+}
+
 .toolbar-menu {
   align-items: center;
   display: flex;
@@ -1924,6 +1970,24 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.production-task-list {
+  display: grid;
+  gap: 6px;
+}
+
+.production-task-item {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+}
+
+.production-task-item span {
+  overflow-wrap: anywhere;
+}
+
 .scene-builder-interview-dialog {
   gap: 14px;
   max-width: 760px;
@@ -2132,7 +2196,26 @@ summary:focus-visible {
 }
 
 .render-review-layout {
-  grid-template-columns: 260px minmax(680px, 1fr) 300px;
+  grid-template-columns: 280px minmax(560px, 1fr) 280px;
+}
+
+#render-review-task-table {
+  table-layout: fixed;
+}
+
+.review-task-title,
+.review-task-meta {
+  display: block;
+}
+
+.review-task-title {
+  font-weight: 700;
+}
+
+.review-task-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
 }
 
 .render-comparison {
@@ -2211,21 +2294,21 @@ tr.auxiliary-row td:last-child {
 }
 
 .render-image-viewer {
-  align-items: center;
+  align-items: flex-start;
   background: #101828;
   border-radius: 8px;
   color: #e4e7ec;
   display: flex;
   justify-content: center;
-  min-height: 620px;
+  height: clamp(360px, 55vh, 560px);
   overflow: auto;
   padding: 12px;
   text-align: center;
 }
 
 .render-image-viewer img {
-  height: auto;
-  max-height: calc(100vh - 260px);
+  height: 100%;
+  max-height: 100%;
   max-width: 100%;
   object-fit: contain;
 }
@@ -2237,7 +2320,7 @@ tr.auxiliary-row td:last-child {
 .render-console-layout {
   display: grid;
   gap: 12px;
-  grid-template-columns: 300px minmax(460px, 1fr) minmax(520px, 0.5fr);
+  grid-template-columns: 260px minmax(0, 1fr) minmax(380px, 440px);
 }
 
 .local-image-review-layout {
@@ -3030,7 +3113,7 @@ dd {
   }
 }
 
-@media (max-width: 1450px) {
+@media (max-width: 1100px) {
   .render-console-layout {
     grid-template-columns: 300px minmax(0, 1fr);
   }

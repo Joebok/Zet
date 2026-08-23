@@ -833,6 +833,24 @@ Backend = "manual_chatgpt"
             self.assertEqual(promoted.json()["asset"]["pipeline_stage"], "LOCKED")
             self.assertTrue((root / "Assets" / "Test" / "Adult" / "front.png").exists())
 
+    def test_production_work_summary_reports_current_and_project_counts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, stage="RENDER_REVIEW", actor="HUMAN_AGENT")
+            self._write_manual_render_ask(root)
+            client = TestClient(create_app(config_path))
+
+            response = client.get(
+                "/api/production-work-summary",
+                params={"workspace": "character", "character": "Test", "phase": "Adult"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["current"]["prompt_available"], 1)
+            self.assertEqual(response.json()["current"]["render_waiting"], 1)
+            self.assertEqual(response.json()["current"]["image_review_waiting"], 1)
+            self.assertEqual(response.json()["project"], response.json()["current"])
+
     def test_render_review_api_can_fail_back_to_render(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1184,6 +1202,13 @@ Backend = "manual_chatgpt"
             self.assertEqual(scoped_tasks.json()["tasks"][0]["review_key"], "scene:demo:scene")
             self.assertEqual(
                 client.get("/api/render-review/tasks", params={"story_slug": "other"}).json()["tasks"],
+                [],
+            )
+            self.assertEqual(
+                client.get(
+                    "/api/render-review/tasks",
+                    params={"character": "Test", "phase": "Adult"},
+                ).json()["tasks"],
                 [],
             )
             detail = client.get("/api/render-review/scenes/demo/scene")

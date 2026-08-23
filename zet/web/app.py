@@ -1834,6 +1834,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/prompt-analysis/tasks")
+    def prompt_analysis_tasks(story_slug: str = Query(""), scene_slug: str = Query("")) -> dict[str, Any]:
+        try:
+            return {"tasks": _jsonable(_app(app.state.config_path).list_scene_prompt_analyses(story_slug, scene_slug))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/help/template-manuals")
     def template_manuals() -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -2058,15 +2065,37 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
     ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            tasks = []
-            if character and phase:
-                assets = [asset for asset in zet_app.list_assets(character, phase) if _is_render_review_asset(asset)]
-                tasks.extend(_render_review_task_payload(zet_app, asset) for asset in assets)
-            tasks.extend(
-                _scene_render_review_task_payload(status)
-                for status in zet_app.list_pending_scene_image_reviews(story_slug, scene_slug)
-            )
+            assets = zet_app.list_pending_asset_image_reviews(character, phase) if character or phase else []
+            scenes = zet_app.list_pending_scene_image_reviews(story_slug, scene_slug) if story_slug or scene_slug else []
+            if not any((character, phase, story_slug, scene_slug)):
+                assets = zet_app.list_pending_asset_image_reviews()
+                scenes = zet_app.list_pending_scene_image_reviews()
+            tasks = [_render_review_task_payload(zet_app, asset) for asset in assets]
+            tasks.extend(_scene_render_review_task_payload(status) for status in scenes)
             return {"tasks": tasks}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/production-work-summary")
+    def production_work_summary(
+        workspace: str = Query("story"),
+        character: str = Query(""),
+        phase: str = Query(""),
+        story_slug: str = Query(""),
+        scene_slug: str = Query(""),
+    ) -> dict[str, Any]:
+        if workspace not in {"character", "story"}:
+            raise HTTPException(status_code=400, detail=f"Unsupported workspace: {workspace}")
+        try:
+            return _jsonable(
+                _app(app.state.config_path).production_work_summary(
+                    workspace,
+                    character,
+                    phase,
+                    story_slug,
+                    scene_slug,
+                )
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
