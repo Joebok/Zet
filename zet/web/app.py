@@ -1440,6 +1440,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/builder/interview-seed")
+    def scene_builder_interview_seed(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        """Rebuild the interview seed for a scene imported from a candidate."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return _jsonable(zet_app.scene_builder_interview_seed(story_slug, scene_slug))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/interview/step")
     def scene_builder_interview_step(story_slug: str, scene_slug: str, data: dict = Body(...)) -> dict[str, Any]:
         """Run one focused phase or clarification turn of a Scene Builder interview."""

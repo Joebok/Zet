@@ -471,6 +471,19 @@ class SceneCandidateImportService:
             phases.append("relationships")
         return list(dict.fromkeys(phases))
 
+    def interview_seed(self, data: dict) -> dict[str, object]:
+        provenance = data.get("source_provenance") if isinstance(data, dict) else None
+        if not isinstance(provenance, dict) or provenance.get("source_type") != "scene_candidate_markdown":
+            raise SceneCandidateImportError("This scene was not imported from a scene candidate.")
+        candidate = self.get_candidate(
+            str(provenance.get("source_key") or ""),
+            str(provenance.get("candidate_id") or ""),
+        )
+        return {
+            "narrative": self._interview_text(candidate),
+            "phases": self._interview_phases(data),
+        }
+
     def import_candidate(self, source_key: str, candidate_id: str, story_slug: str, confirm_update: bool = False) -> SceneCandidateImportResult:
         candidate = self.get_candidate(source_key, candidate_id)
         if any("Duplicate Candidate ID" in warning for warning in candidate.warnings):

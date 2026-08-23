@@ -5610,6 +5610,22 @@ function openSceneBuilderInterview(seed = null) {
   sceneBuilderInterviewNarrative.focus();
 }
 
+async function restartSceneBuilderInterview() {
+  const provenance = state.sceneBuilder?.source_provenance || {};
+  if (provenance.source_type !== "scene_candidate_markdown") {
+    openSceneBuilderInterview();
+    return;
+  }
+  try {
+    const seed = await fetchJson(
+      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/interview-seed`,
+    );
+    openSceneBuilderInterview(seed);
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
 async function runSceneBuilderInterview() {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) return;
   const started = Boolean(state.sceneBuilderInterview?.session);
@@ -5690,6 +5706,7 @@ function renderSceneBuilder() {
   }
   builderHelpSequence = 0;
   const scene = state.sceneBuilder.scene || {};
+  const importedCandidate = state.sceneBuilder.source_provenance?.source_type === "scene_candidate_markdown";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
     ${builderRenderDatalists()}
@@ -5700,7 +5717,7 @@ function renderSceneBuilder() {
         <span id="scene-builder-save-state" class="save-state" aria-live="polite"></span>
       </div>
       <div class="scene-builder-primary-actions">
-        <button type="button" data-builder-action="interview">Interview</button>
+        <button type="button" data-builder-action="interview">${importedCandidate ? "Restart Interview" : "Interview"}</button>
         <button type="button" class="scene-builder-save" data-builder-action="save">Save</button>
         <button type="button" class="primary-action scene-builder-render" data-builder-action="render">Render</button>
         ${builderRenderMoreMenu()}
@@ -6038,7 +6055,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   } else {
     const action = target.dataset.builderAction;
     if (action === "builder-section") setBuilderResponsiveSection(target.dataset.builderSection);
-    if (action === "interview") openSceneBuilderInterview();
+    if (action === "interview") restartSceneBuilderInterview();
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();

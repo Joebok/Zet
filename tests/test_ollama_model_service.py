@@ -7,8 +7,10 @@ from zet.services.ollama_model_service import OllamaModelService
 class StubOllamaModelService(OllamaModelService):
     def __init__(self, responses):
         self.responses = responses
+        self.requests = []
 
     def _request_json(self, path, payload=None):
+        self.requests.append((path, payload))
         response = self.responses[(path, (payload or {}).get("model"))]
         if isinstance(response, Exception):
             raise response
@@ -53,6 +55,10 @@ class OllamaModelServiceTests(unittest.TestCase):
             service.generate_json("local-model", "system", "prompt", {"type": "object"}),
             {"answer": "ok"},
         )
+        payload = service.requests[-1][1]
+        self.assertFalse(payload["think"])
+        self.assertEqual(payload["options"]["num_ctx"], 8192)
+        self.assertEqual(payload["options"]["num_predict"], 4096)
 
 
 if __name__ == "__main__":

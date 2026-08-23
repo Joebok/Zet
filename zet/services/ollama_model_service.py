@@ -58,12 +58,13 @@ class OllamaModelService:
             {
                 "model": model,
                 "stream": False,
+                "think": False,
                 "format": schema,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
-                "options": {"temperature": 0.2},
+                "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 4096},
             },
         )
         content = response.get("message", {}).get("content")

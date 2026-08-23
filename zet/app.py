@@ -501,6 +501,11 @@ class ZetApp:
         """Run one focused phase of a Scene Builder interview."""
         return self.scene_builder_interview_service.step(session, answers)
 
+    def scene_builder_interview_seed(self, story_slug: str, scene_slug: str) -> dict[str, object]:
+        """Rebuild an imported candidate's Scene Builder interview seed."""
+        data = self.load_scene_builder(story_slug, scene_slug).data
+        return self.scene_candidate_import_service.interview_seed(data)
+
     def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""
         return self.story_service.stage_scene_render(story_slug, scene_slug)

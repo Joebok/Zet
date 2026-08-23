@@ -147,6 +147,17 @@ class SceneCandidateImportServiceTests(unittest.TestCase):
             updated = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea", confirm_update=True)
             self.assertEqual(updated.data["scene"]["name"], "Changed Title")
 
+    def test_rebuilds_interview_seed_for_imported_candidate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, _, service = self._setup(root, self._candidate())
+            imported = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea")
+
+            seed = service.interview_seed(imported.data)
+
+            self.assertIn("SCENE CANDIDATE: A Test", seed["narrative"])
+            self.assertIn("elements", seed["phases"])
+
     def test_duplicate_ids_block_import_but_extra_sections_do_not(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
