@@ -362,6 +362,46 @@ test("@desktop-smoke Scene Builder creates and selects an auxiliary resource wit
 
 
 
+test("@desktop-smoke Scene Builder manages a background render target", async ({ page }) => {
+  await openPage(page, "scenes");
+  const storySlug = await page.locator("#header-story-select").inputValue();
+  const sceneSlug = await page.locator("#header-scene-select").inputValue();
+  const detail = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const data = (await detail.json()).document.data;
+  data.scene_elements = [
+    { id: "hall", display_name: "Hall", resource_type: "Scene-Only", element_type: "Backdrop", fallback_visual_description: "stone hall", subscene_id: "" },
+    { id: "hero", display_name: "Hero", resource_type: "Scene-Only", element_type: "Character", fallback_visual_description: "armored hero", subscene_id: "" },
+  ];
+  data.placements = [
+    { id: "hall-placement", scene_element_id: "hall", position_within_cell: "", depth: "distant background" },
+    { id: "hero-placement", scene_element_id: "hero", position_within_cell: "center", depth: "foreground" },
+  ];
+  const saved = await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data });
+  expect(saved.ok()).toBe(true);
+
+  await page.locator("#scene-builder-open").click();
+  const enabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/background/enable") && response.ok());
+  await page.getByRole("button", { name: "Use background sub-render" }).click();
+  await enabled;
+  await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
+  await expect(page.locator(".scene-builder-element-row.context-only")).toContainText("Hero");
+  await expect(page.locator(".scene-builder-element-row:not(.context-only)")).toContainText("Hall");
+
+  await page.locator("[data-builder-action='toggle-context-elements']").uncheck();
+  await expect(page.locator(".scene-builder-element-list")).not.toContainText("Hero");
+  await page.locator("[data-builder-action='toggle-context-elements']").check();
+  await page.locator(".scene-builder-element-row").filter({ hasText: "Hero" }).click();
+  await page.locator("[data-builder-element-field='subscene_id']").selectOption("background");
+  await expect(page.locator(".scene-builder-element-row.context-only")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Full Scene", exact: true }).click();
+  await expect(page.locator(".scene-builder-render").first()).toBeDisabled();
+  const disabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/background/disable") && response.ok());
+  await page.getByRole("button", { name: "Turn off background sub-render" }).click();
+  await disabled;
+  await expect(page.locator(".scene-builder-render").first()).toBeEnabled();
+});
+
 test("AI Controls stacks queue lists and manages Zet processes", async ({ page }) => {
   await openPage(page, "ai-controls");
   await expect(page.locator("#setting-ai-asset-workflow-model")).toBeVisible();

@@ -1970,6 +1970,45 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.scene-builder-target-bar,
+.scene-builder-target-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.scene-builder-target-bar .selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.scene-builder-target-thumbnail {
+  border-radius: 6px;
+  max-height: 110px;
+  max-width: 190px;
+  object-fit: contain;
+}
+
+.scene-builder-element-row.context-only {
+  opacity: 0.45;
+}
+
+.builder-context-toggle {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.scene-builder-element-editor fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
 .production-task-list {
   display: grid;
   gap: 6px;

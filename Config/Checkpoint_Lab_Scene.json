@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "file_kind": "scene",
   "scene": {
     "id": "checkpoint_lab",
@@ -30,6 +30,7 @@
     }
   },
   "scene_elements": [],
+  "subscenes": [],
   "placements": [],
   "props_and_states": [],
   "interactions": [],

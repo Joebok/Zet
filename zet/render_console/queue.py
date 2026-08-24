@@ -36,7 +36,10 @@ class ManualRenderTask:
         story_slug = str(self.manifest.get("story_slug") or "")
         scene_slug = str(self.manifest.get("scene_slug") or "")
         if story_slug or scene_slug:
-            display_label = " / ".join(value for value in [story_slug, scene_slug] if value)
+            render_target_id = str(self.manifest.get("render_target_id") or "main")
+            display_label = " / ".join(
+                value for value in [story_slug, scene_slug, render_target_id if render_target_id != "main" else ""] if value
+            )
         elif self.asset_id is not None:
             view = str(self.manifest.get("body_view") or "")
             display_label = " / ".join(value for value in [self.pipeline, view] if value)
@@ -53,6 +56,7 @@ class ManualRenderTask:
             "phase": self.phase,
             "story_slug": story_slug,
             "scene_slug": scene_slug,
+            "render_target_id": str(self.manifest.get("render_target_id") or "main"),
             "pipeline": self.pipeline,
             "pipeline_stage": self.pipeline_stage,
             "prompt_file": self.prompt_file,

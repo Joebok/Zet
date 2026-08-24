@@ -85,6 +85,7 @@ class StoryRenderTask:
     final_prompt_path: str
     expected_output: str
     reference_files: list[dict]
+    render_target_id: str = "main"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,10 @@ class SceneImageReviewStatus:
     locked_exists: bool
     candidate_exists: bool
     comment: str
+    render_target_id: str = "main"
+    render_target_label: str = "Full Scene"
+    locked_current: bool = True
+    stale_reason: str = ""
 
 
 @dataclass(frozen=True)

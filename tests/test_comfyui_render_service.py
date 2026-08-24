@@ -20,7 +20,7 @@ from Scripts.Local_Render_Adapters.comfyui_adapter import render_preview
 class ComfyUIRenderServiceTests(unittest.TestCase):
     def _ir(self) -> dict:
         return {
-            "schema_version": 3,
+            "schema_version": 4,
             "scene": {"slug": "At-the-Arch", "story_beat": "Two elves walk together."},
             "source": {},
             "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},

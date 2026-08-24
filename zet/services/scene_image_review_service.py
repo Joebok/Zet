@@ -8,6 +8,7 @@ import shutil
 import tempfile
 
 from zet.models.story import SceneImageReviewStatus
+from zet.services.scene_render_target_service import SceneRenderTargetService
 
 
 class SceneImageReviewError(Exception):
@@ -20,13 +21,19 @@ class SceneImageReviewService:
     def __init__(self, story_service):
         self.story_service = story_service
         self.path_service = story_service.path_service
+        self.target_service = getattr(
+            story_service,
+            "scene_render_target_service",
+            SceneRenderTargetService(story_service, SceneImageReviewError),
+        )
 
     def _slugs(self, story_slug: str, scene_slug: str) -> tuple[str, str]:
         return self.story_service.safe_slug(story_slug), self.story_service.safe_slug(scene_slug)
 
     @staticmethod
-    def review_key(story_slug: str, scene_slug: str) -> str:
-        return f"scene:{story_slug}:{scene_slug}"
+    def review_key(story_slug: str, scene_slug: str, render_target_id: str = "main") -> str:
+        suffix = "" if render_target_id == "main" else f":{render_target_id}"
+        return f"scene:{story_slug}:{scene_slug}{suffix}"
 
     @staticmethod
     def _atomic_copy(source: Path, target: Path) -> None:
@@ -52,11 +59,12 @@ class SceneImageReviewService:
         finally:
             temporary_path.unlink(missing_ok=True)
 
-    def status(self, story_slug: str, scene_slug: str) -> SceneImageReviewStatus:
+    def status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
-        locked_path = self.path_service.scene_locked_image_path(safe_story, safe_scene)
-        candidate_path = self.path_service.scene_candidate_image_path(safe_story, safe_scene)
-        comment_path = self.path_service.scene_render_review_comment_path(safe_story, safe_scene)
+        target_id = str(render_target_id or "main").strip()
+        target_service = self.target_service
+        paths = target_service.review_paths(safe_story, safe_scene, target_id)
+        locked_path, candidate_path, comment_path = paths["locked"], paths["candidate"], paths["comment"]
         title = safe_scene
         scene = next(
             (item for item in self.story_service.list_scenes(safe_story) if item.slug == safe_scene),
@@ -64,17 +72,32 @@ class SceneImageReviewService:
         )
         if scene is not None:
             title = scene.title
+        document = self.story_service.load_scene_builder_data(safe_story, safe_scene) if target_id != "main" else None
+        target_label = target_service.target_label(document.data, target_id) if document else "Full Scene"
+        freshness = {"locked_current": locked_path.is_file(), "stale_reason": ""}
+        if target_id != "main":
+            if target_service.definition(document.data, target_id) is None:
+                raise SceneImageReviewError(f"Scene subscene not found: {target_id}")
+            try:
+                current_hash = self.story_service.story_render_service._compile(safe_story, safe_scene, target_id)[-1]
+                freshness = target_service.freshness(safe_story, safe_scene, target_id, current_hash)
+            except Exception as exc:
+                freshness = {"locked_current": False, "stale_reason": f"Unable to validate locked image: {exc}"}
         return SceneImageReviewStatus(
             story_slug=safe_story,
             scene_slug=safe_scene,
             title=title,
             review_kind="scene",
-            review_key=self.review_key(safe_story, safe_scene),
+            review_key=self.review_key(safe_story, safe_scene, target_id),
             locked_image_path=str(locked_path),
             candidate_image_path=str(candidate_path),
             locked_exists=locked_path.is_file(),
             candidate_exists=candidate_path.is_file(),
             comment=comment_path.read_text(encoding="utf-8").strip() if comment_path.is_file() else "",
+            render_target_id=target_id,
+            render_target_label=target_label,
+            locked_current=bool(freshness.get("locked_current")),
+            stale_reason=str(freshness.get("stale_reason") or ""),
         )
 
     def list_pending(self, story_slug: str = "", scene_slug: str = "") -> list[SceneImageReviewStatus]:
@@ -90,13 +113,21 @@ class SceneImageReviewService:
                 status = self.status(story.slug, scene.slug)
                 if status.candidate_exists:
                     rows.append(status)
+                document = self.story_service.load_scene_builder_data(story.slug, scene.slug)
+                for definition in document.data.get("subscenes") or []:
+                    target_id = str(definition.get("id") or "")
+                    if not target_id:
+                        continue
+                    target_status = self.status(story.slug, scene.slug, target_id)
+                    if target_status.candidate_exists:
+                        rows.append(target_status)
         return rows
 
-    def save_comment(self, story_slug: str, scene_slug: str, comment: str) -> str:
-        status = self.status(story_slug, scene_slug)
+    def save_comment(self, story_slug: str, scene_slug: str, comment: str, render_target_id: str = "main") -> str:
+        status = self.status(story_slug, scene_slug, render_target_id)
         if not status.candidate_exists:
             raise SceneImageReviewError("Scene has no candidate image to review.")
-        path = self.path_service.scene_render_review_comment_path(status.story_slug, status.scene_slug)
+        path = self.target_service.review_paths(status.story_slug, status.scene_slug, status.render_target_id)["comment"]
         clean = str(comment or "").strip()
         if clean:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +138,8 @@ class SceneImageReviewService:
 
     def apply_answer(self, answer_path: Path, response_path: Path, ask_manifest: dict) -> tuple[str, Path]:
         safe_story, safe_scene = self._slugs(ask_manifest.get("story_slug"), ask_manifest.get("scene_slug"))
+        target_id = str(ask_manifest.get("render_target_id") or "main").strip()
+        paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
         answer_manifest_path = answer_path / "answer_manifest.json"
         try:
             answer_manifest = json.loads(answer_manifest_path.read_text(encoding="utf-8"))
@@ -115,22 +148,22 @@ class SceneImageReviewService:
 
         disposition = str(answer_manifest.get("scene_image_disposition") or "").strip().lower()
         if disposition not in {"locked", "candidate"}:
-            locked = self.path_service.scene_locked_image_path(safe_story, safe_scene)
-            candidate = self.path_service.scene_candidate_image_path(safe_story, safe_scene)
+            locked = paths["locked"]
+            candidate = paths["candidate"]
             disposition = "locked" if not locked.is_file() and not candidate.is_file() else "candidate"
             answer_manifest["scene_image_disposition"] = disposition
-            answer_manifest["scene_image_review_key"] = self.review_key(safe_story, safe_scene)
+            answer_manifest["scene_image_review_key"] = self.review_key(safe_story, safe_scene, target_id)
             self._write_json(answer_manifest_path, answer_manifest)
 
         target = (
-            self.path_service.scene_locked_image_path(safe_story, safe_scene)
+            paths["locked"]
             if disposition == "locked"
-            else self.path_service.scene_candidate_image_path(safe_story, safe_scene)
+            else paths["candidate"]
         )
         if not bool(answer_manifest.get("scene_image_applied")):
             self._atomic_copy(response_path, target)
             comment = str(answer_manifest.get("render_comment") or "").strip()
-            comment_path = self.path_service.scene_render_review_comment_path(safe_story, safe_scene)
+            comment_path = paths["comment"]
             if disposition == "candidate":
                 if comment:
                     comment_path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,38 +172,56 @@ class SceneImageReviewService:
                     comment_path.unlink(missing_ok=True)
             else:
                 comment_path.unlink(missing_ok=True)
+            metadata_path = paths["metadata"] if disposition == "locked" else paths["candidate"].with_suffix(".render.json")
+            self._write_json(metadata_path, {
+                "story_slug": safe_story,
+                "scene_slug": safe_scene,
+                "render_target_id": target_id,
+                "render_input_hash": str(ask_manifest.get("render_input_hash") or ""),
+                "locked_at": datetime.now().isoformat(timespec="seconds") if disposition == "locked" else "",
+            })
             answer_manifest["scene_image_applied"] = True
             self._write_json(answer_manifest_path, answer_manifest)
         return disposition, target
 
-    def promote(self, story_slug: str, scene_slug: str) -> SceneImageReviewStatus:
+    def promote(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
-        candidate = self.path_service.scene_candidate_image_path(safe_story, safe_scene)
-        locked = self.path_service.scene_locked_image_path(safe_story, safe_scene)
+        target_id = str(render_target_id or "main").strip()
+        paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
+        candidate, locked = paths["candidate"], paths["locked"]
         if not candidate.is_file():
             raise SceneImageReviewError("Scene has no candidate image to promote.")
         if locked.is_file():
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            backup = self.path_service.scene_locked_backups_path(safe_story, safe_scene) / f"{safe_scene}_{stamp}.png"
+            backup = paths["backups"] / f"{safe_scene}_{target_id}_{stamp}.png"
             self._atomic_copy(locked, backup)
         self._atomic_copy(candidate, locked)
         candidate.unlink()
-        self.path_service.scene_render_review_comment_path(safe_story, safe_scene).unlink(missing_ok=True)
+        candidate_metadata = candidate.with_suffix(".render.json")
+        if candidate_metadata.is_file():
+            metadata = json.loads(candidate_metadata.read_text(encoding="utf-8"))
+            metadata["locked_at"] = datetime.now().isoformat(timespec="seconds")
+            self._write_json(paths["metadata"], metadata)
+            candidate_metadata.unlink()
+        paths["comment"].unlink(missing_ok=True)
         try:
             candidate.parent.rmdir()
         except OSError:
             pass
-        return self.status(safe_story, safe_scene)
+        return self.status(safe_story, safe_scene, target_id)
 
-    def discard(self, story_slug: str, scene_slug: str) -> SceneImageReviewStatus:
+    def discard(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
-        candidate = self.path_service.scene_candidate_image_path(safe_story, safe_scene)
+        target_id = str(render_target_id or "main").strip()
+        paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
+        candidate = paths["candidate"]
         if not candidate.is_file():
             raise SceneImageReviewError("Scene has no candidate image to discard.")
         candidate.unlink()
-        self.path_service.scene_render_review_comment_path(safe_story, safe_scene).unlink(missing_ok=True)
+        candidate.with_suffix(".render.json").unlink(missing_ok=True)
+        paths["comment"].unlink(missing_ok=True)
         try:
             candidate.parent.rmdir()
         except OSError:
             pass
-        return self.status(safe_story, safe_scene)
+        return self.status(safe_story, safe_scene, target_id)

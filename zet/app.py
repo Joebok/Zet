@@ -461,8 +461,8 @@ class ZetApp:
         """Return the expected rendered scene image path."""
         return self.story_service.scene_image_path(story_slug, scene_slug)
 
-    def scene_image_review_status(self, story_slug: str, scene_slug: str):
-        return self.scene_image_review_service.status(story_slug, scene_slug)
+    def scene_image_review_status(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
+        return self.scene_image_review_service.status(story_slug, scene_slug, render_target_id)
 
     def list_pending_scene_image_reviews(self, story_slug: str = "", scene_slug: str = ""):
         return self.scene_image_review_service.list_pending(story_slug, scene_slug)
@@ -486,14 +486,14 @@ class ZetApp:
             scene_slug,
         )
 
-    def promote_scene_image(self, story_slug: str, scene_slug: str):
-        return self.scene_image_review_service.promote(story_slug, scene_slug)
+    def promote_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
+        return self.scene_image_review_service.promote(story_slug, scene_slug, render_target_id)
 
-    def discard_scene_image_candidate(self, story_slug: str, scene_slug: str):
-        return self.scene_image_review_service.discard(story_slug, scene_slug)
+    def discard_scene_image_candidate(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
+        return self.scene_image_review_service.discard(story_slug, scene_slug, render_target_id)
 
-    def save_scene_image_review_comment(self, story_slug: str, scene_slug: str, comment: str):
-        return self.scene_image_review_service.save_comment(story_slug, scene_slug, comment)
+    def save_scene_image_review_comment(self, story_slug: str, scene_slug: str, comment: str, render_target_id: str = "main"):
+        return self.scene_image_review_service.save_comment(story_slug, scene_slug, comment, render_target_id)
 
     def load_scene_builder(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         """Load Scene Builder JSON for one story scene."""
@@ -532,9 +532,15 @@ class ZetApp:
         data = self.load_scene_builder(story_slug, scene_slug).data
         return self.scene_candidate_import_service.interview_seed(data)
 
-    def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
+    def stage_scene_render(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""
-        return self.story_service.stage_scene_render(story_slug, scene_slug)
+        return self.story_service.stage_scene_render(story_slug, scene_slug, render_target_id)
+
+    def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
+        return self.story_service.enable_background_subscene(story_slug, scene_slug)
+
+    def disable_scene_subscene(self, story_slug: str, scene_slug: str, target_id: str) -> SceneBuilderDocument:
+        return self.story_service.disable_scene_subscene(story_slug, scene_slug, target_id)
 
     def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str) -> dict:
         return self.scene_prompt_analysis_service.queue(story_slug, scene_slug)

@@ -160,7 +160,7 @@ class WebAppTests(unittest.TestCase):
             alpha = root / "Stories" / "Alpha"
             (alpha / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
             (alpha / "Opening.scene.json").write_text(
-                json.dumps({"schema_version": 3, "file_kind": "scene", "scene": {"slug": "Opening", "name": "Opening"}}),
+                json.dumps({"schema_version": 4, "file_kind": "scene", "scene": {"slug": "Opening", "name": "Opening"}}),
                 encoding="utf-8",
             )
             client = TestClient(create_app(config_path))

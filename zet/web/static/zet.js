@@ -104,6 +104,9 @@ const state = {
   sceneBuilderReadiness: null,
   sceneBuilderOptions: {},
   sceneBuilderReferences: [],
+  sceneBuilderRenderTargets: [],
+  activeBuilderRenderTarget: "main",
+  showBuilderContextElements: true,
   sceneBuilderOpen: false,
   sceneBuilderInterview: null,
   sceneBuilderInterviewSeed: null,
@@ -4832,6 +4835,8 @@ async function deleteZine() {
 function closeSceneBuilder() {
   state.sceneBuilderOpen = false;
   state.sceneBuilder = null;
+  state.sceneBuilderRenderTargets = [];
+  state.activeBuilderRenderTarget = "main";
   state.selectedBuilderPlacementId = null;
   state.selectedBuilderElementId = null;
   sceneBuilderPanel.replaceChildren();
@@ -4877,8 +4882,33 @@ function builderSelectedElement() {
   return (state.sceneBuilder?.scene_elements || []).find((item) => item.id === state.selectedBuilderElementId) || null;
 }
 
+function builderActiveSubscene() {
+  if (state.activeBuilderRenderTarget === "main") return null;
+  return (state.sceneBuilder?.subscenes || []).find((item) => item.id === state.activeBuilderRenderTarget) || null;
+}
+
+function builderActiveTargetStatus() {
+  return (state.sceneBuilderRenderTargets || []).find((item) => item.render_target_id === state.activeBuilderRenderTarget) || null;
+}
+
+function builderElementIsEditable(element) {
+  return state.activeBuilderRenderTarget === "main" || element?.subscene_id === state.activeBuilderRenderTarget;
+}
+
+function builderMainRenderBlocker() {
+  if (state.activeBuilderRenderTarget !== "main") return "";
+  const enabled = new Set((state.sceneBuilder?.subscenes || []).filter((item) => item.enabled).map((item) => item.id));
+  const blocked = (state.sceneBuilderRenderTargets || []).find(
+    (item) => enabled.has(item.render_target_id) && !item.locked_current,
+  );
+  return blocked ? `${blocked.render_target_label}: ${blocked.stale_reason || "A current locked image is required."}` : "";
+}
+
 function builderElementOptions(selected = "") {
-  const elements = state.sceneBuilder?.scene_elements || [];
+  const activeSubscene = builderActiveSubscene();
+  const elements = (state.sceneBuilder?.scene_elements || []).filter(
+    (element) => !activeSubscene || element.subscene_id === activeSubscene.id,
+  );
   return `<option value=""></option>` + elements.map((element) => {
     const value = element.id || "";
     return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(element.display_name || value)}</option>`;
@@ -4972,6 +5002,13 @@ function builderSyncControls() {
 function builderApplyChange(event) {
   if (!state.sceneBuilder) {
     return;
+  }
+  const activeSubscene = builderActiveSubscene();
+  if (activeSubscene) {
+    activeSubscene.prompt_overrides = activeSubscene.prompt_overrides || {};
+    for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-subscene-field]")) {
+      activeSubscene.prompt_overrides[control.dataset.builderSubsceneField] = control.value;
+    }
   }
   builderSyncControls();
   const changedElement = builderSelectedElement();
@@ -5176,6 +5213,7 @@ function builderAddElementFromDialog() {
     element_visual_override: "",
     fallback_visual_description: "",
     notes: "",
+    subscene_id: state.activeBuilderRenderTarget === "main" ? "" : state.activeBuilderRenderTarget,
   };
   state.sceneBuilder.scene_elements.push(element);
   state.sceneBuilder.placements.push(builderCreatePlacementForElement(element));
@@ -5247,7 +5285,11 @@ function builderDeleteDialogue(index) {
 }
 
 function builderRenderElements() {
-  const rows = (state.sceneBuilder.scene_elements || []).map((element) => {
+  const activeSubscene = builderActiveSubscene();
+  const visibleElements = (state.sceneBuilder.scene_elements || []).filter(
+    (element) => !activeSubscene || state.showBuilderContextElements || element.subscene_id === activeSubscene.id,
+  );
+  const rows = visibleElements.map((element) => {
     const placement = builderPlacementForElement(element.id);
     const position = placement?.position_within_cell || "—";
     const depth = position === "None" ? "None" : placement?.depth || "—";
@@ -5255,10 +5297,10 @@ function builderRenderElements() {
     const referenceKnown = Boolean(referenceTag && (state.sceneBuilderReferences || []).some((item) => item.tag === referenceTag));
     const referenceStatus = !referenceTag ? "No reference" : referenceKnown ? "Reference linked" : "Reference unresolved";
     return `
-      <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}">
+      <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""} ${activeSubscene && element.subscene_id !== activeSubscene.id ? "context-only" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}">
         <span class="scene-builder-element-name">${escapeHtml(element.display_name || element.id || "")}</span>
         <span class="scene-builder-element-meta"><span>${escapeHtml(element.element_type || "")}</span><span class="reference-status ${referenceKnown ? "complete" : ""}">${escapeHtml(referenceStatus)}</span></span>
-        <small>Position: ${escapeHtml(position)} · Depth: ${escapeHtml(depth)}</small>
+        <small>Position: ${escapeHtml(position)} · Depth: ${escapeHtml(depth)} · Render: ${escapeHtml(element.subscene_id || "Full Scene")}</small>
       </button>
     `;
   }).join("");
@@ -5271,6 +5313,7 @@ function builderRenderElements() {
         </div>
         <button type="button" class="primary-action" data-builder-action="add-element">Add Element</button>
       </div>
+      ${activeSubscene ? `<label class="builder-context-toggle"><input type="checkbox" data-builder-action="toggle-context-elements"${state.showBuilderContextElements ? " checked" : ""}> Show other elements as context</label>` : ""}
       <div class="scene-builder-element-list">${rows || "<p>No elements have been added yet.</p>"}</div>
     </div>
   `;
@@ -5344,6 +5387,12 @@ function builderRenderElementWorkspace() {
   if (!element) {
     return `<div class="scene-builder-card scene-builder-element-workspace"><h4>Element workspace</h4>${builderRenderElementEditor()}</div>`;
   }
+  const activeSubscene = builderActiveSubscene();
+  const editable = builderElementIsEditable(element);
+  const membershipOptions = [
+    `<option value=""${element.subscene_id ? "" : " selected"}>Full Scene</option>`,
+    ...(state.sceneBuilder.subscenes || []).map((item) => `<option value="${escapeHtml(item.id)}"${element.subscene_id === item.id ? " selected" : ""}>${escapeHtml(item.name || item.id)}</option>`),
+  ].join("");
   return `
     <div class="scene-builder-card scene-builder-element-workspace">
       <div class="review-header">
@@ -5359,9 +5408,15 @@ function builderRenderElementWorkspace() {
           </div>
         </details>
       </div>
+      <div class="scene-builder-fields">
+        <label>Render in<select data-builder-element-field="subscene_id">${membershipOptions}</select></label>
+        ${activeSubscene && !editable ? `<p class="full">This element is visible for composition context. Move it into ${escapeHtml(activeSubscene.name || activeSubscene.id)} to edit it here.</p>` : ""}
+      </div>
       <div class="scene-builder-element-editor">
-        ${builderRenderElementEditor()}
-        ${builderRenderPlacementEditor()}
+        <fieldset${editable ? "" : " disabled"}>
+          ${builderRenderElementEditor()}
+          ${builderRenderPlacementEditor()}
+        </fieldset>
       </div>
     </div>
   `;
@@ -5431,8 +5486,13 @@ function builderRenderComposition() {
   `;
 }
 
-function builderRenderInteractions() {
-  const interactions = (state.sceneBuilder.interactions || []).map((interaction, index) => `
+function builderRenderInteractions(memberOnly = false) {
+  const activeSubscene = builderActiveSubscene();
+  const members = new Set((state.sceneBuilder.scene_elements || []).filter((item) => item.subscene_id === activeSubscene?.id).map((item) => item.id));
+  const interactionRows = (state.sceneBuilder.interactions || []).map((interaction, index) => ({ interaction, index })).filter(
+    ({ interaction }) => !memberOnly || (members.has(interaction.subject_element_id) && members.has(interaction.target_element_id)),
+  );
+  const interactions = interactionRows.map(({ interaction, index }) => `
     <tr>
       <td><select data-builder-interaction="${index}" data-builder-interaction-field="subject_element_id">${builderElementOptions(interaction.subject_element_id || "")}</select></td>
       <td><select data-builder-interaction="${index}" data-builder-interaction-field="relationship">${builderOptionHtml("relationship", interaction.relationship || "")}</select></td>
@@ -5483,12 +5543,15 @@ function builderRenderMoreMenu() {
   const analysisAction = state.scenePromptAnalysis?.complete || state.scenePromptAnalysis?.pending
     ? "view-analysis"
     : "analyze-prompt";
+  const activeSubscene = builderActiveSubscene();
+  const renderDisabled = Boolean(builderMainRenderBlocker()) || activeSubscene?.enabled === false;
+  const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
   return `
     <details class="scene-builder-more">
       <summary><span class="builder-more-desktop-label">More</span><span class="builder-more-responsive-label">Actions</span></summary>
       <div class="scene-builder-menu-panel">
         <button type="button" class="builder-responsive-action" data-builder-action="save">Save</button>
-        <button type="button" class="builder-responsive-action primary-action" data-builder-action="render">Render</button>
+        <button type="button" class="builder-responsive-action primary-action" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
         <button type="button" data-builder-action="continue-from">Continue From…</button>
         <button type="button" data-builder-action="${analysisAction}">Prompt Analysis</button>
         <button type="button" data-builder-action="open-page" data-builder-page="scenes">Scene Management</button>
@@ -5800,6 +5863,63 @@ async function applySceneBuilderInterview() {
   if (saved) showSceneBuilderMessage("Scene-Builder Interview applied and saved.", "success");
 }
 
+function builderRenderTargetControls() {
+  const subscenes = state.sceneBuilder.subscenes || [];
+  const background = subscenes.find((item) => item.id === "background");
+  const tabs = [
+    { id: "main", name: "Full Scene", enabled: true },
+    ...subscenes,
+  ].map((item) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`).join("");
+  const toggle = !background
+    ? `<button type="button" data-builder-action="enable-background">Use background sub-render</button>`
+    : background.enabled
+      ? `<button type="button" data-builder-action="disable-subscene" data-render-target-id="background">Turn off background sub-render</button>`
+      : `<button type="button" data-builder-action="enable-background">Turn on background sub-render</button>`;
+  return `<div class="scene-builder-target-bar"><div class="button-row compact" role="tablist" aria-label="Render target">${tabs}</div>${toggle}</div>`;
+}
+
+function builderRenderTargetStatus() {
+  const subscene = builderActiveSubscene();
+  const status = builderActiveTargetStatus();
+  const blocker = builderMainRenderBlocker();
+  if (!subscene && !blocker) return "";
+  if (blocker) {
+    return `<div class="action-message info"><strong>Full-scene render blocked.</strong> ${escapeHtml(blocker)} Relevant background edits invalidate its lock; render and accept the background again.</div>`;
+  }
+  const image = status?.locked_exists && status.locked_image_path
+    ? `<img class="scene-builder-target-thumbnail fullscreen-image-trigger" src="${fileUrl(status.locked_image_path)}" alt="${escapeHtml(subscene.name)} locked image">`
+    : "";
+  const tag = `{{SCENE_RENDER:${state.selectedStorySlug}:${state.selectedSceneSlug}:${subscene.id}}}`;
+  return `<div class="scene-builder-card scene-builder-target-status">
+    ${image}<div><strong>${status?.locked_current ? "Locked and current" : status?.locked_exists ? "Locked but stale" : "No locked image"}</strong>
+    <p>${escapeHtml(status?.stale_reason || "Accepted image is automatically linked to the Full Scene.")}</p>
+    <p>Relevant edits invalidate the accepted background and require it to be rendered and locked again.</p>
+    <code>${escapeHtml(tag)}</code></div>
+  </div>`;
+}
+
+function builderRenderSubsceneSettings() {
+  const subscene = builderActiveSubscene();
+  if (!subscene) return "";
+  const setup = state.sceneBuilder.setup || {};
+  const environment = setup.environment || {};
+  const overrides = subscene.prompt_overrides || {};
+  const field = (key, label, textarea = false) => `<label class="full">${escapeHtml(label)}${textarea
+    ? `<textarea data-builder-subscene-field="${key}">${escapeHtml(overrides[key] || "")}</textarea>`
+    : `<input value="${escapeHtml(overrides[key] || "")}" data-builder-subscene-field="${key}">`}</label>`;
+  return `<div class="scene-builder-card">
+    <h4>${escapeHtml(subscene.name)} prompt</h4>
+    <p>Canvas, art style, location, lighting, mood, and atmosphere are inherited from Full Scene. Edit those universal values there; changing them invalidates this lock.</p>
+    <dl><dt>Canvas</dt><dd>${escapeHtml(setup.canvas?.orientation || "landscape")} ${escapeHtml(setup.canvas?.aspect_ratio || "16:9")}</dd><dt>Location</dt><dd>${escapeHtml(environment.location || "—")}</dd><dt>Lighting</dt><dd>${escapeHtml(environment.lighting || "—")}</dd></dl>
+    <div class="scene-builder-fields">
+      ${field("focal_point", "Primary focal point")}
+      ${field("composition_notes", "Composition notes", true)}
+      ${field("general_foreground_notes", "General foreground notes", true)}
+      ${field("general_background_notes", "General background notes", true)}
+    </div>
+  </div>`;
+}
+
 function renderSceneBuilder() {
   if (!state.sceneBuilder) {
     return;
@@ -5807,9 +5927,15 @@ function renderSceneBuilder() {
   builderHelpSequence = 0;
   const scene = state.sceneBuilder.scene || {};
   const importedCandidate = state.sceneBuilder.source_provenance?.source_type === "scene_candidate_markdown";
+  const activeSubscene = builderActiveSubscene();
+  const renderBlocker = builderMainRenderBlocker();
+  const renderDisabled = Boolean(renderBlocker) || activeSubscene?.enabled === false;
+  const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
     ${builderRenderDatalists()}
+    ${builderRenderTargetControls()}
+    ${builderRenderTargetStatus()}
     <div class="scene-builder-toolbar">
       <div class="scene-builder-title">
         <span class="eyebrow">Scene Builder</span>
@@ -5819,7 +5945,7 @@ function renderSceneBuilder() {
       <div class="scene-builder-primary-actions">
         <button type="button" data-builder-action="interview">${importedCandidate ? "Restart Interview" : "Interview"}</button>
         <button type="button" class="scene-builder-save" data-builder-action="save">Save</button>
-        <button type="button" class="primary-action scene-builder-render" data-builder-action="render">Render</button>
+        <button type="button" class="primary-action scene-builder-render" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
         ${builderRenderMoreMenu()}
       </div>
     </div>
@@ -5843,7 +5969,7 @@ function renderSceneBuilder() {
             ${builderField("setup.canvas.aspect_ratio", "Aspect ratio", "aspect_ratio")}
           </div>
         </div>
-        ${builderRenderComposition()}
+        ${activeSubscene ? builderRenderSubsceneSettings() : builderRenderComposition()}
       </section>
       ${builderPhoneSectionToggle("elements", "Elements")}
       <section id="builder-panel-elements" class="scene-builder-section scene-builder-elements" data-builder-section-panel="elements" aria-label="Element workspace">
@@ -5852,12 +5978,12 @@ function renderSceneBuilder() {
       </section>
       ${builderPhoneSectionToggle("dialogue", "Dialogue")}
       <section id="builder-panel-dialogue" class="scene-builder-section scene-builder-relationships" data-builder-section-panel="dialogue" aria-label="Dialogue and relationships">
-        ${builderRenderDialogueEditor()}
-        ${builderRenderInteractions()}
+        ${activeSubscene ? `<div class="scene-builder-card"><h4>Dialogue</h4><p>Dialogue is rendered only in the Full Scene.</p></div>` : builderRenderDialogueEditor()}
+        ${activeSubscene ? builderRenderInteractions(true) : builderRenderInteractions()}
       </section>
       ${builderPhoneSectionToggle("environment", "Environment")}
       <section id="builder-panel-environment" class="scene-builder-section scene-builder-environment" data-builder-section-panel="environment" aria-label="Environment">
-        ${builderRenderEnvironment()}
+        ${activeSubscene ? `<div class="scene-builder-card"><h4>Inherited environment</h4><p>Edit universal environment fields in Full Scene. Target-specific notes are available under Scene.</p></div>` : builderRenderEnvironment()}
       </section>
       ${builderPhoneSectionToggle("advanced", "Advanced")}
       <section id="builder-panel-advanced" class="scene-builder-section scene-builder-advanced-panel" data-builder-section-panel="advanced" aria-label="Advanced overrides">
@@ -5907,6 +6033,7 @@ async function openSceneBuilder() {
       return;
     }
     state.sceneBuilder = document.data || {};
+    state.sceneBuilderRenderTargets = document.render_targets || [];
     state.sceneBuilderReadiness = document.readiness || null;
     state.sceneBuilderOptions = payload.options || {};
     state.sceneBuilderReferences = payload.references || [];
@@ -5914,6 +6041,7 @@ async function openSceneBuilder() {
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
+    state.activeBuilderRenderTarget = "main";
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes();
     renderSceneBuilder();
@@ -5948,6 +6076,7 @@ async function saveSceneBuilder(autosave = false) {
       body: JSON.stringify(state.sceneBuilder),
     });
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilderRenderTargets = payload.document?.render_targets || state.sceneBuilderRenderTargets;
     state.sceneBuilderReadiness = payload.document?.readiness || null;
     state.sceneBuilder._validation_warnings = payload.document?.validation_warnings || state.sceneBuilder._validation_warnings || [];
     updateStoryGitWarning(payload.has_story_changes);
@@ -6015,6 +6144,27 @@ async function continueSceneBuilderFrom() {
   }
 }
 
+async function setBackgroundSubsceneEnabled(enabled) {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  const endpoint = enabled
+    ? `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/background/enable`
+    : `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/background/disable`;
+  try {
+    const payload = await fetchJson(endpoint, { method: "POST" });
+    state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilderRenderTargets = payload.document?.render_targets || [];
+    state.activeBuilderRenderTarget = enabled ? "background" : "main";
+    state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !enabled || item.subscene_id === "background")?.id || state.sceneBuilder.scene_elements?.[0]?.id || null;
+    state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+    updateStoryGitWarning(payload.has_story_changes);
+    renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    showSceneBuilderMessage(payload.message, "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
 async function renderSceneBuilderScene() {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
     return;
@@ -6023,10 +6173,11 @@ async function renderSceneBuilderScene() {
   if (!saved) {
     return;
   }
-  showSceneBuilderMessage("Staging scene render...", "info");
+  const targetId = state.activeBuilderRenderTarget || "main";
+  showSceneBuilderMessage(`Staging ${targetId === "main" ? "full-scene" : targetId} render...`, "info");
   try {
     const payload = await fetchJson(
-      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/stage-render`,
+      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/render-targets/${encodeURIComponent(targetId)}/stage-render`,
       { method: "POST" },
     );
     const askId = payload.task?.ask_id || null;
@@ -6155,6 +6306,20 @@ sceneBuilderPanel.addEventListener("click", (event) => {
   } else {
     const action = target.dataset.builderAction;
     if (action === "builder-section") setBuilderResponsiveSection(target.dataset.builderSection);
+    if (action === "select-render-target") {
+      builderSyncControls();
+      state.activeBuilderRenderTarget = target.dataset.renderTargetId || "main";
+      const active = builderActiveSubscene();
+      state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !active || item.subscene_id === active.id)?.id || state.sceneBuilder.scene_elements?.[0]?.id || null;
+      state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+      renderSceneBuilder();
+    }
+    if (action === "toggle-context-elements") {
+      state.showBuilderContextElements = !state.showBuilderContextElements;
+      renderSceneBuilder();
+    }
+    if (action === "enable-background") setBackgroundSubsceneEnabled(true);
+    if (action === "disable-subscene") setBackgroundSubsceneEnabled(false);
     if (action === "interview") restartSceneBuilderInterview();
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
@@ -7247,7 +7412,7 @@ function renderRenderReviewTaskTable() {
     row.dataset.reviewKey = task.review_key;
     row.classList.toggle("selected", task.review_key === state.selectedRenderReviewKey);
     const isScene = task.review_kind === "scene";
-    const label = isScene ? `${task.story_slug}/${task.scene_slug}` : task.asset_id;
+    const label = isScene ? `${task.story_slug}/${task.scene_slug}${task.render_target_id && task.render_target_id !== "main" ? ` / ${task.render_target_label || task.render_target_id}` : ""}` : task.asset_id;
     const cell = document.createElement("td");
     const title = document.createElement("span");
     title.className = "review-task-title";
@@ -7269,7 +7434,10 @@ function selectedRenderReviewTask() {
 function renderReviewEndpoint(task, action = "") {
   const suffix = action ? `/${action}` : "";
   if (task.review_kind === "scene") {
-    return `/api/render-review/scenes/${encodeURIComponent(task.story_slug)}/${encodeURIComponent(task.scene_slug)}${suffix}`;
+    const targetSegment = task.render_target_id && task.render_target_id !== "main"
+      ? `/targets/${encodeURIComponent(task.render_target_id)}`
+      : "";
+    return `/api/render-review/scenes/${encodeURIComponent(task.story_slug)}/${encodeURIComponent(task.scene_slug)}${targetSegment}${suffix}`;
   }
   const params = new URLSearchParams({ character: task.character, phase: task.phase });
   return `/api/render-review/${task.asset_id}${suffix}?${params.toString()}`;
@@ -7312,7 +7480,7 @@ function renderRenderReview(detail) {
   const isScene = detail.review_kind === "scene";
   const asset = detail.asset || {};
   renderReviewTitle.textContent = isScene
-    ? `${detail.title || detail.scene_slug} | ${detail.story_slug}`
+    ? `${detail.title || detail.scene_slug} | ${detail.story_slug}${detail.render_target_id !== "main" ? ` | ${detail.render_target_label}` : ""}`
     : `Asset ${asset.asset_id} | ${asset.body_view}`;
   const fullCandidatePath = detail.candidate_image_path || "";
   renderReviewPath.textContent = compactPath(fullCandidatePath);

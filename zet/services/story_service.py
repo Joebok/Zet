@@ -30,6 +30,7 @@ from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIE
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.path_service import PathService
 from zet.services.scene_document_service import SceneDocumentService
+from zet.services.scene_render_target_service import SceneRenderTargetService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
@@ -56,6 +57,7 @@ class StoryService:
         self.auxiliary_resource_repository = auxiliary_resource_repository
         self.identity_key_repository = identity_key_repository
         self.turnaround_repository = turnaround_repository
+        self.scene_render_target_service = SceneRenderTargetService(self, StoryServiceError)
         self.scene_document_service = SceneDocumentService(self, StoryServiceError)
         self.story_reference_service = StoryReferenceService(
             path_service,
@@ -591,6 +593,9 @@ class StoryService:
             builder_path.unlink()
         if legacy_builder_path.exists():
             legacy_builder_path.unlink()
+        subscene_render_path = self.path_service.story_folder_path(safe_story_slug) / "_Subscene_Renders" / safe_scene_slug
+        if subscene_render_path.exists():
+            shutil.rmtree(subscene_render_path)
         candidate_path = self.path_service.scene_candidate_image_path(safe_story_slug, safe_scene_slug)
         candidate_path.unlink(missing_ok=True)
         self.path_service.scene_render_review_comment_path(safe_story_slug, safe_scene_slug).unlink(missing_ok=True)
@@ -673,8 +678,12 @@ class StoryService:
         collisions = [path for path in target_paths if path.exists()]
         source_pipeline = self.scene_pipeline_path(source_story, safe_scene_slug)
         target_pipeline = self.scene_pipeline_path(target_story, safe_scene_slug)
+        source_subscene_renders = source_folder / "_Subscene_Renders" / safe_scene_slug
+        target_subscene_renders = target_folder / "_Subscene_Renders" / safe_scene_slug
         if target_pipeline.exists():
             collisions.append(target_pipeline)
+        if target_subscene_renders.exists():
+            collisions.append(target_subscene_renders)
         if collisions:
             raise StoryServiceError(f"Scene move destination already exists: {collisions[0]}")
         if self._scene_has_pending_tasks(source_story, safe_scene_slug):
@@ -682,12 +691,15 @@ class StoryService:
 
         old_tag = f"{{{{SCENE:{source_story}:{safe_scene_slug}}}}}"
         new_tag = f"{{{{SCENE:{target_story}:{safe_scene_slug}}}}}"
+        old_render_prefix = f"{{{{SCENE_RENDER:{source_story}:{safe_scene_slug}:"
+        new_render_prefix = f"{{{{SCENE_RENDER:{target_story}:{safe_scene_slug}:"
         old_story_rel = f"Stories/{source_story}"
         new_story_rel = f"Stories/{target_story}"
         old_pipeline_rel = f"Pipelines/Stories/{source_story}/{safe_scene_slug}"
         new_pipeline_rel = f"Pipelines/Stories/{target_story}/{safe_scene_slug}"
         replacements = [
             (old_tag, new_tag),
+            (old_render_prefix, new_render_prefix),
             (old_story_rel, new_story_rel),
             (old_story_rel.replace("/", "\\"), new_story_rel.replace("/", "\\")),
             (old_pipeline_rel, new_pipeline_rel),
@@ -705,7 +717,10 @@ class StoryService:
             if root.exists()
             for pattern in ("*.md", "*.json")
             for path in root.rglob(pattern)
-            if path not in source_paths and old_tag in path.read_text(encoding="utf-8", errors="ignore")
+            if path not in source_paths and any(
+                token in path.read_text(encoding="utf-8", errors="ignore")
+                for token in (old_tag, old_render_prefix)
+            )
         ]
         originals.update({path: path.read_bytes() for path in managed_paths})
         artifact_originals = {
@@ -724,6 +739,10 @@ class StoryService:
                 target_pipeline.parent.mkdir(parents=True, exist_ok=True)
                 source_pipeline.replace(target_pipeline)
                 moved.append((source_pipeline, target_pipeline))
+            if source_subscene_renders.exists():
+                target_subscene_renders.parent.mkdir(parents=True, exist_ok=True)
+                source_subscene_renders.replace(target_subscene_renders)
+                moved.append((source_subscene_renders, target_subscene_renders))
             for path in [*target_paths, *(target_pipeline.rglob("*") if target_pipeline.exists() else [])]:
                 if not path.is_file() or path.suffix.lower() not in {".json", ".md"}:
                     continue
@@ -745,7 +764,9 @@ class StoryService:
                     path.write_text(text, encoding="utf-8")
             for path in managed_paths:
                 text = path.read_text(encoding="utf-8")
-                path.write_text(text.replace(old_tag, new_tag), encoding="utf-8")
+                for old, new in replacements:
+                    text = text.replace(old, new)
+                path.write_text(text, encoding="utf-8")
             self._save_scene_order(source_story, source_order)
             self._save_scene_order(target_story, target_order)
         except Exception:
@@ -848,7 +869,7 @@ class StoryService:
             "story_settings_file": str(story_settings_path),
             "scene_builder_file": str(scene_builder_path),
             "final_prompt": str(final_prompt_path),
-            "compiler": "scene_render_v3",
+            "compiler": "scene_render_v4",
             "artifacts": artifacts,
             "fragments": fragments,
         }
@@ -1013,7 +1034,7 @@ class StoryService:
         )
 
     def create_default_scene_builder_data(self, story_slug: str, scene_slug: str) -> dict:
-        """Create default Scene Builder V3 data for one existing scene."""
+        """Create default Scene Builder V4 data for one existing scene."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         scene_doc = self.load_scene(safe_story_slug, safe_scene_slug)
@@ -1022,7 +1043,7 @@ class StoryService:
         build_dir = self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
         stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         return {
-            "schema_version": 3,
+            "schema_version": 4,
             "file_kind": "scene",
             "scene": {
                 "id": self.normalize_scene_element_id(safe_scene_slug).lower(),
@@ -1052,6 +1073,7 @@ class StoryService:
                 },
             },
             "scene_elements": [],
+            "subscenes": [],
             "placements": [],
             "props_and_states": [],
             "interactions": [],
@@ -1163,6 +1185,9 @@ class StoryService:
         data["setup"]["composition"] = copy.deepcopy(source.data.get("setup", {}).get("composition", {}))
         data["setup"]["environment"] = copy.deepcopy(source.data.get("setup", {}).get("environment", {}))
         data["scene_elements"] = copy.deepcopy(source.data.get("scene_elements", []))
+        for element in data["scene_elements"]:
+            if isinstance(element, dict):
+                element["subscene_id"] = ""
         data["placements"] = copy.deepcopy(source.data.get("placements", []))
         return self.save_scene_builder_data(safe_story_slug, safe_scene_slug, data)
 
@@ -1203,6 +1228,7 @@ class StoryService:
             item.pop("role", None)
             item.pop("importance", None)
             item.setdefault("notes", "")
+            item.setdefault("subscene_id", "")
             elements.append(item)
         return elements
 
@@ -1324,10 +1350,11 @@ class StoryService:
         environment = self._setup(data, "environment")
         composition = self._setup(data, "composition")
         elements = self._scene_element_lookup(data)
-        if data.get("schema_version") != 3:
-            warnings.append("Invalid schema_version; Scene Builder V3 requires 3.")
+        if data.get("schema_version") != 4:
+            warnings.append("Invalid schema_version; Scene Builder V4 requires 4.")
         if data.get("file_kind") != "scene":
-            warnings.append("Invalid file_kind; Scene Builder V3 requires scene.")
+            warnings.append("Invalid file_kind; Scene Builder V4 requires scene.")
+        warnings.extend(self.scene_render_target_service.validate(data))
         if not str(scene.get("id") or "").strip():
             warnings.append("No scene id specified.")
         if not str(scene.get("name") or "").strip():
@@ -1535,10 +1562,11 @@ class StoryService:
         """Write JSON with stable formatting."""
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-    def _clear_scene_render_queue_items(self, story_slug: str, scene_slug: str) -> None:
+    def _clear_scene_render_queue_items(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> None:
         """Remove stale queued render work for one story scene."""
         proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Manual_Render_Queue"
-        ask_prefix = f"Ask_Story_{story_slug}_{scene_slug}_RENDER_"
+        target_token = "" if render_target_id == "main" else f"_{render_target_id}"
+        ask_prefix = f"Ask_Story_{story_slug}_{scene_slug}{target_token}_RENDER_"
 
         def matches(path: Path) -> bool:
             if path.name.startswith(ask_prefix):
@@ -1550,7 +1578,11 @@ class StoryService:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except Exception:
                 return False
-            return manifest.get("story_slug") == story_slug and manifest.get("scene_slug") == scene_slug
+            return (
+                manifest.get("story_slug") == story_slug
+                and manifest.get("scene_slug") == scene_slug
+                and str(manifest.get("render_target_id") or "main") == render_target_id
+            )
 
         for root in (proxy_root / "Ask", proxy_root / "Answer"):
             if root.exists():
@@ -1558,9 +1590,15 @@ class StoryService:
                     if path.is_dir() and matches(path):
                         shutil.rmtree(path, ignore_errors=True)
 
-    def stage_scene_render(self, story_slug: str, scene_slug: str) -> StoryRenderTask:
+    def stage_scene_render(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> StoryRenderTask:
         """Compile one story scene prompt and stage it for the Render Console."""
-        return self.story_render_service.stage_scene_render(story_slug, scene_slug)
+        return self.story_render_service.stage_scene_render(story_slug, scene_slug, render_target_id)
+
+    def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
+        return self.scene_render_target_service.enable_background(story_slug, scene_slug)
+
+    def disable_scene_subscene(self, story_slug: str, scene_slug: str, target_id: str) -> SceneBuilderDocument:
+        return self.scene_render_target_service.disable(story_slug, scene_slug, target_id)
 
     def image_reference_rows(
         self,
@@ -1663,10 +1701,8 @@ class StoryService:
         for story in self.list_stories():
             for scene in self.list_scenes(story.slug):
                 image_path = self.scene_image_path(story.slug, scene.slug)
-                if not image_path.is_file():
-                    continue
-                rows.append(
-                    ImageReferenceRow(
+                if image_path.is_file():
+                    rows.append(ImageReferenceRow(
                         tag=f"{{{{SCENE:{story.slug}:{scene.slug}}}}}",
                         label=f"{story.title} - {scene.title}",
                         character="",
@@ -1679,8 +1715,27 @@ class StoryService:
                         scene_slug=scene.slug,
                         candidate_pending=self.path_service.scene_candidate_image_path(story.slug, scene.slug).is_file(),
                         image_review_key=f"scene:{story.slug}:{scene.slug}",
-                    )
-                )
+                    ))
+                document = self.load_scene_builder_data(story.slug, scene.slug)
+                for definition in document.data.get("subscenes") or []:
+                    target_id = str(definition.get("id") or "")
+                    image_path = self.path_service.scene_subscene_locked_path(story.slug, scene.slug, target_id)
+                    if not target_id or not image_path.is_file():
+                        continue
+                    rows.append(ImageReferenceRow(
+                        tag=self.scene_render_target_service.image_tag(story.slug, scene.slug, target_id),
+                        label=f"{story.title} - {scene.title} - {definition.get('name') or target_id}",
+                        character="",
+                        phase="",
+                        kind="scene-render",
+                        pipeline="Rendered Scene Subscene",
+                        image_path=str(image_path),
+                        thumbnail_path=str(image_path),
+                        story_slug=story.slug,
+                        scene_slug=scene.slug,
+                        candidate_pending=self.path_service.scene_subscene_candidate_path(story.slug, scene.slug, target_id).is_file(),
+                        image_review_key=f"scene:{story.slug}:{scene.slug}:{target_id}",
+                    ))
         return rows
 
     def _locked_assets(self, character: str, phase: str) -> list[Asset]:

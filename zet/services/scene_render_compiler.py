@@ -103,8 +103,12 @@ def compile_scene_render_ir(
     prompt_sections = select_final_image_prompt_sections(
         default_prompt_sections or {}, scene_data.get("final_image_prompt_overrides")
     )
+    render_target = scene_data.get("_render_target") if isinstance(scene_data.get("_render_target"), dict) else {"id": "main", "label": "Full Scene", "kind": "main"}
     return {
-        "schema_version": 3,
+        "schema_version": 4,
+        "render_target": render_target,
+        "render_inputs": _items(scene_data.get("_render_inputs")),
+        "baked_landmarks": _items(scene_data.get("_baked_landmarks")),
         "scene": {
             "id": scene_data.get("scene", {}).get("id", ""),
             "name": scene_data.get("scene", {}).get("name", ""),
@@ -141,15 +145,20 @@ def compile_scene_render_ir(
 def validate_scene_render_ir(ir: dict[str, Any]) -> None:
     if not isinstance(ir, dict):
         raise ValueError("Scene render IR must be a JSON object.")
-    if ir.get("schema_version") != 3:
-        raise ValueError("Scene render IR schema_version must be 3.")
+    if ir.get("schema_version") != 4:
+        raise ValueError("Scene render IR schema_version must be 4.")
     for key in ("scene", "source", "canvas", "composition", "environment", "resolved_sources"):
         if not isinstance(ir.get(key), dict):
             raise ValueError(f"Scene render IR {key} must be an object.")
+    if "render_target" in ir and not isinstance(ir.get("render_target"), dict):
+        raise ValueError("Scene render IR render_target must be an object.")
     if "depth_lanes" in ir and not isinstance(ir.get("depth_lanes"), dict):
         raise ValueError("Scene render IR depth_lanes must be an object.")
     for key in ("elements", "placements"):
         if not isinstance(ir.get(key), list):
+            raise ValueError(f"Scene render IR {key} must be an array.")
+    for key in ("render_inputs", "baked_landmarks"):
+        if key in ir and not isinstance(ir.get(key), list):
             raise ValueError(f"Scene render IR {key} must be an array.")
     if any(not isinstance(item, dict) or not _clean(item.get("id")) for item in ir["elements"]):
         raise ValueError("Scene render IR elements must be objects with non-blank IDs.")
@@ -169,7 +178,9 @@ def _element(ir: dict[str, Any], element_id: str) -> dict[str, Any]:
 
 
 def _elements_by_id(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {_clean(item.get("id")): item for item in ir.get("elements", []) if _clean(item.get("id"))}
+    elements = {_clean(item.get("id")): item for item in ir.get("baked_landmarks", []) if _clean(item.get("id"))}
+    elements.update({_clean(item.get("id")): item for item in ir.get("elements", []) if _clean(item.get("id"))})
+    return elements
 
 
 def get_element_display_name(element_id: str, elements_by_id: dict[str, dict[str, Any]]) -> str:
@@ -755,12 +766,28 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     elements_by_id = _elements_by_id(ir)
     composition = ir.get("composition", {}) if isinstance(ir.get("composition"), dict) else {}
     backdrop = _backdrop_element(ir)
+    target = ir.get("render_target", {}) if isinstance(ir.get("render_target"), dict) else {}
+    is_subscene = target.get("kind") == "subscene"
     lines = [
         "# Render Task",
         "",
-        "Create one finished scene. Do not show the planning grid or split the image into comic panels.",
+        (
+            "Create one clean full-canvas background plate. Render only the assigned background subscene; do not add foreground subjects, dialogue, a planning grid, or comic panels."
+            if is_subscene else
+            "Create one finished scene. Do not show the planning grid or split the image into comic panels."
+        ),
         "",
     ]
+    if ir.get("render_inputs"):
+        lines.extend(["# Locked Render Inputs", ""])
+        for render_input in ir["render_inputs"]:
+            lines.extend([
+                f"- **{clean_prompt_sentence(render_input.get('label')) or 'Locked subscene'}:** {clean_prompt_sentence(render_input.get('tag'))}",
+                "  Use this accepted image as the authoritative backdrop.",
+                "  Preserve its canvas, framing, camera position, architecture, background elements, lighting, and atmosphere.",
+                "  Do not crop, repaint, replace, move, or redesign its existing content; add only the remaining scene elements and final overlays.",
+            ])
+        lines.append("")
     story_beat = clean_prompt_sentence(ir.get("scene", {}).get("story_beat"))
     if story_beat:
         lines.extend(["# Story Beat", "", f"- {_sentence(story_beat)}", ""])
@@ -789,6 +816,11 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
         for placement in ir.get("placements", [])
         if _clean(placement.get("position_within_cell")).casefold() not in {"", "none", "background", "backdrop"}
     }
+    placements_by_element_id.update({
+        _clean(item.get("id")): item
+        for item in ir.get("baked_landmarks", [])
+        if _clean(item.get("id")) and _clean(item.get("position_within_cell")).casefold() not in {"", "none"}
+    })
     read_order = _lines(composition.get("left_to_right"))
     for depth in ("foreground", "midground", "background", "distant background"):
         depth_element_ids = [
@@ -1063,7 +1095,9 @@ def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = Non
         )
         prompt_lines = basic_prompt_lines
     return {
-        "schema_version": 3,
+        "schema_version": 4,
+        "render_target": ir.get("render_target", {}),
+        "render_inputs": ir.get("render_inputs", []),
         "purpose": "composition_preview",
         "include_dialogue": False,
         "subject_count": forge_plan["subject_count"],

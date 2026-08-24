@@ -124,7 +124,7 @@ class StoryServiceTests(unittest.TestCase):
         if not settings_path.exists():
             service.save_story_settings(settings_path, service.create_default_story_settings(story_path))
         data = {
-            "schema_version": 3,
+            "schema_version": 4,
             "setup": {
                 "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
                 "environment": {"location": "academy archway", "lighting": "morning light"},
@@ -194,7 +194,7 @@ At the Arch
             document = service.save_scene_builder_data("FirstDay", "At-the-Arch", data)
 
             self.assertTrue((story_dir / "At-the-Arch.scene.json").exists())
-            self.assertEqual(3, document.data["schema_version"])
+            self.assertEqual(4, document.data["schema_version"])
             self.assertNotIn("screen_cell", document.data["placements"][0])
             self.assertIn("composition", document.data["setup"])
             self.assertNotIn("camera", document.data["setup"])
@@ -401,7 +401,7 @@ Morning light.
 
 
 
-    def test_stage_scene_render_with_builder_writes_v3_artifacts(self) -> None:
+    def test_stage_scene_render_with_builder_writes_v4_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             story_dir = root / "Stories" / "FirstDay"
@@ -436,7 +436,7 @@ Two students meet at the arch.
             service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(
                 json.dumps(
                     {
-                        "schema_version": 3,
+                        "schema_version": 4,
                         "setup": {
                             "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
                             "environment": {"location": "academy archway", "lighting": "morning light", "mood": "tense"},
@@ -469,7 +469,7 @@ Two students meet at the arch.
             self.assertIn("prompt:", local_prompt)
             self.assertIn("negative:", local_prompt)
             source_map = json.loads((pipeline / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
-            self.assertEqual("scene_render_v3", source_map["compiler"])
+            self.assertEqual("scene_render_v4", source_map["compiler"])
             art_style_source = next(
                 fragment for fragment in source_map["fragments"] if fragment.get("source_label") == "Canonical art style"
             )
@@ -532,7 +532,7 @@ ink wash
             service.scene_builder_json_path("FirstDay", "At-the-Arch").write_text(
                 json.dumps(
                     {
-                        "schema_version": 3,
+                        "schema_version": 4,
                         "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}},
                         "scene_elements": [{"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character"}],
                         "placements": [{"scene_element_id": "tsa", "pose": {"gaze_target_element_id": "missing"}}],
@@ -569,6 +569,62 @@ ink wash
             self.assertEqual(["Beta", "Alpha"], [record.slug for record in service.list_stories()])
             self.assertEqual(["Second", "First"], [record.slug for record in service.list_scenes("Alpha")])
 
+    def test_background_subscene_is_seeded_staged_and_required_by_main(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            service.save_story_settings(
+                story_dir / "Demo.story.json",
+                service.create_default_story_settings(story_dir / "Demo.md"),
+            )
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene"]["story_beat"] = "A hero enters."
+            data["setup"]["environment"].update({"location": "a hall", "general_background_notes": "Stone arches."})
+            data["scene_elements"] = [
+                {"id": "hall", "display_name": "Hall", "resource_type": "Scene-Only", "element_type": "Backdrop", "fallback_visual_description": "stone hall"},
+                {"id": "hero", "display_name": "Hero", "resource_type": "Scene-Only", "element_type": "Character", "fallback_visual_description": "armored hero"},
+            ]
+            data["placements"] = [
+                {"id": "p1", "scene_element_id": "hall", "position_within_cell": "", "depth": "background"},
+                {"id": "p2", "scene_element_id": "hero", "position_within_cell": "center", "depth": "foreground"},
+            ]
+            service.save_scene_builder_data("Demo", "Opening", data)
+
+            document = service.enable_background_subscene("Demo", "Opening")
+            memberships = {item["id"]: item["subscene_id"] for item in document.data["scene_elements"]}
+            self.assertEqual({"hall": "background", "hero": ""}, memberships)
+            background_task = service.stage_scene_render("Demo", "Opening", "background")
+            manifest = json.loads((Path(background_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("background", manifest["render_target_id"])
+            self.assertNotIn("A hero enters", Path(background_task.final_prompt_path).read_text(encoding="utf-8"))
+
+            target_paths = service.scene_render_target_service.review_paths("Demo", "Opening", "background")
+            target_paths["locked"].parent.mkdir(parents=True)
+            target_paths["locked"].write_bytes(b"background")
+            target_paths["metadata"].write_text(
+                json.dumps({"render_input_hash": manifest["render_input_hash"]}), encoding="utf-8"
+            )
+            main_task = service.stage_scene_render("Demo", "Opening")
+            main_ir = json.loads((Path(main_task.pipeline_path) / "Scene_Render_IR.json").read_text(encoding="utf-8"))
+            self.assertEqual(["hero"], [item["id"] for item in main_ir["elements"]])
+            self.assertEqual(["hall"], [item["id"] for item in main_ir["baked_landmarks"]])
+            self.assertEqual("{{SCENE_RENDER:Demo:Opening:background}}", main_ir["render_inputs"][0]["tag"])
+
+            changed = service.load_scene_builder_data("Demo", "Opening").data
+            next(item for item in changed["placements"] if item["scene_element_id"] == "hall")["world_position"] = "far wall"
+            service.save_scene_builder_data("Demo", "Opening", changed)
+            with self.assertRaisesRegex(StoryServiceError, "out of date"):
+                service.stage_scene_render("Demo", "Opening")
+
+            service.disable_scene_subscene("Demo", "Opening", "background")
+            disabled_main = service.stage_scene_render("Demo", "Opening")
+            disabled_ir = json.loads((Path(disabled_main.pipeline_path) / "Scene_Render_IR.json").read_text(encoding="utf-8"))
+            self.assertEqual({"hall", "hero"}, {item["id"] for item in disabled_ir["elements"]})
+
 
     def test_move_scene_moves_artifacts_orders_and_structured_references(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -587,7 +643,7 @@ ink wash
             (source / "Opening.png").write_bytes(b"image")
             (source / "Opening.scene.json").write_text(
                 json.dumps({
-                    "schema_version": 3,
+                    "schema_version": 4,
                     "file_kind": "scene",
                     "scene": {
                         "slug": "Opening",
@@ -595,6 +651,7 @@ ink wash
                         "story_settings_path": "Stories/Source/Source.story.json",
                         "associated_png_path": "Stories/Source/Opening.png",
                     },
+                    "subscenes": [{"id": "background", "name": "Background", "enabled": True, "assembly_role": "backdrop", "prompt_overrides": {}}],
                 }),
                 encoding="utf-8",
             )
@@ -609,6 +666,12 @@ ink wash
             zine = root / "Assets" / "Zines" / "Sample"
             zine.mkdir(parents=True)
             (zine / "Sample.json").write_text('{"front":"{{SCENE:Source:Opening}}"}', encoding="utf-8")
+            subscene_render = source / "_Subscene_Renders" / "Opening" / "background.png"
+            subscene_render.parent.mkdir(parents=True)
+            subscene_render.write_bytes(b"background")
+            (zine / "Subscene.json").write_text(
+                '{"background":"{{SCENE_RENDER:Source:Opening:background}}"}', encoding="utf-8"
+            )
 
             document = service.move_scene("Source", "Opening", "Target")
 
@@ -627,6 +690,11 @@ ink wash
             scene_data = json.loads((target / "Opening.scene.json").read_text(encoding="utf-8"))
             self.assertEqual("Stories/Target/Target.story.json", scene_data["scene"]["story_settings_path"])
             self.assertIn("{{SCENE:Target:Opening}}", (zine / "Sample.json").read_text(encoding="utf-8"))
+            self.assertTrue((target / "_Subscene_Renders" / "Opening" / "background.png").is_file())
+            self.assertIn(
+                "{{SCENE_RENDER:Target:Opening:background}}",
+                (zine / "Subscene.json").read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":

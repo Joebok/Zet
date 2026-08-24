@@ -375,10 +375,12 @@ class AIAnswerHarvester:
             and str(ask_manifest.get("scene_slug") or "").strip()
         ):
             disposition, target_path = self.scene_image_review_service.apply_answer(answer_path, response_path, ask_manifest)
-            pipeline_path = self.path_service.story_pipeline_path(
-                str(ask_manifest["story_slug"]),
-                str(ask_manifest["scene_slug"]),
-            )
+            pipeline_path = Path(str(ask_manifest.get("pipeline_path") or ""))
+            if not str(pipeline_path).strip() or str(pipeline_path) == ".":
+                pipeline_path = self.path_service.story_pipeline_path(
+                    str(ask_manifest["story_slug"]),
+                    str(ask_manifest["scene_slug"]),
+                )
             api_call_path = answer_path / "Stable_Matrix_API_Call.json"
             if api_call_path.exists():
                 pipeline_path.mkdir(parents=True, exist_ok=True)

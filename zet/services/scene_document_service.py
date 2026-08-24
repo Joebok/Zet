@@ -4,7 +4,7 @@ from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 
 
 class SceneDocumentService:
-    """Own the Scene Builder V3 normalization policy."""
+    """Own the Scene Builder V4 normalization policy."""
 
     def __init__(self, story_service, error_type):
         self.story_service = story_service
@@ -14,8 +14,8 @@ class SceneDocumentService:
         story = self.story_service
         if not isinstance(data, dict):
             raise self.error_type("Scene Builder JSON must be an object.")
-        schema_version = data.get("schema_version", 3)
-        if schema_version != 3:
+        schema_version = data.get("schema_version", 4)
+        if schema_version != 4:
             raise self.error_type(f"Unsupported Scene Builder schema_version: {schema_version}")
         if data.get("file_kind") not in (None, "scene"):
             raise self.error_type(f"Unsupported Scene Builder file_kind: {data.get('file_kind')}")
@@ -24,7 +24,7 @@ class SceneDocumentService:
         image_path = story.scene_image_path(safe_story_slug, safe_scene_slug)
         default = story.create_default_scene_builder_data(safe_story_slug, safe_scene_slug)
         normalized = story._merge_scene_builder_defaults(default, data)
-        normalized["schema_version"] = 3
+        normalized["schema_version"] = 4
         normalized["file_kind"] = "scene"
         normalized.setdefault("scene", {})
         normalized["scene"]["id"] = normalized["scene"].get("id") or story.normalize_scene_element_id(safe_scene_slug).lower()
@@ -56,6 +56,7 @@ class SceneDocumentService:
             and not (element_id in seen_composition_ids or seen_composition_ids.add(element_id))
         ]
         normalized["scene_elements"] = story._normalized_scene_elements(normalized)
+        story.scene_render_target_service.normalize(normalized)
         normalized["placements"] = story._normalized_placements(normalized)
         suppressed_element_ids = {
             str(item.get("scene_element_id") or "")

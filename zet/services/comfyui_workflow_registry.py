@@ -207,7 +207,13 @@ def _reference_bindings(
         if isinstance(item, dict)
     }
     bindings = []
-    for assignment in ir.get("references", []):
+    assignments = list(ir.get("references", []))
+    assignments.extend({
+        "tag": item.get("tag", ""),
+        "applies_to_element_id": "",
+        "render_input_role": item.get("assembly_role", "backdrop"),
+    } for item in ir.get("render_inputs", []) if isinstance(item, dict))
+    for assignment in assignments:
         if not isinstance(assignment, dict):
             continue
         tag = str(assignment.get("tag") or "").strip()
@@ -217,7 +223,7 @@ def _reference_bindings(
         path = Path(str(source.get("path") or "")).expanduser()
         element_id = str(assignment.get("applies_to_element_id") or "")
         element = elements.get(element_id, {})
-        role = "backdrop" if str(element.get("element_type") or "") == "Backdrop" else "character"
+        role = "backdrop" if assignment.get("render_input_role") == "backdrop" or str(element.get("element_type") or "") == "Backdrop" else "character"
         input_name = source.get("comfyui_input_name")
         if not input_name:
             path_key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:12]

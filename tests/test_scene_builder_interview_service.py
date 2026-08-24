@@ -43,7 +43,7 @@ def _element_result(questions=None):
 class SceneBuilderInterviewServiceTests(unittest.TestCase):
     def _data(self):
         return {
-            "schema_version": 3,
+            "schema_version": 4,
             "file_kind": "scene",
             "scene": {"name": "Arrival", "story_beat": ""},
             "setup": {

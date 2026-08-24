@@ -287,7 +287,7 @@ Checkpoint = "model.safetensors"
                 json.dumps({"canvas": {"aspect_ratio": "16:9"}}),
                 encoding="utf-8",
             )
-            ir_text = json.dumps({"schema_version": 3, "scene": {"slug": "scene"}})
+            ir_text = json.dumps({"schema_version": 4, "scene": {"slug": "scene"}})
             (workspace / "Scene_Render_IR.json").write_text(ir_text, encoding="utf-8")
             app = ZetApp.from_config(config_path)
 

@@ -205,6 +205,30 @@ class PathService:
         """Return the review comment path for one scene candidate."""
         return self.story_pipeline_path(story_slug, scene_slug) / "Candidate" / "Render_Review_Comment.md"
 
+    def scene_subscene_pipeline_path(self, story_slug: str, scene_slug: str, target_id: str) -> Path:
+        """Return the pipeline folder for one scene subscene target."""
+        return self.story_pipeline_path(story_slug, scene_slug) / "Subscenes" / str(target_id or "").strip()
+
+    def scene_subscene_locked_path(self, story_slug: str, scene_slug: str, target_id: str) -> Path:
+        """Return the stable locked image path for one scene subscene."""
+        return self.story_folder_path(story_slug) / "_Subscene_Renders" / scene_slug / f"{target_id}.png"
+
+    def scene_subscene_locked_metadata_path(self, story_slug: str, scene_slug: str, target_id: str) -> Path:
+        """Return locked-render provenance for one scene subscene."""
+        return self.scene_subscene_locked_path(story_slug, scene_slug, target_id).with_suffix(".render.json")
+
+    def scene_subscene_candidate_path(self, story_slug: str, scene_slug: str, target_id: str) -> Path:
+        """Return the pending image path for one scene subscene."""
+        return self.scene_subscene_pipeline_path(story_slug, scene_slug, target_id) / "Candidate" / f"{target_id}.png"
+
+    def scene_subscene_comment_path(self, story_slug: str, scene_slug: str, target_id: str) -> Path:
+        """Return the review comment path for one scene subscene."""
+        return self.scene_subscene_pipeline_path(story_slug, scene_slug, target_id) / "Candidate" / "Render_Review_Comment.md"
+
+    def scene_subscene_locked_backups_path(self, story_slug: str, scene_slug: str, target_id: str) -> Path:
+        """Return locked-image backups for one scene subscene."""
+        return self.scene_subscene_pipeline_path(story_slug, scene_slug, target_id) / "Locked_Backups"
+
     def zines_path(self) -> Path:
         """Return the generated zine asset folder."""
         return Path(self.config.base_asset_path) / "Zines"

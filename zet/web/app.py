@@ -274,6 +274,11 @@ def _scene_document_payload(zet_app: ZetApp, document) -> dict[str, Any]:
 def _scene_builder_document_payload(zet_app: ZetApp, document) -> dict[str, Any]:
     """Serialize one Scene Builder document for dashboard editing."""
     review = zet_app.scene_image_review_status(document.story.slug, document.scene.slug)
+    render_targets = [asdict(review)]
+    for definition in document.data.get("subscenes") or []:
+        target_id = str(definition.get("id") or "")
+        if target_id:
+            render_targets.append(asdict(zet_app.scene_image_review_status(document.story.slug, document.scene.slug, target_id)))
     return {
         "story": _story_record_payload(document.story),
         "scene": _scene_record_payload(document.scene),
@@ -285,6 +290,7 @@ def _scene_builder_document_payload(zet_app: ZetApp, document) -> dict[str, Any]
         "png_exists": document.png_exists,
         "candidate_pending": review.candidate_exists,
         "image_review_key": review.review_key,
+        "render_targets": render_targets,
         "validation_warnings": list(document.validation_warnings),
         "blocked": document.blocked,
         "error": document.error,
@@ -321,6 +327,7 @@ def _story_render_task_payload(task) -> dict[str, Any]:
         "final_prompt_path": task.final_prompt_path,
         "expected_output": task.expected_output,
         "reference_files": _jsonable(task.reference_files),
+        "render_target_id": task.render_target_id,
     }
 
 
@@ -519,8 +526,8 @@ def _scene_render_review_task_payload(status) -> dict[str, Any]:
     return asdict(status)
 
 
-def _scene_render_review_context_payload(zet_app: ZetApp, story_slug: str, scene_slug: str) -> dict[str, Any]:
-    status = zet_app.scene_image_review_status(story_slug, scene_slug)
+def _scene_render_review_context_payload(zet_app: ZetApp, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict[str, Any]:
+    status = zet_app.scene_image_review_status(story_slug, scene_slug, render_target_id)
     return {
         **asdict(status),
         "is_reviewable": status.candidate_exists,
@@ -1382,6 +1389,32 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/subscenes/background/enable")
+    def scene_background_subscene_enable(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.enable_background_subscene(story_slug, scene_slug)
+            return {
+                "document": _scene_builder_document_payload(zet_app, document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": "Background sub-render enabled. Background-depth membership was seeded once.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/subscenes/{target_id}/disable")
+    def scene_subscene_disable(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.disable_scene_subscene(story_slug, scene_slug, target_id)
+            return {
+                "document": _scene_builder_document_payload(zet_app, document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"{target_id} sub-render disabled; its setup and locked image were retained.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/scene-candidate-sources")
     def scene_candidate_sources() -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -1840,6 +1873,18 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/render-targets/{target_id}/stage-render")
+    def scene_target_stage_render(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            task = zet_app.stage_scene_render(story_slug, scene_slug, target_id)
+            return {
+                "task": _story_render_task_payload(task),
+                "message": f"Staged {target_id} render for {task.scene_slug}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/single-character-lab/prompt")
     def single_character_lab_prompt(
         character: str = Query(...),
@@ -2258,6 +2303,46 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     if _is_render_review_asset(asset)
                 ],
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/render-review/scenes/{story_slug}/{scene_slug}/targets/{target_id}")
+    def scene_target_render_review_detail(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _scene_render_review_context_payload(zet_app, story_slug, scene_slug, target_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/targets/{target_id}/promote-to-locked")
+    def scene_target_render_review_promote(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.promote_scene_image(story_slug, scene_slug, target_id)
+            return {"message": f"{status.render_target_label} image approved.", "review": asdict(status)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/targets/{target_id}/discard-candidate")
+    def scene_target_render_review_discard(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.discard_scene_image_candidate(story_slug, scene_slug, target_id)
+            return {"message": f"{status.render_target_label} candidate discarded.", "review": asdict(status)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/targets/{target_id}/comment")
+    async def scene_target_render_review_comment(story_slug: str, scene_slug: str, target_id: str, request: Request) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            payload = await request.json()
+            comment = zet_app.save_scene_image_review_comment(
+                story_slug, scene_slug, str(payload.get("comment") or ""), target_id
+            )
+            response = _scene_render_review_context_payload(zet_app, story_slug, scene_slug, target_id)
+            response["message"] = "Image review comment saved." if comment else "Image review comment cleared."
+            return response
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2869,6 +2954,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 review = asdict(zet_app.scene_image_review_status(
                     str(task.manifest["story_slug"]),
                     str(task.manifest["scene_slug"]),
+                    str(task.manifest.get("render_target_id") or "main"),
                 ))
             except Exception as exc:
                 harvest_warning = f"Image answer was saved and is pending harvest: {exc}"

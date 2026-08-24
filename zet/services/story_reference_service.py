@@ -130,6 +130,27 @@ class StoryReferenceService:
             "scene_slug": safe_scene_slug,
         }
 
+    def resolve_scene_render_reference(self, tag: str, story_slug: str, scene_slug: str, target_id: str) -> dict:
+        safe_story_slug = re.sub(r"[^A-Za-z0-9]+", "-", story_slug).strip("-")
+        safe_scene_slug = re.sub(r"[^A-Za-z0-9]+", "-", scene_slug).strip("-")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", target_id or ""):
+            raise self.error_type(f"Invalid scene render reference: {tag}")
+        if safe_story_slug != story_slug or safe_scene_slug != scene_slug:
+            raise self.error_type(f"Invalid scene render reference: {tag}")
+        path = self.path_service.scene_subscene_locked_path(safe_story_slug, safe_scene_slug, target_id)
+        if not path.is_file():
+            raise self.error_type(f"Scene render image not found: {path}")
+        return {
+            "role": "story_reference",
+            "label": f"{safe_story_slug} - {safe_scene_slug} - {target_id}",
+            "tag": tag,
+            "path": str(path),
+            "kind": "scene-render",
+            "story_slug": safe_story_slug,
+            "scene_slug": safe_scene_slug,
+            "render_target_id": target_id,
+        }
+
     def resolve_image_tag(self, tag: str) -> dict:
         """Resolve exactly one complete Zet image tag."""
         cleaned = str(tag or "").strip()
@@ -150,6 +171,11 @@ class StoryReferenceService:
             if tag not in seen:
                 seen.add(tag)
                 references.append(self.resolve_aux_reference(tag))
+        for match in re.finditer(r"\{\{SCENE_RENDER:([^:}]+):([^:}]+):([^:}]+)\}\}", scene_text or ""):
+            tag = match.group(0)
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self.resolve_scene_render_reference(tag, match.group(1), match.group(2), match.group(3)))
         for match in re.finditer(pattern, scene_text or ""):
             tag = match.group(0)
             if tag in seen:

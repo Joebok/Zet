@@ -116,6 +116,26 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             self.assertEqual(target, service.path_service.scene_locked_image_path("story", "scene"))
             self.assertFalse(target.exists())
 
+    def test_subscene_answers_use_independent_paths_and_provenance(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            service = SceneImageReviewService(_StoryService(root))
+            answer, response, manifest = self._answer(root, "background-answer", b"background")
+            manifest.update({"render_target_id": "background", "render_input_hash": "hash-1"})
+
+            disposition, target = service.apply_answer(answer, response, manifest)
+
+            self.assertEqual("locked", disposition)
+            self.assertEqual(
+                service.path_service.scene_subscene_locked_path("story", "scene", "background"),
+                target,
+            )
+            metadata = json.loads(
+                service.path_service.scene_subscene_locked_metadata_path("story", "scene", "background").read_text(encoding="utf-8")
+            )
+            self.assertEqual("hash-1", metadata["render_input_hash"])
+            self.assertFalse(service.path_service.scene_locked_image_path("story", "scene").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
