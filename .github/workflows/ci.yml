@@ -2,8 +2,26 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - "Archive/**"
+      - "Docs/**"
+      - "_images/**"
+      - "img/**"
+      - "tests/browser/**"
+      - "playwright.config.mjs"
+      - "package.json"
+      - "package-lock.json"
   push:
     branches: [main]
+    paths-ignore:
+      - "Archive/**"
+      - "Docs/**"
+      - "_images/**"
+      - "img/**"
+      - "tests/browser/**"
+      - "playwright.config.mjs"
+      - "package.json"
+      - "package-lock.json"
 
 permissions:
   contents: read

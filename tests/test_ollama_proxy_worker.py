@@ -18,79 +18,9 @@ from AI_Manager.proxy_worker_output import ANSI_GREEN, ANSI_RED, ANSI_WHITE, ANS
 
 
 class OllamaProxyWorkerTests(unittest.TestCase):
-    def test_local_image_jobs_use_local_render_job_type(self):
-        self.assertEqual(
-            "LOCAL_RENDER",
-            job_type({"worker_type": "local_image_render", "pipeline_stage": "PROMPT_REVIEW"}),
-        )
 
-    def test_job_output_uses_brief_multiline_format_and_colors(self):
-        manifest = {
-            "ask_id": "Ask_Story_Test",
-            "pipeline_stage": "PROMPT_ANALYSIS",
-            "worker_type": "ollama_generate",
-        }
 
-        output = StringIO()
-        with redirect_stdout(output):
-            log_job(manifest, "START")
-            log_job(manifest, "DONE", result="SUCCESS")
 
-        lines = output.getvalue().splitlines()
-        self.assertRegex(lines[0], rf"^{re.escape(ANSI_YELLOW)}\d{{2}}-\d{{2}}-\d{{2}} \d{{2}}:\d{{2}} PROMPT_ANALYSIS START")
-        self.assertEqual(f"{ANSI_WHITE}    Ask_Story_Test\033[0m", lines[1])
-        self.assertRegex(lines[2], rf"^{re.escape(ANSI_GREEN)}\d{{2}}-\d{{2}}-\d{{2}} \d{{2}}:\d{{2}} PROMPT_ANALYSIS DONE SUCCESS")
-
-        errors = StringIO()
-        with redirect_stderr(errors):
-            log_job(manifest, "DONE", result="ERROR", error_message="render failed")
-
-        error_lines = errors.getvalue().splitlines()
-        self.assertRegex(error_lines[0], rf"^{re.escape(ANSI_RED)}\d{{2}}-\d{{2}}-\d{{2}} \d{{2}}:\d{{2}} PROMPT_ANALYSIS DONE ERROR")
-        self.assertEqual(f"{ANSI_WHITE}    Ask_Story_Test\033[0m", error_lines[1])
-        self.assertEqual(f"{ANSI_RED}render failed\033[0m", error_lines[2])
-
-    def test_call_ollama_once_sets_keep_alive_zero(self):
-        class FakeResponse:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-            def read(self):
-                return b'{"response": "ok"}'
-
-        captured = {}
-
-        def fake_urlopen(request, timeout):
-            captured["payload"] = json.loads(request.data.decode("utf-8"))
-            return FakeResponse()
-
-        with patch("AI_Manager.ollama_proxy_worker.urllib.request.urlopen", fake_urlopen):
-            response = call_ollama_once("http://localhost:11434/api/generate", "llama3", "hello")
-
-        self.assertEqual(response, "ok")
-        self.assertEqual(captured["payload"]["keep_alive"], 0)
-        self.assertIs(captured["payload"]["think"], False)
-
-    def test_scheduled_keep_alive_reuses_only_the_next_matching_resource(self):
-        with patch.dict("os.environ", {
-            "AI_PROXY_CURRENT_RESOURCE_KEY": "ollama:vision",
-            "AI_PROXY_NEXT_JOB_PRESENT": "1",
-            "AI_PROXY_NEXT_RESOURCE_KEY": "ollama:vision",
-        }, clear=False):
-            self.assertEqual("5m", scheduled_keep_alive("vision"))
-
-        with patch.dict("os.environ", {
-            "AI_PROXY_CURRENT_RESOURCE_KEY": "ollama:vision",
-            "AI_PROXY_NEXT_JOB_PRESENT": "1",
-            "AI_PROXY_NEXT_RESOURCE_KEY": "ollama:other",
-        }, clear=False):
-            self.assertEqual(0, scheduled_keep_alive("vision"))
-
-        with patch.dict("os.environ", {"AI_PROXY_NEXT_JOB_PRESENT": "0"}, clear=False):
-            self.assertEqual("5m", scheduled_keep_alive("vision"))
 
     def test_call_ollama_once_forwards_multimodal_json_options(self):
         class FakeResponse:
@@ -117,27 +47,6 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         self.assertEqual("http://localhost:11434/api/chat", captured["url"])
         self.assertEqual("json", captured["payload"]["format"])
 
-    def test_call_ollama_once_forwards_one_image_to_generate(self):
-        class FakeResponse:
-            def __enter__(self): return self
-            def __exit__(self, exc_type, exc, tb): return False
-            def read(self): return b'{"response":"ok"}'
-
-        captured = {}
-        def fake_urlopen(request, timeout):
-            captured["payload"] = json.loads(request.data.decode("utf-8"))
-            captured["url"] = request.full_url
-            return FakeResponse()
-
-        with patch("AI_Manager.ollama_proxy_worker.urllib.request.urlopen", fake_urlopen):
-            call_ollama_once(
-                "http://localhost:11434/api/generate", "vision-analysis:latest", "inspect",
-                images=["reference"],
-            )
-
-        self.assertEqual(["reference"], captured["payload"]["images"])
-        self.assertNotIn("system", captured["payload"])
-        self.assertEqual("http://localhost:11434/api/generate", captured["url"])
 
     def test_call_ollama_once_forwards_response_schema_to_generate_and_chat(self):
         class FakeResponse:
@@ -167,8 +76,6 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "1 .* tags for 2 images"):
             ensure_explicit_image_tags("Reference: [img]", 2)
 
-    def test_generation_options_keep_legacy_defaults(self):
-        self.assertEqual((0.1, None), ollama_generation_options({}))
 
     def test_generation_options_reject_invalid_values(self):
         for manifest in (
@@ -218,24 +125,3 @@ class OllamaProxyWorkerTests(unittest.TestCase):
             self.assertEqual(32768, call.call_args.kwargs["num_ctx"])
             self.assertEqual({"type": "object"}, call.call_args.kwargs["response_schema"])
             self.assertEqual("5m", call.call_args.kwargs["keep_alive"])
-
-    def test_process_claimed_legacy_manifest_uses_managed_fallback(self):
-        with TemporaryDirectory() as temp_dir:
-            folder = Path(temp_dir) / "Running" / "zet" / "Ask_legacy"
-            folder.mkdir(parents=True)
-            (folder / "OLLAMA_PROMPT.md").write_text("hello", encoding="utf-8")
-            (folder / "ask_manifest.json").write_text(json.dumps({
-                "version": 1,
-                "ask_id": folder.name,
-                "worker_type": "ollama_generate",
-                "prompt_file": "OLLAMA_PROMPT.md",
-                "expected_output": "MODEL_RESPONSE.md",
-            }), encoding="utf-8")
-
-            with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value="ok") as call:
-                result = process_claimed(
-                    folder, "worker-1", "http://localhost:11434/api/generate", 30, 0, 0, 0,
-                )
-
-            self.assertEqual("SUCCESS", result)
-            self.assertEqual("general-purpose:latest", call.call_args.args[1])

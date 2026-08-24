@@ -9206,7 +9206,7 @@ async function loadPromptEvolution() {
   }
   restorePromptEvolutionSettings(stickySettings);
   if (!stickySettings[promptEvolutionCheckpoint.id]) {
-    const preferredCheckpoint = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("perfectdeliberate_v90"));
+    const preferredCheckpoint = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("tastyrice"));
     if (preferredCheckpoint) promptEvolutionCheckpoint.value = preferredCheckpoint.value;
   }
   promptEvolutionTemplateText.value = state.promptEvolutionTemplates[promptEvolutionTemplateName.value] || ""; renderPromptEvolutionAsset();
@@ -9272,7 +9272,7 @@ async function refreshPromptEvolutionCheckpoints() {
   const payload = await fetchJson(`/api/local-image/checkpoints?preset=${encodeURIComponent(promptEvolutionProfile.value || "body-reference-preview")}&backend=${encodeURIComponent(promptEvolutionBackend.value || "stable_matrix")}`);
   setSelectOptionsWithLabels(promptEvolutionCheckpoint, (payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title })));
   const preferred = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value === previous)
-    || Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("perfectdeliberate_v90"));
+    || Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("tastyrice"));
   if (preferred) promptEvolutionCheckpoint.value = preferred.value;
   savePromptEvolutionSettings();
 }

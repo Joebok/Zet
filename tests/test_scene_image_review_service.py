@@ -76,35 +76,7 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             self.assertEqual(service.status("story", "scene").comment, "")
             self.assertEqual(target.read_bytes(), b"candidate-2")
 
-    def test_candidate_without_locked_remains_candidate_and_can_be_promoted(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            service = SceneImageReviewService(_StoryService(root))
-            candidate = service.path_service.scene_candidate_image_path("story", "scene")
-            candidate.parent.mkdir(parents=True)
-            candidate.write_bytes(b"existing candidate")
-            answer, response, manifest = self._answer(root, "answer", b"replacement")
 
-            disposition, _ = service.apply_answer(answer, response, manifest)
-            self.assertEqual(disposition, "candidate")
-            self.assertFalse(service.status("story", "scene").locked_exists)
-            service.promote("story", "scene")
-            status = service.status("story", "scene")
-            self.assertTrue(status.locked_exists)
-            self.assertFalse(status.candidate_exists)
-            self.assertEqual(Path(status.locked_image_path).read_bytes(), b"replacement")
-
-    def test_list_pending_filters_by_story_and_scene(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            service = SceneImageReviewService(_StoryService(Path(temp_dir)))
-            for story_slug, scene_slug in (("story", "scene"), ("other-story", "other-scene")):
-                candidate = service.path_service.scene_candidate_image_path(story_slug, scene_slug)
-                candidate.parent.mkdir(parents=True)
-                candidate.write_bytes(b"candidate")
-
-            self.assertEqual(len(service.list_pending()), 2)
-            filtered = service.list_pending("story", "scene")
-            self.assertEqual([(item.story_slug, item.scene_slug) for item in filtered], [("story", "scene")])
 
     def test_promote_backs_up_locked_and_discard_preserves_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:

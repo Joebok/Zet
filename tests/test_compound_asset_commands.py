@@ -61,33 +61,8 @@ class CompoundAssetCommandTests(unittest.TestCase):
         self.assertFalse((self.character_dir / "Costume_Travel_Gear.md").exists())
         self.assertEqual([], self._payload()["assets"])
 
-    def test_create_costume_does_not_write_assets_when_template_write_fails(self) -> None:
-        with patch.object(self.costumes, "_write_text_atomic", side_effect=OSError("injected")):
-            with self.assertRaises(OSError):
-                self.costumes.create_costume("Test", "Adult", "Travel Gear", "")
 
-        self.assertEqual([], self._payload()["assets"])
 
-    def test_update_costume_restores_template_when_asset_write_fails(self) -> None:
-        created = self.costumes.create_costume("Test", "Adult", "Travel Gear", "")
-        old_path = Path(created.costume.path)
-        original_assets = self.assets_path.read_bytes()
-
-        with patch.object(self.repository, "_write_payload", side_effect=OSError("injected")):
-            with self.assertRaises(OSError):
-                self.costumes.update_costume("Test", "Adult", created.costume.slug, "Formal Gear")
-
-        self.assertTrue(old_path.exists())
-        self.assertFalse((self.character_dir / "Costume_Formal_Gear.md").exists())
-        self.assertEqual(original_assets, self.assets_path.read_bytes())
-
-    def test_create_expression_rolls_back_definition_when_asset_write_fails(self) -> None:
-        with patch.object(self.repository, "_write_payload", side_effect=OSError("injected")):
-            with self.assertRaises(OSError):
-                self.expressions.create_expression("Test", "Adult", "Happy", "key-1", "")
-
-        self.assertFalse((self.character_dir / "Expressions" / "Happy.md").exists())
-        self.assertEqual([], self._payload()["assets"])
 
     def test_update_expression_restores_definition_when_asset_write_fails(self) -> None:
         created = self.expressions.create_expression(

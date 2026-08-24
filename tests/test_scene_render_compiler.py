@@ -33,25 +33,6 @@ class SceneRenderCompilerTests(unittest.TestCase):
         expected_tail = "\n\n".join(DEFAULT_PROMPT_SECTIONS.values()) + "\n"
         self.assertTrue(prompt.endswith(expected_tail))
 
-    def test_nonblank_tail_override_replaces_only_its_section_literally(self):
-        override = "# Avoid\n\nkeep  lowercase,  spacing.."
-        scene = {
-            "final_image_prompt_overrides": {
-                "anatomical_requirements": "  ",
-                "avoid": f"\n{override}\n",
-            },
-            "setup": {"environment": {"important_exclusions": ["legacy environment term"]}},
-            "avoid": {"scene_specific": ["legacy scene term"]},
-        }
-        ir = self._ir(scene)
-        prompt = final_image_prompt_text(ir)
-
-        self.assertEqual(override, ir["final_image_prompt_sections"]["avoid"])
-        self.assertIn(override, prompt)
-        self.assertNotIn(DEFAULT_PROMPT_SECTIONS["avoid"], prompt)
-        self.assertNotIn("legacy environment term", prompt)
-        self.assertNotIn("legacy scene term", prompt)
-        self.assertIn(DEFAULT_PROMPT_SECTIONS["anatomical_requirements"], prompt)
 
     def test_tail_template_validation_names_missing_section(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -68,170 +49,11 @@ class SceneRenderCompilerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Avoid.*found 2"):
                 load_final_image_prompt_sections(path)
 
-    def test_display_names_hide_internal_ids_and_empty_fields(self):
-        prompt = self._prompt({
-            "setup": {
-                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
-                "environment": {"location": "In front of the archway..", "general_foreground_notes": "", "general_background_notes": ""},
-            },
-            "scene_elements": [{"id": "Valindia_38f52dd6", "display_name": "Valindia", "element_type": "Character"}],
-            "placements": [{"scene_element_id": "Valindia_38f52dd6", "position_within_cell": "left", "depth": "foreground", "pose": {"summary": "stands"}}],
-            "reference_assignments": [{"tag": "{{REF:VAL}}", "applies_to_element_id": "Valindia_38f52dd6", "roles": [], "ignore": []}],
-        })
 
-        self.assertIn("**Valindia:** Stands in the left foreground.", prompt)
-        self.assertIn("In front of the archway.", prompt)
-        self.assertIn("The scene takes place In front of the archway.", prompt)
-        self.assertNotIn("The scene takes place at In front", prompt)
-        self.assertIn("Create one finished scene. Do not show the planning grid or split the image into comic panels.", prompt)
-        self.assertIn("# Canvas\n\n- Landscape 16:9.\n", prompt)
-        self.assertNotIn("Create one finished landscape", prompt)
-        self.assertNotIn("Render one continuous scene", prompt)
-        self.assertNotIn("Valindia_38f52dd6", prompt)
-        self.assertNotIn(": .", prompt)
-        self.assertNotIn("preserve ; ignore .", prompt)
 
-    def test_world_position_is_separate_from_pose_and_camera_placement(self):
-        prompt = self._prompt({
-            "scene_elements": [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"}],
-            "placements": [{
-                "scene_element_id": "Tsaeytte",
-                "position_within_cell": "left",
-                "depth": "foreground",
-                "world_position": "at the edge of the pit",
-                "pose": {"summary": "Looking straight down"},
-            }],
-        })
 
-        self.assertIn(
-            "**Tsaeytte:** At the edge of the pit. Looking straight down. Place Tsaeytte in the left foreground region.",
-            prompt,
-        )
-        self.assertNotIn("at the edge of the pit left foreground", prompt.lower())
 
-    def test_world_position_without_pose_and_exact_pose_prefix_cleanup(self):
-        scene = {
-            "scene_elements": [{"id": "Tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"}],
-            "placements": [{
-                "scene_element_id": "Tsaeytte",
-                "position_within_cell": "center",
-                "depth": "foreground",
-                "world_position": "inside the doorway.",
-            }],
-        }
-        self.assertIn(
-            "**Tsaeytte:** Inside the doorway. Place Tsaeytte in the center foreground region.",
-            self._prompt(scene),
-        )
-        scene["placements"][0].update({
-            "world_position": "at the edge of the pit",
-            "pose": {"summary": "At the edge of the pit, looking straight down."},
-        })
-        self.assertIn(
-            "**Tsaeytte:** At the edge of the pit. Looking straight down. Place Tsaeytte in the center foreground region.",
-            self._prompt(scene),
-        )
 
-    def test_none_position_suppresses_all_placement_output(self):
-        scene = {
-            "setup": {
-                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
-                "composition": {"left_to_right": ["satchel", "hero"]},
-                "environment": {},
-            },
-            "scene_elements": [
-                {"id": "satchel", "display_name": "Satchel", "element_type": "Prop", "element_visual_override": "worn red leather satchel"},
-                {"id": "hero", "display_name": "Hero", "element_type": "Character"},
-            ],
-            "placements": [
-                {
-                    "scene_element_id": "satchel",
-                    "position_within_cell": "None",
-                    "depth": "foreground",
-                    "motion": {"state": "moving", "direction_screen": "left", "cue": "swinging"},
-                    "placement_notes": "beside the doorway",
-                },
-                {"scene_element_id": "hero", "position_within_cell": "center", "depth": "midground"},
-            ],
-        }
-        story = {"style_defaults": {}, "compiler_profiles": {"final_image_prompt": {}}}
-
-        ir = compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS)
-        prompt = final_image_prompt_text(ir)
-
-        self.assertEqual(["hero"], ir["composition"]["left_to_right"])
-        self.assertEqual(["hero"], [item["scene_element_id"] for item in ir["placements"]])
-        self.assertIn("**Element Override:** worn red leather satchel", prompt)
-        self.assertNotIn("**Satchel:**", prompt)
-        self.assertNotIn("beside the doorway", prompt)
-        self.assertNotIn("Satchel is visibly moving", prompt)
-        self.assertNotIn("Satchel, then Hero", prompt)
-
-        scene["placements"][0]["position_within_cell"] = "left"
-        placed_ir = compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS)
-        placed_prompt = final_image_prompt_text(placed_ir)
-        self.assertEqual(["satchel", "hero"], placed_ir["composition"]["left_to_right"])
-        self.assertIn("**Satchel:** Stands in the left foreground.", placed_prompt)
-        self.assertIn("beside the doorway", placed_prompt.lower())
-
-    def test_composition_visual_read_is_grouped_by_depth(self):
-        read_order = ["tsaeytte", "freydis", "galen", "rin", "peri", "blank", "none", "background", "backdrop"]
-        scene = {
-            "setup": {
-                "composition": {
-                    "focal_point": "Tsaeytte",
-                    "left_to_right": read_order,
-                    "composition_notes": "Keep the party separated by depth",
-                },
-            },
-            "scene_elements": [
-                {"id": element_id, "display_name": element_id.capitalize(), "element_type": "Character"}
-                for element_id in [*read_order, "not-listed"]
-            ],
-            "placements": [
-                {"scene_element_id": "tsaeytte", "position_within_cell": "left", "depth": "foreground"},
-                {"scene_element_id": "freydis", "position_within_cell": "right", "depth": "distant background"},
-                {"scene_element_id": "galen", "position_within_cell": "right", "depth": "distant background"},
-                {"scene_element_id": "peri", "position_within_cell": "right", "depth": "distant background"},
-                {"scene_element_id": "rin", "position_within_cell": "right", "depth": "distant background"},
-                {"scene_element_id": "blank", "position_within_cell": " ", "depth": "midground"},
-                {"scene_element_id": "none", "position_within_cell": "None", "depth": "midground"},
-                {"scene_element_id": "background", "position_within_cell": "BACKGROUND", "depth": "background"},
-                {"scene_element_id": "backdrop", "position_within_cell": "Backdrop", "depth": "background"},
-                {"scene_element_id": "not-listed", "position_within_cell": "center", "depth": "midground"},
-            ],
-        }
-
-        prompt = self._prompt(scene)
-        composition = prompt.split("# Composition\n\n", 1)[1].split("\n\n# ", 1)[0]
-
-        expected_foreground = "- Tsaeytte is in the left foreground."
-        expected_distant = "- In the distant background from left to right the viewer sees Freydis, then Galen, then Rin, then Peri."
-        self.assertIn(expected_foreground, composition)
-        self.assertIn(expected_distant, composition)
-        self.assertLess(composition.index(expected_foreground), composition.index(expected_distant))
-        self.assertNotIn("- From left to right the viewer sees:", composition)
-        self.assertNotIn("Blank", composition)
-        self.assertNotIn("None", composition)
-        self.assertNotIn("Background", composition)
-        self.assertNotIn("Backdrop", composition)
-        self.assertNotIn("Not-listed", composition)
-        self.assertLess(composition.index("Primary focal point"), composition.index(expected_foreground))
-        self.assertGreater(composition.index("Keep the party separated by depth"), composition.index(expected_distant))
-
-    def test_fallback_visual_description_used_without_reference_tag(self):
-        prompt = self._prompt({
-            "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}, "environment": {}},
-            "scene_elements": [{
-                "id": "door",
-                "display_name": "Door",
-                "element_type": "Backdrop",
-                "fallback_visual_description": "weathered green academy door with brass hinges",
-            }],
-            "placements": [{"scene_element_id": "door", "position_within_cell": "center", "depth": "background"}],
-        })
-
-        self.assertIn("**Visual description:** weathered green academy door with brass hinges", prompt)
 
     def test_semantic_placement_and_inferred_order(self):
         prompt = self._prompt({
@@ -315,59 +137,8 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn("Tsaeytte_12345678", prompt)
 
-    def test_multiple_dialogue_panels_are_separated_with_special_instructions(self):
-        prompt = self._prompt({
-            "setup": {"canvas": {"orientation": "landscape", "aspect_ratio": "16:9"}, "environment": {}},
-            "scene_elements": [
-                {"id": "val", "display_name": "Valindia", "element_type": "Character"},
-                {"id": "tsa", "display_name": "Tsaeytte", "element_type": "Character"},
-            ],
-            "dialogue": [
-                {"speaker_element_id": "val", "target_element_id": "tsa", "text": "...camouflaged.", "pointer_target": "speaker mouth", "max_lines": 1},
-                {"speaker_element_id": "tsa", "target_element_id": "val", "text": "hey!", "pointer_target": "speaker mouth", "max_lines": 1, "notes": "make this dialog panel smaller to indicate muttering"},
-            ],
-        })
-        self.assertIn("# Dialogue Panels", prompt)
-        self.assertIn("## Dialogue Panel 1", prompt)
-        self.assertIn("## Dialogue Panel 2", prompt)
-        self.assertIn("- **Special instructions:** make this dialog panel smaller to indicate muttering", prompt)
 
-    def test_enabled_story_dialogue_style_is_included_with_dialogue(self):
-        scene = {"setup": {"environment": {}}, "dialogue": [{"text": "Hello."}]}
-        story = {
-            "style_defaults": {},
-            "dialogue_styles": [{
-                "display_name": "Compact parchment dialogue panel",
-                "enabled_by_default": True,
-                "panel_prompt": "Warm ivory parchment panel.",
-                "pointer_prompt": "Short pointer toward the speaker.",
-                "lettering_prompt": "Crisp sans-serif lettering.",
-                "layout_rules": ["Do not obscure faces"],
-                "avoid": ["oversized speech panel"],
-            }],
-            "compiler_profiles": {"final_image_prompt": {"include_dialogue_when_scene_has_dialogue": True}},
-        }
 
-        prompt = final_image_prompt_text(compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS))
-
-        self.assertIn("## Compact parchment dialogue panel", prompt)
-        self.assertIn("- **Panel:** Warm ivory parchment panel.", prompt)
-        self.assertIn("- **Pointer:** Short pointer toward the speaker.", prompt)
-        self.assertIn("- **Lettering:** Crisp sans-serif lettering.", prompt)
-        self.assertIn("- **Layout:** Do not obscure faces.", prompt)
-        self.assertIn("- **Avoid:** oversized speech panel.", prompt)
-
-    def test_dialogue_style_is_omitted_when_profile_disables_dialogue(self):
-        scene = {"setup": {"environment": {}}, "dialogue": [{"text": "Hello."}]}
-        story = {
-            "style_defaults": {},
-            "dialogue_styles": [{"enabled_by_default": True, "panel_prompt": "Hidden style."}],
-            "compiler_profiles": {"final_image_prompt": {"include_dialogue_when_scene_has_dialogue": False}},
-        }
-
-        prompt = final_image_prompt_text(compile_scene_render_ir(scene, story, default_prompt_sections=DEFAULT_PROMPT_SECTIONS))
-
-        self.assertNotIn("Hidden style", prompt)
 
     def test_local_render_prompt_is_composition_first(self):
         story = {

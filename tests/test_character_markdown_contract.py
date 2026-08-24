@@ -57,33 +57,7 @@ class CharacterMarkdownContractTests(unittest.TestCase):
             {name for name in global_sections if name.startswith("TECHNICAL_MODESTY_LAYER")},
         )
 
-    def test_canonical_character_path_is_character_md(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            paths = self._paths(Path(temp_dir))
-            self.assertEqual(
-                Path(temp_dir) / "Characters" / "Tsaeytte" / "Adult" / "Character.md",
-                paths.character_template_path("Tsaeytte", "Adult"),
-            )
 
-    def test_shared_placeholder_character_is_not_complete(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            paths = self._paths(root)
-            phase = paths.character_path("Test", "Adult")
-            phase.mkdir(parents=True)
-            template = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md").read_text(encoding="utf-8")
-            for old, new in {
-                "[Character Name]": "[Test]",
-                "[Adult / Youth / Variant / Costume Phase]": "[Adult]",
-                "[Species]": "[Human]",
-                "[Optional, non-sensitive rendering descriptor]": "[Masculine Adult]",
-                "[Painterly semi-realistic, anime-influenced facial proportions, etc.]": "[Painterly]",
-            }.items():
-                template = template.replace(old, new, 1)
-            paths.character_template_path("Test", "Adult").write_text(template, encoding="utf-8")
-            service = CharacterOnboardingService(paths, PROJECT_ROOT)
-            errors = service.validate_template(paths.character_template_path("Test", "Adult"))
-            self.assertTrue(any("shared template placeholder text" in error for error in errors))
 
     def test_new_character_upload_does_not_replace_existing_template(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

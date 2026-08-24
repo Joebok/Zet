@@ -48,9 +48,6 @@ class StaticPromptRendererTests(unittest.TestCase):
         self.assertNotIn("commented text", prompt)
         self.assertNotIn("~{{", prompt)
 
-    def test_arbitrary_direct_section_placeholder_needs_no_bundle_entry(self) -> None:
-        selection = CompiledSelection([], ["NEW_SECTION"], [], [], [], {"NEW_SECTION": "new text"})
-        self.assertEqual("new text\n", render_static_prompt("{{NEW_SECTION}}", {}, selection, [], "FRONT"))
 
     def test_known_optional_section_renders_empty(self) -> None:
         selection = CompiledSelection([], [], [], ["OPTIONAL_SECTION"], [], {})

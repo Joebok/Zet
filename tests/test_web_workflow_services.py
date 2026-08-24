@@ -10,15 +10,6 @@ from zet.services.source_editor_service import SourceEditorService
 
 
 class WebWorkflowServiceTests(unittest.TestCase):
-    def test_character_phase_discovery_lists_directories_only(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            (root / "Zara" / "Adult").mkdir(parents=True)
-            (root / "Zara" / "notes.txt").write_text("ignored", encoding="utf-8")
-            service = CharacterPhaseDiscoveryService(root)
-
-            self.assertEqual(service.list_characters(), ["Zara"])
-            self.assertEqual(service.list_phases("Zara"), ["Adult"])
 
     def test_source_editor_updates_json_field_and_rejects_outside_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

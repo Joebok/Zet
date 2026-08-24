@@ -6,19 +6,11 @@ on:
       - ".github/workflows/browser.yml"
       - "zet/web/**"
       - "tests/browser/**"
+      - "tests/support/**"
       - "playwright.config.mjs"
       - "package.json"
       - "package-lock.json"
   workflow_dispatch:
-    inputs:
-      suite:
-        description: Browser suite to run
-        required: true
-        default: full
-        type: choice
-        options:
-          - full
-          - smoke
 
 permissions:
   contents: read
@@ -29,7 +21,7 @@ concurrency:
 
 jobs:
   browser:
-    name: Desktop browser tests
+    name: Browser tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -49,11 +41,7 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Run desktop smoke tests
-        if: github.event_name == 'pull_request' || inputs.suite == 'smoke'
-        run: npm run test:dashboard -- --grep "@desktop-smoke"
-      - name: Run full browser suite
-        if: github.event_name == 'workflow_dispatch' && inputs.suite == 'full'
+      - name: Run browser tests
         run: npm run test:dashboard
       - name: Upload Playwright failure artifacts
         if: failure()

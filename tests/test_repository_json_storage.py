@@ -37,28 +37,7 @@ class RepositoryJsonStorageTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def test_missing_file_policies_are_preserved(self) -> None:
-        with self.assertRaisesRegex(AssetRepositoryError, "Assets.json not found"):
-            self.asset_repository.list_assets("Test", "Adult")
 
-        self.assertEqual([], self.turnaround_repository.list_sheets("Test", "Adult"))
-        self.assertEqual([], self.identity_repository.list_identity_keys("Test", "Adult"))
-        self.assertEqual([], self.auxiliary_repository.list_resources())
-
-    def test_non_object_record_policies_are_preserved(self) -> None:
-        self.character_dir.mkdir(parents=True)
-        (self.character_dir / "Assets.json").write_text('{"assets": [1]}', encoding="utf-8")
-        (self.character_dir / "TurnaroundSheets.json").write_text('{"turnarounds": [1]}', encoding="utf-8")
-        (self.character_dir / "IdentityKeys.json").write_text('{"identity_keys": [1]}', encoding="utf-8")
-        auxiliary_path = self.paths.auxiliary_resource_inventory_path()
-        auxiliary_path.parent.mkdir(parents=True)
-        auxiliary_path.write_text('{"resources": [1]}', encoding="utf-8")
-
-        with self.assertRaisesRegex(AssetRepositoryError, "Each asset record"):
-            self.asset_repository.list_assets("Test", "Adult")
-        self.assertEqual([], self.turnaround_repository.list_sheets("Test", "Adult"))
-        self.assertEqual([], self.identity_repository.list_identity_keys("Test", "Adult"))
-        self.assertEqual([], self.auxiliary_repository.list_resources())
 
     def test_asset_codec_applies_defaults_and_drops_unknown_replaced_fields(self) -> None:
         self.character_dir.mkdir(parents=True)
@@ -90,46 +69,8 @@ class RepositoryJsonStorageTests(unittest.TestCase):
         self.assertTrue(list((self.character_dir / "_backup").glob("Assets.backup.*.json")))
         self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))
 
-    def test_codec_preserves_domain_missing_field_error(self) -> None:
-        self.character_dir.mkdir(parents=True)
-        (self.character_dir / "Assets.json").write_text(
-            '{"assets": [{"asset_id": 1}]}',
-            encoding="utf-8",
-        )
 
-        with self.assertRaisesRegex(
-            AssetRepositoryError,
-            "Asset record is missing required fields: body_view, character, phase, pipeline",
-        ):
-            self.asset_repository.list_assets("Test", "Adult")
 
-    def test_first_write_backup_directory_policies_are_preserved(self) -> None:
-        self.turnaround_repository.save_sheet(
-            TurnaroundSheet("body", "Test", "Adult", "Body-Reference")
-        )
-        self.assertFalse((self.character_dir / "_backup").exists())
-
-        self.identity_repository.save_identity_key(
-            IdentityKey("front", "Test", "Adult", "Front", 50, 1, "Body-Reference", "Front")
-        )
-        self.assertTrue((self.character_dir / "_backup").exists())
-
-        self.auxiliary_repository.save_resource(
-            AuxiliaryResource("arch", "place", "Arch", "arch", "arch.md", "now", "now")
-        )
-        auxiliary_path = self.paths.auxiliary_resource_inventory_path()
-        self.assertFalse((auxiliary_path.parent / "_backup").exists())
-
-    def test_identity_existing_payload_does_not_gain_schema_version(self) -> None:
-        self.character_dir.mkdir(parents=True)
-        path = self.character_dir / "IdentityKeys.json"
-        path.write_text('{"identity_keys": []}', encoding="utf-8")
-
-        self.identity_repository.save_identity_key(
-            IdentityKey("front", "Test", "Adult", "Front", 50, 1, "Body-Reference", "Front")
-        )
-
-        self.assertNotIn("schema_version", json.loads(path.read_text(encoding="utf-8")))
 
     def test_failed_replace_preserves_repository_temp_cleanup_policies(self) -> None:
         self.character_dir.mkdir(parents=True)

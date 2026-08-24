@@ -129,3 +129,28 @@ def test_local_image_recipe_compiles_stable_matrix_api_without_backend(tmp_path:
     assert "silver hair" in recipe["payload"]["prompt"]
     assert recipe["payload"]["negative_prompt"].endswith("stable negative")
     assert recipe["payload"]["override_settings"]["sd_model_checkpoint"] == "stable.safetensors"
+
+
+def test_local_image_recipe_applies_checkpoint_and_profile_overrides(tmp_path: Path) -> None:
+    _app, service, _image = _write_fixture(tmp_path)
+    output = tmp_path / "ComfyUI_Workflow_API.json"
+
+    result = service.local_image_recipe(
+        character="Ada",
+        phase="Adult",
+        view="Front",
+        costume="Field Gear",
+        image_generation="comfyui",
+        render_profile="comfyui-ipadapter-preview",
+        output_path=output,
+        seed=42,
+        checkpoint="other.safetensors",
+        profile_overrides={"character_reference_weight": 0.75},
+    )
+
+    workflow = json.loads(output.read_text(encoding="utf-8"))
+    adapter = next(node for node in workflow.values() if node["class_type"] == "IPAdapterAdvanced")
+    assert workflow["1"]["inputs"]["ckpt_name"] == "other.safetensors"
+    assert adapter["inputs"]["weight"] == 0.75
+    assert result["checkpoint"] == "other.safetensors"
+    assert len(result["reference_files"]) == 1

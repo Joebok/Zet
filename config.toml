@@ -29,7 +29,7 @@ PromptEvolutionCheck = "vision-analysis-alt:latest"
 
 [LocalRender]
 AutoQueueAfterCondense = false
-Backend = "stable_matrix"
+Backend = "comfyui"
 
 [StableMatrix]
 Profile = "scene-preview-sd15"
@@ -43,7 +43,7 @@ Checkpoint = "sd\\perfectdeliberate_v90.safetensors [aea4ec6c4d]"
 [ComfyUI]
 Profile = "comfyui-ipadapter-preview"
 ServerURL = "http://127.0.0.1:8188"
-Checkpoint = "perfectdeliberate_v90.safetensors"
+Checkpoint = "tastyriceMagicOnPaperSDXL_engine10.safetensors"
 PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
 NegativePromptGlobals = ""
 PollSeconds = 1.0

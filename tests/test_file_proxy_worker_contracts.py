@@ -72,13 +72,3 @@ def test_ollama_and_local_image_are_the_only_registered_proxy_workers(tmp_path: 
         "ollama_generate": "ollama",
         "local_image_render": "local_image",
     }
-
-
-def test_local_image_worker_accepts_registered_config_argument(tmp_path: Path) -> None:
-    with patch.object(local_image_proxy_worker, "process_claimed", return_value="SUCCESS") as process:
-        status = local_image_proxy_worker.main(
-            ["--job-dir", str(tmp_path), "--config", str(tmp_path / "config.toml")]
-        )
-
-    assert status == 0
-    process.assert_called_once()

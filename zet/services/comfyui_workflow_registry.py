@@ -15,6 +15,8 @@ CORE_PROMPT_WORKFLOW = "core_txt2img_prompt_only"
 IMG2IMG_PROMPT_WORKFLOW = "core_img2img_prompt_only"
 CONTROLNET_PROMPT_WORKFLOW = "controlnet_prompt_only"
 IMG2IMG_CONTROLNET_PROMPT_WORKFLOW = "img2img_controlnet_prompt_only"
+IPADAPTER_PROMPT_WORKFLOW = "ipadapter_prompt_only"
+IPADAPTER_CONTROLNET_PROMPT_WORKFLOW = "ipadapter_controlnet_prompt_only"
 IPADAPTER_SCENE_WORKFLOW = "ipadapter_scene_preview"
 OPENPOSE_SCENE_WORKFLOW = "openpose_scene_preview"
 
@@ -443,7 +445,12 @@ def _controlled_prompt_compiler(
     if not checkpoint.strip():
         raise LocalRenderError("ComfyUI checkpoint cannot be blank.")
     use_img2img = workflow_kind in {IMG2IMG_PROMPT_WORKFLOW, IMG2IMG_CONTROLNET_PROMPT_WORKFLOW}
-    use_control = workflow_kind in {CONTROLNET_PROMPT_WORKFLOW, IMG2IMG_CONTROLNET_PROMPT_WORKFLOW}
+    use_control = workflow_kind in {
+        CONTROLNET_PROMPT_WORKFLOW,
+        IMG2IMG_CONTROLNET_PROMPT_WORKFLOW,
+        IPADAPTER_CONTROLNET_PROMPT_WORKFLOW,
+    }
+    use_ipadapter = workflow_kind in {IPADAPTER_PROMPT_WORKFLOW, IPADAPTER_CONTROLNET_PROMPT_WORKFLOW}
     preprocessor = str(profile.get("control_preprocessor") or "dwpose").strip().lower()
     preprocessor_nodes = {
         "dwpose": "DWPreprocessor",
@@ -451,6 +458,8 @@ def _controlled_prompt_compiler(
         "canny": "CannyEdgePreprocessor",
     }
     required = {"LoadImage"}
+    if use_ipadapter:
+        required.update({"CLIPVisionLoader", "IPAdapterModelLoader", "IPAdapterAdvanced"})
     if use_control:
         if preprocessor not in preprocessor_nodes:
             raise LocalRenderError(f"Unsupported ComfyUI ControlNet preprocessor: {preprocessor}")
@@ -468,6 +477,51 @@ def _controlled_prompt_compiler(
     }
     references_used: list[dict[str, Any]] = []
     next_id = 4
+    model: list[Any] = ["1", 0]
+    ipadapter_debug: dict[str, Any] = {}
+    if use_ipadapter:
+        appearance = _prompt_reference(reference_files, "prompt_evolution_appearance")
+        references_used.append(appearance)
+        ipadapter_model = str(profile.get("ipadapter_model") or "").strip()
+        clip_vision_model = str(profile.get("clip_vision_model") or "").strip()
+        if not ipadapter_model or not clip_vision_model:
+            raise LocalRenderError(
+                "ComfyUI IP-Adapter workflow requires ipadapter_model and clip_vision_model settings."
+            )
+        clip_id, adapter_model_id, image_id, apply_id = (str(next_id + offset) for offset in range(4))
+        settings = {
+            "weight": float(profile.get("character_reference_weight", 0.5)),
+            "start_at": 0.0,
+            "end_at": float(profile.get("character_reference_end_at", 0.75)),
+            "weight_type": str(profile.get("ipadapter_weight_type") or "linear"),
+            "combine_embeds": str(profile.get("ipadapter_combine_embeds") or "average"),
+            "embeds_scaling": str(profile.get("ipadapter_embeds_scaling") or "V only"),
+        }
+        workflow[clip_id] = {
+            "class_type": "CLIPVisionLoader",
+            "inputs": {"clip_name": clip_vision_model},
+        }
+        workflow[adapter_model_id] = {
+            "class_type": "IPAdapterModelLoader",
+            "inputs": {"ipadapter_file": ipadapter_model},
+        }
+        workflow[image_id] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": appearance["comfyui_input_name"]},
+        }
+        workflow[apply_id] = {
+            "class_type": "IPAdapterAdvanced",
+            "inputs": {
+                "model": model,
+                "ipadapter": [adapter_model_id, 0],
+                "image": [image_id, 0],
+                "clip_vision": [clip_id, 0],
+                **settings,
+            },
+        }
+        model = [apply_id, 0]
+        ipadapter_debug = {"reference": appearance, **settings}
+        next_id += 4
     if use_img2img:
         init = _prompt_reference(reference_files, "prompt_evolution_init")
         references_used.append(init)
@@ -544,7 +598,7 @@ def _controlled_prompt_compiler(
             "sampler_name": str(profile.get("sampler_name", "dpmpp_2m")),
             "scheduler": str(profile.get("scheduler", "karras")),
             "denoise": float(profile.get("denoise", 0.55 if use_img2img else 1.0)),
-            "model": ["1", 0],
+            "model": model,
             "positive": positive_conditioning,
             "negative": negative_conditioning,
             "latent_image": latent,
@@ -560,7 +614,11 @@ def _controlled_prompt_compiler(
         width=width,
         height=height,
         workflow_kind=workflow_kind,
-        debug={"references_used": references_used, "controlnet": control_debug},
+        debug={
+            "references_used": references_used,
+            "controlnet": control_debug,
+            "ipadapter": ipadapter_debug,
+        },
     )
 
 
@@ -574,6 +632,14 @@ def _controlnet_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation
 
 def _img2img_controlnet_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
     return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=IMG2IMG_CONTROLNET_PROMPT_WORKFLOW)
+
+
+def _ipadapter_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=IPADAPTER_PROMPT_WORKFLOW)
+
+
+def _ipadapter_controlnet_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=IPADAPTER_CONTROLNET_PROMPT_WORKFLOW)
 
 
 def compile_scene_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> ComfyUICompilation:
@@ -598,3 +664,5 @@ register_prompt_compiler(CORE_PROMPT_WORKFLOW, _core_prompt_compiler)
 register_prompt_compiler(IMG2IMG_PROMPT_WORKFLOW, _img2img_prompt_compiler)
 register_prompt_compiler(CONTROLNET_PROMPT_WORKFLOW, _controlnet_prompt_compiler)
 register_prompt_compiler(IMG2IMG_CONTROLNET_PROMPT_WORKFLOW, _img2img_controlnet_prompt_compiler)
+register_prompt_compiler(IPADAPTER_PROMPT_WORKFLOW, _ipadapter_prompt_compiler)
+register_prompt_compiler(IPADAPTER_CONTROLNET_PROMPT_WORKFLOW, _ipadapter_controlnet_prompt_compiler)

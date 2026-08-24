@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "decision_question": "Would I use this image after no more than five minutes of cleanup?",
+  "hard_gates": [
+    {
+      "id": "identity",
+      "label": "Recognizably the intended character"
+    },
+    {
+      "id": "costume",
+      "label": "Recognizably the intended costume"
+    },
+    {
+      "id": "anatomy",
+      "label": "No severe anatomy, face, hand, or limb defect"
+    },
+    {
+      "id": "composition",
+      "label": "Required subject, pose, and framing are present"
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "identity_fidelity",
+      "label": "Face, hair, age, body, and defining features",
+      "weight": 3
+    },
+    {
+      "id": "costume_fidelity",
+      "label": "Garment topology, palette, materials, and signature details",
+      "weight": 3
+    },
+    {
+      "id": "technical_quality",
+      "label": "Anatomy, coherence, artifacts, and finish",
+      "weight": 2
+    },
+    {
+      "id": "composition_control",
+      "label": "Pose, view, framing, and subject count",
+      "weight": 1
+    },
+    {
+      "id": "style_fit",
+      "label": "Matches the desired illustrative style",
+      "weight": 1
+    }
+  ],
+  "score_scale": {
+    "0": "Unusable",
+    "1": "Major failure",
+    "2": "Noticeably wrong but informative",
+    "3": "Usable with minor cleanup",
+    "4": "Ready to use"
+  },
+  "candidate_acceptance": {
+    "all_hard_gates_must_pass": true,
+    "minimum_identity_fidelity": 3,
+    "minimum_costume_fidelity": 3,
+    "minimum_weighted_mean": 3.0,
+    "decision_question_must_be_yes": true
+  },
+  "workflow_acceptance": {
+    "minimum_acceptable_yield": 0.25,
+    "minimum_evaluation_images": 16,
+    "minimum_distinct_poses": 4,
+    "maximum_median_minutes_of_manual_cleanup": 5
+  },
+  "failure_reasons": [
+    "wrong_identity",
+    "wrong_hair_or_face",
+    "wrong_costume_structure",
+    "wrong_costume_palette",
+    "wrong_pose_or_view",
+    "cropped_subject",
+    "anatomy_or_hands",
+    "style_mismatch",
+    "low_detail_or_artifacts",
+    "other"
+  ]
+}

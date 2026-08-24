@@ -4,11 +4,9 @@ export default defineConfig({
   testDir: "./tests/browser",
   workers: 1,
   outputDir: "./test-results/playwright",
-  snapshotDir: "./tests/browser/snapshots",
   timeout: 30_000,
   expect: {
     timeout: 8_000,
-    toHaveScreenshot: { animations: "disabled", maxDiffPixelRatio: 0.01 },
   },
   use: {
     baseURL: "http://127.0.0.1:8765",

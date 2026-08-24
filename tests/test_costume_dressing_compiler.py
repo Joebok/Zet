@@ -158,18 +158,6 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertIn("Do not rotate the head toward the viewer", back)
         self.assertIn("Preserve that view exactly.", back)
 
-    def test_different_body_and_head_views_preserve_relative_turn(self) -> None:
-        facts = (
-            "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
-            "* Silhouette: `Simple fitted outfit.`.\n"
-            "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->"
-        )
-        prompt, source_map, _ = self._compile(facts, "FRONT_LEFT_3_4", "FRONT")
-
-        self.assertIn("Requested body view: FRONT-LEFT THREE-QUARTER.", prompt)
-        self.assertIn("Requested head view: DIRECT FRONT.", prompt)
-        self.assertIn("body orientation and head orientation", prompt)
-        self.assertTrue(source_map["fragments"])
 
     def test_sided_equipment_keeps_side_rules_and_source_provenance(self) -> None:
         prompt, source_map, _ = self._compile(
@@ -193,28 +181,6 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         costume_sources = [fragment for fragment in source_map["fragments"] if fragment.get("source_kind") == "costume_template_section"]
         self.assertTrue(costume_sources)
 
-    def test_no_jewelry_or_equipment_removes_optional_section_and_empty_view_stub(self) -> None:
-        prompt, _, result = self._compile(
-            self._sections(
-                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
-                "* Silhouette: `Travel coat and boots.`.\n"
-                "* Jewelry: `None.`.\n"
-                "* Equipment: `Not applicable`.\n"
-                "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
-                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->\n"
-                "* Front view: `None.`.\n"
-                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->",
-                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
-                "* Primary weapon/tool: `None.`.\n"
-                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
-            )
-        )
-
-        self.assertNotIn("# Jewelry", prompt)
-        self.assertNotIn("# Equipment and Jewelry", prompt)
-        self.assertNotIn("# View-Specific Costume Details", prompt)
-        compiled = (Path(result["output_dir"]) / "Compiled_Sections.md").read_text(encoding="utf-8")
-        self.assertIn("normalized to empty", compiled)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+from pathlib import Path
 from urllib import request
 
 
@@ -51,8 +53,22 @@ class OllamaModelService:
             "vision_filtered": filtered,
         }
 
-    def generate_json(self, model: str, system: str, prompt: str, schema: dict) -> dict:
+    def generate_json(
+        self,
+        model: str,
+        system: str,
+        prompt: str,
+        schema: dict,
+        *,
+        images: list[str | Path] | None = None,
+    ) -> dict:
         """Generate one structured JSON response with a local Ollama model."""
+        user_message: dict = {"role": "user", "content": prompt}
+        if images:
+            user_message["images"] = [
+                base64.b64encode(Path(path).read_bytes()).decode("ascii")
+                for path in images
+            ]
         response = self._request_json(
             "/api/chat",
             {
@@ -62,7 +78,7 @@ class OllamaModelService:
                 "format": schema,
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
+                    user_message,
                 ],
                 "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 4096},
             },

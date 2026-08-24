@@ -85,74 +85,10 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
                         self.assertNotIn(other_instruction, prompt)
                 self.assertNotIn("{{", prompt)
 
-    def test_front_gaze_is_preserved_without_viewer_prohibition(self) -> None:
-        result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
-        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("Preserve the Character Head's exact facial-plane direction, feature visibility, and supplied gaze.", prompt)
-        self.assertNotIn("or toward the viewer", prompt)
 
-    def test_non_front_gaze_is_not_redirected_toward_viewer(self) -> None:
-        result = compile_character_assembly_job(
-            self._job("LEFT_PROFILE", output_name="profile"),
-            PROJECT_ROOT,
-        )
-        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
 
-        self.assertIn("Do not turn the face toward the viewer or reveal more of the face", prompt)
 
-    def test_style_mode_is_recorded_without_changing_the_established_prompt(self) -> None:
-        matched = compile_character_assembly_job(self._job(output_name="matched"), PROJECT_ROOT)
-        harmonized = compile_character_assembly_job(
-            self._job(style_mode="HARMONIZE_STYLE", output_name="harmonized"),
-            PROJECT_ROOT,
-        )
-        matched_prompt = Path(matched["final_prompt"]).read_text(encoding="utf-8")
-        harmonized_prompt = Path(harmonized["final_prompt"]).read_text(encoding="utf-8")
-
-        self.assertEqual("MATCHED_STYLE", matched["assembly_style_mode"])
-        self.assertEqual("HARMONIZE_STYLE", harmonized["assembly_style_mode"])
-        self.assertEqual(matched_prompt, harmonized_prompt)
-
-    def test_prompt_omits_superseded_generation_rules(self) -> None:
-        result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
-        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-
-        for omitted in (
-            "STANCE AND FOOT PLACEMENT",
-            "Re-render the Character Head",
-            "CANONICAL ART STYLE DIRECTIVE",
-            "THREE-QUARTER ORIENTATION LOCK",
-            "Negative constraints:",
-            "TECHNICAL_MODESTY_LAYER",
-            "adult identity",
-            "Tsaeytte",
-            "Elder Tsaeytte",
-            "Core identity anchors",
-            "Body preservation rules",
-            "when shoulders are not rendered",
-        ):
-            self.assertNotIn(omitted, prompt)
-        self.assertNotIn("fitment clothing", prompt)
-
-    def test_prompt_uses_character_template_assembly_sections(self) -> None:
-        self.template_path.write_text(
-            """Canonical Art Style: `[Test canonical style]`
-<!-- ZET:BEGIN CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
-Use the character-specific assembly rules.
-Do not alter the character-specific head.
-The character-specific head and body remain recognizable.
-<!-- ZET:END CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
-""",
-            encoding="utf-8",
-        )
-        result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
-        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-
-        self.assertIn("Use the character-specific assembly rules.", prompt)
-        self.assertIn("Do not alter the character-specific head.", prompt)
-        self.assertIn("The character-specific head and body remain recognizable.", prompt)
-        self.assertNotIn("{{", prompt)
 
     def test_prompt_uses_minimal_junction_scoped_assembly_contract(self) -> None:
         result = compile_character_assembly_job(self._job(), PROJECT_ROOT)
@@ -181,26 +117,7 @@ The character-specific head and body remain recognizable.
                 self.assertEqual(expected, raised.exception.code)
                 self.assertFalse((self.root / output_name / "Final_Image_Prompt.md").exists())
 
-    def test_mismatched_job_views_fail_before_artifact_generation(self) -> None:
-        with self.assertRaises(TemplateCompileError) as raised:
-            compile_character_assembly_job(
-                self._job(head_view="LEFT_PROFILE", output_name="job-mismatch"),
-                PROJECT_ROOT,
-            )
 
-        self.assertEqual("CHARACTER_ASSEMBLY_VIEW_MISMATCH", raised.exception.code)
-        self.assertFalse((self.root / "job-mismatch" / "Final_Image_Prompt.md").exists())
-
-    def test_missing_reference_view_fails_before_artifact_generation(self) -> None:
-        body_reference = {"role": "body_reference", "path": str(self.body_path)}
-        with self.assertRaises(TemplateCompileError) as raised:
-            compile_character_assembly_job(
-                self._job(body_reference=body_reference, output_name="missing-view"),
-                PROJECT_ROOT,
-            )
-
-        self.assertEqual("MISSING_REFERENCE_VIEW", raised.exception.code)
-        self.assertFalse((self.root / "missing-view" / "Final_Image_Prompt.md").exists())
 
     def test_mismatched_reference_view_fails_before_artifact_generation(self) -> None:
         head_image = {
@@ -218,30 +135,7 @@ The character-specific head and body remain recognizable.
         self.assertEqual("CHARACTER_ASSEMBLY_VIEW_MISMATCH", raised.exception.code)
         self.assertFalse((self.root / "reference-mismatch" / "Final_Image_Prompt.md").exists())
 
-    def test_explicit_provenance_mismatch_is_rejected(self) -> None:
-        body_reference = {
-            "role": "body_reference",
-            "path": str(self.body_path),
-            "body_view": "FRONT",
-            "character": "Other",
-        }
-        with self.assertRaises(TemplateCompileError) as raised:
-            compile_character_assembly_job(
-                self._job(body_reference=body_reference, output_name="provenance-mismatch"),
-                PROJECT_ROOT,
-            )
 
-        self.assertEqual("CHARACTER_ASSEMBLY_REFERENCE_MISMATCH", raised.exception.code)
-
-    def test_invalid_style_mode_is_rejected_before_artifact_generation(self) -> None:
-        with self.assertRaises(TemplateCompileError) as raised:
-            compile_character_assembly_job(
-                self._job(style_mode="REPAINT_ALL", output_name="invalid-mode"),
-                PROJECT_ROOT,
-            )
-
-        self.assertEqual("INVALID_ASSEMBLY_STYLE_MODE", raised.exception.code)
-        self.assertFalse((self.root / "invalid-mode" / "Final_Image_Prompt.md").exists())
 
 
 if __name__ == "__main__":

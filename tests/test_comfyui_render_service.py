@@ -155,6 +155,45 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
         self.assertEqual("img2img_controlnet_prompt_only", compilation.workflow_kind)
         self.assertEqual(2, len(compilation.debug["references_used"]))
 
+    def test_compile_prompt_builds_ipadapter_controlnet_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reference = Path(temp_dir) / "reference.png"
+            pose = Path(temp_dir) / "pose.png"
+            reference.write_bytes(b"reference")
+            pose.write_bytes(b"pose")
+            profile = self._profile() | {
+                "prompt_workflow_kind": "ipadapter_controlnet_prompt_only",
+                "ipadapter_model": "ipadapter.safetensors",
+                "clip_vision_model": "clip.safetensors",
+                "character_reference_weight": 0.65,
+                "control_preprocessor": "dwpose",
+                "controlnet_model": "openpose.safetensors",
+            }
+
+            compilation = compile_prompt_to_comfyui_workflow(
+                "one character", "blurry", profile,
+                checkpoint="model.safetensors", seed=9,
+                reference_files=[
+                    {"role": "prompt_evolution_appearance", "path": str(reference)},
+                    {"role": "prompt_evolution_pose", "path": str(pose)},
+                ],
+                available_node_types={
+                    "LoadImage", "CLIPVisionLoader", "IPAdapterModelLoader", "IPAdapterAdvanced",
+                    "DWPreprocessor", "ControlNetLoader", "ControlNetApplyAdvanced",
+                },
+            )
+
+        classes = [node["class_type"] for node in compilation.workflow.values()]
+        self.assertIn("IPAdapterAdvanced", classes)
+        self.assertIn("ControlNetApplyAdvanced", classes)
+        adapter = next(node for node in compilation.workflow.values() if node["class_type"] == "IPAdapterAdvanced")
+        sampler = next(node for node in compilation.workflow.values() if node["class_type"] == "KSampler")
+        self.assertEqual(0.65, adapter["inputs"]["weight"])
+        self.assertEqual(adapter["inputs"]["model"], ["1", 0])
+        self.assertEqual(sampler["inputs"]["model"], ["7", 0])
+        self.assertEqual("ipadapter_controlnet_prompt_only", compilation.workflow_kind)
+        self.assertEqual(2, len(compilation.debug["references_used"]))
+
     def test_controlnet_prompt_fails_when_required_node_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             pose = Path(temp_dir) / "pose.png"

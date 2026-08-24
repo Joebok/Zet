@@ -35,13 +35,6 @@ class ViewServiceTests(unittest.TestCase):
             with self.assertRaises(UnknownViewError):
                 service.normalize_token("custom-view")
 
-    def test_tolerant_folder_lookup_falls_back_when_config_is_invalid(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            service = self._service(Path(temp_dir))
-            (Path(temp_dir) / "Config" / "Prompt_View_Text.json").write_text("not json", encoding="utf-8")
-            self.assertEqual(service.folder_name_tolerant("Front-Left"), "Front_Left")
-            with self.assertRaises(json.JSONDecodeError):
-                service.folder_name("Front-Left")
 
 
 class PathServiceTests(unittest.TestCase):

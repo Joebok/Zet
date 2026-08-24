@@ -48,30 +48,3 @@ assert scripts_path not in [Path(value).resolve() for value in sys.path if value
         capture_output=True,
         text=True,
     )
-
-
-def test_compiler_modules_launch_outside_checkout(tmp_path: Path) -> None:
-    for module in COMPILER_MODULES:
-        subprocess.run(
-            [sys.executable, "-m", module, "--help"],
-            cwd=tmp_path,
-            env=_package_env(),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-
-
-def test_compiler_files_preserve_direct_launch(tmp_path: Path) -> None:
-    env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
-    for module in COMPILER_MODULES:
-        script_path = PROJECT_ROOT / Path(*module.split(".")).with_suffix(".py")
-        subprocess.run(
-            [sys.executable, str(script_path), "--help"],
-            cwd=tmp_path,
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True,
-        )

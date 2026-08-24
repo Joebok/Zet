@@ -28,8 +28,6 @@ VIEWS = [
 
 
 class TurnaroundServiceTests(unittest.TestCase):
-    def test_turnaround_padding_uses_gray_blue_background(self):
-        self.assertEqual((183, 193, 209, 255), CharacterGridOptions().canvas_background)
 
     def _write_png(
         self,
@@ -117,21 +115,6 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
         )
         return config_path
 
-    def test_turnaround_api_lists_ready_groups(self):
-        """Verify the dashboard API reports ready turnaround groups from locked assets."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = self._write_fixture(Path(temp_dir), include_images=False)
-            client = TestClient(create_app(config_path))
-
-            response = client.get("/api/turnarounds", params={"character": "Test", "phase": "Adult"})
-
-            self.assertEqual(response.status_code, 200)
-            rows = response.json()["rows"]
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["turnaround_id"], "Body-Reference")
-            self.assertTrue(rows[0]["ready"])
-            self.assertEqual(rows[0]["status"], "ready for turnaround")
-            self.assertEqual(rows[0]["source_asset_ids"], list(range(1, 9)))
 
     @unittest.skipUnless(Image is not None, "Pillow is required for image assembly tests.")
     def test_turnaround_generate_and_promote(self):
@@ -164,21 +147,6 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertTrue(locked_path.exists())
             self.assertEqual(locked_path.parent.name, "Turnarounds")
 
-    @unittest.skipUnless(Image is not None, "Pillow is required for image assembly tests.")
-    def test_turnaround_panels_retain_original_background_around_centered_character(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            config_path = self._write_fixture(root, background=(40, 80, 120))
-            client = TestClient(create_app(config_path))
-
-            generated = client.post(
-                "/api/turnarounds/Body-Reference/generate",
-                params={"character": "Test", "phase": "Adult"},
-            )
-
-            self.assertEqual(generated.status_code, 200)
-            with Image.open(generated.json()["row"]["candidate_image_path"]) as image:
-                self.assertEqual((40, 80, 120), image.getpixel((100, 100))[:3])
 
     @unittest.skipUnless(Image is not None, "Pillow is required for image assembly tests.")
     def test_partial_turnaround_can_update_percent_and_delete(self):

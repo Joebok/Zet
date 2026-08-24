@@ -11,7 +11,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from test_web_app import WebAppTests
+from support.project_fixture import write_manual_render_ask, write_project_fixture
 from zet.app import ZetApp
 from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.source_editor_service import SourceEditorService
@@ -34,9 +34,8 @@ class BrowserTestSourceEditorService(SourceEditorService):
 
 
 web_app_module.SourceEditorService = BrowserTestSourceEditorService
-fixture = WebAppTests()
-config_path = fixture._write_fixture(root, stage="RENDER", actor="AI_AGENT")
-fixture._write_manual_render_ask(root)
+config_path = write_project_fixture(root, stage="RENDER", actor="AI_AGENT")
+write_manual_render_ask(root)
 
 config_text = config_path.read_text(encoding="utf-8").replace(
     "[BaseFolders]\n",

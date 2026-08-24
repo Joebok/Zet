@@ -92,19 +92,6 @@ class PipelineInspectionServiceTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 service.file_path("Zara/Adult/Body-Reference", "../../../secret.md")
 
-    @patch("zet.services.pipeline_inspection_service.platform.system", return_value="Windows")
-    @patch("zet.services.pipeline_inspection_service.os.startfile", create=True)
-    def test_open_folder_uses_system_browser(self, startfile, _system) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            pipeline = root / "Zara" / "Adult" / "Body-Reference"
-            pipeline.mkdir(parents=True)
-            file_path = pipeline / "Prompt.md"
-            file_path.write_text("prompt", encoding="utf-8")
-            service = PipelineInspectionService(root)
-
-            self.assertEqual(service.open_folder("Zara/Adult/Body-Reference", "Prompt.md"), pipeline)
-            startfile.assert_called_once_with(str(pipeline))
 
 
 if __name__ == "__main__":

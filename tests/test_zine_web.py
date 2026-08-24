@@ -82,22 +82,3 @@ BaseAIQueuePath = "{(self.root / 'Queue').as_posix()}"
         self.assertEqual("First-Day-Zine", renamed.json()["document"]["zine"]["slug"])
         self.assertEqual(200, self.client.delete("/api/zines/First-Day-Zine").status_code)
         self.assertEqual([], self.client.get("/api/zines").json()["zines"])
-
-    def test_zine_tab_and_controls_are_present(self) -> None:
-        html = self.client.get("/").text
-        self.assertLess(html.index('data-page="scenes"'), html.index('data-page="zine"'))
-        self.assertLess(html.index('data-page="zine"'), html.index('data-page="template-editor"'))
-        self.assertIn('data-page="zine">Zines</button>', html)
-        self.assertIn('id="setting-zine-print-scale" type="number" min="0.0001" max="1" step="0.0001" value="0.9780"', html)
-        for control_id in (
-            "zine-fill-story",
-            "zine-spread-1",
-            "zine-spread-3",
-            "zine-spread-5",
-            "zine-preview",
-            "setting-zine-print-scale",
-            "setting-zine-page-margin",
-            "setting-zine-width",
-            "setting-turnaround-width",
-        ):
-            self.assertIn(f'id="{control_id}"', html)

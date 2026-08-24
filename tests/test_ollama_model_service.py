@@ -1,5 +1,7 @@
 import unittest
 import json
+from pathlib import Path
+import tempfile
 
 from zet.services.ollama_model_service import OllamaModelService
 
@@ -32,19 +34,6 @@ class OllamaModelServiceTests(unittest.TestCase):
             {"models": ["vision:latest"], "vision_filtered": True},
         )
 
-    def test_returns_all_models_when_capabilities_are_unavailable(self):
-        service = StubOllamaModelService(
-            {
-                ("/api/tags", None): {"models": [{"name": "zeta"}, {"name": "Alpha"}]},
-                ("/api/show", "Alpha"): RuntimeError("unsupported"),
-                ("/api/show", "zeta"): RuntimeError("unsupported"),
-            }
-        )
-
-        self.assertEqual(
-            service.list_models(),
-            {"models": ["Alpha", "zeta"], "vision_filtered": False},
-        )
 
     def test_generates_structured_json_with_chat_api(self):
         service = StubOllamaModelService({
@@ -59,6 +48,20 @@ class OllamaModelServiceTests(unittest.TestCase):
         self.assertFalse(payload["think"])
         self.assertEqual(payload["options"]["num_ctx"], 8192)
         self.assertEqual(payload["options"]["num_predict"], 4096)
+
+    def test_generates_structured_json_with_images(self):
+        service = StubOllamaModelService({
+            ("/api/chat", "vision-model"): {"message": {"content": json.dumps({"answer": "ok"})}},
+        })
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image = Path(temp_dir) / "image.png"
+            image.write_bytes(b"png")
+            service.generate_json(
+                "vision-model", "system", "prompt", {"type": "object"}, images=[image]
+            )
+
+        encoded = service.requests[-1][1]["messages"][1]["images"]
+        self.assertEqual(encoded, ["cG5n"])
 
 
 if __name__ == "__main__":

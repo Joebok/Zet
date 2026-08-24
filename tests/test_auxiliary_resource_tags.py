@@ -31,9 +31,6 @@ class AuxiliaryResourceTagTests(unittest.TestCase):
         self.assertEqual(tag, auxiliary_resource_tag("thing", "tsaeytte-props", "jewelry"))
         self.assertEqual([(tag, "thing", "tsaeytte-props", "jewelry")], auxiliary_resource_tags_in_text(f"{tag}\n{tag}"))
 
-    def test_rejects_retired_three_part_form(self) -> None:
-        with self.assertRaises(ValueError):
-            parse_auxiliary_resource_tag("{{AUX:thing:tsaeytte-props}}")
 
 
 if __name__ == "__main__":

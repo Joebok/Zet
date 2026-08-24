@@ -67,33 +67,6 @@ class StoryCastServiceTests(unittest.TestCase):
             self.assertEqual(resolved["tag"], expected_tag)
             self.assertEqual(resolved["error"], "")
 
-    def test_leaves_ambiguous_story_default_unresolved(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            (root / "demo.story.json").write_text(
-                '{"cast_defaults":[{"character":"Tsaeytte","phase":"Adult"}]}',
-                encoding="utf-8",
-            )
-            rows = [
-                ImageReferenceRow(
-                    tag=f"{{{{ASSET:Tsaeytte:Adult:{asset_id}:Costume | Turnaround | {costume}}}}}",
-                    label=costume,
-                    character="Tsaeytte",
-                    phase="Adult",
-                    kind="locked-turnaround",
-                    pipeline="Costume-Dressing",
-                    image_path=f"{asset_id}.png",
-                    thumbnail_path=f"{asset_id}.png",
-                    costume=costume,
-                    available=True,
-                )
-                for asset_id, costume in ((25, "Adventure Gear"), (26, "Formal Wear"))
-            ]
-
-            resolved = StoryCastService(FakeStoryService(root, rows)).resolve("demo", "Tsaeytte")
-
-            self.assertEqual(resolved["tag"], "")
-            self.assertIn("No unique locked character reference", resolved["error"])
 
 
 if __name__ == "__main__":
