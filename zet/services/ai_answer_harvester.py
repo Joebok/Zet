@@ -270,6 +270,16 @@ class AIAnswerHarvester:
         response_path = answer_path / answer.expected_output
         if not response_path.exists():
             raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
+        if response_path.stat().st_size == 0:
+            result = HarvestResult(
+                answer_path=answer_path,
+                ask_id=answer.ask_id,
+                asset_id=answer.asset_id,
+                status=f"{task_type.upper()}_INVALID",
+                message=f"Auxiliary task {task_type} produced an empty output file.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
 
         target_output_dir_text = str(ask_manifest.get("target_output_dir") or "").strip()
         if not target_output_dir_text:

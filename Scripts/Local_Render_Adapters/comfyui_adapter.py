@@ -59,7 +59,8 @@ def render_preview(
 ) -> LocalRenderResult:
     profile = _load_profile(project_root, profile_name)
     allowed_overrides = {
-        "steps", "cfg", "sampler_name", "scheduler", "denoise",
+        "width", "height", "steps", "cfg", "sampler_name", "scheduler", "denoise",
+        "character_reference_weight",
         "control_preprocessor", "controlnet_model", "control_strength",
         "control_start", "control_end",
     }

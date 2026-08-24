@@ -64,7 +64,8 @@ class ScenePromptAnalysisService:
         pipeline_path = self.story_service.scene_pipeline_path(story_slug, scene_slug)
         result_path = pipeline_path / self.RESULT_FILE
         pending = self._has_pending(story_slug, scene_slug)
-        return {"pending": pending, "complete": result_path.exists() and not pending, "result_path": str(result_path)}
+        complete = result_path.is_file() and result_path.stat().st_size > 0 and not pending
+        return {"pending": pending, "complete": complete, "result_path": str(result_path)}
 
     def pending_count(self, story_slug: str = "", scene_slug: str = "") -> int:
         count = 0

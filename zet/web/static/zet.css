@@ -2031,6 +2031,11 @@ summary:focus-visible {
 }
 
 .prompt-evolution-pane-switch { margin-bottom: 16px; }
+.single-character-lab-layout { display: grid; gap: 16px; grid-template-columns: minmax(320px, 460px) minmax(0, 1fr); }
+.single-character-lab-setup { align-self: start; }
+.single-character-lab-setup textarea { min-height: 140px; width: 100%; }
+.single-character-contact-sheet { margin: 18px 0; max-width: 900px; }
+.single-character-contact-sheet img { border: 1px solid var(--border); height: auto; max-width: 100%; }
 .prompt-evolution-pane-switch button.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, #fff); }
 .prompt-evolution-layout { display: block; min-width: 0; }
 .prompt-evolution-pane { min-width: 0; width: 100%; }
@@ -2109,7 +2114,7 @@ summary:focus-visible {
 .prompt-diff-added { background: color-mix(in srgb, #2eaf5d 25%, transparent); color: var(--text); }
 .prompt-diff-deleted { background: color-mix(in srgb, #d84a4a 20%, transparent); color: var(--muted); text-decoration: line-through; }
 
-@media (max-width: 900px) { .prompt-evolution-summary-row, .prompt-evolution-observation-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .single-character-lab-layout, .prompt-evolution-summary-row, .prompt-evolution-observation-grid { grid-template-columns: 1fr; } }
 
 .manifest-masked-edit {
   margin-top: 1rem;

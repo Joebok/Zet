@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260823-production-work">
+  <link rel="stylesheet" href="/static/zet.css?v=20260823-single-character-lab">
 </head>
 <body>
   <header class="app-header">
@@ -119,6 +119,7 @@
         <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
         <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
         <button class="tab workflow-tab" data-page="local-image-config">Image Config</button>
+        <button class="tab workflow-tab" data-page="single-character-lab">Single Character Lab</button>
         <button class="tab workflow-tab" data-page="prompt-evolution">Prompt Evolution</button>
         <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
         <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
@@ -1524,6 +1525,41 @@
       </div>
     </section>
 
+    <section id="single-character-lab-page" class="page">
+      <div class="page-title-row">
+        <h1>Single Character Lab</h1>
+        <div id="single-character-lab-status" class="status-text"></div>
+      </div>
+      <div class="single-character-lab-layout">
+        <section class="control-panel settings-form single-character-lab-setup">
+          <h2>New Render</h2>
+          <label>Locked costume / view<select id="single-character-lab-appearance"></select></label>
+          <label>Body-reference pose<select id="single-character-lab-pose"></select></label>
+          <div class="prompt-evolution-reference-grid">
+            <figure><figcaption>Appearance reference</figcaption><img id="single-character-lab-appearance-preview" alt="Selected locked costume reference"></figure>
+            <figure><figcaption>Pose reference</figcaption><img id="single-character-lab-pose-preview" alt="Selected body-reference pose"></figure>
+          </div>
+          <label>Checkpoint<select id="single-character-lab-checkpoint"></select></label>
+          <div class="form-grid compact">
+            <label>Images<select id="single-character-lab-count"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
+            <label>Reference weight<input id="single-character-lab-weight" type="number" min="0" max="2" step="0.05" value="0.45"></label>
+          </div>
+          <details>
+            <summary>Generated prompts</summary>
+            <label>Positive prompt<textarea id="single-character-lab-positive"></textarea></label>
+            <label>Negative prompt<textarea id="single-character-lab-negative"></textarea></label>
+          </details>
+          <button id="single-character-lab-generate" class="primary-action" type="button" disabled>Generate Images</button>
+          <p id="single-character-lab-message" class="status-text"></p>
+        </section>
+        <section class="review-main">
+          <div class="review-header"><h2>Runs</h2><button id="single-character-lab-refresh" type="button">Refresh</button></div>
+          <div id="single-character-lab-runs" class="prompt-evolution-runs"></div>
+          <div id="single-character-lab-detail"></div>
+        </section>
+      </div>
+    </section>
+
     <section id="prompt-evolution-page" class="page">
       <div class="page-title-row">
         <h1>Prompt Evolution Lab</h1>
@@ -1795,6 +1831,6 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260823-production-work"></script>
+  <script src="/static/zet.js?v=20260823-single-character-proxy"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 import markdown
@@ -23,6 +23,7 @@ from zet.services.manual_render_submission_service import ManualRenderSubmission
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.prompt_evolution_service import PromptEvolutionError
+from zet.services.single_character_lab_service import SingleCharacterLabService
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -1826,6 +1827,66 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         if download:
             return FileResponse(requested, filename=requested.name)
         return FileResponse(requested)
+
+    @app.get("/api/single-character-lab/options")
+    def single_character_lab_options(
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(
+                _app(app.state.config_path), PROJECT_ROOT
+            ).options(character, phase)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/single-character-lab/prompt")
+    def single_character_lab_prompt(
+        character: str = Query(...),
+        phase: str = Query(...),
+        asset_id: int = Query(...),
+    ) -> dict[str, str]:
+        try:
+            return SingleCharacterLabService(
+                _app(app.state.config_path), PROJECT_ROOT
+            ).prompt(character, phase, asset_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/single-character-lab/runs")
+    def single_character_lab_runs(
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        try:
+            runs = SingleCharacterLabService(
+                _app(app.state.config_path), PROJECT_ROOT
+            ).list_runs(character, phase)
+            return {"runs": runs}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/single-character-lab/runs/{run_id}")
+    def single_character_lab_run(run_id: str) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(
+                _app(app.state.config_path), PROJECT_ROOT
+            ).detail(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/single-character-lab/runs")
+    def create_single_character_lab_run(
+        background_tasks: BackgroundTasks,
+        payload: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        service = SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT)
+        try:
+            run = service.create_run(payload)
+            background_tasks.add_task(service.execute_run, run["run_id"])
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/prompt-evolution/options")
     def prompt_evolution_options(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:

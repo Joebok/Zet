@@ -83,3 +83,23 @@ def test_scene_prompt_analysis_publishes_ollama_job(tmp_path: Path) -> None:
     assert "target_output_dir" not in manifest
     route = service.path_service.file_proxy_client.load_route(asks[0].name)
     assert route["target_output_dir"] == str((tmp_path / "Stories" / "Story" / "Scene").resolve())
+
+
+def test_scene_prompt_analysis_does_not_complete_for_empty_result(tmp_path: Path) -> None:
+    class StoryService:
+        def scene_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
+            return tmp_path / "Stories" / story_slug / scene_slug
+
+    config = Config(
+        base_library_path=str(tmp_path),
+        base_character_path=str(tmp_path / "Characters"),
+        base_asset_path=str(tmp_path / "Assets"),
+        base_pipeline_path=str(tmp_path / "Pipelines"),
+        base_ai_queue_path=str(tmp_path / "Queue"),
+    )
+    service = ScenePromptAnalysisService(config, StoryService())
+    result = tmp_path / "Stories" / "Story" / "Scene" / service.RESULT_FILE
+    result.parent.mkdir(parents=True)
+    result.touch()
+
+    assert service.status("Story", "Scene")["complete"] is False

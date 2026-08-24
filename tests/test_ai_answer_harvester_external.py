@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -19,6 +20,26 @@ class StubProxyPathService:
 
 
 class AIAnswerHarvesterExternalConsumerTests(unittest.TestCase):
+    def test_empty_auxiliary_output_is_not_applied(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            answer = root / "answer"
+            target = root / "target"
+            answer.mkdir()
+            (answer / "result.md").touch()
+            harvester = AIAnswerHarvester(None, None, None, None, None, None, lambda: "now")
+
+            result = harvester._apply_auxiliary_answer(
+                answer,
+                SimpleNamespace(
+                    expected_output="result.md", status="SUCCESS", ask_id="Ask_Test", asset_id=None
+                ),
+                {"task_type": "scene_prompt_analysis", "target_output_dir": str(target)},
+            )
+
+            self.assertEqual("SCENE_PROMPT_ANALYSIS_INVALID", result.status)
+            self.assertFalse((target / "result.md").exists())
+
     def test_harvest_once_ignores_external_consumer(self):
         with TemporaryDirectory() as temp_dir:
             answer_root = Path(temp_dir) / "Answer"

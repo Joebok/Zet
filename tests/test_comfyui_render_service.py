@@ -593,6 +593,54 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
         self.assertEqual(str(reference), references[0]["path"])
         self.assertRegex(references[0]["comfyui_input_name"], r"^Zet/[0-9a-f]{12}/reference\.png$")
 
+    def test_proxy_adapter_applies_single_character_render_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Config").mkdir()
+            profile = json.loads(
+                (Path(__file__).resolve().parents[1] / "Config" / "Local_Render_Presets.json").read_text(
+                    encoding="utf-8"
+                )
+            )["image-recipe-lab-ipadapter-controlnet-sdxl"]
+            (root / "Config" / "Local_Render_Presets.json").write_text(json.dumps({"lab": profile}), encoding="utf-8")
+            (root / "config.toml").write_text('[ComfyUI]\nCheckpoint = "model.safetensors"\n', encoding="utf-8")
+            prompt = root / "Prompt.md"
+            prompt.write_text("Prompt: full body\nNegative: cropped\n", encoding="utf-8")
+            appearance = root / "appearance.png"
+            pose = root / "pose.png"
+            appearance.write_bytes(b"appearance")
+            pose.write_bytes(b"pose")
+            output = root / "output.png"
+            output.write_bytes(b"output")
+            nodes = {
+                "LoadImage", "CLIPVisionLoader", "IPAdapterModelLoader", "IPAdapterAdvanced",
+                "DWPreprocessor", "ControlNetLoader", "ControlNetApplyAdvanced",
+            }
+            with (
+                patch("Scripts.Local_Render_Adapters.comfyui_adapter.list_comfyui_node_types", return_value=nodes),
+                patch(
+                    "Scripts.Local_Render_Adapters.comfyui_adapter.run_comfyui_workflow",
+                    return_value=ComfyUIRunResult("prompt-1", [output], {}, {}),
+                ) as run,
+            ):
+                render_preview(
+                    project_root=root,
+                    final_prompt_path=prompt,
+                    job_output_dir=root / "job",
+                    profile_name="lab",
+                    reference_files=[
+                        {"role": "prompt_evolution_appearance", "path": str(appearance)},
+                        {"role": "prompt_evolution_pose", "path": str(pose)},
+                    ],
+                    render_overrides={"width": 900, "height": 1300, "character_reference_weight": 0.45},
+                )
+
+            workflow = run.call_args.args[0]
+            latent = next(node for node in workflow.values() if node["class_type"] == "EmptyLatentImage")
+            adapter = next(node for node in workflow.values() if node["class_type"] == "IPAdapterAdvanced")
+            self.assertEqual((896, 1296), (latent["inputs"]["width"], latent["inputs"]["height"]))
+            self.assertEqual(0.45, adapter["inputs"]["weight"])
+
     def test_run_reports_validation_error(self) -> None:
         with patch(
             "zet.services.comfyui_render_service._request_json",

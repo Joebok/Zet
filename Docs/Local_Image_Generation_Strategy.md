@@ -214,3 +214,10 @@ TastyRice Magic on Paper SDXL is the default checkpoint for single-character
 illustrated renders. The default local render backend is ComfyUI with the
 IP-Adapter preview profile. PerfectDeliberate remains available as a Stable
 Matrix fallback, and Animagine remains an optional comparison checkpoint.
+
+The dashboard exposes the validated recipe under **Tools → Single Character
+Lab**. Select a locked Costume-Dressing image, select the matching
+Body-Reference pose, choose the number of images, and generate. TastyRice,
+reference weight 0.45, and the SDXL IP-Adapter + OpenPose ControlNet workflow
+are selected by default. Runs execute in the background and remain available
+in the page's run history.

@@ -60,6 +60,10 @@ const state = {
   promptEvolutionComfyNodeTypes: [],
   promptEvolutionComfyMissing: [],
   promptEvolutionRefreshTimer: null,
+  singleCharacterLabOptions: null,
+  singleCharacterLabRuns: [],
+  singleCharacterLabRun: null,
+  singleCharacterLabRefreshTimer: null,
   turnaroundRows: [],
   selectedTurnaroundId: null,
   selectedAuxiliaryTurnaroundId: null,
@@ -150,7 +154,7 @@ const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "expressions", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
-const GLOBAL_PAGES = new Set(["auxiliary-resources", "template-editor", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-inspection", "pipeline-controls", "help"]);
+const GLOBAL_PAGES = new Set(["auxiliary-resources", "template-editor", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-inspection", "pipeline-controls", "help"]);
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
@@ -184,6 +188,21 @@ const templateManualSelect = document.querySelector("#template-manual-select");
 const templateManualCopy = document.querySelector("#template-manual-copy");
 const templateManualDownload = document.querySelector("#template-manual-download");
 const templateManualContent = document.querySelector("#template-manual-content");
+const singleCharacterLabStatus = document.querySelector("#single-character-lab-status");
+const singleCharacterLabAppearance = document.querySelector("#single-character-lab-appearance");
+const singleCharacterLabPose = document.querySelector("#single-character-lab-pose");
+const singleCharacterLabAppearancePreview = document.querySelector("#single-character-lab-appearance-preview");
+const singleCharacterLabPosePreview = document.querySelector("#single-character-lab-pose-preview");
+const singleCharacterLabCheckpoint = document.querySelector("#single-character-lab-checkpoint");
+const singleCharacterLabCount = document.querySelector("#single-character-lab-count");
+const singleCharacterLabWeight = document.querySelector("#single-character-lab-weight");
+const singleCharacterLabPositive = document.querySelector("#single-character-lab-positive");
+const singleCharacterLabNegative = document.querySelector("#single-character-lab-negative");
+const singleCharacterLabGenerate = document.querySelector("#single-character-lab-generate");
+const singleCharacterLabMessage = document.querySelector("#single-character-lab-message");
+const singleCharacterLabRefresh = document.querySelector("#single-character-lab-refresh");
+const singleCharacterLabRuns = document.querySelector("#single-character-lab-runs");
+const singleCharacterLabDetail = document.querySelector("#single-character-lab-detail");
 const promptEvolutionStatus = document.querySelector("#prompt-evolution-status");
 const promptEvolutionMessage = document.querySelector("#prompt-evolution-message");
 const promptEvolutionShowSetup = document.querySelector("#prompt-evolution-show-setup");
@@ -765,7 +784,15 @@ async function fetchJson(url, options = {}) {
       let detail = `${response.status} ${response.statusText}`;
       try {
         const payload = await response.json();
-        detail = payload.detail || detail;
+        if (Array.isArray(payload.detail)) {
+          detail = payload.detail
+            .map((item) => item?.msg ? `${(item.loc || []).join(".")}: ${item.msg}` : JSON.stringify(item))
+            .join("; ");
+        } else if (payload.detail && typeof payload.detail === "object") {
+          detail = JSON.stringify(payload.detail);
+        } else {
+          detail = payload.detail || detail;
+        }
       } catch {
         // Keep HTTP detail.
       }
@@ -1615,7 +1642,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 
 const RESPONSIVE_TOOL_PAGES = [
   ["auxiliary-resources", "Aux Images"], ["template-editor", "Template Editor"], ["ai-controls", "AI Controls"],
-  ["local-image-config", "Image Config"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
+  ["local-image-config", "Image Config"], ["single-character-lab", "Single Character Lab"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
   ["pipeline-controls", "Pipeline Controls"],
   ["help", "Template Instruction Manuals"],
 ];
@@ -2882,6 +2909,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
+  document.querySelector("#single-character-lab-page").classList.toggle("active", page === "single-character-lab");
   document.querySelector("#prompt-evolution-page").classList.toggle("active", page === "prompt-evolution");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
@@ -2893,7 +2921,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
     );
   renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -2954,6 +2982,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "local-image-config") {
     await loadPipelineControls();
+  }
+  if (page === "single-character-lab") {
+    await loadSingleCharacterLab();
   }
   if (page === "prompt-evolution") {
     await loadPromptEvolution();
@@ -6795,6 +6826,7 @@ function clearPromptReview() {
   promptReviewRenderConsole.disabled = true;
   analyzePromptButton.disabled = true;
   viewPromptAnalysisButton.disabled = true;
+  viewPromptAnalysisButton.hidden = false;
   viewPromptAnalysisButton.classList.remove("complete", "pending");
   viewPromptAnalysisButton.title = "View prompt analysis";
   viewPromptAnalysisButton.setAttribute("aria-label", "View prompt analysis");
@@ -6817,6 +6849,7 @@ function renderPromptReview(detail) {
   promptReviewRenderConsole.disabled = !task.ask_id;
   analyzePromptButton.disabled = !storyLabel || Boolean(detail.prompt_analysis?.pending);
   analyzePromptButton.textContent = detail.prompt_analysis?.complete ? "Run analysis again" : (detail.prompt_analysis?.pending ? "Analysis running" : "Run analysis");
+  viewPromptAnalysisButton.hidden = Boolean(detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete);
   viewPromptAnalysisButton.disabled = !storyLabel || !detail.prompt_analysis?.complete;
   viewPromptAnalysisButton.classList.toggle("complete", Boolean(detail.prompt_analysis?.complete));
   viewPromptAnalysisButton.classList.toggle("pending", Boolean(detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete));
@@ -7238,7 +7271,8 @@ function renderReviewEndpoint(task, action = "") {
   if (task.review_kind === "scene") {
     return `/api/render-review/scenes/${encodeURIComponent(task.story_slug)}/${encodeURIComponent(task.scene_slug)}${suffix}`;
   }
-  return `/api/render-review/${task.asset_id}${suffix}?${productionQuery().toString()}`;
+  const params = new URLSearchParams({ character: task.character, phase: task.phase });
+  return `/api/render-review/${task.asset_id}${suffix}?${params.toString()}`;
 }
 
 async function selectRenderReview(reviewKey) {
@@ -7406,20 +7440,18 @@ async function promoteRenderReview() {
   const task = selectedRenderReviewTask();
   if (!task) return;
   const replacingLockedImage = task.review_kind === "asset" && Boolean(state.renderReviewDetail?.exists?.locked_image);
-  const params = productionQuery();
+  let endpoint = renderReviewEndpoint(task, "promote-to-locked");
   if (replacingLockedImage) {
     const confirmed = window.confirm("A locked image already exists for this asset. Replace it with the candidate image?");
     if (!confirmed) {
       return;
     }
-    params.set("replace_existing", "true");
+    endpoint += "&replace_existing=true";
   }
   showRenderMessage("Working...");
   try {
     const payload = await fetchJson(
-      task.review_kind === "scene"
-        ? renderReviewEndpoint(task, "promote-to-locked")
-        : `/api/render-review/${task.asset_id}/promote-to-locked?${params.toString()}`,
+      endpoint,
       { method: "POST" },
     );
     showRenderMessage(payload.message || "Render approved.");
@@ -8924,6 +8956,185 @@ function promptEvolutionFileUrl(path) { return path ? `/api/file?path=${encodeUR
 function selectedPromptEvolutionAsset() { return state.promptEvolutionAssets.find((item) => String(item.asset_id) === promptEvolutionAsset.value) || null; }
 const PROMPT_EVOLUTION_SETTINGS_KEY = "zet:prompt-evolution-settings";
 const PROMPT_EVOLUTION_PANE_KEY = "zet:prompt-evolution-pane";
+function selectedSingleCharacterAppearance() {
+  return state.singleCharacterLabOptions?.appearances?.find(
+    (item) => String(item.asset_id) === singleCharacterLabAppearance.value,
+  ) || null;
+}
+
+function selectedSingleCharacterPose() {
+  return state.singleCharacterLabOptions?.poses?.find(
+    (item) => item.tag === singleCharacterLabPose.value,
+  ) || null;
+}
+
+function renderSingleCharacterReferences() {
+  const appearance = selectedSingleCharacterAppearance();
+  const pose = selectedSingleCharacterPose();
+  singleCharacterLabAppearancePreview.src = appearance ? fileUrl(appearance.image_path) : "";
+  singleCharacterLabPosePreview.src = pose ? fileUrl(pose.image_path) : "";
+}
+
+async function loadSingleCharacterPrompt() {
+  const appearance = selectedSingleCharacterAppearance();
+  if (!appearance) {
+    singleCharacterLabPositive.value = "";
+    singleCharacterLabNegative.value = "";
+    return;
+  }
+  const params = new URLSearchParams({
+    character: state.character,
+    phase: state.phase,
+    asset_id: String(appearance.asset_id),
+  });
+  const payload = await fetchJson(`/api/single-character-lab/prompt?${params.toString()}`);
+  singleCharacterLabPositive.value = payload.positive_prompt || "";
+  singleCharacterLabNegative.value = payload.negative_prompt || "";
+}
+
+async function syncSingleCharacterAppearance({ matchPose = false } = {}) {
+  const appearance = selectedSingleCharacterAppearance();
+  if (matchPose && appearance) {
+    const pose = state.singleCharacterLabOptions?.poses?.find(
+      (item) => item.view.toLocaleLowerCase() === appearance.view.toLocaleLowerCase(),
+    );
+    if (pose) singleCharacterLabPose.value = pose.tag;
+  }
+  renderSingleCharacterReferences();
+  await loadSingleCharacterPrompt();
+}
+
+function stopSingleCharacterLabPolling() {
+  if (state.singleCharacterLabRefreshTimer) window.clearInterval(state.singleCharacterLabRefreshTimer);
+  state.singleCharacterLabRefreshTimer = null;
+}
+
+function renderSingleCharacterLabRun(run) {
+  state.singleCharacterLabRun = run;
+  if (!run) {
+    singleCharacterLabDetail.innerHTML = '<p class="status-text">No runs yet.</p>';
+    stopSingleCharacterLabPolling();
+    return;
+  }
+  const candidates = (run.candidates || []).map((item) => `
+    <article class="prompt-evolution-candidate">
+      <img src="${fileUrl(item.image_path)}" alt="${escapeHtml(run.costume)} seed ${escapeHtml(item.seed)}">
+      <strong>Seed ${escapeHtml(item.seed)}</strong>
+      ${item.elapsed_seconds ? `<small>${escapeHtml(item.elapsed_seconds)} seconds</small>` : ""}
+    </article>`).join("");
+  const contactSheet = run.contact_sheet
+    ? `<figure class="single-character-contact-sheet"><figcaption>Contact sheet</figcaption><img src="${fileUrl(run.contact_sheet)}" alt="Single Character Lab contact sheet"></figure>`
+    : "";
+  singleCharacterLabDetail.innerHTML = `
+    <div class="summary-bar">${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
+    <p><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint)} · <strong>Reference weight:</strong> ${escapeHtml(run.reference_weight)}</p>
+    ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
+    ${["QUEUED", "RUNNING"].includes(run.status) ? '<p class="status-text">Rendering locally in ComfyUI…</p>' : ""}
+    ${candidates ? `<div class="prompt-evolution-gallery">${candidates}</div>` : ""}
+    ${contactSheet}
+    <details><summary>Effective prompts</summary><div class="prompt-evolution-prompts"><strong>Positive</strong>\n${escapeHtml(run.positive_prompt || "")}\n\n<strong>Negative</strong>\n${escapeHtml(run.negative_prompt || "")}</div></details>`;
+  singleCharacterLabDetail.querySelectorAll("img").forEach((image) => enableFullscreenImage(image));
+  singleCharacterLabRuns.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.runId === run.run_id);
+  });
+  if (["QUEUED", "RUNNING"].includes(run.status) && !state.singleCharacterLabRefreshTimer) {
+    state.singleCharacterLabRefreshTimer = window.setInterval(refreshSingleCharacterLabRun, 3000);
+  } else if (!["QUEUED", "RUNNING"].includes(run.status)) {
+    stopSingleCharacterLabPolling();
+    singleCharacterLabGenerate.disabled = false;
+  }
+}
+
+function renderSingleCharacterLabRuns() {
+  singleCharacterLabRuns.innerHTML = state.singleCharacterLabRuns.map((run) =>
+    `<button type="button" data-run-id="${escapeHtml(run.run_id)}">${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</button>`,
+  ).join("") || "No runs yet.";
+}
+
+async function selectSingleCharacterLabRun(runId) {
+  renderSingleCharacterLabRun(await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(runId)}`));
+}
+
+async function refreshSingleCharacterLabRun() {
+  if (!state.singleCharacterLabRun?.run_id) return;
+  try {
+    const run = await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}`);
+    renderSingleCharacterLabRun(run);
+    singleCharacterLabStatus.textContent = `${run.costume} · ${run.status}`;
+    if (!["QUEUED", "RUNNING"].includes(run.status)) await loadSingleCharacterLabRuns(run.run_id);
+  } catch (error) {
+    stopSingleCharacterLabPolling();
+    singleCharacterLabMessage.textContent = error.message;
+    singleCharacterLabGenerate.disabled = false;
+  }
+}
+
+async function loadSingleCharacterLabRuns(preferredRunId = "") {
+  const params = new URLSearchParams({ character: state.character, phase: state.phase });
+  const payload = await fetchJson(`/api/single-character-lab/runs?${params.toString()}`);
+  state.singleCharacterLabRuns = payload.runs || [];
+  renderSingleCharacterLabRuns();
+  const runId = preferredRunId || state.singleCharacterLabRun?.run_id || state.singleCharacterLabRuns[0]?.run_id;
+  if (runId && state.singleCharacterLabRuns.some((run) => run.run_id === runId)) {
+    await selectSingleCharacterLabRun(runId);
+  } else {
+    renderSingleCharacterLabRun(null);
+  }
+}
+
+async function loadSingleCharacterLab() {
+  stopSingleCharacterLabPolling();
+  singleCharacterLabStatus.textContent = "Loading local options…";
+  const params = new URLSearchParams({ character: state.character, phase: state.phase });
+  state.singleCharacterLabOptions = await fetchJson(`/api/single-character-lab/options?${params.toString()}`);
+  setSelectOptionsWithLabels(singleCharacterLabAppearance, state.singleCharacterLabOptions.appearances.map(
+    (item) => ({ value: String(item.asset_id), label: item.label }),
+  ));
+  setSelectOptionsWithLabels(singleCharacterLabPose, state.singleCharacterLabOptions.poses.map(
+    (item) => ({ value: item.tag, label: item.label }),
+  ));
+  setSelectOptions(singleCharacterLabCheckpoint, state.singleCharacterLabOptions.checkpoints || []);
+  singleCharacterLabCheckpoint.value = state.singleCharacterLabOptions.default_checkpoint || "";
+  singleCharacterLabWeight.value = String(state.singleCharacterLabOptions.default_reference_weight ?? 0.45);
+  singleCharacterLabGenerate.disabled = !singleCharacterLabAppearance.value || !singleCharacterLabPose.value || !singleCharacterLabCheckpoint.value;
+  await syncSingleCharacterAppearance({ matchPose: true });
+  await loadSingleCharacterLabRuns();
+  singleCharacterLabStatus.textContent = state.singleCharacterLabOptions.checkpoint_error
+    ? `Configured checkpoint only · ${state.singleCharacterLabOptions.checkpoint_error}`
+    : `${state.singleCharacterLabOptions.appearances.length} locked costume view(s)`;
+}
+
+async function generateSingleCharacterLabRun() {
+  const appearance = selectedSingleCharacterAppearance();
+  if (!appearance) return;
+  singleCharacterLabGenerate.disabled = true;
+  singleCharacterLabMessage.textContent = "Creating local render run…";
+  try {
+    const run = await fetchJson("/api/single-character-lab/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        character: state.character,
+        phase: state.phase,
+        asset_id: appearance.asset_id,
+        pose_tag: singleCharacterLabPose.value,
+        checkpoint: singleCharacterLabCheckpoint.value,
+        count: Number(singleCharacterLabCount.value || 1),
+        reference_weight: Number(singleCharacterLabWeight.value || 0.45),
+        positive_prompt: singleCharacterLabPositive.value,
+        negative_prompt: singleCharacterLabNegative.value,
+      }),
+    });
+    state.singleCharacterLabRuns.unshift(run);
+    renderSingleCharacterLabRuns();
+    renderSingleCharacterLabRun(run);
+    singleCharacterLabMessage.textContent = "Queued in local ComfyUI.";
+  } catch (error) {
+    singleCharacterLabMessage.textContent = error.message;
+    singleCharacterLabGenerate.disabled = false;
+  }
+}
+
 const promptEvolutionSettingControls = () => [promptEvolutionAsset, promptEvolutionBackend, promptEvolutionCheckpoint, promptEvolutionProfile, promptEvolutionSampler, promptEvolutionScheduler, promptEvolutionDenoise, promptEvolutionInitSource, promptEvolutionPoseSource, promptEvolutionPreprocessor, promptEvolutionControlnetModel, promptEvolutionControlStrength, promptEvolutionControlStart, promptEvolutionControlEnd, promptEvolutionCfg, promptEvolutionSteps, promptEvolutionBatchSize, promptEvolutionFixedSeedCount, promptEvolutionTotalBatches, promptEvolutionPositive, promptEvolutionNegative];
 function setPromptEvolutionPane(name) {
   const review = name === "review";
@@ -9725,6 +9936,9 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#local-image-review-page").classList.contains("active")) {
     await loadLocalImageReviewTasks();
   }
+  if (document.querySelector("#single-character-lab-page").classList.contains("active")) {
+    await loadSingleCharacterLab();
+  }
   await loadWorkspaceSummary();
 });
 
@@ -9794,6 +10008,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#local-image-review-page").classList.contains("active")) {
     await loadLocalImageReviewTasks();
+  }
+  if (document.querySelector("#single-character-lab-page").classList.contains("active")) {
+    await loadSingleCharacterLab();
   }
   await loadWorkspaceSummary();
 });
@@ -10346,6 +10563,20 @@ localImageReviewRefresh.addEventListener("click", () => loadLocalImageReviewTask
 localImageReviewClear.addEventListener("click", clearLocalImageReviewImages);
 localImageReviewGenerate.addEventListener("click", generateLocalImageReviewImages);
 localImageReviewGenerateAllModels.addEventListener("click", generateLocalImageReviewImagesForAllModels);
+singleCharacterLabAppearance.addEventListener("change", () => {
+  syncSingleCharacterAppearance({ matchPose: true }).catch((error) => {
+    singleCharacterLabMessage.textContent = error.message;
+  });
+});
+singleCharacterLabPose.addEventListener("change", renderSingleCharacterReferences);
+singleCharacterLabGenerate.addEventListener("click", generateSingleCharacterLabRun);
+singleCharacterLabRefresh.addEventListener("click", () => loadSingleCharacterLabRuns());
+singleCharacterLabRuns.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-run-id]");
+  if (button) selectSingleCharacterLabRun(button.dataset.runId).catch((error) => {
+    singleCharacterLabMessage.textContent = error.message;
+  });
+});
 promptEvolutionAsset.addEventListener("change", () => {
   renderPromptEvolutionAsset();
   loadPromptEvolutionChecklists().catch((error) => showPromptEvolutionMessage(error.message, "error"));
