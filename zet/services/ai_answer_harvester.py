@@ -111,6 +111,33 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"JSON file must contain an object: {path}")
         return data
 
+    def _scene_prompt_analysis_attribution(self, answer_path: Path, ask_manifest: dict) -> str:
+        answer_manifest = self._read_json(answer_path / "answer_manifest.json")
+        completed_at = str(answer_manifest.get("completed_at") or self.timestamp_provider())
+        try:
+            completed = datetime.fromisoformat(completed_at)
+            hour = completed.hour % 12 or 12
+            completed_label = (
+                f"{completed.month}/{completed.day}/{completed.year % 100:02d} "
+                f"{hour}:{completed.minute:02d}{'am' if completed.hour < 12 else 'pm'}"
+            )
+        except ValueError:
+            completed_label = completed_at
+
+        elapsed = answer_manifest.get("elapsed_seconds")
+        try:
+            elapsed_seconds = max(0.0, float(elapsed))
+        except (TypeError, ValueError):
+            try:
+                started = datetime.fromisoformat(str(answer_manifest.get("started_at") or ""))
+                completed = datetime.fromisoformat(completed_at)
+                elapsed_seconds = max(0.0, (completed - started).total_seconds())
+            except ValueError:
+                elapsed_seconds = 0.0
+        duration = f"{elapsed_seconds:.2f}".rstrip("0").rstrip(".")
+        model = str(ask_manifest.get("ollama_model") or "unknown model").replace("_", r"\_")
+        return f"Analysis completed {completed_label} by {model} in {duration} seconds."
+
     def _load_answer(self, answer_path: Path) -> AIProxyAnswer:
         manifest_path = answer_path / "answer_manifest.json"
         proxy_result_path = answer_path / "proxy_result.json"
@@ -294,6 +321,10 @@ class AIAnswerHarvester:
                 ensure_condensed_negative_prompt(response_path.read_text(encoding="utf-8")),
                 encoding="utf-8",
             )
+        elif task_type == "scene_prompt_analysis":
+            analysis = response_path.read_text(encoding="utf-8").rstrip()
+            attribution = self._scene_prompt_analysis_attribution(answer_path, ask_manifest)
+            target_path.write_text(f"{analysis}\n\n---\n\n{attribution}\n", encoding="utf-8")
         else:
             shutil.copy2(response_path, target_path)
             metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"

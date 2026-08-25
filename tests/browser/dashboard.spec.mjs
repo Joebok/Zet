@@ -298,30 +298,23 @@ test("@desktop-smoke selection, zine ordering, live status, and image dialogs ar
 
 
 
-test("@desktop-smoke scene workflow keeps context and production tools default to current work", async ({ page }) => {
+test("@desktop-smoke scene workflow keeps context and production tools show all work", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator("#header-scene-select").selectOption("Closing-Scene");
 
-  const scopedRequest = page.waitForRequest((request) => request.url().includes("/api/render-console/tasks?"));
+  const allRequest = page.waitForRequest((request) => request.url().includes("/api/render-console/tasks?"));
   await page.locator("#scene-workflow-menu").selectOption("render-console");
-  const scopedUrl = new URL((await scopedRequest).url());
-  expect(scopedUrl.searchParams.get("story_slug")).toBe("Alpha-Story");
-  expect(scopedUrl.searchParams.get("scene_slug")).toBe("Closing-Scene");
+  const allUrl = new URL((await allRequest).url());
+  expect(allUrl.searchParams.has("story_slug")).toBe(false);
+  expect(allUrl.searchParams.has("scene_slug")).toBe(false);
   await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
   await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
-  await expect(page.locator("#render-console-page .production-scope-label")).toContainText("Alpha-Story / Closing-Scene");
+  await expect(page.locator(".production-scope-toggle")).toHaveCount(0);
   await expect(page.locator("#story-navigation [data-production-count='render_waiting']")).toHaveText(/[1-9]/);
   await expect(page.locator("#story-navigation [data-production-count='image_review_waiting']")).toHaveText(/[1-9]/);
   expect(await page.locator(".render-console-layout").evaluate((element) => (
     getComputedStyle(element).gridTemplateColumns.split(" ").length
   ))).toBe(3);
-
-  const allRequest = page.waitForRequest((request) => request.url().includes("/api/render-console/tasks?"));
-  await page.locator("#render-console-page .production-scope-toggle").click();
-  const allUrl = new URL((await allRequest).url());
-  expect(allUrl.searchParams.has("story_slug")).toBe(false);
-  expect(allUrl.searchParams.has("scene_slug")).toBe(false);
-  await expect(page.locator("#render-console-page .production-scope-label")).toHaveText("All work");
 
   await page.locator("#scene-workflow-menu").selectOption("prompt-review");
   await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
@@ -380,6 +373,9 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   expect(saved.ok()).toBe(true);
 
   await page.locator("#scene-builder-open").click();
+  const editorBox = await page.locator(".scene-builder-element-editor").boundingBox();
+  const fieldsetBox = await page.locator(".scene-builder-element-editor fieldset").boundingBox();
+  expect(Math.abs(editorBox.width - fieldsetBox.width)).toBeLessThan(1);
   const enabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/background/enable") && response.ok());
   await page.getByRole("button", { name: "Use background sub-render" }).click();
   await enabled;
@@ -400,6 +396,45 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   await page.getByRole("button", { name: "Turn off background sub-render" }).click();
   await disabled;
   await expect(page.locator(".scene-builder-render").first()).toBeEnabled();
+});
+
+test("@desktop-smoke Scene Builder creates nested element render targets", async ({ page }) => {
+  await openPage(page, "scenes");
+  const storySlug = await page.locator("#header-story-select").inputValue();
+  const sceneSlug = await page.locator("#header-scene-select").inputValue();
+  const detail = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const data = (await detail.json()).document.data;
+  data.subscenes = [];
+  data.scene_elements = [
+    { id: "travelers", display_name: "Travelers", resource_type: "Scene-Only", element_type: "Prop", fallback_visual_description: "a roped group of travelers", subscene_id: "" },
+    { id: "devil", display_name: "Devil", resource_type: "Scene-Only", element_type: "Monster", fallback_visual_description: "a large devil", subscene_id: "" },
+  ];
+  data.placements = [
+    { id: "travelers-placement", scene_element_id: "travelers", position_within_cell: "left", depth: "midground" },
+    { id: "devil-placement", scene_element_id: "devil", position_within_cell: "right", depth: "midground" },
+  ];
+  const saved = await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data });
+  expect(saved.ok()).toBe(true);
+
+  await page.locator("#scene-builder-open").click();
+  await page.locator(".scene-builder-element-row").filter({ hasText: "Travelers" }).click();
+  await page.locator(".scene-builder-element-menu summary").click();
+  const enabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/elements/travelers/enable") && response.ok());
+  await page.getByRole("button", { name: "Turn into sub-scene" }).click();
+  await enabled;
+  await expect(page.locator(".scene-builder-target-breadcrumb")).toHaveText("Full Scene › Travelers");
+  await expect(page.getByText("Target element: Travelers", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Add Element" }).click();
+  await page.locator("#builder-element-resource-type").selectOption("Scene-Only");
+  await page.locator("#builder-element-scene-name").fill("Rescued travelers");
+  await page.locator("#builder-element-add").click();
+  await expect(page.locator("[data-builder-element-field='subscene_id']")).not.toHaveValue("");
+  await page.locator(".scene-builder-element-menu summary").click();
+  const nested = page.waitForResponse((response) => response.url().includes("/subscenes/elements/") && response.url().endsWith("/enable") && response.ok());
+  await page.getByRole("button", { name: "Turn into sub-scene" }).click();
+  await nested;
+  await expect(page.locator(".scene-builder-target-breadcrumb")).toContainText("Full Scene › Travelers › Rescued travelers");
 });
 
 test("AI Controls stacks queue lists and manages Zet processes", async ({ page }) => {

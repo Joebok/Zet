@@ -266,6 +266,20 @@ Keep this manual note.
             self.assertIn("<!-- ZET:BEGIN SCENE_BUILDER -->", text)
             self.assertIn("## Positive Image Prompt", text)
 
+    def test_scene_normalization_removes_blank_reference_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            elements = service._normalized_scene_elements({"scene_elements": [{
+                "id": "Menelmacar",
+                "display_name": "Menelmacar",
+                "resource_type": "Scene-Only",
+                "element_type": "Backdrop",
+                "reference_images": [{"tag": ""}],
+                "fallback_visual_description": "The constellation of Orion.",
+            }]})
+
+            self.assertEqual([], elements[0]["reference_images"])
+
     def test_delete_story_commits_then_removes_story_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -624,6 +638,162 @@ ink wash
             disabled_main = service.stage_scene_render("Demo", "Opening")
             disabled_ir = json.loads((Path(disabled_main.pipeline_path) / "Scene_Render_IR.json").read_text(encoding="utf-8"))
             self.assertEqual({"hall", "hero"}, {item["id"] for item in disabled_ir["elements"]})
+
+    def test_nested_element_subscenes_render_as_direct_anchor_references(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            service.save_story_settings(
+                story_dir / "Demo.story.json",
+                service.create_default_story_settings(story_dir / "Demo.md"),
+            )
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene"]["story_beat"] = "The party crosses the wastes."
+            data["setup"]["environment"].update({
+                "location": "the wastes",
+                "lighting": "red storm light",
+                "mood": "tense",
+                "weather_or_atmosphere": "blowing sand",
+            })
+            data["scene_elements"] = [
+                {"id": "party", "display_name": "The party", "resource_type": "Scene-Only", "element_type": "Prop", "fallback_visual_description": "a roped group of travelers"},
+                {"id": "devil", "display_name": "Devil", "resource_type": "Scene-Only", "element_type": "Monster", "fallback_visual_description": "a large devil"},
+            ]
+            data["placements"] = [
+                {"id": "party-placement", "scene_element_id": "party", "position_within_cell": "left", "depth": "midground"},
+                {"id": "devil-placement", "scene_element_id": "devil", "position_within_cell": "right", "depth": "midground"},
+            ]
+            service.save_scene_builder_data("Demo", "Opening", data)
+
+            document = service.enable_element_subscene("Demo", "Opening", "party")
+            party_target = next(item for item in document.data["subscenes"] if item["anchor_element_id"] == "party")
+            party_target_id = party_target["id"]
+            self.assertEqual("", next(item for item in document.data["scene_elements"] if item["id"] == "party")["subscene_id"])
+            self.assertEqual(document.data["setup"]["canvas"], party_target["setup"]["canvas"])
+
+            changed = document.data
+            party_target = next(item for item in changed["subscenes"] if item["id"] == party_target_id)
+            party_target["setup"]["environment"]["mood"] = {"mode": "omit", "value": ""}
+            party_target["setup"]["environment"]["weather_or_atmosphere"] = {"mode": "override", "value": "light dust"}
+            changed["scene_elements"].extend([
+                {"id": "freydis", "display_name": "Freydis", "resource_type": "Scene-Only", "element_type": "Character", "fallback_visual_description": "an armored traveler", "subscene_id": party_target_id},
+                {"id": "travelers", "display_name": "Rescued travelers", "resource_type": "Scene-Only", "element_type": "Prop", "fallback_visual_description": "a cluster of exhausted travelers", "subscene_id": party_target_id},
+            ])
+            changed["placements"].extend([
+                {"id": "freydis-placement", "scene_element_id": "freydis", "position_within_cell": "left", "depth": "midground"},
+                {"id": "travelers-placement", "scene_element_id": "travelers", "position_within_cell": "right", "depth": "midground"},
+            ])
+            service.save_scene_builder_data("Demo", "Opening", changed)
+            document = service.enable_element_subscene("Demo", "Opening", "travelers")
+            travelers_target = next(item for item in document.data["subscenes"] if item["anchor_element_id"] == "travelers")
+            travelers_target_id = travelers_target["id"]
+            graph = service.scene_render_target_service.target_graph(document.data)
+            self.assertEqual(2, graph["depths"][travelers_target_id])
+            _, party_environment = service.scene_render_target_service.effective_setup(document.data, party_target_id)
+            _, travelers_environment = service.scene_render_target_service.effective_setup(document.data, travelers_target_id)
+            self.assertEqual("red storm light", party_environment["lighting"])
+            self.assertEqual("", travelers_environment["mood"])
+            self.assertEqual("light dust", travelers_environment["weather_or_atmosphere"])
+
+            changed = document.data
+            changed["scene_elements"].append({
+                "id": "rescued_adult",
+                "display_name": "Rescued adult",
+                "resource_type": "Scene-Only",
+                "element_type": "Character",
+                "fallback_visual_description": "an exhausted rescued traveler",
+                "subscene_id": travelers_target_id,
+            })
+            changed["placements"].append({
+                "id": "rescued-adult-placement",
+                "scene_element_id": "rescued_adult",
+                "position_within_cell": "center",
+                "depth": "midground",
+            })
+            service.save_scene_builder_data("Demo", "Opening", changed)
+
+            leaf_task = service.stage_scene_render("Demo", "Opening", travelers_target_id)
+            leaf_manifest = json.loads((Path(leaf_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
+            leaf_paths = service.scene_render_target_service.review_paths("Demo", "Opening", travelers_target_id)
+            leaf_paths["locked"].parent.mkdir(parents=True)
+            leaf_paths["locked"].write_bytes(b"travelers")
+            leaf_paths["metadata"].write_text(json.dumps({"render_input_hash": leaf_manifest["render_input_hash"]}), encoding="utf-8")
+
+            party_task = service.stage_scene_render("Demo", "Opening", party_target_id)
+            party_ir = json.loads((Path(party_task.pipeline_path) / "Scene_Render_IR.json").read_text(encoding="utf-8"))
+            travelers_tag = f"{{{{SCENE_RENDER:Demo:Opening:{travelers_target_id}}}}}"
+            self.assertEqual({"freydis", "travelers"}, {item["id"] for item in party_ir["elements"]})
+            self.assertTrue(any(item["tag"] == travelers_tag and item["applies_to_element_id"] == "travelers" for item in party_ir["references"]))
+            party_prompt = Path(party_task.final_prompt_path).read_text(encoding="utf-8")
+            self.assertIn("standalone visual reference", party_prompt)
+            self.assertNotIn("full-canvas background plate", party_prompt)
+            self.assertNotIn("authoritative backdrop", party_prompt)
+
+            party_manifest = json.loads((Path(party_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
+            party_paths = service.scene_render_target_service.review_paths("Demo", "Opening", party_target_id)
+            party_paths["locked"].parent.mkdir(parents=True, exist_ok=True)
+            party_paths["locked"].write_bytes(b"party")
+            party_paths["metadata"].write_text(json.dumps({"render_input_hash": party_manifest["render_input_hash"]}), encoding="utf-8")
+
+            main_task = service.stage_scene_render("Demo", "Opening")
+            main_ir = json.loads((Path(main_task.pipeline_path) / "Scene_Render_IR.json").read_text(encoding="utf-8"))
+            party_tag = f"{{{{SCENE_RENDER:Demo:Opening:{party_target_id}}}}}"
+            self.assertEqual({"party", "devil"}, {item["id"] for item in main_ir["elements"]})
+            self.assertTrue(any(item["tag"] == party_tag and item["applies_to_element_id"] == "party" for item in main_ir["references"]))
+            self.assertFalse(any(item["tag"] == travelers_tag for item in main_ir["references"]))
+
+            changed = service.load_scene_builder_data("Demo", "Opening").data
+            next(item for item in changed["scene_elements"] if item["id"] == "rescued_adult")["fallback_visual_description"] = "a rescued traveler wrapped in a torn cloak"
+            service.save_scene_builder_data("Demo", "Opening", changed)
+            with self.assertRaisesRegex(StoryServiceError, "not current"):
+                service.stage_scene_render("Demo", "Opening")
+
+            leaf_task = service.stage_scene_render("Demo", "Opening", travelers_target_id)
+            leaf_manifest = json.loads((Path(leaf_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
+            leaf_paths["locked"].write_bytes(b"travelers-v2")
+            leaf_paths["metadata"].write_text(json.dumps({"render_input_hash": leaf_manifest["render_input_hash"]}), encoding="utf-8")
+            with self.assertRaisesRegex(StoryServiceError, "The party.*out of date"):
+                service.stage_scene_render("Demo", "Opening")
+
+    def test_element_subscene_graph_rejects_cycles_and_depth_four(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            service.save_story_settings(story_dir / "Demo.story.json", service.create_default_story_settings(story_dir / "Demo.md"))
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene_elements"] = [
+                {"id": "a", "display_name": "A", "element_type": "Prop", "fallback_visual_description": "A", "subscene_id": ""},
+                {"id": "b", "display_name": "B", "element_type": "Prop", "fallback_visual_description": "B", "subscene_id": "t1"},
+                {"id": "c", "display_name": "C", "element_type": "Prop", "fallback_visual_description": "C", "subscene_id": "t2"},
+                {"id": "d", "display_name": "D", "element_type": "Prop", "fallback_visual_description": "D", "subscene_id": "t3"},
+            ]
+            data["subscenes"] = [
+                {"id": "t1", "kind": "element", "anchor_element_id": "a", "enabled": True},
+                {"id": "t2", "kind": "element", "anchor_element_id": "b", "enabled": True},
+                {"id": "t3", "kind": "element", "anchor_element_id": "c", "enabled": True},
+                {"id": "t4", "kind": "element", "anchor_element_id": "d", "enabled": True},
+            ]
+            with self.assertRaisesRegex(StoryServiceError, "maximum nesting depth"):
+                service.save_scene_builder_data("Demo", "Opening", data)
+
+            data["scene_elements"] = [
+                {"id": "a", "display_name": "A", "element_type": "Prop", "fallback_visual_description": "A", "subscene_id": "tb"},
+                {"id": "b", "display_name": "B", "element_type": "Prop", "fallback_visual_description": "B", "subscene_id": "ta"},
+            ]
+            data["subscenes"] = [
+                {"id": "ta", "kind": "element", "anchor_element_id": "a", "enabled": True},
+                {"id": "tb", "kind": "element", "anchor_element_id": "b", "enabled": True},
+            ]
+            with self.assertRaisesRegex(StoryServiceError, "cycle"):
+                service.save_scene_builder_data("Demo", "Opening", data)
 
 
     def test_move_scene_moves_artifacts_orders_and_structured_references(self) -> None:

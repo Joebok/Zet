@@ -88,9 +88,14 @@ def compile_scene_render_ir(
         if element_id not in suppressed_element_ids
     ]
     story_profile = story_settings.get("compiler_profiles", {}).get("final_image_prompt", {})
-    references = list(_items(scene_data.get("reference_assignments")))
+    references = [
+        reference for reference in _items(scene_data.get("reference_assignments"))
+        if _clean(reference.get("tag"))
+    ]
     for element in _items(scene_data.get("scene_elements")):
         for reference in _items(element.get("reference_images")):
+            if not _clean(reference.get("tag")):
+                continue
             references.append({
                 "id": f"ref_{element.get('id')}_{reference.get('tag')}",
                 "tag": reference.get("tag", ""),
@@ -99,11 +104,23 @@ def compile_scene_render_ir(
                 "ignore": reference.get("ignore", []),
                 "notes": reference.get("notes", ""),
             })
+    render_target = scene_data.get("_render_target") if isinstance(scene_data.get("_render_target"), dict) else {"id": "main", "label": "Full Scene", "kind": "main"}
+    target_anchor = render_target.get("anchor") if isinstance(render_target.get("anchor"), dict) else {}
+    for reference in _items(target_anchor.get("reference_images")):
+        if not _clean(reference.get("tag")):
+            continue
+        references.append({
+            "id": f"ref_target_{target_anchor.get('id')}_{reference.get('tag')}",
+            "tag": reference.get("tag", ""),
+            "applies_to_element_id": target_anchor.get("id", ""),
+            "roles": reference.get("roles", []),
+            "ignore": reference.get("ignore", []),
+            "notes": reference.get("notes", ""),
+        })
     dialogue = _items(scene_data.get("dialogue"))
     prompt_sections = select_final_image_prompt_sections(
         default_prompt_sections or {}, scene_data.get("final_image_prompt_overrides")
     )
-    render_target = scene_data.get("_render_target") if isinstance(scene_data.get("_render_target"), dict) else {"id": "main", "label": "Full Scene", "kind": "main"}
     return {
         "schema_version": 4,
         "render_target": render_target,
@@ -180,6 +197,10 @@ def _element(ir: dict[str, Any], element_id: str) -> dict[str, Any]:
 def _elements_by_id(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
     elements = {_clean(item.get("id")): item for item in ir.get("baked_landmarks", []) if _clean(item.get("id"))}
     elements.update({_clean(item.get("id")): item for item in ir.get("elements", []) if _clean(item.get("id"))})
+    target = ir.get("render_target") if isinstance(ir.get("render_target"), dict) else {}
+    anchor = target.get("anchor") if isinstance(target.get("anchor"), dict) else {}
+    if _clean(anchor.get("id")):
+        elements.setdefault(_clean(anchor.get("id")), anchor)
     return elements
 
 
@@ -702,27 +723,38 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
 
 
 def _reference_defaults(element: dict[str, Any], ref: dict[str, Any]) -> tuple[str, str]:
-    resource_type = _clean(element.get("resource_type")) or _clean(element.get("element_type"))
+    element_type = _clean(element.get("element_type"))
+    resource_type = _clean(element.get("resource_type"))
     roles = {item.lower() for item in _lines(ref.get("roles"))}
     tag = _clean(ref.get("tag")).lower()
-    if resource_type in {"Place", "Backdrop"}:
+    if "internal arrangement" in roles:
         return (
-            "architecture, structural design, identifying materials, and location-defining features",
-            "source camera composition, framing, people, lighting, weather, and temporary objects",
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement",
+            "source canvas, background, crop, framing, absolute scale, outer placement, pose where overridden by the parent, and lighting",
         )
-    if resource_type in {"Object", "Prop"}:
+    if element_type == "Backdrop" or resource_type == "Place":
         return (
-            "shape, construction, materials, colors, scale, and identifying details",
-            "source position, orientation, hand placement, framing, background, and lighting",
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features",
+            "source camera angle, framing, people, vehicles, movable props, lighting, weather, and temporary damage",
+        )
+    if element_type == "Prop" or resource_type == "Object":
+        return (
+            "shape, construction, materials, colors, relative scale, and identifying details",
+            "source position, orientation, any hand or support holding it, surrounding objects, framing, background, and lighting",
+        )
+    if element_type == "Monster":
+        return (
+            "individual identity, species-defining anatomy, body proportions, silhouette, coloration, surface texture, and distinctive features",
+            "source pose, expression, action, clothing, armor, accessories, injuries, camera angle, framing, background, and lighting unless assigned in this scene",
         )
     if "costume" in roles or "costume" in tag:
         return (
-            "identity, facial features, hair, ears if applicable, body proportions, costume design, costume colors, and signature worn items",
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items",
             "source pose, expression, action, camera angle, framing, background, and lighting",
         )
     return (
-        "identity, facial features, hair, ears if applicable, and body proportions",
-        "source costume unless explicitly assigned, pose, expression, action, camera angle, framing, background, and lighting",
+        "recognizable identity, facial structure, hairstyle, ear shape, and body proportions",
+        "source clothing and accessories unless assigned in this scene, pose, expression, action, camera angle, framing, background, and lighting",
     )
 
 
@@ -768,16 +800,28 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     backdrop = _backdrop_element(ir)
     target = ir.get("render_target", {}) if isinstance(ir.get("render_target"), dict) else {}
     is_subscene = target.get("kind") == "subscene"
+    is_element_subscene = target.get("kind") == "element_subscene"
+    target_anchor = target.get("anchor") if isinstance(target.get("anchor"), dict) else {}
+    target_name = clean_prompt_sentence(target_anchor.get("display_name") or target.get("label")) or "the assigned element"
     lines = [
         "# Render Task",
         "",
         (
             "Create one clean full-canvas background plate. Render only the assigned background subscene; do not add foreground subjects, dialogue, a planning grid, or comic panels."
             if is_subscene else
+            f"Create one clean standalone visual reference for {target_name}. Render the element or group as a coherent subject; do not add dialogue, a planning grid, or comic panels."
+            if is_element_subscene else
             "Create one finished scene. Do not show the planning grid or split the image into comic panels."
         ),
         "",
     ]
+    if is_element_subscene:
+        anchor_description = clean_prompt_sentence(_descriptor_source(target_anchor))
+        anchor_notes = clean_prompt_sentence(target_anchor.get("notes"))
+        lines.extend(["# Target Element", "", f"- **{target_name}:** {_sentence(anchor_description or 'Render the named element or group as one coherent reference subject.')}"])
+        if anchor_notes:
+            lines.append(f"- **Target notes:** {_sentence(anchor_notes)}")
+        lines.append("")
     if ir.get("render_inputs"):
         lines.extend(["# Locked Render Inputs", ""])
         for render_input in ir["render_inputs"]:
@@ -799,7 +843,10 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
             name = get_element_display_name(element_id, elements_by_id)
             preserve, ignore = _reference_defaults(element, ref)
             tag = clean_prompt_sentence(ref.get("tag"))
-            roles = ", ".join(_lines(ref.get("roles")))
+            roles = ", ".join(
+                role for role in _lines(ref.get("roles"))
+                if role.casefold() not in {"reference", "visual reference"}
+            )
             lines.append(f"- {name} - {tag}")
             if roles:
                 lines.append(f"  Use for {name}'s {roles}.")
@@ -987,10 +1034,13 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
 def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = None) -> dict[str, Any]:
     canvas = ir.get("canvas", {})
     elements_by_id = _elements_by_id(ir)
+    render_target = ir.get("render_target") if isinstance(ir.get("render_target"), dict) else {}
+    target_anchor = render_target.get("anchor") if isinstance(render_target.get("anchor"), dict) else {}
+    is_element_subscene = render_target.get("kind") == "element_subscene"
     placements = sorted(ir.get("placements", []), key=_placement_sort_key)
     subjects = [(elements_by_id.get(_placement_element_id(item), {}), item) for item in placements]
     subjects = [(element, placement) for element, placement in subjects if _is_visible_subject(element, placement)]
-    subject_phrase = _subject_count_phrase(subjects)
+    subject_phrase = "one standalone element or group" if is_element_subscene else _subject_count_phrase(subjects)
     anchor_parts = []
     for placement in placements:
         element = elements_by_id.get(_placement_element_id(placement), {})
@@ -1004,6 +1054,11 @@ def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = Non
         f"{_clean(canvas.get('orientation')) or 'landscape'} {_clean(canvas.get('aspect_ratio')) or '16:9'}",
         subject_phrase,
         "full bodies visible" if subjects else "",
+        _prompt_join([
+            clean_prompt_sentence(target_anchor.get("display_name")),
+            clean_prompt_sentence(_descriptor_source(target_anchor)),
+            clean_prompt_sentence(target_anchor.get("notes")),
+        ]) if is_element_subscene else "",
         *anchor_parts,
         clean_prompt_sentence(ir.get("environment", {}).get("weather_or_atmosphere")),
     ]
@@ -1098,7 +1153,7 @@ def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = Non
         "schema_version": 4,
         "render_target": ir.get("render_target", {}),
         "render_inputs": ir.get("render_inputs", []),
-        "purpose": "composition_preview",
+        "purpose": "element_reference" if is_element_subscene else "composition_preview",
         "include_dialogue": False,
         "subject_count": forge_plan["subject_count"],
         "canvas": canvas,

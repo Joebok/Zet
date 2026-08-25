@@ -134,6 +134,25 @@ class SceneCandidateImportServiceTests(unittest.TestCase):
             self.assertIn("elements", first.interview_phases)
             self.assertEqual(service.list_candidates("moonsea")[0].imported_scene_slug, first.scene_slug)
 
+    def test_import_uses_selected_story(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, story, service = self._setup(root, self._candidate())
+            target_slug = story.safe_slug("Other Story")
+            target_dir = root / "Stories" / target_slug
+            target_dir.mkdir(parents=True)
+            target_path = target_dir / f"{target_slug}.md"
+            target_path.write_text("Title: `[Other Story]`\n", encoding="utf-8")
+            story.save_story_settings(
+                target_dir / f"{target_slug}.story.json",
+                story.create_default_story_settings(target_path),
+            )
+
+            imported = service.import_candidate("moonsea", "moonsea-test-a", target_slug)
+
+            self.assertEqual(imported.story_slug, target_slug)
+            self.assertTrue(story.scene_builder_json_path(target_slug, imported.scene_slug).is_file())
+
 
     def test_changed_source_requires_confirmation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -147,6 +166,32 @@ class SceneCandidateImportServiceTests(unittest.TestCase):
 
             updated = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea", confirm_update=True)
             self.assertEqual(updated.data["scene"]["name"], "Changed Title")
+
+    def test_pass_and_activate_restore_underlying_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, _, service = self._setup(root, self._candidate())
+
+            passed = service.set_passed("moonsea", "moonsea-test-a", True)
+            self.assertEqual(passed.import_state, "passed")
+
+            activated = service.set_passed("moonsea", "moonsea-test-a", False)
+            self.assertEqual(activated.import_state, "available")
+            state = json.loads((root / "Config" / "Scene_Candidate_State.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["passed"], [])
+
+    def test_rendered_candidate_exposes_image_and_cannot_be_passed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, story, service = self._setup(root, self._candidate())
+            imported = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea")
+            image = story.scene_image_path(imported.story_slug, imported.scene_slug)
+            image.parent.mkdir(parents=True, exist_ok=True)
+            image.write_bytes(b"rendered")
+
+            self.assertEqual(service.candidate_image_path("moonsea", "moonsea-test-a"), image)
+            with self.assertRaisesRegex(SceneCandidateImportError, "cannot be passed"):
+                service.set_passed("moonsea", "moonsea-test-a", True)
 
 
     def test_duplicate_ids_block_import_but_extra_sections_do_not(self):

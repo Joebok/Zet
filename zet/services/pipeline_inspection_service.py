@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from zet.repositories.asset_repository import AssetRepositoryError
+
 
 IMAGE_EXTENSIONS = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 TEXT_EXTENSIONS = {".json", ".log", ".md", ".txt"}
@@ -86,11 +88,14 @@ class PipelineInspectionService:
         pipeline = self._pipeline(path, "character")
         if self.asset_repository is None or self.path_service is None:
             return pipeline
-        assets = [
-            asset
-            for asset in self.asset_repository.list_assets(character, phase)
-            if asset.pipeline == path.name and self.path_service.pipeline_path(asset).is_dir()
-        ]
+        try:
+            assets = [
+                asset
+                for asset in self.asset_repository.list_assets(character, phase)
+                if asset.pipeline == path.name and self.path_service.pipeline_path(asset).is_dir()
+            ]
+        except AssetRepositoryError:
+            return pipeline
         if len(assets) <= 1:
             if assets:
                 pipeline.update(self._selectable_path(self.path_service.pipeline_path(assets[0])))

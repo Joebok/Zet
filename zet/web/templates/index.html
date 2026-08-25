@@ -842,16 +842,11 @@
         <label>Source<select id="scene-candidate-source"></select></label>
         <label>Filter
           <select id="scene-candidate-filter">
-            <option value="all">All</option>
-            <option value="available">Available</option>
-            <option value="draft">Draft</option>
-            <option value="needs_attention">Needs attention</option>
-            <option value="ready">Ready</option>
+            <option value="in_progress">In Progress</option>
             <option value="rendered">Rendered</option>
-            <option value="source_changed">Source changed</option>
+            <option value="passed">Passed</option>
           </select>
         </label>
-        <label>Target story<select id="scene-candidate-story"></select></label>
         <button id="scene-candidate-refresh" type="button">Refresh</button>
       </div>
       <div id="scene-candidate-source-meta" class="status-text"></div>
@@ -1032,7 +1027,6 @@
         <h1>Prompt Inspection</h1>
         <div id="prompt-review-status" class="status-text"></div>
       </div>
-      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="review-layout prompt-review-layout">
         <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">
@@ -1089,7 +1083,6 @@
         <h1>Image Review</h1>
         <div id="render-review-status" class="status-text"></div>
       </div>
-      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="review-layout render-review-layout">
         <aside class="review-sidebar">
           <div class="button-row two">
@@ -1151,7 +1144,6 @@
         <h1>Render Console</h1>
         <div id="render-console-status" class="status-text"></div>
       </div>
-      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="render-console-layout">
         <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">
@@ -1228,7 +1220,6 @@
         <h1>Local Image Review</h1>
         <div id="local-image-review-status" class="status-text"></div>
       </div>
-      <div class="production-scope"><span class="production-scope-label"></span><button class="production-scope-toggle" type="button"></button></div>
       <div class="local-image-review-layout">
         <aside class="review-sidebar asset-task-sidebar">
           <div class="button-row two">

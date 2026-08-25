@@ -1,6 +1,5 @@
 const state = {
   workspace: "character",
-  showAllProductionWork: false,
   productionWorkSummary: { current: {}, project: {} },
   productionWorkRequest: 0,
   productionWorkTimer: null,
@@ -114,6 +113,7 @@ const state = {
   sceneCandidates: [],
   selectedSceneCandidateSource: null,
   selectedSceneCandidateId: null,
+  selectedSceneCandidateStorySlug: null,
   selectedBuilderPlacementId: null,
   selectedBuilderElementId: null,
   sceneBuilderRendering: false,
@@ -600,7 +600,6 @@ const sceneCandidateStatus = document.querySelector("#scene-candidate-status");
 const sceneCandidateMessage = document.querySelector("#scene-candidate-message");
 const sceneCandidateSource = document.querySelector("#scene-candidate-source");
 const sceneCandidateFilter = document.querySelector("#scene-candidate-filter");
-const sceneCandidateStory = document.querySelector("#scene-candidate-story");
 const sceneCandidateRefresh = document.querySelector("#scene-candidate-refresh");
 const sceneCandidateSourceMeta = document.querySelector("#scene-candidate-source-meta");
 const sceneCandidateList = document.querySelector("#scene-candidate-list");
@@ -1430,32 +1429,7 @@ function currentQuery() {
 }
 
 function productionQuery() {
-  const params = new URLSearchParams();
-  if (state.showAllProductionWork) return params;
-  if (state.workspace === "story") {
-    if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
-    if (state.selectedSceneSlug) params.set("scene_slug", state.selectedSceneSlug);
-  } else {
-    if (state.character) params.set("character", state.character);
-    if (state.phase) params.set("phase", state.phase);
-  }
-  return params;
-}
-
-function renderProductionScope() {
-  let label = "All work";
-  if (!state.showAllProductionWork) {
-    label = state.workspace === "story"
-      ? `Showing ${state.selectedStorySlug || "current story"} / ${state.selectedSceneSlug || "all scenes"}`
-      : `Showing ${state.character || "current character"} / ${state.phase || "current phase"}`;
-  }
-  for (const item of document.querySelectorAll(".production-scope-label")) item.textContent = label;
-  for (const button of document.querySelectorAll(".production-scope-toggle")) {
-    const page = activePageName();
-    const key = page === "render-review" ? "image_review_waiting" : "render_waiting";
-    const projectCount = Number(state.productionWorkSummary.project?.[key] || 0);
-    button.textContent = state.showAllProductionWork ? "Use current context" : `Show all work${projectCount ? ` (${projectCount})` : ""}`;
-  }
+  return new URLSearchParams();
 }
 
 function productionSummaryQuery() {
@@ -1499,7 +1473,6 @@ function renderProductionWorkSummary() {
       if (item) item.textContent = `${labels[value]}${Number(project[key] || 0) ? ` · ${project[key]}` : ""}`;
     }
   }
-  renderProductionScope();
   renderResponsiveSectionMenu();
 }
 
@@ -1684,7 +1657,6 @@ function applyWorkspaceChrome() {
     item.hidden = item.dataset.workspaceItem !== state.workspace;
   }
   renderHeaderStoryContext();
-  renderProductionScope();
   syncResponsiveChrome();
 }
 
@@ -1705,7 +1677,6 @@ async function switchWorkspace(workspace) {
   if (workspace === state.workspace) return true;
   return runGuardedTransition(async () => {
     state.workspace = workspace;
-    state.showAllProductionWork = false;
     applyWorkspaceChrome();
     if (workspace === "story" && !state.stories.length) await loadStories();
     const fallback = workspace === "character" ? "onboarding" : (state.selectedStorySlug ? "scenes" : "stories");
@@ -4887,6 +4858,64 @@ function builderActiveSubscene() {
   return (state.sceneBuilder?.subscenes || []).find((item) => item.id === state.activeBuilderRenderTarget) || null;
 }
 
+function builderSubsceneForAnchor(elementId) {
+  return (state.sceneBuilder?.subscenes || []).find(
+    (item) => item.kind === "element" && item.anchor_element_id === elementId,
+  ) || null;
+}
+
+function builderTargetParentId(subscene) {
+  if (!subscene || subscene.kind !== "element") return "main";
+  const anchor = (state.sceneBuilder?.scene_elements || []).find((item) => item.id === subscene.anchor_element_id);
+  return anchor?.subscene_id || "main";
+}
+
+function builderTargetDepth(targetId, seen = new Set()) {
+  if (!targetId || targetId === "main") return 0;
+  const target = (state.sceneBuilder?.subscenes || []).find((item) => item.id === targetId);
+  if (!target || target.kind !== "element") return 0;
+  if (seen.has(targetId)) return 99;
+  seen.add(targetId);
+  return builderTargetDepth(builderTargetParentId(target), seen) + 1;
+}
+
+function builderTargetChildren(targetId) {
+  return (state.sceneBuilder?.subscenes || []).filter((item) => builderTargetParentId(item) === targetId);
+}
+
+function builderTargetPath(targetId) {
+  const path = [];
+  const seen = new Set();
+  let currentId = targetId;
+  while (currentId && currentId !== "main" && !seen.has(currentId)) {
+    seen.add(currentId);
+    const current = (state.sceneBuilder?.subscenes || []).find((item) => item.id === currentId);
+    if (!current) break;
+    path.unshift(current);
+    currentId = builderTargetParentId(current);
+  }
+  return path;
+}
+
+function builderCanMoveElementToTarget(element, targetId) {
+  const owned = builderSubsceneForAnchor(element?.id);
+  if (!owned) return true;
+  if (targetId === owned.id) return false;
+  const descendants = new Set();
+  const visit = (parentId) => {
+    for (const child of builderTargetChildren(parentId)) {
+      if (child.kind !== "element" || descendants.has(child.id)) continue;
+      descendants.add(child.id);
+      visit(child.id);
+    }
+  };
+  visit(owned.id);
+  if (descendants.has(targetId)) return false;
+  const deepest = Math.max(builderTargetDepth(owned.id), ...[...descendants].map((id) => builderTargetDepth(id)));
+  const subtreeHeight = deepest - builderTargetDepth(owned.id) + 1;
+  return builderTargetDepth(targetId) + subtreeHeight <= 3;
+}
+
 function builderActiveTargetStatus() {
   return (state.sceneBuilderRenderTargets || []).find((item) => item.render_target_id === state.activeBuilderRenderTarget) || null;
 }
@@ -4897,7 +4926,11 @@ function builderElementIsEditable(element) {
 
 function builderMainRenderBlocker() {
   if (state.activeBuilderRenderTarget !== "main") return "";
-  const enabled = new Set((state.sceneBuilder?.subscenes || []).filter((item) => item.enabled).map((item) => item.id));
+  return builderTargetRenderBlocker("main");
+}
+
+function builderTargetRenderBlocker(targetId = state.activeBuilderRenderTarget || "main") {
+  const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
   const blocked = (state.sceneBuilderRenderTargets || []).find(
     (item) => enabled.has(item.render_target_id) && !item.locked_current,
   );
@@ -5005,9 +5038,17 @@ function builderApplyChange(event) {
   }
   const activeSubscene = builderActiveSubscene();
   if (activeSubscene) {
+    const nameControl = sceneBuilderPanel.querySelector("[data-builder-subscene-name]");
+    if (nameControl) activeSubscene.name = nameControl.value;
     activeSubscene.prompt_overrides = activeSubscene.prompt_overrides || {};
     for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-subscene-field]")) {
       activeSubscene.prompt_overrides[control.dataset.builderSubsceneField] = control.value;
+    }
+    if (activeSubscene.kind === "element") {
+      activeSubscene.setup = activeSubscene.setup || {};
+      for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-element-subscene-field]")) {
+        setPathValue(activeSubscene.setup, control.dataset.builderElementSubsceneField, control.value);
+      }
     }
   }
   builderSyncControls();
@@ -5228,6 +5269,10 @@ function builderRemoveSelectedElement() {
   if (!element) {
     return;
   }
+  if (builderSubsceneForAnchor(element.id)) {
+    showSceneBuilderMessage("Disable does not remove an element sub-scene. The anchor cannot be deleted while it owns a sub-scene.", "error");
+    return;
+  }
   const hasLinks = (state.sceneBuilder.placements || []).some((item) => item.scene_element_id === element.id)
     || (state.sceneBuilder.interactions || []).some((item) => item.subject_element_id === element.id || item.target_element_id === element.id);
   if (hasLinks && !window.confirm("Delete this element and its linked placements/interactions?")) {
@@ -5389,9 +5434,11 @@ function builderRenderElementWorkspace() {
   }
   const activeSubscene = builderActiveSubscene();
   const editable = builderElementIsEditable(element);
+  const ownedSubscene = builderSubsceneForAnchor(element.id);
+  const canCreateSubscene = editable && builderTargetDepth(state.activeBuilderRenderTarget || "main") < 3;
   const membershipOptions = [
-    `<option value=""${element.subscene_id ? "" : " selected"}>Full Scene</option>`,
-    ...(state.sceneBuilder.subscenes || []).map((item) => `<option value="${escapeHtml(item.id)}"${element.subscene_id === item.id ? " selected" : ""}>${escapeHtml(item.name || item.id)}</option>`),
+    ...(builderCanMoveElementToTarget(element, "main") ? [`<option value=""${element.subscene_id ? "" : " selected"}>Full Scene</option>`] : []),
+    ...(state.sceneBuilder.subscenes || []).filter((item) => builderCanMoveElementToTarget(element, item.id)).map((item) => `<option value="${escapeHtml(item.id)}"${element.subscene_id === item.id ? " selected" : ""}>${escapeHtml(item.name || item.id)}</option>`),
   ].join("");
   return `
     <div class="scene-builder-card scene-builder-element-workspace">
@@ -5403,6 +5450,9 @@ function builderRenderElementWorkspace() {
         <details class="scene-builder-element-menu">
           <summary aria-label="Selected element actions" title="Selected element actions">•••</summary>
           <div class="scene-builder-menu-panel">
+            ${ownedSubscene
+              ? `<button type="button" data-builder-action="${ownedSubscene.enabled ? "open-element-subscene" : "enable-element-subscene"}" data-render-target-id="${escapeHtml(ownedSubscene.id)}" data-element-id="${escapeHtml(element.id)}">${ownedSubscene.enabled ? "Open sub-scene" : "Turn on sub-scene"}</button>`
+              : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(element.id)}"${canCreateSubscene ? "" : " disabled"}>Turn into sub-scene</button>`}
             <button type="button" data-builder-action="duplicate-element">Duplicate</button>
             <button type="button" class="danger-action" data-builder-action="delete-element">Delete</button>
           </div>
@@ -5544,7 +5594,7 @@ function builderRenderMoreMenu() {
     ? "view-analysis"
     : "analyze-prompt";
   const activeSubscene = builderActiveSubscene();
-  const renderDisabled = Boolean(builderMainRenderBlocker()) || activeSubscene?.enabled === false;
+  const renderDisabled = Boolean(builderTargetRenderBlocker()) || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
   return `
     <details class="scene-builder-more">
@@ -5611,9 +5661,16 @@ function selectedSceneCandidate() {
 }
 
 function renderSceneCandidateStoryOptions(defaultStory = "") {
-  const selected = sceneCandidateStory.value || state.selectedStorySlug || defaultStory;
+  const sceneCandidateStory = document.querySelector("#scene-candidate-story");
+  if (!sceneCandidateStory) return;
+  const selected = state.selectedSceneCandidateStorySlug || state.selectedStorySlug || defaultStory;
   sceneCandidateStory.replaceChildren(...state.stories.map((story) => option(story.slug, story.title)));
   if (state.stories.some((story) => story.slug === selected)) sceneCandidateStory.value = selected;
+  state.selectedSceneCandidateStorySlug = sceneCandidateStory.value || null;
+  sceneCandidateStory.addEventListener("change", () => {
+    state.selectedSceneCandidateStorySlug = sceneCandidateStory.value || null;
+    state.selectedStorySlug = sceneCandidateStory.value || state.selectedStorySlug;
+  });
 }
 
 function renderSceneCandidateDetail() {
@@ -5622,7 +5679,7 @@ function renderSceneCandidateDetail() {
     sceneCandidateDetail.innerHTML = "<p>Select a scene candidate.</p>";
     return;
   }
-  const fields = Object.entries(candidate.fields || {}).map(([label, value]) => {
+  const fields = Object.entries(candidate.fields || {}).filter(([label]) => label !== "Candidate ID").map(([label, value]) => {
     const text = Array.isArray(value) ? value.map((item) => `• ${item}`).join("\n") : String(value || "");
     return `<section><h3>${escapeHtml(label)}</h3><pre>${escapeHtml(text)}</pre></section>`;
   }).join("");
@@ -5632,21 +5689,42 @@ function renderSceneCandidateDetail() {
   const actionLabel = imported
     ? (candidate.import_state === "source_changed" ? "Re-import and Interview" : "Open Scene")
     : "Import and Interview";
+  const rendered = candidate.import_state === "rendered";
+  const passed = candidate.import_state === "passed";
+  const image = rendered
+    ? `<img class="scene-candidate-image" src="/api/scene-candidates/${encodeURIComponent(candidate.source_key)}/${encodeURIComponent(candidate.candidate_id)}/image" alt="Rendered scene ${escapeHtml(candidate.title)}">`
+    : "";
+  const actions = passed
+    ? `<button id="scene-candidate-activate" class="primary-action" type="button">Activate</button>`
+    : `<button id="scene-candidate-import" class="primary-action" type="button">${actionLabel}</button>${rendered ? "" : '<button id="scene-candidate-pass" type="button">Pass</button>'}`;
+  const storySelector = !passed && (!imported || candidate.import_state === "source_changed")
+    ? '<label class="scene-candidate-story-label">Import into:<select id="scene-candidate-story"></select></label>'
+    : "";
   sceneCandidateDetail.innerHTML = `
     <div class="review-header">
       <div><span class="eyebrow">${escapeHtml(candidate.session || "Unknown session")}</span><h2>${escapeHtml(candidate.title)}</h2></div>
       <span class="status-badge">${escapeHtml(candidate.import_state.replaceAll("_", " "))}</span>
     </div>
     ${findings.length ? `<div class="action-message info">${findings.map((item) => escapeHtml(item)).join("<br>")}</div>` : ""}
-    <div class="button-row compact"><button id="scene-candidate-import" class="primary-action" type="button">${actionLabel}</button></div>
+    <div class="button-row compact">${storySelector}${actions}</div>
+    ${image}
+    <section><h3>Candidate ID</h3><pre>${escapeHtml(candidate.candidate_id)}</pre></section>
     ${fields}
   `;
+  renderSceneCandidateStoryOptions();
   document.querySelector("#scene-candidate-import")?.addEventListener("click", importSelectedSceneCandidate);
+  document.querySelector("#scene-candidate-pass")?.addEventListener("click", () => setSelectedSceneCandidatePassed(true));
+  document.querySelector("#scene-candidate-activate")?.addEventListener("click", () => setSelectedSceneCandidatePassed(false));
 }
 
 function renderSceneCandidates() {
-  const filter = sceneCandidateFilter.value || "all";
-  const candidates = state.sceneCandidates.filter((item) => filter === "all" || item.import_state === filter);
+  const filter = sceneCandidateFilter.value || "in_progress";
+  const candidates = state.sceneCandidates.filter((item) => filter === "in_progress"
+    ? !["rendered", "passed"].includes(item.import_state)
+    : item.import_state === filter);
+  if (!candidates.some((item) => item.candidate_id === state.selectedSceneCandidateId)) {
+    state.selectedSceneCandidateId = candidates[0]?.candidate_id || null;
+  }
   sceneCandidateList.replaceChildren();
   for (const candidate of candidates) {
     const button = document.createElement("button");
@@ -5662,6 +5740,23 @@ function renderSceneCandidates() {
   }
   if (!candidates.length) sceneCandidateList.innerHTML = "<p>No candidates match this filter.</p>";
   renderSceneCandidateDetail();
+}
+
+async function setSelectedSceneCandidatePassed(passed) {
+  const candidate = selectedSceneCandidate();
+  if (!candidate) return;
+  showSceneCandidateMessage(passed ? "Passing candidate..." : "Activating candidate...");
+  try {
+    await fetchJson(`/api/scene-candidates/${encodeURIComponent(candidate.source_key)}/${encodeURIComponent(candidate.candidate_id)}/passed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passed }),
+    });
+    await loadSceneCandidates();
+    showSceneCandidateMessage(passed ? "Candidate passed." : "Candidate activated.", "success");
+  } catch (error) {
+    showSceneCandidateMessage(error.message, "error");
+  }
 }
 
 async function loadSceneCandidates() {
@@ -5684,7 +5779,7 @@ async function loadSceneCandidates() {
       return;
     }
     sceneCandidateSourceMeta.textContent = `${source.path} • modified ${source.modified_at || "unknown"} • read-only`;
-    renderSceneCandidateStoryOptions(source.default_story_slug);
+    state.selectedSceneCandidateStorySlug ||= source.default_story_slug || null;
     const payload = await fetchJson(`/api/scene-candidates?source_key=${encodeURIComponent(source.key)}`);
     state.sceneCandidates = payload.candidates || [];
     if (!state.sceneCandidates.some((item) => item.candidate_id === state.selectedSceneCandidateId)) {
@@ -5707,7 +5802,7 @@ async function importSelectedSceneCandidate() {
     await activatePage("scene-builder", { skipAutosave: true });
     return;
   }
-  const storySlug = sceneCandidateStory.value;
+  const storySlug = document.querySelector("#scene-candidate-story")?.value;
   if (!storySlug) {
     showSceneCandidateMessage("Choose a target story.", "error");
     return;
@@ -5866,25 +5961,37 @@ async function applySceneBuilderInterview() {
 function builderRenderTargetControls() {
   const subscenes = state.sceneBuilder.subscenes || [];
   const background = subscenes.find((item) => item.id === "background");
-  const tabs = [
-    { id: "main", name: "Full Scene", enabled: true },
-    ...subscenes,
-  ].map((item) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}">${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`).join("");
+  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}">${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
+  const renderChildren = (parentId, seen = new Set()) => builderTargetChildren(parentId).map((item) => {
+    if (seen.has(item.id)) return "";
+    const nextSeen = new Set(seen);
+    nextSeen.add(item.id);
+    const depth = item.kind === "element" ? builderTargetDepth(item.id) : 0;
+    return targetButton(item, depth) + renderChildren(item.id, nextSeen);
+  }).join("");
+  const tabs = targetButton({ id: "main", name: "Full Scene", enabled: true }, 0) + renderChildren("main");
+  const breadcrumbs = builderTargetPath(state.activeBuilderRenderTarget).map((item) => escapeHtml(item.name || item.id)).join(" › ");
+  const activeSubscene = builderActiveSubscene();
   const toggle = !background
     ? `<button type="button" data-builder-action="enable-background">Use background sub-render</button>`
     : background.enabled
       ? `<button type="button" data-builder-action="disable-subscene" data-render-target-id="background">Turn off background sub-render</button>`
       : `<button type="button" data-builder-action="enable-background">Turn on background sub-render</button>`;
-  return `<div class="scene-builder-target-bar"><div class="button-row compact" role="tablist" aria-label="Render target">${tabs}</div>${toggle}</div>`;
+  const elementToggle = activeSubscene?.kind === "element"
+    ? activeSubscene.enabled
+      ? `<button type="button" data-builder-action="disable-subscene" data-render-target-id="${escapeHtml(activeSubscene.id)}">Turn off element sub-render</button>`
+      : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(activeSubscene.anchor_element_id || "")}">Turn on element sub-render</button>`
+    : "";
+  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact">${toggle}${elementToggle}</div></div>`;
 }
 
 function builderRenderTargetStatus() {
   const subscene = builderActiveSubscene();
   const status = builderActiveTargetStatus();
-  const blocker = builderMainRenderBlocker();
+  const blocker = builderTargetRenderBlocker();
   if (!subscene && !blocker) return "";
   if (blocker) {
-    return `<div class="action-message info"><strong>Full-scene render blocked.</strong> ${escapeHtml(blocker)} Relevant background edits invalidate its lock; render and accept the background again.</div>`;
+    return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} render blocked.</strong> ${escapeHtml(blocker)} Render and accept that direct dependency first.</div>`;
   }
   const image = status?.locked_exists && status.locked_image_path
     ? `<img class="scene-builder-target-thumbnail fullscreen-image-trigger" src="${fileUrl(status.locked_image_path)}" alt="${escapeHtml(subscene.name)} locked image">`
@@ -5892,8 +5999,8 @@ function builderRenderTargetStatus() {
   const tag = `{{SCENE_RENDER:${state.selectedStorySlug}:${state.selectedSceneSlug}:${subscene.id}}}`;
   return `<div class="scene-builder-card scene-builder-target-status">
     ${image}<div><strong>${status?.locked_current ? "Locked and current" : status?.locked_exists ? "Locked but stale" : "No locked image"}</strong>
-    <p>${escapeHtml(status?.stale_reason || "Accepted image is automatically linked to the Full Scene.")}</p>
-    <p>Relevant edits invalidate the accepted background and require it to be rendered and locked again.</p>
+    <p>${escapeHtml(status?.stale_reason || (subscene.kind === "element" ? "Accepted image is automatically linked to its parent element." : "Accepted image is automatically linked to the Full Scene."))}</p>
+    <p>Relevant edits invalidate the accepted ${subscene.kind === "element" ? "element reference" : "background"} and require it to be rendered and locked again.</p>
     <code>${escapeHtml(tag)}</code></div>
   </div>`;
 }
@@ -5907,6 +6014,35 @@ function builderRenderSubsceneSettings() {
   const field = (key, label, textarea = false) => `<label class="full">${escapeHtml(label)}${textarea
     ? `<textarea data-builder-subscene-field="${key}">${escapeHtml(overrides[key] || "")}</textarea>`
     : `<input value="${escapeHtml(overrides[key] || "")}" data-builder-subscene-field="${key}">`}</label>`;
+  if (subscene.kind === "element") {
+    const targetSetup = subscene.setup || {};
+    const canvas = targetSetup.canvas || {};
+    const composition = targetSetup.composition || {};
+    const targetEnvironment = targetSetup.environment || {};
+    const anchor = (state.sceneBuilder.scene_elements || []).find((item) => item.id === subscene.anchor_element_id) || {};
+    const environmentField = (key, label) => {
+      const policy = targetEnvironment[key] || { mode: "inherit", value: "" };
+      return `<div class="full scene-builder-inheritance-field"><label>${escapeHtml(label)} mode<select data-builder-element-subscene-field="environment.${key}.mode"><option value="inherit"${policy.mode === "inherit" ? " selected" : ""}>Inherit from parent</option><option value="override"${policy.mode === "override" ? " selected" : ""}>Override</option><option value="omit"${policy.mode === "omit" ? " selected" : ""}>Omit</option></select></label><label>${escapeHtml(label)} value<input value="${escapeHtml(policy.value || "")}" data-builder-element-subscene-field="environment.${key}.value"${policy.mode === "override" ? "" : " disabled"}></label></div>`;
+    };
+    return `<div class="scene-builder-card">
+      <h4>${escapeHtml(subscene.name)} element reference</h4>
+      <p><strong>Target element:</strong> ${escapeHtml(anchor.display_name || anchor.id || subscene.anchor_element_id)}</p>
+      <p>${escapeHtml(anchor.element_visual_override || anchor.fallback_visual_description || "The target element's description and references define the overall subject.")}</p>
+      <div class="scene-builder-fields">
+        <label class="full">Sub-scene name<input value="${escapeHtml(subscene.name || "")}" data-builder-subscene-name></label>
+        <label>Orientation<select data-builder-element-subscene-field="canvas.orientation">${builderOptionHtml("orientation", canvas.orientation || "landscape")}</select></label>
+        <label>Aspect ratio<select data-builder-element-subscene-field="canvas.aspect_ratio">${builderOptionHtml("aspect_ratio", canvas.aspect_ratio || "16:9")}</select></label>
+        <label class="full">Primary focal point<input value="${escapeHtml(composition.focal_point || "")}" data-builder-element-subscene-field="composition.focal_point"></label>
+        <label class="full">Composition notes<textarea data-builder-element-subscene-field="composition.composition_notes">${escapeHtml(composition.composition_notes || "")}</textarea></label>
+        <label class="full">Independent location<textarea data-builder-element-subscene-field="environment.location">${escapeHtml(targetEnvironment.location || "")}</textarea></label>
+        ${environmentField("lighting", "Lighting")}
+        ${environmentField("mood", "Mood")}
+        ${environmentField("weather_or_atmosphere", "Weather / atmosphere")}
+        <label class="full">General foreground notes<textarea data-builder-element-subscene-field="environment.general_foreground_notes">${escapeHtml(targetEnvironment.general_foreground_notes || "")}</textarea></label>
+        <label class="full">General background notes<textarea data-builder-element-subscene-field="environment.general_background_notes">${escapeHtml(targetEnvironment.general_background_notes || "")}</textarea></label>
+      </div>
+    </div>`;
+  }
   return `<div class="scene-builder-card">
     <h4>${escapeHtml(subscene.name)} prompt</h4>
     <p>Canvas, art style, location, lighting, mood, and atmosphere are inherited from Full Scene. Edit those universal values there; changing them invalidates this lock.</p>
@@ -5928,7 +6064,7 @@ function renderSceneBuilder() {
   const scene = state.sceneBuilder.scene || {};
   const importedCandidate = state.sceneBuilder.source_provenance?.source_type === "scene_candidate_markdown";
   const activeSubscene = builderActiveSubscene();
-  const renderBlocker = builderMainRenderBlocker();
+  const renderBlocker = builderTargetRenderBlocker();
   const renderDisabled = Boolean(renderBlocker) || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
   state.sceneBuilderRendering = true;
@@ -5962,13 +6098,13 @@ function renderSceneBuilder() {
             ${builderField("scene.story_beat", "Story Beat — included in prompt", "", true, "textarea")}
           </div>
         </div>
-        <div class="scene-builder-card">
+        ${activeSubscene?.kind === "element" ? "" : `<div class="scene-builder-card">
           <h4>Canvas</h4>
           <div class="scene-builder-fields">
             ${builderField("setup.canvas.orientation", "Orientation", "orientation")}
             ${builderField("setup.canvas.aspect_ratio", "Aspect ratio", "aspect_ratio")}
           </div>
-        </div>
+        </div>`}
         ${activeSubscene ? builderRenderSubsceneSettings() : builderRenderComposition()}
       </section>
       ${builderPhoneSectionToggle("elements", "Elements")}
@@ -5983,7 +6119,7 @@ function renderSceneBuilder() {
       </section>
       ${builderPhoneSectionToggle("environment", "Environment")}
       <section id="builder-panel-environment" class="scene-builder-section scene-builder-environment" data-builder-section-panel="environment" aria-label="Environment">
-        ${activeSubscene ? `<div class="scene-builder-card"><h4>Inherited environment</h4><p>Edit universal environment fields in Full Scene. Target-specific notes are available under Scene.</p></div>` : builderRenderEnvironment()}
+        ${activeSubscene ? `<div class="scene-builder-card"><h4>${activeSubscene.kind === "element" ? "Target environment" : "Inherited environment"}</h4><p>${activeSubscene.kind === "element" ? "Lighting, mood, and weather can inherit from the immediate parent, be overridden, or be omitted under Scene." : "Edit universal environment fields in Full Scene. Target-specific notes are available under Scene."}</p></div>` : builderRenderEnvironment()}
       </section>
       ${builderPhoneSectionToggle("advanced", "Advanced")}
       <section id="builder-panel-advanced" class="scene-builder-section scene-builder-advanced-panel" data-builder-section-panel="advanced" aria-label="Advanced overrides">
@@ -6165,6 +6301,44 @@ async function setBackgroundSubsceneEnabled(enabled) {
   }
 }
 
+async function enableSelectedElementSubscene(elementId = "") {
+  const element = (state.sceneBuilder?.scene_elements || []).find((item) => item.id === elementId) || builderSelectedElement();
+  if (!element || !state.selectedStorySlug || !state.selectedSceneSlug) return;
+  if (await saveSceneBuilder(true) === null) return;
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/elements/${encodeURIComponent(element.id)}/enable`, { method: "POST" });
+    state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilderRenderTargets = payload.document?.render_targets || [];
+    state.activeBuilderRenderTarget = payload.render_target_id || builderSubsceneForAnchor(element.id)?.id || "main";
+    state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => item.subscene_id === state.activeBuilderRenderTarget)?.id || element.id;
+    state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+    updateStoryGitWarning(payload.has_story_changes);
+    renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    showSceneBuilderMessage(payload.message, "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
+async function disableSceneSubscene(targetId) {
+  if (!targetId || !state.selectedStorySlug || !state.selectedSceneSlug) return;
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/${encodeURIComponent(targetId)}/disable`, { method: "POST" });
+    state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilderRenderTargets = payload.document?.render_targets || [];
+    state.activeBuilderRenderTarget = builderTargetParentId((state.sceneBuilder.subscenes || []).find((item) => item.id === targetId)) || "main";
+    state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !item.subscene_id || item.subscene_id === state.activeBuilderRenderTarget)?.id || null;
+    state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+    updateStoryGitWarning(payload.has_story_changes);
+    renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    showSceneBuilderMessage(payload.message, "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
 async function renderSceneBuilderScene() {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
     return;
@@ -6310,7 +6484,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
       builderSyncControls();
       state.activeBuilderRenderTarget = target.dataset.renderTargetId || "main";
       const active = builderActiveSubscene();
-      state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !active || item.subscene_id === active.id)?.id || state.sceneBuilder.scene_elements?.[0]?.id || null;
+      state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !active || item.subscene_id === active.id)?.id || active?.anchor_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
       state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
       renderSceneBuilder();
     }
@@ -6319,7 +6493,19 @@ sceneBuilderPanel.addEventListener("click", (event) => {
       renderSceneBuilder();
     }
     if (action === "enable-background") setBackgroundSubsceneEnabled(true);
-    if (action === "disable-subscene") setBackgroundSubsceneEnabled(false);
+    if (action === "disable-subscene") {
+      const targetId = target.dataset.renderTargetId || "background";
+      if (targetId === "background") setBackgroundSubsceneEnabled(false);
+      else disableSceneSubscene(targetId);
+    }
+    if (action === "enable-element-subscene") enableSelectedElementSubscene(target.dataset.elementId || "");
+    if (action === "open-element-subscene") {
+      state.activeBuilderRenderTarget = target.dataset.renderTargetId || "main";
+      const active = builderActiveSubscene();
+      state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => item.subscene_id === active?.id)?.id || active?.anchor_element_id || null;
+      state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+      renderSceneBuilder();
+    }
     if (action === "interview") restartSceneBuilderInterview();
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
@@ -6365,10 +6551,6 @@ sceneCandidateSource.addEventListener("change", async () => {
 });
 sceneCandidateFilter.addEventListener("change", renderSceneCandidates);
 sceneCandidateRefresh.addEventListener("click", loadSceneCandidates);
-sceneCandidateStory.addEventListener("change", () => {
-  state.selectedStorySlug = sceneCandidateStory.value || state.selectedStorySlug;
-});
-
 async function loadImagePickerReferences(picker) {
   picker.status.textContent = "Loading references...";
   const params = new URLSearchParams();
@@ -7029,7 +7211,7 @@ function renderPromptReview(detail) {
 function selectedPromptReviewScene() {
   const manifest = state.promptReviewDetail?.manifest || {};
   return manifest.story_slug && manifest.scene_slug
-    ? { storySlug: manifest.story_slug, sceneSlug: manifest.scene_slug }
+    ? { storySlug: manifest.story_slug, sceneSlug: manifest.scene_slug, renderTargetId: manifest.render_target_id || "main" }
     : null;
 }
 
@@ -7039,7 +7221,7 @@ async function analyzePromptReview() {
   analyzePromptButton.disabled = true;
   showPromptMessage("Queuing prompt analysis...");
   try {
-    const analysis = await fetchJson(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis`, { method: "POST" });
+    const analysis = await fetchJson(`/api/stories/${encodeURIComponent(scene.storySlug)}/scenes/${encodeURIComponent(scene.sceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(scene.renderTargetId)}`, { method: "POST" });
     state.promptReviewDetail.prompt_analysis = analysis;
     renderPromptReview(state.promptReviewDetail);
     showPromptMessage(analysis.message || "AI prompt analysis queued.", "success");
@@ -7055,7 +7237,7 @@ async function viewPromptReviewAnalysis() {
   if (!scene) return;
   const analysis = state.promptReviewDetail?.prompt_analysis || {};
   if (analysis.complete && analysis.result_path) {
-    openPromptAnalysisDialog(scene.storySlug, scene.sceneSlug);
+    openPromptAnalysisDialog(scene.storySlug, scene.sceneSlug, scene.renderTargetId);
     return;
   }
   showPromptMessage("Analysis is still running. Refresh after the AI worker finishes.");
@@ -7068,8 +7250,8 @@ function compactPath(value) {
   return parts.slice(-2).join(" / ") || fullPath;
 }
 
-function openPromptAnalysisDialog(storySlug, sceneSlug) {
-  promptAnalysisFrame.src = `/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/view`;
+function openPromptAnalysisDialog(storySlug, sceneSlug, renderTargetId = "main") {
+  promptAnalysisFrame.src = `/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/view?render_target_id=${encodeURIComponent(renderTargetId)}`;
   promptAnalysisDialog.showModal();
 }
 
@@ -10214,13 +10396,6 @@ sceneWorkflowMenu.addEventListener("change", async () => {
     window.alert(error.message);
   }
 });
-for (const button of document.querySelectorAll(".production-scope-toggle")) {
-  button.addEventListener("click", async () => {
-    state.showAllProductionWork = !state.showAllProductionWork;
-    renderProductionScope();
-    await reloadActiveProductionPage();
-  });
-}
 newMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleNewMenu();
@@ -10251,7 +10426,6 @@ headerStorySelect.addEventListener("change", async () => {
   }
   state.selectedStorySlug = requestedStory;
   state.selectedSceneSlug = null;
-  state.showAllProductionWork = false;
   state.scenes = [];
   await loadStories(requestedStory);
   const scenes = state.workspaceSummary.story?.scenes || [];
@@ -10272,7 +10446,6 @@ headerSceneSelect.addEventListener("change", async () => {
     return;
   }
   state.selectedSceneSlug = requestedScene;
-  state.showAllProductionWork = false;
   saveStoredStoryContext();
   renderHeaderStoryContext();
   renderStoryOverview();

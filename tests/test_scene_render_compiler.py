@@ -137,6 +137,60 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn("Tsaeytte_12345678", prompt)
 
+    def test_reference_instructions_require_an_image_and_match_element_type(self):
+        scene = {
+            "scene_elements": [
+                {
+                    "id": "hero",
+                    "display_name": "Hero",
+                    "resource_type": "Character",
+                    "element_type": "Character",
+                    "reference_images": [{"tag": "{{ASSET:hero:costume}}", "roles": ["costume"]}],
+                },
+                {
+                    "id": "beast",
+                    "display_name": "Beast",
+                    "resource_type": "Scene-Only",
+                    "element_type": "Monster",
+                    "reference_images": [{"tag": "{{ASSET:beast}}"}],
+                },
+                {
+                    "id": "relic",
+                    "display_name": "Relic",
+                    "resource_type": "Scene-Only",
+                    "element_type": "Prop",
+                    "reference_images": [{"tag": "{{ASSET:relic}}"}],
+                },
+                {
+                    "id": "ruins",
+                    "display_name": "Ruins",
+                    "resource_type": "Scene-Only",
+                    "element_type": "Backdrop",
+                    "reference_images": [{"tag": "{{ASSET:ruins}}"}],
+                },
+                {
+                    "id": "raven",
+                    "display_name": "Raven",
+                    "resource_type": "Scene-Only",
+                    "element_type": "Character",
+                    "reference_images": [{"tag": ""}],
+                    "fallback_visual_description": "A black raven.",
+                },
+            ],
+        }
+
+        ir = self._ir(scene)
+        prompt = final_image_prompt_text(ir)
+
+        self.assertEqual(4, len(ir["references"]))
+        self.assertNotIn("- Raven -", prompt)
+        self.assertIn("**Visual description:** A black raven.", prompt)
+        self.assertIn("Preserve recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design", prompt)
+        self.assertIn("Preserve individual identity, species-defining anatomy, body proportions, silhouette", prompt)
+        self.assertIn("Preserve shape, construction, materials, colors, relative scale, and identifying details", prompt)
+        self.assertIn("Preserve permanent architecture, terrain layout, structural proportions", prompt)
+        self.assertNotIn("facial features, hair, ears if applicable", prompt)
+
 
 
 

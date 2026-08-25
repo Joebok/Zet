@@ -791,8 +791,14 @@ class StoryService:
         safe_scene_slug = self.safe_slug(scene_slug)
         return self.get_scene_json_path_from_scene_slug(self.path_service.story_folder_path(safe_story_slug), safe_scene_slug)
 
-    def scene_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
-        return self.path_service.story_pipeline_path(self.safe_slug(story_slug), self.safe_slug(scene_slug))
+    def scene_pipeline_path(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
+        safe_story_slug = self.safe_slug(story_slug)
+        safe_scene_slug = self.safe_slug(scene_slug)
+        target_id = str(render_target_id or "main").strip()
+        if target_id != "main":
+            target_id = self.safe_slug(target_id)
+            return self.path_service.scene_subscene_pipeline_path(safe_story_slug, safe_scene_slug, target_id)
+        return self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
 
     def _scene_prompt_source_map(
         self,
@@ -893,9 +899,9 @@ class StoryService:
             [path.name for path in Path(pipeline_path).iterdir() if path.is_file()],
         )
 
-    def compile_scene_prompt(self, story_slug: str, scene_slug: str) -> Path:
+    def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
         """Compile the final image prompt used by Scene Builder automation."""
-        return self.story_render_service.compile_scene_prompt(story_slug, scene_slug)
+        return self.story_render_service.compile_scene_prompt(story_slug, scene_slug, render_target_id)
 
     def get_scene_builder_json_path(self, scene_path: Path) -> Path:
         """Return the Scene Builder JSON path matching a scene markdown or image path."""
@@ -1157,6 +1163,7 @@ class StoryService:
         safe_scene_slug = self.safe_slug(scene_slug)
         _, _, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
         normalized = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, data)
+        self.scene_render_target_service.assert_valid_graph(normalized)
         now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         normalized.setdefault("metadata", {})
         normalized["metadata"].setdefault("created_at", now)
@@ -1220,6 +1227,10 @@ class StoryService:
             item.setdefault("reference_images", [])
             if item.get("image_tag") and not item["reference_images"]:
                 item["reference_images"].append({"tag": item.pop("image_tag"), "roles": ["visual reference"], "ignore": ["source pose", "source background", "source framing"], "notes": ""})
+            item["reference_images"] = [
+                reference for reference in item["reference_images"]
+                if isinstance(reference, dict) and str(reference.get("tag") or "").strip()
+            ]
             item.pop("identity_prompt", None)
             if item.get("default_visual_description") and not item.get("fallback_visual_description"):
                 item["fallback_visual_description"] = item.pop("default_visual_description")
@@ -1596,6 +1607,9 @@ class StoryService:
 
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.scene_render_target_service.enable_background(story_slug, scene_slug)
+
+    def enable_element_subscene(self, story_slug: str, scene_slug: str, element_id: str) -> SceneBuilderDocument:
+        return self.scene_render_target_service.enable_element(story_slug, scene_slug, element_id)
 
     def disable_scene_subscene(self, story_slug: str, scene_slug: str, target_id: str) -> SceneBuilderDocument:
         return self.scene_render_target_service.disable(story_slug, scene_slug, target_id)

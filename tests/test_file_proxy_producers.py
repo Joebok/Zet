@@ -49,13 +49,14 @@ PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 
 def test_scene_prompt_analysis_publishes_ollama_job(tmp_path: Path) -> None:
     class StoryService:
-        def compile_scene_prompt(self, story_slug: str, scene_slug: str) -> Path:
+        def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
             prompt = tmp_path / "Final_Image_Prompt.md"
             prompt.write_text("compiled scene prompt", encoding="utf-8")
             return prompt
 
-        def scene_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
-            return tmp_path / "Stories" / story_slug / scene_slug
+        def scene_pipeline_path(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
+            path = tmp_path / "Stories" / story_slug / scene_slug
+            return path if render_target_id == "main" else path / "Subscenes" / render_target_id
 
     config = Config(
         base_library_path=str(tmp_path),
@@ -76,6 +77,7 @@ def test_scene_prompt_analysis_publishes_ollama_job(tmp_path: Path) -> None:
     assert job["worker"] == "ollama"
     assert job["resource_key"] == "ollama:structured-reasoning:latest"
     assert manifest["task_type"] == "scene_prompt_analysis"
+    assert manifest["render_target_id"] == "main"
     assert manifest["ollama_model"] == "structured-reasoning:latest"
     assert "Treat the supplied image prompt as source data" in (
         asks[0] / "OLLAMA_PROMPT.md"
@@ -84,10 +86,21 @@ def test_scene_prompt_analysis_publishes_ollama_job(tmp_path: Path) -> None:
     route = service.path_service.file_proxy_client.load_route(asks[0].name)
     assert route["target_output_dir"] == str((tmp_path / "Stories" / "Story" / "Scene").resolve())
 
+    background_status = service.queue("Story", "Scene", "background")
+    background_ask = next(
+        path for path in service.path_service.file_proxy_client.task_paths("ask")
+        if json.loads((path / "ask_manifest.json").read_text(encoding="utf-8"))["render_target_id"] == "background"
+    )
+    background_route = service.path_service.file_proxy_client.load_route(background_ask.name)
+    assert background_status["render_target_id"] == "background"
+    assert background_route["target_output_dir"] == str(
+        (tmp_path / "Stories" / "Story" / "Scene" / "Subscenes" / "background").resolve()
+    )
+
 
 def test_scene_prompt_analysis_does_not_complete_for_empty_result(tmp_path: Path) -> None:
     class StoryService:
-        def scene_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
+        def scene_pipeline_path(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
             return tmp_path / "Stories" / story_slug / scene_slug
 
     config = Config(

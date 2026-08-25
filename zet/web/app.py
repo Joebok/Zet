@@ -414,7 +414,9 @@ def _render_console_detail_payload(zet_app: ZetApp, queue: RenderConsoleQueue, t
                 pipeline_path = Path(pipeline_value)
                 source_map_path = pipeline_path / "Prompt_Source_Map.json"
                 source_map = zet_app.story_service.scene_prompt_source_map(pipeline_path, prompt)
-            prompt_analysis = zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+            prompt_analysis = zet_app.scene_prompt_analysis_status(
+                story_slug, scene_slug, str(manifest.get("render_target_id") or "main")
+            )
         except Exception:
             pass
     return {
@@ -1402,6 +1404,27 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/subscenes/elements/{element_id}/enable")
+    def scene_element_subscene_enable(story_slug: str, scene_slug: str, element_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.enable_element_subscene(story_slug, scene_slug, element_id)
+            target = next(
+                (
+                    item for item in document.data.get("subscenes") or []
+                    if item.get("kind") == "element" and item.get("anchor_element_id") == element_id
+                ),
+                {},
+            )
+            return {
+                "document": _scene_builder_document_payload(zet_app, document),
+                "render_target_id": str(target.get("id") or ""),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Element sub-render enabled for {target.get('name') or element_id}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/subscenes/{target_id}/disable")
     def scene_subscene_disable(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -1436,6 +1459,23 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         zet_app = _app(app.state.config_path)
         try:
             return {"candidate": asdict(zet_app.get_scene_candidate(source_key, candidate_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/scene-candidates/{source_key}/{candidate_id}/passed")
+    def scene_candidate_passed(source_key: str, candidate_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            candidate = zet_app.set_scene_candidate_passed(source_key, candidate_id, bool(data.get("passed")))
+            return {"candidate": asdict(candidate)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/scene-candidates/{source_key}/{candidate_id}/image")
+    def scene_candidate_image(source_key: str, candidate_id: str) -> FileResponse:
+        zet_app = _app(app.state.config_path)
+        try:
+            return FileResponse(zet_app.scene_candidate_image_path(source_key, candidate_id))
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1493,18 +1533,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis")
-    def scene_prompt_analysis_status(story_slug: str, scene_slug: str) -> dict[str, Any]:
+    def scene_prompt_analysis_status(
+        story_slug: str, scene_slug: str, render_target_id: str = Query("main")
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            return zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+            return zet_app.scene_prompt_analysis_status(story_slug, scene_slug, render_target_id)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis/view", response_class=HTMLResponse)
-    def scene_prompt_analysis_view(story_slug: str, scene_slug: str) -> HTMLResponse:
+    def scene_prompt_analysis_view(
+        story_slug: str, scene_slug: str, render_target_id: str = Query("main")
+    ) -> HTMLResponse:
         zet_app = _app(app.state.config_path)
         try:
-            status = zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+            status = zet_app.scene_prompt_analysis_status(story_slug, scene_slug, render_target_id)
             result_path = Path(status["result_path"])
             if not status["complete"] or not result_path.is_file():
                 raise HTTPException(status_code=404, detail="Prompt analysis is not available.")
@@ -1523,10 +1567,12 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis")
-    def scene_prompt_analysis_queue(story_slug: str, scene_slug: str) -> dict[str, Any]:
+    def scene_prompt_analysis_queue(
+        story_slug: str, scene_slug: str, render_target_id: str = Query("main")
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            status = zet_app.queue_scene_prompt_analysis(story_slug, scene_slug)
+            status = zet_app.queue_scene_prompt_analysis(story_slug, scene_slug, render_target_id)
             status["message"] = "AI prompt analysis queued."
             return status
         except Exception as exc:

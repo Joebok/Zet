@@ -40,6 +40,39 @@ class AIAnswerHarvesterExternalConsumerTests(unittest.TestCase):
             self.assertEqual("SCENE_PROMPT_ANALYSIS_INVALID", result.status)
             self.assertFalse((target / "result.md").exists())
 
+    def test_scene_prompt_analysis_appends_deterministic_attribution(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            answer = root / "answer"
+            target = root / "target"
+            answer.mkdir()
+            (answer / "result.md").write_text("# Analysis\n\nFinding.", encoding="utf-8")
+            (answer / "answer_manifest.json").write_text(json.dumps({
+                "completed_at": "2026-08-25T10:21:45",
+                "started_at": "2026-08-25T10:21:32.65",
+                "elapsed_seconds": 12.35,
+            }), encoding="utf-8")
+            harvester = AIAnswerHarvester(None, None, None, None, None, None, lambda: "unused")
+
+            harvester._apply_auxiliary_answer(
+                answer,
+                SimpleNamespace(
+                    expected_output="result.md", status="SUCCESS", ask_id="Ask_Test", asset_id=None
+                ),
+                {
+                    "task_type": "scene_prompt_analysis",
+                    "target_output_dir": str(target),
+                    "ollama_model": "gemma4:26b-a4b-it-q4_K_M",
+                },
+            )
+
+            output = (target / "result.md").read_text(encoding="utf-8")
+            self.assertTrue(output.startswith("# Analysis\n\nFinding.\n\n---\n\n"))
+            self.assertIn(
+                r"Analysis completed 8/25/26 10:21am by gemma4:26b-a4b-it-q4\_K\_M in 12.35 seconds.",
+                output,
+            )
+
     def test_harvest_once_ignores_external_consumer(self):
         with TemporaryDirectory() as temp_dir:
             answer_root = Path(temp_dir) / "Answer"

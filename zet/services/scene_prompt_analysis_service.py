@@ -20,9 +20,10 @@ class ScenePromptAnalysisService:
         self.story_service = story_service
         self.path_service = AIProxyPathService(config)
 
-    def queue(self, story_slug: str, scene_slug: str) -> dict:
-        prompt_path = self.story_service.compile_scene_prompt(story_slug, scene_slug)
-        status = self.status(story_slug, scene_slug)
+    def queue(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
+        target_id = str(render_target_id or "main").strip()
+        prompt_path = self.story_service.compile_scene_prompt(story_slug, scene_slug, target_id)
+        status = self.status(story_slug, scene_slug, target_id)
         if status["pending"]:
             return status
         result_path = Path(status["result_path"])
@@ -50,6 +51,7 @@ class ScenePromptAnalysisService:
             "target_output_dir": str(result_path.parent.resolve()),
             "story_slug": story_slug,
             "scene_slug": scene_slug,
+            "render_target_id": target_id,
             "ai_prompt_analysis_instructions_file": self.config.ai_prompt_analysis_instructions_file,
         }
         (ask_path / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -58,14 +60,15 @@ class ScenePromptAnalysisService:
             instructions.replace("{{FINAL_IMAGE_PROMPT}}", prompt_path.read_text(encoding="utf-8")), encoding="utf-8"
         )
         self.path_service.file_proxy_client.publish(ask_path, ask_id, "ollama_generate")
-        return self.status(story_slug, scene_slug)
+        return self.status(story_slug, scene_slug, target_id)
 
-    def status(self, story_slug: str, scene_slug: str) -> dict:
-        pipeline_path = self.story_service.scene_pipeline_path(story_slug, scene_slug)
+    def status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
+        target_id = str(render_target_id or "main").strip()
+        pipeline_path = self.story_service.scene_pipeline_path(story_slug, scene_slug, target_id)
         result_path = pipeline_path / self.RESULT_FILE
-        pending = self._has_pending(story_slug, scene_slug)
+        pending = self._has_pending(story_slug, scene_slug, target_id)
         complete = result_path.is_file() and result_path.stat().st_size > 0 and not pending
-        return {"pending": pending, "complete": complete, "result_path": str(result_path)}
+        return {"pending": pending, "complete": complete, "result_path": str(result_path), "render_target_id": target_id}
 
     def pending_count(self, story_slug: str = "", scene_slug: str = "") -> int:
         count = 0
@@ -100,11 +103,16 @@ class ScenePromptAnalysisService:
                     })
         return rows
 
-    def _has_pending(self, story_slug: str, scene_slug: str) -> bool:
+    def _has_pending(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> bool:
         for path in self.path_service.task_paths("ask", "answer", "running"):
             if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():
                 continue
             manifest = self.path_service.read_ask_manifest(path)
-            if manifest.get("task_type") == self.TASK_TYPE and manifest.get("story_slug") == story_slug and manifest.get("scene_slug") == scene_slug:
+            if (
+                manifest.get("task_type") == self.TASK_TYPE
+                and manifest.get("story_slug") == story_slug
+                and manifest.get("scene_slug") == scene_slug
+                and str(manifest.get("render_target_id") or "main") == render_target_id
+            ):
                 return True
         return False

@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from zet.models.asset import Asset
+from zet.repositories.asset_repository import AssetRepositoryError
 from zet.services.pipeline_inspection_service import PipelineInspectionService
 
 
@@ -13,6 +14,11 @@ class FakeAssetRepository:
 
     def list_assets(self, character, phase):
         return [asset for asset in self.assets if asset.character == character and asset.phase == phase]
+
+
+class MissingAssetRepository:
+    def list_assets(self, character, phase):
+        raise AssetRepositoryError("Assets.json not found")
 
 
 class FakePathService:
@@ -80,6 +86,25 @@ class PipelineInspectionServiceTests(unittest.TestCase):
             front_id = pipeline["children"][0]["children"][1]["pipeline_id"]
             self.assertEqual(service.read_text(front_id, "_stage.txt"), "RENDER\n")
             self.assertEqual([item["kind"] for item in service.list_files(front_id)], ["text", "text"])
+
+    def test_lists_auxiliary_pipeline_directories_without_asset_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pipeline_path = root / "Image_Recipe_Lab" / "Session" / "Run"
+            pipeline_path.mkdir(parents=True)
+            service = PipelineInspectionService(root, MissingAssetRepository(), FakePathService(root))
+
+            self.assertEqual(
+                service.list_pipelines(),
+                [
+                    {
+                        "pipeline_id": "Image_Recipe_Lab/Session/Run",
+                        "label": "Image_Recipe_Lab / Session / Run",
+                        "path": str(pipeline_path),
+                        "kind": "character",
+                    }
+                ],
+            )
 
     def test_rejects_paths_outside_a_pipeline(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

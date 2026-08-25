@@ -1523,28 +1523,6 @@ summary:focus-visible {
   padding: 12px;
 }
 
-.production-scope {
-  align-items: center;
-  background: var(--surface-subtle);
-  border-radius: 8px;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  min-width: 0;
-  padding: 8px 12px;
-}
-
-.production-scope-label {
-  color: var(--text-muted);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.production-scope-toggle {
-  flex: 0 0 auto;
-}
-
 .scene-builder-table {
   margin-top: 4px;
 }
@@ -1984,6 +1962,33 @@ summary:focus-visible {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+.scene-builder-target-tree {
+  align-items: stretch;
+}
+
+.scene-builder-target-tree button[data-target-depth="1"] {
+  margin-left: 8px;
+}
+
+.scene-builder-target-tree button[data-target-depth="2"] {
+  margin-left: 16px;
+}
+
+.scene-builder-target-tree button[data-target-depth="3"] {
+  margin-left: 24px;
+}
+
+.scene-builder-target-breadcrumb {
+  color: var(--muted);
+  flex-basis: 100%;
+}
+
+.scene-builder-inheritance-field {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .scene-builder-target-thumbnail {
   border-radius: 6px;
   max-height: 110px;
@@ -2004,6 +2009,10 @@ summary:focus-visible {
 
 .scene-builder-element-editor fieldset {
   border: 0;
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   min-width: 0;
   padding: 0;
@@ -3356,6 +3365,10 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  .scene-builder-element-editor fieldset {
+    grid-template-columns: 1fr;
+  }
+
   .ai-controls-grid .queue-panel,
   .ai-actions-panel,
   .ai-automation-panel,
@@ -3675,6 +3688,20 @@ dd {
 
 .scene-candidate-detail pre {
   white-space: pre-wrap;
+}
+
+.scene-candidate-story-label {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.scene-candidate-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.75rem 0 1rem;
+  border-radius: 0.5rem;
 }
 
 @media (max-width: 850px) {

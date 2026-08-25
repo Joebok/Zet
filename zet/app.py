@@ -361,6 +361,12 @@ class ZetApp:
     def get_scene_candidate(self, source_key: str, candidate_id: str):
         return self.scene_candidate_import_service.get_candidate(source_key, candidate_id)
 
+    def set_scene_candidate_passed(self, source_key: str, candidate_id: str, passed: bool):
+        return self.scene_candidate_import_service.set_passed(source_key, candidate_id, passed)
+
+    def scene_candidate_image_path(self, source_key: str, candidate_id: str) -> Path:
+        return self.scene_candidate_import_service.candidate_image_path(source_key, candidate_id)
+
     def import_scene_candidate(self, source_key: str, candidate_id: str, story_slug: str, confirm_update: bool = False):
         return self.scene_candidate_import_service.import_candidate(
             source_key,
@@ -539,14 +545,17 @@ class ZetApp:
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.story_service.enable_background_subscene(story_slug, scene_slug)
 
+    def enable_element_subscene(self, story_slug: str, scene_slug: str, element_id: str) -> SceneBuilderDocument:
+        return self.story_service.enable_element_subscene(story_slug, scene_slug, element_id)
+
     def disable_scene_subscene(self, story_slug: str, scene_slug: str, target_id: str) -> SceneBuilderDocument:
         return self.story_service.disable_scene_subscene(story_slug, scene_slug, target_id)
 
-    def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str) -> dict:
-        return self.scene_prompt_analysis_service.queue(story_slug, scene_slug)
+    def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
+        return self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id)
 
-    def scene_prompt_analysis_status(self, story_slug: str, scene_slug: str) -> dict:
-        return self.scene_prompt_analysis_service.status(story_slug, scene_slug)
+    def scene_prompt_analysis_status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
+        return self.scene_prompt_analysis_service.status(story_slug, scene_slug, render_target_id)
 
     def list_scene_prompt_analyses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
         return self.scene_prompt_analysis_service.list_statuses(story_slug, scene_slug)

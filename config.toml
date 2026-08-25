@@ -20,12 +20,12 @@ PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 [AIModels]
 AssetWorkflow = "general-purpose:latest"
 PromptCondense = "structured-reasoning:latest"
-PromptAnalysis = "gemma4:12b"
+PromptAnalysis = "gemma4:26b-a4b-it-q4_K_M"
 SceneBuilder = "general-purpose:latest"
 PromptEvolutionCriticA = "vision-analysis:latest"
 PromptEvolutionCriticB = "vision-analysis-alt:latest"
 PromptEvolutionAnalysis = "vision-analysis:latest"
-PromptEvolutionCheck = "vision-analysis-alt:latest"
+PromptEvolutionCheck = "vision-analysis:latest"
 
 [LocalRender]
 AutoQueueAfterCondense = false

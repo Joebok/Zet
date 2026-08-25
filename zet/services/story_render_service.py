@@ -54,6 +54,7 @@ class StoryRenderService:
         scene_builder_data = json.loads(scene_builder_path.read_text(encoding="utf-8"))
         normalized_scene = story._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, scene_builder_data)
         normalized_scene.setdefault("scene", {})["_story_slug"] = safe_story_slug
+        story.scene_render_target_service.assert_valid_graph(normalized_scene)
         story_settings_path = story._library_absolute_path(str(normalized_scene.get("scene", {}).get("story_settings_path") or ""))
         if not story_settings_path.exists():
             raise self.error_type(f"Story settings file not found: {story_settings_path}")
@@ -63,14 +64,18 @@ class StoryRenderService:
         except (OSError, ValueError) as exc:
             raise self.error_type(f"Invalid final image prompt sections template {sections_path}: {exc}") from exc
         story_settings = story.load_story_settings(story_settings_path)
-        if target_id == MAIN_RENDER_TARGET:
+        if target_id != MAIN_RENDER_TARGET and story.scene_render_target_service.definition(normalized_scene, target_id) is None:
+            raise self.error_type(f"Scene subscene not found: {target_id}")
+
+        compiled: dict[str, tuple[dict, list[dict], dict, str]] = {}
+
+        def compile_target(current_target_id: str) -> tuple[dict, list[dict], dict, str]:
+            if current_target_id in compiled:
+                return compiled[current_target_id]
             statuses: dict[str, dict] = {}
-            for definition in normalized_scene.get("subscenes") or []:
-                if not definition.get("enabled"):
-                    continue
+            for definition in story.scene_render_target_service.direct_dependencies(normalized_scene, current_target_id):
                 subscene_id = str(definition.get("id") or "")
-                subscene = story.scene_render_target_service.project_subscene(normalized_scene, subscene_id)
-                _, _, current_hash = self._compile_projected(subscene, story_settings, default_prompt_sections)
+                _, _, _, current_hash = compile_target(subscene_id)
                 freshness = story.scene_render_target_service.freshness(
                     safe_story_slug, safe_scene_slug, subscene_id, current_hash
                 )
@@ -78,16 +83,20 @@ class StoryRenderService:
                 statuses[subscene_id] = {**freshness, "locked_image_path": str(paths["locked"])}
                 if not freshness["locked_current"]:
                     raise self.error_type(
-                        f"Cannot render Full Scene: {definition.get('name') or subscene_id} is not current. "
+                        f"Cannot render {story.scene_render_target_service.target_label(normalized_scene, current_target_id)}: "
+                        f"{definition.get('name') or subscene_id} is not current. "
                         f"{freshness['stale_reason']} Render and lock that subscene first."
                     )
-            projected = story.scene_render_target_service.project_main(normalized_scene, statuses)
-        else:
-            definition = story.scene_render_target_service.definition(normalized_scene, target_id)
-            if definition is None:
-                raise self.error_type(f"Scene subscene not found: {target_id}")
-            projected = story.scene_render_target_service.project_subscene(normalized_scene, target_id)
-        references, ir, render_input_hash = self._compile_projected(projected, story_settings, default_prompt_sections)
+            projected = (
+                story.scene_render_target_service.project_main(normalized_scene, statuses)
+                if current_target_id == MAIN_RENDER_TARGET
+                else story.scene_render_target_service.project_subscene(normalized_scene, current_target_id)
+            )
+            references, ir, current_hash = self._compile_projected(projected, story_settings, default_prompt_sections)
+            compiled[current_target_id] = (projected, references, ir, current_hash)
+            return compiled[current_target_id]
+
+        _, references, ir, render_input_hash = compile_target(target_id)
         ir["source"]["scene_json_path"] = str(scene_builder_path)
         ir["source"]["story_settings_path"] = str(story_settings_path)
         return pipeline_path, scene_builder_path, normalized_scene, references, ir, story_settings_path, final_image_prompt_text(ir), render_input_hash

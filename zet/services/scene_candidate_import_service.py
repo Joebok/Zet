@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from zet.models.scene_candidate import SceneCandidate, SceneCandidateImportResult, SceneCandidateSource
+from zet.services.atomic_file_service import write_json_atomic
 from zet.services.story_cast_service import StoryCastService
 
 
@@ -158,14 +159,54 @@ class SceneCandidateImportService:
                     imported[key] = (story.slug, path.name.removesuffix(".scene.json"), data)
         return imported
 
+    def _passed_state_path(self) -> Path:
+        return self.story_service.path_service.project_root / "Config" / "Scene_Candidate_State.json"
+
+    def _passed_candidates(self) -> set[tuple[str, str]]:
+        path = self._passed_state_path()
+        if not path.is_file():
+            return set()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SceneCandidateImportError(f"Could not read scene candidate state: {path}") from exc
+        records = data.get("passed", []) if isinstance(data, dict) else []
+        return {
+            (str(item.get("source_key") or ""), str(item.get("candidate_id") or ""))
+            for item in records
+            if isinstance(item, dict) and item.get("source_key") and item.get("candidate_id")
+        }
+
+    def set_passed(self, source_key: str, candidate_id: str, passed: bool) -> SceneCandidate:
+        candidate = self.get_candidate(source_key, candidate_id)
+        if passed and candidate.import_state == "rendered":
+            raise SceneCandidateImportError("Rendered scene candidates cannot be passed.")
+        records = self._passed_candidates()
+        key = (candidate.source_key, candidate.candidate_id)
+        records.add(key) if passed else records.discard(key)
+        write_json_atomic(self._passed_state_path(), {
+            "passed": [
+                {"source_key": item[0], "candidate_id": item[1]}
+                for item in sorted(records)
+            ],
+        })
+        return self.get_candidate(source_key, candidate_id)
+
+    def candidate_image_path(self, source_key: str, candidate_id: str) -> Path:
+        candidate = self.get_candidate(source_key, candidate_id)
+        if candidate.import_state != "rendered":
+            raise SceneCandidateImportError("Scene candidate has not been rendered.")
+        return self.story_service.scene_image_path(candidate.imported_story_slug, candidate.imported_scene_slug)
+
     def list_candidates(self, source_key: str) -> list[SceneCandidate]:
         source = self._source(source_key)
         imported = self._imported_scenes()
+        passed = self._passed_candidates()
         output = []
         for candidate in self._parse(source):
             record = imported.get((source.key, candidate.candidate_id))
             if not record:
-                output.append(candidate)
+                output.append(replace(candidate, import_state="passed") if (source.key, candidate.candidate_id) in passed else candidate)
                 continue
             story_slug, scene_slug, data = record
             provenance = data.get("source_provenance") or {}
@@ -173,6 +214,8 @@ class SceneCandidateImportService:
             state = "source_changed" if provenance.get("content_hash") != candidate.content_hash else str(readiness["status"])
             if self.story_service.scene_image_path(story_slug, scene_slug).is_file():
                 state = "rendered"
+            elif (source.key, candidate.candidate_id) in passed:
+                state = "passed"
             output.append(replace(
                 candidate,
                 imported_story_slug=story_slug,
