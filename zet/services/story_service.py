@@ -169,7 +169,7 @@ class StoryService:
                 }
         return self._canonical_element_source_sections(element)
 
-    def _resolve_scene_element_sources(self, data: dict) -> dict:
+    def _resolve_scene_element_sources(self, data: dict, *, allow_incomplete_descriptions: bool = False) -> dict:
         resolved = {}
         catalog_by_tag = (
             {item.tag: item for item in self.image_catalog_service.list_items(include_base=True)}
@@ -181,11 +181,19 @@ class StoryService:
                 continue
             sections = self._element_source_sections(element, catalog_by_tag)
             if sections:
-                if sections.get("catalog_id") and sections.get("identity_status") == "missing":
+                if (
+                    not allow_incomplete_descriptions
+                    and sections.get("catalog_id")
+                    and sections.get("identity_status") == "missing"
+                ):
                     raise StoryServiceError(
                         f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs identity description text."
                     )
-                if sections.get("catalog_id") and sections.get("costume_status") == "missing":
+                if (
+                    not allow_incomplete_descriptions
+                    and sections.get("catalog_id")
+                    and sections.get("costume_status") == "missing"
+                ):
                     raise StoryServiceError(
                         f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs costume description text."
                     )

@@ -31,13 +31,21 @@ class StoryRenderService:
         projected: dict,
         story_settings: dict,
         default_prompt_sections: dict[str, str],
+        *,
+        allow_incomplete_reference_descriptions: bool = False,
     ) -> tuple[list[dict], dict, str]:
         story = self.story
         references = self.reference_service.resolve_scene_references("\n" + json.dumps(projected))
         ir = compile_scene_render_ir(
             projected,
             story_settings,
-            {"references": references, "element_sources": story._resolve_scene_element_sources(projected)},
+            {
+                "references": references,
+                "element_sources": story._resolve_scene_element_sources(
+                    projected,
+                    allow_incomplete_descriptions=allow_incomplete_reference_descriptions,
+                ),
+            },
             default_prompt_sections,
         )
         return references, ir, story.scene_render_target_service.input_hash(ir, story_settings, references)
@@ -48,6 +56,7 @@ class StoryRenderService:
         scene_slug: str,
         render_target_id: str = MAIN_RENDER_TARGET,
         allow_stale_dependencies: bool = False,
+        allow_incomplete_reference_descriptions: bool = False,
     ) -> tuple[Path, Path, dict, list[dict], dict, Path, str, str]:
         story = self.story
         safe_story_slug = story.safe_slug(story_slug)
@@ -100,7 +109,12 @@ class StoryRenderService:
                 if current_target_id == MAIN_RENDER_TARGET
                 else story.scene_render_target_service.project_subscene(normalized_scene, current_target_id)
             )
-            references, ir, current_hash = self._compile_projected(projected, story_settings, default_prompt_sections)
+            references, ir, current_hash = self._compile_projected(
+                projected,
+                story_settings,
+                default_prompt_sections,
+                allow_incomplete_reference_descriptions=allow_incomplete_reference_descriptions,
+            )
             compiled[current_target_id] = (projected, references, ir, current_hash)
             return compiled[current_target_id]
 
@@ -111,7 +125,13 @@ class StoryRenderService:
 
     def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = MAIN_RENDER_TARGET) -> Path:
         story = self.story
-        pipeline_path, scene_builder_path, _, _, ir, story_settings_path, prompt, _ = self._compile(story_slug, scene_slug, render_target_id)
+        pipeline_path, scene_builder_path, _, _, ir, story_settings_path, prompt, _ = self._compile(
+            story_slug,
+            scene_slug,
+            render_target_id,
+            allow_stale_dependencies=True,
+            allow_incomplete_reference_descriptions=True,
+        )
         pipeline_path.mkdir(parents=True, exist_ok=True)
         prompt_path = pipeline_path / "Final_Image_Prompt.md"
         prompt_path.write_text(prompt, encoding="utf-8")

@@ -229,6 +229,11 @@ class ImageCatalogServiceTests(unittest.TestCase):
             })
             with self.assertRaisesRegex(StoryServiceError, "needs identity description text"):
                 story._resolve_scene_element_sources(data)
+            analysis_sources = story._resolve_scene_element_sources(
+                data,
+                allow_incomplete_descriptions=True,
+            )
+            self.assertEqual("missing", analysis_sources["hell"]["identity_status"])
 
     def test_subscene_inherits_identity_from_composition_notes(self):
         with tempfile.TemporaryDirectory() as temp_dir:

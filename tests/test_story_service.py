@@ -477,6 +477,8 @@ Two students meet at the arch.
             self.assertTrue((pipeline / "Local_Render_Prompt.md").exists())
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
             self.assertIn("# Render Task", prompt)
+            self.assertIn("# Spatial Coordinate Contract", prompt)
+            self.assertIn("Apply each left-to-right ordering within its stated depth lane", prompt)
             self.assertIn("**Valindia:** Stands in the left foreground.", prompt)
             self.assertNotIn("cell ", prompt)
             local_prompt = (pipeline / "Local_Render_Prompt.md").read_text(encoding="utf-8")

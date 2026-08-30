@@ -881,12 +881,29 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
             position = clean_prompt_sentence(placements_by_element_id[element_id].get("position_within_cell"))
             composition_lines.append(f"- {name} is in the {position} {depth}.")
         elif depth_element_ids:
-            names = [get_element_display_name(element_id, elements_by_id) for element_id in depth_element_ids]
-            composition_lines.append(f"- In the {depth} from left to right the viewer sees {', then '.join(names)}.")
+            ordered = [
+                f"{get_element_display_name(element_id, elements_by_id)} "
+                f"(broad screen region: {clean_prompt_sentence(placements_by_element_id[element_id].get('position_within_cell'))})"
+                for element_id in depth_element_ids
+            ]
+            composition_lines.append(
+                f"- Exact {depth} left-to-right order: {', then '.join(ordered)}. "
+                "Shared broad screen regions are intentional; this exact sequence resolves their order."
+            )
     if clean_prompt_sentence(composition.get("composition_notes")):
         composition_lines.append(f"- {_sentence(composition.get('composition_notes'))}")
     if composition_lines:
         lines.extend(["", "# Composition", "", *composition_lines])
+    if ir.get("placements"):
+        lines.extend([
+            "",
+            "# Spatial Coordinate Contract",
+            "",
+            "- Screen-left and screen-right always mean the viewer's left and right.",
+            "- Foreground, midground, background, and distant background are separate depth lanes ordered from nearest to farthest from the camera.",
+            "- Apply each left-to-right ordering within its stated depth lane; subjects in different depth lanes may share the same horizontal position.",
+            "- Screen placement, depth, movement direction, destination, body facing or visible body view, head direction, and gaze are independent facts.",
+        ])
     backdrop_lines = []
     backdrop_name = get_element_display_name(_clean(backdrop.get("id")), elements_by_id) if backdrop else ""
     backdrop_description = _backdrop_description(backdrop) if backdrop else ""
