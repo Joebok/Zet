@@ -25,6 +25,73 @@ test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   }
 });
 
+test("Image Inventory filters base outputs and edits logical metadata", async ({ page }) => {
+  await openPage(page, "auxiliary-resources");
+  const cards = page.locator("#image-catalog-grid .image-catalog-card");
+  const initialCount = await cards.count();
+  expect(initialCount).toBeGreaterThan(1);
+  await cards.filter({ hasText: "Head-Image" }).click();
+  await expect(page.locator("#image-catalog-editor-title")).toContainText("Head-Image");
+  await expect(page.locator("#image-catalog-identity-mode")).toHaveValue("inherit");
+
+  await page.locator("#image-catalog-include-base").uncheck();
+  await expect(cards).toHaveCount(initialCount - 1);
+  await expect(cards.filter({ hasText: "Head-Image" })).toHaveCount(0);
+  await page.locator("#image-catalog-include-base").check();
+  await expect(cards).toHaveCount(initialCount);
+  await cards.filter({ hasText: "Head-Image" }).click();
+
+  await page.locator("#image-catalog-new-collection").fill("Heroes");
+  const created = page.waitForResponse((response) => response.url().includes("/api/image-catalog/organization/collections") && response.ok());
+  await page.locator("#image-catalog-add-collection").click();
+  await created;
+  await expect(page.locator("#image-catalog-edit-collections option")).toContainText(["Heroes (0)"]);
+  await page.locator("#image-catalog-edit-collections").selectOption("heroes");
+  await page.locator("#image-catalog-identity-mode").selectOption("override");
+  await page.locator("#image-catalog-identity-text").fill("Distinct approved identity markers.");
+  const saved = page.waitForResponse((response) => response.url().includes("/api/image-catalog/img_") && response.request().method() === "PATCH" && response.ok());
+  await page.locator("#image-catalog-save").click();
+  await saved;
+  await expect(page.locator("#image-catalog-identity-text")).toHaveValue("Distinct approved identity markers.");
+  await expect(page.locator("#image-catalog-edit-collections option:checked")).toHaveAttribute("value", "heroes");
+});
+
+test("Image Inventory reports queued AI descriptions and harvests drafts without reload", async ({ page }) => {
+  await openPage(page, "auxiliary-resources");
+  await page.locator("#image-catalog-grid .image-catalog-card").first().click();
+  const item = await page.evaluate(() => selectedImageCatalogItem());
+
+  await page.route(/\/api\/image-catalog\/[^/]+\/ai-description$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ item: { ...item, description_status: "ai_queued" }, message: "Image description job queued." }),
+    });
+  });
+  await page.route(/\/api\/image-catalog\/[^/]+\/ai-description\/harvest$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        item: {
+          ...item,
+          description_status: "ai_review_required",
+          ai_draft_identity: "Stable physical identity.",
+          ai_draft_costume: "Visible costume details.",
+        },
+        message: "AI image description harvested.",
+      }),
+    });
+  });
+
+  await page.locator("#image-catalog-ai").click();
+  await expect(page.locator("#image-catalog-ai-status")).toContainText("initiated and awaiting");
+  await expect(page.locator("#image-catalog-ai-check")).toBeEnabled();
+  await page.locator("#image-catalog-ai-check").click();
+  await expect(page.locator("#image-catalog-ai-review")).toBeVisible();
+  await expect(page.locator("#image-catalog-ai-identity")).toHaveValue("Stable physical identity.");
+  await expect(page.locator("#image-catalog-ai-costume")).toHaveValue("Visible costume details.");
+  await expect(page.locator("#image-catalog-ai-status")).toContainText("answer harvested");
+});
+
 
 test("Prompt Evolution v3 uses global role models, blinded prompt grids, and post-selection audits", async ({ page }) => {
   await openPage(page, "prompt-evolution");
@@ -437,8 +504,25 @@ test("@desktop-smoke Scene Builder creates nested element render targets", async
   await expect(page.locator(".scene-builder-target-breadcrumb")).toContainText("Full Scene › Travelers › Rescued travelers");
 });
 
-test("AI Controls stacks queue lists and manages Zet processes", async ({ page }) => {
+test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {
   await openPage(page, "ai-controls");
+  await expect(page.locator("#ai-controls-page h1")).toHaveText("AI Queue");
+  const queueSections = page.locator(".queue-tables > section");
+  await expect(queueSections.locator("h3")).toHaveText(["Running", "Ask", "Answer"]);
+  const widths = await queueSections.evaluateAll((sections) => sections.map((section) => section.getBoundingClientRect().width));
+  expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(1);
+  await expect(page.locator("#ai-controls-page #process-table")).toHaveCount(0);
+  const recentHarvests = page.locator("#recent-harvest-table tbody tr");
+  await expect(recentHarvests).toHaveCount(1);
+  await expect(recentHarvests.first()).toContainText("Ask_Harvested");
+  await expect(recentHarvests.first()).toContainText("SUCCESS");
+  await expect(recentHarvests.first()).toContainText("Recent browser-test job completed.");
+  expect(await page.locator(".recent-harvests-panel").evaluate((panel) => panel.getBoundingClientRect().top)).toBeGreaterThan(
+    await page.locator(".ai-render-console-panel").evaluate((panel) => panel.getBoundingClientRect().top),
+  );
+
+  await openPage(page, "local-image-config");
+  await expect(page.locator("#local-image-config-page h1")).toHaveText("Config");
   await expect(page.locator("#setting-ai-asset-workflow-model")).toBeVisible();
   await expect(page.locator("#setting-prompt-condense-model")).toBeVisible();
   await expect(page.locator("#setting-ai-prompt-analysis-model")).toBeVisible();
@@ -447,14 +531,26 @@ test("AI Controls stacks queue lists and manages Zet processes", async ({ page }
   await expect(page.locator("#setting-ai-prompt-evolution-critic-b-model")).toBeVisible();
   await expect(page.locator("#setting-ai-prompt-evolution-analysis-model")).toBeVisible();
   await expect(page.locator("#setting-ai-prompt-evolution-check-model")).toBeVisible();
-  const queueSections = page.locator(".queue-tables > section");
-  await expect(queueSections.locator("h3")).toHaveText(["Running", "Ask", "Answer"]);
-  const widths = await queueSections.evaluateAll((sections) => sections.map((section) => section.getBoundingClientRect().width));
-  expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(1);
-
+  await expect(page.locator('[data-llm-role="image_description"]')).toContainText("Image Inventory catalog metadata");
+  await expect(page.locator('[data-llm-role="image_description"]')).toContainText("Creates Image Inventory catalog identity and costume metadata.");
+  await page.getByRole("button", { name: "Edit Analysis instructions" }).click();
+  await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
+  await expect(page.locator("#source-editor-text")).toHaveValue("Analyze the compiled prompt.\n");
+  await page.locator("#source-editor-text").fill("Updated analysis instructions.\n");
+  await page.locator("#source-editor-save").click();
+  await expect(page.locator("#source-editor-save-state")).toHaveText("Saved");
+  await openPage(page, "local-image-config");
   const processes = page.locator("#process-table tbody tr");
   await expect(processes).toHaveCount(2);
   await expect(processes.nth(0)).toContainText("Zet Web Dashboard");
   await expect(processes.nth(1)).toContainText("Auto Harvester");
   await expect(processes.locator("button")).toHaveCount(6);
+  await expect(page.locator("#local-image-config-page > .control-panel").first().locator("h2")).toHaveText("Processes");
+
+  const restart = page.locator("#toolbar-restart-zet");
+  await expect(restart).toHaveText("♻");
+  await expect(restart).toHaveAttribute("aria-label", "Restart Zet");
+  expect(await restart.evaluate((button) => button.getBoundingClientRect().left)).toBeLessThan(
+    await page.locator("#toolbar-settings-button").evaluate((button) => button.getBoundingClientRect().left),
+  );
 });

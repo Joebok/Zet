@@ -220,6 +220,11 @@ class ProcessService:
         self.start(process_id)
         return stopped
 
+    def restart_zet(self) -> tuple[int, int]:
+        harvester_stopped = self.stop("auto_harvest")
+        dashboard_stopped = self.restart("zet_web")
+        return harvester_stopped, dashboard_stopped
+
     def _schedule_self_restart(self, spec: ManagedProcessSpec, matches: list[ProcessInfo]) -> None:
         if spec.command is None or spec.cwd is None:
             raise ValueError(f"{spec.label} has no configured start command.")

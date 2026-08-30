@@ -6,6 +6,7 @@ from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
+from zet.repositories.image_catalog_repository import ImageCatalogRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import (
@@ -25,6 +26,7 @@ from zet.services.costume_service import CostumeCreateResult, CostumeService, Co
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
+from zet.services.image_catalog_service import ImageCatalogService
 from zet.services.path_service import PathService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
@@ -174,6 +176,7 @@ class ZetApp:
         self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.image_catalog_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
         self.workspace_summary_service = WorkspaceSummaryService(
@@ -311,6 +314,18 @@ class ZetApp:
             identity_key_repository,
             turnaround_repository,
         )
+        image_catalog_repository = ImageCatalogRepository(path_service)
+        image_catalog_service = ImageCatalogService(
+            config,
+            path_service,
+            image_catalog_repository,
+            asset_repository,
+            auxiliary_resource_repository,
+            identity_key_repository,
+            turnaround_repository,
+            story_service,
+        )
+        story_service.image_catalog_service = image_catalog_service
         app = cls(
             config,
             asset_repository,
@@ -331,6 +346,7 @@ class ZetApp:
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
+        app.image_catalog_service = image_catalog_service
         return app
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
@@ -376,7 +392,27 @@ class ZetApp:
         )
 
     def scene_readiness(self, data: dict) -> dict:
-        return self.scene_candidate_import_service.readiness(data)
+        readiness = self.scene_candidate_import_service.readiness(data)
+        catalog_by_tag = {
+            item.tag: item for item in self.image_catalog_service.list_items(include_base=True)
+        }
+        blockers = list(readiness.get("blockers") or [])
+        for element in data.get("scene_elements") or []:
+            references = [item for item in element.get("reference_images") or [] if isinstance(item, dict)]
+            if not references:
+                continue
+            catalog_item = catalog_by_tag.get(str(references[0].get("tag") or ""))
+            if catalog_item is None:
+                continue
+            label = element.get("display_name") or element.get("id") or "Scene element"
+            if catalog_item.identity_status == "missing":
+                blockers.append(f"{label}'s selected image needs identity description text.")
+            if catalog_item.costume_status == "missing":
+                blockers.append(f"{label}'s selected image needs costume description text.")
+        readiness["blockers"] = list(dict.fromkeys(blockers))
+        if readiness["blockers"] and readiness.get("status") == "ready":
+            readiness["status"] = "needs_attention"
+        return readiness
 
     def create_story(self, title: str) -> StoryDocument:
         """Create a story folder and main story markdown file."""
@@ -413,7 +449,9 @@ class ZetApp:
 
     def delete_story(self, story_slug: str) -> StoryGitResult:
         """Commit and delete one story folder."""
-        return self.story_service.delete_story(story_slug)
+        result = self.story_service.delete_story(story_slug)
+        self.image_catalog_service.rebind_source_prefix(f"scene:{story_slug}:")
+        return result
 
     def story_git_has_changes(self) -> bool:
         """Return whether the Stories folder has uncommitted changes."""
@@ -457,11 +495,18 @@ class ZetApp:
 
     def move_scene(self, story_slug: str, scene_slug: str, target_story_slug: str) -> SceneDocument:
         """Move one scene and its artifacts to another story."""
-        return self.story_service.move_scene(story_slug, scene_slug, target_story_slug)
+        document = self.story_service.move_scene(story_slug, scene_slug, target_story_slug)
+        self.image_catalog_service.rebind_source_prefix(
+            f"scene:{story_slug}:{scene_slug}:",
+            f"scene:{target_story_slug}:{scene_slug}:",
+        )
+        return document
 
     def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
         """Commit and delete one scene markdown and image."""
-        return self.story_service.delete_scene(story_slug, scene_slug)
+        result = self.story_service.delete_scene(story_slug, scene_slug)
+        self.image_catalog_service.rebind_source_prefix(f"scene:{story_slug}:{scene_slug}:")
+        return result
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the expected rendered scene image path."""
@@ -494,6 +539,9 @@ class ZetApp:
 
     def promote_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
         return self.scene_image_review_service.promote(story_slug, scene_slug, render_target_id)
+
+    def relock_current_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
+        return self.scene_image_review_service.relock_current(story_slug, scene_slug, render_target_id)
 
     def discard_scene_image_candidate(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
         return self.scene_image_review_service.discard(story_slug, scene_slug, render_target_id)
@@ -538,9 +586,20 @@ class ZetApp:
         data = self.load_scene_builder(story_slug, scene_slug).data
         return self.scene_candidate_import_service.interview_seed(data)
 
-    def stage_scene_render(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> StoryRenderTask:
+    def stage_scene_render(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = "main",
+        allow_stale_dependencies: bool = False,
+    ) -> StoryRenderTask:
         """Compile and stage one story scene for the Render Console."""
-        return self.story_service.stage_scene_render(story_slug, scene_slug, render_target_id)
+        task = self.story_service.stage_scene_render(
+            story_slug, scene_slug, render_target_id, allow_stale_dependencies
+        )
+        if self.config.ai_prompt_analysis_auto_queue_on_render:
+            self.queue_scene_prompt_analysis(story_slug, scene_slug, render_target_id)
+        return task
 
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.story_service.enable_background_subscene(story_slug, scene_slug)
@@ -560,9 +619,64 @@ class ZetApp:
     def list_scene_prompt_analyses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
         return self.scene_prompt_analysis_service.list_statuses(story_slug, scene_slug)
 
-    def scene_image_reference_rows(self, character: str = "", text_filter: str = "") -> list[ImageReferenceRow]:
-        """List copyable image references for the scene editor."""
-        return self.story_service.image_reference_rows(character, text_filter)
+    def scene_image_reference_rows(
+        self,
+        character: str = "",
+        text_filter: str = "",
+        include_base: bool = False,
+        **filters,
+    ) -> list[ImageReferenceRow]:
+        """List catalog-backed image references for the scene editor."""
+        items = self.image_catalog_service.list_items(
+            q=text_filter,
+            character=character,
+            include_base=include_base,
+            **filters,
+        )
+        return [ImageReferenceRow(
+            tag=item.tag,
+            label=item.label,
+            character=item.character,
+            phase=item.phase,
+            kind=item.source_type,
+            pipeline=item.pipeline,
+            image_path=item.image_path,
+            thumbnail_path=item.thumbnail_path,
+            costume=item.costume,
+            view=item.view,
+            available=item.available,
+            story_slug=item.story_slug,
+            scene_slug=item.scene_slug,
+            candidate_pending=item.candidate_pending,
+            image_review_key=item.image_review_key,
+            catalog_id=item.catalog_id,
+            semantic_category=item.semantic_category,
+            collections=item.collections,
+            keywords=item.keywords,
+            is_base_pipeline=item.is_base_pipeline,
+            description_status=item.description_status,
+            identity_status=item.identity_status,
+            costume_status=item.costume_status,
+        ) for item in items]
+
+    def image_catalog_items(self, **filters):
+        return self.image_catalog_service.list_items(**filters)
+
+    def image_catalog_item(self, catalog_id: str):
+        return self.image_catalog_service.get_item(catalog_id)
+
+    def update_image_catalog_item(self, catalog_id: str, changes: dict):
+        return self.image_catalog_service.update_item(catalog_id, changes)
+
+    def bulk_update_image_catalog(self, catalog_ids: list[str], changes: dict):
+        return self.image_catalog_service.bulk_update(catalog_ids, changes)
+
+    def image_catalog_organization(self) -> dict:
+        return self.image_catalog_service.list_organization()
+
+    def harvest_image_catalog_description(self, catalog_id: str):
+        self.harvest_ai_answers()
+        return self.image_catalog_service.get_item(catalog_id)
 
     def character_source_options(self, character: str = "", phase: str = "") -> dict:
         """Return safe dropdown options for a character-source consumer."""
@@ -680,7 +794,9 @@ class ZetApp:
 
     def delete_auxiliary_resource(self, resource_id: str) -> AuxiliaryResource:
         """Delete a global auxiliary resource and its files."""
-        return self.auxiliary_resource_service.delete_resource(resource_id)
+        resource = self.auxiliary_resource_service.delete_resource(resource_id)
+        self.image_catalog_service.rebind_source_prefix(f"aux:{resource.category}:{resource.resource_id}:")
+        return resource
 
     def save_auxiliary_resource_image(
         self,
@@ -903,6 +1019,9 @@ class ZetApp:
     def harvested_answer_count(self) -> int:
         return self.ai_proxy_service.harvested_answer_count()
 
+    def recent_ai_harvests(self, limit: int = 20):
+        return self.ai_proxy_service.recent_harvests(limit)
+
     def process_statuses(self):
         return self.process_service.statuses()
 
@@ -914,6 +1033,9 @@ class ZetApp:
 
     def restart_process(self, process_id: str):
         return self.process_service.restart(process_id)
+
+    def restart_zet(self):
+        return self.process_service.restart_zet()
 
     def pipeline_control_snapshot(self, character: str, phase: str) -> PipelineControlSnapshot:
         return self.pipeline_control_service.snapshot(character, phase)

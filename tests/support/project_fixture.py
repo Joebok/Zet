@@ -14,6 +14,9 @@ def write_project_fixture(root: Path, *, stage: str = "LOCKED", actor: str = "HU
     (root / "Assets" / "Test" / "Adult").mkdir(parents=True)
     (root / "Queue").mkdir()
     (root / "Config").mkdir()
+    (root / "Config" / "AI_Prompt_Analysis_Instructions.md").write_text(
+        "Analyze the compiled prompt.\n", encoding="utf-8"
+    )
     (prompt_dir / "Final_Image_Prompt.md").write_text("full final prompt\n", encoding="utf-8")
     (pipeline_dir / "front.png").write_bytes(b"test image")
     (character_dir / "Assets.json").write_text(
@@ -112,4 +115,3 @@ def write_manual_render_ask(root: Path) -> Path:
     )
     (ask_path / "Final_Image_Prompt.md").write_text("manual render prompt\n", encoding="utf-8")
     return ask_path
-

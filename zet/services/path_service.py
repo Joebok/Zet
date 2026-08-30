@@ -142,6 +142,18 @@ class PathService:
         safe = str(image_label or "").strip()
         return self.auxiliary_resource_folder_path(resource_id) / f"{safe}{extension}"
 
+    def image_catalog_root(self) -> Path:
+        """Return the logical image-catalog metadata folder."""
+        return Path(self.config.base_library_path) / "ImageCatalog"
+
+    def image_catalog_inventory_path(self) -> Path:
+        """Return the logical image-catalog overlay path."""
+        return self.image_catalog_root() / "ImageCatalog.json"
+
+    def image_catalog_drafts_path(self) -> Path:
+        """Return the folder containing harvested AI description drafts."""
+        return self.image_catalog_root() / "Drafts"
+
     def costume_template_path(self, character: str, phase: str, costume_name: str) -> Path:
         """Return the markdown template path for a costume name."""
         safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(costume_name).strip())

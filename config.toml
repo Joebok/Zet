@@ -21,6 +21,7 @@ PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 AssetWorkflow = "general-purpose:latest"
 PromptCondense = "structured-reasoning:latest"
 PromptAnalysis = "gemma4:26b-a4b-it-q4_K_M"
+ImageDescription = "vision-analysis:latest"
 SceneBuilder = "general-purpose:latest"
 PromptEvolutionCriticA = "vision-analysis:latest"
 PromptEvolutionCriticB = "vision-analysis-alt:latest"
@@ -65,6 +66,7 @@ IntervalSeconds = 60
 Backend = "manual_chatgpt"
 
 [AIPromptAnalysis]
+AutoQueueOnRender = true
 InstructionsFile = "Config/AI_Prompt_Analysis_Instructions.md"
 
 [[SceneCandidateSources]]

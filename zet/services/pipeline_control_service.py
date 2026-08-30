@@ -41,12 +41,14 @@ class AutomationSettings:
     ai_asset_workflow_model: str = "general-purpose:latest"
     prompt_condense_model: str = "structured-reasoning:latest"
     ai_prompt_analysis_model: str = "structured-reasoning:latest"
+    ai_image_description_model: str = "vision-analysis:latest"
     ai_scene_builder_model: str = "structured-reasoning:latest"
     ai_prompt_evolution_critic_model_a: str = "vision-analysis:latest"
     ai_prompt_evolution_critic_model_b: str = "vision-analysis-alt:latest"
     ai_prompt_evolution_analysis_model: str = "vision-analysis:latest"
     ai_prompt_evolution_check_model: str = "vision-analysis-alt:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
+    ai_prompt_analysis_auto_queue_on_render: bool = False
     zine_print_scale: float = 0.978
     zine_page_margin: int = 4
     zine_width: int = 3300
@@ -71,6 +73,7 @@ class PipelineControlSnapshot:
     pipeline_rows: list[PipelineStageControlRow]
     project_config_rows: list[dict]
     render_profiles: dict[str, list[str]]
+    managed_llm_roles: list[dict]
 
 
 class PipelineControlService:
@@ -121,7 +124,80 @@ class PipelineControlService:
             pipeline_rows=pipeline_rows,
             project_config_rows=self.project_config_rows(),
             render_profiles=self.render_profiles(),
+            managed_llm_roles=self.managed_llm_roles(),
         )
+
+    def managed_llm_roles(self) -> list[dict]:
+        """Describe configured LLM tasks and their editable Markdown templates."""
+        prompt_evolution_root = "Config/Prompt_Evolution"
+        return [
+            {
+                "key": "asset_workflow",
+                "description": "Asset pipeline analysis and workflow responses.",
+                "templates": [],
+            },
+            {
+                "key": "prompt_condense",
+                "description": "Condenses compiled image prompts before rendering.",
+                "templates": [self._llm_template("Condensation prompt", self.config.prompt_condense_file)],
+            },
+            {
+                "key": "prompt_analysis",
+                "description": "Reviews compiled scene prompts and writes AI prompt analysis.",
+                "templates": [
+                    self._llm_template("Analysis instructions", self.config.ai_prompt_analysis_instructions_file)
+                ],
+            },
+            {
+                "key": "image_description",
+                "description": "Creates Image Inventory catalog identity and costume metadata.",
+                "templates": [],
+            },
+            {
+                "key": "scene_builder",
+                "description": "Turns narrative prose into structured Scene Builder data.",
+                "templates": [],
+            },
+            {
+                "key": "prompt_evolution_critic_a",
+                "description": "First independent visual comparison critic.",
+                "templates": [self._llm_template("Visual critic", f"{prompt_evolution_root}/visual_critic.md")],
+            },
+            {
+                "key": "prompt_evolution_critic_b",
+                "description": "Second independent visual comparison critic.",
+                "templates": [self._llm_template("Visual critic", f"{prompt_evolution_root}/visual_critic.md")],
+            },
+            {
+                "key": "prompt_evolution_analysis",
+                "description": "Bootstraps, diagnoses, synthesizes, and edits evolved prompts.",
+                "templates": [
+                    self._llm_template(name.replace("_", " ").title(), f"{prompt_evolution_root}/{name}.md")
+                    for name in (
+                        "bootstrap",
+                        "batch_synthesis",
+                        "prompt_diagnosis",
+                        "prompt_edit",
+                        "directed_refinement",
+                        "repair",
+                    )
+                ],
+            },
+            {
+                "key": "prompt_evolution_check",
+                "description": "Checks evolved images for character and costume regressions.",
+                "templates": [
+                    self._llm_template("Regression check", f"{prompt_evolution_root}/regression_check.md"),
+                    self._llm_template("Response repair", f"{prompt_evolution_root}/repair.md"),
+                ],
+            },
+        ]
+
+    def _llm_template(self, label: str, path_value: str) -> dict:
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = self.config_path.resolve().parent / path
+        return {"label": label, "path": str(path.resolve()), "display_path": str(path_value)}
 
     def automation_settings(self) -> AutomationSettings:
         return AutomationSettings(
@@ -149,6 +225,8 @@ class PipelineControlService:
             ai_asset_workflow_model=str(self.config.ai_asset_workflow_model),
             prompt_condense_model=str(self.config.prompt_condense_model),
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
+            ai_prompt_analysis_auto_queue_on_render=bool(self.config.ai_prompt_analysis_auto_queue_on_render),
+            ai_image_description_model=str(self.config.ai_image_description_model),
             ai_scene_builder_model=str(self.config.ai_scene_builder_model),
             ai_prompt_evolution_critic_model_a=str(self.config.ai_prompt_evolution_critic_model_a),
             ai_prompt_evolution_critic_model_b=str(self.config.ai_prompt_evolution_critic_model_b),
@@ -203,6 +281,8 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIModels.AssetWorkflow", "Value": self.config.ai_asset_workflow_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptCondense", "Value": self.config.prompt_condense_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptAnalysis", "Value": self.config.ai_prompt_analysis_model},
+            {"Scope": "Project config", "Setting": "AIPromptAnalysis.AutoQueueOnRender", "Value": self.config.ai_prompt_analysis_auto_queue_on_render},
+            {"Scope": "Project config", "Setting": "AIModels.ImageDescription", "Value": self.config.ai_image_description_model},
             {"Scope": "Project config", "Setting": "AIModels.SceneBuilder", "Value": self.config.ai_scene_builder_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticA", "Value": self.config.ai_prompt_evolution_critic_model_a},
             {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticB", "Value": self.config.ai_prompt_evolution_critic_model_b},
@@ -247,6 +327,8 @@ class PipelineControlService:
             ("AIModels", "AssetWorkflow"): settings.ai_asset_workflow_model,
             ("AIModels", "PromptCondense"): settings.prompt_condense_model,
             ("AIModels", "PromptAnalysis"): settings.ai_prompt_analysis_model,
+            ("AIPromptAnalysis", "AutoQueueOnRender"): settings.ai_prompt_analysis_auto_queue_on_render,
+            ("AIModels", "ImageDescription"): settings.ai_image_description_model,
             ("AIModels", "SceneBuilder"): settings.ai_scene_builder_model,
             ("AIModels", "PromptEvolutionCriticA"): settings.ai_prompt_evolution_critic_model_a,
             ("AIModels", "PromptEvolutionCriticB"): settings.ai_prompt_evolution_critic_model_b,
@@ -293,6 +375,7 @@ class PipelineControlService:
             ("Asset workflow", settings.ai_asset_workflow_model),
             ("Prompt condensation", settings.prompt_condense_model),
             ("AI prompt analysis", settings.ai_prompt_analysis_model),
+            ("Image description", settings.ai_image_description_model),
             ("Scene Builder", settings.ai_scene_builder_model),
             ("Prompt Evolution critic A", settings.ai_prompt_evolution_critic_model_a),
             ("Prompt Evolution critic B", settings.ai_prompt_evolution_critic_model_b),

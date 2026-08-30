@@ -574,6 +574,7 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
         "queue": _jsonable(queue_snapshot),
         "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
         "manual_render_asks": _jsonable(manual_render_asks),
+        "recent_harvests": _jsonable(zet_app.recent_ai_harvests()),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
     }
 
@@ -659,6 +660,10 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ),
         prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
         ai_prompt_analysis_model=str(payload.get("ai_prompt_analysis_model", defaults.ai_prompt_analysis_model)),
+        ai_prompt_analysis_auto_queue_on_render=bool(
+            payload.get("ai_prompt_analysis_auto_queue_on_render", defaults.ai_prompt_analysis_auto_queue_on_render)
+        ),
+        ai_image_description_model=str(payload.get("ai_image_description_model", defaults.ai_image_description_model)),
         ai_scene_builder_model=str(payload.get("ai_scene_builder_model", defaults.ai_scene_builder_model)),
         ai_prompt_evolution_critic_model_a=str(
             payload.get(
@@ -696,6 +701,7 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
         "pipelines_path": str(snapshot.pipelines_path),
         "automation": _jsonable(snapshot.automation),
         "render_profiles": snapshot.render_profiles,
+        "managed_llm_roles": snapshot.managed_llm_roles,
         "pipeline_rows": _jsonable(snapshot.pipeline_rows),
         "project_config_rows": _jsonable(snapshot.project_config_rows),
         "pipeline_names": pipeline_names,
@@ -1639,11 +1645,17 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/stage-render")
-    def scene_stage_render(story_slug: str, scene_slug: str) -> dict[str, Any]:
+    def scene_stage_render(
+        story_slug: str,
+        scene_slug: str,
+        allow_stale_dependencies: bool = Query(False),
+    ) -> dict[str, Any]:
         """Compile and stage one story scene for the Render Console."""
         zet_app = _app(app.state.config_path)
         try:
-            task = zet_app.stage_scene_render(story_slug, scene_slug)
+            task = zet_app.stage_scene_render(
+                story_slug, scene_slug, allow_stale_dependencies=allow_stale_dependencies
+            )
             return {
                 "task": _story_render_task_payload(task),
                 "message": f"Staged scene {task.scene_slug} for Render Console.",
@@ -1652,13 +1664,167 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/scene-image-picker")
-    def scene_image_picker(character: str = Query(""), text_filter: str = Query("")) -> dict[str, Any]:
+    def scene_image_picker(
+        character: str = Query(""),
+        text_filter: str = Query(""),
+        include_base: bool = Query(False),
+        source_type: str = Query(""),
+        semantic_category: str = Query(""),
+        phase: str = Query(""),
+        costume: str = Query(""),
+        pipeline: str = Query(""),
+        story_slug: str = Query(""),
+        scene_slug: str = Query(""),
+        status: str = Query(""),
+    ) -> dict[str, Any]:
         """List copyable auxiliary and locked-asset image references for scene editing."""
         zet_app = _app(app.state.config_path)
         try:
             return {
-                "rows": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows(character, text_filter)]
+                "rows": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows(
+                    character,
+                    text_filter,
+                    include_base,
+                    source_type=source_type,
+                    semantic_category=semantic_category,
+                    phase=phase,
+                    costume=costume,
+                    pipeline=pipeline,
+                    story_slug=story_slug,
+                    scene_slug=scene_slug,
+                    status=status,
+                )]
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/image-catalog")
+    def image_catalog(
+        q: str = Query(""),
+        source_type: str = Query(""),
+        semantic_category: str = Query(""),
+        collection: str = Query(""),
+        keyword: str = Query(""),
+        character: str = Query(""),
+        phase: str = Query(""),
+        costume: str = Query(""),
+        pipeline: str = Query(""),
+        story_slug: str = Query(""),
+        scene_slug: str = Query(""),
+        subscene_id: str = Query(""),
+        status: str = Query(""),
+        include_base: bool = Query(True),
+    ) -> dict[str, Any]:
+        """Search the unified logical image inventory."""
+        zet_app = _app(app.state.config_path)
+        try:
+            items = zet_app.image_catalog_items(
+                q=q,
+                source_type=source_type,
+                semantic_category=semantic_category,
+                collection=collection,
+                keyword=keyword,
+                character=character,
+                phase=phase,
+                costume=costume,
+                pipeline=pipeline,
+                story_slug=story_slug,
+                scene_slug=scene_slug,
+                subscene_id=subscene_id,
+                status=status,
+                include_base=include_base,
+            )
+            return {"items": [_jsonable(item) for item in items]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/image-catalog/organization")
+    def image_catalog_organization() -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).image_catalog_organization()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/image-catalog/organization/{kind}")
+    def image_catalog_organization_create(kind: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).image_catalog_service.save_vocabulary(kind, data.get("label"))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/image-catalog/organization/{kind}/{entry_id}")
+    def image_catalog_organization_update(kind: str, entry_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).image_catalog_service.save_vocabulary(kind, data.get("label"), entry_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/image-catalog/organization/{kind}/{entry_id}")
+    def image_catalog_organization_delete(kind: str, entry_id: str, merge_into: str = Query("")) -> dict[str, Any]:
+        try:
+            return _app(app.state.config_path).image_catalog_service.delete_vocabulary(kind, entry_id, merge_into)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch("/api/image-catalog/bulk")
+    def image_catalog_bulk_update(data: dict = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            items = zet_app.bulk_update_image_catalog(data.get("catalog_ids") or [], data.get("changes") or {})
+            return {"items": [_jsonable(item) for item in items]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/image-catalog/{catalog_id}")
+    def image_catalog_detail(catalog_id: str) -> dict[str, Any]:
+        try:
+            return {"item": _jsonable(_app(app.state.config_path).image_catalog_item(catalog_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.patch("/api/image-catalog/{catalog_id}")
+    def image_catalog_update(catalog_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).update_image_catalog_item(catalog_id, data)
+            return {"item": _jsonable(item), "message": "Image metadata saved."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/image-catalog/{catalog_id}/ai-description")
+    def image_catalog_queue_description(catalog_id: str) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).image_catalog_service.queue_description(catalog_id)
+            return {"item": _jsonable(item), "message": "Image description job queued."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/image-catalog/{catalog_id}/ai-description/harvest")
+    def image_catalog_harvest_description(catalog_id: str) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).harvest_image_catalog_description(catalog_id)
+            message = "AI image description harvested." if item.description_status == "ai_review_required" else "AI image description is still pending."
+            return {"item": _jsonable(item), "message": message}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/image-catalog/{catalog_id}/ai-description/approve")
+    def image_catalog_approve_description(catalog_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).image_catalog_service.approve_draft(
+                catalog_id,
+                str(data.get("identity_text") or ""),
+                str(data.get("costume_text") or ""),
+                bool(data.get("costume_not_applicable")),
+            )
+            return {"item": _jsonable(item), "message": "Image description approved."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/image-catalog/{catalog_id}/ai-description/reject")
+    def image_catalog_reject_description(catalog_id: str) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).image_catalog_service.reject_draft(catalog_id)
+            return {"item": _jsonable(item), "message": "AI draft rejected."}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1920,10 +2086,17 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/render-targets/{target_id}/stage-render")
-    def scene_target_stage_render(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+    def scene_target_stage_render(
+        story_slug: str,
+        scene_slug: str,
+        target_id: str,
+        allow_stale_dependencies: bool = Query(False),
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            task = zet_app.stage_scene_render(story_slug, scene_slug, target_id)
+            task = zet_app.stage_scene_render(
+                story_slug, scene_slug, target_id, allow_stale_dependencies
+            )
             return {
                 "task": _story_render_task_payload(task),
                 "message": f"Staged {target_id} render for {task.scene_slug}.",
@@ -2369,6 +2542,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/targets/{target_id}/re-lock-current")
+    def scene_target_render_review_relock(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.relock_current_scene_image(story_slug, scene_slug, target_id)
+            return {"message": f"{status.render_target_label} image re-locked.", "review": asdict(status)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/render-review/scenes/{story_slug}/{scene_slug}/targets/{target_id}/discard-candidate")
     def scene_target_render_review_discard(story_slug: str, scene_slug: str, target_id: str) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -2736,6 +2918,18 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             payload = _ai_controls_payload(zet_app)
             payload["message"] = message
             return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/processes/restart-zet")
+    def restart_zet() -> dict[str, Any]:
+        try:
+            harvester_stopped, dashboard_stopped = _app(app.state.config_path).restart_zet()
+            return {
+                "message": "Restarting Zet.",
+                "auto_harvest_stopped": harvester_stopped,
+                "dashboard_stopped": dashboard_stopped,
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

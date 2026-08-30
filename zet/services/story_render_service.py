@@ -42,7 +42,13 @@ class StoryRenderService:
         )
         return references, ir, story.scene_render_target_service.input_hash(ir, story_settings, references)
 
-    def _compile(self, story_slug: str, scene_slug: str, render_target_id: str = MAIN_RENDER_TARGET) -> tuple[Path, Path, dict, list[dict], dict, Path, str, str]:
+    def _compile(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = MAIN_RENDER_TARGET,
+        allow_stale_dependencies: bool = False,
+    ) -> tuple[Path, Path, dict, list[dict], dict, Path, str, str]:
         story = self.story
         safe_story_slug = story.safe_slug(story_slug)
         safe_scene_slug = story.safe_slug(scene_slug)
@@ -81,7 +87,9 @@ class StoryRenderService:
                 )
                 paths = story.scene_render_target_service.review_paths(safe_story_slug, safe_scene_slug, subscene_id)
                 statuses[subscene_id] = {**freshness, "locked_image_path": str(paths["locked"])}
-                if not freshness["locked_current"]:
+                if not freshness["locked_current"] and not (
+                    allow_stale_dependencies and freshness["locked_exists"]
+                ):
                     raise self.error_type(
                         f"Cannot render {story.scene_render_target_service.target_label(normalized_scene, current_target_id)}: "
                         f"{definition.get('name') or subscene_id} is not current. "
@@ -117,13 +125,19 @@ class StoryRenderService:
         )
         return prompt_path
 
-    def stage_scene_render(self, story_slug: str, scene_slug: str, render_target_id: str = MAIN_RENDER_TARGET):
+    def stage_scene_render(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = MAIN_RENDER_TARGET,
+        allow_stale_dependencies: bool = False,
+    ):
         story = self.story
         safe_story_slug = story.safe_slug(story_slug)
         safe_scene_slug = story.safe_slug(scene_slug)
         target_id = str(render_target_id or MAIN_RENDER_TARGET).strip()
         pipeline_path, scene_builder_path, normalized_scene, references, ir, story_settings_path, prompt, render_input_hash = self._compile(
-            safe_story_slug, safe_scene_slug, target_id
+            safe_story_slug, safe_scene_slug, target_id, allow_stale_dependencies
         )
         if target_id != MAIN_RENDER_TARGET:
             definition = story.scene_render_target_service.definition(normalized_scene, target_id)

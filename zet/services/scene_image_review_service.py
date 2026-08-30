@@ -210,6 +210,34 @@ class SceneImageReviewService:
             pass
         return self.status(safe_story, safe_scene, target_id)
 
+    def relock_current(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
+        safe_story, safe_scene = self._slugs(story_slug, scene_slug)
+        target_id = str(render_target_id or "main").strip()
+        if target_id == "main":
+            raise SceneImageReviewError("Only scene sub-scenes can be re-locked.")
+        paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
+        if not paths["locked"].is_file():
+            raise SceneImageReviewError("Scene subscene has no locked image to re-lock.")
+        current_hash = self.story_service.story_render_service._compile(
+            safe_story, safe_scene, target_id, allow_stale_dependencies=True
+        )[-1]
+        metadata = {}
+        if paths["metadata"].is_file():
+            try:
+                loaded_metadata = json.loads(paths["metadata"].read_text(encoding="utf-8"))
+                metadata = loaded_metadata if isinstance(loaded_metadata, dict) else {}
+            except (OSError, json.JSONDecodeError):
+                metadata = {}
+        metadata.update({
+            "story_slug": safe_story,
+            "scene_slug": safe_scene,
+            "render_target_id": target_id,
+            "render_input_hash": current_hash,
+            "locked_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        self._write_json(paths["metadata"], metadata)
+        return self.status(safe_story, safe_scene, target_id)
+
     def discard(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
         target_id = str(render_target_id or "main").strip()

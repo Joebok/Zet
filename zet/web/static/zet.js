@@ -105,6 +105,7 @@ const state = {
   sceneBuilderReferences: [],
   sceneBuilderRenderTargets: [],
   activeBuilderRenderTarget: "main",
+  builderAllowStaleTarget: "",
   showBuilderContextElements: true,
   sceneBuilderOpen: false,
   sceneBuilderInterview: null,
@@ -124,6 +125,10 @@ const state = {
   builderElementCostumes: [],
   builderCostumesByCharacterPhase: {},
   auxiliaryResources: [],
+  imageCatalogItems: [],
+  imageCatalogOrganization: { collections: [], keywords: [] },
+  selectedImageCatalogId: null,
+  selectedImageCatalogIds: [],
   selectedAuxiliaryResourceId: null,
   selectedAuxiliaryImageId: null,
   auxiliaryResourceImageBlob: null,
@@ -181,6 +186,7 @@ const newStoryButton = document.querySelector("#new-story");
 const newSceneButton = document.querySelector("#new-scene");
 const headerFitmentPreview = document.querySelector("#header-fitment-preview");
 const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
+const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
@@ -350,6 +356,7 @@ const renderReviewComment = document.querySelector("#render-review-comment");
 const renderCommentSave = document.querySelector("#render-comment-save");
 const aiControlsStatus = document.querySelector("#ai-controls-status");
 const aiControlsMessage = document.querySelector("#ai-controls-message");
+const localImageConfigStatus = document.querySelector("#local-image-config-status");
 const localImageConfigMessage = document.querySelector("#local-image-config-message");
 const harvestAiButton = document.querySelector("#harvest-ai");
 const archiveHarvestedAiButton = document.querySelector("#archive-harvested-ai");
@@ -362,6 +369,8 @@ const queueAnswerTableBody = document.querySelector("#queue-answer-table tbody")
 const openRenderConsoleTab = document.querySelector("#open-render-console-tab");
 const manualRenderCount = document.querySelector("#manual-render-count");
 const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
+const recentHarvestCount = document.querySelector("#recent-harvest-count");
+const recentHarvestTableBody = document.querySelector("#recent-harvest-table tbody");
 const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
 const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
 const pipelineInspectionStatus = document.querySelector("#pipeline-inspection-status");
@@ -401,9 +410,11 @@ const settingZineWidth = document.querySelector("#setting-zine-width");
 const settingTurnaroundWidth = document.querySelector("#setting-turnaround-width");
 const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
+const settingAiPromptAnalysisAutoQueueOnRender = document.querySelector("#setting-ai-prompt-analysis-auto-queue-on-render");
 const settingAiAssetWorkflowModel = document.querySelector("#setting-ai-asset-workflow-model");
 const settingPromptCondenseModel = document.querySelector("#setting-prompt-condense-model");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
+const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
 const settingAiPromptEvolutionCriticAModel = document.querySelector("#setting-ai-prompt-evolution-critic-a-model");
 const settingAiPromptEvolutionCriticBModel = document.querySelector("#setting-ai-prompt-evolution-critic-b-model");
@@ -672,6 +683,10 @@ const builderElementCancel = document.querySelector("#builder-element-cancel");
 const builderElementAdd = document.querySelector("#builder-element-add");
 const builderImagePickerClose = document.querySelector("#builder-image-picker-close");
 const builderImagePickerCharacter = document.querySelector("#builder-image-picker-character");
+const builderImagePickerIncludeBase = document.querySelector("#builder-image-picker-include-base");
+const builderImagePickerSource = document.querySelector("#builder-image-picker-source");
+const builderImagePickerCategory = document.querySelector("#builder-image-picker-category");
+const builderImagePickerStatusFilter = document.querySelector("#builder-image-picker-status");
 const builderImagePickerSearch = document.querySelector("#builder-image-picker-search");
 const builderImagePickerRefresh = document.querySelector("#builder-image-picker-refresh");
 const builderImagePickerStatus = document.querySelector("#builder-image-picker-status");
@@ -748,6 +763,53 @@ const auxResourceImageLabel = document.querySelector("#aux-resource-image-label"
 const auxResourceSaveImage = document.querySelector("#aux-resource-save-image");
 const auxResourceTag = document.querySelector("#aux-resource-tag");
 const auxResourceCopyTag = document.querySelector("#aux-resource-copy-tag");
+const imageCatalogSearch = document.querySelector("#image-catalog-search");
+const imageCatalogSource = document.querySelector("#image-catalog-source");
+const imageCatalogCategory = document.querySelector("#image-catalog-category");
+const imageCatalogStatus = document.querySelector("#image-catalog-status");
+const imageCatalogCollection = document.querySelector("#image-catalog-collection");
+const imageCatalogKeyword = document.querySelector("#image-catalog-keyword");
+const imageCatalogCharacter = document.querySelector("#image-catalog-character");
+const imageCatalogPhase = document.querySelector("#image-catalog-phase");
+const imageCatalogCostume = document.querySelector("#image-catalog-costume");
+const imageCatalogPipeline = document.querySelector("#image-catalog-pipeline");
+const imageCatalogStory = document.querySelector("#image-catalog-story");
+const imageCatalogScene = document.querySelector("#image-catalog-scene");
+const imageCatalogSubscene = document.querySelector("#image-catalog-subscene");
+const imageCatalogIncludeBase = document.querySelector("#image-catalog-include-base");
+const imageCatalogRefresh = document.querySelector("#image-catalog-refresh");
+const imageCatalogCount = document.querySelector("#image-catalog-count");
+const imageCatalogGrid = document.querySelector("#image-catalog-grid");
+const imageCatalogEditorTitle = document.querySelector("#image-catalog-editor-title");
+const imageCatalogPreview = document.querySelector("#image-catalog-preview");
+const imageCatalogSourceDetail = document.querySelector("#image-catalog-source-detail");
+const imageCatalogEditCategory = document.querySelector("#image-catalog-edit-category");
+const imageCatalogEditCollections = document.querySelector("#image-catalog-edit-collections");
+const imageCatalogEditKeywords = document.querySelector("#image-catalog-edit-keywords");
+const imageCatalogIdentityMode = document.querySelector("#image-catalog-identity-mode");
+const imageCatalogIdentityText = document.querySelector("#image-catalog-identity-text");
+const imageCatalogCostumeMode = document.querySelector("#image-catalog-costume-mode");
+const imageCatalogCostumeText = document.querySelector("#image-catalog-costume-text");
+const imageCatalogSave = document.querySelector("#image-catalog-save");
+const imageCatalogAi = document.querySelector("#image-catalog-ai");
+const imageCatalogAiCheck = document.querySelector("#image-catalog-ai-check");
+const imageCatalogAiStatus = document.querySelector("#image-catalog-ai-status");
+const imageCatalogAiReview = document.querySelector("#image-catalog-ai-review");
+const imageCatalogAiIdentity = document.querySelector("#image-catalog-ai-identity");
+const imageCatalogAiCostume = document.querySelector("#image-catalog-ai-costume");
+const imageCatalogAiApprove = document.querySelector("#image-catalog-ai-approve");
+const imageCatalogAiReject = document.querySelector("#image-catalog-ai-reject");
+const imageCatalogNewCollection = document.querySelector("#image-catalog-new-collection");
+const imageCatalogAddCollection = document.querySelector("#image-catalog-add-collection");
+const imageCatalogNewKeyword = document.querySelector("#image-catalog-new-keyword");
+const imageCatalogAddKeyword = document.querySelector("#image-catalog-add-keyword");
+const imageCatalogOrganizationList = document.querySelector("#image-catalog-organization-list");
+const imageCatalogSelectedCount = document.querySelector("#image-catalog-selected-count");
+const imageCatalogBulkCategory = document.querySelector("#image-catalog-bulk-category");
+const imageCatalogBulkCollections = document.querySelector("#image-catalog-bulk-collections");
+const imageCatalogBulkKeywords = document.querySelector("#image-catalog-bulk-keywords");
+const imageCatalogBulkApply = document.querySelector("#image-catalog-bulk-apply");
+const imageCatalogBulkClear = document.querySelector("#image-catalog-bulk-clear");
 const phaseComparisonStatus = document.querySelector("#phase-comparison-status");
 const phaseComparisonMessage = document.querySelector("#phase-comparison-message");
 const phaseComparisonCharacter = document.querySelector("#phase-comparison-character");
@@ -1617,8 +1679,8 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 };
 
 const RESPONSIVE_TOOL_PAGES = [
-  ["auxiliary-resources", "Aux Images"], ["template-editor", "Template Editor"], ["ai-controls", "AI Controls"],
-  ["local-image-config", "Image Config"], ["single-character-lab", "Single Character Lab"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
+  ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
+  ["local-image-config", "Config"], ["single-character-lab", "Single Character Lab"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
   ["pipeline-controls", "Pipeline Controls"],
   ["help", "Template Instruction Manuals"],
 ];
@@ -2916,6 +2978,8 @@ async function activatePage(page, options = {}) {
     await loadIdentityKeys();
   }
   if (page === "auxiliary-resources") {
+    await loadImageCatalogOrganization();
+    await loadImageCatalog();
     await loadAuxiliaryResources();
   }
   if (page === "phase-comparison") {
@@ -2945,8 +3009,6 @@ async function activatePage(page, options = {}) {
   }
   if (page === "ai-controls") {
     await loadAiControls();
-    await loadPipelineControls();
-    await refreshOllamaModelOptions();
   }
   if (page === "pipeline-controls") {
     await loadPipelineControls();
@@ -2955,7 +3017,9 @@ async function activatePage(page, options = {}) {
     await loadPipelineInspections();
   }
   if (page === "local-image-config") {
+    await loadAiControls();
     await loadPipelineControls();
+    await refreshOllamaModelOptions();
   }
   if (page === "single-character-lab") {
     await loadSingleCharacterLab();
@@ -4853,6 +4917,20 @@ function builderSelectedElement() {
   return (state.sceneBuilder?.scene_elements || []).find((item) => item.id === state.selectedBuilderElementId) || null;
 }
 
+async function restartZetFromToolbar() {
+  toolbarRestartZet.disabled = true;
+  toolbarRestartZet.textContent = "…";
+  toolbarRestartZet.title = "Restarting Zet…";
+  try {
+    await fetchJson("/api/processes/restart-zet", { method: "POST" });
+    window.setTimeout(() => window.location.reload(), 2200);
+  } catch (error) {
+    toolbarRestartZet.disabled = false;
+    toolbarRestartZet.textContent = "♻";
+    toolbarRestartZet.title = error.message;
+  }
+}
+
 function builderActiveSubscene() {
   if (state.activeBuilderRenderTarget === "main") return null;
   return (state.sceneBuilder?.subscenes || []).find((item) => item.id === state.activeBuilderRenderTarget) || null;
@@ -4932,9 +5010,21 @@ function builderMainRenderBlocker() {
 function builderTargetRenderBlocker(targetId = state.activeBuilderRenderTarget || "main") {
   const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
   const blocked = (state.sceneBuilderRenderTargets || []).find(
-    (item) => enabled.has(item.render_target_id) && !item.locked_current,
+    (item) => enabled.has(item.render_target_id) && !item.locked_exists,
   );
   return blocked ? `${blocked.render_target_label}: ${blocked.stale_reason || "A current locked image is required."}` : "";
+}
+
+function builderTargetStaleWarning(targetId = state.activeBuilderRenderTarget || "main") {
+  const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
+  const stale = (state.sceneBuilderRenderTargets || []).find(
+    (item) => enabled.has(item.render_target_id) && item.locked_exists && !item.locked_current,
+  );
+  return stale ? `${stale.render_target_label}: ${stale.stale_reason || "The locked image may be out of date."}` : "";
+}
+
+function builderAllowsStaleDependencies(targetId = state.activeBuilderRenderTarget || "main") {
+  return state.builderAllowStaleTarget === targetId;
 }
 
 function builderElementOptions(selected = "") {
@@ -5386,7 +5476,7 @@ function builderRenderElementEditor() {
         ${element.resource_type === "Character" ? `<label>${builderCaption("Character", "scene_elements[].character")}<select data-builder-element-field="character">${characterOptions}</select></label>` : ""}
         ${element.resource_type === "Character" ? `<label>${builderCaption("Phase", "scene_elements[].phase")}<select data-builder-element-field="phase">${phaseOptions}</select></label>` : ""}
         ${element.resource_type === "Character" ? `<label>${builderCaption("Costume", "scene_elements[].costume")}<select data-builder-element-field="costume">${builderCostumeOptions(element)}</select></label>` : ""}
-        <div class="scene-builder-reference-field full">${referenceThumbnail}<label>${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button></span></label></div>
+        <div class="scene-builder-reference-field full">${referenceThumbnail}<label>${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>${reference ? `<small>${escapeHtml(reference.semantic_category || reference.kind || "")} · ${escapeHtml(String(reference.description_status || "").replaceAll("_", " "))}</small>` : ""}</div>
         <label class="full">${builderCaption("(Element visual override) Element Override: ...", "scene_elements[].element_visual_override")}<textarea data-builder-element-field="element_visual_override">${escapeHtml(element.element_visual_override || "")}</textarea></label>
         <label class="full">${builderCaption("(Fallback visual description) Visual description: ...", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
       </div>
@@ -5594,7 +5684,10 @@ function builderRenderMoreMenu() {
     ? "view-analysis"
     : "analyze-prompt";
   const activeSubscene = builderActiveSubscene();
-  const renderDisabled = Boolean(builderTargetRenderBlocker()) || activeSubscene?.enabled === false;
+  const staleWarning = builderTargetStaleWarning();
+  const renderDisabled = Boolean(builderTargetRenderBlocker())
+    || Boolean(staleWarning) && !builderAllowsStaleDependencies()
+    || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
   return `
     <details class="scene-builder-more">
@@ -5989,20 +6082,55 @@ function builderRenderTargetStatus() {
   const subscene = builderActiveSubscene();
   const status = builderActiveTargetStatus();
   const blocker = builderTargetRenderBlocker();
-  if (!subscene && !blocker) return "";
+  const staleWarning = builderTargetStaleWarning();
+  if (!subscene && !blocker && !staleWarning) return "";
   if (blocker) {
     return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} render blocked.</strong> ${escapeHtml(blocker)} Render and accept that direct dependency first.</div>`;
   }
+  if (staleWarning) {
+    const accepted = builderAllowsStaleDependencies();
+    return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} dependency warning.</strong> ${escapeHtml(staleWarning)}
+      ${accepted
+        ? "The current locked image will be used for this render."
+        : `<button type="button" data-builder-action="allow-stale-dependencies">Use locked image anyway</button>`}
+    </div>`;
+  }
   const image = status?.locked_exists && status.locked_image_path
     ? `<img class="scene-builder-target-thumbnail fullscreen-image-trigger" src="${fileUrl(status.locked_image_path)}" alt="${escapeHtml(subscene.name)} locked image">`
+    : "";
+  const relock = status?.locked_exists && !status.locked_current
+    ? `<button type="button" data-builder-action="relock-current-image">Re-lock current image</button>`
     : "";
   const tag = `{{SCENE_RENDER:${state.selectedStorySlug}:${state.selectedSceneSlug}:${subscene.id}}}`;
   return `<div class="scene-builder-card scene-builder-target-status">
     ${image}<div><strong>${status?.locked_current ? "Locked and current" : status?.locked_exists ? "Locked but stale" : "No locked image"}</strong>
     <p>${escapeHtml(status?.stale_reason || (subscene.kind === "element" ? "Accepted image is automatically linked to its parent element." : "Accepted image is automatically linked to the Full Scene."))}</p>
     <p>Relevant edits invalidate the accepted ${subscene.kind === "element" ? "element reference" : "background"} and require it to be rendered and locked again.</p>
+    ${relock}
     <code>${escapeHtml(tag)}</code></div>
   </div>`;
+}
+
+async function relockCurrentSceneBuilderImage() {
+  const targetId = state.activeBuilderRenderTarget || "main";
+  if (targetId === "main" || !state.selectedStorySlug || !state.selectedSceneSlug) return;
+  const saved = await saveSceneBuilder(true);
+  if (!saved) return;
+  try {
+    const payload = await fetchJson(
+      `/api/render-review/scenes/${encodeURIComponent(state.selectedStorySlug)}/${encodeURIComponent(state.selectedSceneSlug)}/targets/${encodeURIComponent(targetId)}/re-lock-current`,
+      { method: "POST" },
+    );
+    const review = payload.review;
+    state.sceneBuilderRenderTargets = (state.sceneBuilderRenderTargets || []).map((item) =>
+      item.render_target_id === review?.render_target_id ? review : item
+    );
+    state.builderAllowStaleTarget = "";
+    renderSceneBuilder();
+    showSceneBuilderMessage(payload.message || "Current image re-locked.", "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
 }
 
 function builderRenderSubsceneSettings() {
@@ -6065,7 +6193,10 @@ function renderSceneBuilder() {
   const importedCandidate = state.sceneBuilder.source_provenance?.source_type === "scene_candidate_markdown";
   const activeSubscene = builderActiveSubscene();
   const renderBlocker = builderTargetRenderBlocker();
-  const renderDisabled = Boolean(renderBlocker) || activeSubscene?.enabled === false;
+  const staleWarning = builderTargetStaleWarning();
+  const renderDisabled = Boolean(renderBlocker)
+    || Boolean(staleWarning) && !builderAllowsStaleDependencies()
+    || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
@@ -6178,6 +6309,7 @@ async function openSceneBuilder() {
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
     state.activeBuilderRenderTarget = "main";
+    state.builderAllowStaleTarget = "";
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes();
     renderSceneBuilder();
@@ -6348,10 +6480,13 @@ async function renderSceneBuilderScene() {
     return;
   }
   const targetId = state.activeBuilderRenderTarget || "main";
+  const params = new URLSearchParams();
+  if (builderAllowsStaleDependencies(targetId)) params.set("allow_stale_dependencies", "true");
+  const query = params.size ? `?${params.toString()}` : "";
   showSceneBuilderMessage(`Staging ${targetId === "main" ? "full-scene" : targetId} render...`, "info");
   try {
     const payload = await fetchJson(
-      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/render-targets/${encodeURIComponent(targetId)}/stage-render`,
+      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/render-targets/${encodeURIComponent(targetId)}/stage-render${query}`,
       { method: "POST" },
     );
     const askId = payload.task?.ask_id || null;
@@ -6437,6 +6572,7 @@ sceneBuilderPanel.addEventListener("input", () => {
   if (!state.sceneBuilder || state.sceneBuilderRendering) {
     return;
   }
+  state.builderAllowStaleTarget = "";
   builderSyncControls();
   updateDirtyIndicators();
 });
@@ -6512,6 +6648,13 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     if (action === "duplicate-element") builderDuplicateSelectedElement();
     if (action === "delete-element") builderRemoveSelectedElement();
     if (action === "pick-image-tag") openBuilderImagePicker();
+    if (action === "open-catalog-item") {
+      const catalogId = target.dataset.catalogId || "";
+      activatePage("auxiliary-resources", { skipAutosave: true }).then(() => {
+        const item = state.imageCatalogItems.find((candidate) => candidate.catalog_id === catalogId);
+        if (item) selectImageCatalogItem(catalogId);
+      });
+    }
     if (action === "add-interaction") builderAddInteraction();
     if (action === "delete-interaction") builderDeleteInteraction(Number(target.dataset.builderInteractionIndex));
     if (action === "add-dialogue") builderAddDialogue();
@@ -6531,6 +6674,11 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     }
     if (action === "save") saveSceneBuilder(false);
     if (action === "export") exportSceneBuilderMarkdown();
+    if (action === "allow-stale-dependencies") {
+      state.builderAllowStaleTarget = state.activeBuilderRenderTarget || "main";
+      renderSceneBuilder();
+    }
+    if (action === "relock-current-image") relockCurrentSceneBuilderImage();
     if (action === "render") renderSceneBuilderScene();
     if (action === "analyze-prompt") analyzeScenePrompt();
     if (action === "view-analysis") viewScenePromptAnalysis();
@@ -6560,6 +6708,18 @@ async function loadImagePickerReferences(picker) {
   if (picker.search.value.trim()) {
     params.set("text_filter", picker.search.value.trim());
   }
+  if (picker.includeBase?.checked) {
+    params.set("include_base", "true");
+  }
+  if (picker.source?.value) {
+    params.set("source_type", picker.source.value);
+  }
+  if (picker.category?.value) {
+    params.set("semantic_category", picker.category.value);
+  }
+  if (picker.statusFilter?.value) {
+    params.set("status", picker.statusFilter.value);
+  }
   try {
     const payload = await fetchJson(`/api/scene-image-picker?${params.toString()}`);
     picker.setRows(payload.rows || []);
@@ -6586,7 +6746,17 @@ function renderImagePickerTable(picker) {
   for (const item of rows) {
     const row = document.createElement("tr");
     const labelCell = document.createElement("td");
-    labelCell.textContent = item.label || "";
+    if (picker.labelOnly && item.thumbnail_path) {
+      const thumb = document.createElement("img");
+      thumb.className = "aux-resource-thumb";
+      thumb.src = fileUrl(item.thumbnail_path);
+      thumb.alt = item.label || "Reference";
+      const detail = document.createElement("span");
+      detail.textContent = `${item.label || ""} · ${item.semantic_category || item.kind || ""} · ${String(item.description_status || "").replaceAll("_", " ")}`;
+      labelCell.append(thumb, detail);
+    } else {
+      labelCell.textContent = item.label || "";
+    }
     if (picker.labelOnly) {
       row.append(labelCell);
     } else {
@@ -6619,6 +6789,10 @@ const builderImagePicker = {
   labelOnly: true,
   character: builderImagePickerCharacter,
   search: builderImagePickerSearch,
+  includeBase: builderImagePickerIncludeBase,
+  source: builderImagePickerSource,
+  category: builderImagePickerCategory,
+  statusFilter: builderImagePickerStatusFilter,
   status: builderImagePickerStatus,
   tableBody: builderImagePickerTableBody,
   rows: () => state.builderImagePickerReferences,
@@ -6632,6 +6806,10 @@ const builderImagePicker = {
     element.reference_images = element.reference_images || [];
     element.reference_images[0] = element.reference_images[0] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
     element.reference_images[0].tag = item.tag || "";
+    state.sceneBuilderReferences = [
+      ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== item.tag),
+      item,
+    ];
     builderImagePickerModal.close();
     renderSceneBuilder();
     showSceneBuilderMessage(`Selected ${item.tag || "image tag"}.`, "success");
@@ -6656,6 +6834,284 @@ function openBuilderImagePicker() {
   builderImagePickerModal.showModal();
   builderImagePickerSearch.focus();
   loadImagePickerReferences(builderImagePicker);
+}
+
+function selectedImageCatalogItem() {
+  return state.imageCatalogItems.find((item) => item.catalog_id === state.selectedImageCatalogId) || null;
+}
+
+function fillImageCatalogOrganizationSelect(select, entries, selectedLabels = []) {
+  const selected = new Set(selectedLabels || []);
+  select.replaceChildren();
+  for (const entry of entries || []) {
+    const option = document.createElement("option");
+    option.value = entry.id || "";
+    option.textContent = `${entry.label || entry.id} (${entry.usage_count || 0})`;
+    option.selected = selected.has(entry.label);
+    select.append(option);
+  }
+}
+
+function renderImageCatalogOrganization() {
+  const organization = state.imageCatalogOrganization || { collections: [], keywords: [] };
+  const selected = selectedImageCatalogItem();
+  fillImageCatalogOrganizationSelect(imageCatalogEditCollections, organization.collections, selected?.collections || []);
+  fillImageCatalogOrganizationSelect(imageCatalogEditKeywords, organization.keywords, selected?.keywords || []);
+  fillImageCatalogOrganizationSelect(imageCatalogBulkCollections, organization.collections);
+  fillImageCatalogOrganizationSelect(imageCatalogBulkKeywords, organization.keywords);
+  const currentCollection = imageCatalogCollection.value;
+  const currentKeyword = imageCatalogKeyword.value;
+  setSelectOptionsWithLabels(imageCatalogCollection, [{ value: "", label: "All collections" }, ...organization.collections.map((item) => ({ value: item.label, label: `${item.label} (${item.usage_count || 0})` }))]);
+  setSelectOptionsWithLabels(imageCatalogKeyword, [{ value: "", label: "All keywords" }, ...organization.keywords.map((item) => ({ value: item.label, label: `${item.label} (${item.usage_count || 0})` }))]);
+  imageCatalogCollection.value = currentCollection;
+  imageCatalogKeyword.value = currentKeyword;
+  imageCatalogOrganizationList.replaceChildren();
+  for (const [kind, entries] of [["collections", organization.collections], ["keywords", organization.keywords]]) {
+    const group = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = kind === "collections" ? "Collections: " : "Keywords: ";
+    group.append(title);
+    const help = document.createElement("small");
+    help.textContent = "Click to rename; Shift-click to delete or merge. ";
+    group.append(help);
+    for (const entry of entries) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${entry.label} (${entry.usage_count || 0})`;
+      button.title = "Click to rename; Shift+click to delete";
+      button.addEventListener("click", async (event) => {
+        if (event.shiftKey) {
+          if (!window.confirm(`Delete ${entry.label}? Image files will not be deleted.`)) return;
+          const mergeLabel = window.prompt("Optional: enter another existing label to merge memberships into it, or leave blank to remove memberships.", "")?.trim() || "";
+          const mergeTarget = entries.find((candidate) => candidate.label.toLowerCase() === mergeLabel.toLowerCase() && candidate.id !== entry.id);
+          if (mergeLabel && !mergeTarget) {
+            showAuxResourceMessage(`No ${kind === "collections" ? "collection" : "keyword"} named ${mergeLabel}.`, "error");
+            return;
+          }
+          const params = new URLSearchParams();
+          if (mergeTarget) params.set("merge_into", mergeTarget.id);
+          await fetchJson(`/api/image-catalog/organization/${kind}/${encodeURIComponent(entry.id)}?${params.toString()}`, { method: "DELETE" });
+        } else {
+          const label = window.prompt(`Rename ${entry.label}`, entry.label);
+          if (!label?.trim() || label.trim() === entry.label) return;
+          await fetchJson(`/api/image-catalog/organization/${kind}/${encodeURIComponent(entry.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: label.trim() }) });
+        }
+        await loadImageCatalogOrganization();
+        await loadImageCatalog();
+      });
+      group.append(button);
+    }
+    imageCatalogOrganizationList.append(group);
+  }
+}
+
+async function loadImageCatalogOrganization() {
+  state.imageCatalogOrganization = await fetchJson("/api/image-catalog/organization");
+  renderImageCatalogOrganization();
+}
+
+function imageCatalogQuery() {
+  const params = new URLSearchParams();
+  if (imageCatalogSearch.value.trim()) params.set("q", imageCatalogSearch.value.trim());
+  if (imageCatalogSource.value) params.set("source_type", imageCatalogSource.value);
+  if (imageCatalogCategory.value) params.set("semantic_category", imageCatalogCategory.value);
+  if (imageCatalogStatus.value) params.set("status", imageCatalogStatus.value);
+  if (imageCatalogCollection.value) params.set("collection", imageCatalogCollection.value);
+  if (imageCatalogKeyword.value) params.set("keyword", imageCatalogKeyword.value);
+  for (const [key, control] of [["character", imageCatalogCharacter], ["phase", imageCatalogPhase], ["costume", imageCatalogCostume], ["pipeline", imageCatalogPipeline], ["story_slug", imageCatalogStory], ["scene_slug", imageCatalogScene], ["subscene_id", imageCatalogSubscene]]) {
+    if (control.value.trim()) params.set(key, control.value.trim());
+  }
+  params.set("include_base", imageCatalogIncludeBase.checked ? "true" : "false");
+  return params;
+}
+
+function renderImageCatalog() {
+  imageCatalogGrid.replaceChildren();
+  imageCatalogCount.textContent = `${state.imageCatalogItems.length} selectable image(s)`;
+  imageCatalogSelectedCount.textContent = `${state.selectedImageCatalogIds.length} selected`;
+  imageCatalogBulkApply.disabled = !state.selectedImageCatalogIds.length;
+  if (!state.imageCatalogItems.length) {
+    imageCatalogGrid.textContent = "No images match these filters.";
+    return;
+  }
+  for (const item of state.imageCatalogItems) {
+    const card = document.createElement("article");
+    card.className = "image-catalog-card";
+    card.classList.toggle("selected", item.catalog_id === state.selectedImageCatalogId);
+    const select = document.createElement("input");
+    select.type = "checkbox";
+    select.checked = state.selectedImageCatalogIds.includes(item.catalog_id);
+    select.setAttribute("aria-label", `Select ${item.label || item.tag} for bulk editing`);
+    select.addEventListener("change", () => {
+      state.selectedImageCatalogIds = select.checked
+        ? [...new Set([...state.selectedImageCatalogIds, item.catalog_id])]
+        : state.selectedImageCatalogIds.filter((value) => value !== item.catalog_id);
+      renderImageCatalog();
+    });
+    const image = document.createElement("img");
+    image.src = fileUrl(item.thumbnail_path);
+    image.alt = item.label || "Catalog image";
+    const label = document.createElement("strong");
+    label.textContent = item.label || item.tag;
+    const source = document.createElement("small");
+    source.textContent = `${item.source_type} · ${item.semantic_category} · ${String(item.description_status || "").replaceAll("_", " ")}`;
+    card.append(select, image, label, source);
+    card.addEventListener("click", () => selectImageCatalogItem(item.catalog_id));
+    select.addEventListener("click", (event) => event.stopPropagation());
+    imageCatalogGrid.append(card);
+  }
+}
+
+function selectImageCatalogItem(catalogId) {
+  const item = state.imageCatalogItems.find((candidate) => candidate.catalog_id === catalogId);
+  if (!item) return;
+  state.selectedImageCatalogId = catalogId;
+  imageCatalogEditorTitle.textContent = item.label || item.tag;
+  imageCatalogPreview.src = fileUrl(item.image_path);
+  imageCatalogPreview.hidden = false;
+  imageCatalogSourceDetail.textContent = [item.source_type, item.character, item.phase, item.costume, item.pipeline, item.story_slug, item.scene_slug, item.subscene_id, item.tag].filter(Boolean).join(" · ");
+  imageCatalogEditCategory.value = item.semantic_category;
+  imageCatalogIdentityMode.value = item.identity_mode || "inherit";
+  imageCatalogIdentityText.value = item.identity_text || "";
+  imageCatalogCostumeMode.value = item.costume_mode || "not_applicable";
+  imageCatalogCostumeText.value = item.costume_text || "";
+  imageCatalogAiIdentity.value = item.ai_draft_identity || "";
+  imageCatalogAiCostume.value = item.ai_draft_costume || "";
+  imageCatalogAiReview.hidden = item.description_status !== "ai_review_required";
+  imageCatalogSave.disabled = false;
+  imageCatalogAi.disabled = item.description_status === "ai_queued";
+  imageCatalogAiCheck.disabled = item.description_status !== "ai_queued";
+  if (item.description_status === "ai_queued") {
+    showMessageElement(imageCatalogAiStatus, "AI image description initiated and awaiting an answer.", "info");
+  } else if (item.description_status === "ai_review_required") {
+    showMessageElement(imageCatalogAiStatus, "AI answer harvested. Review and approve the draft below.", "success");
+  } else {
+    imageCatalogAiStatus.hidden = true;
+  }
+  renderImageCatalogOrganization();
+  renderImageCatalog();
+}
+
+async function loadImageCatalog() {
+  imageCatalogCount.textContent = "Loading image inventory...";
+  try {
+    const payload = await fetchJson(`/api/image-catalog?${imageCatalogQuery().toString()}`);
+    state.imageCatalogItems = payload.items || [];
+    if (state.selectedImageCatalogId && !state.imageCatalogItems.some((item) => item.catalog_id === state.selectedImageCatalogId)) {
+      state.selectedImageCatalogId = null;
+    }
+    renderImageCatalog();
+  } catch (error) {
+    imageCatalogCount.textContent = "Load failed.";
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function saveImageCatalogItem() {
+  const item = selectedImageCatalogItem();
+  if (!item) return;
+  const changes = {
+    semantic_category: imageCatalogEditCategory.value,
+    collection_ids: Array.from(imageCatalogEditCollections.selectedOptions, (option) => option.value),
+    keyword_ids: Array.from(imageCatalogEditKeywords.selectedOptions, (option) => option.value),
+    identity: { mode: imageCatalogIdentityMode.value, approved_text: imageCatalogIdentityText.value, provenance: "manual" },
+    costume: { mode: imageCatalogCostumeMode.value, approved_text: imageCatalogCostumeText.value, provenance: "manual" },
+  };
+  try {
+    await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) });
+    await loadImageCatalogOrganization();
+    await loadImageCatalog();
+    selectImageCatalogItem(item.catalog_id);
+    showAuxResourceMessage("Image metadata saved.", "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function queueImageCatalogDescription() {
+  const item = selectedImageCatalogItem();
+  if (!item) return;
+  imageCatalogAi.disabled = true;
+  showMessageElement(imageCatalogAiStatus, "Initiating AI image description...", "info");
+  try {
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/ai-description`, { method: "POST" });
+    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === item.catalog_id);
+    if (index >= 0) state.imageCatalogItems[index] = payload.item;
+    selectImageCatalogItem(item.catalog_id);
+    showAuxResourceMessage(payload.message || "Image description job queued.", "success");
+  } catch (error) {
+    imageCatalogAi.disabled = false;
+    showMessageElement(imageCatalogAiStatus, error.message, "error");
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function harvestImageCatalogDescription() {
+  const item = selectedImageCatalogItem();
+  if (!item) return;
+  imageCatalogAiCheck.disabled = true;
+  showMessageElement(imageCatalogAiStatus, "Checking for an AI answer...", "info");
+  try {
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/ai-description/harvest`, { method: "POST" });
+    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === item.catalog_id);
+    if (index >= 0) state.imageCatalogItems[index] = payload.item;
+    selectImageCatalogItem(item.catalog_id);
+    showAuxResourceMessage(payload.message, payload.item.description_status === "ai_review_required" ? "success" : "info");
+  } catch (error) {
+    imageCatalogAiCheck.disabled = false;
+    showMessageElement(imageCatalogAiStatus, error.message, "error");
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function reviewImageCatalogDraft(approve) {
+  const item = selectedImageCatalogItem();
+  if (!item) return;
+  const suffix = approve ? "approve" : "reject";
+  const options = { method: "POST" };
+  if (approve) {
+    options.headers = { "Content-Type": "application/json" };
+    options.body = JSON.stringify({ identity_text: imageCatalogAiIdentity.value, costume_text: imageCatalogAiCostume.value, costume_not_applicable: imageCatalogCostumeMode.value === "not_applicable" });
+  }
+  try {
+    await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/ai-description/${suffix}`, options);
+    await loadImageCatalog();
+    selectImageCatalogItem(item.catalog_id);
+    showAuxResourceMessage(approve ? "AI draft approved." : "AI draft rejected.", "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function addImageCatalogVocabulary(kind, input) {
+  const label = input.value.trim();
+  if (!label) return;
+  try {
+    await fetchJson(`/api/image-catalog/organization/${kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
+    input.value = "";
+    await loadImageCatalogOrganization();
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function bulkUpdateImageCatalog() {
+  if (!state.selectedImageCatalogIds.length) return;
+  const changes = {};
+  if (imageCatalogBulkCategory.value) changes.semantic_category = imageCatalogBulkCategory.value;
+  const collectionIds = Array.from(imageCatalogBulkCollections.selectedOptions, (option) => option.value);
+  const keywordIds = Array.from(imageCatalogBulkKeywords.selectedOptions, (option) => option.value);
+  if (collectionIds.length) changes.collection_ids = collectionIds;
+  if (keywordIds.length) changes.keyword_ids = keywordIds;
+  if (!Object.keys(changes).length) return;
+  try {
+    await fetchJson("/api/image-catalog/bulk", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ catalog_ids: state.selectedImageCatalogIds, changes }) });
+    await loadImageCatalogOrganization();
+    await loadImageCatalog();
+    showAuxResourceMessage(`Updated ${state.selectedImageCatalogIds.length} image(s).`, "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
 }
 
 function updateAuxiliaryResourceCategoryDisplay() {
@@ -8239,7 +8695,7 @@ function renderRows(tbody, rows, columns) {
       const cell = document.createElement("td");
       cell.dataset.label = humanizeHeading(column);
       const value = item[column] ?? "";
-      if (/(?:^|_)(?:created|updated|responded)_at$/.test(column) && value !== "") {
+      if (/(?:^|_)(?:created|updated|responded|harvested)_at$/.test(column) && value !== "") {
         const time = document.createElement("time");
         time.dateTime = String(value);
         time.title = String(value);
@@ -8255,7 +8711,8 @@ function renderRows(tbody, rows, columns) {
 }
 
 async function loadAiControls() {
-  aiControlsStatus.textContent = "Loading AI controls...";
+  const status = activePageName() === "local-image-config" ? localImageConfigStatus : aiControlsStatus;
+  status.textContent = "Loading processes and queues...";
   const payload = await fetchJson("/api/ai-controls");
   renderAiControls(payload);
 }
@@ -8270,8 +8727,11 @@ function renderAiControls(payload) {
   renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
+  renderRows(recentHarvestTableBody, payload.recent_harvests || [], ["harvested_at", "ask_id", "task_type", "asset_id", "status", "details"]);
+  recentHarvestCount.textContent = `${(payload.recent_harvests || []).length} recent harvested job(s)`;
   renderProcessRows(payload.processes || []);
   aiControlsStatus.textContent = "Ready";
+  if (activePageName() === "local-image-config") localImageConfigStatus.textContent = "Ready";
 }
 
 function renderProcessRows(processes) {
@@ -8302,13 +8762,14 @@ function renderProcessRows(processes) {
 }
 
 async function runAiControlsAction(url) {
-  showAiControlsMessage("Working...");
+  const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
+  showMessage("Working...");
   try {
     const payload = await fetchJson(url, { method: "POST" });
     renderAiControls(payload);
-    showAiControlsMessage(payload.message || "Action complete.");
+    showMessage(payload.message || "Action complete.");
   } catch (error) {
-    showAiControlsMessage(error.message, "error");
+    showMessage(error.message, "error");
   }
 }
 
@@ -8540,15 +9001,18 @@ function renderPipelineControls(payload) {
   settingTurnaroundWidth.value = automation.turnaround_width ?? 3960;
   settingAiHarvestAuto.checked = Boolean(automation.ai_harvest_auto_enabled);
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
+  settingAiPromptAnalysisAutoQueueOnRender.checked = Boolean(automation.ai_prompt_analysis_auto_queue_on_render);
   setOllamaModelValue(settingAiAssetWorkflowModel, automation.ai_asset_workflow_model || "");
   setOllamaModelValue(settingPromptCondenseModel, automation.prompt_condense_model || "");
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
+  setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
   setOllamaModelValue(settingAiPromptEvolutionCriticAModel, automation.ai_prompt_evolution_critic_model_a || "");
   setOllamaModelValue(settingAiPromptEvolutionCriticBModel, automation.ai_prompt_evolution_critic_model_b || "");
   setOllamaModelValue(settingAiPromptEvolutionAnalysisModel, automation.ai_prompt_evolution_analysis_model || "");
   setOllamaModelValue(settingAiPromptEvolutionCheckModel, automation.ai_prompt_evolution_check_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
+  renderManagedLlmRoles(payload.managed_llm_roles || []);
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
@@ -8575,12 +9039,52 @@ const ollamaModelControls = () => [
   settingAiAssetWorkflowModel,
   settingPromptCondenseModel,
   settingAiPromptAnalysisModel,
+  settingAiImageDescriptionModel,
   settingAiSceneBuilderModel,
   settingAiPromptEvolutionCriticAModel,
   settingAiPromptEvolutionCriticBModel,
   settingAiPromptEvolutionAnalysisModel,
   settingAiPromptEvolutionCheckModel,
 ];
+
+function renderManagedLlmRoles(roles = []) {
+  const byKey = new Map(roles.map((role) => [role.key, role]));
+  for (const container of document.querySelectorAll("[data-llm-role]")) {
+    const role = byKey.get(container.dataset.llmRole) || {};
+    const description = container.querySelector(".managed-llm-description");
+    const templates = container.querySelector(".managed-llm-templates");
+    description.textContent = role.description || "";
+    templates.replaceChildren();
+    if (!(role.templates || []).length) {
+      const note = document.createElement("span");
+      note.className = "managed-llm-no-template";
+      note.textContent = "Prompt assembled by the task; no reusable Markdown template.";
+      templates.append(note);
+      continue;
+    }
+    for (const template of role.templates) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `Edit ${template.label}`;
+      button.title = template.path;
+      button.addEventListener("click", () => {
+        const sourcePath = role.key === "prompt_analysis"
+          ? settingAiPromptAnalysisFile.value
+          : template.path;
+        openSourceEditorForSource({
+          source_kind: "config_prompt_template",
+          source_path: sourcePath,
+          source_label: template.label,
+          editable: true,
+        }, showLocalImageConfigMessage);
+      });
+      const path = document.createElement("span");
+      path.className = "managed-llm-template-path";
+      path.textContent = template.display_path || template.path;
+      templates.append(button, path);
+    }
+  }
+}
 
 function setOllamaModelValue(control, value) {
   const model = value || "";
@@ -8598,11 +9102,13 @@ async function refreshOllamaModelOptions() {
       setSelectOptions(control, payload.models || []);
       setOllamaModelValue(control, current.get(control));
     }
-    showAiControlsMessage(
+    const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
+    showMessage(
       `Loaded ${(payload.models || []).length} Ollama model(s)${payload.vision_filtered ? " with vision capability" : ""}.`,
     );
   } catch (error) {
-    showAiControlsMessage(error.message, "error");
+    const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
+    showMessage(error.message, "error");
   }
 }
 
@@ -8697,9 +9203,11 @@ function automationPayloadFromForm() {
     turnaround_width: Number(settingTurnaroundWidth.value || 0),
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
+    ai_prompt_analysis_auto_queue_on_render: settingAiPromptAnalysisAutoQueueOnRender.checked,
     ai_asset_workflow_model: settingAiAssetWorkflowModel.value,
     prompt_condense_model: settingPromptCondenseModel.value,
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
+    ai_image_description_model: settingAiImageDescriptionModel.value,
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
     ai_prompt_evolution_critic_model_a: settingAiPromptEvolutionCriticAModel.value,
     ai_prompt_evolution_critic_model_b: settingAiPromptEvolutionCriticBModel.value,
@@ -10459,6 +10967,7 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
   if (destination === "onboarding") characterSetupDetails.open = true;
 }));
 toolbarTodoButton.addEventListener("click", openTodoDialog);
+toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
 toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleToolbarSettingsMenu();
@@ -10685,6 +11194,10 @@ scenePickerSearch.addEventListener("input", () => {
 });
 scenePickerRefresh.addEventListener("click", loadSceneImageReferences);
 builderImagePickerCharacter.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerIncludeBase.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerSource.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerCategory.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerStatusFilter.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerSearch.addEventListener("input", () => {
   state.builderImagePickerSearch = builderImagePickerSearch.value || "";
   loadImagePickerReferences(builderImagePicker);
@@ -10845,7 +11358,6 @@ renderReviewNext.addEventListener("click", () => {
 });
 refreshAiControlsButton.addEventListener("click", async () => {
   await loadAiControls();
-  await loadPipelineControls();
 });
 harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
 archiveHarvestedAiButton.addEventListener("click", archiveHarvestedAiAnswers);
@@ -10908,6 +11420,29 @@ singleCharacterLabAppearance.addEventListener("change", () => {
   syncSingleCharacterAppearance({ matchPose: true }).catch((error) => {
     singleCharacterLabMessage.textContent = error.message;
   });
+});
+for (const control of [imageCatalogSource, imageCatalogCategory, imageCatalogStatus, imageCatalogCollection, imageCatalogKeyword, imageCatalogIncludeBase]) {
+  control.addEventListener("change", loadImageCatalog);
+}
+for (const control of [imageCatalogCharacter, imageCatalogPhase, imageCatalogCostume, imageCatalogPipeline, imageCatalogStory, imageCatalogScene, imageCatalogSubscene]) {
+  control.addEventListener("change", loadImageCatalog);
+}
+imageCatalogSearch.addEventListener("input", loadImageCatalog);
+imageCatalogRefresh.addEventListener("click", async () => {
+  await loadImageCatalogOrganization();
+  await loadImageCatalog();
+});
+imageCatalogSave.addEventListener("click", saveImageCatalogItem);
+imageCatalogAi.addEventListener("click", queueImageCatalogDescription);
+imageCatalogAiCheck.addEventListener("click", harvestImageCatalogDescription);
+imageCatalogAiApprove.addEventListener("click", () => reviewImageCatalogDraft(true));
+imageCatalogAiReject.addEventListener("click", () => reviewImageCatalogDraft(false));
+imageCatalogAddCollection.addEventListener("click", () => addImageCatalogVocabulary("collections", imageCatalogNewCollection));
+imageCatalogAddKeyword.addEventListener("click", () => addImageCatalogVocabulary("keywords", imageCatalogNewKeyword));
+imageCatalogBulkApply.addEventListener("click", bulkUpdateImageCatalog);
+imageCatalogBulkClear.addEventListener("click", () => {
+  state.selectedImageCatalogIds = [];
+  renderImageCatalog();
 });
 singleCharacterLabPose.addEventListener("change", renderSingleCharacterReferences);
 singleCharacterLabGenerate.addEventListener("click", generateSingleCharacterLabRun);

@@ -824,6 +824,71 @@ class AIProxyService:
             if (answer_path / "harvest_manifest.json").exists()
         )
 
+    def recent_harvests(self, limit: int = 20) -> list[dict]:
+        self._ensure_queue_dirs()
+        limit = max(0, int(limit))
+        if not limit:
+            return []
+
+        answer_paths = [
+            path
+            for path in self.ai_proxy_path_service.task_paths("answer")
+            if (path / "harvest_manifest.json").is_file()
+        ]
+        archive_root = self.ai_proxy_path_service.harvested_archive_root()
+        archived_count = 0
+        if archive_root.exists():
+            date_paths = sorted((path for path in archive_root.iterdir() if path.is_dir()), reverse=True)
+            for date_path in date_paths:
+                archived_paths = [
+                    path for path in date_path.iterdir()
+                    if path.is_dir() and (path / "harvest_manifest.json").is_file()
+                ]
+                answer_paths.extend(archived_paths)
+                archived_count += len(archived_paths)
+                if archived_count >= limit:
+                    break
+
+        rows = [self._recent_harvest_payload(path) for path in answer_paths]
+        rows = [row for row in rows if row]
+        rows.sort(key=lambda row: str(row.get("harvested_at") or ""), reverse=True)
+        return rows[:limit]
+
+    def _recent_harvest_payload(self, answer_path: Path) -> dict:
+        harvest = self._read_recent_manifest(answer_path / "harvest_manifest.json")
+        if not harvest:
+            return {}
+        ask = self._read_recent_manifest(answer_path / "ask_manifest.json")
+        answer = self._read_recent_manifest(answer_path / "answer_manifest.json")
+        proxy = self._read_recent_manifest(answer_path / "proxy_result.json")
+        error_type = answer.get("error_type") or proxy.get("error_type") or ""
+        error_message = answer.get("error_message") or proxy.get("error_message") or ""
+        details = str(error_message or harvest.get("message") or "")
+        if error_type and error_message:
+            details = f"{error_type}: {error_message}"
+        harvested_at = harvest.get("harvested_at")
+        if not harvested_at:
+            manifest_mtime = (answer_path / "harvest_manifest.json").stat().st_mtime
+            harvested_at = datetime.fromtimestamp(manifest_mtime).isoformat(timespec="seconds")
+        asset_id = harvest.get("asset_id")
+        if asset_id is None:
+            asset_id = answer.get("asset_id")
+        ask_id = harvest.get("ask_id") or answer.get("ask_id") or ask.get("ask_id") or answer_path.name
+        return {
+            "harvested_at": harvested_at,
+            "ask_id": ask_id,
+            "task_type": ask.get("task_type") or ask.get("worker_type") or "",
+            "asset_id": asset_id,
+            "status": harvest.get("status") or answer.get("status") or "",
+            "details": details,
+        }
+
+    def _read_recent_manifest(self, path: Path) -> dict:
+        try:
+            return self._read_json_if_exists(path)
+        except ValueError:
+            return {}
+
     def queue_snapshot(self) -> dict:
         self._ensure_queue_dirs()
         snapshot: dict[str, list[dict]] = {

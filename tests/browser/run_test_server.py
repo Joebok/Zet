@@ -195,7 +195,20 @@ Image.new("RGB", (1320, 1020), "white").save(zine_dir / "Browser-Zine.png")
 
 answer_dir = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Harvested"
 answer_dir.mkdir(parents=True, exist_ok=True)
-(answer_dir / "harvest_manifest.json").write_text("{}\n", encoding="utf-8")
+(answer_dir / "harvest_manifest.json").write_text(
+    json.dumps({
+        "ask_id": "Ask_Harvested",
+        "asset_id": 1,
+        "status": "SUCCESS",
+        "message": "Recent browser-test job completed.",
+        "harvested_at": "2026-08-25T12:00:00",
+    }) + "\n",
+    encoding="utf-8",
+)
+(answer_dir / "ask_manifest.json").write_text(
+    json.dumps({"ask_id": "Ask_Harvested", "task_type": "prompt_condense"}) + "\n",
+    encoding="utf-8",
+)
 
 app = create_app(config_path)
 

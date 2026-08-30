@@ -57,6 +57,7 @@ class StoryService:
         self.auxiliary_resource_repository = auxiliary_resource_repository
         self.identity_key_repository = identity_key_repository
         self.turnaround_repository = turnaround_repository
+        self.image_catalog_service = None
         self.scene_render_target_service = SceneRenderTargetService(self, StoryServiceError)
         self.scene_document_service = SceneDocumentService(self, StoryServiceError)
         self.story_reference_service = StoryReferenceService(
@@ -110,7 +111,8 @@ class StoryService:
             return ""
         return self._extract_bounded_section(path.read_text(encoding="utf-8"), section_name)
 
-    def _element_source_sections(self, element: dict) -> dict:
+    def _canonical_element_source_sections(self, element: dict) -> dict:
+        """Resolve canonical element text without consulting image-catalog overrides."""
         resource_type = str(element.get("resource_type") or "").strip()
         if resource_type == "Character":
             character = str(element.get("character") or element.get("display_name") or "").strip()
@@ -142,13 +144,51 @@ class StoryService:
             return sections
         return {}
 
+    def _element_source_sections(self, element: dict, catalog_by_tag: dict | None = None) -> dict:
+        """Resolve selected-image compiler text, falling back to the canonical element source."""
+        references = [
+            item for item in element.get("reference_images") or []
+            if isinstance(item, dict) and str(item.get("tag") or "").strip()
+        ]
+        if references and self.image_catalog_service is not None:
+            tag = str(references[0].get("tag") or "")
+            catalog_item = (
+                catalog_by_tag.get(tag)
+                if catalog_by_tag is not None
+                else self.image_catalog_service.item_for_tag(tag)
+            )
+            if catalog_item is not None:
+                return {
+                    "identity_preservation_core": catalog_item.identity_text,
+                    "identity_preservation_costume": catalog_item.costume_text,
+                    "identity_source": self._library_relative_path(self.path_service.image_catalog_inventory_path()),
+                    "costume_source": self._library_relative_path(self.path_service.image_catalog_inventory_path()),
+                    "catalog_id": catalog_item.catalog_id,
+                    "identity_status": catalog_item.identity_status,
+                    "costume_status": catalog_item.costume_status,
+                }
+        return self._canonical_element_source_sections(element)
+
     def _resolve_scene_element_sources(self, data: dict) -> dict:
         resolved = {}
+        catalog_by_tag = (
+            {item.tag: item for item in self.image_catalog_service.list_items(include_base=True)}
+            if self.image_catalog_service is not None
+            else None
+        )
         for element in data.get("scene_elements") or []:
             if not isinstance(element, dict):
                 continue
-            sections = self._element_source_sections(element)
+            sections = self._element_source_sections(element, catalog_by_tag)
             if sections:
+                if sections.get("catalog_id") and sections.get("identity_status") == "missing":
+                    raise StoryServiceError(
+                        f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs identity description text."
+                    )
+                if sections.get("catalog_id") and sections.get("costume_status") == "missing":
+                    raise StoryServiceError(
+                        f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs costume description text."
+                    )
                 element["resolved_source_sections"] = sections
                 resolved[str(element.get("id") or "")] = sections
         return resolved
@@ -850,23 +890,27 @@ class StoryService:
                 source_path = str(sections.get("identity_source") or "")
                 if source_path:
                     source = {
-                        "source_kind": "auxiliary_template_section" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "character_template_section",
+                        "source_kind": "image_catalog_section" if sections.get("catalog_id") else "auxiliary_template_section" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "character_template_section",
                         "source_path": source_path,
                         "source_label": f"{current_element.get('display_name') or current_element.get('id')} identity",
                         "section_name": "IDENTITY_PRESERVATION_SCENE" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "SCENE_CHARACTER_IDENTITY",
                         "editable": True,
                     }
+                    if sections.get("catalog_id"):
+                        source["catalog_id"] = sections["catalog_id"]
             elif current_element and stripped.startswith("**Costume"):
                 sections = current_element.get("resolved_source_sections") or {}
                 source_path = str(sections.get("costume_source") or "")
                 if source_path:
                     source = {
-                        "source_kind": "auxiliary_template_section" if current_element.get("resource_type") == "Person" else "costume_template_section",
+                        "source_kind": "image_catalog_section" if sections.get("catalog_id") else "auxiliary_template_section" if current_element.get("resource_type") == "Person" else "costume_template_section",
                         "source_path": source_path,
                         "source_label": f"{current_element.get('display_name') or current_element.get('id')} costume",
                         "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE" if current_element.get("resource_type") == "Person" else "SCENE_COSTUME_IDENTITY",
                         "editable": True,
                     }
+                    if sections.get("catalog_id"):
+                        source["catalog_id"] = sections["catalog_id"]
             if source:
                 source["prompt_start_line"] = line_number
                 source["prompt_end_line"] = line_number
@@ -1230,7 +1274,7 @@ class StoryService:
             item["reference_images"] = [
                 reference for reference in item["reference_images"]
                 if isinstance(reference, dict) and str(reference.get("tag") or "").strip()
-            ]
+            ][:1]
             item.pop("identity_prompt", None)
             if item.get("default_visual_description") and not item.get("fallback_visual_description"):
                 item["fallback_visual_description"] = item.pop("default_visual_description")
@@ -1601,9 +1645,17 @@ class StoryService:
                     if path.is_dir() and matches(path):
                         shutil.rmtree(path, ignore_errors=True)
 
-    def stage_scene_render(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> StoryRenderTask:
+    def stage_scene_render(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = "main",
+        allow_stale_dependencies: bool = False,
+    ) -> StoryRenderTask:
         """Compile one story scene prompt and stage it for the Render Console."""
-        return self.story_render_service.stage_scene_render(story_slug, scene_slug, render_target_id)
+        return self.story_render_service.stage_scene_render(
+            story_slug, scene_slug, render_target_id, allow_stale_dependencies
+        )
 
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.scene_render_target_service.enable_background(story_slug, scene_slug)

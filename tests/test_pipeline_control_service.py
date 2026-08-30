@@ -91,6 +91,17 @@ Backend = "local_image"
             app = ZetApp.from_config(config_path)
             snapshot = app.pipeline_control_snapshot("Test", "Adult")
             self.assertEqual(snapshot.pipeline_rows[0].asset_count, 1)
+            roles = {role["key"]: role for role in snapshot.managed_llm_roles}
+            self.assertEqual(
+                roles["image_description"]["description"],
+                "Creates Image Inventory catalog identity and costume metadata.",
+            )
+            self.assertTrue(
+                roles["prompt_analysis"]["templates"][0]["path"].endswith(
+                    "Config\\AI_Prompt_Analysis_Instructions.md"
+                )
+            )
+            self.assertEqual(len(roles), 9)
 
             app.save_automation_settings(
                 AutomationSettings(
@@ -105,6 +116,8 @@ Backend = "local_image"
                     ai_asset_workflow_model="asset-model",
                     prompt_condense_model="condense-model",
                     ai_prompt_analysis_model="analysis-model",
+                    ai_prompt_analysis_auto_queue_on_render=True,
+                    ai_image_description_model="catalog-model",
                     ai_scene_builder_model="scene-builder-model",
                     ai_prompt_evolution_critic_model_a="critic-a-model",
                     ai_prompt_evolution_critic_model_b="critic-b-model",
@@ -127,6 +140,8 @@ Backend = "local_image"
             self.assertEqual(reloaded.ai_asset_workflow_model, "asset-model")
             self.assertEqual(reloaded.prompt_condense_model, "condense-model")
             self.assertEqual(reloaded.ai_prompt_analysis_model, "analysis-model")
+            self.assertTrue(reloaded.ai_prompt_analysis_auto_queue_on_render)
+            self.assertEqual(reloaded.ai_image_description_model, "catalog-model")
             self.assertEqual(reloaded.ai_scene_builder_model, "scene-builder-model")
             self.assertEqual(reloaded.ai_prompt_evolution_critic_model_a, "critic-a-model")
             self.assertEqual(reloaded.ai_prompt_evolution_critic_model_b, "critic-b-model")

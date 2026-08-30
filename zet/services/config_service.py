@@ -58,7 +58,9 @@ class Config:
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
     ai_prompt_analysis_model: str = "structured-reasoning:latest"
+    ai_image_description_model: str = "vision-analysis:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
+    ai_prompt_analysis_auto_queue_on_render: bool = False
     scene_candidate_sources: tuple[SceneCandidateSourceConfig, ...] = ()
 
 
@@ -257,9 +259,11 @@ class ConfigService:
                         "PromptAnalysis", ai_prompt_analysis.get("Model", "structured-reasoning:latest")
                     )
                 ),
+                ai_image_description_model=str(ai_models.get("ImageDescription", "vision-analysis:latest")),
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),
+                ai_prompt_analysis_auto_queue_on_render=bool(ai_prompt_analysis.get("AutoQueueOnRender", False)),
                 scene_candidate_sources=ConfigService._scene_candidate_sources(payload),
             )
         except Exception as exc:

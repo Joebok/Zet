@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -72,6 +72,14 @@ class ImageReferenceRow:
     scene_slug: str = ""
     candidate_pending: bool = False
     image_review_key: str = ""
+    catalog_id: str = ""
+    semantic_category: str = ""
+    collections: list[str] = field(default_factory=list)
+    keywords: list[str] = field(default_factory=list)
+    is_base_pipeline: bool = False
+    description_status: str = ""
+    identity_status: str = ""
+    costume_status: str = ""
 
 
 @dataclass(frozen=True)

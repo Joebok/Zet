@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -10,6 +11,57 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
+    def test_ai_controls_lists_recent_live_and_archived_harvests(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            live = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Live"
+            archived = root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested" / "2026-08-24" / "Ask_Archived"
+            for path, ask_id, harvested_at, status, error_type, error_message in (
+                (live, "Ask_Live", "2026-08-25T12:00:00", "SUCCESS", "", ""),
+                (archived, "Ask_Archived", "2026-08-24T12:00:00", "BLOCKED", "MODEL_FAILURE", "Ollama timed out."),
+            ):
+                path.mkdir(parents=True)
+                (path / "harvest_manifest.json").write_text(json.dumps({
+                    "ask_id": ask_id,
+                    "asset_id": 1,
+                    "status": status,
+                    "message": f"{ask_id} harvested.",
+                    "harvested_at": harvested_at,
+                }), encoding="utf-8")
+                (path / "ask_manifest.json").write_text(json.dumps({
+                    "ask_id": ask_id,
+                    "task_type": "prompt_condense",
+                }), encoding="utf-8")
+                (path / "answer_manifest.json").write_text(json.dumps({
+                    "ask_id": ask_id,
+                    "asset_id": 1,
+                    "status": "ERROR" if error_message else "SUCCESS",
+                    "error_type": error_type,
+                    "error_message": error_message,
+                }), encoding="utf-8")
+
+            response = TestClient(create_app(config_path)).get("/api/ai-controls")
+
+            self.assertEqual(200, response.status_code)
+            recent = response.json()["recent_harvests"]
+            self.assertEqual(["Ask_Live", "Ask_Archived"], [item["ask_id"] for item in recent])
+            self.assertEqual("prompt_condense", recent[0]["task_type"])
+            self.assertEqual("MODEL_FAILURE: Ollama timed out.", recent[1]["details"])
+
+    def test_restart_zet_api_uses_combined_process_operation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = write_project_fixture(Path(temp_dir))
+            client = TestClient(create_app(config_path))
+
+            with patch("zet.app.ZetApp.restart_zet", return_value=(1, 2)) as restart:
+                response = client.post("/api/processes/restart-zet")
+
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(1, response.json()["auto_harvest_stopped"])
+            self.assertEqual(2, response.json()["dashboard_stopped"])
+            restart.assert_called_once_with()
+
     def test_assets_api_serves_context_list_and_detail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = write_project_fixture(Path(temp_dir))

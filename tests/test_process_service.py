@@ -8,6 +8,20 @@ from zet.services.process_service import ProcessInfo, ProcessService
 
 
 class ProcessServiceTests(unittest.TestCase):
+    def test_restart_zet_stops_harvester_before_restarting_dashboard(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = ProcessService(Path(temp_dir))
+            calls = []
+
+            with (
+                patch.object(service, "stop", side_effect=lambda process_id: calls.append(("stop", process_id)) or 1),
+                patch.object(service, "restart", side_effect=lambda process_id: calls.append(("restart", process_id)) or 2),
+            ):
+                result = service.restart_zet()
+
+            self.assertEqual((1, 2), result)
+            self.assertEqual([("stop", "auto_harvest"), ("restart", "zet_web")], calls)
+
     def test_zet_self_restart_uses_detached_helper(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             service = ProcessService(Path(temp_dir))

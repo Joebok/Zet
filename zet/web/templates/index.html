@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260823-single-character-lab">
+  <link rel="stylesheet" href="/static/zet.css?v=20260825-config-tools">
 </head>
 <body>
   <header class="app-header">
@@ -112,25 +112,28 @@
         <option value="render-review">Image Review</option>
       </select>
     </div>
-    <div class="toolbar-menu">
-      <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
-      <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
-        <button class="tab workflow-tab" data-page="auxiliary-resources">Aux Images</button>
-        <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
-        <button class="tab workflow-tab" data-page="ai-controls">AI Controls</button>
-        <button class="tab workflow-tab" data-page="local-image-config">Image Config</button>
-        <button class="tab workflow-tab" data-page="single-character-lab">Single Character Lab</button>
-        <button class="tab workflow-tab" data-page="prompt-evolution">Prompt Evolution</button>
-        <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
-        <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
-        <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
-        <button id="toolbar-todo-button" type="button">To Do</button>
+    <div class="toolbar-actions">
+      <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
+      <div class="toolbar-menu">
+        <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
+        <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="auxiliary-resources">Image Inventory</button>
+          <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
+          <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
+          <button class="tab workflow-tab" data-page="local-image-config">Config</button>
+          <button class="tab workflow-tab" data-page="single-character-lab">Single Character Lab</button>
+          <button class="tab workflow-tab" data-page="prompt-evolution">Prompt Evolution</button>
+          <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
+          <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
+          <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
+          <button id="toolbar-todo-button" type="button">To Do</button>
+        </div>
       </div>
-    </div>
-    <div class="toolbar-menu">
-      <button id="help-menu-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="help-menu">Help ▾</button>
-      <div id="help-menu" class="toolbar-settings-menu" hidden>
-        <button class="tab workflow-tab" data-page="help">Template Instruction Manuals</button>
+      <div class="toolbar-menu">
+        <button id="help-menu-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="help-menu">Help ▾</button>
+        <div id="help-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="help">Template Instruction Manuals</button>
+        </div>
       </div>
     </div>
   </nav>
@@ -364,10 +367,69 @@
 
     <section id="auxiliary-resources-page" class="page">
       <div class="page-title-row">
-        <h1>Auxiliary Resources</h1>
+        <h1>Image Inventory</h1>
         <div id="aux-resource-status" class="status-text"></div>
       </div>
       <div id="aux-resource-message" class="action-message" hidden></div>
+      <div class="image-catalog-layout">
+        <section class="control-panel">
+          <div class="image-catalog-filters">
+            <label>Search<input id="image-catalog-search" type="search" placeholder="Label, tag, keyword, character..."></label>
+            <label>Source<select id="image-catalog-source"><option value="">All sources</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="auxiliary">Auxiliary</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
+            <label>Category<select id="image-catalog-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
+            <label>Status<select id="image-catalog-status"><option value="">All states</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_queued">AI queued</option><option value="ai_review_required">AI review required</option><option value="ready">Ready</option><option value="approved">Approved</option><option value="inherited">Inherited</option></select></label>
+            <label>Collection<select id="image-catalog-collection"><option value="">All collections</option></select></label>
+            <label>Keyword<select id="image-catalog-keyword"><option value="">All keywords</option></select></label>
+            <label>Character<input id="image-catalog-character" placeholder="Exact character"></label>
+            <label>Phase<input id="image-catalog-phase" placeholder="Exact phase"></label>
+            <label>Costume<input id="image-catalog-costume" placeholder="Exact costume"></label>
+            <label>Pipeline<input id="image-catalog-pipeline" placeholder="Exact pipeline"></label>
+            <label>Story<input id="image-catalog-story" placeholder="Story slug"></label>
+            <label>Scene<input id="image-catalog-scene" placeholder="Scene slug"></label>
+            <label>Sub-scene<input id="image-catalog-subscene" placeholder="Target id"></label>
+            <label class="checkbox-field"><input id="image-catalog-include-base" type="checkbox" checked> Include base pipeline images</label>
+            <button id="image-catalog-refresh" type="button">Refresh</button>
+          </div>
+          <div id="image-catalog-count" class="status-text"></div>
+          <div class="image-catalog-bulk">
+            <span id="image-catalog-selected-count">0 selected</span>
+            <label>Set category<select id="image-catalog-bulk-category"><option value="">No change</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
+            <label>Replace collections<select id="image-catalog-bulk-collections" multiple size="3"></select></label>
+            <label>Replace keywords<select id="image-catalog-bulk-keywords" multiple size="3"></select></label>
+            <button id="image-catalog-bulk-apply" type="button" disabled>Apply to selected</button>
+            <button id="image-catalog-bulk-clear" type="button">Clear selection</button>
+          </div>
+          <div id="image-catalog-grid" class="image-catalog-grid"></div>
+        </section>
+        <aside class="review-actions image-catalog-editor">
+          <h3 id="image-catalog-editor-title">Select an image</h3>
+          <img id="image-catalog-preview" class="image-preview fullscreen-image-trigger" alt="Selected catalog image" hidden>
+          <p id="image-catalog-source-detail" class="status-text"></p>
+          <label>Category<select id="image-catalog-edit-category"><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
+          <label>Collections<select id="image-catalog-edit-collections" multiple size="4"></select></label>
+          <label>Keywords<select id="image-catalog-edit-keywords" multiple size="5"></select></label>
+          <label>Identity mode<select id="image-catalog-identity-mode"><option value="inherit">Inherit</option><option value="override">Override</option></select></label>
+          <label>Identity description<textarea id="image-catalog-identity-text"></textarea></label>
+          <label>Costume mode<select id="image-catalog-costume-mode"><option value="inherit">Inherit</option><option value="override">Override</option><option value="not_applicable">Not applicable</option></select></label>
+          <label>Costume description<textarea id="image-catalog-costume-text"></textarea></label>
+          <div class="button-row compact"><button id="image-catalog-save" class="primary-action" type="button" disabled>Save Metadata</button><button id="image-catalog-ai" type="button" disabled>Draft with AI</button><button id="image-catalog-ai-check" type="button" disabled>Check for AI Answer</button></div>
+          <div id="image-catalog-ai-status" class="action-message" hidden></div>
+          <section id="image-catalog-ai-review" hidden>
+            <h4>AI draft — review required</h4>
+            <label>Identity draft<textarea id="image-catalog-ai-identity"></textarea></label>
+            <label>Costume draft<textarea id="image-catalog-ai-costume"></textarea></label>
+            <div class="button-row compact"><button id="image-catalog-ai-approve" class="primary-action" type="button">Approve edited draft</button><button id="image-catalog-ai-reject" type="button">Reject</button></div>
+          </section>
+          <section class="image-catalog-organization">
+            <h4>Organization</h4>
+            <label>New collection<span class="inline-field"><input id="image-catalog-new-collection"><button id="image-catalog-add-collection" type="button">Add</button></span></label>
+            <label>New keyword<span class="inline-field"><input id="image-catalog-new-keyword"><button id="image-catalog-add-keyword" type="button">Add</button></span></label>
+            <div id="image-catalog-organization-list"></div>
+          </section>
+        </aside>
+      </div>
+      <details class="control-panel aux-resource-details">
+        <summary>Create and manage auxiliary image files</summary>
       <div class="aux-resource-layout">
         <section class="control-panel">
           <div class="button-row compact">
@@ -534,6 +596,7 @@
         <h1>Template Instruction Manuals</h1>
         <div id="help-status" class="status-text"></div>
       </div>
+      </details>
       <section class="control-panel template-manual-controls">
         <label>
           Manual
@@ -955,6 +1018,10 @@
             Search
             <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
           </label>
+          <label class="checkbox-field"><input id="builder-image-picker-include-base" type="checkbox"> Include base pipeline images</label>
+          <label>Source<select id="builder-image-picker-source"><option value="">All sources</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="auxiliary">Auxiliary</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
+          <label>Category<select id="builder-image-picker-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
+          <label>Status<select id="builder-image-picker-status"><option value="">All states</option><option value="ready">Ready</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_review_required">AI review required</option></select></label>
           <button id="builder-image-picker-refresh" type="button">Refresh References</button>
           <div id="builder-image-picker-status" class="status-text"></div>
           <table id="builder-image-picker-table">
@@ -1342,7 +1409,7 @@
 
     <section id="ai-controls-page" class="page">
       <div class="page-title-row">
-        <h1>AI Controls</h1>
+        <h1>AI Queue</h1>
         <div id="ai-controls-status" class="status-text"></div>
       </div>
       <div id="ai-controls-message" class="action-message" hidden></div>
@@ -1354,49 +1421,6 @@
             <button id="archive-harvested-ai" class="danger-action">Archive Harvested Answers</button>
             <button id="refresh-ai-controls" class="navigation-action">Refresh</button>
           </div>
-        </section>
-        <section class="control-panel ai-automation-panel local-image-config-panel">
-          <h2>Project Automation</h2>
-          <form id="automation-form" class="settings-form">
-            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
-            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
-            <fieldset>
-              <legend>Managed LLM roles</legend>
-              <label>Asset workflow model<select id="setting-ai-asset-workflow-model"></select></label>
-              <label>Prompt condensation model<select id="setting-prompt-condense-model"></select></label>
-              <label>AI prompt analysis model<select id="setting-ai-prompt-analysis-model"></select></label>
-              <label>Scene Builder model<select id="setting-ai-scene-builder-model"></select></label>
-              <label>Prompt Evolution critic A<select id="setting-ai-prompt-evolution-critic-a-model"></select></label>
-              <label>Prompt Evolution critic B<select id="setting-ai-prompt-evolution-critic-b-model"></select></label>
-              <label>Prompt Evolution analysis and editor<select id="setting-ai-prompt-evolution-analysis-model"></select></label>
-              <label>Prompt Evolution regression check<select id="setting-ai-prompt-evolution-check-model"></select></label>
-              <button id="refresh-ollama-models" type="button">Refresh Models</button>
-            </fieldset>
-            <label>AI prompt analysis instructions<input id="setting-ai-prompt-analysis-file" type="text"></label>
-            <label>
-              Final render backend
-              <select id="setting-render-backend">
-                <option value="manual_chatgpt">manual_chatgpt</option>
-                <option value="local_image">local_image</option>
-              </select>
-            </label>
-            <button class="primary-action" type="submit">Save Project Settings</button>
-          </form>
-        </section>
-        <section class="control-panel ai-processes-panel">
-          <h2>Processes</h2>
-          <table id="process-table">
-            <thead>
-              <tr>
-                <th>process</th>
-                <th>running</th>
-                <th>duplicates</th>
-                <th>pids</th>
-                <th>actions</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
         </section>
         <section class="control-panel queue-panel">
           <div class="page-title-row">
@@ -1424,20 +1448,125 @@
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
         </section>
+        <section class="control-panel recent-harvests-panel">
+          <h2>Recent Harvests</h2>
+          <div id="recent-harvest-count" class="summary-bar"></div>
+          <table id="recent-harvest-table">
+            <thead>
+              <tr>
+                <th>harvested</th>
+                <th>job</th>
+                <th>task</th>
+                <th>asset</th>
+                <th>status</th>
+                <th>details</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
       </div>
     </section>
 
     <section id="local-image-config-page" class="page">
       <div class="page-title-row">
-        <h1>Image Config</h1>
+        <h1>Config</h1>
         <div id="local-image-config-status" class="status-text"></div>
       </div>
       <div id="local-image-config-message" class="action-message" hidden></div>
+      <section class="control-panel ai-processes-panel">
+        <h2>Processes</h2>
+        <table id="process-table">
+          <thead>
+            <tr>
+              <th>process</th>
+              <th>running</th>
+              <th>duplicates</th>
+              <th>pids</th>
+              <th>actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
       <div class="button-row compact settings-save-bar">
         <button class="primary-action" type="submit" form="automation-form">Save Project Settings</button>
         <span id="settings-save-state" class="save-state" aria-live="polite"></span>
       </div>
       <div class="ai-controls-grid">
+        <section class="control-panel ai-automation-panel local-image-config-panel">
+          <h2>Project Automation</h2>
+          <form id="automation-form" class="settings-form">
+            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
+            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
+            <label><input id="setting-ai-prompt-analysis-auto-queue-on-render" type="checkbox"> Auto-queue prompt analysis when rendering a scene</label>
+            <label>
+              Final render backend
+              <select id="setting-render-backend">
+                <option value="manual_chatgpt">manual_chatgpt</option>
+                <option value="local_image">local_image</option>
+              </select>
+            </label>
+            <button class="primary-action" type="submit">Save Project Settings</button>
+          </form>
+        </section>
+        <section class="control-panel managed-llm-panel">
+          <div class="review-header">
+            <div>
+              <h2>Managed LLM Roles</h2>
+              <p class="status-text">Each task uses the selected Ollama model. Markdown instructions can be opened in the Template Editor.</p>
+            </div>
+            <button id="refresh-ollama-models" type="button">Refresh Models</button>
+          </div>
+          <div class="managed-llm-grid">
+            <article class="managed-llm-role" data-llm-role="asset_workflow">
+              <label>Asset workflow<select id="setting-ai-asset-workflow-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="prompt_condense">
+              <label>Prompt condensation<select id="setting-prompt-condense-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="prompt_analysis">
+              <label>AI prompt analysis<select id="setting-ai-prompt-analysis-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <label>Instructions file<input id="setting-ai-prompt-analysis-file" type="text" form="automation-form"></label>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="image_description">
+              <label>Image Inventory catalog metadata<select id="setting-ai-image-description-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="scene_builder">
+              <label>Scene Builder narrative interview<select id="setting-ai-scene-builder-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="prompt_evolution_critic_a">
+              <label>Prompt Evolution critic A<select id="setting-ai-prompt-evolution-critic-a-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="prompt_evolution_critic_b">
+              <label>Prompt Evolution critic B<select id="setting-ai-prompt-evolution-critic-b-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="prompt_evolution_analysis">
+              <label>Prompt Evolution analysis and editor<select id="setting-ai-prompt-evolution-analysis-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role" data-llm-role="prompt_evolution_check">
+              <label>Prompt Evolution regression check<select id="setting-ai-prompt-evolution-check-model" form="automation-form"></select></label>
+              <p class="managed-llm-description"></p>
+              <div class="managed-llm-templates"></div>
+            </article>
+          </div>
+        </section>
         <section class="control-panel">
           <h2>Image Generation</h2>
           <div class="settings-form">
@@ -1822,6 +1951,6 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260823-single-character-proxy"></script>
+  <script src="/static/zet.js?v=20260825-config-tools"></script>
 </body>
 </html>

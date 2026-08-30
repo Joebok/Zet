@@ -136,6 +136,29 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             self.assertEqual("hash-1", metadata["render_input_hash"])
             self.assertFalse(service.path_service.scene_locked_image_path("story", "scene").exists())
 
+    def test_relock_current_refreshes_subscene_provenance_without_replacing_image(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_service = _StoryService(root)
+            story_service.load_scene_builder_data = lambda story, scene: SimpleNamespace(
+                data={"subscenes": [{"id": "background", "name": "Background"}]}
+            )
+            story_service.story_render_service = SimpleNamespace(
+                _compile=lambda story, scene, target, allow_stale_dependencies=False: (None, None, None, None, None, None, None, "hash-2")
+            )
+            service = SceneImageReviewService(story_service)
+            paths = service.target_service.review_paths("story", "scene", "background")
+            paths["locked"].parent.mkdir(parents=True)
+            paths["locked"].write_bytes(b"current image")
+            paths["metadata"].write_text(json.dumps({"render_input_hash": "hash-1"}), encoding="utf-8")
+
+            updated = service.relock_current("story", "scene", "background")
+
+            self.assertTrue(updated.locked_current)
+            self.assertEqual(b"current image", paths["locked"].read_bytes())
+            metadata = json.loads(paths["metadata"].read_text(encoding="utf-8"))
+            self.assertEqual("hash-2", metadata["render_input_hash"])
+
 
 if __name__ == "__main__":
     unittest.main()

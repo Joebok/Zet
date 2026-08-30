@@ -159,10 +159,10 @@ class AuxiliaryResourceService:
         cleaned_label = str(image_label or "").strip()
         if not cleaned_label:
             raise AuxiliaryResourceServiceError("Image label is required.")
-        image_id = self._unique_image_id(resource, cleaned_label, original_image_id)
         folder, _ = self._resource_paths(resource.resource_id)
         folder.mkdir(parents=True, exist_ok=True)
         existing = next((image for image in resource.images if image.get("image_id") == original_image_id), None) if original_image_id else None
+        image_id = str(existing.get("image_id")) if existing else self._unique_image_id(resource, cleaned_label)
         extension = self._extension_for_content_type(content_type) if image_bytes else Path(existing.get("image_path", "")).suffix if existing else ".png"
         image_path = folder / f"{image_id}{extension}"
         if existing:

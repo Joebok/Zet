@@ -611,6 +611,8 @@ ink wash
             document = service.enable_background_subscene("Demo", "Opening")
             memberships = {item["id"]: item["subscene_id"] for item in document.data["scene_elements"]}
             self.assertEqual({"hall": "background", "hero": ""}, memberships)
+            with self.assertRaisesRegex(StoryServiceError, "No locked image exists"):
+                service.stage_scene_render("Demo", "Opening", allow_stale_dependencies=True)
             background_task = service.stage_scene_render("Demo", "Opening", "background")
             manifest = json.loads((Path(background_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual("background", manifest["render_target_id"])
@@ -633,6 +635,10 @@ ink wash
             service.save_scene_builder_data("Demo", "Opening", changed)
             with self.assertRaisesRegex(StoryServiceError, "out of date"):
                 service.stage_scene_render("Demo", "Opening")
+            stale_override_task = service.stage_scene_render(
+                "Demo", "Opening", allow_stale_dependencies=True
+            )
+            self.assertEqual("main", stale_override_task.render_target_id)
 
             service.disable_scene_subscene("Demo", "Opening", "background")
             disabled_main = service.stage_scene_render("Demo", "Opening")
