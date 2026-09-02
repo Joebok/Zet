@@ -368,30 +368,82 @@
     <section id="auxiliary-resources-page" class="page">
       <div class="page-title-row">
         <h1>Image Inventory</h1>
-        <div id="aux-resource-status" class="status-text"></div>
       </div>
       <div id="aux-resource-message" class="action-message" hidden></div>
       <div class="image-catalog-layout">
-        <section class="control-panel">
-          <div class="image-catalog-filters">
-            <label>Search<input id="image-catalog-search" type="search" placeholder="Label, tag, keyword, character..."></label>
+        <aside class="image-catalog-sidebar">
+          <section class="control-panel image-catalog-filter-panel">
+            <div class="image-catalog-filter-heading">
+              <div><h2>Find images</h2><p>Set filters, then refresh the results.</p></div>
+              <button id="image-catalog-clear-filters" class="text-action" type="button">Clear</button>
+            </div>
+            <label class="image-catalog-search-label">Search<input id="image-catalog-search" type="search" placeholder="Label, tag, keyword, character..." autocomplete="off"></label>
+            <button id="image-catalog-refresh" class="primary-action image-catalog-refresh" type="button">Refresh images</button>
+            <div class="image-catalog-filters">
             <label>Source<select id="image-catalog-source"><option value="">All sources</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="auxiliary">Auxiliary</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
             <label>Category<select id="image-catalog-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
             <label>Status<select id="image-catalog-status"><option value="">All states</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_queued">AI queued</option><option value="ai_review_required">AI review required</option><option value="ready">Ready</option><option value="approved">Approved</option><option value="inherited">Inherited</option></select></label>
             <label>Collection<select id="image-catalog-collection"><option value="">All collections</option></select></label>
             <label>Keyword<select id="image-catalog-keyword"><option value="">All keywords</option></select></label>
-            <label>Character<input id="image-catalog-character" placeholder="Exact character"></label>
-            <label>Phase<input id="image-catalog-phase" placeholder="Exact phase"></label>
-            <label>Costume<input id="image-catalog-costume" placeholder="Exact costume"></label>
-            <label>Pipeline<input id="image-catalog-pipeline" placeholder="Exact pipeline"></label>
-            <label>Story<input id="image-catalog-story" placeholder="Story slug"></label>
-            <label>Scene<input id="image-catalog-scene" placeholder="Scene slug"></label>
-            <label>Sub-scene<input id="image-catalog-subscene" placeholder="Target id"></label>
-            <label class="checkbox-field"><input id="image-catalog-include-base" type="checkbox" checked> Include base pipeline images</label>
-            <button id="image-catalog-refresh" type="button">Refresh</button>
+              <details class="image-catalog-advanced-filters">
+                <summary>More filters</summary>
+                <div>
+                  <label>Character<input id="image-catalog-character" placeholder="Exact character"></label>
+                  <label>Phase<input id="image-catalog-phase" placeholder="Exact phase"></label>
+                  <label>Costume<input id="image-catalog-costume" placeholder="Exact costume"></label>
+                  <label>Pipeline<input id="image-catalog-pipeline" placeholder="Exact pipeline"></label>
+                  <label>Story<input id="image-catalog-story" placeholder="Story slug"></label>
+                  <label>Scene<input id="image-catalog-scene" placeholder="Scene slug"></label>
+                  <label>Sub-scene<input id="image-catalog-subscene" placeholder="Target id"></label>
+                </div>
+              </details>
+              <label class="checkbox-field"><input id="image-catalog-include-base" type="checkbox"> Include base pipeline images</label>
+            </div>
+          </section>
+
+          <section class="control-panel aux-resource-panel">
+            <div class="image-catalog-filter-heading">
+              <div><h2>Auxiliary images</h2><p>Create a resource or add images to one.</p></div>
+              <button id="aux-resource-add" class="create-action" type="button">Add</button>
+            </div>
+            <div id="aux-resource-status" class="status-text"></div>
+            <div id="aux-resource-workspace" hidden>
+              <div class="aux-resource-browser-controls">
+                <label>Category<select id="aux-resource-category"><option value="person">Person</option><option value="place">Place</option><option value="thing">Thing</option></select></label>
+                <label>Find resource<input id="aux-resource-search" type="search" placeholder="Resource label..."></label>
+              </div>
+              <table id="aux-resource-table">
+                <thead><tr><th>Resource</th><th>Folder</th></tr></thead>
+                <tbody></tbody>
+              </table>
+              <div class="aux-resource-editor">
+                <div class="aux-resource-editor-heading"><h3 id="aux-resource-form-title">Add Resource</h3><button id="aux-resource-clear" class="neutral-action" type="button">Close</button></div>
+                <p class="category-context">Category: <strong id="aux-resource-form-category">Person</strong></p>
+                <label>Resource label<input id="aux-resource-label" type="text" placeholder="Old wizard"></label>
+                <div class="button-row compact"><button id="aux-resource-save" class="primary-action" type="button">Save Resource</button><button id="aux-resource-edit-template" type="button" disabled>Edit Template</button><button id="aux-resource-delete" class="danger-action" type="button" disabled>Delete</button></div>
+                <div class="aux-resource-image-editor">
+                  <div class="aux-resource-editor-heading"><h3>Images</h3><button id="aux-resource-new-image" class="create-action" type="button">New image</button></div>
+                  <div id="aux-resource-image-list" class="aux-resource-image-list">Select or create a resource first.</div>
+                  <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
+                  <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
+                    <p>Paste or drop an image here</p>
+                    <p class="status-text">Ctrl+V and the file picker also work.</p>
+                    <input id="aux-resource-file-input" type="file" accept="image/*">
+                  </div>
+                  <label>Image name<input id="aux-resource-image-label" type="text" placeholder="Front view"></label>
+                  <button id="aux-resource-save-image" class="primary-action" type="button">Save Image</button>
+                </div>
+                <div class="aux-resource-tag-row"><code id="aux-resource-tag" class="copyable-tag"></code><button id="aux-resource-copy-tag" type="button" disabled>Copy tag</button></div>
+              </div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="control-panel image-catalog-main">
+          <div class="image-catalog-results-heading">
+            <div><h2>Images</h2><div id="image-catalog-count" class="status-text">Enter a search or choose filters, then refresh.</div></div>
           </div>
-          <div id="image-catalog-count" class="status-text"></div>
-          <div class="image-catalog-bulk">
+          <div id="image-catalog-bulk" class="image-catalog-bulk" hidden>
             <span id="image-catalog-selected-count">0 selected</span>
             <label>Set category<select id="image-catalog-bulk-category"><option value="">No change</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
             <label>Replace collections<select id="image-catalog-bulk-collections" multiple size="3"></select></label>
@@ -426,69 +478,6 @@
             <label>New keyword<span class="inline-field"><input id="image-catalog-new-keyword"><button id="image-catalog-add-keyword" type="button">Add</button></span></label>
             <div id="image-catalog-organization-list"></div>
           </section>
-        </aside>
-      </div>
-      <details class="control-panel aux-resource-details">
-        <summary>Create and manage auxiliary image files</summary>
-      <div class="aux-resource-layout">
-        <section class="control-panel">
-          <div class="button-row compact">
-            <label>
-              Category
-              <select id="aux-resource-category">
-                <option value="person">Person</option>
-                <option value="place">Place</option>
-                <option value="thing">Thing</option>
-              </select>
-            </label>
-            <label>
-              Search Label
-              <input id="aux-resource-search" type="search" placeholder="contains...">
-            </label>
-          </div>
-          <table id="aux-resource-table">
-            <thead>
-              <tr>
-                <th>label</th>
-                <th>folder</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </section>
-        <aside class="review-actions aux-resource-editor">
-          <button id="aux-resource-add" class="create-action" type="button">Add Resource</button>
-          <h3 id="aux-resource-form-title">Add Resource</h3>
-          <p class="category-context">
-            Category: <strong id="aux-resource-form-category">Person</strong>
-          </p>
-          <label>
-            Label
-            <input id="aux-resource-label" type="text" placeholder="Old wizard">
-          </label>
-          <button id="aux-resource-edit-template" type="button" disabled>Edit Template</button>
-          <button id="aux-resource-save" class="primary-action" type="button">Save Resource</button>
-          <button id="aux-resource-delete" class="danger-action" type="button" disabled>Delete Resource</button>
-          <button id="aux-resource-clear" class="neutral-action" type="button">Clear Form</button>
-          <div class="aux-resource-image-editor">
-            <h3>Images</h3>
-            <div id="aux-resource-image-list" class="aux-resource-image-list">No images.</div>
-            <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
-            <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
-              <p>Click here, then press Ctrl+V to paste an image.</p>
-              <p class="status-text">Drag/drop and file picker also work.</p>
-              <input id="aux-resource-file-input" type="file" accept="image/*">
-            </div>
-            <button id="aux-resource-new-image" class="create-action" type="button">New Image</button>
-            <label>
-              Image Name
-              <input id="aux-resource-image-label" type="text" placeholder="Front view">
-            </label>
-            <button id="aux-resource-save-image" class="primary-action" type="button">Save Image</button>
-          </div>
-          <h3>Selected Image Tag</h3>
-          <code id="aux-resource-tag" class="copyable-tag"></code>
-          <button id="aux-resource-copy-tag" type="button" disabled>Copy Tag</button>
         </aside>
       </div>
     </section>

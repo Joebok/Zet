@@ -126,6 +126,7 @@ const state = {
   builderCostumesByCharacterPhase: {},
   auxiliaryResources: [],
   imageCatalogItems: [],
+  imageCatalogLoaded: false,
   imageCatalogOrganization: { collections: [], keywords: [] },
   selectedImageCatalogId: null,
   selectedImageCatalogIds: [],
@@ -744,6 +745,7 @@ fullscreenImageOverlay.append(
 document.body.append(fullscreenImageOverlay);
 const auxResourceStatus = document.querySelector("#aux-resource-status");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
+const auxResourceWorkspace = document.querySelector("#aux-resource-workspace");
 const auxResourceCategory = document.querySelector("#aux-resource-category");
 const auxResourceSearch = document.querySelector("#aux-resource-search");
 const auxResourceTable = document.querySelector("#aux-resource-table");
@@ -781,8 +783,10 @@ const imageCatalogScene = document.querySelector("#image-catalog-scene");
 const imageCatalogSubscene = document.querySelector("#image-catalog-subscene");
 const imageCatalogIncludeBase = document.querySelector("#image-catalog-include-base");
 const imageCatalogRefresh = document.querySelector("#image-catalog-refresh");
+const imageCatalogClearFilters = document.querySelector("#image-catalog-clear-filters");
 const imageCatalogCount = document.querySelector("#image-catalog-count");
 const imageCatalogGrid = document.querySelector("#image-catalog-grid");
+const imageCatalogBulk = document.querySelector("#image-catalog-bulk");
 const imageCatalogEditorTitle = document.querySelector("#image-catalog-editor-title");
 const imageCatalogPreview = document.querySelector("#image-catalog-preview");
 const imageCatalogSourceDetail = document.querySelector("#image-catalog-source-detail");
@@ -3015,8 +3019,13 @@ async function activatePage(page, options = {}) {
   }
   if (page === "auxiliary-resources") {
     await loadImageCatalogOrganization();
-    await loadImageCatalog();
     await loadAuxiliaryResources();
+    if (options.preferredCatalogId) {
+      await loadImageCatalog();
+      selectImageCatalogItem(options.preferredCatalogId);
+    } else if (!state.imageCatalogLoaded) {
+      renderImageCatalogIdle();
+    }
   }
   if (page === "phase-comparison") {
     initializePhaseComparisonControls();
@@ -6789,10 +6798,7 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     if (action === "pick-image-tag") openBuilderImagePicker();
     if (action === "open-catalog-item") {
       const catalogId = target.dataset.catalogId || "";
-      activatePage("auxiliary-resources", { skipAutosave: true }).then(() => {
-        const item = state.imageCatalogItems.find((candidate) => candidate.catalog_id === catalogId);
-        if (item) selectImageCatalogItem(catalogId);
-      });
+      activatePage("auxiliary-resources", { skipAutosave: true, preferredCatalogId: catalogId });
     }
     if (action === "add-interaction") builderAddInteraction();
     if (action === "delete-interaction") builderDeleteInteraction(Number(target.dataset.builderInteractionIndex));
@@ -7065,11 +7071,40 @@ function imageCatalogQuery() {
   return params;
 }
 
+function renderImageCatalogIdle(message = "Enter a search or choose filters, then refresh.") {
+  state.imageCatalogLoaded = false;
+  imageCatalogGrid.replaceChildren();
+  const empty = document.createElement("div");
+  empty.className = "image-catalog-empty";
+  empty.innerHTML = "<strong>Images are loaded on demand.</strong><span>Use search or filters on the left, then choose Refresh images.</span>";
+  imageCatalogGrid.append(empty);
+  imageCatalogCount.textContent = message;
+  imageCatalogBulk.hidden = true;
+}
+
+function markImageCatalogFiltersDirty() {
+  renderImageCatalogIdle("Filters changed. Refresh to load matching images.");
+}
+
+function clearImageCatalogFilters() {
+  imageCatalogSearch.value = "";
+  for (const control of [imageCatalogSource, imageCatalogCategory, imageCatalogStatus, imageCatalogCollection, imageCatalogKeyword]) {
+    control.value = "";
+  }
+  for (const control of [imageCatalogCharacter, imageCatalogPhase, imageCatalogCostume, imageCatalogPipeline, imageCatalogStory, imageCatalogScene, imageCatalogSubscene]) {
+    control.value = "";
+  }
+  imageCatalogIncludeBase.checked = false;
+  markImageCatalogFiltersDirty();
+  imageCatalogSearch.focus();
+}
+
 function renderImageCatalog() {
   imageCatalogGrid.replaceChildren();
   imageCatalogCount.textContent = `${state.imageCatalogItems.length} selectable image(s)`;
   imageCatalogSelectedCount.textContent = `${state.selectedImageCatalogIds.length} selected`;
-  imageCatalogBulkApply.disabled = !state.selectedImageCatalogIds.length;
+  imageCatalogBulk.hidden = state.selectedImageCatalogIds.length <= 1;
+  imageCatalogBulkApply.disabled = state.selectedImageCatalogIds.length <= 1;
   if (!state.imageCatalogItems.length) {
     imageCatalogGrid.textContent = "No images match these filters.";
     return;
@@ -7077,6 +7112,9 @@ function renderImageCatalog() {
   for (const item of state.imageCatalogItems) {
     const card = document.createElement("article");
     card.className = "image-catalog-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Edit ${item.label || item.tag || "catalog image"}`);
     card.classList.toggle("selected", item.catalog_id === state.selectedImageCatalogId);
     const select = document.createElement("input");
     select.type = "checkbox";
@@ -7091,15 +7129,40 @@ function renderImageCatalog() {
     const image = document.createElement("img");
     image.src = fileUrl(item.thumbnail_path);
     image.alt = item.label || "Catalog image";
+    image.loading = "lazy";
+    image.decoding = "async";
     const label = document.createElement("strong");
     label.textContent = item.label || item.tag;
     const source = document.createElement("small");
     source.textContent = `${item.source_type} · ${item.semantic_category} · ${String(item.description_status || "").replaceAll("_", " ")}`;
     card.append(select, image, label, source);
     card.addEventListener("click", () => selectImageCatalogItem(item.catalog_id));
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectImageCatalogItem(item.catalog_id);
+      }
+    });
     select.addEventListener("click", (event) => event.stopPropagation());
     imageCatalogGrid.append(card);
   }
+}
+
+async function syncAuxiliaryResourceEditor(item) {
+  if (item?.source_type !== "auxiliary" || !String(item.source_key || "").startsWith("aux:")) {
+    auxResourceWorkspace.hidden = true;
+    return;
+  }
+  const [, category, resourceId, imageId] = String(item.source_key).split(":");
+  auxResourceWorkspace.hidden = false;
+  if (category && auxResourceCategory.value !== category) {
+    auxResourceCategory.value = category;
+    await loadAuxiliaryResources();
+  } else if (!state.auxiliaryResources.length) {
+    await loadAuxiliaryResources();
+  }
+  if (resourceId) selectAuxiliaryResource(resourceId);
+  if (imageId) selectAuxiliaryResourceImage(imageId);
 }
 
 function selectImageCatalogItem(catalogId) {
@@ -7130,13 +7193,18 @@ function selectImageCatalogItem(catalogId) {
   }
   renderImageCatalogOrganization();
   renderImageCatalog();
+  syncAuxiliaryResourceEditor(item).catch((error) => showAuxResourceMessage(error.message, "error"));
 }
 
 async function loadImageCatalog() {
   imageCatalogCount.textContent = "Loading image inventory...";
+  imageCatalogRefresh.disabled = true;
+  imageCatalogRefresh.textContent = "Loading...";
   try {
     const payload = await fetchJson(`/api/image-catalog?${imageCatalogQuery().toString()}`);
     state.imageCatalogItems = payload.items || [];
+    state.imageCatalogLoaded = true;
+    state.selectedImageCatalogIds = state.selectedImageCatalogIds.filter((catalogId) => state.imageCatalogItems.some((item) => item.catalog_id === catalogId));
     if (state.selectedImageCatalogId && !state.imageCatalogItems.some((item) => item.catalog_id === state.selectedImageCatalogId)) {
       state.selectedImageCatalogId = null;
     }
@@ -7144,6 +7212,9 @@ async function loadImageCatalog() {
   } catch (error) {
     imageCatalogCount.textContent = "Load failed.";
     showAuxResourceMessage(error.message, "error");
+  } finally {
+    imageCatalogRefresh.disabled = false;
+    imageCatalogRefresh.textContent = "Refresh images";
   }
 }
 
@@ -11266,6 +11337,7 @@ zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checke
 zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
 enableFullscreenImage(zinePreview);
 enableFullscreenImage(auxResourceImagePreview);
+enableFullscreenImage(imageCatalogPreview);
 enableFullscreenImage(promptEvolutionSourcePreview);
 enableFullscreenImage(promptEvolutionDerivativePreview);
 fullscreenImageClose.addEventListener("click", closeFullscreenImage);
@@ -11377,7 +11449,11 @@ auxResourceCategory.addEventListener("change", () => {
   loadAuxiliaryResources();
 });
 auxResourceSearch.addEventListener("input", refreshAuxiliaryResourceTable);
-auxResourceAdd.addEventListener("click", clearAuxiliaryResourceForm);
+auxResourceAdd.addEventListener("click", () => {
+  auxResourceWorkspace.hidden = false;
+  clearAuxiliaryResourceForm();
+  auxResourceLabel.focus();
+});
 auxResourceEditTemplate.addEventListener("click", openAuxiliaryResourceTemplate);
 auxResourcePasteZone.addEventListener("paste", (event) => {
   const blob = imageBlobFromPasteEvent(event);
@@ -11405,7 +11481,10 @@ auxResourceSave.addEventListener("click", saveAuxiliaryResource);
 auxResourceDelete.addEventListener("click", deleteAuxiliaryResource);
 auxResourceNewImage.addEventListener("click", newAuxiliaryResourceImage);
 auxResourceSaveImage.addEventListener("click", saveAuxiliaryResourceImage);
-auxResourceClear.addEventListener("click", clearAuxiliaryResourceForm);
+auxResourceClear.addEventListener("click", () => {
+  clearAuxiliaryResourceForm();
+  auxResourceWorkspace.hidden = true;
+});
 auxResourceCopyTag.addEventListener("click", () => copyText(auxResourceTag.textContent || "", "Resource tag copied."));
 phaseComparisonCharacter.addEventListener("change", () => {
   state.phaseComparison.character = phaseComparisonCharacter.value;
@@ -11567,12 +11646,19 @@ singleCharacterLabAppearance.addEventListener("change", () => {
   });
 });
 for (const control of [imageCatalogSource, imageCatalogCategory, imageCatalogStatus, imageCatalogCollection, imageCatalogKeyword, imageCatalogIncludeBase]) {
-  control.addEventListener("change", loadImageCatalog);
+  control.addEventListener("change", markImageCatalogFiltersDirty);
 }
 for (const control of [imageCatalogCharacter, imageCatalogPhase, imageCatalogCostume, imageCatalogPipeline, imageCatalogStory, imageCatalogScene, imageCatalogSubscene]) {
-  control.addEventListener("change", loadImageCatalog);
+  control.addEventListener("input", markImageCatalogFiltersDirty);
 }
-imageCatalogSearch.addEventListener("input", loadImageCatalog);
+imageCatalogSearch.addEventListener("input", markImageCatalogFiltersDirty);
+imageCatalogSearch.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadImageCatalog();
+  }
+});
+imageCatalogClearFilters.addEventListener("click", clearImageCatalogFilters);
 imageCatalogRefresh.addEventListener("click", async () => {
   await loadImageCatalogOrganization();
   await loadImageCatalog();

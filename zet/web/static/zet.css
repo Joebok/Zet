@@ -2760,17 +2760,100 @@ tr.auxiliary-row td:last-child {
 
 .image-catalog-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  grid-template-columns: minmax(230px, 270px) minmax(430px, 1fr) minmax(300px, 360px);
   gap: 1rem;
   align-items: start;
   margin-bottom: 1rem;
 }
 
+.image-catalog-sidebar {
+  display: grid;
+  gap: 1rem;
+  max-height: calc(100vh - 170px);
+  overflow: auto;
+}
+
+.image-catalog-filter-panel,
+.aux-resource-panel,
+.image-catalog-main {
+  overflow-x: hidden;
+}
+
+.image-catalog-filter-heading,
+.image-catalog-results-heading,
+.aux-resource-editor-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: .5rem;
+  justify-content: space-between;
+}
+
+.image-catalog-filter-heading h2,
+.image-catalog-results-heading h2,
+.aux-resource-editor-heading h3 {
+  margin: 0;
+}
+
+.image-catalog-filter-heading p {
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.35;
+  margin: .2rem 0 .75rem;
+}
+
+.image-catalog-search-label input {
+  font-size: 1rem;
+  min-height: 42px;
+}
+
+.image-catalog-refresh {
+  margin: .55rem 0 .8rem;
+  width: 100%;
+}
+
 .image-catalog-filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: .65rem;
-  align-items: end;
+}
+
+.image-catalog-advanced-filters {
+  border-top: 1px solid var(--line);
+  padding-top: .65rem;
+}
+
+.image-catalog-advanced-filters > summary {
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.image-catalog-advanced-filters > div {
+  display: grid;
+  gap: .65rem;
+  padding-top: .65rem;
+}
+
+.image-catalog-main {
+  min-height: 340px;
+}
+
+.image-catalog-results-heading {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: .65rem;
+}
+
+.image-catalog-empty {
+  color: var(--muted);
+  display: grid;
+  gap: .25rem;
+  grid-column: 1 / -1;
+  max-width: 32rem;
+  padding: .25rem;
+}
+
+.image-catalog-empty strong {
+  color: var(--text);
 }
 
 .image-catalog-grid {
@@ -2778,8 +2861,9 @@ tr.auxiliary-row td:last-child {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: .75rem;
   margin-top: .75rem;
-  max-height: 70vh;
+  max-height: calc(100vh - 265px);
   overflow: auto;
+  padding: 2px;
 }
 
 .image-catalog-card {
@@ -2796,6 +2880,13 @@ tr.auxiliary-row td:last-child {
 
 .image-catalog-card.selected {
   outline: 2px solid var(--accent-color, #9b6b43);
+}
+
+.image-catalog-card:hover,
+.image-catalog-card:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: none;
 }
 
 .image-catalog-card img {
@@ -2819,24 +2910,98 @@ tr.auxiliary-row td:last-child {
 }
 
 .image-catalog-bulk {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .5rem;
   align-items: end;
-  margin-top: .75rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(120px, 1fr)) auto auto;
+  gap: .5rem;
+  padding: .75rem 0;
 }
 
 .image-catalog-organization-list button {
   margin: .15rem;
 }
 
-.aux-resource-details {
-  margin-top: 1rem;
+.aux-resource-panel {
+  align-self: start;
 }
 
-@media (max-width: 900px) {
+.aux-resource-browser-controls,
+.aux-resource-editor {
+  display: grid;
+  gap: .65rem;
+}
+
+.aux-resource-browser-controls {
+  grid-template-columns: 1fr;
+}
+
+.aux-resource-panel table {
+  font-size: .78rem;
+  margin: .65rem 0;
+}
+
+.aux-resource-panel th,
+.aux-resource-panel td {
+  padding: .35rem;
+}
+
+.aux-resource-panel .paste-zone {
+  min-height: 120px;
+  padding: .6rem;
+}
+
+.aux-resource-panel .image-preview {
+  max-height: 220px;
+}
+
+.aux-resource-panel .aux-resource-image-list {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.aux-resource-tag-row {
+  align-items: center;
+  display: flex;
+  gap: .5rem;
+}
+
+.aux-resource-tag-row code {
+  flex: 1;
+  min-height: 2rem;
+}
+
+@media (max-width: 1250px) {
+  .image-catalog-layout {
+    grid-template-columns: minmax(220px, 260px) minmax(430px, 1fr);
+  }
+
+  .image-catalog-editor {
+    grid-column: 1 / -1;
+    max-height: none;
+  }
+
+  .image-catalog-bulk {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
   .image-catalog-layout {
     grid-template-columns: 1fr;
+  }
+
+  .image-catalog-sidebar {
+    max-height: none;
+  }
+
+  .image-catalog-editor {
+    grid-column: auto;
+  }
+
+  .image-catalog-grid {
+    max-height: none;
   }
 }
 

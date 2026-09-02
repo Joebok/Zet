@@ -28,18 +28,39 @@ test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
 test("Image Inventory filters base outputs and edits logical metadata", async ({ page }) => {
   await openPage(page, "auxiliary-resources");
   const cards = page.locator("#image-catalog-grid .image-catalog-card");
+  await expect(cards).toHaveCount(0);
+  await expect(page.locator("#image-catalog-count")).toContainText("then refresh");
+  await expect(page.locator("#image-catalog-include-base")).not.toBeChecked();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.locator("#aux-resource-add").click();
+  await expect(page.locator("#aux-resource-workspace")).toBeVisible();
+  await page.locator("#aux-resource-clear").click();
+  const initialRefresh = page.waitForResponse((response) => response.url().includes("/api/image-catalog?") && response.ok());
+  await page.locator("#image-catalog-refresh").click();
+  await initialRefresh;
   const initialCount = await cards.count();
-  expect(initialCount).toBeGreaterThan(1);
+  expect(initialCount).toBeGreaterThan(0);
+  await expect(cards.filter({ hasText: "Head-Image" })).toHaveCount(0);
+
+  await page.locator("#image-catalog-include-base").check();
+  await expect(cards).toHaveCount(0);
+  const baseRefresh = page.waitForResponse((response) => response.url().includes("/api/image-catalog?") && response.ok());
+  await page.locator("#image-catalog-refresh").click();
+  await baseRefresh;
+  await expect(cards).toHaveCount(initialCount + 1);
   await cards.filter({ hasText: "Head-Image" }).click();
   await expect(page.locator("#image-catalog-editor-title")).toContainText("Head-Image");
   await expect(page.locator("#image-catalog-identity-mode")).toHaveValue("inherit");
+  await page.locator("#image-catalog-preview").click();
+  await expect(page.locator(".fullscreen-image-overlay")).toBeVisible();
+  await page.keyboard.press("Escape");
 
-  await page.locator("#image-catalog-include-base").uncheck();
-  await expect(cards).toHaveCount(initialCount - 1);
-  await expect(cards.filter({ hasText: "Head-Image" })).toHaveCount(0);
-  await page.locator("#image-catalog-include-base").check();
-  await expect(cards).toHaveCount(initialCount);
-  await cards.filter({ hasText: "Head-Image" }).click();
+  const selectors = page.locator("#image-catalog-grid .image-catalog-card > input[type=checkbox]");
+  await selectors.nth(0).check();
+  await expect(page.locator("#image-catalog-bulk")).toBeHidden();
+  await selectors.nth(1).check();
+  await expect(page.locator("#image-catalog-bulk")).toBeVisible();
+  await page.locator("#image-catalog-bulk-clear").click();
 
   await page.locator("#image-catalog-new-collection").fill("Heroes");
   const created = page.waitForResponse((response) => response.url().includes("/api/image-catalog/organization/collections") && response.ok());
@@ -58,6 +79,9 @@ test("Image Inventory filters base outputs and edits logical metadata", async ({
 
 test("Image Inventory reports queued AI descriptions and harvests drafts without reload", async ({ page }) => {
   await openPage(page, "auxiliary-resources");
+  const refreshed = page.waitForResponse((response) => response.url().includes("/api/image-catalog?") && response.ok());
+  await page.locator("#image-catalog-refresh").click();
+  await refreshed;
   await page.locator("#image-catalog-grid .image-catalog-card").first().click();
   const item = await page.evaluate(() => selectedImageCatalogItem());
 
