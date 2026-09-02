@@ -1226,6 +1226,24 @@ class StoryService:
         temp_path.replace(json_path)
         return self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
 
+    def save_scene_builder_subscene_data(
+        self, story_slug: str, scene_slug: str, target_id: str, subscene: dict
+    ) -> SceneBuilderDocument:
+        """Save one subscene definition without replacing other Scene Builder data."""
+        document = self.load_scene_builder_data(story_slug, scene_slug)
+        if document.blocked:
+            raise StoryServiceError(document.error or "Scene Builder JSON is blocked.")
+        if not isinstance(subscene, dict) or str(subscene.get("id") or "") != target_id:
+            raise StoryServiceError("Subscene payload does not match the requested render target.")
+        data = copy.deepcopy(document.data)
+        subscenes = data.get("subscenes") or []
+        index = next((index for index, item in enumerate(subscenes) if item.get("id") == target_id), -1)
+        if index < 0:
+            raise StoryServiceError(f"Unknown subscene render target: {target_id}")
+        subscenes[index] = copy.deepcopy(subscene)
+        data["subscenes"] = subscenes
+        return self.save_scene_builder_data(story_slug, scene_slug, data)
+
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
         """Copy the reusable visual setup from another scene in the same story."""
         safe_story_slug = self.safe_slug(story_slug)

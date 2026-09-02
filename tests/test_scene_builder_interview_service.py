@@ -147,6 +147,21 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
         self.assertIn("Keep the figure unreadable.", llm.calls[1]["prompt"])
         self.assertIn("Identify the complete visible cast", llm.calls[1]["prompt"])
 
+    def test_answered_clarification_cannot_repeat_and_block_the_phase(self):
+        question = {
+            "id": "feather_description",
+            "question": "Should the feather be described as a memorial focus or simply a single raven feather?",
+        }
+        llm = ScriptedLlm([_element_result([question]), _element_result([question])])
+        service = SceneBuilderInterviewService("qwen-local", llm)
+
+        first = service.start("A single raven feather serves as Morrow's memorial.", self._data())
+        second = service.step(first["session"], {"feather_description": "A single feather."})
+
+        self.assertEqual(second["phase"], "story")
+        self.assertEqual(second["questions"], [])
+        self.assertEqual(second["completed_phases"], 1)
+
     def test_requires_narrative_and_all_answers(self):
         service = SceneBuilderInterviewService("qwen-local", ScriptedLlm([]))
         with self.assertRaisesRegex(SceneBuilderInterviewError, "Paste a narrative"):

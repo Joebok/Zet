@@ -649,6 +649,9 @@ const sceneBuilderPrevious = document.querySelector("#scene-builder-previous");
 const sceneBuilderNext = document.querySelector("#scene-builder-next");
 const sceneBuilderMessage = document.querySelector("#scene-builder-message");
 const sceneBuilderPanel = document.querySelector("#scene-builder-panel");
+const sceneBuilderContextDialog = document.querySelector("#scene-builder-context-dialog");
+const sceneBuilderContextClose = document.querySelector("#scene-builder-context-close");
+const sceneBuilderContextContent = document.querySelector("#scene-builder-context-content");
 const sceneBuilderInterviewModal = document.querySelector("#scene-builder-interview-modal");
 const sceneBuilderInterviewClose = document.querySelector("#scene-builder-interview-close");
 const sceneBuilderInterviewStatus = document.querySelector("#scene-builder-interview-status");
@@ -2680,6 +2683,31 @@ function sceneBuilderSnapshot() {
   return JSON.stringify(state.sceneBuilder || null);
 }
 
+function savedSceneBuilderData() {
+  try {
+    return JSON.parse(state.savedBaselines.sceneBuilder || "null");
+  } catch (_error) {
+    return null;
+  }
+}
+
+function builderSubsceneFromData(data, targetId) {
+  return (data?.subscenes || []).find((item) => item.id === targetId) || null;
+}
+
+function builderTargetIsDirty(targetId = state.activeBuilderRenderTarget || "main") {
+  if (!state.savedBaselines.sceneBuilder) return false;
+  if (targetId === "main") return sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder;
+  builderSyncControls();
+  return JSON.stringify(builderSubsceneFromData(state.sceneBuilder, targetId))
+    !== JSON.stringify(builderSubsceneFromData(savedSceneBuilderData(), targetId));
+}
+
+function replaceBuilderSubscene(data, targetId, subscene) {
+  const index = (data?.subscenes || []).findIndex((item) => item.id === targetId);
+  if (index >= 0 && subscene) data.subscenes[index] = JSON.parse(JSON.stringify(subscene));
+}
+
 function sourceEditorSnapshot() {
   return JSON.stringify({ path: state.sourceEditor?.path || "", text: sourceEditorText.value });
 }
@@ -2718,9 +2746,15 @@ function updateDirtyIndicators() {
   const builderSaveState = sceneBuilderPanel?.querySelector("#scene-builder-save-state");
   const builderDirty = Boolean(state.savedBaselines.sceneBuilder)
     && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder;
+  const activeSubscene = builderActiveSubscene();
+  const activeSubsceneDirty = activeSubscene && builderTargetIsDirty(activeSubscene.id);
   setSaveState(
     builderSaveState,
-    state.sceneBuilder && state.savedBaselines.sceneBuilder ? (builderDirty ? "Dirty" : "Saved") : "",
+    state.sceneBuilder && state.savedBaselines.sceneBuilder
+      ? activeSubscene
+        ? activeSubsceneDirty ? "Subscene dirty" : builderDirty ? "Subscene saved · other changes dirty" : "Saved"
+        : builderDirty ? "Dirty" : "Saved"
+      : "",
     builderDirty ? "dirty" : "saved",
   );
   const sourceDirty = sourceEditorSnapshot() !== state.savedBaselines.sourceEditor;
@@ -2739,13 +2773,25 @@ function updateDirtyIndicators() {
 
 function editorGuardForPage(page = activePageName()) {
   if (page === "stories" && state.storyDetail && storySnapshot() !== state.savedBaselines.story) {
-    return { name: "story", autosave: true, save: saveStoryBeforeNavigation };
+    return {
+      name: "story",
+      save: saveStoryBeforeNavigation,
+      discard: () => { state.savedBaselines.story = storySnapshot(); },
+    };
   }
   if (page === "scenes" && state.sceneDetail && sceneSnapshot() !== state.savedBaselines.scene) {
-    return { name: "scene", autosave: true, save: saveSceneBeforeNavigation };
+    return {
+      name: "scene",
+      save: saveSceneBeforeNavigation,
+      discard: () => { state.savedBaselines.scene = sceneSnapshot(); },
+    };
   }
   if (page === "scene-builder" && state.sceneBuilder && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder) {
-    return { name: "Scene Builder", autosave: true, save: async () => Boolean(await saveSceneBuilder(true)) };
+    return {
+      name: "Scene Builder",
+      save: async () => Boolean(await saveSceneBuilder()),
+      discard: () => { state.savedBaselines.sceneBuilder = sceneBuilderSnapshot(); },
+    };
   }
   if (page === "template-editor" && state.sourceEditor && sourceEditorSnapshot() !== state.savedBaselines.sourceEditor) {
     return {
@@ -2792,11 +2838,6 @@ async function confirmAction(title, message, confirmLabel = "Confirm") {
 async function guardCurrentEditor() {
   const guard = editorGuardForPage();
   if (!guard) return true;
-  if (guard.autosave) {
-    const saved = await guard.save();
-    updateDirtyIndicators();
-    return Boolean(saved);
-  }
   unsavedChangesMessage.textContent = `Save changes to ${guard.name} before continuing?`;
   unsavedChangesDialog.returnValue = "cancel";
   const choice = await dialogResult(unsavedChangesDialog);
@@ -2808,7 +2849,7 @@ async function guardCurrentEditor() {
   }
   const saved = await guard.save();
   updateDirtyIndicators();
-  return Boolean(saved);
+  return Boolean(saved) && !editorGuardForPage();
 }
 
 async function runGuardedTransition(action) {
@@ -2963,7 +3004,7 @@ async function activatePage(page, options = {}) {
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   if (page === "prompt-review") {
-    await loadPromptReviewTasks();
+    await loadPromptReviewTasks(options.preferredAskId || null);
   }
   if (page === "manifest") {
     await loadManifestTasks();
@@ -3005,7 +3046,7 @@ async function activatePage(page, options = {}) {
     await loadZines();
   }
   if (page === "scene-builder") {
-    await openSceneBuilder();
+    await openSceneBuilder(options.renderTargetId || "main");
   }
   if (page === "ai-controls") {
     await loadAiControls();
@@ -3028,7 +3069,7 @@ async function activatePage(page, options = {}) {
     await loadPromptEvolution();
   }
   if (page === "render-console") {
-    await loadRenderConsoleTasks();
+    await loadRenderConsoleTasks(options.preferredAskId || null);
   }
   if (page === "local-image-review") {
     await loadLocalImageReviewTasks();
@@ -4540,8 +4581,7 @@ async function stageSceneRender() {
     );
     const askId = payload.task?.ask_id || null;
     showSceneMessage(payload.message || "Scene render staged.");
-    await activatePage("render-console", { skipAutosave: true });
-    await loadRenderConsoleTasks(askId);
+    await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
@@ -4897,14 +4937,13 @@ async function navigateSceneBuilder(offset) {
   }
   const target = state.scenes[index + offset];
   if (!target) return;
-  if (state.sceneBuilder && await saveSceneBuilder(true) === null) return;
   state.selectedSceneSlug = target.slug;
   await loadSceneDetail(state.selectedStorySlug, target.slug);
   await openSceneBuilder();
 }
 
 async function returnToScenesFromBuilder() {
-  await saveSceneBuilder(true);
+  if (!(await guardCurrentEditor())) return;
   closeSceneBuilder();
   await activatePage("scenes", { skipAutosave: true });
 }
@@ -5047,7 +5086,25 @@ function builderNormalizeId(value) {
   return String(value || "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "scene_element";
 }
 
+function builderSyncSubsceneControls() {
+  const activeSubscene = builderActiveSubscene();
+  if (!activeSubscene) return;
+  const nameControl = sceneBuilderPanel.querySelector("[data-builder-subscene-name]");
+  if (nameControl) activeSubscene.name = nameControl.value;
+  activeSubscene.prompt_overrides = activeSubscene.prompt_overrides || {};
+  for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-subscene-field]")) {
+    activeSubscene.prompt_overrides[control.dataset.builderSubsceneField] = control.value;
+  }
+  if (activeSubscene.kind === "element") {
+    activeSubscene.setup = activeSubscene.setup || {};
+    for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-element-subscene-field]")) {
+      setPathValue(activeSubscene.setup, control.dataset.builderElementSubsceneField, control.value);
+    }
+  }
+}
+
 function builderSyncControls() {
+  builderSyncSubsceneControls();
   let elementTypeChangedToProp = false;
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
@@ -5126,21 +5183,6 @@ function builderApplyChange(event) {
   if (!state.sceneBuilder) {
     return;
   }
-  const activeSubscene = builderActiveSubscene();
-  if (activeSubscene) {
-    const nameControl = sceneBuilderPanel.querySelector("[data-builder-subscene-name]");
-    if (nameControl) activeSubscene.name = nameControl.value;
-    activeSubscene.prompt_overrides = activeSubscene.prompt_overrides || {};
-    for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-subscene-field]")) {
-      activeSubscene.prompt_overrides[control.dataset.builderSubsceneField] = control.value;
-    }
-    if (activeSubscene.kind === "element") {
-      activeSubscene.setup = activeSubscene.setup || {};
-      for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-element-subscene-field]")) {
-        setPathValue(activeSubscene.setup, control.dataset.builderElementSubsceneField, control.value);
-      }
-    }
-  }
   builderSyncControls();
   const changedElement = builderSelectedElement();
   const changedField = event?.target?.dataset?.builderElementField || "";
@@ -5168,7 +5210,7 @@ function builderApplyChange(event) {
     changedElement.costume = "";
     changedElement.reference_images = [];
   }
-  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea")) {
+  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea") || changedField === "subscene_id") {
     return;
   }
   renderSceneBuilder();
@@ -5454,6 +5496,23 @@ function builderRenderElements() {
   `;
 }
 
+function builderRenderSubsceneElementsSummary() {
+  const activeSubscene = builderActiveSubscene();
+  const members = (state.sceneBuilder.scene_elements || []).filter(
+    (element) => element.subscene_id === activeSubscene?.id,
+  );
+  const rows = members.map((element) => {
+    const placement = builderPlacementForElement(element.id);
+    return `<li><strong>${escapeHtml(element.display_name || element.id)}</strong><small>${escapeHtml(element.element_type || "")} · ${escapeHtml(placement?.position_within_cell || "No position")} · ${escapeHtml(placement?.depth || "No depth")}</small></li>`;
+  }).join("");
+  return `<div class="scene-builder-card">
+    <span class="eyebrow">Subscene contents</span>
+    <h4>Elements rendered in ${escapeHtml(activeSubscene?.name || activeSubscene?.id || "this subscene")}</h4>
+    <p>Element identity, placement, membership, and interactions are full-scene values. Edit them from Full Scene.</p>
+    <ul class="scene-builder-subscene-element-summary">${rows || "<li>No elements are assigned to this subscene.</li>"}</ul>
+  </div>`;
+}
+
 function builderRenderElementEditor() {
   const element = builderSelectedElement();
   if (!element) {
@@ -5689,11 +5748,13 @@ function builderRenderMoreMenu() {
     || Boolean(staleWarning) && !builderAllowsStaleDependencies()
     || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
+  const saveLabel = activeSubscene ? "Save Subscene" : "Save Full Scene";
   return `
     <details class="scene-builder-more">
       <summary><span class="builder-more-desktop-label">More</span><span class="builder-more-responsive-label">Actions</span></summary>
       <div class="scene-builder-menu-panel">
-        <button type="button" class="builder-responsive-action" data-builder-action="save">Save</button>
+        <button type="button" class="builder-responsive-action" data-builder-action="save">${saveLabel}</button>
+        ${activeSubscene ? '<button type="button" class="builder-responsive-action" data-builder-action="cancel-subscene">Cancel Subscene Edits</button>' : ""}
         <button type="button" class="builder-responsive-action primary-action" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
         <button type="button" data-builder-action="continue-from">Continue From…</button>
         <button type="button" data-builder-action="${analysisAction}">Prompt Analysis</button>
@@ -5741,6 +5802,32 @@ function builderRenderDatalists() {
     <datalist id="builder-gaze-list">${builderOptions("gaze").map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
     <datalist id="builder-expression-list">${builderOptions("expression").map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist>
   `;
+}
+
+function builderRenderAnalysisAction() {
+  const analysis = state.scenePromptAnalysis || {};
+  const action = analysis.complete || analysis.pending ? "view-analysis" : "analyze-prompt";
+  const label = analysis.complete ? "View latest analysis" : analysis.pending ? "Check analysis" : "Run analysis";
+  return `<button type="button" class="scene-builder-analysis-action" data-builder-action="${action}">${label}</button>`;
+}
+
+function updateBuilderAnalysisActions() {
+  const analysis = state.scenePromptAnalysis || {};
+  const action = analysis.complete || analysis.pending ? "view-analysis" : "analyze-prompt";
+  const label = analysis.complete ? "View latest analysis" : analysis.pending ? "Check analysis" : "Run analysis";
+  for (const button of sceneBuilderPanel.querySelectorAll('[data-builder-action="analyze-prompt"], [data-builder-action="view-analysis"]')) {
+    button.dataset.builderAction = action;
+    if (button.classList.contains("scene-builder-analysis-action")) button.textContent = label;
+  }
+}
+
+function builderRenderImportStatus() {
+  if (!state.sceneBuilder?.source_provenance) return "";
+  const needsAttention = Boolean((state.sceneBuilderReadiness?.blockers || []).length);
+  return `<span class="scene-builder-import-status">
+    ${needsAttention ? '<span class="status-badge needs-attention">Needs attention</span>' : ""}
+    <button type="button" data-builder-action="candidate-details">Imported candidate details</button>
+  </span>`;
 }
 
 function showSceneCandidateMessage(message, type = "info") {
@@ -6002,7 +6089,6 @@ async function runSceneBuilderInterview() {
           }),
     });
     state.sceneBuilderInterview = payload;
-    await persistSceneBuilderInterviewProgress(payload);
     renderSceneBuilderInterview(payload);
     while (!payload.complete && !(payload.questions || []).length) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -6013,7 +6099,6 @@ async function runSceneBuilderInterview() {
         body: JSON.stringify({ session: payload.session, answers: {} }),
       });
       state.sceneBuilderInterview = payload;
-      await persistSceneBuilderInterviewProgress(payload);
       renderSceneBuilderInterview(payload);
     }
     sceneBuilderInterviewQuestions.querySelector("textarea")?.focus();
@@ -6024,21 +6109,6 @@ async function runSceneBuilderInterview() {
   }
 }
 
-async function persistSceneBuilderInterviewProgress(payload) {
-  if (!payload?.draft || (payload.questions || []).length) return;
-  const response = await fetchJson(
-    `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload.draft),
-    },
-  );
-  state.sceneBuilder = response.document?.data || payload.draft;
-  state.sceneBuilderReadiness = response.document?.readiness || null;
-  updateStoryGitWarning(response.has_story_changes);
-}
-
 async function applySceneBuilderInterview() {
   const draft = state.sceneBuilderInterview?.draft;
   if (!draft) return;
@@ -6047,14 +6117,13 @@ async function applySceneBuilderInterview() {
   state.selectedBuilderPlacementId = draft.placements?.[0]?.id || null;
   renderSceneBuilder();
   sceneBuilderInterviewModal.close();
-  const saved = await saveSceneBuilder(false);
-  if (saved) showSceneBuilderMessage("Scene-Builder Interview applied and saved.", "success");
+  showSceneBuilderMessage("Scene-Builder Interview applied. Save when you are ready to keep these changes.", "success");
 }
 
 function builderRenderTargetControls() {
   const subscenes = state.sceneBuilder.subscenes || [];
   const background = subscenes.find((item) => item.id === "background");
-  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}">${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
+  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""}" aria-label="${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}">${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
   const renderChildren = (parentId, seen = new Set()) => builderTargetChildren(parentId).map((item) => {
     if (seen.has(item.id)) return "";
     const nextSeen = new Set(seen);
@@ -6076,6 +6145,33 @@ function builderRenderTargetControls() {
       : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(activeSubscene.anchor_element_id || "")}">Turn on element sub-render</button>`
     : "";
   return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact">${toggle}${elementToggle}</div></div>`;
+}
+
+async function selectSceneBuilderTarget(targetId) {
+  const currentSubscene = builderActiveSubscene();
+  if (currentSubscene && currentSubscene.id !== targetId && builderTargetIsDirty(currentSubscene.id)) {
+    unsavedChangesMessage.textContent = `Save changes to subscene ${currentSubscene.name || currentSubscene.id} before switching render targets?`;
+    unsavedChangesDialog.returnValue = "cancel";
+    const choice = await dialogResult(unsavedChangesDialog);
+    if (choice === "cancel") return;
+    if (choice === "save") {
+      if (!(await saveSceneBuilder())) return;
+    } else {
+      cancelSceneBuilderSubsceneEdits();
+    }
+  }
+  state.activeBuilderRenderTarget = targetId || "main";
+  state.scenePromptAnalysis = null;
+  const active = builderActiveSubscene();
+  state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !active || item.subscene_id === active.id)?.id || active?.anchor_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
+  state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
+  renderSceneBuilder();
+  try {
+    await loadScenePromptAnalysis(state.activeBuilderRenderTarget);
+    updateBuilderAnalysisActions();
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
 }
 
 function builderRenderTargetStatus() {
@@ -6114,8 +6210,7 @@ function builderRenderTargetStatus() {
 async function relockCurrentSceneBuilderImage() {
   const targetId = state.activeBuilderRenderTarget || "main";
   if (targetId === "main" || !state.selectedStorySlug || !state.selectedSceneSlug) return;
-  const saved = await saveSceneBuilder(true);
-  if (!saved) return;
+  if (!requireSavedSceneBuilder("re-locking the current image")) return;
   try {
     const payload = await fetchJson(
       `/api/render-review/scenes/${encodeURIComponent(state.selectedStorySlug)}/${encodeURIComponent(state.selectedSceneSlug)}/targets/${encodeURIComponent(targetId)}/re-lock-current`,
@@ -6198,30 +6293,41 @@ function renderSceneBuilder() {
     || Boolean(staleWarning) && !builderAllowsStaleDependencies()
     || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
+  const activeTargetLabel = activeSubscene ? `Subscene: ${activeSubscene.name || activeSubscene.id}` : "Full Scene";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
     ${builderRenderDatalists()}
-    ${builderRenderTargetControls()}
-    ${builderRenderTargetStatus()}
-    <div class="scene-builder-toolbar">
-      <div class="scene-builder-title">
-        <span class="eyebrow">Scene Builder</span>
-        <strong>${escapeHtml(scene.name || scene.slug || "Untitled scene")}</strong>
-        <span id="scene-builder-save-state" class="save-state" aria-live="polite"></span>
-      </div>
-      <div class="scene-builder-primary-actions">
-        <button type="button" data-builder-action="interview">${importedCandidate ? "Restart Interview" : "Interview"}</button>
-        <button type="button" class="scene-builder-save" data-builder-action="save">Save</button>
-        <button type="button" class="primary-action scene-builder-render" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
-        ${builderRenderMoreMenu()}
+    <div class="scene-builder-sticky-context">
+      ${builderRenderTargetControls()}
+      <div class="scene-builder-toolbar">
+        <div class="scene-builder-title">
+          <span class="eyebrow">Scene Builder</span>
+          <strong>${escapeHtml(scene.name || scene.slug || "Untitled scene")}</strong>
+          <span class="scene-builder-active-target">Editing ${escapeHtml(activeTargetLabel)}</span>
+          <span id="scene-builder-save-state" class="save-state" aria-live="polite"></span>
+          ${builderRenderImportStatus()}
+        </div>
+        <div class="scene-builder-primary-actions">
+          <button type="button" data-builder-action="interview">${importedCandidate ? "Restart Interview" : "Interview"}</button>
+          ${builderRenderAnalysisAction()}
+          ${activeSubscene ? '<button type="button" data-builder-action="cancel-subscene">Cancel Subscene Edits</button>' : ""}
+          <button type="button" class="scene-builder-save" data-builder-action="save">${activeSubscene ? "Save Subscene" : "Save Full Scene"}</button>
+          <button type="button" class="primary-action scene-builder-render" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
+          ${builderRenderMoreMenu()}
+        </div>
       </div>
     </div>
-    ${builderRenderImportContext()}
+    ${builderRenderTargetStatus()}
     ${builderRenderSectionSwitcher()}
     <div class="scene-builder-grid">
       ${builderPhoneSectionToggle("scene", "Scene")}
       <section id="builder-panel-scene" class="scene-builder-section scene-builder-foundation" data-builder-section-panel="scene" aria-label="Scene foundation">
-        <div class="scene-builder-card scene-builder-story-beat">
+        ${activeSubscene ? `<div class="scene-builder-card scene-builder-story-beat">
+          <span class="eyebrow">Full-scene context</span>
+          <h3>${escapeHtml(scene.name || scene.slug || "Untitled scene")}</h3>
+          <p>${escapeHtml(scene.story_beat || "No story beat set.")}</p>
+          <p class="status-text">Return to Full Scene to edit shared scene values.</p>
+        </div>${builderRenderSubsceneSettings()}` : `<div class="scene-builder-card scene-builder-story-beat">
           <span class="eyebrow">Scene foundation</span>
           <h3>Story Beat</h3>
           <div class="scene-builder-fields">
@@ -6229,24 +6335,22 @@ function renderSceneBuilder() {
             ${builderField("scene.story_beat", "Story Beat — included in prompt", "", true, "textarea")}
           </div>
         </div>
-        ${activeSubscene?.kind === "element" ? "" : `<div class="scene-builder-card">
+        <div class="scene-builder-card">
           <h4>Canvas</h4>
           <div class="scene-builder-fields">
             ${builderField("setup.canvas.orientation", "Orientation", "orientation")}
             ${builderField("setup.canvas.aspect_ratio", "Aspect ratio", "aspect_ratio")}
           </div>
-        </div>`}
-        ${activeSubscene ? builderRenderSubsceneSettings() : builderRenderComposition()}
+        </div>
+        ${builderRenderComposition()}`}
       </section>
       ${builderPhoneSectionToggle("elements", "Elements")}
       <section id="builder-panel-elements" class="scene-builder-section scene-builder-elements" data-builder-section-panel="elements" aria-label="Element workspace">
-        ${builderRenderElements()}
-        ${builderRenderElementWorkspace()}
+        ${activeSubscene ? builderRenderSubsceneElementsSummary() : `${builderRenderElements()}${builderRenderElementWorkspace()}`}
       </section>
       ${builderPhoneSectionToggle("dialogue", "Dialogue")}
       <section id="builder-panel-dialogue" class="scene-builder-section scene-builder-relationships" data-builder-section-panel="dialogue" aria-label="Dialogue and relationships">
-        ${activeSubscene ? `<div class="scene-builder-card"><h4>Dialogue</h4><p>Dialogue is rendered only in the Full Scene.</p></div>` : builderRenderDialogueEditor()}
-        ${activeSubscene ? builderRenderInteractions(true) : builderRenderInteractions()}
+        ${activeSubscene ? `<div class="scene-builder-card"><h4>Dialogue and interactions</h4><p>These are shared full-scene values. Return to Full Scene to edit them.</p></div>` : `${builderRenderDialogueEditor()}${builderRenderInteractions()}`}
       </section>
       ${builderPhoneSectionToggle("environment", "Environment")}
       <section id="builder-panel-environment" class="scene-builder-section scene-builder-environment" data-builder-section-panel="environment" aria-label="Environment">
@@ -6254,7 +6358,7 @@ function renderSceneBuilder() {
       </section>
       ${builderPhoneSectionToggle("advanced", "Advanced")}
       <section id="builder-panel-advanced" class="scene-builder-section scene-builder-advanced-panel" data-builder-section-panel="advanced" aria-label="Advanced overrides">
-        ${builderRenderOverrides()}
+        ${activeSubscene ? '<div class="scene-builder-card"><h4>Advanced overrides</h4><p>Advanced overrides apply to the full scene. Return to Full Scene to edit them.</p></div>' : builderRenderOverrides()}
       </section>
     </div>
   `;
@@ -6282,7 +6386,22 @@ function builderRenderImportContext() {
   `;
 }
 
-async function openSceneBuilder() {
+function openSceneBuilderContext() {
+  const content = builderRenderImportContext();
+  if (!content) return;
+  sceneBuilderContextContent.innerHTML = content;
+  sceneBuilderContextDialog.showModal();
+}
+
+async function loadScenePromptAnalysis(renderTargetId = state.activeBuilderRenderTarget || "main") {
+  const analysis = await fetchJson(
+    `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(renderTargetId)}`,
+  );
+  if (state.activeBuilderRenderTarget === renderTargetId) state.scenePromptAnalysis = analysis;
+  return analysis;
+}
+
+async function openSceneBuilder(preferredRenderTargetId = "main") {
   if (!state.selectedStorySlug || !state.selectedSceneSlug) {
     showSceneBuilderMessage("Select a scene first.", "error");
     return;
@@ -6304,11 +6423,14 @@ async function openSceneBuilder() {
     state.sceneBuilderReadiness = document.readiness || null;
     state.sceneBuilderOptions = payload.options || {};
     state.sceneBuilderReferences = payload.references || [];
-    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis`);
+    state.activeBuilderRenderTarget = preferredRenderTargetId === "main"
+      || (state.sceneBuilder.subscenes || []).some((item) => item.id === preferredRenderTargetId)
+      ? preferredRenderTargetId
+      : "main";
+    await loadScenePromptAnalysis(state.activeBuilderRenderTarget);
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
-    state.activeBuilderRenderTarget = "main";
     state.builderAllowStaleTarget = "";
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes();
@@ -6332,28 +6454,39 @@ async function activateSceneBuilderPage() {
   await activatePage("scene-builder");
 }
 
-async function saveSceneBuilder(autosave = false) {
+async function saveSceneBuilder() {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
     return;
   }
   builderSyncControls();
+  const targetId = state.activeBuilderRenderTarget || "main";
+  const activeSubscene = builderActiveSubscene();
   try {
-    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`, {
+    const endpoint = activeSubscene
+      ? `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/subscenes/${encodeURIComponent(targetId)}`
+      : `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`;
+    const payload = await fetchJson(endpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.sceneBuilder),
+      body: JSON.stringify(activeSubscene || state.sceneBuilder),
     });
-    state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    if (activeSubscene) {
+      const persistedSubscene = builderSubsceneFromData(payload.document?.data, targetId);
+      replaceBuilderSubscene(state.sceneBuilder, targetId, persistedSubscene);
+      const baseline = savedSceneBuilderData();
+      replaceBuilderSubscene(baseline, targetId, persistedSubscene);
+      state.savedBaselines.sceneBuilder = JSON.stringify(baseline);
+    } else {
+      state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+      state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    }
     state.sceneBuilderRenderTargets = payload.document?.render_targets || state.sceneBuilderRenderTargets;
     state.sceneBuilderReadiness = payload.document?.readiness || null;
     state.sceneBuilder._validation_warnings = payload.document?.validation_warnings || state.sceneBuilder._validation_warnings || [];
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
-    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     updateDirtyIndicators();
-    if (!autosave) {
-      showSceneBuilderMessage(payload.message || "Scene Builder saved.", "success");
-    }
+    showSceneBuilderMessage(payload.message || `${activeSubscene ? "Subscene" : "Scene Builder"} saved.`, "success");
     return payload;
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
@@ -6394,10 +6527,7 @@ async function continueSceneBuilderFrom() {
   if (!sourceSceneSlug) {
     return;
   }
-  const saved = await saveSceneBuilder(true);
-  if (!saved) {
-    return;
-  }
+  if (!requireSavedSceneBuilder("continuing from another scene")) return;
   try {
     const params = new URLSearchParams({ source_scene_slug: sourceSceneSlug });
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/continue-from?${params.toString()}`, {
@@ -6412,8 +6542,28 @@ async function continueSceneBuilderFrom() {
   }
 }
 
+function cancelSceneBuilderSubsceneEdits() {
+  const targetId = state.activeBuilderRenderTarget || "main";
+  if (targetId === "main") return;
+  const savedSubscene = builderSubsceneFromData(savedSceneBuilderData(), targetId);
+  if (!savedSubscene) return;
+  replaceBuilderSubscene(state.sceneBuilder, targetId, savedSubscene);
+  renderSceneBuilder();
+  updateDirtyIndicators();
+  showSceneBuilderMessage("Subscene edits canceled. Other Scene Builder changes were left untouched.", "info");
+}
+
+function requireSavedSceneBuilder(action) {
+  builderSyncControls();
+  if (!builderTargetIsDirty()) return true;
+  updateDirtyIndicators();
+  showSceneBuilderMessage(`Save ${builderActiveSubscene() ? "this subscene" : "the full scene"} before ${action}.`, "info");
+  return false;
+}
+
 async function setBackgroundSubsceneEnabled(enabled) {
   if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  if (!requireSavedSceneBuilder(`${enabled ? "enabling" : "disabling"} the background subscene`)) return;
   const endpoint = enabled
     ? `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/background/enable`
     : `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/background/disable`;
@@ -6427,6 +6577,7 @@ async function setBackgroundSubsceneEnabled(enabled) {
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    updateDirtyIndicators();
     showSceneBuilderMessage(payload.message, "success");
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
@@ -6436,7 +6587,7 @@ async function setBackgroundSubsceneEnabled(enabled) {
 async function enableSelectedElementSubscene(elementId = "") {
   const element = (state.sceneBuilder?.scene_elements || []).find((item) => item.id === elementId) || builderSelectedElement();
   if (!element || !state.selectedStorySlug || !state.selectedSceneSlug) return;
-  if (await saveSceneBuilder(true) === null) return;
+  if (!requireSavedSceneBuilder("creating an element subscene")) return;
   try {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/elements/${encodeURIComponent(element.id)}/enable`, { method: "POST" });
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
@@ -6447,6 +6598,7 @@ async function enableSelectedElementSubscene(elementId = "") {
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    updateDirtyIndicators();
     showSceneBuilderMessage(payload.message, "success");
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
@@ -6455,6 +6607,7 @@ async function enableSelectedElementSubscene(elementId = "") {
 
 async function disableSceneSubscene(targetId) {
   if (!targetId || !state.selectedStorySlug || !state.selectedSceneSlug) return;
+  if (!requireSavedSceneBuilder("disabling this subscene")) return;
   try {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes/${encodeURIComponent(targetId)}/disable`, { method: "POST" });
     state.sceneBuilder = payload.document?.data || state.sceneBuilder;
@@ -6465,6 +6618,7 @@ async function disableSceneSubscene(targetId) {
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    updateDirtyIndicators();
     showSceneBuilderMessage(payload.message, "success");
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
@@ -6475,10 +6629,7 @@ async function renderSceneBuilderScene() {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
     return;
   }
-  const saved = await saveSceneBuilder(true);
-  if (!saved) {
-    return;
-  }
+  if (!requireSavedSceneBuilder("staging a render")) return;
   const targetId = state.activeBuilderRenderTarget || "main";
   const params = new URLSearchParams();
   if (builderAllowsStaleDependencies(targetId)) params.set("allow_stale_dependencies", "true");
@@ -6490,18 +6641,17 @@ async function renderSceneBuilderScene() {
       { method: "POST" },
     );
     const askId = payload.task?.ask_id || null;
-    await activatePage("render-console", { skipAutosave: true });
-    await loadRenderConsoleTasks(askId);
+    await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
 }
 
 async function analyzeScenePrompt() {
-  const saved = await saveSceneBuilder(true);
-  if (!saved) return;
+  if (!requireSavedSceneBuilder("running prompt analysis")) return;
+  const targetId = state.activeBuilderRenderTarget || "main";
   try {
-    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis`, { method: "POST" });
+    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(targetId)}`, { method: "POST" });
     renderSceneBuilder();
     showSceneBuilderMessage(state.scenePromptAnalysis.message || "AI prompt analysis queued.", "success");
   } catch (error) {
@@ -6510,8 +6660,9 @@ async function analyzeScenePrompt() {
 }
 
 async function viewScenePromptAnalysis() {
+  const targetId = state.activeBuilderRenderTarget || "main";
   if (state.scenePromptAnalysis?.complete && state.scenePromptAnalysis.result_path) {
-    openPromptAnalysisDialog(state.selectedStorySlug, state.selectedSceneSlug);
+    openPromptAnalysisDialog(state.selectedStorySlug, state.selectedSceneSlug, targetId);
     return;
   }
   if (!state.scenePromptAnalysis?.pending) {
@@ -6519,7 +6670,7 @@ async function viewScenePromptAnalysis() {
     return;
   }
   try {
-    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/harvest`, { method: "POST" });
+    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/harvest?render_target_id=${encodeURIComponent(targetId)}`, { method: "POST" });
     renderSceneBuilder();
     showSceneBuilderMessage(state.scenePromptAnalysis.message || "AI answers harvested.", "success");
   } catch (error) {
@@ -6612,17 +6763,16 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     state.selectedBuilderElementId = target.dataset.builderSelectElement;
     state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || state.selectedBuilderPlacementId;
     renderSceneBuilder();
-    builderLoadSelectedElementCostumes().then(() => renderSceneBuilder()).catch((error) => showSceneBuilderMessage(error.message, "error"));
+    const selectedElement = builderSelectedElement();
+    const costumeKey = `${selectedElement?.character || ""}\n${selectedElement?.phase || ""}`;
+    if (selectedElement?.resource_type === "Character" && selectedElement.character && selectedElement.phase && !state.builderCostumesByCharacterPhase[costumeKey]) {
+      builderLoadSelectedElementCostumes(selectedElement).then(() => renderSceneBuilder()).catch((error) => showSceneBuilderMessage(error.message, "error"));
+    }
   } else {
     const action = target.dataset.builderAction;
     if (action === "builder-section") setBuilderResponsiveSection(target.dataset.builderSection);
     if (action === "select-render-target") {
-      builderSyncControls();
-      state.activeBuilderRenderTarget = target.dataset.renderTargetId || "main";
-      const active = builderActiveSubscene();
-      state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => !active || item.subscene_id === active.id)?.id || active?.anchor_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
-      state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
-      renderSceneBuilder();
+      selectSceneBuilderTarget(target.dataset.renderTargetId || "main");
     }
     if (action === "toggle-context-elements") {
       state.showBuilderContextElements = !state.showBuilderContextElements;
@@ -6636,13 +6786,10 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     }
     if (action === "enable-element-subscene") enableSelectedElementSubscene(target.dataset.elementId || "");
     if (action === "open-element-subscene") {
-      state.activeBuilderRenderTarget = target.dataset.renderTargetId || "main";
-      const active = builderActiveSubscene();
-      state.selectedBuilderElementId = state.sceneBuilder.scene_elements?.find((item) => item.subscene_id === active?.id)?.id || active?.anchor_element_id || null;
-      state.selectedBuilderPlacementId = builderPlacementForElement(state.selectedBuilderElementId)?.id || null;
-      renderSceneBuilder();
+      selectSceneBuilderTarget(target.dataset.renderTargetId || "main");
     }
     if (action === "interview") restartSceneBuilderInterview();
+    if (action === "candidate-details") openSceneBuilderContext();
     if (action === "continue-from") openBuilderContinueDialog();
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
@@ -6672,7 +6819,8 @@ sceneBuilderPanel.addEventListener("click", (event) => {
       if (action === "composition-down" && index < composition.left_to_right.length - 1) [composition.left_to_right[index + 1], composition.left_to_right[index]] = [composition.left_to_right[index], composition.left_to_right[index + 1]];
       renderSceneBuilder();
     }
-    if (action === "save") saveSceneBuilder(false);
+    if (action === "save") saveSceneBuilder();
+    if (action === "cancel-subscene") cancelSceneBuilderSubsceneEdits();
     if (action === "export") exportSceneBuilderMarkdown();
     if (action === "allow-stale-dependencies") {
       state.builderAllowStaleTarget = state.activeBuilderRenderTarget || "main";
@@ -7592,7 +7740,7 @@ function renderPromptAnalysisTaskList() {
     action.type = "button";
     action.textContent = task.pending ? "Analysis running" : "View analysis";
     action.disabled = Boolean(task.pending);
-    action.addEventListener("click", () => openPromptAnalysisDialog(task.story_slug, task.scene_slug));
+    action.addEventListener("click", () => openPromptAnalysisDialog(task.story_slug, task.scene_slug, task.render_target_id || "main"));
     row.append(label, action);
     promptAnalysisTaskList.append(row);
   }
@@ -7858,7 +8006,7 @@ async function openSelectedSourceEditor() {
     const manifest = state.promptReviewDetail?.manifest || {};
     state.selectedStorySlug = manifest.story_slug || null;
     state.selectedSceneSlug = manifest.scene_slug || null;
-    await activatePage("scene-builder", { skipAutosave: true });
+    await activatePage("scene-builder", { skipAutosave: true, renderTargetId: manifest.render_target_id || "main" });
     return;
   }
   await openSourceEditorForSource(state.selectedSource, showPromptMessage);
@@ -11018,6 +11166,13 @@ promptAnalysisDialog.addEventListener("click", (event) => {
 promptAnalysisDialog.addEventListener("close", () => {
   promptAnalysisFrame.removeAttribute("src");
 });
+sceneBuilderContextClose.addEventListener("click", () => sceneBuilderContextDialog.close());
+sceneBuilderContextDialog.addEventListener("click", (event) => {
+  if (event.target === sceneBuilderContextDialog) sceneBuilderContextDialog.close();
+});
+sceneBuilderContextDialog.addEventListener("close", () => {
+  sceneBuilderContextContent.replaceChildren();
+});
 onboardingSaveDraft.addEventListener("click", saveOnboardingDraft);
 onboardingCopyGptPrompt.addEventListener("click", () => copyText(onboardingGptPrompt.value, "ChatGPT prompt copied."));
 onboardingCharacter.addEventListener("input", () => {
@@ -11318,13 +11473,12 @@ promptReviewSceneBuilder.addEventListener("click", async () => {
   if (!scene) return;
   state.selectedStorySlug = scene.storySlug;
   state.selectedSceneSlug = scene.sceneSlug;
-  await activatePage("scene-builder", { skipAutosave: true });
+  await activatePage("scene-builder", { skipAutosave: true, renderTargetId: scene.renderTargetId });
 });
 promptReviewRenderConsole.addEventListener("click", async () => {
   const askId = state.promptReviewDetail?.task?.ask_id;
   if (!askId) return;
-  await activatePage("render-console", { skipAutosave: true });
-  await loadRenderConsoleTasks(askId);
+  await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
 });
 copyCondensedButton.addEventListener("click", () => copyText(condensedText.value, "Condensed prompt copied."));
 analyzePromptButton.addEventListener("click", analyzePromptReview);
@@ -11378,8 +11532,8 @@ settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpoint
 refreshComfyuiCheckpoints.addEventListener("click", refreshComfyuiCheckpointOptions);
 settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions);
 settingLocalRenderBackend.addEventListener("change", syncLocalRenderBackendPanels);
-sceneBuilderPrevious.addEventListener("click", () => navigateSceneBuilder(-1));
-sceneBuilderNext.addEventListener("click", () => navigateSceneBuilder(1));
+sceneBuilderPrevious.addEventListener("click", () => runGuardedTransition(() => navigateSceneBuilder(-1)));
+sceneBuilderNext.addEventListener("click", () => runGuardedTransition(() => navigateSceneBuilder(1)));
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsoleSceneBuilder.addEventListener("click", async () => {
@@ -11387,13 +11541,12 @@ renderConsoleSceneBuilder.addEventListener("click", async () => {
   if (!manifest.story_slug || !manifest.scene_slug) return;
   state.selectedStorySlug = manifest.story_slug;
   state.selectedSceneSlug = manifest.scene_slug;
-  await activatePage("scene-builder", { skipAutosave: true });
+  await activatePage("scene-builder", { skipAutosave: true, renderTargetId: manifest.render_target_id || "main" });
 });
 renderConsoleReviewPrompt.addEventListener("click", async () => {
   const askId = state.renderConsoleDetail?.task?.ask_id;
   if (!askId) return;
-  await activatePage("prompt-review", { skipAutosave: true });
-  await loadPromptReviewTasks(askId);
+  await activatePage("prompt-review", { skipAutosave: true, preferredAskId: askId });
 });
 renderConsoleCopyPrompt.addEventListener("click", async () => {
   await writeClipboardText(state.renderConsoleDetail?.prompt || "");

@@ -220,6 +220,7 @@ class SceneBuilderInterviewService:
             raise SceneBuilderInterviewError("The local model returned no Scene Builder result.")
         self._apply_result(draft, phase["key"], result)
         questions = self._clean_questions(response.get("questions"))
+        questions = self._remove_answered_questions(questions, state.get("history"))
         state["questions"] = questions
         if not questions:
             state["phase_index"] = phase_index + 1
@@ -279,6 +280,28 @@ class SceneBuilderInterviewService:
                 "question": str(item["question"]).strip(),
             })
         return cleaned[:3]
+
+    def _remove_answered_questions(self, questions: list[dict[str, str]], history: Any) -> list[dict[str, str]]:
+        answered_ids: set[str] = set()
+        answered_text: set[str] = set()
+        for turn in history or []:
+            if not isinstance(turn, dict):
+                continue
+            answers = turn.get("answers") if isinstance(turn.get("answers"), dict) else {}
+            for item in turn.get("questions") or []:
+                if not isinstance(item, dict) or item.get("id") not in answers:
+                    continue
+                answered_ids.add(str(item.get("id") or "").strip())
+                answered_text.add(self._normalized_question(item.get("question")))
+        return [
+            item for item in questions
+            if item["id"] not in answered_ids
+            and self._normalized_question(item["question"]) not in answered_text
+        ]
+
+    @staticmethod
+    def _normalized_question(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
 
     def _apply_result(self, draft: dict, key: str, result: dict) -> None:
         draft.setdefault("scene", {})

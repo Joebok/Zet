@@ -210,36 +210,44 @@ test("@desktop-smoke workspace shell switches adaptive context and remembers the
 
 
 
-test("@desktop-smoke story changes autosave before selection changes", async ({ page }) => {
+test("@desktop-smoke story changes require explicit save and guard selection changes", async ({ page }) => {
   await openPage(page, "stories");
   const rows = page.locator("#story-table .row-selection-button");
   await expect(rows).toHaveCount(3);
   await rows.nth(0).click();
   const editor = page.locator("#story-text");
-  await editor.fill("Title: `[Alpha Story]`\n\nAutosaved browser change.\n");
+  await editor.fill("Title: `[Alpha Story]`\n\nUnsaved browser change.\n");
   await expect(page.locator("#story-save-state")).toContainText("Dirty");
   await rows.nth(1).click();
-  await expect(page.locator("#story-save-state")).toContainText("Saved");
+  const dialog = page.locator("#unsaved-changes-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator("#story-table tr.selected")).toContainText("Alpha Story");
+  await rows.nth(1).click();
+  await dialog.getByRole("button", { name: "Discard" }).click();
   const saved = await page.request.get("/api/stories/Alpha-Story");
-  expect((await saved.json()).document.text).toContain("Autosaved browser change.");
+  expect((await saved.json()).document.text).not.toContain("Unsaved browser change.");
 });
 
 
 
-test("@desktop-smoke scene and Scene Builder changes autosave on navigation", async ({ page }) => {
+test("@desktop-smoke scene and Scene Builder changes require explicit save", async ({ page }) => {
   await openPage(page, "scenes");
   const rows = page.locator("#scene-table .row-selection-button");
   await expect(rows).toHaveCount(2);
   const initialSceneSlug = await page.locator("#scene-table tr.selected").getAttribute("data-scene-slug");
   const initialSceneText = await page.locator("#scene-text").inputValue();
   const initialSceneTitle = initialSceneText.split("\n", 1)[0];
-  await page.locator("#scene-text").fill(`${initialSceneTitle}\n\nAutosaved scene change.\n`);
+  await page.locator("#scene-text").fill(`${initialSceneTitle}\n\nUnsaved scene change.\n`);
   await page.locator("#scene-table tr:not(.selected) .row-selection-button").click();
+  const dialog = page.locator("#unsaved-changes-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Discard" }).click();
   await expect
     .poll(() => page.locator("#scene-table tr.selected").getAttribute("data-scene-slug"))
     .not.toBe(initialSceneSlug);
   const saved = await page.request.get(`/api/stories/Alpha-Story/scenes/${initialSceneSlug}`);
-  expect((await saved.json()).document.text).toContain("Autosaved scene change.");
+  expect((await saved.json()).document.text).not.toContain("Unsaved scene change.");
 
   const selectedSceneSlug = await page.locator("#scene-table tr.selected").getAttribute("data-scene-slug");
   await page.route(`**/api/stories/Alpha-Story/scenes/${selectedSceneSlug}`, async (route) => {
@@ -250,11 +258,13 @@ test("@desktop-smoke scene and Scene Builder changes autosave on navigation", as
     }
   });
   await page.locator("#scene-text").fill("Scene save must fail.");
-  await page.locator("#scene-table tr:not(.selected) .row-selection-button").click();
+  await page.locator("#scene-save").click();
   await expect(page.locator("#scene-save-state")).toContainText("Error");
   await expect(page.locator("#scene-table tr.selected")).toHaveAttribute("data-scene-slug", selectedSceneSlug);
   await page.unroute(`**/api/stories/Alpha-Story/scenes/${selectedSceneSlug}`);
+  const sceneSaved = page.waitForResponse((response) => response.url().endsWith(`/api/stories/Alpha-Story/scenes/${selectedSceneSlug}`) && response.request().method() === "PUT" && response.ok());
   await page.locator("#scene-save").click();
+  await sceneSaved;
 
   await rows.nth(0).click();
   const referencesRefreshed = page.waitForResponse((response) => response.url().includes("/api/scene-image-picker"));
@@ -262,12 +272,18 @@ test("@desktop-smoke scene and Scene Builder changes autosave on navigation", as
   await referencesRefreshed;
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
   const storyBeat = page.locator('[data-builder-field="scene.story_beat"]');
-  await storyBeat.fill("Autosaved builder beat.");
+  const originalStoryBeat = await storyBeat.inputValue();
+  await storyBeat.fill("Unsaved builder beat.");
   await page.locator("button[data-page='stories']").click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await page.locator("button[data-page='stories']").click();
+  await dialog.getByRole("button", { name: "Discard" }).click();
   await expect(page.locator("#stories-page")).toHaveClass(/active/);
   await openPage(page, "scenes");
   await page.locator("#scene-builder-open").click();
-  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toHaveValue("Autosaved builder beat.");
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toHaveValue(originalStoryBeat);
   await page.route("**/api/stories/*/scenes/*/builder", async (route) => {
     if (route.request().method() === "PUT") {
       await route.fulfill({ status: 500, contentType: "application/json", body: '{"detail":"Seeded builder save failure"}' });
@@ -276,10 +292,41 @@ test("@desktop-smoke scene and Scene Builder changes autosave on navigation", as
     }
   });
   await page.locator('[data-builder-field="scene.story_beat"]').fill("Builder save must fail.");
-  await page.locator("button[data-page='stories']").click();
+  await page.locator("[data-builder-action='save']").first().click();
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
   await expect(page.locator("#scene-builder-message")).toContainText("Seeded builder save failure");
   await page.unroute("**/api/stories/*/scenes/*/builder");
+});
+
+test("@desktop-smoke Scene Builder interview applies locally without saving", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toBeVisible();
+  const draft = await page.evaluate(() => structuredClone(state.sceneBuilder));
+  draft.scene.story_beat = "Interview draft beat";
+  let builderPutCount = 0;
+  page.on("request", (request) => {
+    if (request.method() === "PUT" && request.url().endsWith("/builder")) builderPutCount += 1;
+  });
+  await page.route("**/builder/interview", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ session: "browser-test", complete: true, total_phases: 1, questions: [], draft }),
+    });
+  });
+
+  await page.getByRole("button", { name: "Interview", exact: true }).click();
+  await page.locator("#scene-builder-interview-narrative").fill("A concise scene description.");
+  await page.locator("#scene-builder-interview-next").click();
+  await expect(page.locator("#scene-builder-interview-apply")).toBeVisible();
+  await page.locator("#scene-builder-interview-apply").click();
+
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toHaveValue("Interview draft beat");
+  await expect(page.locator("#scene-builder-save-state")).toHaveText("Dirty");
+  expect(builderPutCount).toBe(0);
+  await page.locator("button[data-page='stories']").click();
+  await expect(page.locator("#unsaved-changes-dialog")).toBeVisible();
 });
 
 
@@ -447,17 +494,48 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   await page.getByRole("button", { name: "Use background sub-render" }).click();
   await enabled;
   await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
-  await expect(page.locator(".scene-builder-element-row.context-only")).toContainText("Hero");
-  await expect(page.locator(".scene-builder-element-row:not(.context-only)")).toContainText("Hall");
+  await expect(page.locator(".scene-builder-active-target")).toHaveText("Editing Subscene: Background");
+  await expect(page.locator(".scene-builder-subscene-element-summary")).toContainText("Hall");
+  await expect(page.locator(".scene-builder-subscene-element-summary")).not.toContainText("Hero");
 
-  await page.locator("[data-builder-action='toggle-context-elements']").uncheck();
-  await expect(page.locator(".scene-builder-element-list")).not.toContainText("Hero");
-  await page.locator("[data-builder-action='toggle-context-elements']").check();
-  await page.locator(".scene-builder-element-row").filter({ hasText: "Hero" }).click();
-  await page.locator("[data-builder-element-field='subscene_id']").selectOption("background");
-  await expect(page.locator(".scene-builder-element-row.context-only")).toHaveCount(0);
+  const stagedForConsole = page.waitForResponse((response) => response.url().includes("/render-targets/background/stage-render") && response.ok());
+  await page.locator(".scene-builder-render").first().click();
+  await stagedForConsole;
+  await expect(page.locator("#render-console-page")).toHaveClass(/active/);
+  const returnedFromConsole = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "GET" && response.ok());
+  await page.locator("#render-console-scene-builder").click();
+  await returnedFromConsole;
+  await expect(page.locator("#scene-builder-open")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
+
+  const stagedForPrompt = page.waitForResponse((response) => response.url().includes("/render-targets/background/stage-render") && response.ok());
+  await page.locator(".scene-builder-render").first().click();
+  await stagedForPrompt;
+  await page.locator("#render-console-review-prompt").click();
+  await expect(page.locator("#prompt-review-page")).toHaveClass(/active/);
+  const returnedFromPrompt = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "GET" && response.ok());
+  await page.locator("#prompt-review-scene-builder").click();
+  await returnedFromPrompt;
+  await expect(page.locator("#scene-builder-open")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect.poll(() => page.locator(".scene-builder-sticky-context").evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await page.getByRole("button", { name: "Full Scene", exact: true }).click();
+  await expect(page.locator(".scene-builder-active-target")).toHaveText("Editing Full Scene");
+  await page.locator(".scene-builder-element-row").filter({ hasText: "Hero" }).evaluate((element) => element.click());
+  await page.locator("[data-builder-element-field='subscene_id']").evaluate((select) => {
+    select.value = "background";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.locator("[data-builder-element-field='subscene_id']")).toHaveValue("background");
+  await expect(page.locator("#scene-builder-save-state")).toContainText("Dirty");
+  const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT" && response.ok());
+  await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
+  await fullSceneSaved;
+
   await expect(page.locator(".scene-builder-render").first()).toBeDisabled();
   const disabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/background/disable") && response.ok());
   await page.getByRole("button", { name: "Turn off background sub-render" }).click();
@@ -492,16 +570,94 @@ test("@desktop-smoke Scene Builder creates nested element render targets", async
   await expect(page.locator(".scene-builder-target-breadcrumb")).toHaveText("Full Scene › Travelers");
   await expect(page.getByText("Target element: Travelers", { exact: true })).toBeVisible();
 
+  const travelersTargetId = await page.getByRole("button", { name: "Travelers", exact: true }).getAttribute("data-render-target-id");
+  await page.getByRole("button", { name: "Full Scene", exact: true }).click();
   await page.getByRole("button", { name: "Add Element" }).click();
   await page.locator("#builder-element-resource-type").selectOption("Scene-Only");
   await page.locator("#builder-element-scene-name").fill("Rescued travelers");
   await page.locator("#builder-element-add").click();
-  await expect(page.locator("[data-builder-element-field='subscene_id']")).not.toHaveValue("");
+  await page.locator("[data-builder-element-field='subscene_id']").selectOption(travelersTargetId);
+  const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT" && response.ok());
+  await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
+  await fullSceneSaved;
+  await expect(page.locator("#scene-builder-save-state")).toHaveText("Saved");
   await page.locator(".scene-builder-element-menu summary").click();
   const nested = page.waitForResponse((response) => response.url().includes("/subscenes/elements/") && response.url().endsWith("/enable") && response.ok());
   await page.getByRole("button", { name: "Turn into sub-scene" }).click();
   await nested;
   await expect(page.locator(".scene-builder-target-breadcrumb")).toContainText("Full Scene › Travelers › Rescued travelers");
+});
+
+test("@desktop-smoke subscene save and cancel are scoped to the active target", async ({ page }) => {
+  await openPage(page, "scenes");
+  const storySlug = await page.locator("#header-story-select").inputValue();
+  const sceneSlug = await page.locator("#header-scene-select").inputValue();
+  const detail = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const data = (await detail.json()).document.data;
+  data.subscenes = [];
+  data.scene.story_beat = "Persisted story beat";
+  data.scene_elements = [
+    { id: "hall", display_name: "Hall", resource_type: "Scene-Only", element_type: "Backdrop", fallback_visual_description: "stone hall", subscene_id: "" },
+  ];
+  data.placements = [
+    { id: "hall-placement", scene_element_id: "hall", position_within_cell: "", depth: "background" },
+  ];
+  expect((await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data })).ok()).toBe(true);
+  expect((await page.request.post(`/api/stories/${storySlug}/scenes/${sceneSlug}/subscenes/background/enable`)).ok()).toBe(true);
+
+  await page.locator("#scene-builder-open").click();
+  await page.locator('[data-builder-field="scene.story_beat"]').fill("Unsaved full-scene beat");
+  await page.getByRole("button", { name: "Background", exact: true }).click();
+  const focalPoint = page.locator('[data-builder-subscene-field="focal_point"]');
+  await focalPoint.fill("Distant ruined tower");
+  const scopedSave = page.waitForRequest((request) => request.url().endsWith("/builder/subscenes/background") && request.method() === "PUT");
+  await page.getByRole("button", { name: "Save Subscene", exact: true }).click();
+  const saveRequest = await scopedSave;
+  expect((await saveRequest.postDataJSON()).id).toBe("background");
+  expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
+  await expect(page.locator("#scene-builder-save-state")).toContainText("other changes dirty");
+
+  const persisted = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const persistedData = (await persisted.json()).document.data;
+  expect(persistedData.scene.story_beat).toBe("Persisted story beat");
+  expect(persistedData.subscenes.find((item) => item.id === "background").prompt_overrides.focal_point).toBe("Distant ruined tower");
+
+  await focalPoint.fill("Wrong target edit");
+  await page.getByRole("button", { name: "Cancel Subscene Edits", exact: true }).click();
+  await expect(focalPoint).toHaveValue("Distant ruined tower");
+  expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
+});
+
+test("@desktop-smoke imported candidate context and prompt analysis use side panels", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-builder-panel .scene-builder-toolbar")).toBeVisible();
+  await page.evaluate(() => {
+    state.sceneBuilder.source_provenance = {
+      source_type: "scene_candidate_markdown",
+      candidate_id: "adventure-log-entry",
+      constraints: {
+        exact_details: ["Keep the cracked lantern"],
+        continuity_requirements: ["The party remains wet from the storm"],
+      },
+    };
+    state.sceneBuilderReadiness = { status: "needs_attention", blockers: ["Resolve the missing guide"] };
+    renderSceneBuilder();
+  });
+  await expect(page.locator(".scene-builder-sticky-context .status-badge")).toHaveText("Needs attention");
+  await expect(page.locator("#scene-builder-panel > .scene-builder-card").filter({ hasText: "Imported candidate" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Imported candidate details" }).click();
+  await expect(page.locator("#scene-builder-context-dialog")).toBeVisible();
+  await expect(page.locator("#scene-builder-context-content")).toContainText("Keep the cracked lantern");
+  await page.locator("#scene-builder-context-close").click();
+
+  const storySlug = await page.locator("#header-story-select").inputValue();
+  const sceneSlug = await page.locator("#header-scene-select").inputValue();
+  await page.evaluate(({ storySlug, sceneSlug }) => openPromptAnalysisDialog(storySlug, sceneSlug, "background"), { storySlug, sceneSlug });
+  await expect(page.locator("#prompt-analysis-dialog")).toBeVisible();
+  await expect(page.locator("#prompt-analysis-frame")).toHaveAttribute("src", /render_target_id=background/);
+  expect(await page.locator("#prompt-analysis-dialog").evaluate((element) => Math.abs(element.getBoundingClientRect().right - window.innerWidth) <= 20)).toBe(true);
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

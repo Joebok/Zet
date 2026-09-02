@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260825-config-tools">
+  <link rel="stylesheet" href="/static/zet.css?v=20260830-scene-builder-usability">
 </head>
 <body>
   <header class="app-header">
@@ -1034,6 +1034,15 @@
           </table>
         </div>
       </dialog>
+      <dialog id="scene-builder-context-dialog" class="side-panel-dialog scene-builder-context-dialog" aria-labelledby="scene-builder-context-title">
+        <div class="side-panel-dialog-content">
+          <div class="review-header">
+            <h2 id="scene-builder-context-title">Imported Candidate</h2>
+            <button id="scene-builder-context-close" type="button">Close</button>
+          </div>
+          <div id="scene-builder-context-content"></div>
+        </div>
+      </dialog>
     </section>
 
     <section id="manifest-page" class="page">
@@ -1919,7 +1928,7 @@ Add prompt language here.
         <textarea id="todo-text" spellcheck="false"></textarea>
       </form>
     </dialog>
-    <dialog id="prompt-analysis-dialog" class="prompt-analysis-dialog" aria-labelledby="prompt-analysis-title">
+    <dialog id="prompt-analysis-dialog" class="prompt-analysis-dialog side-panel-dialog" aria-labelledby="prompt-analysis-title">
       <div class="prompt-analysis-dialog-content">
         <div class="review-header">
           <h2 id="prompt-analysis-title">Prompt Analysis</h2>
@@ -1951,6 +1960,6 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260825-config-tools"></script>
+  <script src="/static/zet.js?v=20260830-scene-builder-usability"></script>
 </body>
 </html>

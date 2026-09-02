@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 import tempfile
@@ -646,6 +647,35 @@ ink wash
             disabled_main = service.stage_scene_render("Demo", "Opening")
             disabled_ir = json.loads((Path(disabled_main.pipeline_path) / "Scene_Render_IR.json").read_text(encoding="utf-8"))
             self.assertEqual({"hall", "hero"}, {item["id"] for item in disabled_ir["elements"]})
+
+    def test_subscene_save_preserves_full_scene_and_other_subscenes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene"]["story_beat"] = "Keep this full-scene edit."
+            data["scene_elements"] = [
+                {"id": "detail-anchor", "display_name": "Detail anchor", "element_type": "Prop", "subscene_id": ""},
+            ]
+            data["subscenes"] = [
+                {"id": "background", "name": "Background", "kind": "background", "enabled": True, "prompt_overrides": {}},
+                {"id": "detail", "name": "Detail", "kind": "element", "anchor_element_id": "detail-anchor", "enabled": True, "prompt_overrides": {}},
+            ]
+            service.save_scene_builder_data("Demo", "Opening", data)
+
+            background = copy.deepcopy(service.load_scene_builder_data("Demo", "Opening").data["subscenes"][0])
+            background["name"] = "Distant Background"
+            document = service.save_scene_builder_subscene_data("Demo", "Opening", "background", background)
+
+            self.assertEqual("Keep this full-scene edit.", document.data["scene"]["story_beat"])
+            self.assertEqual("Distant Background", document.data["subscenes"][0]["name"])
+            self.assertEqual("Detail", document.data["subscenes"][1]["name"])
+            with self.assertRaisesRegex(StoryServiceError, "does not match"):
+                service.save_scene_builder_subscene_data("Demo", "Opening", "background", {"id": "detail"})
 
     def test_nested_element_subscenes_render_as_direct_anchor_references(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

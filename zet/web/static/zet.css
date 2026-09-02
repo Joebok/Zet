@@ -1180,6 +1180,16 @@ summary:focus-visible {
   margin-bottom: 10px;
 }
 
+.scene-builder-sticky-context {
+  background: var(--bg);
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
 .scene-builder-toolbar,
 .scene-builder-card {
   border: 1px solid var(--line);
@@ -1209,6 +1219,26 @@ summary:focus-visible {
 
 .scene-builder-title .eyebrow {
   flex-basis: 100%;
+}
+
+.scene-builder-active-target {
+  background: var(--accent-soft);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.scene-builder-import-status {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.scene-builder-import-status .status-badge.needs-attention {
+  background: var(--warning-soft);
+  color: var(--warning-text, var(--text));
 }
 
 .scene-builder-save {
@@ -1966,6 +1996,13 @@ summary:focus-visible {
   justify-content: space-between;
 }
 
+.scene-builder-target-bar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
 .scene-builder-target-bar .selected {
   border-color: var(--accent);
   box-shadow: inset 0 -2px 0 var(--accent);
@@ -2003,6 +2040,26 @@ summary:focus-visible {
   max-height: 110px;
   max-width: 190px;
   object-fit: contain;
+}
+
+.scene-builder-subscene-element-summary {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scene-builder-subscene-element-summary li {
+  background: var(--surface-subtle);
+  border-radius: 6px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+}
+
+.scene-builder-subscene-element-summary small {
+  color: var(--muted);
 }
 
 .scene-builder-element-row.context-only {
@@ -3224,11 +3281,50 @@ dialog {
   min-height: 60vh;
 }
 
-.prompt-analysis-dialog {
-  height: min(80vh, 900px);
-  max-width: 1000px;
+.side-panel-dialog {
+  border: 0;
+  height: 100dvh;
+  inset: 0 0 0 auto;
+  margin: 0 0 0 auto;
+  max-height: 100dvh;
   padding: 0;
-  width: min(1000px, calc(100vw - 48px));
+  width: min(720px, calc(100vw - 24px));
+}
+
+.side-panel-dialog[open] {
+  animation: side-panel-enter 160ms ease-out;
+}
+
+.side-panel-dialog::backdrop {
+  background: rgb(15 23 42 / 36%);
+}
+
+.side-panel-dialog-content {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.scene-builder-context-dialog {
+  width: min(520px, calc(100vw - 24px));
+}
+
+#scene-builder-context-content {
+  overflow-y: auto;
+  padding-top: 12px;
+}
+
+@keyframes side-panel-enter {
+  from { transform: translateX(24px); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-panel-dialog[open] {
+    animation: none;
+  }
 }
 
 .prompt-analysis-dialog-content {

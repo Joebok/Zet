@@ -1397,6 +1397,22 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/stories/{story_slug}/scenes/{scene_slug}/builder/subscenes/{target_id}")
+    def scene_builder_subscene_save(
+        story_slug: str, scene_slug: str, target_id: str, data: dict = Body(...)
+    ) -> dict[str, Any]:
+        """Save one subscene without replacing unrelated Scene Builder values."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.save_scene_builder_subscene(story_slug, scene_slug, target_id, data)
+            return {
+                "document": _scene_builder_document_payload(zet_app, document),
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": f"Saved subscene {target_id}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/subscenes/background/enable")
     def scene_background_subscene_enable(story_slug: str, scene_slug: str) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -1585,11 +1601,13 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis/harvest")
-    def scene_prompt_analysis_harvest(story_slug: str, scene_slug: str) -> dict[str, Any]:
+    def scene_prompt_analysis_harvest(
+        story_slug: str, scene_slug: str, render_target_id: str = Query("main")
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
             zet_app.harvest_ai_answers()
-            status = zet_app.scene_prompt_analysis_status(story_slug, scene_slug)
+            status = zet_app.scene_prompt_analysis_status(story_slug, scene_slug, render_target_id)
             status["message"] = "AI answers harvested."
             return status
         except Exception as exc:
