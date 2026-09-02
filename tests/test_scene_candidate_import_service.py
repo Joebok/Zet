@@ -129,9 +129,23 @@ class SceneCandidateImportServiceTests(unittest.TestCase):
             elements = {item["display_name"]: item for item in first.data["scene_elements"]}
             self.assertEqual(elements["Tsaeytte"]["resource_type"], "Character")
             self.assertEqual(elements["Rin"]["aux_resource_id"], "rin")
+            self.assertEqual(elements["Rin"]["fallback_visual_description"], "")
+            self.assertEqual(elements["Jero"]["resource_type"], "Person")
             self.assertTrue(elements["Jero"]["notes"].startswith("UNRESOLVED:"))
+            tsaeytte_placement = next(
+                item for item in first.data["placements"]
+                if item["scene_element_id"] == elements["Tsaeytte"]["id"]
+            )
+            self.assertEqual(tsaeytte_placement["pose"]["summary"], "")
+            self.assertEqual(tsaeytte_placement["placement_notes"], "foreground, pointing toward Jero")
+            self.assertNotIn("visual_scale", tsaeytte_placement)
+            self.assertNotIn("left_arm_action", tsaeytte_placement["pose"])
+            self.assertNotIn("author_notes", first.data["scene"])
             self.assertEqual(first.data["source_provenance"]["candidate_id"], "moonsea-test-a")
             self.assertIn("elements", first.interview_phases)
+            self.assertIn("placements", first.interview_phases)
+            tsaeytte_placement["pose"]["summary"] = "lower-center foreground, kneeling"
+            self.assertIn("placements", service._interview_phases(first.data))
             self.assertEqual(service.list_candidates("moonsea")[0].imported_scene_slug, first.scene_slug)
 
     def test_import_uses_selected_story(self):

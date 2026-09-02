@@ -187,8 +187,23 @@ At the Arch
                 "scene_element_id": "Tsaeytte",
                 "position_within_cell": "left",
                 "depth": "foreground",
-                "pose": "crouched",
+                "frame_coverage": "large",
+                "distance_from_camera": "near",
+                "visual_scale": "large",
+                "pose": {
+                    "summary": "crouched",
+                    "temporary_condition": "rain-soaked",
+                    "left_arm_action": "raised",
+                    "right_arm_action": "lowered",
+                    "leg_foot_detail": "feet planted",
+                    "balance_weight_detail": "leaning forward",
+                },
             }]
+            data["scene"].update(sequence=7, author_notes="legacy notes")
+            data["setup"]["canvas"].update(width=1024, height=768)
+            data["props_and_states"] = [{"id": "legacy_prop"}]
+            data["reference_assignments"] = [{"tag": "{{LEGACY}}"}]
+            data["render_settings"] = {"scene_render_ir": {"enabled": False}}
             data["setup"]["environment"]["location"] = "magic academy hall"
             data["setup"]["environment"]["lighting"] = "cool blue light"
 
@@ -200,6 +215,21 @@ At the Arch
             self.assertIn("composition", document.data["setup"])
             self.assertNotIn("camera", document.data["setup"])
             self.assertNotIn("style", document.data["setup"])
+            self.assertNotIn("sequence", document.data["scene"])
+            self.assertNotIn("author_notes", document.data["scene"])
+            self.assertNotIn("width", document.data["setup"]["canvas"])
+            self.assertNotIn("height", document.data["setup"]["canvas"])
+            self.assertNotIn("props_and_states", document.data)
+            self.assertNotIn("reference_assignments", document.data)
+            self.assertNotIn("render_settings", document.data)
+            placement = document.data["placements"][0]
+            for field in ("frame_coverage", "distance_from_camera", "visual_scale"):
+                self.assertNotIn(field, placement)
+            for field in (
+                "temporary_condition", "left_arm_action", "right_arm_action",
+                "leg_foot_detail", "balance_weight_detail",
+            ):
+                self.assertNotIn(field, placement["pose"])
             self.assertTrue(document.data["metadata"]["created_at"])
             self.assertTrue(document.data["metadata"]["updated_at"])
 

@@ -27,6 +27,8 @@ class SceneDocumentService:
         normalized["schema_version"] = 4
         normalized["file_kind"] = "scene"
         normalized.setdefault("scene", {})
+        normalized["scene"].pop("sequence", None)
+        normalized["scene"].pop("author_notes", None)
         normalized["scene"]["id"] = normalized["scene"].get("id") or story.normalize_scene_element_id(safe_scene_slug).lower()
         normalized["scene"]["slug"] = safe_scene_slug
         normalized["scene"]["story_settings_path"] = story._library_relative_path(story.get_story_settings_path_from_story_md(story.path_service.story_file_path(safe_story_slug)))
@@ -36,6 +38,9 @@ class SceneDocumentService:
         normalized.setdefault("setup", {})
         for key in ("camera", "style"):
             normalized["setup"].pop(key, None)
+        canvas = normalized["setup"].setdefault("canvas", {})
+        canvas.pop("width", None)
+        canvas.pop("height", None)
         composition = normalized["setup"].setdefault("composition", {})
         environment = normalized["setup"].setdefault("environment", {})
         environment.pop("important_exclusions", None)
@@ -56,6 +61,9 @@ class SceneDocumentService:
             and not (element_id in seen_composition_ids or seen_composition_ids.add(element_id))
         ]
         normalized["scene_elements"] = story._normalized_scene_elements(normalized)
+        normalized.pop("props_and_states", None)
+        normalized.pop("reference_assignments", None)
+        normalized.pop("render_settings", None)
         story.scene_render_target_service.normalize(normalized)
         normalized["placements"] = story._normalized_placements(normalized)
         suppressed_element_ids = {

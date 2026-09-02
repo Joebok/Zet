@@ -55,6 +55,24 @@ def _is_suppressed_placement(placement: dict[str, Any]) -> bool:
     return _clean(placement.get("position_within_cell")).lower() == "none"
 
 
+def _compiled_placement(value: dict[str, Any]) -> dict[str, Any]:
+    placement = dict(value)
+    for key in ("frame_coverage", "distance_from_camera", "visual_scale"):
+        placement.pop(key, None)
+    if isinstance(placement.get("pose"), dict):
+        pose = dict(placement["pose"])
+        for key in (
+            "temporary_condition",
+            "left_arm_action",
+            "right_arm_action",
+            "leg_foot_detail",
+            "balance_weight_detail",
+        ):
+            pose.pop(key, None)
+        placement["pose"] = pose
+    return placement
+
+
 def _style_text(story_settings: dict[str, Any]) -> str:
     return _clean(story_settings.get("style_defaults", {}).get("canonical_art_style", {}).get("full_prompt_text"))
 
@@ -75,7 +93,11 @@ def compile_scene_render_ir(
     default_prompt_sections: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     setup = scene_data.get("setup", {})
-    placements = [item for item in _items(scene_data.get("placements")) if not _is_suppressed_placement(item)]
+    placements = [
+        _compiled_placement(item)
+        for item in _items(scene_data.get("placements"))
+        if not _is_suppressed_placement(item)
+    ]
     suppressed_element_ids = {
         _clean(item.get("scene_element_id"))
         for item in _items(scene_data.get("placements"))
@@ -88,10 +110,7 @@ def compile_scene_render_ir(
         if element_id not in suppressed_element_ids
     ]
     story_profile = story_settings.get("compiler_profiles", {}).get("final_image_prompt", {})
-    references = [
-        reference for reference in _items(scene_data.get("reference_assignments"))
-        if _clean(reference.get("tag"))
-    ]
+    references = []
     for element in _items(scene_data.get("scene_elements")):
         for reference in _items(element.get("reference_images")):
             if not _clean(reference.get("tag")):
@@ -137,7 +156,11 @@ def compile_scene_render_ir(
             "story_settings_path": scene_data.get("scene", {}).get("story_settings_path", ""),
             "source_hashes": {},
         },
-        "canvas": setup.get("canvas", {}),
+        "canvas": {
+            key: setup.get("canvas", {}).get(key)
+            for key in ("orientation", "aspect_ratio")
+            if isinstance(setup.get("canvas"), dict) and key in setup["canvas"]
+        },
         "composition": composition,
         "style": {
             "art_style": _style_text(story_settings),
@@ -148,7 +171,6 @@ def compile_scene_render_ir(
         "depth_lanes": scene_data.get("depth_lanes", {}),
         "elements": _items(scene_data.get("scene_elements")),
         "placements": placements,
-        "props": _items(scene_data.get("props_and_states")),
         "interactions": _items(scene_data.get("interactions")),
         "custom_interactions": _clean(scene_data.get("custom_interactions")),
         "dialogue": dialogue,
@@ -337,11 +359,7 @@ def _screen_facing(ir: dict[str, Any], placement: dict[str, Any]) -> tuple[str, 
 
 def _broad_pose(placement: dict[str, Any]) -> str:
     pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
-    parts = _lines([
-        pose.get("summary") if pose else placement.get("pose"),
-        pose.get("left_arm_action"),
-        pose.get("right_arm_action"),
-    ])
+    parts = _lines([pose.get("summary") if pose else placement.get("pose")])
     text = ", ".join(parts)
     replacements = {
         "left hand raised": "one hand raised",
@@ -483,18 +501,8 @@ def _identity_and_costume(element: dict[str, Any], other_names: list[str]) -> tu
 
 def _character_prop_text(ir: dict[str, Any], element: dict[str, Any], placement: dict[str, Any]) -> str:
     pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
-    element_id = _clean(element.get("id"))
-    associated_props = [
-        clean_prompt_sentence(prop.get("description") or prop.get("state") or prop.get("display_name"))
-        for prop in ir.get("props", [])
-        if element_id in {
-            _clean(prop.get("scene_element_id")), _clean(prop.get("character_element_id")),
-            _clean(prop.get("holder_element_id")), _clean(prop.get("owner_element_id")),
-        }
-    ]
     source = " ".join(_lines([
         element.get("element_visual_override"), placement.get("placement_notes"), pose.get("summary"),
-        pose.get("left_arm_action"), pose.get("right_arm_action"), *associated_props,
     ])).lower()
     if "stack of books" in source:
         return "carrying a stack of books in front"
@@ -667,9 +675,6 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
             pose_summary = pose_summary[len(normalized_world):].lstrip(" ,.;:!?")
             pose_summary = pose_summary[:1].upper() + pose_summary[1:]
         sentences = [world_sentence, _sentence(pose_summary)]
-        actions = _lines([pose.get("left_arm_action"), pose.get("right_arm_action")])
-        if actions:
-            sentences.append(_sentence(", ".join(actions)))
         target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
         target = get_element_display_name(target_id, elements_by_id) if target_id else ""
         if target:
@@ -705,12 +710,6 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     sentences = [_sentence(first)]
     target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
     target = get_element_display_name(target_id, elements_by_id) if target_id else ""
-    actions = _lines([
-        pose.get("left_arm_action"),
-        pose.get("right_arm_action"),
-    ])
-    if actions:
-        sentences.append(_sentence(", ".join(actions)))
     if target:
         sentences.append(_sentence(f"Looks directly at {target}"))
     expression = clean_prompt_sentence(pose.get("expression") or placement.get("expression"))

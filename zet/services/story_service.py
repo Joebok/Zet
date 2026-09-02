@@ -1098,7 +1098,6 @@ class StoryService:
         scene_doc = self.load_scene(safe_story_slug, safe_scene_slug)
         scene_path, image_path, _ = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
         story_settings_path = self.get_story_settings_path_from_story_md(self.path_service.story_file_path(safe_story_slug))
-        build_dir = self.path_service.story_pipeline_path(safe_story_slug, safe_scene_slug)
         stamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         return {
             "schema_version": 4,
@@ -1107,18 +1106,14 @@ class StoryService:
                 "id": self.normalize_scene_element_id(safe_scene_slug).lower(),
                 "name": scene_doc.record.title,
                 "slug": safe_scene_slug,
-                "sequence": None,
                 "story_settings_path": self._library_relative_path(story_settings_path),
                 "associated_png_path": self._library_relative_path(image_path),
                 "story_beat": "",
-                "author_notes": "",
             },
             "setup": {
                 "canvas": {
                     "orientation": "landscape",
                     "aspect_ratio": "16:9",
-                    "width": None,
-                    "height": None,
                 },
                 "composition": {"focal_point": "", "left_to_right": [], "composition_notes": ""},
                 "environment": {
@@ -1133,19 +1128,11 @@ class StoryService:
             "scene_elements": [],
             "subscenes": [],
             "placements": [],
-            "props_and_states": [],
             "interactions": [],
             "custom_interactions": "",
             "dialogue": [],
-            "reference_assignments": [],
             "final_image_prompt_overrides": {
                 key: "" for key in FINAL_IMAGE_PROMPT_SECTION_TITLES
-            },
-            "render_settings": {
-                "final_image_prompt": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Final_Image_Prompt.md")},
-                "local_render_brief": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Local_Render_Brief.json")},
-                "local_render_prompt": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Local_Render_Prompt.md")},
-                "scene_render_ir": {"enabled": True, "output_path": self._library_relative_path(build_dir / "Scene_Render_IR.json")},
             },
             "metadata": {
                 "created_at": stamp,
@@ -1336,25 +1323,23 @@ class StoryService:
             else:
                 item.pop("world_position", None)
             item.pop("z_order", None)
-            item.setdefault("frame_coverage", "")
-            item.setdefault("distance_from_camera", "")
-            item.setdefault("visual_scale", "")
+            for key in ("frame_coverage", "distance_from_camera", "visual_scale"):
+                item.pop(key, None)
             item.pop("must_be_visible", None)
             item.pop("visible_body_requirements", None)
             if not isinstance(item.get("pose"), dict):
                 item["pose"] = {
                     "summary": item.pop("pose", ""),
-                    "temporary_condition": "",
                     "gaze_target_element_id": item.pop("gaze_target_element_id", ""),
                     "expression": item.pop("expression", ""),
-                    "left_arm_action": "",
-                    "right_arm_action": "",
-                    "leg_foot_detail": "",
-                    "balance_weight_detail": "",
                 }
             if isinstance(item.get("pose"), dict):
                 item["pose"].pop("action_direction_screen", None)
-                for key in ("body_view", "head_view", "left_hand_detail", "right_hand_detail", "gaze_description"):
+                for key in (
+                    "body_view", "head_view", "left_hand_detail", "right_hand_detail", "gaze_description",
+                    "temporary_condition", "left_arm_action", "right_arm_action", "leg_foot_detail",
+                    "balance_weight_detail",
+                ):
                     item["pose"].pop(key, None)
             motion = item.get("motion") if isinstance(item.get("motion"), dict) else {}
             item["motion"] = {
@@ -1375,10 +1360,7 @@ class StoryService:
             "scene_element_id": element_id,
             "position_within_cell": "" if element_type == "Backdrop" else "None" if element_type == "Prop" else "center",
             "depth": "background" if element_type == "Backdrop" else "midground",
-            "frame_coverage": "",
-            "distance_from_camera": "",
-            "visual_scale": "",
-            "pose": {"summary": "", "temporary_condition": "", "gaze_target_element_id": "", "expression": "", "left_arm_action": "", "right_arm_action": "", "leg_foot_detail": "", "balance_weight_detail": ""},
+            "pose": {"summary": "", "gaze_target_element_id": "", "expression": ""},
             "motion": {"state": "stationary", "direction_screen": "", "cue": ""},
             "placement_notes": "",
         }
@@ -1489,14 +1471,11 @@ class StoryService:
                 warnings.append(f"Placement {placement_label} has invalid motion state {motion.get('state')}.")
         for interaction in data.get("interactions") or []:
             subject = str(interaction.get("subject_element_id") or "")
-            prop = str(interaction.get("prop_id") or "")
             target = str(interaction.get("target_element_id") or "")
             if subject and subject not in elements:
                 warnings.append(f"Interaction references missing subject {subject}.")
             if target and target not in elements:
                 warnings.append(f"Interaction references missing target {target}.")
-            if prop and prop not in {item.get("id") for item in data.get("props_and_states") or []} and prop not in elements:
-                warnings.append(f"Interaction references missing prop {prop}.")
         for item in data.get("dialogue") or []:
             speaker = str(item.get("speaker_element_id") or "")
             if speaker and speaker not in elements:
@@ -1505,14 +1484,6 @@ class StoryService:
                 warnings.append(f"Dialogue {item.get('id') or ''} has blank text.")
             if not str(item.get("pointer_target") or "").strip():
                 warnings.append(f"Dialogue {item.get('id') or ''} has no pointer target.")
-        for item in data.get("reference_assignments") or []:
-            applies_to = str(item.get("applies_to_element_id") or "")
-            if applies_to and applies_to not in elements:
-                warnings.append(f"Reference assignment applies to missing element {applies_to}.")
-            if not item.get("roles"):
-                warnings.append(f"Reference assignment {item.get('id') or item.get('tag') or ''} has no roles.")
-            if not item.get("ignore"):
-                warnings.append(f"Reference assignment {item.get('id') or item.get('tag') or ''} has no ignore list.")
         if not str(environment.get("lighting") or "").strip():
             warnings.append("No lighting specified.")
         if not str(environment.get("location") or "").strip():
@@ -1587,7 +1558,6 @@ class StoryService:
                 element.get("display_name") or placement.get("scene_element_id") or "",
                 placement.get("depth") or "",
                 placement.get("position_within_cell") or "",
-                placement.get("visual_scale") or "",
                 pose.get("summary") or "",
                 pose.get("gaze_target_element_id") or "",
                 pose.get("expression") or "",
@@ -1601,7 +1571,7 @@ class StoryService:
             "### Setup\n\n#### Canvas\n" + self._markdown_list([f"Orientation: {canvas.get('orientation') or ''}", f"Aspect ratio: {canvas.get('aspect_ratio') or ''}"]),
             "#### Environment\n" + self._markdown_list([f"Location: {environment.get('location') or ''}", f"Lighting: {environment.get('lighting') or ''}", f"Mood: {environment.get('mood') or ''}", f"Weather/atmosphere: {environment.get('weather_or_atmosphere') or ''}"]),
             "### Scene Elements\n\n" + self._markdown_table(["ID", "Display Name", "Type", "Image Tag"], element_rows),
-            "### Placements\n\n" + self._markdown_table(["Element", "Depth", "Position", "Scale", "Pose", "Gaze", "Expression"], placement_rows),
+            "### Placements\n\n" + self._markdown_table(["Element", "Depth", "Position", "Pose", "Gaze", "Expression"], placement_rows),
             "### Interactions\n\n" + self._markdown_list([" ".join(str(value) for value in [elements.get(str(interaction.get("subject_element_id") or ""), {}).get("display_name") or interaction.get("subject_description"), interaction.get("relationship"), elements.get(str(interaction.get("target_element_id") or ""), {}).get("display_name") or interaction.get("target_description"), interaction.get("note")] if value) for interaction in data.get("interactions") or []]),
             "## Validation Warnings\n\n" + self._markdown_list(data.get("generation_outputs", {}).get("validation_warnings") or []),
         ]).rstrip()

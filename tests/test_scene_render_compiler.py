@@ -33,6 +33,41 @@ class SceneRenderCompilerTests(unittest.TestCase):
         expected_tail = "\n\n".join(DEFAULT_PROMPT_SECTIONS.values()) + "\n"
         self.assertTrue(prompt.endswith(expected_tail))
 
+    def test_legacy_unexposed_scene_fields_are_ignored(self):
+        ir = self._ir({
+            "setup": {"canvas": {
+                "orientation": "portrait",
+                "aspect_ratio": "4:5",
+                "width": 1024,
+                "height": 1280,
+            }},
+            "placements": [{
+                "scene_element_id": "subject",
+                "position_within_cell": "center",
+                "frame_coverage": "large",
+                "distance_from_camera": "near",
+                "visual_scale": "large",
+                "pose": {
+                    "summary": "kneeling with one hand raised",
+                    "temporary_condition": "rain-soaked",
+                    "left_arm_action": "legacy left arm text",
+                    "right_arm_action": "legacy right arm text",
+                    "leg_foot_detail": "legacy foot text",
+                    "balance_weight_detail": "legacy balance text",
+                },
+            }],
+            "props_and_states": [{"id": "legacy_prop"}],
+            "reference_assignments": [{"tag": "{{LEGACY}}"}],
+        })
+
+        self.assertEqual({"orientation": "portrait", "aspect_ratio": "4:5"}, ir["canvas"])
+        self.assertNotIn("props", ir)
+        self.assertEqual([], ir["references"])
+        placement = ir["placements"][0]
+        self.assertEqual("kneeling with one hand raised", placement["pose"]["summary"])
+        self.assertNotIn("visual_scale", placement)
+        self.assertNotIn("left_arm_action", placement["pose"])
+
 
     def test_tail_template_validation_names_missing_section(self):
         with tempfile.TemporaryDirectory() as temp_dir:

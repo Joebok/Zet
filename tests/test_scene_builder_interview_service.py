@@ -47,7 +47,7 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
             "file_kind": "scene",
             "scene": {"name": "Arrival", "story_beat": ""},
             "setup": {
-                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9", "width": None, "height": None},
+                "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
                 "composition": {"focal_point": "", "left_to_right": [], "composition_notes": ""},
                 "environment": {},
             },
@@ -61,7 +61,7 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
         llm = ScriptedLlm([
             _element_result(),
             {"result": {"story_beat": "Mara realizes the last train has left her stranded."}, "questions": []},
-            {"result": {"orientation": "landscape", "aspect_ratio": "16:9", "width": None, "height": None}, "questions": []},
+            {"result": {"orientation": "landscape", "aspect_ratio": "16:9"}, "questions": []},
             {"result": {
                 "location": "Elevated railway platform",
                 "lighting": "Cold blue station lamps with red signal spill",
@@ -81,18 +81,10 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
                     "position_within_cell": "left",
                     "depth": "midground",
                     "world_position": "beneath the departure board",
-                    "frame_coverage": "three-quarter figure",
-                    "distance_from_camera": "medium distance",
-                    "visual_scale": "large",
                     "pose": {
-                        "summary": "stops mid-stride",
-                        "temporary_condition": "rain-soaked",
+                        "summary": "stops mid-stride, rain-soaked, holding a satchel close with her weight pitched forward",
                         "gaze_target_element_id": "",
                         "expression": "shocked realization",
-                        "left_arm_action": "holds a satchel close",
-                        "right_arm_action": "hangs at her side",
-                        "leg_foot_detail": "feet braced on the wet platform",
-                        "balance_weight_detail": "weight pitched forward",
                     },
                     "motion": {"state": "stationary", "direction_screen": "", "cue": "coat hem settling"},
                     "placement_notes": "Keep her silhouette clear.",
@@ -102,12 +94,8 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
                     "position_within_cell": "Backdrop",
                     "depth": "background",
                     "world_position": "",
-                    "frame_coverage": "full frame",
-                    "distance_from_camera": "",
-                    "visual_scale": "",
                     "pose": {
-                        "summary": "", "temporary_condition": "", "gaze_target_element_id": "", "expression": "",
-                        "left_arm_action": "", "right_arm_action": "", "leg_foot_detail": "", "balance_weight_detail": "",
+                        "summary": "", "gaze_target_element_id": "", "expression": "",
                     },
                     "motion": {"state": "stationary", "direction_screen": "", "cue": ""},
                     "placement_notes": "",
@@ -123,11 +111,16 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
 
         self.assertEqual(len(llm.calls), 7)
         self.assertTrue(all(call["model"] == "qwen-local" for call in llm.calls))
-        self.assertEqual(payload["draft"]["scene_elements"][0]["character"], "Mara")
+        self.assertEqual(payload["draft"]["scene_elements"][0]["resource_type"], "Person")
         self.assertEqual(payload["draft"]["scene"]["story_beat"], "Mara realizes the last train has left her stranded.")
         self.assertEqual(payload["draft"]["setup"]["composition"]["left_to_right"], ["Mara"])
         self.assertEqual(payload["draft"]["placements"][1]["position_within_cell"], "")
         self.assertEqual(payload["draft"]["placements"][1]["depth"], "background")
+        placement_instruction = llm.calls[5]["prompt"]
+        self.assertIn("pose summary must describe body posture or physical action only", placement_instruction)
+        placement_schema = llm.calls[5]["schema"]["properties"]["result"]["properties"]["placements"]["items"]
+        self.assertNotIn("visual_scale", placement_schema["properties"])
+        self.assertNotIn("left_arm_action", placement_schema["properties"]["pose"]["properties"])
 
     def test_pauses_for_big_picture_clarification_then_repeats_only_that_phase(self):
         llm = ScriptedLlm([
@@ -161,6 +154,69 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
         self.assertEqual(second["phase"], "story")
         self.assertEqual(second["questions"], [])
         self.assertEqual(second["completed_phases"], 1)
+
+    def test_element_phase_preserves_resource_bindings_and_clears_referenced_fallbacks(self):
+        data = self._data()
+        data["scene_elements"] = [
+            {
+                "id": "Tsaeytte",
+                "display_name": "Tsaeytte",
+                "resource_type": "Character",
+                "element_type": "Character",
+                "character": "Tsaeytte",
+                "phase": "Adult",
+                "costume": "Travel Gear",
+                "aux_category": "",
+                "aux_resource_id": "",
+                "reference_images": [{"tag": "{{ASSET:Tsaeytte:Adult:1:Front}}"}],
+                "fallback_visual_description": "established appearance; badly burned",
+            },
+            {
+                "id": "Morrow",
+                "display_name": "Morrow",
+                "resource_type": "Character",
+                "element_type": "Character",
+                "character": "",
+                "phase": "",
+                "costume": "",
+                "aux_category": "",
+                "aux_resource_id": "",
+                "reference_images": [],
+                "fallback_visual_description": "a phoenix-like raven wreathed in orange flame",
+            },
+        ]
+        llm = ScriptedLlm([{"result": {"scene_elements": [
+            {
+                "display_name": "Tsaeytte",
+                "resource_type": "Person",
+                "element_type": "Character",
+                "fallback_visual_description": "established campaign appearance",
+                "notes": "",
+            },
+            {
+                "display_name": "Morrow",
+                "resource_type": "Character",
+                "element_type": "Character",
+                "fallback_visual_description": "a phoenix-like raven wreathed in orange flame",
+                "notes": "",
+            },
+        ]}, "questions": []}])
+
+        payload = SceneBuilderInterviewService("qwen-local", llm).start("Morrow lands on Tsaeytte.", data, ["elements"])
+        elements = {item["display_name"]: item for item in payload["draft"]["scene_elements"]}
+
+        self.assertEqual(elements["Tsaeytte"]["resource_type"], "Character")
+        self.assertEqual(elements["Tsaeytte"]["character"], "Tsaeytte")
+        self.assertEqual(elements["Tsaeytte"]["phase"], "Adult")
+        self.assertEqual(elements["Tsaeytte"]["fallback_visual_description"], "")
+        self.assertEqual(elements["Morrow"]["resource_type"], "Person")
+        self.assertEqual(
+            elements["Morrow"]["fallback_visual_description"],
+            "a phoenix-like raven wreathed in orange flame",
+        )
+
+        instruction = llm.calls[0]["prompt"]
+        self.assertIn("never infer that a named or recurring subject is a library Character", instruction)
 
     def test_requires_narrative_and_all_answers(self):
         service = SceneBuilderInterviewService("qwen-local", ScriptedLlm([]))

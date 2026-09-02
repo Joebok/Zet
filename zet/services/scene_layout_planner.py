@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from zet.services.scene_render_compiler import (
@@ -32,21 +31,6 @@ def _clean(value: Any) -> str:
 
 def _even8(value: float) -> int:
     return max(8, int(round(value / 8.0)) * 8)
-
-
-def _scale_hint(placement: dict[str, Any]) -> float:
-    text = " ".join(
-        _clean(placement.get(key)).lower()
-        for key in ("frame_coverage", "distance_from_camera", "visual_scale")
-    )
-    number = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
-    if number:
-        return max(0.75, min(1.25, float(number.group(1)) / 50.0))
-    if any(term in text for term in ("close", "large", "dominant")):
-        return 1.12
-    if any(term in text for term in ("far", "distant", "small")):
-        return 0.86
-    return 1.0
 
 
 def _focal_ids(ir: dict[str, Any]) -> set[str]:
@@ -132,7 +116,7 @@ def plan_scene_layout(ir: dict[str, Any], width: int, height: int) -> dict[str, 
                 members = slot_members[slot]
                 member_index = members.index(index)
                 center += (member_index - (len(members) - 1) / 2.0) * min(0.11, 0.24 / len(members))
-            scale = _scale_hint(placement) * (1.10 if is_focal else 1.0)
+            scale = 1.10 if is_focal else 1.0
             box_width = min(0.38, box_width * scale)
             box_height = min(0.88, box_height * scale)
             y = max(0.03, y - (box_height - _DEPTH_GEOMETRY.get(depth, _DEPTH_GEOMETRY["midground"])[1]) / 2)

@@ -49,8 +49,6 @@ class SceneRenderTargetService:
             "canvas": {
                 "orientation": str(canvas.get("orientation") or "landscape").strip(),
                 "aspect_ratio": str(canvas.get("aspect_ratio") or "16:9").strip(),
-                "width": canvas.get("width"),
-                "height": canvas.get("height"),
             },
             "composition": {
                 "focal_point": str(composition.get("focal_point") or "").strip(),
@@ -484,11 +482,6 @@ class SceneRenderTargetService:
         ]
         projected["custom_interactions"] = ""
         projected["dialogue"] = []
-        projected["props_and_states"] = []
-        projected["reference_assignments"] = [
-            item for item in projected.get("reference_assignments") or []
-            if item.get("applies_to_element_id") in members
-        ]
         projected["final_image_prompt_overrides"] = {}
         projected["_render_target"] = {
             "id": target_id,
@@ -527,11 +520,6 @@ class SceneRenderTargetService:
         ]
         projected["custom_interactions"] = ""
         projected["dialogue"] = []
-        projected["props_and_states"] = []
-        projected["reference_assignments"] = [
-            item for item in projected.get("reference_assignments") or []
-            if item.get("applies_to_element_id") in members
-        ]
         projected["final_image_prompt_overrides"] = {}
         projected["_render_target"] = {"id": target_id, "label": self.target_label(data, target_id), "kind": "subscene"}
         self._inject_element_child_references(projected, data, target_id)
@@ -576,10 +564,6 @@ class SceneRenderTargetService:
         excluded_ids = baked_ids | hidden_element_ids
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") not in excluded_ids]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") not in excluded_ids]
-        projected["reference_assignments"] = [
-            item for item in projected.get("reference_assignments") or []
-            if item.get("applies_to_element_id") not in excluded_ids
-        ]
         projected["interactions"] = [
             item for item in projected.get("interactions") or []
             if item.get("subject_element_id") not in hidden_element_ids

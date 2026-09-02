@@ -279,7 +279,7 @@ class SceneCandidateImportService:
         value = {
             "id": element_id,
             "display_name": name,
-            "resource_type": "Scene-Only",
+            "resource_type": "Person" if element_type == "Character" else "Scene-Only",
             "element_type": element_type,
             "character": "",
             "phase": "",
@@ -350,6 +350,8 @@ class SceneCandidateImportService:
                         element["reference_images"] = [{"tag": resolved["tag"]}]
                     else:
                         element["notes"] = f"UNRESOLVED: {resolved['error']}"
+                if element["reference_images"]:
+                    element["fallback_visual_description"] = ""
                 elements.append(element)
         for name in props:
             clean_name = re.split(r"\s*(?::|—)\s*", name, maxsplit=1)[0].strip()
@@ -383,21 +385,13 @@ class SceneCandidateImportService:
                 "position_within_cell": "" if backdrop_element else "center",
                 "depth": "background" if backdrop_element else "midground",
                 "world_position": "",
-                "frame_coverage": "",
-                "distance_from_camera": "",
-                "visual_scale": "",
                 "pose": {
-                    "summary": detail,
-                    "temporary_condition": "",
+                    "summary": "",
                     "gaze_target_element_id": "",
                     "expression": "",
-                    "left_arm_action": "",
-                    "right_arm_action": "",
-                    "leg_foot_detail": "",
-                    "balance_weight_detail": "",
                 },
                 "motion": {"state": "stationary", "direction_screen": "", "cue": ""},
-                "placement_notes": "",
+                "placement_notes": detail,
             })
         dialogue = []
         for item in self._list_field(candidate, "Visible Dialogue"):
@@ -413,15 +407,7 @@ class SceneCandidateImportService:
                     "max_lines": 3,
                     "notes": "",
                 })
-        data["scene"].update(
-            name=candidate.title,
-            story_beat=story_beat,
-            author_notes="\n\n".join(part for part in [
-                self._text_field(candidate, "Why It Matters"),
-                self._text_field(candidate, "Continuity Requirements"),
-                self._text_field(candidate, "Exact Details to Preserve"),
-            ] if part),
-        )
+        data["scene"].update(name=candidate.title, story_beat=story_beat)
         data["setup"]["environment"].update(
             location=location,
             lighting=self._known(self._text_field(candidate, "Lighting")),
@@ -531,7 +517,23 @@ class SceneCandidateImportService:
         if not composition.get("composition_notes") or not composition.get("focal_point"):
             phases.append("composition")
         placements = data.get("placements") or []
-        if any(item.get("element_type") != "Backdrop" and not str(next((p.get("pose", {}).get("summary") for p in placements if p.get("scene_element_id") == item.get("id")), "") or "").strip() for item in elements):
+        placement_by_element = {
+            str(item.get("scene_element_id") or ""): item
+            for item in placements
+            if isinstance(item, dict)
+        }
+        if any(
+            item.get("element_type") != "Backdrop"
+            and (
+                not str((placement_by_element.get(str(item.get("id") or ""), {}).get("pose") or {}).get("summary") or "").strip()
+                or re.search(
+                    r"\b(?:foreground|midground|background)\b|\b(?:upper|lower)[ -](?:left|center|right)\b",
+                    str((placement_by_element.get(str(item.get("id") or ""), {}).get("pose") or {}).get("summary") or ""),
+                    re.IGNORECASE,
+                )
+            )
+            for item in elements
+        ):
             phases.append("placements")
         visible_dialogue = str((data.get("source_provenance") or {}).get("visible_dialogue") or "")
         if visible_dialogue and not visible_dialogue.casefold().startswith("none") and not data.get("dialogue"):

@@ -1182,7 +1182,6 @@ const SCENE_BUILDER_HELP = {
   "scene.story_settings_path": "Path to the companion .story.json file containing story-wide art style, dialogue style, and compiler defaults.",
   "scene.associated_png_path": "Path where the rendered image for this scene should be stored or found.",
   "scene.story_beat": "One sentence describing the visual moment or change the image must communicate. Describe what is happening now, not the surrounding plot.",
-  "scene.author_notes": "Private author notes. These are not automatically included in prompts unless explicitly compiled.",
   "setup.canvas.orientation": "Image orientation: landscape, portrait, square, comic panel, or custom.",
   "setup.canvas.aspect_ratio": "Target image shape such as 16:9, 4:3, 4:5, 1:1, or custom.",
   "setup.environment.location": "Where the scene takes place. Keep this visual and concrete.",
@@ -1226,10 +1225,6 @@ const SCENE_BUILDER_HELP = {
   "dialogue[].pointer_target": "Where the dialogue pointer should aim, usually the speaker's mouth.",
   "dialogue[].max_lines": "Maximum preferred number of wrapped text lines.",
   "dialogue[].notes": "Private dialogue notes.",
-  "render_settings.final_image_prompt.output_path": "Where to write the final image prompt markdown.",
-  "render_settings.local_render_brief.output_path": "Where to write the local render brief.",
-  "render_settings.local_render_prompt.output_path": "Where to write the local render prompt.",
-  "render_settings.scene_render_ir.output_path": "Where to write the normalized scene render IR for debugging.",
 };
 
 function builderHelpPath(path) {
@@ -5229,10 +5224,7 @@ function builderCreatePlacementForElement(element) {
     scene_element_id: element.id,
     position_within_cell: element.element_type === "Backdrop" ? "" : element.element_type === "Prop" ? "None" : "center",
     depth: element.element_type === "Backdrop" ? "background" : "midground",
-    frame_coverage: "",
-    distance_from_camera: "",
-    visual_scale: "",
-    pose: { summary: "", temporary_condition: "", gaze_target_element_id: "", expression: "", left_arm_action: "", right_arm_action: "", leg_foot_detail: "", balance_weight_detail: "" },
+    pose: { summary: "", gaze_target_element_id: "", expression: "" },
     motion: { state: "stationary", direction_screen: "", cue: "" },
     placement_notes: "",
   };

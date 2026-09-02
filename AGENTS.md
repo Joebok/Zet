@@ -1,137 +1,47 @@
-### Environment Fallback
-- Always prioritize Python 3 over Python 2.
-- Use `python3` explicitly for executing any python scripts.
-- Do not assume system `python` points to a modern release.
+# Zet project instructions
 
-### Architecture Boundary
-- Keep reusable Zet behavior in backend code under `zet/services`, `zet/repositories`, `zet/models`, and pipeline scripts.
-- Keep `zet/web` focused on FastAPI routes, page/API presentation, browser interaction, and calling backend service methods.
-- Do not add file layout discovery, pipeline stage transitions, prompt review operations, render orchestration, or other reusable business logic directly to the web layer.
-- When the dashboard needs a new workflow action, expose it through `ZetApp`, `AssetRef`, or a focused service first so other interfaces can reuse the same backend behavior.
-- The old Streamlit dashboard and standalone Render Console are retired. Do not add new workflow functionality to them.
-- If a package is not available, do not design a work-around. Stop and ask that the desired package be installed.
+## Scope
 
-### Terse Responses
-Cut out all conversational filler, preambles, and polite explanations. Return only the requested code block, minimal bullet points, or the direct structural diff.
+- Treat the request's goal, relevant context, constraints, and success criteria as the scope boundary.
+- Make the smallest coherent change. Exclude unrelated cleanup, modernization, renaming, reformatting, warning fixes, and refactoring.
+- Search for symbols and read only the files needed to act safely. Do not summarize unrelated code.
+- Ask one concise question only when a material ambiguity or blocker cannot be resolved from the repository. Do not invent APIs or add unapproved placeholders.
+- Do not use subagents unless the user explicitly requests them.
 
-### Token Economy
+## Architecture
 
-Minimize token usage.
+- Put reusable Zet behavior in `zet/services`, `zet/repositories`, `zet/models`, or pipeline scripts.
+- Keep `zet/web` limited to FastAPI routes, presentation, browser interaction, and calls into backend services. Do not place file discovery, pipeline transitions, prompt review, render orchestration, or other reusable business logic there.
+- Expose new dashboard workflow actions through `ZetApp`, `AssetRef`, or a focused service before calling them from the web layer.
+- The Streamlit dashboard and standalone Render Console are retired; do not add functionality to them.
 
-- Read only the files required for the current task.
-- Never summarize unrelated code.
-- Avoid opening large files unless the task explicitly requires them.
-- Prefer searching for symbols over reading entire files.
-- Stop reading once sufficient context has been gathered.
+## Runtime and dependencies
 
-### Minimal Changes
+### Python Runtime
 
-When modifying code:
+- All Python scripts must run under Python 3.
+- Prefer `python3` when available.
+- If `python3` is unavailable, locate a Python 3 interpreter using `python`, `py -3`, or an explicit executable path.
+- Before using a fallback interpreter, verify it with:
+  `<candidate> -c "import sys; assert sys.version_info.major == 3"`
+- Reuse the verified interpreter for all subsequent Python commands.
+- Never run an unverified `python` command, because it may resolve to Python 2.
 
-- Produce the smallest correct change.
-- Prefer editing existing functions over rewriting them.
-- Do not reformat unrelated code.
-- Preserve existing style.
-- Do not rename variables, functions, or files unless required.
+### Dependencies
 
-### Diff Preference
+- If a required package is unavailable, stop, identify it, and ask for installation. Do not install, replace, or work around it without approval.
 
-Unless explicitly requested otherwise:
+## Changes and validation
 
-- Apply minimal edits.
-- Do not regenerate an entire file for localized changes.
-- Do not duplicate unchanged code.
+- Preserve existing style and behavior outside the requested change.
+- Prefer localized edits to rewrites; never duplicate unchanged code.
+- Run the smallest relevant existing tests or checks after editing. Report the command and result; if none can run, state why.
 
-### Scope Discipline
+## Review and refactoring authority
 
-Stay inside the requested scope.
+- `architecture_reviewer`: when the user explicitly requests a deep review, cleanup assessment, architectural review, or refactoring plan, it may inspect broadly; identify dead or duplicate code; compare data models; and propose deletions, migrations, abstractions, or staged refactoring. This is analysis only unless implementation is explicitly authorized.
+- `refactoring_implementer`: may implement only a user-approved phase from a written review or plan. Keep the phase testable, run or add relevant tests, exclude unrelated cleanup, and stop after that phase. Approval never carries to later phases.
 
-Do not:
+## Final response
 
-- perform opportunistic refactoring
-- modernize unrelated code
-- improve comments outside the requested area
-- fix unrelated warnings
-- reorganize project structure
-
-unless explicitly instructed.
-
-### Stop Conditions
-
-When blocked:
-
-- Ask one concise question.
-- Do not speculate.
-- Do not invent missing APIs.
-- Do not implement placeholders without permission.
-
-### Prompt Contract Template
-
-Every task should be interpreted using this contract.
-
-Goal:
-<what should be true>
-
-Context:
-<only relevant files or functionality>
-
-Constraints:
-<what must not change>
-
-Success:
-<how success is verified>
-
-Anything outside this contract is out of scope.
-
-### Reasoning Budget
-
-Choose the simplest solution that satisfies the request.
-
-Do not compare multiple architectures unless asked.
-
-Do not explore alternatives unless requested.
-
-Avoid speculative analysis.
-
-## Specialized deep-review exception
-
-The restrictions against broad refactoring, dead-code analysis, duplication
-analysis, and data-model consolidation apply to normal implementation work.
-
-They do not prohibit analysis by the custom agent named
-`architecture_reviewer` when the user explicitly requests a deep code review,
-codebase cleanup assessment, architectural review, or refactoring plan.
-
-The `architecture_reviewer` may:
-
-- investigate code beyond the immediate task;
-- identify unused or obsolete code;
-- identify duplicate implementations;
-- recommend shared abstractions;
-- compare and regularize data models;
-- propose multi-stage refactoring;
-- recommend deletion or migration candidates.
-
-Unless the user explicitly authorizes implementation, this exception permits
-analysis and planning only. It does not authorize editing, deleting, or moving
-code.
-
-After the review, implementation must be separately approved and divided into
-small, testable stages.
-
-## Approved architectural refactoring
-
-Normal development work must remain narrowly scoped and must not perform
-broad cleanup, model consolidation, dead-code removal, or architectural
-refactoring.
-
-The custom agent `refactoring_implementer` may perform such work only when:
-
-1. an architecture review or written refactoring plan exists;
-2. the user has explicitly approved the phase being implemented;
-3. the agent implements only that approved phase;
-4. relevant tests are added or run;
-5. unrelated cleanup is excluded.
-
-Approval of one phase does not authorize later phases.
-The agent must stop after completing the approved phase.
+- State the result, validation performed, and any blocker or required next action. Omit filler, repeated rationale, and unrelated detail.
