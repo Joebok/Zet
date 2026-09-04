@@ -17,6 +17,7 @@ COMPARABLE_PIPELINES = [
     "Head-Image",
     "Character-Assembly",
     "Costume-Dressing",
+    "Scene-Appearance",
     "Expression",
 ]
 
@@ -34,6 +35,7 @@ class PhaseComparisonSide:
     head_view: Optional[str]
     costume: Optional[str]
     expression: Optional[str]
+    scene_appearance: Optional[str]
     updated_at: Optional[str]
 
 
@@ -206,8 +208,10 @@ class PhaseComparisonService:
     def _slot_key(self, pipeline: str, asset: Asset) -> str:
         """Return the normalized matching key for an asset."""
         parts = [self._normalize_slot_part(asset.body_view)]
-        if pipeline in {"Head-Image", "Character-Assembly", "Costume-Dressing", "Expression"}:
+        if pipeline in {"Head-Image", "Character-Assembly", "Costume-Dressing", "Scene-Appearance", "Expression"}:
             parts.append(self._normalize_slot_part(asset.head_view))
+        if pipeline == "Scene-Appearance":
+            parts.append(self._normalize_slot_part(asset.scene_appearance_id))
         if pipeline == "Expression":
             parts.append(self._normalize_slot_part(asset.expression))
         return "|".join(parts)
@@ -217,8 +221,10 @@ class PhaseComparisonService:
         if asset is None:
             return "Unknown slot"
         parts = [str(asset.body_view or "")]
-        if pipeline in {"Head-Image", "Character-Assembly", "Costume-Dressing", "Expression"} and asset.head_view:
+        if pipeline in {"Head-Image", "Character-Assembly", "Costume-Dressing", "Scene-Appearance", "Expression"} and asset.head_view:
             parts.append(str(asset.head_view))
+        if pipeline == "Scene-Appearance" and asset.scene_appearance:
+            parts.append(str(asset.scene_appearance))
         if pipeline == "Expression" and asset.expression:
             parts.append(str(asset.expression))
         return " / ".join(part for part in parts if part)
@@ -240,6 +246,7 @@ class PhaseComparisonService:
                 head_view=None,
                 costume=None,
                 expression=None,
+                scene_appearance=None,
                 updated_at=None,
             )
         image_path = self.path_service.locked_image_path(asset)
@@ -253,6 +260,7 @@ class PhaseComparisonService:
             head_view=asset.head_view,
             costume=asset.costume,
             expression=asset.expression,
+            scene_appearance=asset.scene_appearance,
             updated_at=asset.updated_at,
         )
 
@@ -263,6 +271,8 @@ class PhaseComparisonService:
             label_parts.append(asset.head_view)
         if asset.costume:
             label_parts.append(asset.costume)
+        if asset.scene_appearance:
+            label_parts.append(asset.scene_appearance)
         if asset.expression:
             label_parts.append(asset.expression)
         return " | ".join(str(part) for part in label_parts if part)
@@ -276,6 +286,7 @@ class PhaseComparisonService:
             self._view_sort_index(head),
             str(asset.costume or "") if asset else "",
             str(asset.expression or "") if asset else "",
+            str(asset.scene_appearance_id or "") if asset else "",
             asset.asset_id if asset else 0,
             slot_key,
         )

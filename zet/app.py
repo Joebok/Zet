@@ -2,7 +2,6 @@ from pathlib import Path
 from datetime import datetime
 
 from zet.models.asset import Asset
-from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
@@ -15,7 +14,6 @@ from zet.services.asset_service import (
     BatchRenderResetResult,
     asset_sort_key,
 )
-from zet.services.auxiliary_resource_service import AuxiliaryResourceService
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.ai_proxy_service import AIProxyService
 from zet.services.ai_answer_harvester import AIAnswerHarvester
@@ -37,6 +35,11 @@ from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.prompt_evolution_service import PromptEvolutionService
 from zet.services.production_work_summary_service import ProductionWorkSummaryService
 from zet.services.reference_service import ReferenceService
+from zet.services.scene_appearance_service import (
+    SceneAppearanceCreateResult,
+    SceneAppearanceService,
+    SceneAppearanceUpdateResult,
+)
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
 from zet.services.scene_builder_interview_service import SceneBuilderInterviewService
@@ -152,9 +155,9 @@ class ZetApp:
         turnaround_service: TurnaroundService,
         identity_key_service: IdentityKeyService,
         costume_service: CostumeService,
+        scene_appearance_service: SceneAppearanceService,
         expression_service: ExpressionService,
         character_onboarding_service: CharacterOnboardingService,
-        auxiliary_resource_service: AuxiliaryResourceService,
         phase_comparison_service: PhaseComparisonService,
         story_service: StoryService,
         config_path: str | Path = "config.toml",
@@ -171,9 +174,9 @@ class ZetApp:
         self.turnaround_service = turnaround_service
         self.identity_key_service = identity_key_service
         self.costume_service = costume_service
+        self.scene_appearance_service = scene_appearance_service
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service
-        self.auxiliary_resource_service = auxiliary_resource_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
         self.image_catalog_service = None
@@ -298,9 +301,9 @@ class ZetApp:
             path_service,
         )
         costume_service = CostumeService(asset_repository, path_service)
+        scene_appearance_service = SceneAppearanceService(asset_repository, path_service)
         expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
         character_onboarding_service = CharacterOnboardingService(path_service)
-        auxiliary_resource_service = AuxiliaryResourceService(auxiliary_resource_repository, path_service)
         phase_comparison_service = PhaseComparisonService(
             asset_repository,
             pipeline_repository,
@@ -320,12 +323,12 @@ class ZetApp:
             path_service,
             image_catalog_repository,
             asset_repository,
-            auxiliary_resource_repository,
             identity_key_repository,
             turnaround_repository,
             story_service,
         )
         story_service.image_catalog_service = image_catalog_service
+        story_service.story_reference_service.image_catalog_service = image_catalog_service
         app = cls(
             config,
             asset_repository,
@@ -338,9 +341,9 @@ class ZetApp:
             turnaround_service,
             identity_key_service,
             costume_service,
+            scene_appearance_service,
             expression_service,
             character_onboarding_service,
-            auxiliary_resource_service,
             phase_comparison_service,
             story_service,
             config_path,
@@ -359,10 +362,6 @@ class ZetApp:
     def story_workspace_summary(self, story_slug: str):
         """Return Story Telling progress for one story."""
         return self.workspace_summary_service.story_summary(story_slug)
-
-    def list_auxiliary_resources(self, category: str) -> list[AuxiliaryResource]:
-        """List global auxiliary resources by category."""
-        return self.auxiliary_resource_service.list_resources(category)
 
     def list_stories(self) -> list[StoryRecord]:
         """List story folders in the shared library."""
@@ -612,6 +611,9 @@ class ZetApp:
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.story_service.enable_background_subscene(story_slug, scene_slug)
 
+    def create_subscene(self, story_slug: str, scene_slug: str) -> tuple[SceneBuilderDocument, str]:
+        return self.story_service.create_subscene(story_slug, scene_slug)
+
     def enable_element_subscene(self, story_slug: str, scene_slug: str, element_id: str) -> SceneBuilderDocument:
         return self.story_service.enable_element_subscene(story_slug, scene_slug, element_id)
 
@@ -675,6 +677,15 @@ class ZetApp:
 
     def update_image_catalog_item(self, catalog_id: str, changes: dict):
         return self.image_catalog_service.update_item(catalog_id, changes)
+
+    def import_image_catalog_item(self, label: str, semantic_category: str, reference_set_id: str, image_bytes: bytes, content_type: str):
+        return self.image_catalog_service.import_image(label, semantic_category, reference_set_id, image_bytes, content_type)
+
+    def replace_image_catalog_content(self, catalog_id: str, image_bytes: bytes, content_type: str):
+        return self.image_catalog_service.replace_image_content(catalog_id, image_bytes, content_type)
+
+    def delete_image_catalog_item(self, catalog_id: str, force: bool = False):
+        return self.image_catalog_service.delete_image(catalog_id, force)
 
     def bulk_update_image_catalog(self, catalog_ids: list[str], changes: dict):
         return self.image_catalog_service.bulk_update(catalog_ids, changes)
@@ -783,39 +794,6 @@ class ZetApp:
             left_costume,
             right_costume,
         )
-
-    def create_auxiliary_resource(
-        self,
-        category: str,
-        label: str,
-    ) -> AuxiliaryResource:
-        """Create a global auxiliary resource."""
-        return self.auxiliary_resource_service.create_resource(category, label)
-
-    def update_auxiliary_resource(
-        self,
-        resource_id: str,
-        label: str,
-    ) -> AuxiliaryResource:
-        """Update a global auxiliary resource."""
-        return self.auxiliary_resource_service.update_resource(resource_id, label)
-
-    def delete_auxiliary_resource(self, resource_id: str) -> AuxiliaryResource:
-        """Delete a global auxiliary resource and its files."""
-        resource = self.auxiliary_resource_service.delete_resource(resource_id)
-        self.image_catalog_service.rebind_source_prefix(f"aux:{resource.category}:{resource.resource_id}:")
-        return resource
-
-    def save_auxiliary_resource_image(
-        self,
-        resource_id: str,
-        image_label: str,
-        image_bytes: bytes,
-        content_type: str,
-        original_image_id: str = "",
-    ) -> AuxiliaryResource:
-        """Save or update one image inside an auxiliary resource."""
-        return self.auxiliary_resource_service.save_image(resource_id, image_label, image_bytes, content_type, original_image_id)
 
     def character_onboarding_options(self):
         """Return options used by new character and phase onboarding."""
@@ -1222,6 +1200,40 @@ class ZetApp:
     def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
         """Update a costume template and its Costume-Dressing assets."""
         return self.costume_service.update_costume(character, phase, costume_slug, costume_name)
+
+    def list_scene_appearances(self, character: str, phase: str):
+        """List reusable Scene Appearance definitions for a character phase."""
+        return self.scene_appearance_service.list_definitions(character, phase)
+
+    def create_scene_appearance(
+        self,
+        character: str,
+        phase: str,
+        appearance_id: str,
+        name: str,
+        costume: str,
+        instructions: str,
+        supporting_references: list[dict],
+    ) -> SceneAppearanceCreateResult:
+        """Create one Scene Appearance definition and its eight view assets."""
+        return self.scene_appearance_service.create(
+            character, phase, appearance_id, name, costume, instructions, supporting_references
+        )
+
+    def update_scene_appearance(
+        self,
+        character: str,
+        phase: str,
+        appearance_id: str,
+        name: str,
+        costume: str,
+        instructions: str,
+        supporting_references: list[dict],
+    ) -> SceneAppearanceUpdateResult:
+        """Update one Scene Appearance and invalidate its assets when render inputs change."""
+        return self.scene_appearance_service.update(
+            character, phase, appearance_id, name, costume, instructions, supporting_references
+        )
 
     def list_expression_assets(self, character: str, phase: str):
         """List Expression assets for a character phase."""

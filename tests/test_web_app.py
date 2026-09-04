@@ -11,6 +11,122 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
+    def test_scene_appearance_api_creates_lists_updates_and_reports_errors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            views = [
+                "Front", "Front-Left-3-4", "Left-Profile", "Back-Left-3-4",
+                "Back", "Back-Right-3-4", "Right-Profile", "Front-Right-3-4",
+            ]
+            asset_records = []
+            asset_folder = root / "Assets" / "Test" / "Adult"
+            for asset_id, view in enumerate(views, start=1):
+                image_name = f"costume-{view}.png"
+                asset_folder.joinpath(image_name).write_bytes(b"image")
+                asset_records.append({
+                    "asset_id": asset_id, "character": "Test", "phase": "Adult",
+                    "pipeline": "Costume-Dressing", "body_view": view, "head_view": view,
+                    "costume": "Adventure Gear", "asset_state": "LOCKED", "pipeline_stage": "LOCKED",
+                    "actor": "HUMAN_AGENT", "final_image_output": image_name,
+                })
+            (root / "Characters" / "Test" / "Adult" / "Assets.json").write_text(
+                json.dumps({"next_asset_id": 9, "assets": asset_records}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            aux = root / "AuxiliaryResources"
+            aux.mkdir()
+            (aux / "morrow.png").write_bytes(b"image")
+            (aux / "tusk.png").write_bytes(b"image")
+            (aux / "AuxiliaryResources.json").write_text(json.dumps({"resources": [
+                {"category": "person", "resource_id": "morrow", "label": "Morrow", "images": [
+                    {"image_id": "raven", "image_path": str(aux / "morrow.png")}
+                ]},
+                {"category": "thing", "resource_id": "tusk", "label": "Tusk", "images": [
+                    {"image_id": "reference", "image_path": str(aux / "tusk.png")}
+                ]},
+            ]}), encoding="utf-8")
+            client = TestClient(create_app(config_path))
+            body = {
+                "appearance_id": "hell-adventures", "name": "Hell Adventures",
+                "costume": "Adventure Gear", "instructions": "Morrow on left shoulder; tusk in right hand.",
+                "supporting_references": [
+                    {"role": "companion", "label": "Morrow", "tag": "{{AUX:person:morrow:raven}}"},
+                    {"role": "prop", "label": "Tusk", "tag": "{{AUX:thing:tusk:reference}}"},
+                ],
+            }
+
+            created = client.post("/api/scene-appearances", params={"character": "Test", "phase": "Adult"}, json=body)
+            self.assertEqual(200, created.status_code, created.text)
+            self.assertEqual(8, len([
+                item for item in created.json()["assets"] if item["pipeline"] == "Scene-Appearance"
+            ]))
+            listed = client.get("/api/scene-appearances", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual("Hell Adventures", listed.json()["scene_appearances"][0]["name"])
+            body["name"] = "Hell Expeditions"
+            body["instructions"] = "Updated arrangement."
+            updated = client.put(
+                "/api/scene-appearances/hell-adventures",
+                params={"character": "Test", "phase": "Adult"}, json=body,
+            )
+            self.assertEqual(200, updated.status_code, updated.text)
+            self.assertTrue(updated.json()["render_changed"])
+            invalid = client.post(
+                "/api/scene-appearances", params={"character": "Test", "phase": "Adult"},
+                json={**body, "appearance_id": "Invalid ID"},
+            )
+            self.assertEqual(400, invalid.status_code)
+            self.assertIn("lowercase", invalid.json()["detail"])
+
+    def test_image_catalog_import_replace_reference_set_and_delete_api(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            client = TestClient(create_app(config_path))
+
+            created_set = client.post("/api/image-catalog/reference-sets", json={"label": "Props", "identity_text": "shared prop"})
+            self.assertEqual(200, created_set.status_code, created_set.text)
+            set_id = created_set.json()["reference_set"]["reference_set_id"]
+            imported = client.post(
+                "/api/image-catalog/imports",
+                params={"label": "Lantern", "semantic_category": "Object", "reference_set_id": set_id},
+                content=b"png image",
+                headers={"content-type": "image/png"},
+            )
+            self.assertEqual(200, imported.status_code, imported.text)
+            item = imported.json()["item"]
+            self.assertTrue(item["is_managed"])
+            self.assertEqual("imported", item["source_type"])
+            self.assertEqual("shared prop", item["identity_text"])
+
+            updated = client.patch(f"/api/image-catalog/{item['catalog_id']}", json={"label": "Blue Lantern", "reference_set_id": ""})
+            self.assertEqual(200, updated.status_code, updated.text)
+            self.assertEqual("Blue Lantern", updated.json()["item"]["managed_label"])
+            replaced = client.put(
+                f"/api/image-catalog/{item['catalog_id']}/content",
+                content=b"jpeg image",
+                headers={"content-type": "image/jpeg"},
+            )
+            self.assertEqual(200, replaced.status_code, replaced.text)
+            self.assertTrue(replaced.json()["item"]["image_path"].endswith(".jpg"))
+            deleted = client.delete(f"/api/image-catalog/{item['catalog_id']}")
+            self.assertEqual(200, deleted.status_code, deleted.text)
+            self.assertTrue(list((root / "ImageCatalog" / "_trash").glob("*.jpg")))
+
     def test_ai_controls_lists_recent_live_and_archived_harvests(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

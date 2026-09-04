@@ -22,12 +22,14 @@ MISSING_REFERENCE_ERROR_CODES = {
     "MISSING_HEADSHOT_REFERENCE",
     "MISSING_HEAD_IMAGE_REFERENCE",
     "MISSING_CHARACTER_ASSEMBLY",
+    "MISSING_COSTUME_DRESSING",
 }
 ASSET_PIPELINE_ORDER = [
     "Body-Reference",
     "Head-Image",
     "Character-Assembly",
     "Costume-Dressing",
+    "Scene-Appearance",
     "Expression",
 ]
 ASSET_VIEW_ORDER = [

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 from zet.models.asset import Asset
 from zet.services.config_service import Config
@@ -88,6 +89,29 @@ class FakeTurnaroundRepository:
 
 
 class StoryServiceTests(unittest.TestCase):
+
+    def test_legacy_aux_and_new_image_tags_resolve_through_the_catalog(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "reference.png"
+            image_path.write_bytes(b"image")
+            service = self._service(root)
+            legacy_tag = "{{AUX:thing:props:lantern}}"
+            image_tag = "{{IMAGE:img_lantern}}"
+            items = {
+                tag: SimpleNamespace(label="Lantern", tag=tag, image_path=str(image_path))
+                for tag in (legacy_tag, image_tag)
+            }
+            service.story_reference_service.image_catalog_service = SimpleNamespace(
+                managed_item_for_tag=lambda tag: items.get(tag)
+            )
+
+            legacy = service.story_reference_service.resolve_image_tag(legacy_tag)
+            current = service.story_reference_service.resolve_image_tag(image_tag)
+
+            self.assertEqual(legacy["path"], current["path"])
+            self.assertEqual("imported", legacy["kind"])
+            self.assertEqual("imported", current["kind"])
 
     def _service(
         self,
@@ -706,6 +730,33 @@ ink wash
             self.assertEqual("Detail", document.data["subscenes"][1]["name"])
             with self.assertRaisesRegex(StoryServiceError, "does not match"):
                 service.save_scene_builder_subscene_data("Demo", "Opening", "background", {"id": "detail"})
+
+    def test_create_subscene_adds_an_assignable_colored_render_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene_elements"] = [
+                {"id": "hero", "display_name": "Hero", "element_type": "Character", "subscene_id": ""},
+            ]
+            service.save_scene_builder_data("Demo", "Opening", data)
+
+            document, target_id = service.create_subscene("Demo", "Opening")
+
+            self.assertEqual("sub_scene_1", target_id)
+            target = document.data["subscenes"][0]
+            self.assertEqual("Sub-Scene 1", target["name"])
+            self.assertEqual("background", target["kind"])
+            self.assertTrue(target["enabled"])
+            self.assertRegex(target["ui_color"], r"^#[0-9A-F]{6}$")
+            changed = document.data
+            changed["scene_elements"][0]["subscene_id"] = target_id
+            saved = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual(target_id, saved.data["scene_elements"][0]["subscene_id"])
 
     def test_nested_element_subscenes_render_as_direct_anchor_references(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

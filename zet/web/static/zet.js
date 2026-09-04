@@ -79,6 +79,8 @@ const state = {
   identityKeyPreview: null,
   costumes: [],
   selectedCostumeSlug: null,
+  sceneAppearances: [],
+  selectedSceneAppearanceId: null,
   expressionAssets: [],
   expressionDefinitions: [],
   expressionIdentityKeys: [],
@@ -124,15 +126,15 @@ const state = {
   builderElementAuxResources: {},
   builderElementCostumes: [],
   builderCostumesByCharacterPhase: {},
-  auxiliaryResources: [],
   imageCatalogItems: [],
   imageCatalogLoaded: false,
   imageCatalogOrganization: { collections: [], keywords: [] },
+  imageCatalogReferenceSets: [],
+  imageCatalogImportBlob: null,
+  imageCatalogReplaceBlob: null,
+  imageCatalogAddBlob: null,
   selectedImageCatalogId: null,
   selectedImageCatalogIds: [],
-  selectedAuxiliaryResourceId: null,
-  selectedAuxiliaryImageId: null,
-  auxiliaryResourceImageBlob: null,
   phaseComparison: {
     character: "",
     leftPhase: "",
@@ -160,7 +162,7 @@ const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
 const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 
-const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "expressions", "phase-comparison"]);
+const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "scene-appearances", "expressions", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
 const GLOBAL_PAGES = new Set(["auxiliary-resources", "template-editor", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-inspection", "pipeline-controls", "help"]);
@@ -549,6 +551,19 @@ const costumeTemplateFile = document.querySelector("#costume-template-file");
 const costumeCreate = document.querySelector("#costume-create");
 const costumePreviewSection = document.querySelector("#costume-preview-section");
 const costumePreview = document.querySelector("#costume-preview");
+const sceneAppearanceStatus = document.querySelector("#scene-appearance-status");
+const sceneAppearanceMessage = document.querySelector("#scene-appearance-message");
+const sceneAppearanceTableBody = document.querySelector("#scene-appearance-table tbody");
+const sceneAppearanceAddNew = document.querySelector("#scene-appearance-add-new");
+const sceneAppearanceFormTitle = document.querySelector("#scene-appearance-form-title");
+const sceneAppearanceId = document.querySelector("#scene-appearance-id");
+const sceneAppearanceName = document.querySelector("#scene-appearance-name");
+const sceneAppearanceCostume = document.querySelector("#scene-appearance-costume");
+const sceneAppearanceInstructions = document.querySelector("#scene-appearance-instructions");
+const sceneAppearanceReferences = document.querySelector("#scene-appearance-references");
+const sceneAppearanceSave = document.querySelector("#scene-appearance-save");
+const sceneAppearancePreviewSection = document.querySelector("#scene-appearance-preview-section");
+const sceneAppearancePreview = document.querySelector("#scene-appearance-preview");
 const expressionStatus = document.querySelector("#expression-status");
 const expressionMessage = document.querySelector("#expression-message");
 const expressionTableBody = document.querySelector("#expression-table tbody");
@@ -743,31 +758,7 @@ fullscreenImageOverlay.append(
   fullscreenCropBox,
 );
 document.body.append(fullscreenImageOverlay);
-const auxResourceStatus = document.querySelector("#aux-resource-status");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
-const auxResourceWorkspace = document.querySelector("#aux-resource-workspace");
-const auxResourceCategory = document.querySelector("#aux-resource-category");
-const auxResourceSearch = document.querySelector("#aux-resource-search");
-const auxResourceTable = document.querySelector("#aux-resource-table");
-const auxResourceTableBody = document.querySelector("#aux-resource-table tbody");
-const auxResourceAdd = document.querySelector("#aux-resource-add");
-const auxResourceFormTitle = document.querySelector("#aux-resource-form-title");
-const auxResourceFormCategory = document.querySelector("#aux-resource-form-category");
-const auxResourceLabel = document.querySelector("#aux-resource-label");
-const auxResourceEditTemplate = document.querySelector("#aux-resource-edit-template");
-const auxResourcePasteZone = document.querySelector("#aux-resource-paste-zone");
-const auxResourceFileInput = document.querySelector("#aux-resource-file-input");
-const auxResourceImagePreview = document.querySelector("#aux-resource-image-preview");
-auxResourceImagePreview.classList.add("fullscreen-image-trigger");
-const auxResourceSave = document.querySelector("#aux-resource-save");
-const auxResourceDelete = document.querySelector("#aux-resource-delete");
-const auxResourceClear = document.querySelector("#aux-resource-clear");
-const auxResourceImageList = document.querySelector("#aux-resource-image-list");
-const auxResourceNewImage = document.querySelector("#aux-resource-new-image");
-const auxResourceImageLabel = document.querySelector("#aux-resource-image-label");
-const auxResourceSaveImage = document.querySelector("#aux-resource-save-image");
-const auxResourceTag = document.querySelector("#aux-resource-tag");
-const auxResourceCopyTag = document.querySelector("#aux-resource-copy-tag");
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
 const imageCatalogCategory = document.querySelector("#image-catalog-category");
@@ -813,10 +804,42 @@ const imageCatalogAddKeyword = document.querySelector("#image-catalog-add-keywor
 const imageCatalogOrganizationList = document.querySelector("#image-catalog-organization-list");
 const imageCatalogSelectedCount = document.querySelector("#image-catalog-selected-count");
 const imageCatalogBulkCategory = document.querySelector("#image-catalog-bulk-category");
+const imageCatalogBulkSet = document.querySelector("#image-catalog-bulk-set");
 const imageCatalogBulkCollections = document.querySelector("#image-catalog-bulk-collections");
 const imageCatalogBulkKeywords = document.querySelector("#image-catalog-bulk-keywords");
 const imageCatalogBulkApply = document.querySelector("#image-catalog-bulk-apply");
 const imageCatalogBulkClear = document.querySelector("#image-catalog-bulk-clear");
+const imageCatalogImportZone = document.querySelector("#image-catalog-import-zone");
+const imageCatalogImportFile = document.querySelector("#image-catalog-import-file");
+const imageCatalogImportLabel = document.querySelector("#image-catalog-import-label");
+const imageCatalogImportCategory = document.querySelector("#image-catalog-import-category");
+const imageCatalogImportSet = document.querySelector("#image-catalog-import-set");
+const imageCatalogImportSave = document.querySelector("#image-catalog-import-save");
+const imageCatalogImportStatus = document.querySelector("#image-catalog-import-status");
+const imageCatalogSetSelect = document.querySelector("#image-catalog-set-select");
+const imageCatalogSetLabel = document.querySelector("#image-catalog-set-label");
+const imageCatalogSetIdentity = document.querySelector("#image-catalog-set-identity");
+const imageCatalogSetCostume = document.querySelector("#image-catalog-set-costume");
+const imageCatalogSetNew = document.querySelector("#image-catalog-set-new");
+const imageCatalogSetSave = document.querySelector("#image-catalog-set-save");
+const imageCatalogSetDelete = document.querySelector("#image-catalog-set-delete");
+const imageCatalogManagedActions = document.querySelector("#image-catalog-managed-actions");
+const imageCatalogManagedLabel = document.querySelector("#image-catalog-managed-label");
+const imageCatalogManagedSet = document.querySelector("#image-catalog-managed-set");
+const imageCatalogAdd = document.querySelector("#image-catalog-add");
+const imageCatalogAddUpload = document.querySelector("#image-catalog-add-upload");
+const imageCatalogAddZone = document.querySelector("#image-catalog-add-zone");
+const imageCatalogAddFile = document.querySelector("#image-catalog-add-file");
+const imageCatalogAddLabel = document.querySelector("#image-catalog-add-label");
+const imageCatalogAddStatus = document.querySelector("#image-catalog-add-status");
+const imageCatalogAddSubmit = document.querySelector("#image-catalog-add-submit");
+const imageCatalogReplaceUpload = document.querySelector("#image-catalog-replace-upload");
+const imageCatalogReplaceZone = document.querySelector("#image-catalog-replace-zone");
+const imageCatalogReplaceFile = document.querySelector("#image-catalog-replace-file");
+const imageCatalogReplaceStatus = document.querySelector("#image-catalog-replace-status");
+const imageCatalogReplaceSubmit = document.querySelector("#image-catalog-replace-submit");
+const imageCatalogReplace = document.querySelector("#image-catalog-replace");
+const imageCatalogDelete = document.querySelector("#image-catalog-delete");
 const phaseComparisonStatus = document.querySelector("#phase-comparison-status");
 const phaseComparisonMessage = document.querySelector("#phase-comparison-message");
 const phaseComparisonCharacter = document.querySelector("#phase-comparison-character");
@@ -971,6 +994,10 @@ function showIdentityKeyMessage(message, kind = "info") {
 
 function showCostumeMessage(message, kind = "info") {
   showMessageElement(costumeMessage, message, kind);
+}
+
+function showSceneAppearanceMessage(message, kind = "info") {
+  showMessageElement(sceneAppearanceMessage, message, kind);
 }
 
 function showExpressionMessage(message, kind = "info") {
@@ -1199,9 +1226,9 @@ const SCENE_BUILDER_HELP = {
   "final_image_prompt_overrides.high_risk_elements": "Complete Markdown section that replaces the global High-Risk Elements section when nonblank.",
   "final_image_prompt_overrides.final_verification": "Complete Markdown section that replaces the global Final Verification section when nonblank.",
   "scene_elements[].display_name": "Human-readable label shown in the UI and generated prompts.",
-  "scene_elements[].resource_type": "Where this element comes from: Character, an auxiliary resource type, or Scene-Only.",
+  "scene_elements[].resource_type": "Where this element comes from: Character, a reference-set type, or Scene-Only.",
   "scene_elements[].element_type": "Type of visible thing: Character, Monster, Prop, or Backdrop.",
-  "scene_elements[].reference_images[].tag": "Resolvable image reference tag used by Zet, such as {{ASSET:...}} or {{AUX:...}}.",
+  "scene_elements[].reference_images[].tag": "Resolvable image reference tag used by Zet, such as {{ASSET:...}}, {{IMAGE:...}}, or a legacy {{AUX:...}} tag.",
   "scene_elements[].element_visual_override": "Element-specific visual override. Use only for temporary scene-specific changes.",
   "scene_elements[].fallback_visual_description": "Short local visual description used only if no canonical source or reference is available.",
   "scene_elements[].notes": "Private notes for this element in this scene.",
@@ -1669,7 +1696,7 @@ function renderHeaderStoryContext() {
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
     ["onboarding", "Overview"], ["assets", "Assets"], ["identity-keys", "Identity Keys"],
-    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["expressions", "Expressions"],
+    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["scene-appearances", "Scene Appearances"], ["expressions", "Expressions"],
     ["phase-comparison", "Phase Comparison"], ["manifest", "Manifest"], ["prompt-review", "Prompts"],
     ["render-console", "Render"], ["local-image-review", "Local Images"], ["render-review", "Image Review"],
   ],
@@ -2000,7 +2027,6 @@ async function loadContext() {
   setSelectOptions(onboardingSpecies, state.onboardingOptions.species_ancestry || []);
   setSelectOptions(onboardingGender, state.onboardingOptions.gender_presentation || []);
   if (state.auxiliaryResourceCategories.length) {
-    setSelectOptionsWithLabels(auxResourceCategory, state.auxiliaryResourceCategories.map((item) => ({ value: item.value, label: item.label })));
   }
   updatePhaseSelect();
   saveStoredContext();
@@ -2977,6 +3003,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#auxiliary-resources-page").classList.toggle("active", page === "auxiliary-resources");
   document.querySelector("#phase-comparison-page").classList.toggle("active", page === "phase-comparison");
   document.querySelector("#costumes-page").classList.toggle("active", page === "costumes");
+  document.querySelector("#scene-appearances-page").classList.toggle("active", page === "scene-appearances");
   document.querySelector("#expressions-page").classList.toggle("active", page === "expressions");
   document.querySelector("#stories-page").classList.toggle("active", page === "stories");
   document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
@@ -2997,7 +3024,7 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
+      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "scene-appearances", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
     );
   renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -3019,7 +3046,7 @@ async function activatePage(page, options = {}) {
   }
   if (page === "auxiliary-resources") {
     await loadImageCatalogOrganization();
-    await loadAuxiliaryResources();
+    await loadImageCatalogReferenceSets();
     if (options.preferredCatalogId) {
       await loadImageCatalog();
       selectImageCatalogItem(options.preferredCatalogId);
@@ -3033,6 +3060,9 @@ async function activatePage(page, options = {}) {
   }
   if (page === "costumes") {
     await loadCostumes();
+  }
+  if (page === "scene-appearances") {
+    await loadSceneAppearances();
   }
   if (page === "expressions") {
     await loadExpressions();
@@ -3523,6 +3553,174 @@ async function saveCostume() {
     showCostumeMessage(error.message, "error");
   } finally {
     costumeCreate.disabled = false;
+  }
+}
+
+function sceneAppearanceReferenceLines(references) {
+  return (references || []).map((item) => `${item.role || ""} | ${item.label || ""} | ${item.tag || ""}`).join("\n");
+}
+
+function parseSceneAppearanceReferences() {
+  return sceneAppearanceReferences.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const parts = line.split("|").map((part) => part.trim());
+    if (parts.length !== 3 || parts.some((part) => !part)) {
+      throw new Error(`Invalid supporting reference line: ${line}`);
+    }
+    return { role: parts[0], label: parts[1], tag: parts[2] };
+  });
+}
+
+function selectedSceneAppearance() {
+  return state.sceneAppearances.find((item) => item.appearance_id === state.selectedSceneAppearanceId) || null;
+}
+
+function fillSceneAppearanceCostumes(selected = "") {
+  const names = state.costumes.map((item) => item.name).filter(Boolean);
+  sceneAppearanceCostume.replaceChildren(...names.map((name) => option(name, name)));
+  sceneAppearanceCostume.value = selected && names.includes(selected) ? selected : (names[0] || "");
+}
+
+function renderSceneAppearanceTable() {
+  sceneAppearanceTableBody.replaceChildren();
+  if (!state.sceneAppearances.length) {
+    renderEmptyRow(sceneAppearanceTableBody, 5, "No Scene Appearances exist for this character and phase.");
+    return;
+  }
+  for (const appearance of state.sceneAppearances) {
+    const row = document.createElement("tr");
+    row.classList.toggle("selected", appearance.appearance_id === state.selectedSceneAppearanceId);
+    const nameCell = document.createElement("td");
+    nameCell.textContent = appearance.name || appearance.appearance_id;
+    const costumeCell = document.createElement("td");
+    costumeCell.textContent = appearance.costume || "";
+    const countCell = document.createElement("td");
+    countCell.textContent = appearance.asset_count ?? 0;
+    const pathCell = document.createElement("td");
+    pathCell.textContent = basename(appearance.path || "");
+    pathCell.title = appearance.path || "";
+    const actionCell = document.createElement("td");
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.textContent = "Edit";
+    editButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectSceneAppearance(appearance.appearance_id);
+    });
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.textContent = "Open";
+    openButton.disabled = !appearance.source?.source_path;
+    openButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (appearance.source?.source_path) {
+        openSourceEditorForSource(appearance.source, showSceneAppearanceMessage);
+      }
+    });
+    actionCell.append(editButton, openButton);
+    row.append(nameCell, costumeCell, countCell, pathCell, actionCell);
+    makeSelectableRow(row, appearance.name || appearance.appearance_id, appearance.appearance_id === state.selectedSceneAppearanceId, () => selectSceneAppearance(appearance.appearance_id));
+    sceneAppearanceTableBody.append(row);
+  }
+}
+
+function clearSceneAppearanceForm() {
+  state.selectedSceneAppearanceId = null;
+  sceneAppearanceId.value = "";
+  sceneAppearanceId.disabled = false;
+  sceneAppearanceName.value = "";
+  sceneAppearanceInstructions.value = "";
+  sceneAppearanceReferences.value = "";
+  fillSceneAppearanceCostumes();
+  renderSceneAppearanceEditor();
+  renderSceneAppearanceTable();
+}
+
+function selectSceneAppearance(appearanceId) {
+  state.selectedSceneAppearanceId = appearanceId;
+  const appearance = selectedSceneAppearance();
+  sceneAppearanceId.value = appearance?.appearance_id || "";
+  sceneAppearanceName.value = appearance?.name || "";
+  sceneAppearanceInstructions.value = appearance?.instructions || "";
+  sceneAppearanceReferences.value = sceneAppearanceReferenceLines(appearance?.supporting_references);
+  fillSceneAppearanceCostumes(appearance?.costume || "");
+  renderSceneAppearanceEditor();
+  renderSceneAppearanceTable();
+}
+
+function renderSceneAppearanceEditor() {
+  const appearance = selectedSceneAppearance();
+  const isUpdate = Boolean(appearance);
+  sceneAppearanceFormTitle.textContent = isUpdate ? "Update Scene Appearance" : "Add Scene Appearance";
+  sceneAppearanceSave.textContent = isUpdate ? "Update Scene Appearance" : "Save Scene Appearance";
+  sceneAppearanceId.disabled = isUpdate;
+  sceneAppearancePreviewSection.hidden = !isUpdate;
+  if (isUpdate) {
+    renderReviewImage(
+      sceneAppearancePreview,
+      appearance.locked_preview_path,
+      appearance.locked_preview_exists,
+      "No locked turnaround.",
+      "Locked Scene Appearance turnaround",
+      appearance.path || appearance.name || "",
+    );
+  }
+}
+
+async function loadSceneAppearances() {
+  if (!state.character || !state.phase) {
+    sceneAppearanceStatus.textContent = "No character/phase selected.";
+    return;
+  }
+  sceneAppearanceStatus.textContent = "Loading Scene Appearances...";
+  if (!state.costumes.length) await loadCostumes();
+  const payload = await fetchJson(`/api/scene-appearances?${currentQuery().toString()}`);
+  state.sceneAppearances = payload.scene_appearances || [];
+  if (state.selectedSceneAppearanceId && !state.sceneAppearances.some((item) => item.appearance_id === state.selectedSceneAppearanceId)) {
+    state.selectedSceneAppearanceId = null;
+  }
+  renderSceneAppearanceTable();
+  if (state.selectedSceneAppearanceId) selectSceneAppearance(state.selectedSceneAppearanceId);
+  else clearSceneAppearanceForm();
+  sceneAppearanceStatus.textContent = `${state.sceneAppearances.length} Scene Appearance set(s)`;
+}
+
+async function saveSceneAppearance() {
+  const selected = selectedSceneAppearance();
+  const appearanceId = sceneAppearanceId.value.trim();
+  const payload = {
+    appearance_id: appearanceId,
+    name: sceneAppearanceName.value.trim(),
+    costume: sceneAppearanceCostume.value,
+    instructions: sceneAppearanceInstructions.value.trim(),
+    supporting_references: [],
+  };
+  try {
+    payload.supporting_references = parseSceneAppearanceReferences();
+  } catch (error) {
+    showSceneAppearanceMessage(error.message, "error");
+    return;
+  }
+  showSceneAppearanceMessage(selected ? "Updating Scene Appearance..." : "Creating Scene Appearance...");
+  sceneAppearanceSave.disabled = true;
+  try {
+    const path = selected
+      ? `/api/scene-appearances/${encodeURIComponent(selected.appearance_id)}?${currentQuery().toString()}`
+      : `/api/scene-appearances?${currentQuery().toString()}`;
+    const result = await fetchJson(path, {
+      method: selected ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.sceneAppearances = result.scene_appearances || state.sceneAppearances;
+    state.assets = result.assets || state.assets;
+    state.selectedSceneAppearanceId = result.scene_appearance?.appearance_id || appearanceId;
+    selectSceneAppearance(state.selectedSceneAppearanceId);
+    renderAssetTable();
+    showSceneAppearanceMessage(result.message || "Scene Appearance saved.");
+  } catch (error) {
+    showSceneAppearanceMessage(error.message, "error");
+  } finally {
+    sceneAppearanceSave.disabled = false;
   }
 }
 
@@ -4979,6 +5177,28 @@ function builderActiveSubscene() {
   return (state.sceneBuilder?.subscenes || []).find((item) => item.id === state.activeBuilderRenderTarget) || null;
 }
 
+const BUILDER_SUBSCENE_COLORS = ["#DDEAF4", "#E4E0F3", "#F3E1E7", "#F4E7D5", "#E2EEDC", "#DCEDEA"];
+
+function builderSubsceneColor(subsceneOrId) {
+  const subscene = typeof subsceneOrId === "string"
+    ? (state.sceneBuilder?.subscenes || []).find((item) => item.id === subsceneOrId)
+    : subsceneOrId;
+  if (!subscene || subscene.id === "main") return "";
+  if (BUILDER_SUBSCENE_COLORS.includes(subscene.ui_color)) return subscene.ui_color;
+  const index = Math.max(0, (state.sceneBuilder?.subscenes || []).findIndex((item) => item.id === subscene.id));
+  return BUILDER_SUBSCENE_COLORS[index % BUILDER_SUBSCENE_COLORS.length];
+}
+
+function builderSubsceneStyle(subsceneOrId) {
+  const color = builderSubsceneColor(subsceneOrId);
+  return color ? ` style="--subscene-color: ${color}"` : "";
+}
+
+function builderRenderSubsceneColorPalette(subscene) {
+  const selected = builderSubsceneColor(subscene);
+  return `<div class="scene-builder-color-field full"><span>Sub-scene color</span><div class="scene-builder-color-palette" role="group" aria-label="Sub-scene color">${BUILDER_SUBSCENE_COLORS.map((color, index) => `<button type="button" class="${color === selected ? "selected" : ""}" data-builder-action="set-subscene-color" data-subscene-color="${color}" style="--swatch-color: ${color}" aria-label="Color ${index + 1}" aria-pressed="${color === selected}"></button>`).join("")}</div></div>`;
+}
+
 function builderSubsceneForAnchor(elementId) {
   return (state.sceneBuilder?.subscenes || []).find(
     (item) => item.kind === "element" && item.anchor_element_id === elementId,
@@ -5307,8 +5527,10 @@ async function builderLoadElementAuxResources() {
   builderElementAux.replaceChildren();
   if (!category) return;
   if (!state.builderElementAuxResources[category]) {
-    const payload = await fetchJson(`/api/auxiliary-resources?${new URLSearchParams({ category }).toString()}`);
-    state.builderElementAuxResources[category] = payload.resources || [];
+    const payload = await fetchJson("/api/image-catalog/reference-sets");
+    state.builderElementAuxResources[category] = (payload.reference_sets || [])
+      .filter((item) => item.legacy_category === category)
+      .map((item) => ({ resource_id: item.reference_set_id, label: item.label }));
   }
   setSelectOptionsWithLabels(builderElementAux, state.builderElementAuxResources[category].map((item) => ({ value: item.resource_id, label: item.label || item.resource_id })));
 }
@@ -5329,11 +5551,14 @@ async function createBuilderElementAuxResource() {
   builderElementNewAuxSave.disabled = true;
   builderElementNewAuxStatus.textContent = "Creating resource...";
   try {
-    const params = new URLSearchParams({ category, label });
-    const payload = await fetchJson(`/api/auxiliary-resources?${params.toString()}`, { method: "POST" });
-    state.builderElementAuxResources[category] = payload.resources || [];
+    const payload = await fetchJson("/api/image-catalog/reference-sets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label, legacy_category: category }),
+    });
+    state.builderElementAuxResources[category] = null;
     await builderLoadElementAuxResources();
-    builderElementAux.value = payload.resource?.resource_id || "";
+    builderElementAux.value = payload.reference_set?.reference_set_id || "";
     closeBuilderElementAuxForm();
   } catch (error) {
     builderElementNewAuxStatus.textContent = error.message;
@@ -5382,7 +5607,7 @@ function builderAddElementFromDialog() {
     phase: resourceType === "Character" ? builderElementPhase.value : "",
     costume: resourceType === "Character" ? builderElementCostume.value : "",
     aux_category: category,
-    aux_resource_id: resource?.resource_id || "",
+    reference_set_id: resource?.resource_id || "",
     reference_images: [],
     element_visual_override: "",
     fallback_visual_description: "",
@@ -5475,7 +5700,7 @@ function builderRenderElements() {
     const referenceKnown = Boolean(referenceTag && (state.sceneBuilderReferences || []).some((item) => item.tag === referenceTag));
     const referenceStatus = !referenceTag ? "No reference" : referenceKnown ? "Reference linked" : "Reference unresolved";
     return `
-      <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""} ${activeSubscene && element.subscene_id !== activeSubscene.id ? "context-only" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}">
+      <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""} ${activeSubscene && element.subscene_id !== activeSubscene.id ? "context-only" : ""} ${element.subscene_id ? "subscene-member" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}"${builderSubsceneStyle(element.subscene_id)}>
         <span class="scene-builder-element-name">${escapeHtml(element.display_name || element.id || "")}</span>
         <span class="scene-builder-element-meta"><span>${escapeHtml(element.element_type || "")}</span><span class="reference-status ${referenceKnown ? "complete" : ""}">${escapeHtml(referenceStatus)}</span></span>
         <small>Position: ${escapeHtml(position)} · Depth: ${escapeHtml(depth)} · Render: ${escapeHtml(element.subscene_id || "Full Scene")}</small>
@@ -5584,14 +5809,12 @@ function builderRenderElementWorkspace() {
   }
   const activeSubscene = builderActiveSubscene();
   const editable = builderElementIsEditable(element);
-  const ownedSubscene = builderSubsceneForAnchor(element.id);
-  const canCreateSubscene = editable && builderTargetDepth(state.activeBuilderRenderTarget || "main") < 3;
   const membershipOptions = [
     ...(builderCanMoveElementToTarget(element, "main") ? [`<option value=""${element.subscene_id ? "" : " selected"}>Full Scene</option>`] : []),
     ...(state.sceneBuilder.subscenes || []).filter((item) => builderCanMoveElementToTarget(element, item.id)).map((item) => `<option value="${escapeHtml(item.id)}"${element.subscene_id === item.id ? " selected" : ""}>${escapeHtml(item.name || item.id)}</option>`),
   ].join("");
   return `
-    <div class="scene-builder-card scene-builder-element-workspace">
+    <div class="scene-builder-card scene-builder-element-workspace ${element.subscene_id ? "subscene-member" : ""}"${builderSubsceneStyle(element.subscene_id)}>
       <div class="review-header">
         <div>
           <span class="eyebrow">Selected element</span>
@@ -5600,9 +5823,6 @@ function builderRenderElementWorkspace() {
         <details class="scene-builder-element-menu">
           <summary aria-label="Selected element actions" title="Selected element actions">•••</summary>
           <div class="scene-builder-menu-panel">
-            ${ownedSubscene
-              ? `<button type="button" data-builder-action="${ownedSubscene.enabled ? "open-element-subscene" : "enable-element-subscene"}" data-render-target-id="${escapeHtml(ownedSubscene.id)}" data-element-id="${escapeHtml(element.id)}">${ownedSubscene.enabled ? "Open sub-scene" : "Turn on sub-scene"}</button>`
-              : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(element.id)}"${canCreateSubscene ? "" : " disabled"}>Turn into sub-scene</button>`}
             <button type="button" data-builder-action="duplicate-element">Duplicate</button>
             <button type="button" class="danger-action" data-builder-action="delete-element">Delete</button>
           </div>
@@ -6124,7 +6344,7 @@ async function applySceneBuilderInterview() {
 function builderRenderTargetControls() {
   const subscenes = state.sceneBuilder.subscenes || [];
   const background = subscenes.find((item) => item.id === "background");
-  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""}" aria-label="${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}">${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
+  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""} ${item.id === "main" ? "" : "subscene-target"}" aria-label="${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}"${builderSubsceneStyle(item)}>${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
   const renderChildren = (parentId, seen = new Set()) => builderTargetChildren(parentId).map((item) => {
     if (seen.has(item.id)) return "";
     const nextSeen = new Set(seen);
@@ -6145,7 +6365,7 @@ function builderRenderTargetControls() {
       ? `<button type="button" data-builder-action="disable-subscene" data-render-target-id="${escapeHtml(activeSubscene.id)}">Turn off element sub-render</button>`
       : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(activeSubscene.anchor_element_id || "")}">Turn on element sub-render</button>`
     : "";
-  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact">${toggle}${elementToggle}</div></div>`;
+  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact"><button type="button" data-builder-action="add-subscene">Add Sub-Scene</button>${toggle}${elementToggle}</div></div>`;
 }
 
 async function selectSceneBuilderTarget(targetId) {
@@ -6254,6 +6474,7 @@ function builderRenderSubsceneSettings() {
       <p>${escapeHtml(anchor.element_visual_override || anchor.fallback_visual_description || "The target element's description and references define the overall subject.")}</p>
       <div class="scene-builder-fields">
         <label class="full">Sub-scene name<input value="${escapeHtml(subscene.name || "")}" data-builder-subscene-name></label>
+        ${builderRenderSubsceneColorPalette(subscene)}
         <label>Orientation<select data-builder-element-subscene-field="canvas.orientation">${builderOptionHtml("orientation", canvas.orientation || "landscape")}</select></label>
         <label>Aspect ratio<select data-builder-element-subscene-field="canvas.aspect_ratio">${builderOptionHtml("aspect_ratio", canvas.aspect_ratio || "16:9")}</select></label>
         <label class="full">Primary focal point<input value="${escapeHtml(composition.focal_point || "")}" data-builder-element-subscene-field="composition.focal_point"></label>
@@ -6272,6 +6493,8 @@ function builderRenderSubsceneSettings() {
     <p>Canvas, art style, location, lighting, mood, and atmosphere are inherited from Full Scene. Edit those universal values there; changing them invalidates this lock.</p>
     <dl><dt>Canvas</dt><dd>${escapeHtml(setup.canvas?.orientation || "landscape")} ${escapeHtml(setup.canvas?.aspect_ratio || "16:9")}</dd><dt>Location</dt><dd>${escapeHtml(environment.location || "—")}</dd><dt>Lighting</dt><dd>${escapeHtml(environment.lighting || "—")}</dd></dl>
     <div class="scene-builder-fields">
+      <label class="full">Sub-scene name<input value="${escapeHtml(subscene.name || "")}" data-builder-subscene-name></label>
+      ${builderRenderSubsceneColorPalette(subscene)}
       ${field("focal_point", "Primary focal point")}
       ${field("composition_notes", "Composition notes", true)}
       ${field("general_foreground_notes", "General foreground notes", true)}
@@ -6320,7 +6543,7 @@ function renderSceneBuilder() {
     </div>
     ${builderRenderTargetStatus()}
     ${builderRenderSectionSwitcher()}
-    <div class="scene-builder-grid">
+    <div class="scene-builder-grid ${activeSubscene ? "subscene-active" : ""}"${builderSubsceneStyle(activeSubscene)}>
       ${builderPhoneSectionToggle("scene", "Scene")}
       <section id="builder-panel-scene" class="scene-builder-section scene-builder-foundation" data-builder-section-panel="scene" aria-label="Scene foundation">
         ${activeSubscene ? `<div class="scene-builder-card scene-builder-story-beat">
@@ -6585,6 +6808,24 @@ async function setBackgroundSubsceneEnabled(enabled) {
   }
 }
 
+async function addSceneBuilderSubscene() {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  if (!requireSavedSceneBuilder("adding a sub-scene")) return;
+  try {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/subscenes`, { method: "POST" });
+    state.sceneBuilder = payload.document?.data || state.sceneBuilder;
+    state.sceneBuilderRenderTargets = payload.document?.render_targets || [];
+    state.activeBuilderRenderTarget = "main";
+    updateStoryGitWarning(payload.has_story_changes);
+    renderSceneBuilder();
+    state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
+    updateDirtyIndicators();
+    showSceneBuilderMessage(payload.message, "success");
+  } catch (error) {
+    showSceneBuilderMessage(error.message, "error");
+  }
+}
+
 async function enableSelectedElementSubscene(elementId = "") {
   const element = (state.sceneBuilder?.scene_elements || []).find((item) => item.id === elementId) || builderSelectedElement();
   if (!element || !state.selectedStorySlug || !state.selectedSceneSlug) return;
@@ -6779,6 +7020,15 @@ sceneBuilderPanel.addEventListener("click", (event) => {
       state.showBuilderContextElements = !state.showBuilderContextElements;
       renderSceneBuilder();
     }
+    if (action === "add-subscene") addSceneBuilderSubscene();
+    if (action === "set-subscene-color") {
+      builderSyncControls();
+      const subscene = builderActiveSubscene();
+      if (subscene && BUILDER_SUBSCENE_COLORS.includes(target.dataset.subsceneColor)) {
+        subscene.ui_color = target.dataset.subsceneColor;
+        renderSceneBuilder();
+      }
+    }
     if (action === "enable-background") setBackgroundSubsceneEnabled(true);
     if (action === "disable-subscene") {
       const targetId = target.dataset.renderTargetId || "background";
@@ -6952,6 +7202,9 @@ const builderImagePicker = {
     element.reference_images = element.reference_images || [];
     element.reference_images[0] = element.reference_images[0] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
     element.reference_images[0].tag = item.tag || "";
+    element.reference_images[0].roles = item.default_reference_roles?.length
+      ? [...item.default_reference_roles]
+      : ["visual reference"];
     state.sceneBuilderReferences = [
       ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== item.tag),
       item,
@@ -7148,23 +7401,6 @@ function renderImageCatalog() {
   }
 }
 
-async function syncAuxiliaryResourceEditor(item) {
-  if (item?.source_type !== "auxiliary" || !String(item.source_key || "").startsWith("aux:")) {
-    auxResourceWorkspace.hidden = true;
-    return;
-  }
-  const [, category, resourceId, imageId] = String(item.source_key).split(":");
-  auxResourceWorkspace.hidden = false;
-  if (category && auxResourceCategory.value !== category) {
-    auxResourceCategory.value = category;
-    await loadAuxiliaryResources();
-  } else if (!state.auxiliaryResources.length) {
-    await loadAuxiliaryResources();
-  }
-  if (resourceId) selectAuxiliaryResource(resourceId);
-  if (imageId) selectAuxiliaryResourceImage(imageId);
-}
-
 function selectImageCatalogItem(catalogId) {
   const item = state.imageCatalogItems.find((candidate) => candidate.catalog_id === catalogId);
   if (!item) return;
@@ -7173,6 +7409,22 @@ function selectImageCatalogItem(catalogId) {
   imageCatalogPreview.src = fileUrl(item.image_path);
   imageCatalogPreview.hidden = false;
   imageCatalogSourceDetail.textContent = [item.source_type, item.character, item.phase, item.costume, item.pipeline, item.story_slug, item.scene_slug, item.subscene_id, item.tag].filter(Boolean).join(" · ");
+  imageCatalogManagedActions.hidden = !item.is_managed;
+  imageCatalogManagedLabel.value = item.managed_label || item.label || "";
+  imageCatalogManagedSet.value = item.reference_set_id || "";
+  imageCatalogAdd.disabled = !item.reference_set_id;
+  imageCatalogAdd.title = item.reference_set_id ? "Add another image to this reference set" : "Assign this image to a reference set before adding another image";
+  imageCatalogAddUpload.hidden = true;
+  imageCatalogReplaceUpload.hidden = true;
+  state.imageCatalogAddBlob = null;
+  state.imageCatalogReplaceBlob = null;
+  imageCatalogAddFile.value = "";
+  imageCatalogReplaceFile.value = "";
+  imageCatalogAddLabel.value = "";
+  imageCatalogAddStatus.textContent = "Choose or paste an image.";
+  imageCatalogReplaceStatus.textContent = "Choose or paste an image.";
+  imageCatalogAddSubmit.disabled = true;
+  imageCatalogReplaceSubmit.disabled = true;
   imageCatalogEditCategory.value = item.semantic_category;
   imageCatalogIdentityMode.value = item.identity_mode || "inherit";
   imageCatalogIdentityText.value = item.identity_text || "";
@@ -7193,7 +7445,6 @@ function selectImageCatalogItem(catalogId) {
   }
   renderImageCatalogOrganization();
   renderImageCatalog();
-  syncAuxiliaryResourceEditor(item).catch((error) => showAuxResourceMessage(error.message, "error"));
 }
 
 async function loadImageCatalog() {
@@ -7228,6 +7479,10 @@ async function saveImageCatalogItem() {
     identity: { mode: imageCatalogIdentityMode.value, approved_text: imageCatalogIdentityText.value, provenance: "manual" },
     costume: { mode: imageCatalogCostumeMode.value, approved_text: imageCatalogCostumeText.value, provenance: "manual" },
   };
+  if (item.is_managed) {
+    changes.label = imageCatalogManagedLabel.value;
+    changes.reference_set_id = imageCatalogManagedSet.value;
+  }
   try {
     await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) });
     await loadImageCatalogOrganization();
@@ -7310,6 +7565,7 @@ async function bulkUpdateImageCatalog() {
   if (!state.selectedImageCatalogIds.length) return;
   const changes = {};
   if (imageCatalogBulkCategory.value) changes.semantic_category = imageCatalogBulkCategory.value;
+  if (imageCatalogBulkSet.value !== "__no_change__") changes.reference_set_id = imageCatalogBulkSet.value;
   const collectionIds = Array.from(imageCatalogBulkCollections.selectedOptions, (option) => option.value);
   const keywordIds = Array.from(imageCatalogBulkKeywords.selectedOptions, (option) => option.value);
   if (collectionIds.length) changes.collection_ids = collectionIds;
@@ -7325,261 +7581,225 @@ async function bulkUpdateImageCatalog() {
   }
 }
 
-function updateAuxiliaryResourceCategoryDisplay() {
-  // Keep the editor header matched to the currently filtered resource category.
-  const selected = auxResourceCategory.options[auxResourceCategory.selectedIndex];
-  auxResourceFormCategory.textContent = selected?.textContent || "Person";
+function fillReferenceSetSelect(select, selectedValue = "") {
+  setSelectOptionsWithLabels(select, [
+    { value: "", label: "No reference set" },
+    ...state.imageCatalogReferenceSets.map((item) => ({ value: item.reference_set_id, label: `${item.label} (${item.image_count || 0})` })),
+  ]);
+  select.value = selectedValue || "";
 }
 
-function clearAuxiliaryResourceForm() {
-  state.selectedAuxiliaryResourceId = null;
-  state.selectedAuxiliaryImageId = null;
-  state.auxiliaryResourceImageBlob = null;
-  updateAuxiliaryResourceCategoryDisplay();
-  auxResourceFormTitle.textContent = "Add Resource";
-  auxResourceLabel.value = "";
-  auxResourceEditTemplate.disabled = true;
-  auxResourceDelete.disabled = true;
-  auxResourceImageLabel.value = "";
-  auxResourceTag.textContent = "";
-  auxResourceCopyTag.disabled = true;
-  auxResourceImagePreview.hidden = true;
-  auxResourceImagePreview.removeAttribute("src");
-  auxResourceSave.textContent = "Save Resource";
-  auxResourceSaveImage.textContent = "Save Image";
-  auxResourceSaveImage.disabled = true;
-  auxResourceFileInput.value = "";
-  renderAuxiliaryResourceImages(null);
-  for (const row of auxResourceTableBody.querySelectorAll("tr")) {
-    row.classList.remove("selected");
-  }
+async function loadImageCatalogReferenceSets() {
+  const payload = await fetchJson("/api/image-catalog/reference-sets");
+  state.imageCatalogReferenceSets = payload.reference_sets || [];
+  fillReferenceSetSelect(imageCatalogImportSet, imageCatalogImportSet.value);
+  fillReferenceSetSelect(imageCatalogManagedSet, selectedImageCatalogItem()?.reference_set_id || "");
+  const bulkSet = imageCatalogBulkSet.value;
+  setSelectOptionsWithLabels(imageCatalogBulkSet, [
+    { value: "__no_change__", label: "No change" },
+    { value: "", label: "No reference set" },
+    ...state.imageCatalogReferenceSets.map((item) => ({ value: item.reference_set_id, label: item.label })),
+  ]);
+  imageCatalogBulkSet.value = Array.from(imageCatalogBulkSet.options).some((option) => option.value === bulkSet) ? bulkSet : "__no_change__";
+  const selected = imageCatalogSetSelect.value;
+  setSelectOptionsWithLabels(imageCatalogSetSelect, [
+    { value: "", label: "New reference set" },
+    ...state.imageCatalogReferenceSets.map((item) => ({ value: item.reference_set_id, label: `${item.label} (${item.image_count || 0})` })),
+  ]);
+  imageCatalogSetSelect.value = state.imageCatalogReferenceSets.some((item) => item.reference_set_id === selected) ? selected : "";
+  renderSelectedReferenceSet();
 }
 
-function setAuxiliaryResourceImageSelection(blob) {
-  if (!blob || !blob.type.startsWith("image/")) {
-    showAuxResourceMessage("Clipboard or file did not contain an image.", "error");
+function renderSelectedReferenceSet() {
+  const item = state.imageCatalogReferenceSets.find((candidate) => candidate.reference_set_id === imageCatalogSetSelect.value);
+  imageCatalogSetLabel.value = item?.label || "";
+  imageCatalogSetIdentity.value = item?.identity_text || "";
+  imageCatalogSetCostume.value = item?.costume_text || "";
+  imageCatalogSetDelete.disabled = !item;
+}
+
+function setImageCatalogImportBlob(blob) {
+  if (!blob || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(blob.type)) {
+    imageCatalogImportStatus.textContent = "Choose a PNG, JPEG, WebP, or GIF image.";
+    state.imageCatalogImportBlob = null;
+    imageCatalogImportSave.disabled = true;
     return;
   }
-  state.auxiliaryResourceImageBlob = blob;
-  auxResourceImagePreview.src = URL.createObjectURL(blob);
-  auxResourceImagePreview.hidden = false;
-  auxResourceSaveImage.disabled = !state.selectedAuxiliaryResourceId;
-  showAuxResourceMessage(`Ready to save ${Math.round(blob.size / 1024)} KB image.`);
-}
-
-async function loadAuxiliaryResources() {
-  updateAuxiliaryResourceCategoryDisplay();
-  auxResourceStatus.textContent = "Loading auxiliary resources...";
-  const params = new URLSearchParams({ category: auxResourceCategory.value || "person" });
-  try {
-    const payload = await fetchJson(`/api/auxiliary-resources?${params.toString()}`);
-    state.auxiliaryResources = payload.resources || [];
-    const visibleCount = renderAuxiliaryResourceTable();
-    auxResourceStatus.textContent = `${visibleCount} of ${state.auxiliaryResources.length} ${auxResourceCategory.value} resource(s)`;
-  } catch (error) {
-    auxResourceStatus.textContent = "Load failed.";
-    showAuxResourceMessage(error.message, "error");
+  state.imageCatalogImportBlob = blob;
+  if (!imageCatalogImportLabel.value && blob.name) {
+    imageCatalogImportLabel.value = blob.name.replace(/\.[^.]+$/, "");
   }
+  imageCatalogImportStatus.textContent = `${blob.name || "Pasted image"} ready to import.`;
+  imageCatalogImportSave.disabled = false;
 }
 
-function renderAuxiliaryResourceTable() {
-  const search = (auxResourceSearch.value || "").trim().toLowerCase();
-  const visibleResources = search
-    ? state.auxiliaryResources.filter((resource) => (resource.label || "").toLowerCase().includes(search))
-    : state.auxiliaryResources;
-  auxResourceTableBody.replaceChildren();
-  if (!visibleResources.length) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 4;
-    cell.textContent = state.auxiliaryResources.length ? "No resources match this search." : "No resources.";
-    row.append(cell);
-    auxResourceTableBody.append(row);
-    return 0;
-  }
-  for (const resource of visibleResources) {
-    const row = document.createElement("tr");
-    row.dataset.resourceId = resource.resource_id;
-    row.classList.toggle("selected", resource.resource_id === state.selectedAuxiliaryResourceId);
-    const labelCell = document.createElement("td");
-    labelCell.textContent = resource.label || "";
-    const folderCell = document.createElement("td");
-    folderCell.textContent = resource.resource_id || "";
-    row.append(labelCell, folderCell);
-    makeSelectableRow(row, resource.label || resource.resource_id, resource.resource_id === state.selectedAuxiliaryResourceId, () => selectAuxiliaryResource(resource.resource_id));
-    auxResourceTableBody.append(row);
-  }
-  return visibleResources.length;
-}
-
-function refreshAuxiliaryResourceTable() {
-  // Re-render the auxiliary resource table after local filter changes.
-  const visibleCount = renderAuxiliaryResourceTable();
-  auxResourceStatus.textContent = `${visibleCount} of ${state.auxiliaryResources.length} ${auxResourceCategory.value} resource(s)`;
-}
-
-function selectAuxiliaryResource(resourceId) {
-  const resource = state.auxiliaryResources.find((item) => item.resource_id === resourceId);
-  if (!resource) {
+function setImageCatalogManagedBlob(mode, blob) {
+  const isAdd = mode === "add";
+  const stateKey = isAdd ? "imageCatalogAddBlob" : "imageCatalogReplaceBlob";
+  const status = isAdd ? imageCatalogAddStatus : imageCatalogReplaceStatus;
+  const submit = isAdd ? imageCatalogAddSubmit : imageCatalogReplaceSubmit;
+  const label = isAdd ? imageCatalogAddLabel : null;
+  if (!blob || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(blob.type)) {
+    status.textContent = "Choose a PNG, JPEG, WebP, or GIF image.";
+    state[stateKey] = null;
+    submit.disabled = true;
     return;
   }
-  state.selectedAuxiliaryResourceId = resource.resource_id;
-  state.selectedAuxiliaryImageId = null;
-  state.auxiliaryResourceImageBlob = null;
-  updateAuxiliaryResourceCategoryDisplay();
-  auxResourceFormTitle.textContent = "Update Resource";
-  auxResourceLabel.value = resource.label || "";
-  auxResourceEditTemplate.disabled = !resource.template_path;
-  auxResourceDelete.disabled = false;
-  auxResourceSave.textContent = "Update Resource";
-  auxResourceImageLabel.value = "";
-  auxResourceTag.textContent = "";
-  auxResourceCopyTag.disabled = true;
-  auxResourceImagePreview.hidden = true;
-  auxResourceImagePreview.removeAttribute("src");
-  auxResourceSaveImage.textContent = "Save Image";
-  auxResourceSaveImage.disabled = false;
-  auxResourceFileInput.value = "";
-  renderAuxiliaryResourceImages(resource);
-  renderAuxiliaryResourceTable();
+  state[stateKey] = blob;
+  if (label && !label.value && blob.name) {
+    label.value = blob.name.replace(/\.[^.]+$/, "");
+  }
+  status.textContent = `${blob.name || "Pasted image"} ready.`;
+  submit.disabled = false;
 }
 
-function renderAuxiliaryResourceImages(resource) {
-  auxResourceImageList.replaceChildren();
-  const images = resource?.images || [];
-  if (!images.length) {
-    auxResourceImageList.textContent = "No images.";
+function openImageCatalogManagedUpload(mode) {
+  const isAdd = mode === "add";
+  const panel = isAdd ? imageCatalogAddUpload : imageCatalogReplaceUpload;
+  panel.hidden = false;
+  (isAdd ? imageCatalogAddFile : imageCatalogReplaceFile).focus();
+}
+
+async function importImageCatalogImage() {
+  const blob = state.imageCatalogImportBlob;
+  const label = imageCatalogImportLabel.value.trim();
+  if (!blob || !label) {
+    showAuxResourceMessage("Choose an image and enter a label.", "error");
     return;
   }
-  for (const imageRecord of images) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "aux-resource-image-row";
-    button.classList.toggle("selected", imageRecord.image_id === state.selectedAuxiliaryImageId);
-    const thumb = document.createElement("img");
-    thumb.className = "aux-resource-thumb";
-    thumb.alt = imageRecord.label || imageRecord.image_id || "";
-    thumb.src = fileUrl(imageRecord.image_path, imageRecord.updated_at || "");
-    const label = document.createElement("span");
-    label.className = "aux-resource-image-label";
-    label.textContent = imageRecord.label || imageRecord.image_id || "";
-    const copy = document.createElement("span");
-    copy.textContent = "Select";
-    button.append(thumb, label, copy);
-    button.addEventListener("click", () => selectAuxiliaryResourceImage(imageRecord.image_id));
-    auxResourceImageList.append(button);
-  }
-}
-
-async function openAuxiliaryResourceTemplate() {
-  const resource = selectedAuxiliaryResource();
-  if (!resource?.template_path) {
-    return;
-  }
-  await openSourceEditorForSource(
-    {
-      source_kind: "auxiliary_resource_template",
-      source_label: resource.label || resource.resource_id || "Aux Resource Template",
-      source_path: resource.template_path,
-    },
-    showAuxResourceMessage,
-  );
-}
-
-function selectedAuxiliaryResource() {
-  return state.auxiliaryResources.find((item) => item.resource_id === state.selectedAuxiliaryResourceId) || null;
-}
-
-function selectedAuxiliaryImage() {
-  const resource = selectedAuxiliaryResource();
-  return (resource?.images || []).find((item) => item.image_id === state.selectedAuxiliaryImageId) || null;
-}
-
-function selectAuxiliaryResourceImage(imageId) {
-  const resource = selectedAuxiliaryResource();
-  const imageRecord = (resource?.images || []).find((item) => item.image_id === imageId);
-  if (!resource || !imageRecord) {
-    return;
-  }
-  state.selectedAuxiliaryImageId = imageRecord.image_id;
-  state.auxiliaryResourceImageBlob = null;
-  auxResourceImageLabel.value = imageRecord.label || "";
-  auxResourceTag.textContent = imageRecord.tag || "";
-  auxResourceCopyTag.disabled = !imageRecord.tag;
-  auxResourceSaveImage.textContent = "Update Image";
-  auxResourceSaveImage.disabled = false;
-  auxResourceImagePreview.src = fileUrl(imageRecord.image_path, imageRecord.updated_at || "");
-  auxResourceImagePreview.hidden = !imageRecord.image_path;
-  auxResourceFileInput.value = "";
-  renderAuxiliaryResourceImages(resource);
-}
-
-function newAuxiliaryResourceImage() {
-  state.selectedAuxiliaryImageId = null;
-  state.auxiliaryResourceImageBlob = null;
-  auxResourceImageLabel.value = "";
-  auxResourceTag.textContent = "";
-  auxResourceCopyTag.disabled = true;
-  auxResourceSaveImage.textContent = "Save Image";
-  auxResourceSaveImage.disabled = !state.selectedAuxiliaryResourceId;
-  auxResourceImagePreview.hidden = true;
-  auxResourceImagePreview.removeAttribute("src");
-  auxResourceFileInput.value = "";
-  renderAuxiliaryResourceImages(selectedAuxiliaryResource());
-}
-
-async function saveAuxiliaryResource() {
-  const label = auxResourceLabel.value.trim();
-  if (!label) {
-    showAuxResourceMessage("Label is required.", "error");
-    return;
-  }
-  const isUpdate = Boolean(state.selectedAuxiliaryResourceId);
   const params = new URLSearchParams({
-    category: auxResourceCategory.value || "person",
     label,
+    semantic_category: imageCatalogImportCategory.value,
+    reference_set_id: imageCatalogImportSet.value,
   });
-  auxResourceSave.disabled = true;
-  showAuxResourceMessage(isUpdate ? "Updating resource..." : "Creating resource...");
+  imageCatalogImportSave.disabled = true;
   try {
-    const url = isUpdate
-      ? `/api/auxiliary-resources/${encodeURIComponent(state.selectedAuxiliaryResourceId)}?${params.toString()}`
-      : `/api/auxiliary-resources?${params.toString()}`;
-    const payload = await fetchJson(url, {
-      method: isUpdate ? "PUT" : "POST",
-    });
-    state.auxiliaryResources = payload.resources || state.auxiliaryResources;
-    state.selectedAuxiliaryResourceId = payload.resource?.resource_id || state.selectedAuxiliaryResourceId;
-    state.auxiliaryResourceImageBlob = null;
-    renderAuxiliaryResourceTable();
-    selectAuxiliaryResource(state.selectedAuxiliaryResourceId);
-    showAuxResourceMessage(payload.message || "Resource saved.");
+    const payload = await fetchJson(`/api/image-catalog/imports?${params.toString()}`, { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+    state.imageCatalogImportBlob = null;
+    imageCatalogImportFile.value = "";
+    imageCatalogImportLabel.value = "";
+    imageCatalogImportStatus.textContent = "Choose or paste an image.";
+    await loadImageCatalogReferenceSets();
+    await loadImageCatalog();
+    selectImageCatalogItem(payload.item.catalog_id);
+    showAuxResourceMessage(payload.message, "success");
   } catch (error) {
     showAuxResourceMessage(error.message, "error");
-  } finally {
-    auxResourceSave.disabled = false;
+    imageCatalogImportSave.disabled = false;
   }
 }
 
-async function deleteAuxiliaryResource() {
-  const resource = selectedAuxiliaryResource();
-  if (!resource || !window.confirm(`Delete ${resource.label || resource.resource_id} and all of its files and images?`)) {
+async function replaceImageCatalogImage() {
+  const item = selectedImageCatalogItem();
+  const blob = state.imageCatalogReplaceBlob || imageCatalogReplaceFile.files?.[0];
+  if (!item?.is_managed) return;
+  if (!blob) {
+    openImageCatalogManagedUpload("replace");
     return;
   }
-  const params = new URLSearchParams({ category: auxResourceCategory.value || "person" });
-  auxResourceDelete.disabled = true;
-  showAuxResourceMessage("Deleting resource...");
+  imageCatalogReplace.disabled = true;
+  imageCatalogReplaceSubmit.disabled = true;
   try {
-    const payload = await fetchJson(
-      `/api/auxiliary-resources/${encodeURIComponent(resource.resource_id)}?${params.toString()}`,
-      { method: "DELETE" },
-    );
-    state.auxiliaryResources = payload.resources || [];
-    clearAuxiliaryResourceForm();
-    refreshAuxiliaryResourceTable();
-    showAuxResourceMessage(payload.message || "Resource deleted.");
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/content`, { method: "PUT", headers: { "Content-Type": blob.type }, body: blob });
+    await loadImageCatalog();
+    selectImageCatalogItem(payload.item.catalog_id);
+    showAuxResourceMessage(payload.message, "success");
   } catch (error) {
-    auxResourceDelete.disabled = false;
+    imageCatalogReplace.disabled = false;
+    imageCatalogReplaceSubmit.disabled = false;
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function addImageCatalogImage() {
+  const item = selectedImageCatalogItem();
+  const blob = state.imageCatalogAddBlob || imageCatalogAddFile.files?.[0];
+  const label = imageCatalogAddLabel.value.trim();
+  const referenceSetId = imageCatalogManagedSet.value;
+  if (!item?.is_managed) return;
+  if (!referenceSetId) {
+    showAuxResourceMessage("Assign this image to a reference set before adding another image.", "error");
+    return;
+  }
+  if (!blob || !label) {
+    showAuxResourceMessage("Choose an image and enter a label.", "error");
+    return;
+  }
+  const params = new URLSearchParams({
+    label,
+    semantic_category: item.semantic_category,
+    reference_set_id: referenceSetId,
+  });
+  imageCatalogAdd.disabled = true;
+  imageCatalogAddSubmit.disabled = true;
+  try {
+    const payload = await fetchJson(`/api/image-catalog/imports?${params.toString()}`, { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+    await loadImageCatalogReferenceSets();
+    await loadImageCatalog();
+    selectImageCatalogItem(payload.item.catalog_id);
+    showAuxResourceMessage(payload.message, "success");
+  } catch (error) {
+    imageCatalogAdd.disabled = false;
+    imageCatalogAddSubmit.disabled = false;
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function deleteImageCatalogImage(force = false) {
+  const item = selectedImageCatalogItem();
+  if (!item?.is_managed || (!force && !window.confirm(`Delete ${item.label}? The file will be moved to catalog trash.`))) return;
+  try {
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}?force=${force}`, { method: "DELETE" });
+    state.selectedImageCatalogId = null;
+    imageCatalogManagedActions.hidden = true;
+    imageCatalogPreview.hidden = true;
+    await loadImageCatalogReferenceSets();
+    await loadImageCatalog();
+    showAuxResourceMessage(payload.message, "success");
+  } catch (error) {
+    let detail = null;
+    try { detail = JSON.parse(error.message); } catch { /* use ordinary error */ }
+    if (!force && detail?.references?.length && window.confirm(`${detail.message}\n\nDelete anyway and leave ${detail.references.length} broken reference(s)?`)) {
+      await deleteImageCatalogImage(true);
+      return;
+    }
+    showAuxResourceMessage(detail?.message || error.message, "error");
+  }
+}
+
+async function saveImageCatalogReferenceSet() {
+  const label = imageCatalogSetLabel.value.trim();
+  if (!label) {
+    showAuxResourceMessage("Reference set label is required.", "error");
+    return;
+  }
+  const selected = imageCatalogSetSelect.value;
+  const payload = { label, identity_text: imageCatalogSetIdentity.value, costume_text: imageCatalogSetCostume.value };
+  try {
+    const result = await fetchJson(selected ? `/api/image-catalog/reference-sets/${encodeURIComponent(selected)}` : "/api/image-catalog/reference-sets", {
+      method: selected ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await loadImageCatalogReferenceSets();
+    imageCatalogSetSelect.value = result.reference_set.reference_set_id;
+    renderSelectedReferenceSet();
+    await loadImageCatalog();
+    showAuxResourceMessage(result.message, "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function deleteImageCatalogReferenceSet() {
+  const setId = imageCatalogSetSelect.value;
+  if (!setId || !window.confirm("Delete this empty reference set?")) return;
+  try {
+    const payload = await fetchJson(`/api/image-catalog/reference-sets/${encodeURIComponent(setId)}`, { method: "DELETE" });
+    imageCatalogSetSelect.value = "";
+    await loadImageCatalogReferenceSets();
+    showAuxResourceMessage(payload.message, "success");
+  } catch (error) {
     showAuxResourceMessage(error.message, "error");
   }
 }
@@ -10563,53 +10783,6 @@ async function savePromptEvolutionTemplate() {
   state.promptEvolutionTemplates[name] = promptEvolutionTemplateText.value; showPromptEvolutionMessage(`Saved ${name} template.`, "success");
 }
 
-async function saveAuxiliaryResourceImage() {
-  const resource = selectedAuxiliaryResource();
-  const imageLabel = auxResourceImageLabel.value.trim();
-  if (!resource) {
-    showAuxResourceMessage("Select or save a resource first.", "error");
-    return;
-  }
-  if (!imageLabel) {
-    showAuxResourceMessage("Image name is required.", "error");
-    return;
-  }
-  if (!state.selectedAuxiliaryImageId && !state.auxiliaryResourceImageBlob) {
-    showAuxResourceMessage("Image is required.", "error");
-    return;
-  }
-  const params = new URLSearchParams({
-    category: auxResourceCategory.value || "person",
-    image_label: imageLabel,
-    original_image_id: state.selectedAuxiliaryImageId || "",
-  });
-  const blob = state.auxiliaryResourceImageBlob || new Blob([]);
-  auxResourceSaveImage.disabled = true;
-  showAuxResourceMessage(state.selectedAuxiliaryImageId ? "Updating image..." : "Saving image...");
-  try {
-    const payload = await fetchJson(`/api/auxiliary-resources/${encodeURIComponent(resource.resource_id)}/images?${params.toString()}`, {
-      method: "PUT",
-      headers: { "Content-Type": blob.type || "application/octet-stream" },
-      body: blob,
-    });
-    state.auxiliaryResources = payload.resources || state.auxiliaryResources;
-    state.selectedAuxiliaryResourceId = payload.resource?.resource_id || resource.resource_id;
-    const saved = payload.resource?.images?.find((item) => item.label === imageLabel) || payload.resource?.images?.[0];
-    const savedImageId = saved?.image_id || state.selectedAuxiliaryImageId;
-    state.auxiliaryResourceImageBlob = null;
-    renderAuxiliaryResourceTable();
-    selectAuxiliaryResource(state.selectedAuxiliaryResourceId);
-    if (savedImageId) {
-      selectAuxiliaryResourceImage(savedImageId);
-    }
-    showAuxResourceMessage(payload.message || "Image saved.");
-  } catch (error) {
-    showAuxResourceMessage(error.message, "error");
-  } finally {
-    auxResourceSaveImage.disabled = !state.selectedAuxiliaryResourceId;
-  }
-}
-
 async function copyRenderConsoleLocalApiParams() {
   if (!state.selectedRenderConsoleAskId) {
     return;
@@ -10990,6 +11163,9 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#costumes-page").classList.contains("active")) {
     await loadCostumes();
   }
+  if (document.querySelector("#scene-appearances-page").classList.contains("active")) {
+    await loadSceneAppearances();
+  }
   if (document.querySelector("#expressions-page").classList.contains("active")) {
     await loadExpressions();
   }
@@ -11062,6 +11238,9 @@ phaseSelect.addEventListener("change", async () => {
   }
   if (document.querySelector("#costumes-page").classList.contains("active")) {
     await loadCostumes();
+  }
+  if (document.querySelector("#scene-appearances-page").classList.contains("active")) {
+    await loadSceneAppearances();
   }
   if (document.querySelector("#expressions-page").classList.contains("active")) {
     await loadExpressions();
@@ -11283,6 +11462,8 @@ identityKeyCreatePreview.addEventListener("click", createIdentityKeyPreview);
 identityKeySave.addEventListener("click", saveIdentityKey);
 costumeAddNew.addEventListener("click", clearCostumeForm);
 costumeCreate.addEventListener("click", saveCostume);
+sceneAppearanceAddNew.addEventListener("click", clearSceneAppearanceForm);
+sceneAppearanceSave.addEventListener("click", saveSceneAppearance);
 expressionAddNew.addEventListener("click", clearExpressionForm);
 expressionCreate.addEventListener("click", saveExpression);
 storyCreate.addEventListener("click", createStory);
@@ -11336,7 +11517,6 @@ zineSpread1.addEventListener("change", () => setZineSpread(1, zineSpread1.checke
 zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checked));
 zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
 enableFullscreenImage(zinePreview);
-enableFullscreenImage(auxResourceImagePreview);
 enableFullscreenImage(imageCatalogPreview);
 enableFullscreenImage(promptEvolutionSourcePreview);
 enableFullscreenImage(promptEvolutionDerivativePreview);
@@ -11444,48 +11624,59 @@ builderElementNewAux.addEventListener("click", () => {
 });
 builderElementNewAuxCancel.addEventListener("click", closeBuilderElementAuxForm);
 builderElementNewAuxSave.addEventListener("click", createBuilderElementAuxResource);
-auxResourceCategory.addEventListener("change", () => {
-  clearAuxiliaryResourceForm();
-  loadAuxiliaryResources();
-});
-auxResourceSearch.addEventListener("input", refreshAuxiliaryResourceTable);
-auxResourceAdd.addEventListener("click", () => {
-  auxResourceWorkspace.hidden = false;
-  clearAuxiliaryResourceForm();
-  auxResourceLabel.focus();
-});
-auxResourceEditTemplate.addEventListener("click", openAuxiliaryResourceTemplate);
-auxResourcePasteZone.addEventListener("paste", (event) => {
+imageCatalogImportZone.addEventListener("paste", (event) => {
   const blob = imageBlobFromPasteEvent(event);
   if (blob) {
     event.preventDefault();
-    setAuxiliaryResourceImageSelection(blob);
+    setImageCatalogImportBlob(blob);
   }
 });
-auxResourcePasteZone.addEventListener("dragover", (event) => {
+imageCatalogImportZone.addEventListener("dragover", (event) => {
   event.preventDefault();
-  auxResourcePasteZone.classList.add("drag-over");
+  imageCatalogImportZone.classList.add("drag-over");
 });
-auxResourcePasteZone.addEventListener("dragleave", () => {
-  auxResourcePasteZone.classList.remove("drag-over");
-});
-auxResourcePasteZone.addEventListener("drop", (event) => {
+imageCatalogImportZone.addEventListener("dragleave", () => imageCatalogImportZone.classList.remove("drag-over"));
+imageCatalogImportZone.addEventListener("drop", (event) => {
   event.preventDefault();
-  auxResourcePasteZone.classList.remove("drag-over");
-  setAuxiliaryResourceImageSelection(event.dataTransfer?.files?.[0]);
+  imageCatalogImportZone.classList.remove("drag-over");
+  setImageCatalogImportBlob(event.dataTransfer?.files?.[0]);
 });
-auxResourceFileInput.addEventListener("change", () => {
-  setAuxiliaryResourceImageSelection(auxResourceFileInput.files?.[0]);
+imageCatalogImportFile.addEventListener("change", () => setImageCatalogImportBlob(imageCatalogImportFile.files?.[0]));
+imageCatalogImportSave.addEventListener("click", importImageCatalogImage);
+imageCatalogSetSelect.addEventListener("change", renderSelectedReferenceSet);
+imageCatalogSetNew.addEventListener("click", () => {
+  imageCatalogSetSelect.value = "";
+  renderSelectedReferenceSet();
+  imageCatalogSetLabel.focus();
 });
-auxResourceSave.addEventListener("click", saveAuxiliaryResource);
-auxResourceDelete.addEventListener("click", deleteAuxiliaryResource);
-auxResourceNewImage.addEventListener("click", newAuxiliaryResourceImage);
-auxResourceSaveImage.addEventListener("click", saveAuxiliaryResourceImage);
-auxResourceClear.addEventListener("click", () => {
-  clearAuxiliaryResourceForm();
-  auxResourceWorkspace.hidden = true;
-});
-auxResourceCopyTag.addEventListener("click", () => copyText(auxResourceTag.textContent || "", "Resource tag copied."));
+imageCatalogSetSave.addEventListener("click", saveImageCatalogReferenceSet);
+imageCatalogSetDelete.addEventListener("click", deleteImageCatalogReferenceSet);
+imageCatalogAdd.addEventListener("click", () => openImageCatalogManagedUpload("add"));
+imageCatalogAddFile.addEventListener("change", () => setImageCatalogManagedBlob("add", imageCatalogAddFile.files?.[0]));
+imageCatalogReplaceFile.addEventListener("change", () => setImageCatalogManagedBlob("replace", imageCatalogReplaceFile.files?.[0]));
+for (const [zone, mode] of [[imageCatalogAddZone, "add"], [imageCatalogReplaceZone, "replace"]]) {
+  zone.addEventListener("paste", (event) => {
+    const blob = imageBlobFromPasteEvent(event);
+    if (blob) {
+      event.preventDefault();
+      setImageCatalogManagedBlob(mode, blob);
+    }
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("drag-over");
+    setImageCatalogManagedBlob(mode, event.dataTransfer?.files?.[0]);
+  });
+}
+imageCatalogReplaceSubmit.addEventListener("click", replaceImageCatalogImage);
+imageCatalogAddSubmit.addEventListener("click", addImageCatalogImage);
+imageCatalogReplace.addEventListener("click", replaceImageCatalogImage);
+imageCatalogDelete.addEventListener("click", () => deleteImageCatalogImage(false));
 phaseComparisonCharacter.addEventListener("change", () => {
   state.phaseComparison.character = phaseComparisonCharacter.value;
   state.phaseComparison.pipeline = "Character-Assembly";

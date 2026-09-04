@@ -129,9 +129,16 @@ class StoryService:
                 "costume_source": self._library_relative_path(costume_template) if costume else "",
             }
         if resource_type in {"Person", "Place", "Object"}:
-            resource_id = str(element.get("aux_resource_id") or "").strip()
+            resource_id = str(element.get("reference_set_id") or element.get("aux_resource_id") or "").strip()
             if not resource_id:
                 return {}
+            if self.image_catalog_service is not None:
+                sections = self.image_catalog_service.reference_set_sections(resource_id)
+                if sections:
+                    if resource_type != "Person":
+                        sections.pop("identity_preservation_costume", None)
+                        sections.pop("costume_source", None)
+                    return sections
             resource = self.auxiliary_resource_repository.get_resource(resource_id)
             template = self.path_service.resolve_path(resource.template_path)
             sections = {
@@ -1656,6 +1663,9 @@ class StoryService:
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.scene_render_target_service.enable_background(story_slug, scene_slug)
 
+    def create_subscene(self, story_slug: str, scene_slug: str) -> tuple[SceneBuilderDocument, str]:
+        return self.scene_render_target_service.create_subscene(story_slug, scene_slug)
+
     def enable_element_subscene(self, story_slug: str, scene_slug: str, element_id: str) -> SceneBuilderDocument:
         return self.scene_render_target_service.enable_element(story_slug, scene_slug, element_id)
 
@@ -1835,9 +1845,13 @@ class StoryService:
     def _asset_reference_row(self, asset: Asset) -> ImageReferenceRow:
         """Return one picker row for a locked asset."""
         label_parts = [asset.pipeline, asset.body_view]
+        if asset.pipeline == "Scene-Appearance":
+            label_parts = ["Scene Appearance", asset.scene_appearance or "", asset.costume or "", asset.body_view]
         if asset.head_view and asset.head_view != asset.body_view:
             label_parts.append(asset.head_view)
-        if asset.costume:
+        if asset.scene_appearance and asset.pipeline != "Scene-Appearance":
+            label_parts.append(asset.scene_appearance)
+        if asset.costume and asset.pipeline != "Scene-Appearance":
             label_parts.append(asset.costume)
         if asset.expression:
             label_parts.append(asset.expression)
@@ -1846,11 +1860,13 @@ class StoryService:
         tag_parts = [self._asset_reference_pipeline_code(asset.pipeline), asset.body_view]
         if asset.pipeline == "Costume-Dressing" and asset.costume:
             tag_parts.append(asset.costume)
+        if asset.pipeline == "Scene-Appearance" and asset.scene_appearance:
+            tag_parts.extend([asset.scene_appearance, asset.costume or ""])
         if asset.pipeline == "Expression" and asset.expression:
             tag_parts.append(asset.expression)
         return ImageReferenceRow(
             tag=f"{{{{ASSET:{asset.character}:{asset.phase}:{asset.asset_id}:{' | '.join(part for part in tag_parts if part)}}}}}",
-            label=" | ".join(part for part in label_parts if part),
+            label=" / ".join(part for part in label_parts if part) if asset.pipeline == "Scene-Appearance" else " | ".join(part for part in label_parts if part),
             character=asset.character,
             phase=asset.phase,
             kind="locked-asset",
@@ -1859,6 +1875,7 @@ class StoryService:
             thumbnail_path=str(image_path),
             costume=asset.costume or "",
             view=asset.body_view or "",
+            default_reference_roles=["internal arrangement"] if asset.pipeline == "Scene-Appearance" else [],
             available=available,
             disabled_reason="" if available else "Locked asset image is missing.",
         )
@@ -1866,15 +1883,21 @@ class StoryService:
     def _turnaround_reference_row(self, sheet: TurnaroundSheet) -> ImageReferenceRow:
         """Return one picker row for a full locked turnaround sheet."""
         detail_parts = [self._asset_reference_pipeline_code(sheet.source_pipeline), "Turnaround"]
-        if sheet.costume:
-            detail_parts.append(sheet.costume)
         if sheet.expression:
             detail_parts.append(sheet.expression)
+        if sheet.scene_appearance:
+            detail_parts.append(sheet.scene_appearance)
+        if sheet.costume:
+            detail_parts.append(sheet.costume)
         image_path = self.path_service.resolve_path(str(sheet.locked_image_path or ""))
         available = image_path.is_file()
         return ImageReferenceRow(
             tag=f"{{{{ASSET:{sheet.character}:{sheet.phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail_parts)}}}}}",
-            label=" | ".join([sheet.source_pipeline, "Turnaround", *detail_parts[2:]]),
+            label=(
+                " / ".join(["Scene Appearance", *detail_parts[2:], "Turnaround"])
+                if sheet.source_pipeline == "Scene-Appearance"
+                else " | ".join([sheet.source_pipeline, "Turnaround", *detail_parts[2:]])
+            ),
             character=sheet.character,
             phase=sheet.phase,
             kind="locked-turnaround",
@@ -1882,6 +1905,7 @@ class StoryService:
             image_path=str(image_path),
             thumbnail_path=str(image_path),
             costume=sheet.costume or "",
+            default_reference_roles=["internal arrangement"] if sheet.source_pipeline == "Scene-Appearance" else [],
             available=available,
             disabled_reason="" if available else "Turnaround has no locked image.",
         )
@@ -1893,6 +1917,7 @@ class StoryService:
             "Head-Image": "Head",
             "Character-Assembly": "Character",
             "Costume-Dressing": "Costume",
+            "Scene-Appearance": "Scene Appearance",
             "Expression": "Expression",
         }.get(pipeline, pipeline)
 

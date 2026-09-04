@@ -27,5 +27,8 @@ class Asset:
     identity_key_id: Optional[str] = None
     expression_definition_path: Optional[str] = None
     costume_path: Optional[str] = None
+    scene_appearance_id: Optional[str] = None
+    scene_appearance: Optional[str] = None
+    scene_appearance_definition_path: Optional[str] = None
     assembly_style_mode: str = "MATCHED_STYLE"
 

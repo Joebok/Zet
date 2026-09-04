@@ -240,6 +240,7 @@ class CharacterOnboardingService:
         for folder in [
             phase_path / "Reference_Images" / "Head_Image_Sources",
             phase_path / "Body_Reference",
+            phase_path / "SceneAppearances",
             self.path_service.character_asset_path(character, phase),
             self.path_service.pipeline_base_path(character, phase),
         ]:
@@ -335,6 +336,33 @@ class CharacterOnboardingService:
                             "RENDER_REVIEW": "zet.workers.noop_worker",
                         },
                     }
+            pipelines.clear()
+            pipelines.update(ordered)
+        if "Scene-Appearance" not in pipelines:
+            ordered = {}
+            definition = {
+                "stages": ["ADD_REF", "MANIFEST", "PROMPT", "RENDER", "RENDER_REVIEW"],
+                "actor_by_stage": {
+                    "ADD_REF": "PYTHON",
+                    "MANIFEST": "PYTHON",
+                    "PROMPT": "PYTHON",
+                    "RENDER": "AI_AGENT",
+                    "RENDER_REVIEW": "HUMAN_AGENT",
+                },
+                "worker_by_stage": {
+                    "ADD_REF": "zet.workers.scene_appearance_manifest_worker",
+                    "MANIFEST": "zet.workers.scene_appearance_manifest_worker",
+                    "PROMPT": "zet.workers.scene_appearance_prompt_worker",
+                    "RENDER": "zet.workers.noop_worker",
+                    "RENDER_REVIEW": "zet.workers.noop_worker",
+                },
+            }
+            for name, pipeline in pipelines.items():
+                ordered[name] = pipeline
+                if name == "Costume-Dressing":
+                    ordered["Scene-Appearance"] = definition
+            if "Scene-Appearance" not in ordered:
+                ordered["Scene-Appearance"] = definition
             pipelines.clear()
             pipelines.update(ordered)
         for pipeline in pipelines.values():

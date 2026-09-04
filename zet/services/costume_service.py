@@ -11,7 +11,7 @@ from zet.models.asset import Asset
 from zet.models.costume import Costume
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.path_service import PathService
-from zet.services.turnaround_service import TURNAROUND_VIEW_ORDER
+from zet.services.turnaround_views import TURNAROUND_VIEW_ORDER
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 
 

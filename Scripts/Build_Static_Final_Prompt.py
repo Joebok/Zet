@@ -7,6 +7,7 @@ import re
 from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
 from Scripts.Library_Paths import library_root
 from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE, auxiliary_resource_image_for_tag
+from Scripts.Auxiliary_Resource_Tags import IMAGE_TAG_RE, load_managed_image_lookup
 
 
 RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
@@ -212,18 +213,28 @@ def _auxiliary_resource_text(resource: dict, image: dict) -> str:
     return f"Auxiliary reference ({category}/{resource_id}): {label}. Image file: {image_path}."
 
 
+def _managed_image_text(image: dict) -> str:
+    label = str(image.get("label") or image.get("catalog_id") or "Imported image")
+    return f"Imported image reference: {label}. Image file: {image.get('image_path') or ''}."
+
+
 def _replace_auxiliary_resource_tags(text: str, template_path: Path, resources: list[dict] | None = None) -> str:
     """Replace auxiliary resource tags with prompt-readable text."""
     resource_index = resources if resources is not None else _load_auxiliary_resources(template_path)
 
+    managed = load_managed_image_lookup(_project_root_for_template(template_path))
+
     def replace(match: re.Match) -> str:
+        if match.group(0) in managed:
+            return _managed_image_text(managed[match.group(0)])
         try:
             resource, image = auxiliary_resource_image_for_tag(resource_index, match.group(0))
         except LookupError:
             raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {match.group(0)}")
         return _auxiliary_resource_text(resource, image)
 
-    return AUXILIARY_RESOURCE_TAG_RE.sub(replace, text)
+    text = AUXILIARY_RESOURCE_TAG_RE.sub(replace, text)
+    return IMAGE_TAG_RE.sub(replace, text)
 
 
 def render_static_prompt(
@@ -297,10 +308,11 @@ def render_static_prompt_with_source_map(
         single_brace_values,
     )
     required_set = {resolve_section_name(name, view_token) for name in required_section_names}
-    token_re = re.compile(rf"{AUXILIARY_RESOURCE_TAG_RE.pattern}|\{{\{{[A-Za-z0-9_{{}}]+\}}\}}")
+    token_re = re.compile(rf"{AUXILIARY_RESOURCE_TAG_RE.pattern}|{IMAGE_TAG_RE.pattern}|\{{\{{[A-Za-z0-9_{{}}]+\}}\}}")
     pieces: list[dict] = []
     cursor = 0
     auxiliary_resources = _load_auxiliary_resources(template_path)
+    managed_images = load_managed_image_lookup(_project_root_for_template(template_path))
 
     def section_source(name: str) -> dict:
         return selection.section_sources.get(
@@ -321,7 +333,32 @@ def render_static_prompt_with_source_map(
         inner = placeholder[2:-2]
         text = placeholder
         source = template_source
-        if inner.startswith("AUX:"):
+        if inner.startswith("IMAGE:"):
+            image = managed_images.get(placeholder)
+            if image is None:
+                raise TemplateCompileError("MISSING_IMAGE_REFERENCE", f"No imported image found for tag: {placeholder}")
+            text = _managed_image_text(image)
+            source = {
+                "source_kind": "image_catalog",
+                "source_path": str(library_root(_project_root_for_template(template_path)) / "ImageCatalog" / "ImageCatalog.json"),
+                "source_label": f"Imported image: {image.get('label') or image.get('catalog_id')}",
+                "catalog_id": image.get("catalog_id"),
+                "editable": True,
+            }
+        elif inner.startswith("AUX:"):
+            managed_image = managed_images.get(placeholder)
+            if managed_image is not None:
+                text = _managed_image_text(managed_image)
+                source = {
+                    "source_kind": "image_catalog",
+                    "source_path": str(library_root(_project_root_for_template(template_path)) / "ImageCatalog" / "ImageCatalog.json"),
+                    "source_label": f"Imported image: {managed_image.get('label') or managed_image.get('catalog_id')}",
+                    "catalog_id": managed_image.get("catalog_id"),
+                    "editable": True,
+                }
+                pieces.append(_source_fragment(text, source))
+                cursor = match.end()
+                continue
             try:
                 resource, image = auxiliary_resource_image_for_tag(auxiliary_resources, placeholder)
             except LookupError:

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+from types import SimpleNamespace
 
 from zet.models.scene_candidate import SceneCandidate, SceneCandidateImportResult, SceneCandidateSource
 from zet.services.atomic_file_service import write_json_atomic
@@ -267,7 +268,25 @@ class SceneCandidateImportService:
                 if path.is_dir() and not path.name.startswith("_"):
                     characters.setdefault(self._normalize(path.name), []).append(path.name)
         auxiliary: dict[str, list[Any]] = {}
-        for resource in self.story_service.auxiliary_resource_repository.list_resources():
+        catalog = self.story_service.image_catalog_service
+        if catalog is not None:
+            items_by_set: dict[str, list[dict]] = {}
+            for item in catalog.list_items(source_type="imported", include_base=True):
+                if item.reference_set_id:
+                    items_by_set.setdefault(item.reference_set_id, []).append({"tag": item.tag})
+            resources = [
+                SimpleNamespace(
+                    resource_id=item["reference_set_id"],
+                    label=item["label"],
+                    category=item.get("legacy_category") or "thing",
+                    images=items_by_set.get(item["reference_set_id"], []),
+                )
+                for item in catalog.list_reference_sets()
+                if item.get("legacy_category")
+            ]
+        else:
+            resources = self.story_service.auxiliary_resource_repository.list_resources()
+        for resource in resources:
             auxiliary.setdefault(self._normalize(resource.label), []).append(resource)
         return characters, auxiliary
 
@@ -303,7 +322,7 @@ class SceneCandidateImportService:
                 resource_type=resource_type,
                 element_type="Character" if resource_type == "Person" else element_type,
                 aux_category=resource.category,
-                aux_resource_id=resource.resource_id,
+                reference_set_id=resource.resource_id,
                 reference_images=[{"tag": tags[0]}] if tags else [],
             )
         elif len(character_matches) > 1 or len(auxiliary_matches) > 1:

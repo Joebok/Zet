@@ -5,10 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from zet.models.auxiliary_resource import AuxiliaryResource
+from zet.models.asset import Asset
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.image_catalog_repository import ImageCatalogRepository
 from zet.services.config_service import Config
-from zet.services.image_catalog_service import ImageCatalogService, ImageCatalogServiceError
+from zet.services.image_catalog_service import ImageCatalogReferenceConflict, ImageCatalogService, ImageCatalogServiceError
 from zet.services.path_service import PathService
 from zet.services.story_service import StoryService, StoryServiceError
 
@@ -24,6 +25,14 @@ class EmptyRepository:
         return []
 
 
+class FixedAssetRepository(EmptyRepository):
+    def __init__(self, assets):
+        self.assets = assets
+
+    def list_assets(self, character, phase):
+        return self.assets
+
+
 class EmptyStoryService:
     def list_stories(self):
         return []
@@ -33,6 +42,42 @@ class EmptyStoryService:
 
 
 class ImageCatalogServiceTests(unittest.TestCase):
+    def test_scene_appearance_picker_item_preserves_internal_arrangement(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            character_dir = root / "Characters" / "Tsaeytte" / "Adult"
+            asset_dir = root / "Assets" / "Tsaeytte" / "Adult"
+            character_dir.mkdir(parents=True)
+            asset_dir.mkdir(parents=True)
+            (character_dir / "Character.md").write_text("Character Name: `Tsaeytte`\n", encoding="utf-8")
+            image_path = asset_dir / "scene.png"
+            image_path.write_bytes(b"image")
+            asset = Asset(
+                asset_id=60, character="Tsaeytte", phase="Adult", pipeline="Scene-Appearance",
+                body_view="Front", head_view="Front", costume="Canonical Adventure Gear",
+                scene_appearance_id="hell-adventures", scene_appearance="Hell Adventures",
+                asset_state="LOCKED", pipeline_stage="LOCKED", actor="HUMAN_AGENT",
+                final_image_output="scene.png",
+            )
+            config = Config(
+                base_library_path=str(root), base_character_path=str(root / "Characters"),
+                base_asset_path=str(root / "Assets"), base_pipeline_path=str(root / "Pipelines"),
+                base_ai_queue_path=str(root / "Queue"),
+            )
+            paths = PathService(config, root)
+            empty = EmptyRepository()
+            service = ImageCatalogService(
+                config, paths, ImageCatalogRepository(paths), FixedAssetRepository([asset]),
+                empty, empty, EmptyStoryService(),
+            )
+
+            item = next(item for item in service.list_items(include_base=True) if item.pipeline == "Scene-Appearance")
+
+            self.assertEqual(["internal arrangement"], item.default_reference_roles)
+            self.assertIn("Hell Adventures", item.label)
+            self.assertIn("Canonical Adventure Gear", item.label)
+            self.assertTrue(item.tag.startswith("{{ASSET:Tsaeytte:Adult:60:"))
+
     def make_service(self, root: Path):
         config = Config(
             base_library_path=str(root),
@@ -77,7 +122,6 @@ class ImageCatalogServiceTests(unittest.TestCase):
             paths,
             ImageCatalogRepository(paths),
             empty,
-            aux_repository,
             empty,
             empty,
             EmptyStoryService(),
@@ -100,6 +144,70 @@ class ImageCatalogServiceTests(unittest.TestCase):
             self.assertEqual("iron arena", refreshed[arena.tag].identity_text)
             self.assertEqual("shared hell", refreshed["{{AUX:place:hell:stairs}}"].identity_text)
             self.assertEqual("approved", refreshed[arena.tag].identity_status)
+
+    def test_legacy_auxiliary_records_migrate_to_managed_images_and_reference_sets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, paths = self.make_service(Path(temp_dir))
+
+            items = service.list_items(include_base=True)
+            payload = service.repository.load()
+
+            self.assertEqual(2, payload["schema_version"])
+            self.assertEqual(2, len(payload["managed_images"]))
+            self.assertEqual("shared hell", payload["reference_sets"]["hell"]["identity_text"])
+            self.assertTrue(all(item.is_managed for item in items))
+            self.assertEqual({"imported"}, {item.source_type for item in items})
+            self.assertTrue(paths.image_catalog_inventory_path().is_file())
+
+    def test_import_replace_and_delete_preserve_identity_and_use_trash(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, paths = self.make_service(Path(temp_dir))
+            reference_set = service.save_reference_set({"label": "Wardrobe", "identity_text": "shared"})
+
+            imported = service.import_image("Blue coat", "Object", reference_set["reference_set_id"], b"png", "image/png")
+            original_id = imported.catalog_id
+            original_tag = imported.tag
+            self.assertEqual("image/png", imported.mime_type)
+            service.update_item(original_id, {"identity": {"mode": "override", "approved_text": "blue wool"}})
+            replaced = service.replace_image_content(original_id, b"jpeg", "image/jpeg")
+
+            self.assertEqual(original_id, replaced.catalog_id)
+            self.assertEqual(original_tag, replaced.tag)
+            self.assertEqual("blue wool", replaced.identity_text)
+            self.assertEqual(".jpg", Path(replaced.image_path).suffix)
+            self.assertEqual("image/jpeg", replaced.mime_type)
+            self.assertTrue(list(paths.image_catalog_trash_path().glob(f"{original_id}_*.png")))
+
+            service.delete_image(original_id)
+            self.assertFalse(any(item.catalog_id == original_id for item in service.list_items(include_base=True)))
+            self.assertTrue(list(paths.image_catalog_trash_path().glob(f"{original_id}_*.jpg")))
+
+    def test_reference_set_must_be_empty_before_delete(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _ = self.make_service(Path(temp_dir))
+            with self.assertRaisesRegex(ImageCatalogServiceError, "must be empty"):
+                service.delete_reference_set("hell")
+            for item in service.list_items(include_base=True):
+                service.update_item(item.catalog_id, {"reference_set_id": ""})
+            service.delete_reference_set("hell")
+            self.assertNotIn("hell", {item["reference_set_id"] for item in service.list_reference_sets()})
+
+    def test_referenced_image_requires_force_before_recoverable_delete(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, paths = self.make_service(Path(temp_dir))
+            imported = service.import_image("Lantern", "Object", "", b"png", "image/png")
+            story_path = Path(service.config.base_library_path) / "Stories" / "Story" / "Story.md"
+            story_path.parent.mkdir(parents=True)
+            story_path.write_text(f"Reference {imported.tag}", encoding="utf-8")
+
+            with self.assertRaises(ImageCatalogReferenceConflict) as conflict:
+                service.delete_image(imported.catalog_id)
+            self.assertEqual([str(story_path)], conflict.exception.references)
+            self.assertTrue(Path(imported.image_path).is_file())
+
+            result = service.delete_image(imported.catalog_id, force=True)
+            self.assertEqual([str(story_path)], result["references"])
+            self.assertTrue(list(paths.image_catalog_trash_path().glob(f"{imported.catalog_id}_*.png")))
 
     def test_collections_keywords_filters_and_deletion_do_not_touch_images(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -201,7 +309,7 @@ class ImageCatalogServiceTests(unittest.TestCase):
             story = StoryService(
                 paths,
                 service.asset_repository,
-                service.auxiliary_resource_repository,
+                AuxiliaryResourceRepository(paths),
                 service.identity_key_repository,
                 service.turnaround_repository,
             )

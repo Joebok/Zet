@@ -23,8 +23,13 @@ class StoryReferenceService:
         self.identity_key_repository = identity_key_repository
         self.error_type = error_type
         self.turnaround_repository = turnaround_repository
+        self.image_catalog_service = None
 
     def resolve_aux_reference(self, tag: str) -> dict:
+        if self.image_catalog_service is not None:
+            item = self.image_catalog_service.managed_item_for_tag(tag)
+            if item is not None:
+                return {"role": "story_reference", "label": item.label, "tag": item.tag, "path": item.image_path, "kind": "imported"}
         try:
             resource, image = auxiliary_resource_image_for_tag(self.auxiliary_resource_repository.list_resources(), tag)
         except LookupError as exc:
@@ -39,6 +44,12 @@ class StoryReferenceService:
             "path": str(path),
             "kind": f"aux:{resource.category}",
         }
+
+    def resolve_managed_reference(self, tag: str) -> dict:
+        item = self.image_catalog_service.managed_item_for_tag(tag) if self.image_catalog_service is not None else None
+        if item is None:
+            raise self.error_type(f"Imported image reference not found: {tag}")
+        return {"role": "story_reference", "label": item.label, "tag": item.tag, "path": item.image_path, "kind": "imported"}
 
     def resolve_asset_reference(self, tag: str, character: str, phase: str, asset_id: str) -> dict:
         descriptor = tag.removesuffix("}}").split(":", 4)
@@ -171,6 +182,11 @@ class StoryReferenceService:
             if tag not in seen:
                 seen.add(tag)
                 references.append(self.resolve_aux_reference(tag))
+        for match in re.finditer(r"\{\{IMAGE:(img_[A-Za-z0-9_-]+)\}\}", scene_text or ""):
+            tag = match.group(0)
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self.resolve_managed_reference(tag))
         for match in re.finditer(r"\{\{SCENE_RENDER:([^:}]+):([^:}]+):([^:}]+)\}\}", scene_text or ""):
             tag = match.group(0)
             if tag not in seen:

@@ -154,6 +154,14 @@ class PathService:
         """Return the folder containing harvested AI description drafts."""
         return self.image_catalog_root() / "Drafts"
 
+    def image_catalog_images_path(self) -> Path:
+        """Return the folder owned by user-imported catalog images."""
+        return self.image_catalog_root() / "Images"
+
+    def image_catalog_trash_path(self) -> Path:
+        """Return recoverable storage for replaced and deleted catalog images."""
+        return self.image_catalog_root() / "_trash"
+
     def costume_template_path(self, character: str, phase: str, costume_name: str) -> Path:
         """Return the markdown template path for a costume name."""
         safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(costume_name).strip())
@@ -163,6 +171,14 @@ class PathService:
     def expressions_path(self, character: str, phase: str) -> Path:
         """Return the expression definition folder for a character phase."""
         return self.character_path(character, phase) / "Expressions"
+
+    def scene_appearances_path(self, character: str, phase: str) -> Path:
+        """Return the Scene Appearance definition folder for a character phase."""
+        return self.character_path(character, phase) / "SceneAppearances"
+
+    def scene_appearance_definition_path(self, character: str, phase: str, appearance_id: str) -> Path:
+        """Return one structured Scene Appearance definition path."""
+        return self.scene_appearances_path(character, phase) / f"{appearance_id}.json"
 
     def stories_path(self) -> Path:
         """Return the stories library root."""

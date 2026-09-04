@@ -128,7 +128,7 @@ class SceneCandidateImportServiceTests(unittest.TestCase):
             self.assertEqual(first.scene_slug, second.scene_slug)
             elements = {item["display_name"]: item for item in first.data["scene_elements"]}
             self.assertEqual(elements["Tsaeytte"]["resource_type"], "Character")
-            self.assertEqual(elements["Rin"]["aux_resource_id"], "rin")
+            self.assertEqual(elements["Rin"]["reference_set_id"], "rin")
             self.assertEqual(elements["Rin"]["fallback_visual_description"], "")
             self.assertEqual(elements["Jero"]["resource_type"], "Person")
             self.assertTrue(elements["Jero"]["notes"].startswith("UNRESOLVED:"))

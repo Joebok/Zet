@@ -80,6 +80,7 @@ class ImageReferenceRow:
     description_status: str = ""
     identity_status: str = ""
     costume_status: str = ""
+    default_reference_roles: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

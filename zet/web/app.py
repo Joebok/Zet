@@ -19,6 +19,7 @@ from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIE
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_image_review_service import LocalImageReviewService
+from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
@@ -125,7 +126,7 @@ def _header_preview_payload(zet_app: ZetApp, character: str, phase: str) -> dict
 def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     """Serialize an asset for dashboard tables and detail panels."""
     data = asdict(asset)
-    data["costume_or_expression"] = asset.expression if asset.expression else asset.costume
+    data["costume_or_expression"] = asset.scene_appearance or asset.expression or asset.costume
     character_template = zet_app.path_service.character_template_path(asset.character, asset.phase)
     data["character_template_source"] = {
         "source_kind": "character_image_template",
@@ -146,6 +147,13 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
             "source_path": str(costume_path),
             "editable": True,
         }
+    elif asset.pipeline == "Scene-Appearance" and asset.scene_appearance_definition_path:
+        governing_source = {
+            "source_kind": "scene_appearance_definition",
+            "source_label": asset.scene_appearance or "Scene Appearance",
+            "source_path": str(zet_app.path_service.resolve_path(asset.scene_appearance_definition_path)),
+            "editable": True,
+        }
     elif asset.pipeline == "Expression" and asset.expression_definition_path:
         governing_source = {
             "source_kind": "expression_definition",
@@ -163,6 +171,8 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
         data["costume_path"] = str(zet_app.path_service.resolve_path(asset.costume_path))
     if asset.expression_definition_path:
         data["expression_definition_path"] = str(zet_app.path_service.resolve_path(asset.expression_definition_path))
+    if asset.scene_appearance_definition_path:
+        data["scene_appearance_definition_path"] = str(zet_app.path_service.resolve_path(asset.scene_appearance_definition_path))
     data["updated_at_display"] = _format_timestamp_with_age(asset.updated_at)
     render_comment = zet_app.render_review_comment(asset.character, asset.phase, asset.asset_id)
     data["render_review_comment"] = render_comment
@@ -220,6 +230,33 @@ def _costume_payload(zet_app: ZetApp, character: str, phase: str, costume) -> di
         "source_kind": "costume_template",
         "source_label": costume.name,
         "source_path": costume.path,
+        "editable": True,
+    }
+    return data
+
+
+def _scene_appearance_payload(zet_app: ZetApp, character: str, phase: str, appearance) -> dict[str, Any]:
+    """Serialize one Scene Appearance definition and its locked turnaround preview."""
+    data = asdict(appearance)
+    locked_preview = None
+    try:
+        locked_preview = next(
+            (
+                row for row in zet_app.list_turnaround_rows(character, phase)
+                if row.source_pipeline == "Scene-Appearance"
+                and row.scene_appearance_id == appearance.appearance_id
+                and row.locked_image_exists
+            ),
+            None,
+        )
+    except Exception:
+        locked_preview = None
+    data["locked_preview_path"] = locked_preview.locked_image_path if locked_preview else None
+    data["locked_preview_exists"] = bool(locked_preview)
+    data["source"] = {
+        "source_kind": "scene_appearance_definition",
+        "source_label": appearance.name,
+        "source_path": appearance.path,
         "editable": True,
     }
     return data
@@ -713,11 +750,6 @@ def _turnaround_row_payload(row) -> dict[str, Any]:
     return _jsonable(row)
 
 
-def _auxiliary_resource_payload(resource) -> dict[str, Any]:
-    """Serialize an auxiliary resource for the browser."""
-    return _jsonable(resource)
-
-
 def _jsonable(value: Any) -> Any:
     if hasattr(value, "__dataclass_fields__"):
         return _jsonable(asdict(value))
@@ -955,72 +987,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @app.get("/api/auxiliary-resources")
-    def auxiliary_resources(category: str = Query("person")) -> dict[str, Any]:
-        """List global auxiliary resources for one category."""
-        zet_app = _app(app.state.config_path)
-        try:
-            return {"resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)]}
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/auxiliary-resources")
-    async def auxiliary_resource_create(
-        category: str = Query(...),
-        label: str = Query(...),
-    ) -> dict[str, Any]:
-        """Create a global auxiliary resource folder."""
-        zet_app = _app(app.state.config_path)
-        try:
-            resource = zet_app.create_auxiliary_resource(
-                category,
-                label,
-            )
-            return {
-                "resource": _auxiliary_resource_payload(resource),
-                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
-                "message": f"Created auxiliary resource {resource.label}.",
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.put("/api/auxiliary-resources/{resource_id}")
-    async def auxiliary_resource_update(
-        resource_id: str,
-        category: str = Query(...),
-        label: str = Query(...),
-    ) -> dict[str, Any]:
-        """Update a global auxiliary resource folder metadata."""
-        zet_app = _app(app.state.config_path)
-        try:
-            resource = zet_app.update_auxiliary_resource(
-                resource_id,
-                label,
-            )
-            return {
-                "resource": _auxiliary_resource_payload(resource),
-                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
-                "message": f"Updated auxiliary resource {resource.label}.",
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.delete("/api/auxiliary-resources/{resource_id}")
-    def auxiliary_resource_delete(
-        resource_id: str,
-        category: str = Query(...),
-    ) -> dict[str, Any]:
-        """Delete a global auxiliary resource folder and its contents."""
-        zet_app = _app(app.state.config_path)
-        try:
-            resource = zet_app.delete_auxiliary_resource(resource_id)
-            return {
-                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
-                "message": f"Deleted auxiliary resource {resource.label}.",
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.get("/api/stories")
     def stories() -> dict[str, Any]:
         """List all stories in the shared stories library."""
@@ -1127,32 +1093,6 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "document": _story_document_payload(document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": f"Renamed story to {document.record.title}.",
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.put("/api/auxiliary-resources/{resource_id}/images")
-    async def auxiliary_resource_image_save(
-        resource_id: str,
-        request: Request,
-        category: str = Query(...),
-        image_label: str = Query(...),
-        original_image_id: str = Query(""),
-    ) -> dict[str, Any]:
-        """Save or update one auxiliary resource image."""
-        zet_app = _app(app.state.config_path)
-        try:
-            resource = zet_app.save_auxiliary_resource_image(
-                resource_id,
-                image_label,
-                await request.body(),
-                request.headers.get("content-type", ""),
-                original_image_id,
-            )
-            return {
-                "resource": _auxiliary_resource_payload(resource),
-                "resources": [_auxiliary_resource_payload(item) for item in zet_app.list_auxiliary_resources(category)],
-                "message": f"Saved auxiliary image {image_label}.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1422,6 +1362,20 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                 "document": _scene_builder_document_payload(zet_app, document),
                 "has_story_changes": zet_app.story_git_has_changes(),
                 "message": "Background sub-render enabled. Background-depth membership was seeded once.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/subscenes")
+    def scene_subscene_create(story_slug: str, scene_slug: str) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            document, target_id = zet_app.create_subscene(story_slug, scene_slug)
+            return {
+                "document": _scene_builder_document_payload(zet_app, document),
+                "render_target_id": target_id,
+                "has_story_changes": zet_app.story_git_has_changes(),
+                "message": "Sub-scene added. Assign elements from Full Scene using the Render in field.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1763,6 +1717,57 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/image-catalog/imports")
+    async def image_catalog_import(
+        request: Request,
+        label: str = Query(...),
+        semantic_category: str = Query(...),
+        reference_set_id: str = Query(""),
+    ) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).import_image_catalog_item(
+                label,
+                semantic_category,
+                reference_set_id,
+                await request.body(),
+                request.headers.get("content-type", ""),
+            )
+            return {"item": _jsonable(item), "message": f"Imported {item.managed_label}."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/image-catalog/reference-sets")
+    def image_catalog_reference_sets() -> dict[str, Any]:
+        try:
+            return {"reference_sets": _app(app.state.config_path).image_catalog_service.list_reference_sets()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/image-catalog/reference-sets")
+    def image_catalog_reference_set_create(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            value = _app(app.state.config_path).image_catalog_service.save_reference_set(data)
+            return {"reference_set": value, "message": "Reference set created."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/image-catalog/reference-sets/{reference_set_id}")
+    def image_catalog_reference_set_update(reference_set_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            value = _app(app.state.config_path).image_catalog_service.save_reference_set(data, reference_set_id)
+            return {"reference_set": value, "message": "Reference set updated."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/image-catalog/reference-sets/{reference_set_id}")
+    def image_catalog_reference_set_delete(reference_set_id: str) -> dict[str, Any]:
+        try:
+            service = _app(app.state.config_path).image_catalog_service
+            service.delete_reference_set(reference_set_id)
+            return {"reference_sets": service.list_reference_sets(), "message": "Reference set deleted."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/image-catalog/organization/{kind}")
     def image_catalog_organization_create(kind: str, data: dict = Body(...)) -> dict[str, Any]:
         try:
@@ -1805,6 +1810,28 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         try:
             item = _app(app.state.config_path).update_image_catalog_item(catalog_id, data)
             return {"item": _jsonable(item), "message": "Image metadata saved."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/image-catalog/{catalog_id}/content")
+    async def image_catalog_replace_content(catalog_id: str, request: Request) -> dict[str, Any]:
+        try:
+            item = _app(app.state.config_path).replace_image_catalog_content(
+                catalog_id,
+                await request.body(),
+                request.headers.get("content-type", ""),
+            )
+            return {"item": _jsonable(item), "message": "Image content replaced."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/image-catalog/{catalog_id}")
+    def image_catalog_delete(catalog_id: str, force: bool = Query(False)) -> dict[str, Any]:
+        try:
+            result = _app(app.state.config_path).delete_image_catalog_item(catalog_id, force)
+            return {"deleted": result, "message": "Imported image moved to catalog trash."}
+        except ImageCatalogReferenceConflict as exc:
+            raise HTTPException(status_code=409, detail={"message": str(exc), "references": exc.references}) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2100,6 +2127,85 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             return SingleCharacterLabService(
                 _app(app.state.config_path), PROJECT_ROOT
             ).options(character, phase)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/scene-appearances")
+    def scene_appearances(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List Scene Appearance definitions."""
+        zet_app = _app(app.state.config_path)
+        try:
+            return {
+                "scene_appearances": [
+                    _scene_appearance_payload(zet_app, character, phase, item)
+                    for item in zet_app.list_scene_appearances(character, phase)
+                ]
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/scene-appearances")
+    def scene_appearance_create(
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Create a Scene Appearance definition and eight view assets."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.create_scene_appearance(
+                character,
+                phase,
+                str(payload.get("appearance_id") or ""),
+                str(payload.get("name") or ""),
+                str(payload.get("costume") or ""),
+                str(payload.get("instructions") or ""),
+                list(payload.get("supporting_references") or []),
+            )
+            return {
+                "scene_appearance": _scene_appearance_payload(zet_app, character, phase, result.appearance),
+                "scene_appearances": [
+                    _scene_appearance_payload(zet_app, character, phase, item)
+                    for item in zet_app.list_scene_appearances(character, phase)
+                ],
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "message": f"Created {len(result.assets)} Scene-Appearance assets for {result.appearance.name}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/scene-appearances/{appearance_id}")
+    def scene_appearance_update(
+        appearance_id: str,
+        payload: dict[str, Any] = Body(...),
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Update a Scene Appearance definition and invalidate changed render inputs."""
+        zet_app = _app(app.state.config_path)
+        try:
+            result = zet_app.update_scene_appearance(
+                character,
+                phase,
+                appearance_id,
+                str(payload.get("name") or ""),
+                str(payload.get("costume") or ""),
+                str(payload.get("instructions") or ""),
+                list(payload.get("supporting_references") or []),
+            )
+            return {
+                "scene_appearance": _scene_appearance_payload(zet_app, character, phase, result.appearance),
+                "scene_appearances": [
+                    _scene_appearance_payload(zet_app, character, phase, item)
+                    for item in zet_app.list_scene_appearances(character, phase)
+                ],
+                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
+                "render_changed": result.render_changed,
+                "message": (
+                    f"Updated {result.appearance.name}; render inputs changed and eight assets returned to ADD_REF."
+                    if result.render_changed else f"Updated {result.appearance.name}."
+                ),
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

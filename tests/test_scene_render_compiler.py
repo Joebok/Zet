@@ -226,6 +226,31 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("Preserve permanent architecture, terrain layout, structural proportions", prompt)
         self.assertNotIn("facial features, hair, ears if applicable", prompt)
 
+    def test_scene_appearance_reference_preserves_group_arrangement_but_allows_parent_pose_override(self):
+        scene = {
+            "scene_elements": [{
+                "id": "tsaeytte_group",
+                "display_name": "Tsaeytte, Morrow, and utility tusk",
+                "resource_type": "Character",
+                "element_type": "Character",
+                "reference_images": [{
+                    "tag": "{{ASSET:Tsaeytte:Adult:60:Scene Appearance | Hell Adventures | Canonical Adventure Gear}}",
+                    "roles": ["internal arrangement"],
+                }],
+            }],
+            "placements": [{
+                "scene_element_id": "tsaeytte_group",
+                "pose": {"summary": "kneeling while bracing the tusk across her body"},
+            }],
+        }
+
+        ir = self._ir(scene)
+        prompt = final_image_prompt_text(ir)
+
+        self.assertIn("component identities, and internal spatial arrangement", prompt)
+        self.assertIn("pose where overridden by the parent", prompt)
+        self.assertIn("Kneeling while bracing the tusk across her body", prompt)
+
 
 
 

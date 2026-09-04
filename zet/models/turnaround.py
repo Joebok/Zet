@@ -11,6 +11,8 @@ class TurnaroundSheet:
     source_pipeline: str
     costume: Optional[str] = None
     expression: Optional[str] = None
+    scene_appearance_id: Optional[str] = None
+    scene_appearance: Optional[str] = None
     label: Optional[str] = None
     sheet_type: str = "full"
     parent_turnaround_id: Optional[str] = None

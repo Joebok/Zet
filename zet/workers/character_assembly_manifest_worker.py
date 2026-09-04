@@ -11,7 +11,15 @@ def _assets_payload(context) -> tuple[object, dict]:
     return assets_path, json.loads(assets_path.read_text(encoding="utf-8"))
 
 
-def _matching_asset(context, payload: dict, *, pipeline: str, body_view: str, head_view: str | None = None):
+def _matching_asset(
+    context,
+    payload: dict,
+    *,
+    pipeline: str,
+    body_view: str,
+    head_view: str | None = None,
+    costume: str | None = None,
+):
     for record in payload.get("assets", []):
         if record.get("pipeline") != pipeline:
             continue
@@ -20,6 +28,8 @@ def _matching_asset(context, payload: dict, *, pipeline: str, body_view: str, he
         if record.get("body_view") != body_view:
             continue
         if head_view is not None and record.get("head_view") != head_view:
+            continue
+        if costume is not None and record.get("costume") != costume:
             continue
         final_image_output = str(record.get("final_image_output") or "").strip()
         if not final_image_output:

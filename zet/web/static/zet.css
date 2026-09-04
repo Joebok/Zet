@@ -2008,6 +2008,47 @@ summary:focus-visible {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+.scene-builder-target-bar .subscene-target,
+.scene-builder-element-row.subscene-member,
+.scene-builder-element-workspace.subscene-member {
+  background: color-mix(in srgb, var(--subscene-color) 62%, var(--surface));
+  border-color: color-mix(in srgb, var(--subscene-color) 80%, var(--line));
+}
+
+.scene-builder-target-bar .subscene-target.selected,
+.scene-builder-element-row.subscene-member.selected {
+  background: color-mix(in srgb, var(--subscene-color) 78%, var(--surface));
+}
+
+.scene-builder-color-field {
+  display: grid;
+  gap: 6px;
+}
+
+.scene-builder-color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scene-builder-color-palette button {
+  background: var(--swatch-color);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  height: 28px;
+  padding: 0;
+  width: 28px;
+}
+
+.scene-builder-color-palette button.selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--text);
+}
+
+.scene-builder-grid.subscene-active .scene-builder-card {
+  background: color-mix(in srgb, var(--subscene-color) 22%, var(--surface));
+}
+
 .scene-builder-target-tree {
   align-items: stretch;
 }
@@ -2760,7 +2801,7 @@ tr.auxiliary-row td:last-child {
 
 .image-catalog-layout {
   display: grid;
-  grid-template-columns: minmax(230px, 270px) minmax(430px, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(230px, 270px) minmax(430px, 1fr) minmax(300px, 540px);
   gap: 1rem;
   align-items: start;
   margin-bottom: 1rem;
@@ -2907,6 +2948,34 @@ tr.auxiliary-row td:last-child {
 
 .image-catalog-editor select[multiple] {
   min-height: 6rem;
+}
+
+#image-catalog-managed-actions {
+  display: grid;
+  gap: .65rem;
+}
+
+.image-catalog-managed-buttons {
+  justify-content: stretch;
+}
+
+.image-catalog-managed-buttons button {
+  flex: 1;
+}
+
+.image-catalog-upload-panel {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: .55rem;
+  padding-top: .65rem;
+}
+
+.image-catalog-upload-panel h4 {
+  margin: 0;
+}
+
+.image-catalog-upload-panel .paste-zone {
+  min-height: 92px;
 }
 
 .image-catalog-bulk {

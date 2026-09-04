@@ -11,6 +11,14 @@ from typing import Any
 MAIN_RENDER_TARGET = "main"
 BACKGROUND_RENDER_TARGET = "background"
 MAX_ELEMENT_SUBSCENE_DEPTH = 3
+SUBSCENE_UI_COLORS = (
+    "#DDEAF4",
+    "#E4E0F3",
+    "#F3E1E7",
+    "#F4E7D5",
+    "#E2EEDC",
+    "#DCEDEA",
+)
 
 
 class SceneRenderTargetService:
@@ -79,6 +87,8 @@ class SceneRenderTargetService:
                 item.get("assembly_role") or ("element_reference" if item["kind"] == "element" else "backdrop")
             ).strip()
             item["anchor_element_id"] = str(item.get("anchor_element_id") or "").strip()
+            ui_color = str(item.get("ui_color") or "").strip().upper()
+            item["ui_color"] = ui_color if ui_color in SUBSCENE_UI_COLORS else ""
             overrides = item.get("prompt_overrides") if isinstance(item.get("prompt_overrides"), dict) else {}
             item["prompt_overrides"] = {
                 key: str(overrides.get(key) or "").strip()
@@ -335,6 +345,7 @@ class SceneRenderTargetService:
             "kind": "element",
             "assembly_role": "element_reference",
             "anchor_element_id": element_id,
+            "ui_color": SUBSCENE_UI_COLORS[len(data.get("subscenes") or []) % len(SUBSCENE_UI_COLORS)],
             "prompt_overrides": {
                 "focal_point": "",
                 "composition_notes": "",
@@ -371,6 +382,7 @@ class SceneRenderTargetService:
                 "name": "Background",
                 "enabled": True,
                 "assembly_role": "backdrop",
+                "ui_color": SUBSCENE_UI_COLORS[0],
                 "prompt_overrides": {
                     "focal_point": "",
                     "composition_notes": "",
@@ -390,6 +402,36 @@ class SceneRenderTargetService:
         else:
             definition["enabled"] = True
         return self.story.save_scene_builder_data(story_slug, scene_slug, data)
+
+    def create_subscene(self, story_slug: str, scene_slug: str):
+        document = self.story.load_scene_builder_data(story_slug, scene_slug)
+        if document.blocked:
+            raise self.error_type(document.error or "Scene Builder JSON is blocked.")
+        data = copy.deepcopy(document.data)
+        data.pop("_validation_warnings", None)
+        subscenes = data.setdefault("subscenes", [])
+        used = {str(item.get("id") or "") for item in subscenes if isinstance(item, dict)}
+        number = 1
+        while f"sub_scene_{number}" in used:
+            number += 1
+        definition = {
+            "id": f"sub_scene_{number}",
+            "name": f"Sub-Scene {number}",
+            "enabled": True,
+            "kind": "background",
+            "assembly_role": "backdrop",
+            "anchor_element_id": "",
+            "ui_color": SUBSCENE_UI_COLORS[len(subscenes) % len(SUBSCENE_UI_COLORS)],
+            "prompt_overrides": {
+                "focal_point": "",
+                "composition_notes": "",
+                "general_foreground_notes": "",
+                "general_background_notes": "",
+            },
+        }
+        subscenes.append(definition)
+        saved = self.story.save_scene_builder_data(story_slug, scene_slug, data)
+        return saved, definition["id"]
 
     def disable(self, story_slug: str, scene_slug: str, target_id: str):
         if target_id == MAIN_RENDER_TARGET:

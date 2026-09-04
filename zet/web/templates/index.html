@@ -77,6 +77,7 @@
       <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
       <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
       <button class="tab workflow-tab" data-page="costumes">Costumes</button>
+      <button class="tab workflow-tab" data-page="scene-appearances">Scene Appearances</button>
       <button class="tab workflow-tab" data-page="expressions">Expressions</button>
       <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
       <div class="production-navigation" aria-label="Character production">
@@ -380,7 +381,7 @@
             <label class="image-catalog-search-label">Search<input id="image-catalog-search" type="search" placeholder="Label, tag, keyword, character..." autocomplete="off"></label>
             <button id="image-catalog-refresh" class="primary-action image-catalog-refresh" type="button">Refresh images</button>
             <div class="image-catalog-filters">
-            <label>Source<select id="image-catalog-source"><option value="">All sources</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="auxiliary">Auxiliary</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
+            <label>Source<select id="image-catalog-source"><option value="">All sources</option><option value="imported">Imported</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
             <label>Category<select id="image-catalog-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
             <label>Status<select id="image-catalog-status"><option value="">All states</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_queued">AI queued</option><option value="ai_review_required">AI review required</option><option value="ready">Ready</option><option value="approved">Approved</option><option value="inherited">Inherited</option></select></label>
             <label>Collection<select id="image-catalog-collection"><option value="">All collections</option></select></label>
@@ -401,42 +402,30 @@
             </div>
           </section>
 
-          <section class="control-panel aux-resource-panel">
+          <section class="control-panel image-catalog-import-panel">
             <div class="image-catalog-filter-heading">
-              <div><h2>Auxiliary images</h2><p>Create a resource or add images to one.</p></div>
-              <button id="aux-resource-add" class="create-action" type="button">Add</button>
+              <div><h2>Import image</h2><p>Add a reference directly to the inventory.</p></div>
             </div>
-            <div id="aux-resource-status" class="status-text"></div>
-            <div id="aux-resource-workspace" hidden>
-              <div class="aux-resource-browser-controls">
-                <label>Category<select id="aux-resource-category"><option value="person">Person</option><option value="place">Place</option><option value="thing">Thing</option></select></label>
-                <label>Find resource<input id="aux-resource-search" type="search" placeholder="Resource label..."></label>
-              </div>
-              <table id="aux-resource-table">
-                <thead><tr><th>Resource</th><th>Folder</th></tr></thead>
-                <tbody></tbody>
-              </table>
-              <div class="aux-resource-editor">
-                <div class="aux-resource-editor-heading"><h3 id="aux-resource-form-title">Add Resource</h3><button id="aux-resource-clear" class="neutral-action" type="button">Close</button></div>
-                <p class="category-context">Category: <strong id="aux-resource-form-category">Person</strong></p>
-                <label>Resource label<input id="aux-resource-label" type="text" placeholder="Old wizard"></label>
-                <div class="button-row compact"><button id="aux-resource-save" class="primary-action" type="button">Save Resource</button><button id="aux-resource-edit-template" type="button" disabled>Edit Template</button><button id="aux-resource-delete" class="danger-action" type="button" disabled>Delete</button></div>
-                <div class="aux-resource-image-editor">
-                  <div class="aux-resource-editor-heading"><h3>Images</h3><button id="aux-resource-new-image" class="create-action" type="button">New image</button></div>
-                  <div id="aux-resource-image-list" class="aux-resource-image-list">Select or create a resource first.</div>
-                  <img id="aux-resource-image-preview" class="image-preview" alt="Auxiliary resource preview" hidden>
-                  <div id="aux-resource-paste-zone" class="paste-zone" tabindex="0">
-                    <p>Paste or drop an image here</p>
-                    <p class="status-text">Ctrl+V and the file picker also work.</p>
-                    <input id="aux-resource-file-input" type="file" accept="image/*">
-                  </div>
-                  <label>Image name<input id="aux-resource-image-label" type="text" placeholder="Front view"></label>
-                  <button id="aux-resource-save-image" class="primary-action" type="button">Save Image</button>
-                </div>
-                <div class="aux-resource-tag-row"><code id="aux-resource-tag" class="copyable-tag"></code><button id="aux-resource-copy-tag" type="button" disabled>Copy tag</button></div>
-              </div>
+            <div id="image-catalog-import-zone" class="paste-zone" tabindex="0">
+              <p>Paste or drop an image here</p>
+              <input id="image-catalog-import-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
             </div>
+            <label>Image label<input id="image-catalog-import-label" placeholder="Reference image"></label>
+            <label>Category<select id="image-catalog-import-category"><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
+            <label>Reference set (optional)<select id="image-catalog-import-set"><option value="">No reference set</option></select></label>
+            <button id="image-catalog-import-save" class="primary-action" type="button" disabled>Import image</button>
+            <div id="image-catalog-import-status" class="status-text">Choose or paste an image.</div>
           </section>
+
+          <section class="control-panel image-catalog-reference-sets">
+            <div class="image-catalog-filter-heading"><div><h2>Reference sets</h2><p>Optional shared description defaults.</p></div><button id="image-catalog-set-new" type="button">New</button></div>
+            <label>Reference set<select id="image-catalog-set-select"><option value="">New reference set</option></select></label>
+            <label>Set label<input id="image-catalog-set-label"></label>
+            <label>Shared identity<textarea id="image-catalog-set-identity"></textarea></label>
+            <label>Shared costume<textarea id="image-catalog-set-costume"></textarea></label>
+            <div class="button-row compact"><button id="image-catalog-set-save" type="button">Save set</button><button id="image-catalog-set-delete" class="danger-action" type="button" disabled>Delete set</button></div>
+          </section>
+
         </aside>
 
         <section class="control-panel image-catalog-main">
@@ -446,6 +435,7 @@
           <div id="image-catalog-bulk" class="image-catalog-bulk" hidden>
             <span id="image-catalog-selected-count">0 selected</span>
             <label>Set category<select id="image-catalog-bulk-category"><option value="">No change</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
+            <label>Reference set<select id="image-catalog-bulk-set"><option value="__no_change__">No change</option><option value="">No reference set</option></select></label>
             <label>Replace collections<select id="image-catalog-bulk-collections" multiple size="3"></select></label>
             <label>Replace keywords<select id="image-catalog-bulk-keywords" multiple size="3"></select></label>
             <button id="image-catalog-bulk-apply" type="button" disabled>Apply to selected</button>
@@ -457,6 +447,30 @@
           <h3 id="image-catalog-editor-title">Select an image</h3>
           <img id="image-catalog-preview" class="image-preview fullscreen-image-trigger" alt="Selected catalog image" hidden>
           <p id="image-catalog-source-detail" class="status-text"></p>
+          <section id="image-catalog-managed-actions" hidden>
+            <label>Image label<input id="image-catalog-managed-label"></label>
+            <label>Reference set<select id="image-catalog-managed-set"><option value="">No reference set</option></select></label>
+            <div class="button-row compact image-catalog-managed-buttons"><button id="image-catalog-replace" type="button">Replace image</button><button id="image-catalog-add" type="button">Add Image</button><button id="image-catalog-delete" class="danger-action" type="button">Delete image</button></div>
+            <section id="image-catalog-replace-upload" class="image-catalog-upload-panel" hidden>
+              <h4>Replace image</h4>
+              <div id="image-catalog-replace-zone" class="paste-zone" tabindex="0" role="button" aria-label="Choose or paste a replacement image">
+                <p>Choose a file or paste an image here</p>
+                <input id="image-catalog-replace-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+              </div>
+              <div id="image-catalog-replace-status" class="status-text">Choose or paste an image.</div>
+              <button id="image-catalog-replace-submit" class="primary-action" type="button" disabled>Replace image</button>
+            </section>
+            <section id="image-catalog-add-upload" class="image-catalog-upload-panel" hidden>
+              <h4>Add image to reference set</h4>
+              <label>Image label<input id="image-catalog-add-label" placeholder="Additional reference image"></label>
+              <div id="image-catalog-add-zone" class="paste-zone" tabindex="0" role="button" aria-label="Choose or paste an image to add">
+                <p>Choose a file or paste an image here</p>
+                <input id="image-catalog-add-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+              </div>
+              <div id="image-catalog-add-status" class="status-text">Choose or paste an image.</div>
+              <button id="image-catalog-add-submit" class="primary-action" type="button" disabled>Add image to reference set</button>
+            </section>
+          </section>
           <label>Category<select id="image-catalog-edit-category"><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
           <label>Collections<select id="image-catalog-edit-collections" multiple size="4"></select></label>
           <label>Keywords<select id="image-catalog-edit-keywords" multiple size="5"></select></label>
@@ -910,6 +924,39 @@
       </div>
     </section>
 
+    <section id="scene-appearances-page" class="page">
+      <div class="page-title-row">
+        <h1>Scene Appearances</h1>
+        <div id="scene-appearance-status" class="status-text"></div>
+      </div>
+      <div id="scene-appearance-message" class="action-message" hidden></div>
+      <div class="costume-layout">
+        <section class="control-panel">
+          <table id="scene-appearance-table">
+            <thead><tr><th>appearance</th><th>costume</th><th>assets</th><th>definition</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <aside class="review-actions item-editor">
+          <button id="scene-appearance-add-new" class="create-action" type="button">Add New</button>
+          <h3 id="scene-appearance-form-title">Add Scene Appearance</h3>
+          <label>Stable ID<input id="scene-appearance-id" type="text" placeholder="hell-adventures"></label>
+          <label>Name<input id="scene-appearance-name" type="text" placeholder="Hell Adventures"></label>
+          <label>Base Costume<select id="scene-appearance-costume"></select></label>
+          <label>Arrangement Instructions<textarea id="scene-appearance-instructions" rows="8"></textarea></label>
+          <label>Supporting References
+            <textarea id="scene-appearance-references" rows="5" placeholder="companion | Morrow | {{AUX:person:morrow:morrow-raven-form}}&#10;prop | Utility Tusk | {{AUX:thing:utility-tusk:tusk-reference}}"></textarea>
+          </label>
+          <small>One ordered reference per line: role | label | image tag.</small>
+          <button id="scene-appearance-save" class="primary-action" type="button">Save Scene Appearance</button>
+          <section id="scene-appearance-preview-section" class="item-preview-section" hidden>
+            <h3>Locked Turnaround</h3>
+            <div id="scene-appearance-preview" class="render-image-viewer small-preview">No locked turnaround.</div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
     <section id="scene-builder-page" class="page">
       <div class="page-title-row">
         <h1>Scene Builder</h1>
@@ -959,11 +1006,11 @@
             <label>Costume<select id="builder-element-costume"></select></label>
           </section>
           <section id="builder-element-aux-section">
-            <h3>Aux Resource</h3>
-            <label>Resource<select id="builder-element-aux"></select></label>
-            <button id="builder-element-new-aux" type="button">New Resource</button>
+            <h3>Reference Set</h3>
+            <label>Set<select id="builder-element-aux"></select></label>
+            <button id="builder-element-new-aux" type="button">New Reference Set</button>
             <div id="builder-element-new-aux-form" class="inline-create-form" hidden>
-              <label>Resource label<input id="builder-element-new-aux-label" type="text"></label>
+              <label>Set label<input id="builder-element-new-aux-label" type="text"></label>
               <div class="button-row compact">
                 <button id="builder-element-new-aux-cancel" type="button">Cancel</button>
                 <button id="builder-element-new-aux-save" class="primary-action" type="button">Create</button>
@@ -1008,7 +1055,7 @@
             <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
           </label>
           <label class="checkbox-field"><input id="builder-image-picker-include-base" type="checkbox"> Include base pipeline images</label>
-          <label>Source<select id="builder-image-picker-source"><option value="">All sources</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="auxiliary">Auxiliary</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
+          <label>Source<select id="builder-image-picker-source"><option value="">All sources</option><option value="imported">Imported</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
           <label>Category<select id="builder-image-picker-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
           <label>Status<select id="builder-image-picker-status"><option value="">All states</option><option value="ready">Ready</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_review_required">AI review required</option></select></label>
           <button id="builder-image-picker-refresh" type="button">Refresh References</button>

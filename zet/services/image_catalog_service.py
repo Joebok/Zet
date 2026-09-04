@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import shutil
+from uuid import uuid4
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,14 @@ class ImageCatalogServiceError(Exception):
     """Report image-catalog validation and workflow failures."""
 
 
+class ImageCatalogReferenceConflict(ImageCatalogServiceError):
+    """Report a managed image that is still referenced by active library files."""
+
+    def __init__(self, references: list[str]):
+        self.references = references
+        super().__init__(f"Image is referenced by {len(references)} active file(s).")
+
+
 class ImageCatalogService:
     """Discover selectable images and overlay logical organization metadata."""
 
@@ -34,7 +43,6 @@ class ImageCatalogService:
         path_service,
         repository,
         asset_repository,
-        auxiliary_resource_repository,
         identity_key_repository,
         turnaround_repository,
         story_service,
@@ -43,7 +51,6 @@ class ImageCatalogService:
         self.path_service = path_service
         self.repository = repository
         self.asset_repository = asset_repository
-        self.auxiliary_resource_repository = auxiliary_resource_repository
         self.identity_key_repository = identity_key_repository
         self.turnaround_repository = turnaround_repository
         self.story_service = story_service
@@ -88,6 +95,7 @@ class ImageCatalogService:
             "label": "",
             "image_path": "",
             "thumbnail_path": "",
+            "mime_type": "",
             "semantic_category": "Composite/Scene",
             "character": "",
             "phase": "",
@@ -100,37 +108,55 @@ class ImageCatalogService:
             "is_base_pipeline": False,
             "candidate_pending": False,
             "image_review_key": "",
+            "is_managed": False,
+            "managed_label": "",
+            "reference_set_id": "",
+            "reference_set_label": "",
+            "default_reference_roles": [],
+            "created_at": "",
+            "updated_at": "",
             "inherited_identity": "",
             "inherited_costume": "",
             "costume_applicable": False,
             **values,
         }
 
-    def _discover_auxiliary(self) -> list[dict]:
+    def _discover_managed(self, payload: dict) -> list[dict]:
         rows = []
-        mapping = {"person": "Person", "place": "Place", "thing": "Object"}
-        for resource in self.auxiliary_resource_repository.list_resources():
-            template = self.path_service.resolve_path(resource.template_path)
-            identity = self._extract_section(template, "IDENTITY_PRESERVATION_SCENE")
-            costume = self._extract_section(template, "IDENTITY_PRESERVATION_COSTUME_SCENE")
-            for image in resource.images:
-                image_path = self.path_service.resolve_path(str(image.get("image_path") or ""))
-                if not image_path.is_file():
-                    continue
-                source_key = f"aux:{resource.category}:{resource.resource_id}:{image.get('image_id')}"
-                rows.append(self._base_record(
-                    source_key,
-                    source_type="auxiliary",
-                    tag=str(image.get("tag") or ""),
-                    label=f"{resource.label} - {image.get('label') or image.get('image_id')}",
-                    image_path=str(image_path),
-                    thumbnail_path=str(image_path),
-                    semantic_category=mapping.get(resource.category, "Object"),
-                    pipeline="Auxiliary Resource",
-                    inherited_identity=identity,
-                    inherited_costume=costume,
-                    costume_applicable=resource.category == "person",
-                ))
+        reference_sets = payload.get("reference_sets", {})
+        for record in payload.get("managed_images", {}).values():
+            if not isinstance(record, dict):
+                continue
+            image_path = self.path_service.resolve_path(str(record.get("image_path") or ""))
+            if not image_path.is_file():
+                continue
+            set_id = str(record.get("reference_set_id") or "")
+            reference_set = reference_sets.get(set_id, {}) if set_id else {}
+            managed_label = str(record.get("label") or record.get("catalog_id") or "Imported image")
+            set_label = str(reference_set.get("label") or "")
+            display_label = f"{set_label} - {managed_label}" if set_label else managed_label
+            category = str(record.get("semantic_category") or "Object")
+            rows.append(self._base_record(
+                str(record.get("source_key") or f"import:{record.get('catalog_id')}"),
+                catalog_id=str(record.get("catalog_id") or ""),
+                source_type="imported",
+                tag=str(record.get("tag") or ""),
+                label=display_label,
+                managed_label=managed_label,
+                image_path=str(image_path),
+                thumbnail_path=str(image_path),
+                mime_type=str(record.get("mime_type") or record.get("content_type") or ""),
+                semantic_category=category,
+                pipeline="Imported Reference",
+                inherited_identity=str(reference_set.get("identity_text") or ""),
+                inherited_costume=str(reference_set.get("costume_text") or ""),
+                costume_applicable=category == "Person",
+                is_managed=True,
+                reference_set_id=set_id,
+                reference_set_label=set_label,
+                created_at=str(record.get("created_at") or ""),
+                updated_at=str(record.get("updated_at") or ""),
+            ))
         return rows
 
     def _character_phases(self):
@@ -158,15 +184,27 @@ class ImageCatalogService:
                 tag_parts = [self.story_service._asset_reference_pipeline_code(asset.pipeline), asset.body_view]
                 if asset.pipeline == "Costume-Dressing" and asset.costume:
                     tag_parts.append(asset.costume)
+                if asset.pipeline == "Scene-Appearance" and asset.scene_appearance:
+                    tag_parts.extend([asset.scene_appearance, asset.costume or ""])
                 if asset.pipeline == "Expression" and asset.expression:
                     tag_parts.append(asset.expression)
                 tag = f"{{{{ASSET:{character}:{phase}:{asset.asset_id}:{' | '.join(part for part in tag_parts if part)}}}}}"
                 source_key = f"asset:{character}:{phase}:{asset.asset_id}"
+                label = " | ".join(
+                    part for part in [character, phase, asset.pipeline, asset.scene_appearance or "", asset.costume or "", asset.body_view]
+                    if part
+                )
+                if asset.pipeline == "Scene-Appearance":
+                    label = " | ".join(part for part in [
+                        character,
+                        phase,
+                        " / ".join(filter(None, ["Scene Appearance", asset.scene_appearance or "", asset.costume or "", asset.body_view])),
+                    ] if part)
                 rows.append(self._base_record(
                     source_key,
                     source_type="pipeline",
                     tag=tag,
-                    label=" | ".join(part for part in [character, phase, asset.pipeline, asset.costume or "", asset.body_view] if part),
+                    label=label,
                     image_path=str(image_path),
                     thumbnail_path=str(image_path),
                     semantic_category="Person",
@@ -179,6 +217,7 @@ class ImageCatalogService:
                     inherited_identity=identity,
                     inherited_costume=costume_text,
                     costume_applicable=bool(asset.costume),
+                    default_reference_roles=["internal arrangement"] if asset.pipeline == "Scene-Appearance" else [],
                 ))
             try:
                 identity_keys = self.identity_key_repository.list_identity_keys(character, phase)
@@ -219,6 +258,8 @@ class ImageCatalogService:
                 detail = [self.story_service._asset_reference_pipeline_code(sheet.source_pipeline), "Turnaround"]
                 if sheet.costume:
                     detail.append(sheet.costume)
+                if sheet.scene_appearance:
+                    detail = [self.story_service._asset_reference_pipeline_code(sheet.source_pipeline), "Turnaround", sheet.scene_appearance, sheet.costume or ""]
                 source_key = f"turnaround:{character}:{phase}:{sheet.turnaround_id}"
                 rows.append(self._base_record(
                     source_key,
@@ -235,6 +276,7 @@ class ImageCatalogService:
                     inherited_identity=identity,
                     inherited_costume=costume_text,
                     costume_applicable=bool(sheet.costume),
+                    default_reference_roles=["internal arrangement"] if sheet.source_pipeline == "Scene-Appearance" else [],
                 ))
         return rows
 
@@ -384,7 +426,7 @@ class ImageCatalogService:
     def list_items(self, **filters) -> list[ImageCatalogItem]:
         payload = self.repository.load()
         pending_ids = self._pending_ids()
-        sources = [*self._discover_auxiliary(), *self._discover_character_images(), *self._discover_scenes()]
+        sources = [*self._discover_managed(payload), *self._discover_character_images(), *self._discover_scenes()]
         items = [self._materialize(source, payload, pending_ids) for source in sources]
         include_base = bool(filters.get("include_base", True))
         text_filter = str(filters.get("q") or "").strip().lower()
@@ -432,12 +474,29 @@ class ImageCatalogService:
     def update_item(self, catalog_id: str, changes: dict) -> ImageCatalogItem:
         item = self.get_item(catalog_id)
         payload = self.repository.load()
+        managed = payload.get("managed_images", {}).get(catalog_id)
+        if "label" in changes or "reference_set_id" in changes:
+            if not managed:
+                raise ImageCatalogServiceError("Only imported images can change their label or reference set.")
+            if "label" in changes:
+                label = str(changes.get("label") or "").strip()
+                if not label:
+                    raise ImageCatalogServiceError("Image label is required.")
+                managed["label"] = label
+            if "reference_set_id" in changes:
+                set_id = str(changes.get("reference_set_id") or "").strip()
+                if set_id and set_id not in payload.get("reference_sets", {}):
+                    raise ImageCatalogServiceError("Reference set not found.")
+                managed["reference_set_id"] = set_id
+            managed["updated_at"] = datetime.now().isoformat(timespec="seconds")
         metadata = dict(payload["items"].get(item.source_key, {}))
         category = changes.get("semantic_category")
         if category is not None:
             if category not in SEMANTIC_CATEGORIES:
                 raise ImageCatalogServiceError("Invalid semantic category.")
             metadata["semantic_category"] = category
+            if managed:
+                managed["semantic_category"] = category
         for key in ("collection_ids", "keyword_ids"):
             if key in changes:
                 vocabulary = "collections" if key == "collection_ids" else "keywords"
@@ -467,8 +526,196 @@ class ImageCatalogService:
         self.repository.save(payload)
         return self.get_item(catalog_id)
 
+    @staticmethod
+    def _content_extension(content_type: str) -> str:
+        normalized = str(content_type or "").split(";", 1)[0].strip().lower()
+        extensions = {"image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}
+        if normalized not in extensions:
+            raise ImageCatalogServiceError("Image must be PNG, JPEG, WebP, or GIF.")
+        return extensions[normalized]
+
+    def _validate_reference_set(self, payload: dict, reference_set_id: str) -> str:
+        set_id = str(reference_set_id or "").strip()
+        if set_id and set_id not in payload.get("reference_sets", {}):
+            raise ImageCatalogServiceError("Reference set not found.")
+        return set_id
+
+    def import_image(self, label: str, semantic_category: str, reference_set_id: str, image_bytes: bytes, content_type: str) -> ImageCatalogItem:
+        cleaned_label = str(label or "").strip()
+        if not cleaned_label:
+            raise ImageCatalogServiceError("Image label is required.")
+        if semantic_category not in SEMANTIC_CATEGORIES:
+            raise ImageCatalogServiceError("Invalid semantic category.")
+        if not image_bytes:
+            raise ImageCatalogServiceError("Image content is required.")
+        extension = self._content_extension(content_type)
+        payload = self.repository.load()
+        set_id = self._validate_reference_set(payload, reference_set_id)
+        catalog_id = "img_" + uuid4().hex[:20]
+        source_key = f"import:{catalog_id}"
+        image_dir = self.path_service.image_catalog_images_path()
+        image_dir.mkdir(parents=True, exist_ok=True)
+        image_path = image_dir / f"{catalog_id}{extension}"
+        image_path.write_bytes(image_bytes)
+        now = datetime.now().isoformat(timespec="seconds")
+        payload["managed_images"][catalog_id] = {
+            "catalog_id": catalog_id,
+            "source_key": source_key,
+            "label": cleaned_label,
+            "image_path": str(image_path),
+            "mime_type": str(content_type).split(";", 1)[0].strip().lower(),
+            "tag": f"{{{{IMAGE:{catalog_id}}}}}",
+            "semantic_category": semantic_category,
+            "reference_set_id": set_id,
+            "created_at": now,
+            "updated_at": now,
+        }
+        self.repository.save(payload)
+        return self.get_item(catalog_id)
+
+    def _trash_file(self, path: Path, catalog_id: str) -> None:
+        if not path.is_file():
+            return
+        trash = self.path_service.image_catalog_trash_path()
+        trash.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        shutil.move(str(path), str(trash / f"{catalog_id}_{stamp}{path.suffix.lower()}"))
+
+    def replace_image_content(self, catalog_id: str, image_bytes: bytes, content_type: str) -> ImageCatalogItem:
+        if not image_bytes:
+            raise ImageCatalogServiceError("Image content is required.")
+        extension = self._content_extension(content_type)
+        payload = self.repository.load()
+        record = payload.get("managed_images", {}).get(catalog_id)
+        if not record:
+            raise ImageCatalogServiceError("Only imported images can be replaced.")
+        old_path = self.path_service.resolve_path(str(record.get("image_path") or ""))
+        target_dir = old_path.parent if old_path.parent.exists() else self.path_service.image_catalog_images_path()
+        target_dir.mkdir(parents=True, exist_ok=True)
+        self._trash_file(old_path, catalog_id)
+        new_path = target_dir / f"{catalog_id}{extension}"
+        new_path.write_bytes(image_bytes)
+        record["image_path"] = str(new_path)
+        record["mime_type"] = str(content_type).split(";", 1)[0].strip().lower()
+        record.pop("content_type", None)
+        record["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        self.repository.save(payload)
+        return self.get_item(catalog_id)
+
+    def reference_locations(self, catalog_id: str) -> list[str]:
+        item = self.get_item(catalog_id)
+        roots = [
+            Path(self.config.base_library_path) / name
+            for name in ("Stories", "Characters", "Assets", "Pipelines")
+        ]
+        matches = []
+        for root in roots:
+            if not root.exists():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file() or "_backup" in path.parts or path.suffix.lower() not in {".json", ".md", ".toml", ".txt"}:
+                    continue
+                try:
+                    if item.tag in path.read_text(encoding="utf-8", errors="ignore"):
+                        matches.append(str(path))
+                except OSError:
+                    continue
+        return sorted(set(matches))
+
+    def delete_image(self, catalog_id: str, force: bool = False) -> dict:
+        item = self.get_item(catalog_id)
+        if not item.is_managed:
+            raise ImageCatalogServiceError("Only imported images can be deleted.")
+        if catalog_id in self._pending_ids():
+            raise ImageCatalogServiceError("Image cannot be deleted while an AI description is pending.")
+        references = self.reference_locations(catalog_id)
+        if references and not force:
+            raise ImageCatalogReferenceConflict(references)
+        payload = self.repository.load()
+        record = payload["managed_images"].pop(catalog_id)
+        payload["items"].pop(item.source_key, None)
+        self._trash_file(self.path_service.resolve_path(str(record.get("image_path") or "")), catalog_id)
+        draft = self.path_service.image_catalog_drafts_path() / f"{catalog_id}.json"
+        if draft.exists():
+            draft.unlink()
+        self.repository.save(payload)
+        return {"catalog_id": catalog_id, "references": references}
+
+    def list_reference_sets(self) -> list[dict]:
+        payload = self.repository.load()
+        counts = {key: 0 for key in payload.get("reference_sets", {})}
+        for image in payload.get("managed_images", {}).values():
+            set_id = str(image.get("reference_set_id") or "")
+            if set_id in counts:
+                counts[set_id] += 1
+        return sorted(
+            [{**record, "image_count": counts.get(set_id, 0)} for set_id, record in payload.get("reference_sets", {}).items()],
+            key=lambda record: (str(record.get("label") or "").lower(), str(record.get("reference_set_id") or "")),
+        )
+
+    def save_reference_set(self, data: dict, reference_set_id: str = "") -> dict:
+        payload = self.repository.load()
+        label = str(data.get("label") or "").strip()
+        if not label:
+            raise ImageCatalogServiceError("Reference set label is required.")
+        set_id = str(reference_set_id or "").strip()
+        if set_id and set_id not in payload["reference_sets"]:
+            raise ImageCatalogServiceError("Reference set not found.")
+        if not set_id:
+            base = self._slug(label)
+            set_id = base
+            index = 2
+            while set_id in payload["reference_sets"]:
+                set_id = f"{base}-{index}"
+                index += 1
+        current = dict(payload["reference_sets"].get(set_id) or {})
+        now = datetime.now().isoformat(timespec="seconds")
+        current.update({
+            "reference_set_id": set_id,
+            "label": label,
+            "identity_text": str(data.get("identity_text") or "").strip(),
+            "costume_text": str(data.get("costume_text") or "").strip(),
+            "created_at": current.get("created_at") or now,
+            "updated_at": now,
+        })
+        legacy_category = str(data.get("legacy_category") or current.get("legacy_category") or "").strip().lower()
+        if legacy_category:
+            if legacy_category not in {"person", "place", "thing"}:
+                raise ImageCatalogServiceError("Reference set category must be person, place, or thing.")
+            current["legacy_category"] = legacy_category
+        payload["reference_sets"][set_id] = current
+        self.repository.save(payload)
+        return next(item for item in self.list_reference_sets() if item["reference_set_id"] == set_id)
+
+    def delete_reference_set(self, reference_set_id: str) -> None:
+        payload = self.repository.load()
+        if reference_set_id not in payload.get("reference_sets", {}):
+            raise ImageCatalogServiceError("Reference set not found.")
+        if any(str(item.get("reference_set_id") or "") == reference_set_id for item in payload.get("managed_images", {}).values()):
+            raise ImageCatalogServiceError("Reference set must be empty before it can be deleted.")
+        del payload["reference_sets"][reference_set_id]
+        self.repository.save(payload)
+
+    def managed_item_for_tag(self, tag: str) -> ImageCatalogItem | None:
+        cleaned = str(tag or "").strip()
+        return next((item for item in self.list_items(include_base=True) if item.is_managed and item.tag == cleaned), None)
+
+    def reference_set_sections(self, reference_set_id: str) -> dict:
+        record = self.repository.load().get("reference_sets", {}).get(str(reference_set_id or ""), {})
+        if not record:
+            return {}
+        return {
+            "identity_preservation_core": str(record.get("identity_text") or ""),
+            "identity_preservation_costume": str(record.get("costume_text") or ""),
+            "identity_source": str(self.path_service.image_catalog_inventory_path()),
+            "costume_source": str(self.path_service.image_catalog_inventory_path()),
+        }
+
     def bulk_update(self, catalog_ids: list[str], changes: dict) -> list[ImageCatalogItem]:
-        return [self.update_item(catalog_id, changes) for catalog_id in dict.fromkeys(catalog_ids)]
+        unique_ids = list(dict.fromkeys(catalog_ids))
+        if "reference_set_id" in changes and any(not self.get_item(catalog_id).is_managed for catalog_id in unique_ids):
+            raise ImageCatalogServiceError("Reference sets can only be assigned to imported images.")
+        return [self.update_item(catalog_id, changes) for catalog_id in unique_ids]
 
     def _vocabulary(self, name: str) -> list[dict]:
         return [dict(item) for item in self.repository.load().get(name, []) if isinstance(item, dict)]

@@ -29,6 +29,49 @@ VIEWS = [
 
 class TurnaroundServiceTests(unittest.TestCase):
 
+    def test_scene_appearance_ids_isolate_turnaround_groups(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_fixture(root, include_images=False)
+            assets_path = root / "Characters" / "Test" / "Adult" / "Assets.json"
+            payload = json.loads(assets_path.read_text(encoding="utf-8"))
+            next_id = 9
+            for appearance_id, appearance_name in (("hell-adventures", "Hell Adventures"), ("ice-caves", "Ice Caves")):
+                for view in VIEWS:
+                    payload["assets"].append({
+                        "asset_id": next_id,
+                        "character": "Test",
+                        "phase": "Adult",
+                        "pipeline": "Scene-Appearance",
+                        "body_view": view,
+                        "head_view": view,
+                        "costume": "Adventure Gear",
+                        "scene_appearance_id": appearance_id,
+                        "scene_appearance": appearance_name,
+                        "asset_state": "LOCKED",
+                        "pipeline_stage": "LOCKED",
+                        "actor": "HUMAN_AGENT",
+                        "final_image_output": f"{appearance_id}-{view}.png",
+                    })
+                    next_id += 1
+            assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            pipelines_path = root / "Characters" / "Test" / "Adult" / "Pipelines.json"
+            pipelines = json.loads(pipelines_path.read_text(encoding="utf-8"))
+            pipelines["pipelines"]["Scene-Appearance"] = {
+                "stages": ["LOCKED"], "actor_by_stage": {"LOCKED": "HUMAN_AGENT"}, "worker_by_stage": {}
+            }
+            pipelines_path.write_text(json.dumps(pipelines, indent=2) + "\n", encoding="utf-8")
+
+            response = TestClient(create_app(config_path)).get(
+                "/api/turnarounds", params={"character": "Test", "phase": "Adult"}
+            )
+
+            self.assertEqual(200, response.status_code, response.text)
+            rows = [row for row in response.json()["rows"] if row["source_pipeline"] == "Scene-Appearance"]
+            self.assertEqual(2, len(rows))
+            self.assertEqual({"hell-adventures", "ice-caves"}, {row["scene_appearance_id"] for row in rows})
+            self.assertEqual({8}, {row["locked_count"] for row in rows})
+
     def _write_png(
         self,
         path: Path,

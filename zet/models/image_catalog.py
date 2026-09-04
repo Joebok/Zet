@@ -49,6 +49,7 @@ class ImageCatalogItem:
     image_path: str
     thumbnail_path: str
     semantic_category: str
+    mime_type: str = ""
     collections: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     character: str = ""
@@ -72,3 +73,10 @@ class ImageCatalogItem:
     available: bool = True
     candidate_pending: bool = False
     image_review_key: str = ""
+    is_managed: bool = False
+    managed_label: str = ""
+    reference_set_id: str = ""
+    reference_set_label: str = ""
+    default_reference_roles: list[str] = field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""

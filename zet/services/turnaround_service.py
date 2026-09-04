@@ -15,18 +15,7 @@ from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.character_grid_service import CharacterGridOptions, CharacterGridService
 from zet.services.image_sheet_service import letter_landscape_height
 from zet.services.path_service import PathService
-
-
-TURNAROUND_VIEW_ORDER = [
-    "Front",
-    "Front-Left-3-4",
-    "Left-Profile",
-    "Back-Left-3-4",
-    "Back",
-    "Back-Right-3-4",
-    "Right-Profile",
-    "Front-Right-3-4",
-]
+from zet.services.turnaround_views import TURNAROUND_VIEW_ORDER
 
 DEFAULT_DETECTION_TOLERANCE = 50.0
 
@@ -63,6 +52,8 @@ class TurnaroundRow:
     source_pipeline: str
     costume: Optional[str]
     expression: Optional[str]
+    scene_appearance_id: Optional[str]
+    scene_appearance: Optional[str]
     label: str
     status: str
     ready: bool
@@ -139,29 +130,43 @@ class TurnaroundService:
         """Normalize a label segment for path-safe turnaround ids."""
         return re.sub(r"[^A-Za-z0-9]+", "-", value).strip("-") or "default"
 
-    def _group_key(self, asset: Asset) -> tuple[str, Optional[str], Optional[str]]:
+    def _group_key(self, asset: Asset) -> tuple[str, Optional[str], Optional[str], Optional[str]]:
         """Return the grouping key that defines one turnaround source set."""
-        return asset.pipeline, asset.costume, asset.expression
+        return asset.pipeline, asset.costume, asset.expression, asset.scene_appearance_id
 
-    def _turnaround_id(self, pipeline: str, costume: Optional[str], expression: Optional[str]) -> str:
+    def _turnaround_id(self, pipeline: str, costume: Optional[str], expression: Optional[str], scene_appearance_id: Optional[str] = None) -> str:
         """Build the stable id for one turnaround source set."""
         parts = [self._slug(pipeline)]
         if costume:
             parts.append(self._slug(costume))
         if expression:
             parts.append(self._slug(expression))
+        if scene_appearance_id:
+            parts.append(self._slug(scene_appearance_id))
         return "_".join(parts)
 
-    def _label(self, pipeline: str, costume: Optional[str], expression: Optional[str]) -> str:
+    def _label(
+        self,
+        pipeline: str,
+        costume: Optional[str],
+        expression: Optional[str],
+        scene_appearance: Optional[str] = None,
+    ) -> str:
         """Build a human-readable label for one turnaround source set."""
-        parts = [pipeline]
+        parts = ["Scene Appearance" if pipeline == "Scene-Appearance" else pipeline]
         if costume:
             parts.append(costume)
         if expression:
             parts.append(expression)
+        if scene_appearance:
+            parts.insert(1, scene_appearance)
         return " / ".join(parts)
 
-    def _locked_assets_by_view(self, assets: list[Asset], key: tuple[str, Optional[str], Optional[str]]) -> dict[str, Asset]:
+    def _locked_assets_by_view(
+        self,
+        assets: list[Asset],
+        key: tuple[str, Optional[str], Optional[str], Optional[str]],
+    ) -> dict[str, Asset]:
         """Map locked source assets for one group by body view."""
         matches = {}
         for asset in assets:
@@ -220,14 +225,15 @@ class TurnaroundService:
         self,
         character: str,
         phase: str,
-        key: tuple[str, Optional[str], Optional[str]],
+        key: tuple[str, Optional[str], Optional[str], Optional[str]],
         assets_by_view: dict[str, Asset],
         sheet: TurnaroundSheet | None,
         sheets: list[TurnaroundSheet],
     ) -> TurnaroundRow:
         """Create a dashboard row for one possible turnaround group."""
-        pipeline, costume, expression = key
-        turnaround_id = self._turnaround_id(pipeline, costume, expression)
+        pipeline, costume, expression, scene_appearance_id = key
+        turnaround_id = self._turnaround_id(pipeline, costume, expression, scene_appearance_id)
+        scene_appearance = next((item.scene_appearance for item in assets_by_view.values() if item.scene_appearance), None)
         missing_views = [view for view in TURNAROUND_VIEW_ORDER if view not in assets_by_view]
         source_asset_ids = [assets_by_view[view].asset_id for view in TURNAROUND_VIEW_ORDER if view in assets_by_view]
         candidate_path = self._stored_path(sheet.candidate_image_path) if sheet else None
@@ -249,7 +255,9 @@ class TurnaroundService:
             source_pipeline=pipeline,
             costume=costume,
             expression=expression,
-            label=self._label(pipeline, costume, expression),
+            scene_appearance_id=scene_appearance_id,
+            scene_appearance=scene_appearance,
+            label=self._label(pipeline, costume, expression, scene_appearance),
             status=status,
             ready=not missing_views,
             detection_tolerance=self._sheet_detection_tolerance(sheet),
@@ -274,13 +282,13 @@ class TurnaroundService:
             for pipeline in self.pipeline_repository.list_pipelines(character, phase)
             if pipeline.name not in {"Expression", "Head-Image"}
         ]
-        keys: set[tuple[str, Optional[str], Optional[str]]] = set()
+        keys: set[tuple[str, Optional[str], Optional[str], Optional[str]]] = set()
         for asset in assets:
             if asset.pipeline in pipeline_names:
                 keys.add(self._group_key(asset))
         sheets = self.turnaround_repository.list_sheets(character, phase)
         rows = []
-        for key in sorted(keys, key=lambda item: (pipeline_names.index(item[0]) if item[0] in pipeline_names else 999, item[1] or "", item[2] or "")):
+        for key in sorted(keys, key=lambda item: (pipeline_names.index(item[0]) if item[0] in pipeline_names else 999, item[1] or "", item[2] or "", item[3] or "")):
             turnaround_id = self._turnaround_id(*key)
             rows.append(
                 self._row_from_group(
@@ -307,7 +315,7 @@ class TurnaroundService:
         if not row.ready:
             raise TurnaroundServiceError(f"Missing locked assets: {', '.join(row.missing_views)}")
         assets = self.asset_repository.list_assets(character, phase)
-        key = (row.source_pipeline, row.costume, row.expression)
+        key = (row.source_pipeline, row.costume, row.expression, row.scene_appearance_id)
         assets_by_view = self._locked_assets_by_view(assets, key)
         return [assets_by_view[view] for view in TURNAROUND_VIEW_ORDER]
 
@@ -346,11 +354,13 @@ class TurnaroundService:
             source_pipeline=first.pipeline,
             costume=first.costume,
             expression=first.expression,
+            scene_appearance_id=first.scene_appearance_id,
+            scene_appearance=first.scene_appearance,
             status="RENDER_REVIEW",
             source_asset_ids=[asset.asset_id for asset in source_assets],
             candidate_image_path=str(result.grid_path),
             locked_image_path=str(self.path_service.turnaround_locked_image_path(character, phase, turnaround_id)),
-            label=self._label(first.pipeline, first.costume, first.expression),
+            label=self._label(first.pipeline, first.costume, first.expression, first.scene_appearance),
             sheet_type="full",
             parent_turnaround_id=None,
             crop_percent=None,
@@ -420,6 +430,8 @@ class TurnaroundService:
             source_pipeline=first.pipeline,
             costume=first.costume,
             expression=first.expression,
+            scene_appearance_id=first.scene_appearance_id,
+            scene_appearance=first.scene_appearance,
             label=cleaned_label,
             sheet_type="partial",
             parent_turnaround_id=parent_turnaround_id,

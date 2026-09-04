@@ -5,10 +5,8 @@ const DESKTOP_VIEWPORTS = [
 ];
 
 async function openPage(page, pageName) {
-  const contextResponse = page.waitForResponse((response) => response.url().endsWith("/api/context"));
   await page.goto("/");
   await page.waitForFunction(() => typeof window.activatePage === "function");
-  await contextResponse;
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await expect(page.locator("#character-select option")).not.toHaveCount(0);
   await page.evaluate(async (name) => window.activatePage(name, { skipAutosave: true }), pageName);
@@ -25,6 +23,41 @@ test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   }
 });
 
+test("Scene Appearances selects a locked preview and reports edits", async ({ page }) => {
+  const appearance = {
+    appearance_id: "hell-adventures",
+    name: "Hell Adventures",
+    costume: "Canonical Adventure Gear",
+    instructions: "Morrow on anatomical left shoulder; tusk in anatomical right hand.",
+    supporting_references: [
+      { role: "companion", label: "Morrow", tag: "{{AUX:person:morrow:morrow-raven-form}}" },
+      { role: "prop", label: "Utility Tusk", tag: "{{AUX:thing:utility-tusk:tusk-reference}}" },
+    ],
+    asset_count: 8,
+    path: "SceneAppearances/hell-adventures.json",
+    locked_preview_path: "Turnarounds/hell-adventures.png",
+    locked_preview_exists: true,
+  };
+  await page.route(/\/api\/scene-appearances\?/, async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ scene_appearances: [appearance] }) });
+  });
+  await page.route(/\/api\/scene-appearances\/hell-adventures\?/, async (route) => {
+    const updated = { ...appearance, name: "Hell Expeditions" };
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ scene_appearance: updated, scene_appearances: [updated], message: "Updated Hell Expeditions." }),
+    });
+  });
+  await openPage(page, "scene-appearances");
+  await expect(page.locator("#scene-appearance-status")).toContainText("1 Scene Appearance set");
+  await page.locator("#scene-appearance-table tbody tr").click();
+  await expect(page.locator("#scene-appearance-preview-section")).toBeVisible();
+  await expect(page.locator("#scene-appearance-preview img")).toHaveAttribute("alt", "Locked Scene Appearance turnaround");
+  await page.locator("#scene-appearance-name").fill("Hell Expeditions");
+  await page.locator("#scene-appearance-save").click();
+  await expect(page.locator("#scene-appearance-message")).toContainText("Updated Hell Expeditions");
+});
+
 test("Image Inventory filters base outputs and edits logical metadata", async ({ page }) => {
   await openPage(page, "auxiliary-resources");
   const cards = page.locator("#image-catalog-grid .image-catalog-card");
@@ -32,9 +65,8 @@ test("Image Inventory filters base outputs and edits logical metadata", async ({
   await expect(page.locator("#image-catalog-count")).toContainText("then refresh");
   await expect(page.locator("#image-catalog-include-base")).not.toBeChecked();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await page.locator("#aux-resource-add").click();
-  await expect(page.locator("#aux-resource-workspace")).toBeVisible();
-  await page.locator("#aux-resource-clear").click();
+  await expect(page.locator("#image-catalog-import-zone")).toBeVisible();
+  await expect(page.locator("#image-catalog-set-select")).toBeVisible();
   const initialRefresh = page.waitForResponse((response) => response.url().includes("/api/image-catalog?") && response.ok());
   await page.locator("#image-catalog-refresh").click();
   await initialRefresh;
@@ -114,6 +146,68 @@ test("Image Inventory reports queued AI descriptions and harvests drafts without
   await expect(page.locator("#image-catalog-ai-identity")).toHaveValue("Stable physical identity.");
   await expect(page.locator("#image-catalog-ai-costume")).toHaveValue("Visible costume details.");
   await expect(page.locator("#image-catalog-ai-status")).toContainText("answer harvested");
+});
+
+test("Image Inventory manages imported images and optional reference sets", async ({ page }) => {
+  await openPage(page, "auxiliary-resources");
+  await page.locator("#image-catalog-set-label").fill("Browser Props");
+  const setCreated = page.waitForResponse((response) => response.url().endsWith("/api/image-catalog/reference-sets") && response.request().method() === "POST" && response.ok());
+  await page.locator("#image-catalog-set-save").click();
+  await setCreated;
+
+  await page.locator("#image-catalog-import-file").setInputFiles({
+    name: "lantern.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("browser image"),
+  });
+  await page.locator("#image-catalog-import-label").fill("Browser Lantern");
+  const referenceSetValue = await page.locator("#image-catalog-import-set option").filter({ hasText: "Browser Props" }).first().getAttribute("value");
+  await page.locator("#image-catalog-import-set").selectOption(referenceSetValue);
+  const imported = page.waitForResponse((response) => response.url().includes("/api/image-catalog/imports?") && response.ok());
+  await page.locator("#image-catalog-import-save").click();
+  await imported;
+
+  await expect(page.locator("#image-catalog-managed-actions")).toBeVisible();
+  await expect(page.locator("#image-catalog-managed-label")).toHaveValue("Browser Lantern");
+  await expect(page.locator("#image-catalog-add-upload")).toBeHidden();
+  await expect(page.locator("#image-catalog-replace-upload")).toBeHidden();
+  await page.locator("#image-catalog-add").click();
+  await expect(page.locator("#image-catalog-add-upload")).toBeVisible();
+  await page.locator("#image-catalog-add-label").fill("Browser Lantern Alternate");
+  await page.locator("#image-catalog-add-file").setInputFiles({
+    name: "lantern-alternate.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("alternate image"),
+  });
+  const added = page.waitForResponse((response) => response.url().includes("/api/image-catalog/imports?") && response.ok());
+  await page.locator("#image-catalog-add-submit").click();
+  await added;
+  await expect(page.locator("#image-catalog-editor-title")).toContainText("Browser Lantern Alternate");
+  await cards.filter({ hasText: "Browser Props - Browser Lantern" }).click();
+  await page.locator("#image-catalog-managed-label").fill("Renamed Lantern");
+  await page.locator("#image-catalog-managed-set").selectOption("");
+  const saved = page.waitForResponse((response) => response.url().includes("/api/image-catalog/img_") && response.request().method() === "PATCH" && response.ok());
+  await page.locator("#image-catalog-save").click();
+  await saved;
+  await expect(page.locator("#image-catalog-managed-label")).toHaveValue("Renamed Lantern");
+
+  await expect(page.locator("#image-catalog-replace-upload")).toBeHidden();
+  await page.locator("#image-catalog-replace").click();
+  await expect(page.locator("#image-catalog-replace-upload")).toBeVisible();
+  await page.locator("#image-catalog-replace-file").setInputFiles({
+    name: "lantern.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from("replacement image"),
+  });
+  const replaced = page.waitForResponse((response) => response.url().endsWith("/content") && response.ok());
+  await page.locator("#image-catalog-replace-submit").click();
+  await replaced;
+
+  page.once("dialog", (dialog) => dialog.accept());
+  const deleted = page.waitForResponse((response) => response.url().includes("/api/image-catalog/img_") && response.request().method() === "DELETE" && response.ok());
+  await page.locator("#image-catalog-delete").click();
+  await deleted;
+  await expect(page.locator("#image-catalog-grid").getByText("Renamed Lantern", { exact: true })).toHaveCount(0);
 });
 
 
@@ -465,7 +559,7 @@ test("@desktop-smoke scene workflow keeps context and production tools show all 
   await page.keyboard.press("Escape");
 });
 
-test("@desktop-smoke Scene Builder creates and selects an auxiliary resource without losing context", async ({ page }) => {
+test("@desktop-smoke Scene Builder creates and selects a reference set without losing context", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator("#scene-builder-open").click();
   await page.getByRole("button", { name: "Add Element" }).click();
@@ -473,15 +567,15 @@ test("@desktop-smoke Scene Builder creates and selects an auxiliary resource wit
   await page.locator("#builder-element-new-aux").click();
   await page.locator("#builder-element-new-aux-label").fill("Story Lantern");
   const created = page.waitForResponse((response) => (
-    response.url().includes("/api/auxiliary-resources?") && response.request().method() === "POST"
+    response.url().endsWith("/api/image-catalog/reference-sets") && response.request().method() === "POST"
   ));
   await page.locator("#builder-element-new-aux-save").click();
   const createdResponse = await created;
   expect(createdResponse.ok()).toBe(true);
-  const resource = (await createdResponse.json()).resource;
+  const resource = (await createdResponse.json()).reference_set;
 
   await expect(page.locator("#builder-element-modal")).toBeVisible();
-  await expect(page.locator("#builder-element-aux")).toHaveValue(resource.resource_id);
+  await expect(page.locator("#builder-element-aux")).toHaveValue(resource.reference_set_id);
   await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
   await expect(page.locator("#header-scene-select")).not.toHaveValue("");
   await page.locator("#builder-element-add").click();
@@ -567,7 +661,7 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   await expect(page.locator(".scene-builder-render").first()).toBeEnabled();
 });
 
-test("@desktop-smoke Scene Builder creates nested element render targets", async ({ page }) => {
+test("@desktop-smoke Scene Builder creates assignable colored sub-scenes", async ({ page }) => {
   await openPage(page, "scenes");
   const storySlug = await page.locator("#header-story-select").inputValue();
   const sceneSlug = await page.locator("#header-scene-select").inputValue();
@@ -588,28 +682,24 @@ test("@desktop-smoke Scene Builder creates nested element render targets", async
   await page.locator("#scene-builder-open").click();
   await page.locator(".scene-builder-element-row").filter({ hasText: "Travelers" }).click();
   await page.locator(".scene-builder-element-menu summary").click();
-  const enabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/elements/travelers/enable") && response.ok());
-  await page.getByRole("button", { name: "Turn into sub-scene" }).click();
-  await enabled;
-  await expect(page.locator(".scene-builder-target-breadcrumb")).toHaveText("Full Scene › Travelers");
-  await expect(page.getByText("Target element: Travelers", { exact: true })).toBeVisible();
-
-  const travelersTargetId = await page.getByRole("button", { name: "Travelers", exact: true }).getAttribute("data-render-target-id");
-  await page.getByRole("button", { name: "Full Scene", exact: true }).click();
-  await page.getByRole("button", { name: "Add Element" }).click();
-  await page.locator("#builder-element-resource-type").selectOption("Scene-Only");
-  await page.locator("#builder-element-scene-name").fill("Rescued travelers");
-  await page.locator("#builder-element-add").click();
-  await page.locator("[data-builder-element-field='subscene_id']").selectOption(travelersTargetId);
+  await expect(page.locator(".scene-builder-menu-panel").filter({ has: page.getByRole("button", { name: "Duplicate" }) })).not.toContainText("sub-scene");
+  const created = page.waitForResponse((response) => response.url().endsWith("/subscenes") && response.request().method() === "POST" && response.ok());
+  await page.getByRole("button", { name: "Add Sub-Scene" }).click();
+  const createdPayload = await (await created).json();
+  const targetId = createdPayload.render_target_id;
+  await expect(page.getByRole("button", { name: "Sub-Scene 1", exact: true })).toBeVisible();
+  await page.locator("[data-builder-element-field='subscene_id']").selectOption(targetId);
   const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT" && response.ok());
   await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
   await fullSceneSaved;
   await expect(page.locator("#scene-builder-save-state")).toHaveText("Saved");
-  await page.locator(".scene-builder-element-menu summary").click();
-  const nested = page.waitForResponse((response) => response.url().includes("/subscenes/elements/") && response.url().endsWith("/enable") && response.ok());
-  await page.getByRole("button", { name: "Turn into sub-scene" }).click();
-  await nested;
-  await expect(page.locator(".scene-builder-target-breadcrumb")).toContainText("Full Scene › Travelers › Rescued travelers");
+  await expect(page.locator(".scene-builder-element-workspace")).toHaveClass(/subscene-member/);
+  await page.getByRole("button", { name: "Sub-Scene 1", exact: true }).click();
+  await page.getByRole("button", { name: "Color 3" }).click();
+  const subsceneSaved = page.waitForResponse((response) => response.url().endsWith(`/builder/subscenes/${targetId}`) && response.request().method() === "PUT" && response.ok());
+  await page.getByRole("button", { name: "Save Subscene", exact: true }).click();
+  await subsceneSaved;
+  await expect(page.getByRole("button", { name: "Sub-Scene 1", exact: true })).toHaveAttribute("style", /#F3E1E7/);
 });
 
 test("@desktop-smoke subscene save and cancel are scoped to the active target", async ({ page }) => {
