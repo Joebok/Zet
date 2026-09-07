@@ -27,10 +27,11 @@ class CostumeDressingCompilerTests(unittest.TestCase):
             "Prompt_Section_Metadata.json",
         ):
             shutil.copyfile(PROJECT_ROOT / "Config" / name, config_dir / name)
-        shutil.copyfile(
-            PROJECT_ROOT / "Config" / "Prompt_Templates" / "costume_dressing_v1.md",
-            template_dir / "costume_dressing_v1.md",
-        )
+        for name in ("costume_dressing_v1.md", "costume_dressing_v2.md"):
+            shutil.copyfile(
+                PROJECT_ROOT / "Config" / "Prompt_Templates" / name,
+                template_dir / name,
+            )
         self.root.joinpath("config.toml").write_text(
             "\n".join(
                 [
@@ -124,19 +125,23 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         opening = prompt[:500]
         for value in ("Tsaeytte", "Youth", "Test Outfit", "FRONT"):
             self.assertIn(value, opening)
-        self.assertLess(prompt.index("# Locked Source"), prompt.index("# Costume Design"))
-        self.assertLess(prompt.index("# Orientation Lock"), prompt.index("# Costume Design"))
+        self.assertLess(prompt.index("# Image Inputs"), prompt.index("# Costume"))
+        self.assertLess(prompt.index("# Change Contract"), prompt.index("# Preserve Contract"))
+        self.assertLess(prompt.index("# Preserve Contract"), prompt.index("# Costume"))
         self.assertIn("Requested body view: DIRECT FRONT.", prompt)
-        self.assertIn("Preserve that view exactly.", prompt)
+        self.assertIn("Preserve a true direct front orientation", prompt)
         self.assertIn("Small blue pendant", prompt)
         self.assertNotIn("None.", prompt)
         self.assertNotIn("Right side", prompt)
         self.assertNotIn("Left side", prompt)
         self.assertNotIn("GOOD OUTPUT", prompt.upper())
         self.assertNotIn("BAD OUTPUT", prompt.upper())
-        self.assertIn("# Final Constraints", prompt)
+        self.assertIn("# Constraints", prompt)
         self.assertEqual(result["status"], "READY_FOR_RENDER")
         self.assertEqual(result["next_actor"], "AI_AGENT")
+        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+        self.assertEqual("edit", manifest["render_mode"])
+        self.assertEqual(["edit_base"], [item["role"] for item in manifest["image_inputs"]])
         for name in ("Final_Image_Prompt.md", "Compiled_Sections.md", "Prompt_Source_Map.json", "dependency_manifest.json", "Prompt_Review.md", "Image_Review.md"):
             self.assertTrue((Path(result["output_dir"]) / name).exists())
 
@@ -155,8 +160,8 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertIn("Requested body view: RIGHT PROFILE.", right)
         self.assertNotIn("Requested body view: LEFT PROFILE.", right)
         self.assertIn("Requested body view: BACK-LEFT THREE-QUARTER.", back)
-        self.assertIn("Do not rotate the head toward the viewer", back)
-        self.assertIn("Preserve that view exactly.", back)
+        self.assertIn("Do not rotate the head or torso toward the viewer", back)
+        self.assertIn("Preserve the exact supplied away-facing back-left three-quarter angle", back)
 
 
     def test_sided_equipment_keeps_side_rules_and_source_provenance(self) -> None:

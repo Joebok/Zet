@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import copy
 from pathlib import Path
 
 from zet.services.scene_render_compiler import compile_scene_render_ir, final_image_prompt_text, local_render_brief, local_render_forge_couple_prompt_text, local_render_prompt_text
@@ -27,11 +28,11 @@ class SceneRenderCompilerTests(unittest.TestCase):
     def _prompt(self, scene):
         return final_image_prompt_text(self._ir(scene))
 
-    def test_default_tail_sections_are_appended_literally_in_order(self):
+    def test_v2_uses_conditional_constraints_instead_of_unconditional_tail(self):
         prompt = self._prompt({})
 
-        expected_tail = "\n\n".join(DEFAULT_PROMPT_SECTIONS.values()) + "\n"
-        self.assertTrue(prompt.endswith(expected_tail))
+        self.assertNotIn("# Anatomical Requirements", prompt)
+        self.assertNotIn("# Avoid", prompt)
 
     def test_legacy_unexposed_scene_fields_are_ignored(self):
         ir = self._ir({
@@ -108,7 +109,7 @@ class SceneRenderCompilerTests(unittest.TestCase):
             ],
         })
 
-        self.assertIn("**Left:** Stands in the left foreground.", prompt)
+        self.assertIn("**Left:** Occupies the left foreground.", prompt)
         self.assertIn("Center defines the overall background and surrounding setting.", prompt)
         self.assertNotIn("Center occupies the center background.", prompt)
         self.assertNotIn("cell ", prompt)
@@ -220,10 +221,10 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertEqual(4, len(ir["references"]))
         self.assertNotIn("- Raven -", prompt)
         self.assertIn("**Visual description:** A black raven.", prompt)
-        self.assertIn("Preserve recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design", prompt)
-        self.assertIn("Preserve individual identity, species-defining anatomy, body proportions, silhouette", prompt)
-        self.assertIn("Preserve shape, construction, materials, colors, relative scale, and identifying details", prompt)
-        self.assertIn("Preserve permanent architecture, terrain layout, structural proportions", prompt)
+        self.assertIn("Preserve: recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design", prompt)
+        self.assertIn("Preserve: individual identity, species-defining anatomy, body proportions, silhouette", prompt)
+        self.assertIn("Preserve: shape, construction, materials, colors, relative scale, and identifying details", prompt)
+        self.assertIn("Preserve: permanent architecture, terrain layout, structural proportions", prompt)
         self.assertNotIn("facial features, hair, ears if applicable", prompt)
 
     def test_scene_appearance_reference_preserves_group_arrangement_but_allows_parent_pose_override(self):
@@ -250,6 +251,98 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("component identities, and internal spatial arrangement", prompt)
         self.assertIn("pose where overridden by the parent", prompt)
         self.assertIn("Kneeling while bracing the tusk across her body", prompt)
+
+    def test_v2_compiles_custom_reference_metadata_and_only_relevant_risk_constraints(self):
+        scene = {
+            "scene_elements": [
+                {
+                    "id": "hero", "display_name": "Hero", "element_type": "Character",
+                    "reference_images": [{
+                        "tag": "{{ASSET:hero}}", "roles": ["subject_reference"],
+                        "preserve": ["scar and braid"], "change": ["make airborne"],
+                        "ignore": ["source floor"], "notes": "Rope crosses behind the left arm.",
+                    }],
+                },
+                {"id": "rope", "display_name": "Rope", "element_type": "Prop"},
+            ],
+            "placements": [{
+                "scene_element_id": "hero", "position_within_cell": "center", "depth": "foreground",
+                "pose": {"summary": "airborne while gripping the rope"},
+                "motion": {"state": "moving", "direction_screen": "up", "cue": "swinging"},
+            }],
+            "interactions": [{
+                "subject_element_id": "hero", "relationship": "holds", "target_element_id": "rope",
+                "note": "right hand grips above the left hand",
+            }],
+        }
+
+        prompt = self._prompt(scene)
+
+        self.assertIn("Preserve: scar and braid", prompt)
+        self.assertIn("Change: make airborne", prompt)
+        self.assertIn("Ignore: source floor", prompt)
+        self.assertIn("Notes: Rope crosses behind the left arm", prompt)
+        self.assertIn("right hand grips above the left hand", prompt)
+        self.assertIn("hand-to-object assignment", prompt)
+        self.assertIn("described motion readable", prompt)
+        self.assertNotIn("dialogue text", prompt)
+
+    def test_reference_backed_subject_uses_compact_anchors_with_full_identity_fallback(self):
+        referenced = {
+            "id": "hero", "display_name": "Hero", "element_type": "Character",
+            "reference_images": [{"tag": "{{ASSET:hero}}"}],
+            "resolved_source_sections": {
+                "identity_anchors": "Violet eyes and a short black bob.",
+                "identity_preservation_core": "A much longer canonical identity description.",
+            },
+        }
+        text_only = {
+            "id": "guide", "display_name": "Guide", "element_type": "Character",
+            "fallback_visual_description": "A weathered guide.",
+            "resolved_source_sections": {
+                "identity_anchors": "Compact guide anchors.",
+                "identity_preservation_core": "Full guide identity description.",
+            },
+        }
+
+        prompt = self._prompt({"scene_elements": [referenced, text_only]})
+
+        self.assertIn("Violet eyes and a short black bob", prompt)
+        self.assertNotIn("much longer canonical identity", prompt)
+        self.assertIn("Full guide identity description", prompt)
+
+    def test_chatgpt_v2_contract_does_not_change_local_render_brief(self):
+        scene = {
+            "scene_elements": [{
+                "id": "hero", "display_name": "Hero", "element_type": "Character",
+                "reference_images": [{"tag": "{{ASSET:hero}}"}],
+                "resolved_source_sections": {
+                    "identity_anchors": "Compact anchors.",
+                    "identity_preservation_core": "Full local-render identity.",
+                },
+            }],
+            "placements": [{"scene_element_id": "hero", "position_within_cell": "center", "depth": "foreground"}],
+        }
+        ir = self._ir(scene)
+        legacy_equivalent = copy.deepcopy(ir)
+        for key in ("prompt_schema_version", "engine_profile", "render_mode", "image_inputs"):
+            legacy_equivalent.pop(key, None)
+
+        self.assertEqual(local_render_brief(legacy_equivalent), local_render_brief(ir))
+
+    def test_story_subscene_defaults_to_background_and_only_explicit_base_gets_canvas_authority(self):
+        default_ir = self._ir({"_render_inputs": [{"tag": "{{SCENE_RENDER:background}}", "target_id": "background"}]})
+        base_ir = self._ir({"_render_inputs": [{
+            "tag": "{{SCENE_RENDER:base}}", "target_id": "base", "prompt_role": "edit_base",
+        }]})
+        element_base_ir = self._ir({"scene_elements": [{
+            "id": "base", "display_name": "Base", "element_type": "Backdrop",
+            "reference_images": [{"tag": "{{ASSET:base}}", "roles": ["edit_base"]}],
+        }]})
+
+        self.assertEqual("background_reference", default_ir["image_inputs"][0]["role"])
+        self.assertEqual("edit_base", base_ir["image_inputs"][0]["role"])
+        self.assertEqual("edit_base", element_base_ir["image_inputs"][0]["role"])
 
 
 

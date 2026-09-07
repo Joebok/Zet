@@ -14,7 +14,15 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, select_prompt_sections, write_json_file
+from Scripts.Job_File_Utils import (
+    bundle_output_paths,
+    finalize_chatgpt_prompt,
+    prepare_chatgpt_prompt_contract,
+    render_static_prompt_artifacts,
+    safe_filename_fragment,
+    select_prompt_sections,
+    write_json_file,
+)
 from zet.services.prompt_template_service import PromptTemplateService
 from Scripts.Library_Paths import character_root, pipeline_root
 from zet.services.pipeline_compiler_support import (
@@ -164,7 +172,7 @@ def prompt_inserts_by_section(text: str) -> dict[str, str]:
     return {section: "\n\n".join(parts) for section, parts in inserts.items() if parts}
 
 
-def write_dependency_manifest(path: Path, metadata: dict, reference_files: list[dict]) -> None:
+def write_dependency_manifest(path: Path, metadata: dict, reference_files: list[dict], contract: dict) -> None:
     """Write the expression dependency manifest."""
     manifest = {
         "job_id": metadata["job_id"],
@@ -177,6 +185,7 @@ def write_dependency_manifest(path: Path, metadata: dict, reference_files: list[
         "resources_allowed": True,
         "resources": reference_files,
         "required_reference_roles": ["identity_key"],
+        **contract,
         "notes": [
             "Expression jobs use an explicit Identity Key image reference.",
             "The Identity Key controls identity, framing, view angle, visible costume, lighting, and style.",
@@ -277,6 +286,12 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
             sections["COSTUME_IDENTITY_RULES"] = costume_sections["COSTUME_IDENTITY_RULES"]
             section_sources["COSTUME_IDENTITY_RULES"] = costume_sources["COSTUME_IDENTITY_RULES"]
     selection = select_prompt_sections(project_root, bundle, sections, section_sources, "EXPRESSION")
+    references = auxiliary_references_for_texts(
+        project_root, ["\n".join(selection.sections.values())], references
+    )
+    references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
+        references, render_mode="edit"
+    )
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
         "compiled_sections": "Compiled_Sections.md",
@@ -284,6 +299,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md",
         "source_map": "Prompt_Source_Map.json",
+        "diagnostics": "Prompt_Compile_Diagnostics.json",
     })
     prompt_path = paths["final_prompt"]
     compiled_sections_path = paths["compiled_sections"]
@@ -309,6 +325,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "IDENTITY_KEY_LABEL": identity_key_label,
         "EXPRESSION_DEFINITION_PATH": str(definition_path),
         "EXPRESSION_DEFINITION": definition_text,
+        **contract_values,
         **template_metadata(template_path),
     }
     for section in PROMPT_INSERT_SECTIONS:
@@ -345,12 +362,8 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         view_token="EXPRESSION",
         ensure_ascii_source_map=True,
     )
-    references = auxiliary_references_for_texts(
-        project_root,
-        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
-        references,
-    )
-    write_dependency_manifest(manifest_path, metadata, references)
+    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
+    write_dependency_manifest(manifest_path, metadata, references, contract_manifest)
     write_prompt_review(prompt_review_path, metadata, prompt_path)
     write_image_review(image_review_path, metadata, expected_output)
     return {
@@ -360,6 +373,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "prompt_review": str(prompt_review_path),
         "image_review": str(image_review_path),
         "source_map": str(source_map_path),
+        "diagnostics": str(paths["diagnostics"]),
         "expected_output": expected_output,
         "status": str(bundle.get("next_status", "READY_FOR_RENDER")),
         "next_actor": str(bundle.get("next_actor", "AI_AGENT")),

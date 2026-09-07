@@ -123,6 +123,7 @@ const state = {
   builderResponsiveSection: "elements",
   builderImagePickerReferences: [],
   builderImagePickerSearch: "",
+  builderReferenceIndex: 0,
   builderElementAuxResources: {},
   builderElementCostumes: [],
   builderCostumesByCharacterPhase: {},
@@ -3115,7 +3116,9 @@ async function activatePage(page, options = {}) {
   if (page === "help") {
     await loadTemplateManuals();
   }
-  await refreshProductionWorkSummary();
+  // Badge counts are supplemental navigation chrome.  Updating them can scan
+  // project-wide queues, so do not hold the newly selected page open on it.
+  void refreshProductionWorkSummary();
   return true;
 }
 
@@ -5361,6 +5364,14 @@ function builderSyncControls() {
         }
       }
     }
+    for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-reference-field]")) {
+      const reference = (element.reference_images || [])[Number(control.dataset.builderReferenceIndex)];
+      if (!reference) continue;
+      const field = control.dataset.builderReferenceField;
+      reference[field] = ["roles", "preserve", "change", "ignore"].includes(field)
+        ? control.value.split(",").map((value) => value.trim()).filter(Boolean)
+        : control.value;
+    }
     if (element.element_type === "Backdrop") {
       const placement = builderPlacementForElement(element.id);
       if (placement) placement.position_within_cell = "";
@@ -5696,9 +5707,10 @@ function builderRenderElements() {
     const placement = builderPlacementForElement(element.id);
     const position = placement?.position_within_cell || "—";
     const depth = position === "None" ? "None" : placement?.depth || "—";
-    const referenceTag = element.reference_images?.[0]?.tag || "";
-    const referenceKnown = Boolean(referenceTag && (state.sceneBuilderReferences || []).some((item) => item.tag === referenceTag));
-    const referenceStatus = !referenceTag ? "No reference" : referenceKnown ? "Reference linked" : "Reference unresolved";
+    const referenceTags = (element.reference_images || []).map((item) => item.tag).filter(Boolean);
+    const linkedReferenceCount = referenceTags.filter((tag) => (state.sceneBuilderReferences || []).some((item) => item.tag === tag)).length;
+    const referenceKnown = Boolean(referenceTags.length && linkedReferenceCount === referenceTags.length);
+    const referenceStatus = !referenceTags.length ? "No references" : referenceKnown ? `${referenceTags.length} reference(s) linked` : `${linkedReferenceCount}/${referenceTags.length} references linked`;
     return `
       <button type="button" class="scene-builder-element-row ${element.id === state.selectedBuilderElementId ? "selected" : ""} ${activeSubscene && element.subscene_id !== activeSubscene.id ? "context-only" : ""} ${element.subscene_id ? "subscene-member" : ""}" data-builder-select-element="${escapeHtml(element.id || "")}"${builderSubsceneStyle(element.subscene_id)}>
         <span class="scene-builder-element-name">${escapeHtml(element.display_name || element.id || "")}</span>
@@ -5744,11 +5756,27 @@ function builderRenderElementEditor() {
   if (!element) {
     return `<section class="scene-builder-editor-section"><h5>Identity and reference</h5><p>Select or add a scene element.</p></section>`;
   }
-  const referenceTag = element.reference_images?.[0]?.tag || "";
-  const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
-  const referenceThumbnail = reference?.thumbnail_path
-    ? `<span class="scene-builder-reference-preview"><img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}" data-story-slug="${escapeHtml(reference.story_slug || "")}" data-scene-slug="${escapeHtml(reference.scene_slug || "")}" data-candidate-pending="${reference.candidate_pending ? "true" : "false"}">${reference.candidate_pending ? `<a class="candidate-pending-overlay" href="${sceneImageReviewUrl(reference.story_slug, reference.scene_slug)}">Candidate Image Pending</a>` : ""}</span>`
-    : "";
+  element.reference_images = element.reference_images || [];
+  const referenceEditors = element.reference_images.map((imageReference, index) => {
+    const referenceTag = imageReference.tag || "";
+    const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
+    const referenceThumbnail = reference?.thumbnail_path
+      ? `<span class="scene-builder-reference-preview"><img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}" data-story-slug="${escapeHtml(reference.story_slug || "")}" data-scene-slug="${escapeHtml(reference.scene_slug || "")}" data-candidate-pending="${reference.candidate_pending ? "true" : "false"}">${reference.candidate_pending ? `<a class="candidate-pending-overlay" href="${sceneImageReviewUrl(reference.story_slug, reference.scene_slug)}">Candidate Image Pending</a>` : ""}</span>`
+      : "";
+    return `<div class="scene-builder-reference-field full" data-builder-reference-row="${index}">
+      ${referenceThumbnail}
+      <div>
+        <label>${builderCaption(`Reference ${index + 1} tag`, "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-reference-field="tag" data-builder-reference-index="${index}"><button type="button" data-builder-action="pick-image-tag" data-builder-reference-index="${index}">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>
+        <label>Roles (comma-separated)<input value="${escapeHtml((imageReference.roles || []).join(", "))}" data-builder-reference-field="roles" data-builder-reference-index="${index}"></label>
+        <label>Preserve (comma-separated)<input value="${escapeHtml((imageReference.preserve || []).join(", "))}" data-builder-reference-field="preserve" data-builder-reference-index="${index}"></label>
+        <label>Change (comma-separated)<input value="${escapeHtml((imageReference.change || []).join(", "))}" data-builder-reference-field="change" data-builder-reference-index="${index}"></label>
+        <label>Ignore (comma-separated)<input value="${escapeHtml((imageReference.ignore || []).join(", "))}" data-builder-reference-field="ignore" data-builder-reference-index="${index}"></label>
+        <label>Notes<textarea data-builder-reference-field="notes" data-builder-reference-index="${index}">${escapeHtml(imageReference.notes || "")}</textarea></label>
+        ${reference ? `<small>${escapeHtml(reference.semantic_category || reference.kind || "")} · ${escapeHtml(String(reference.description_status || "").replaceAll("_", " "))}</small>` : ""}
+        <span class="button-row compact"><button type="button" data-builder-action="reference-up" data-builder-reference-index="${index}"${index === 0 ? " disabled" : ""}>Up</button><button type="button" data-builder-action="reference-down" data-builder-reference-index="${index}"${index === element.reference_images.length - 1 ? " disabled" : ""}>Down</button><button type="button" data-builder-action="reference-remove" data-builder-reference-index="${index}">Remove</button></span>
+      </div>
+    </div>`;
+  }).join("");
   const characterOptions = `<option value=""></option>` + (state.characters || []).map((character) => `<option value="${escapeHtml(character)}"${character === element.character ? " selected" : ""}>${escapeHtml(character)}</option>`).join("");
   const phaseOptions = `<option value=""></option>` + (state.phasesByCharacter[element.character] || []).map((phase) => `<option value="${escapeHtml(phase)}"${phase === element.phase ? " selected" : ""}>${escapeHtml(phase)}</option>`).join("");
   return `
@@ -5761,7 +5789,8 @@ function builderRenderElementEditor() {
         ${element.resource_type === "Character" ? `<label>${builderCaption("Character", "scene_elements[].character")}<select data-builder-element-field="character">${characterOptions}</select></label>` : ""}
         ${element.resource_type === "Character" ? `<label>${builderCaption("Phase", "scene_elements[].phase")}<select data-builder-element-field="phase">${phaseOptions}</select></label>` : ""}
         ${element.resource_type === "Character" ? `<label>${builderCaption("Costume", "scene_elements[].costume")}<select data-builder-element-field="costume">${builderCostumeOptions(element)}</select></label>` : ""}
-        <div class="scene-builder-reference-field full">${referenceThumbnail}<label>${builderCaption("Reference tag", "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-element-field="reference_images.0.tag"><button type="button" data-builder-action="pick-image-tag">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>${reference ? `<small>${escapeHtml(reference.semantic_category || reference.kind || "")} · ${escapeHtml(String(reference.description_status || "").replaceAll("_", " "))}</small>` : ""}</div>
+        ${referenceEditors}
+        <div class="full"><button type="button" data-builder-action="reference-add">Add reference</button></div>
         <label class="full">${builderCaption("(Element visual override) Element Override: ...", "scene_elements[].element_visual_override")}<textarea data-builder-element-field="element_visual_override">${escapeHtml(element.element_visual_override || "")}</textarea></label>
         <label class="full">${builderCaption("(Fallback visual description) Visual description: ...", "scene_elements[].fallback_visual_description")}<textarea data-builder-element-field="fallback_visual_description">${escapeHtml(element.fallback_visual_description || "")}</textarea></label>
       </div>
@@ -7045,7 +7074,23 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     if (action === "add-element") openBuilderElementDialog();
     if (action === "duplicate-element") builderDuplicateSelectedElement();
     if (action === "delete-element") builderRemoveSelectedElement();
-    if (action === "pick-image-tag") openBuilderImagePicker();
+    if (action === "reference-add") {
+      builderSyncControls();
+      const element = builderSelectedElement();
+      element.reference_images = element.reference_images || [];
+      element.reference_images.push({ tag: "", roles: [], preserve: [], change: [], ignore: [], notes: "" });
+      renderSceneBuilder();
+    }
+    if (["reference-up", "reference-down", "reference-remove"].includes(action)) {
+      builderSyncControls();
+      const references = builderSelectedElement()?.reference_images || [];
+      const index = Number(target.dataset.builderReferenceIndex);
+      if (action === "reference-remove") references.splice(index, 1);
+      if (action === "reference-up" && index > 0) [references[index - 1], references[index]] = [references[index], references[index - 1]];
+      if (action === "reference-down" && index < references.length - 1) [references[index + 1], references[index]] = [references[index], references[index + 1]];
+      renderSceneBuilder();
+    }
+    if (action === "pick-image-tag") openBuilderImagePicker(Number(target.dataset.builderReferenceIndex || 0));
     if (action === "open-catalog-item") {
       const catalogId = target.dataset.catalogId || "";
       activatePage("auxiliary-resources", { skipAutosave: true, preferredCatalogId: catalogId });
@@ -7200,11 +7245,14 @@ const builderImagePicker = {
     }
     await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
     element.reference_images = element.reference_images || [];
-    element.reference_images[0] = element.reference_images[0] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
-    element.reference_images[0].tag = item.tag || "";
-    element.reference_images[0].roles = item.default_reference_roles?.length
-      ? [...item.default_reference_roles]
-      : ["visual reference"];
+    const index = Number(state.builderReferenceIndex || 0);
+    element.reference_images[index] = element.reference_images[index] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
+    element.reference_images[index].tag = item.tag || "";
+    if (!element.reference_images[index].roles?.length) {
+      element.reference_images[index].roles = item.default_reference_roles?.length
+        ? [...item.default_reference_roles]
+        : ["visual reference"];
+    }
     state.sceneBuilderReferences = [
       ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== item.tag),
       item,
@@ -7220,12 +7268,13 @@ async function loadSceneImageReferences() {
   await loadImagePickerReferences(sceneImagePicker);
 }
 
-function openBuilderImagePicker() {
+function openBuilderImagePicker(referenceIndex = 0) {
   builderSyncControls();
   const element = builderSelectedElement();
   if (!element) {
     return;
   }
+  state.builderReferenceIndex = referenceIndex;
   builderImagePickerSearch.value = element.resource_type === "Character"
     ? [element.character || element.display_name, element.phase, element.costume].filter(Boolean).join(" ")
     : element.display_name || "";
@@ -9844,11 +9893,14 @@ function renderRenderConsoleLocalTestRender(path) {
 function renderConsoleReferenceFiles(referenceFiles) {
   const container = document.querySelector("#render-console-reference-files");
   container.replaceChildren();
-  for (const reference of referenceFiles || []) {
+  for (const [offset, reference] of (referenceFiles || []).entries()) {
     const section = document.createElement("section");
     section.className = "reference-preview";
     const title = document.createElement("h3");
-    title.textContent = reference.label || reference.role || "Reference";
+    const index = reference.image_index || offset + 1;
+    const role = reference.prompt_role || reference.role || "reference";
+    const label = reference.label || reference.tag || "Reference";
+    title.textContent = `Image ${index} — ${role} — ${label}`;
     const path = document.createElement("p");
     path.className = "status-text";
     path.textContent = reference.path || "";

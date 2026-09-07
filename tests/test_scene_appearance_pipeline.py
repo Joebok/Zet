@@ -181,7 +181,8 @@ class SceneAppearancePipelineTests(unittest.TestCase):
         template_dir.mkdir(parents=True)
         for name in ("Prompt_Task_Bundles.json", "Prompt_View_Text.json", "Prompt_View_Aliases.json"):
             shutil.copyfile(PROJECT_ROOT / "Config" / name, self.root / "Config" / name)
-        shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Templates" / "scene_appearance_v1.md", template_dir / "scene_appearance_v1.md")
+        for name in ("scene_appearance_v1.md", "scene_appearance_v2.md"):
+            shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Templates" / name, template_dir / name)
         refs = [
             {"role": "scene_appearance_source", "path": str(self.asset_dir / "costume-FRONT.png")},
             {"role": "scene_appearance_companion", "path": str(self.library / "AuxiliaryResources" / "morrow.png")},
@@ -198,6 +199,7 @@ class SceneAppearancePipelineTests(unittest.TestCase):
 
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
         manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+        source_map = json.loads(Path(result["source_map"]).read_text(encoding="utf-8"))
         self.assertIn("anatomical left shoulder", prompt)
         self.assertIn("anatomical right hand", prompt)
         self.assertIn("pointed end", prompt)
@@ -207,7 +209,17 @@ class SceneAppearancePipelineTests(unittest.TestCase):
             ["scene_appearance_source", "scene_appearance_companion", "scene_appearance_prop"],
             manifest["required_reference_roles"],
         )
+        self.assertEqual("composite", manifest["render_mode"])
+        self.assertEqual([1, 2, 3], [item["index"] for item in manifest["image_inputs"]])
+        self.assertEqual(
+            ["edit_base", "subject_reference", "object_reference"],
+            [item["role"] for item in manifest["image_inputs"]],
+        )
         self.assertTrue((output / "Image_Review.md").is_file())
+        self.assertTrue(any(item["source_kind"] == "static_prompt_template" for item in source_map["fragments"]))
+        arrangement_source = next(item for item in source_map["fragments"] if item["source_kind"] == "scene_appearance_definition")
+        self.assertEqual("/instructions", arrangement_source["json_pointer"])
+        self.assertEqual(str(definition_path), arrangement_source["source_path"])
 
     def test_legacy_asset_json_loads_without_scene_appearance_fields(self) -> None:
         asset = self.repository.get_asset("Tsaeytte", "Adult", 1)

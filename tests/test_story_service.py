@@ -335,6 +335,23 @@ Keep this manual note.
 
             self.assertEqual([], elements[0]["reference_images"])
 
+    def test_scene_normalization_preserves_multiple_references_and_custom_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            references = [
+                {"tag": "{{ASSET:first}}", "roles": ["subject_reference"], "ignore": ["background"], "notes": "First."},
+                {"tag": "{{AUX:second}}", "roles": ["style_reference"], "preserve": ["palette"], "notes": "Second."},
+            ]
+
+            elements = service._normalized_scene_elements({"scene_elements": [{
+                "id": "hero", "display_name": "Hero", "element_type": "Character",
+                "reference_images": references,
+            }]})
+
+            self.assertEqual(["{{ASSET:first}}", "{{AUX:second}}"], [item["tag"] for item in elements[0]["reference_images"]])
+            self.assertEqual(["palette"], elements[0]["reference_images"][1]["preserve"])
+            self.assertEqual("Second.", elements[0]["reference_images"][1]["notes"])
+
     def test_delete_story_commits_then_removes_story_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -461,6 +478,12 @@ Morning light.
             self.assertEqual("{{IDENTITY:Tsaeytte:YoungAdult:IK_front}}", task.reference_files[0]["tag"])
             self.assertEqual("identity-key", task.reference_files[0]["kind"])
             self.assertEqual(str(image_path), task.reference_files[0]["path"])
+            manifest = json.loads((Path(task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(2, manifest["prompt_schema_version"])
+            self.assertEqual("chatgpt_images_2_0_v1", manifest["engine_profile"])
+            self.assertEqual("composite", manifest["render_mode"])
+            self.assertEqual([1], [item["index"] for item in manifest["image_inputs"]])
+            self.assertEqual([1], [item["image_index"] for item in manifest["reference_files"]])
             self.assertEqual(1, len(rows))
             self.assertEqual("{{IDENTITY:Tsaeytte:YoungAdult:IK_front}}", rows[0].tag)
 
@@ -530,11 +553,13 @@ Two students meet at the arch.
             self.assertTrue((pipeline / "Scene_Render_Validation.json").exists())
             self.assertTrue((pipeline / "Local_Render_Brief.json").exists())
             self.assertTrue((pipeline / "Local_Render_Prompt.md").exists())
+            self.assertTrue((pipeline / "Prompt_Compile_Diagnostics.json").exists())
+            self.assertTrue((pipeline / "Final_Image_Prompt_V1.md").exists())
             prompt = Path(task.final_prompt_path).read_text(encoding="utf-8")
             self.assertIn("# Render Task", prompt)
             self.assertIn("# Spatial Coordinate Contract", prompt)
             self.assertIn("Apply each left-to-right ordering within its stated depth lane", prompt)
-            self.assertIn("**Valindia:** Stands in the left foreground.", prompt)
+            self.assertIn("**Valindia:** Occupies the left foreground.", prompt)
             self.assertNotIn("cell ", prompt)
             local_prompt = (pipeline / "Local_Render_Prompt.md").read_text(encoding="utf-8")
             self.assertIn("prompt:", local_prompt)

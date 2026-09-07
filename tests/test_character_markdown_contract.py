@@ -87,6 +87,27 @@ class CharacterMarkdownContractTests(unittest.TestCase):
                 paths.character_template_path("New Hero", "Adult").read_text(encoding="utf-8"),
             )
 
+    def test_legacy_scene_character_anchors_remain_compatible(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            paths = self._paths(root)
+            template_path = paths.character_template_path("Test", "Adult")
+            template_path.parent.mkdir(parents=True)
+            contents = (
+                PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            ).read_text(encoding="utf-8")
+            contents += """
+
+<!-- ZET:BEGIN SCENE_CHARACTER_ANCHORS -->
+Preserve the character's canonical scene identity.
+<!-- ZET:END SCENE_CHARACTER_ANCHORS -->
+"""
+            template_path.write_text(contents, encoding="utf-8")
+
+            errors = CharacterOnboardingService(paths, PROJECT_ROOT).validate_template(template_path)
+
+            self.assertNotIn("Unsupported sections: SCENE_CHARACTER_ANCHORS", errors)
+
 
 if __name__ == "__main__":
     unittest.main()

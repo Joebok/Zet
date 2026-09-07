@@ -14,7 +14,14 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
 
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, select_prompt_sections, write_json_file
+from Scripts.Job_File_Utils import (
+    bundle_output_paths,
+    finalize_chatgpt_prompt,
+    prepare_chatgpt_prompt_contract,
+    render_static_prompt_artifacts,
+    select_prompt_sections,
+    write_json_file,
+)
 from Scripts.Library_Paths import character_root
 from Scripts.Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 from zet.services.pipeline_compiler_support import (
@@ -60,7 +67,7 @@ def resource_policy(bundle: dict) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def write_dependency_manifest(path: Path, job_id: str, character: str, phase: str, view_token: str, bundle: dict) -> None:
+def write_dependency_manifest(path: Path, job_id: str, character: str, phase: str, view_token: str, bundle: dict, contract: dict) -> None:
     manifest = {
         "job_id": job_id,
         "task": "body-reference",
@@ -70,6 +77,7 @@ def write_dependency_manifest(path: Path, job_id: str, character: str, phase: st
         "resources_allowed": False,
         "resources": [],
         "resource_policy": resource_policy(bundle),
+        **contract,
         "notes": [
             "Body-reference uses no external, cached, discovered, or prior-rendered image resources unless explicitly allowed by future task configuration."
         ],
@@ -177,6 +185,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "dependency_manifest": "dependency_manifest.json",
         "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md",
+        "diagnostics": "Prompt_Compile_Diagnostics.json",
     })
     final_prompt_path = paths["final_prompt"]
     compiled_sections_path = paths["compiled_sections"]
@@ -184,6 +193,16 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     manifest_path = paths["dependency_manifest"]
     prompt_review_path = paths["prompt_review"]
     image_review_path = paths["image_review"]
+    diagnostics_path = paths["diagnostics"]
+
+    references = auxiliary_references_for_texts(
+        project_root, ["\n".join(selection.sections.values())], []
+    )
+    if references:
+        raise TemplateCompileError("UNEXPECTED_REFERENCE", "Body-reference V2 does not accept image inputs.")
+    references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
+        references, render_mode="generate"
+    )
 
     metadata = {
         "job_id": job_id,
@@ -199,6 +218,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "VIEW_LABEL": str(view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(view_data, "body", task, include_intro=True),
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
+        **contract_values,
         **template_metadata(template_path),
         **load_race_render_rules(project_root, template_path, view_token),
     }
@@ -218,12 +238,8 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         required_section_names=[],
         view_token=view_token,
     )
-    references = auxiliary_references_for_texts(
-        project_root,
-        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
-        [],
-    )
-    write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle)
+    finalize_chatgpt_prompt(diagnostics_path, prompt_text, image_inputs, "generate")
+    write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle, contract_manifest)
 
     checklist = load_checklist(project_root, str(bundle.get("review_checklist", "")))
     findings = review_prompt_text(prompt_text, checklist)
@@ -238,6 +254,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         "dependency_manifest": str(manifest_path),
         "prompt_review": str(prompt_review_path),
         "image_review": str(image_review_path),
+        "diagnostics": str(diagnostics_path),
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,

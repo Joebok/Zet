@@ -15,6 +15,11 @@ from zet.repositories.pipeline_repository import PipelineRepository
 from zet.models.reference import reference_files_payload
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.atomic_file_service import write_text_atomic
+from zet.services.chatgpt_prompt_contract import (
+    build_image_inputs,
+    enrich_reference_files,
+    manifest_contract,
+)
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
 from zet.services.prompt_artifact_service import PromptArtifactService
@@ -195,6 +200,7 @@ class AIProxyService:
         return self.ai_proxy_path_service.file_proxy_client.publish(path, ask_id, worker_type)
 
     def _manifest_payload(self, ask: AIProxyAsk) -> dict:
+        references = reference_files_payload(ask.reference_files)
         payload = {
             "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": ask.ask_id,
@@ -214,11 +220,26 @@ class AIProxyService:
             "manual": ask.manual,
             "target_output_file": ask.target_output_file,
             "render_preset": ask.render_preset,
-            "reference_files": reference_files_payload(ask.reference_files),
+            "reference_files": references,
             "ollama_temperature": ask.ollama_temperature,
             "ollama_num_ctx": ask.ollama_num_ctx,
             "consumer": ask.consumer,
         }
+        if ask.worker_type == "manual_chatgpt_render" and ask.pipeline in {
+            "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
+            "Scene-Appearance", "Expression",
+        }:
+            render_mode = {
+                "Body-Reference": "generate",
+                "Head-Image": "edit",
+                "Character-Assembly": "composite",
+                "Costume-Dressing": "edit",
+                "Scene-Appearance": "composite",
+                "Expression": "edit",
+            }[ask.pipeline]
+            image_inputs = build_image_inputs(references, render_mode=render_mode)
+            payload["reference_files"] = enrich_reference_files(references, image_inputs)
+            payload.update(manifest_contract(render_mode, image_inputs))
         if ask.body_view is not None:
             payload["body_view"] = ask.body_view
         workflow_kind = self._local_render_workflow_kind()

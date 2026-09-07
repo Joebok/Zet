@@ -34,6 +34,11 @@ FOUNDATION_VIEWS = [
     "Back",
 ]
 
+# Older character files may still carry this scene-specific section.  The story
+# compiler continues to consume it, so it is compatible even though new files no
+# longer receive it from Character_Template.md.
+COMPATIBLE_CHARACTER_SECTIONS = {"SCENE_CHARACTER_ANCHORS"}
+
 class CharacterOnboardingError(Exception):
     """Report invalid character onboarding actions."""
     pass
@@ -204,7 +209,7 @@ class CharacterOnboardingService:
             template_sections = load_template_sections(template_path)
             shared_sections = load_template_sections(self.path_service.shared_character_path() / "Character_Template.md")
             missing = sorted(set(shared_sections) - set(template_sections))
-            extra = sorted(set(template_sections) - set(shared_sections))
+            extra = sorted(set(template_sections) - set(shared_sections) - COMPATIBLE_CHARACTER_SECTIONS)
             if missing:
                 errors.append(f"Missing canonical sections: {', '.join(missing)}")
             if extra:

@@ -13,7 +13,14 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, select_prompt_sections, write_json_file
+from Scripts.Job_File_Utils import (
+    bundle_output_paths,
+    finalize_chatgpt_prompt,
+    prepare_chatgpt_prompt_contract,
+    render_static_prompt_artifacts,
+    select_prompt_sections,
+    write_json_file,
+)
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
     expected_output_for_job,
@@ -66,6 +73,7 @@ def write_dependency_manifest(
     head_view_token: str,
     assembly_style_mode: str,
     reference_files: list[dict],
+    contract: dict,
 ) -> None:
     manifest = {
         "job_id": job_id,
@@ -78,6 +86,7 @@ def write_dependency_manifest(
         "resources_allowed": True,
         "resources": reference_files,
         "required_reference_roles": ["body_reference", "head_image"],
+        **contract,
         "notes": [
             "Character-assembly uses locked Body-Reference and Head-Image assets selected by matching body/head view.",
             "Prompt text describes reference usage; image file selection is stored in asset.reference_files and ask manifest.",
@@ -162,6 +171,12 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
     template_path = template_path_for_job(project_root, job, character, phase)
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
     selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token)
+    references = auxiliary_references_for_texts(
+        project_root, ["\n".join(selection.sections.values())], references
+    )
+    references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
+        references, render_mode="composite"
+    )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -169,6 +184,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "source_map": "Prompt_Source_Map.json",
         "dependency_manifest": "dependency_manifest.json",
         "image_review": "Image_Review.md",
+        "diagnostics": "Prompt_Compile_Diagnostics.json",
     })
     final_prompt_path = paths["final_prompt"]
     compiled_sections_path = paths["compiled_sections"]
@@ -199,6 +215,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
             "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
+            **contract_values,
             **template_metadata(template_path),
         }
     metadata_sources = {
@@ -229,11 +246,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         required_section_names=[],
         view_token=body_view_token,
     )
-    references = auxiliary_references_for_texts(
-        project_root,
-        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
-        references,
-    )
+    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "composite")
     write_dependency_manifest(
         manifest_path,
         job_id,
@@ -243,6 +256,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         head_view_token,
         assembly_style_mode,
         references,
+        contract_manifest,
     )
     write_image_review(image_review_path, metadata, expected_output)
 
@@ -253,6 +267,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "compiled_sections": str(compiled_sections_path),
         "dependency_manifest": str(manifest_path),
         "image_review": str(image_review_path),
+        "diagnostics": str(paths["diagnostics"]),
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,

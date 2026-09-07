@@ -12,7 +12,15 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Scripts.Compile_Character_Template import TemplateCompileError
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, select_prompt_sections, write_json_file
+from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Scripts.Job_File_Utils import (
+    bundle_output_paths,
+    finalize_chatgpt_prompt,
+    prepare_chatgpt_prompt_contract,
+    render_static_prompt_artifacts,
+    select_prompt_sections,
+    write_json_file,
+)
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
     job_get,
@@ -70,7 +78,6 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     references = reference_files_for_job(job)
     source_reference = _source_reference(references)
     validate_reference(source_reference, "head_image_source", project_root)
-
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
     if str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
         for name in (
@@ -84,6 +91,12 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         ):
             sections[name] = ""
     selection = select_prompt_sections(project_root, bundle, sections, section_sources, view_token)
+    references = auxiliary_references_for_texts(
+        project_root, ["\n".join(selection.sections.values())], references
+    )
+    references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
+        references, render_mode="edit"
+    )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -91,6 +104,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "source_map": "Prompt_Source_Map.json",
         "dependency_manifest": "dependency_manifest.json",
         "image_review": "Image_Review.md",
+        "diagnostics": "Prompt_Compile_Diagnostics.json",
     })
     metadata = {
         "job_id": job_id,
@@ -105,6 +119,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "VIEW_TOKEN": view_token,
         "VIEW_LABEL": str(view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(view_data, "head", task, include_intro=True),
+        **contract_values,
         **template_metadata(template_path),
     }
     config_path = project_root / "Config" / "Prompt_View_Text.json"
@@ -113,7 +128,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view label", "json_pointer": f"/views/{view_token}/label", "editable": True},
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
     }
-    render_static_prompt_artifacts(
+    prompt_text = render_static_prompt_artifacts(
         project_root=project_root,
         bundle=bundle,
         final_prompt_path=paths["final_prompt"],
@@ -131,6 +146,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "resources_allowed": True,
         "resources": references,
         "required_reference_roles": ["head_image_source"],
+        **contract_manifest,
         "head_image_prompt_contract": {
             "version": 4,
             "primary_focus": "phase_transformation_identity_and_view",
@@ -138,6 +154,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
             "background": "transparent",
         },
     })
+    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
     paths["image_review"].write_text(
         f"""# Image Review
 
@@ -174,6 +191,7 @@ Reviewed At:
         "compiled_sections": str(paths["compiled_sections"]),
         "dependency_manifest": str(paths["dependency_manifest"]),
         "image_review": str(paths["image_review"]),
+        "diagnostics": str(paths["diagnostics"]),
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,

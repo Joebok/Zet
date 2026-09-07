@@ -4,6 +4,13 @@ import json
 from pathlib import Path
 
 from zet.services.prompt_template_service import PromptTemplateService
+from zet.services.chatgpt_prompt_contract import (
+    build_image_inputs,
+    enrich_reference_files,
+    manifest_contract,
+    prompt_contract_values,
+    write_prompt_diagnostics,
+)
 
 
 def safe_filename_fragment(value: str, fallback: str) -> str:
@@ -45,7 +52,8 @@ def render_static_prompt_artifacts(
     view_token: str,
     ensure_ascii_source_map: bool = False,
 ) -> str:
-    return PromptTemplateService(project_root).render_artifacts(
+    service = PromptTemplateService(project_root)
+    prompt_text = service.render_artifacts(
         bundle=bundle,
         final_prompt_path=final_prompt_path,
         source_map_path=source_map_path,
@@ -58,3 +66,48 @@ def render_static_prompt_artifacts(
         view_token=view_token,
         ensure_ascii_source_map=ensure_ascii_source_map,
     )
+    legacy_template = str(bundle.get("legacy_static_prompt_template") or "").strip()
+    if legacy_template:
+        legacy_bundle = {**bundle, "static_prompt_template": legacy_template}
+        service.render_artifacts(
+            bundle=legacy_bundle,
+            final_prompt_path=final_prompt_path.with_name(f"{final_prompt_path.stem}_V1{final_prompt_path.suffix}"),
+            source_map_path=source_map_path.with_name(f"{source_map_path.stem}_V1{source_map_path.suffix}"),
+            compiled_sections_path=compiled_sections_path.with_name(
+                f"{compiled_sections_path.stem}_V1{compiled_sections_path.suffix}"
+            ),
+            metadata={**metadata, "prompt_schema_version": 1},
+            metadata_values=metadata_values,
+            metadata_sources=metadata_sources,
+            selection=selection,
+            required_section_names=required_section_names,
+            view_token=view_token,
+            ensure_ascii_source_map=ensure_ascii_source_map,
+        )
+    return prompt_text
+
+
+def prepare_chatgpt_prompt_contract(
+    references: list[dict], *, render_mode: str, default_role: str = "subject_reference"
+) -> tuple[list[dict], list[dict], dict[str, str], dict]:
+    """Return ordered legacy references, image inputs, template values, and manifest fields."""
+    image_inputs = build_image_inputs(
+        references,
+        render_mode=render_mode,
+        default_role=default_role,
+    )
+    return (
+        enrich_reference_files(references, image_inputs),
+        image_inputs,
+        prompt_contract_values(render_mode, image_inputs),
+        manifest_contract(render_mode, image_inputs),
+    )
+
+
+def finalize_chatgpt_prompt(
+    diagnostics_path: Path,
+    prompt_text: str,
+    image_inputs: list[dict],
+    render_mode: str,
+) -> dict:
+    return write_prompt_diagnostics(diagnostics_path, prompt_text, image_inputs, render_mode)

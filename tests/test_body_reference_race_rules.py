@@ -128,10 +128,10 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertNotIn("{VIEW}", prompt)
             self.assertIn("For FRONT view:", prompt)
             self.assertIn("The mannequin head must face the same direct FRONT view as the body.", prompt)
-            self.assertIn("Use a simplified neutral light-gray elf mannequin head.", prompt)
+            self.assertIn("Use a simplified neutral light-gray elf mannequin head with correct scale", prompt)
             self.assertIn("Long pointed elf ears rendered as neutral mannequin geometry.", prompt)
             self.assertIn("Missing, hidden, rounded, or human ears.", prompt)
-            self.assertEqual(prompt.count("MANNEQUIN HEAD — REQUIRED"), 1)
+            self.assertEqual(prompt.count("## Mannequin head"), 1)
             self.assertIn("Painterly semi-realistic fantasy illustration.", prompt)
             self.assertIn("simple neutral fitment clothing", prompt)
             self.assertIn("olive green tube top", prompt)
@@ -143,6 +143,10 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertIn("Lithe body proportions.", prompt)
             self.assertNotIn("Preserve body proportions only.", prompt)
             self.assertNotIn("Generic replacement face.", prompt)
+            manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+            self.assertEqual((2, "generate", []), (
+                manifest["prompt_schema_version"], manifest["render_mode"], manifest["image_inputs"]
+            ))
             self.assertNotIn("Finished portrait markers", prompt)
             self.assertNotIn("amber eyes", prompt)
             self.assertNotIn("blue skin", prompt)

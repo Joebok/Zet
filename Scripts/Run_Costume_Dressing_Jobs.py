@@ -14,7 +14,15 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
-from Scripts.Job_File_Utils import bundle_output_paths, render_static_prompt_artifacts, safe_filename_fragment, select_prompt_sections, write_json_file
+from Scripts.Job_File_Utils import (
+    bundle_output_paths,
+    finalize_chatgpt_prompt,
+    prepare_chatgpt_prompt_contract,
+    render_static_prompt_artifacts,
+    safe_filename_fragment,
+    select_prompt_sections,
+    write_json_file,
+)
 from zet.services.prompt_template_service import PromptTemplateService
 from Scripts.Library_Paths import character_root, pipeline_root
 from zet.services.pipeline_compiler_support import (
@@ -362,6 +370,7 @@ def write_dependency_manifest(
     costume_name: str,
     costume_path: Path,
     reference_files: list[dict],
+    contract: dict,
 ) -> None:
     manifest = {
         "job_id": job_id,
@@ -375,6 +384,7 @@ def write_dependency_manifest(
         "resources_allowed": True,
         "resources": reference_files,
         "required_reference_roles": ["character_assembly"],
+        **contract,
         "notes": [
             "Costume-dressing uses a locked Character-Assembly asset selected by matching body/head view.",
             "Costume and equipment sections are loaded from the selected costume markdown file.",
@@ -490,6 +500,12 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         body_view_token,
     )
     selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token)
+    references = auxiliary_references_for_texts(
+        project_root, ["\n".join(selection.sections.values())], references
+    )
+    references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
+        references, render_mode="edit"
+    )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -498,6 +514,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "dependency_manifest": "dependency_manifest.json",
         "prompt_review": "Prompt_Review.md",
         "image_review": "Image_Review.md",
+        "diagnostics": "Prompt_Compile_Diagnostics.json",
     })
     final_prompt_path = paths["final_prompt"]
     compiled_sections_path = paths["compiled_sections"]
@@ -553,6 +570,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "COSTUME_VIEW_HEADING": "# View-Specific Costume Details" if f"COSTUME_DESCRIPTION_VIEW_{body_view_token}" in selection.sections else "",
         "EQUIPMENT_HEADING": equipment_heading,
         "EQUIPMENT_VIEW_HEADING": "# View-Specific Equipment Details" if equipment_view_selected else "",
+        **contract_values,
         **orientation_metadata,
         **template_metadata(character_template_path),
         **costume_metadata(costume_path),
@@ -589,11 +607,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         required_section_names=[],
         view_token=body_view_token,
     )
-    references = auxiliary_references_for_texts(
-        project_root,
-        [compiled_sections_path.read_text(encoding="utf-8"), source_map_path.read_text(encoding="utf-8")],
-        references,
-    )
+    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
     write_dependency_manifest(
         manifest_path,
         job_id,
@@ -604,6 +618,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         costume_name,
         costume_path,
         references,
+        contract_manifest,
     )
     write_prompt_review(prompt_review_path, metadata)
     write_image_review(image_review_path, metadata, expected_output)
@@ -616,6 +631,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "dependency_manifest": str(manifest_path),
         "prompt_review": str(prompt_review_path),
         "image_review": str(image_review_path),
+        "diagnostics": str(paths["diagnostics"]),
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,

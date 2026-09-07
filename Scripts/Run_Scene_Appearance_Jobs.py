@@ -8,6 +8,7 @@ import re
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 from Scripts.Compile_Character_Template import TemplateCompileError
+from Scripts.Job_File_Utils import finalize_chatgpt_prompt, prepare_chatgpt_prompt_contract
 from zet.services.pipeline_compiler_support import (
     job_get,
     load_bundle,
@@ -24,6 +25,12 @@ from zet.services.pipeline_compiler_support import (
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text.rstrip() + "\n", encoding="utf-8")
+
+
+def _render_scene_appearance_line(line: str, values: dict[str, str]) -> str:
+    for key, value in values.items():
+        line = line.replace(f"{{{{{key}}}}}", value)
+    return line
 
 
 def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
@@ -59,6 +66,9 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
         raise TemplateCompileError("REFERENCE_ORDER_MISMATCH", "Supporting references do not match the configured order.")
     for role in expected_roles:
         validate_reference(reference_by_role(references, role), role, project_root)
+    references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
+        references, render_mode="composite"
+    )
 
     output_dir = resolve_project_path(project_root, require_job_field(job, "Output Directory", "output_directory"))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -70,6 +80,7 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "dependency_manifest": output_dir / "dependency_manifest.json",
         "prompt_review": output_dir / "Prompt_Review.md",
         "image_review": output_dir / "Image_Review.md",
+        "diagnostics": output_dir / "Prompt_Compile_Diagnostics.json",
     }
     guide_lines = [f"- Image 1: locked {definition.get('costume')} Costume-Dressing source for this exact view."]
     for index, item in enumerate(configured, start=2):
@@ -80,6 +91,7 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "BODY_VIEW_DISPLAY": re.sub(r"\s+VIEW$", "", str(view_data.get("label") or view_token).upper()),
         "REFERENCE_GUIDE": "\n".join(guide_lines),
         "ARRANGEMENT_INSTRUCTIONS": str(definition.get("instructions") or "").strip(),
+        **contract_values,
     }
     template_name = str(bundle.get("static_prompt_template") or "scene_appearance_v1")
     if not Path(template_name).suffix:
@@ -91,8 +103,48 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
     unresolved = re.findall(r"\{\{[A-Z0-9_]+\}\}", prompt)
     if unresolved:
         raise TemplateCompileError("UNRESOLVED_PLACEHOLDER", f"Unresolved Scene Appearance placeholders: {', '.join(unresolved)}")
+    template_source = {
+        "source_kind": "static_prompt_template",
+        "source_path": str(template_path),
+        "source_label": f"Prompt template: {template_path.name}",
+        "editable": True,
+    }
+    definition_source = {
+        "source_kind": "scene_appearance_definition",
+        "source_path": str(definition_path),
+        "source_label": str(definition.get("name") or appearance_id),
+        "json_pointer": "/instructions",
+        "editable": True,
+    }
+    source_fragments = []
+    rendered_line_number = 1
+    for template_line in template_path.read_text(encoding="utf-8").splitlines():
+        source = definition_source if "{{ARRANGEMENT_INSTRUCTIONS}}" in template_line else template_source
+        rendered_line_count = len(_render_scene_appearance_line(template_line, values).splitlines()) or 1
+        rendered_end_line = rendered_line_number + rendered_line_count - 1
+        if source_fragments and source_fragments[-1]["source"] == source and source_fragments[-1]["prompt_end_line"] + 1 == rendered_line_number:
+            source_fragments[-1]["prompt_end_line"] = rendered_end_line
+        else:
+            source_fragments.append({"prompt_start_line": rendered_line_number, "prompt_end_line": rendered_end_line, "source": source})
+        rendered_line_number = rendered_end_line + 1
     _write(paths["final_prompt"], prompt)
+    finalize_chatgpt_prompt(paths["diagnostics"], prompt, image_inputs, "composite")
+    legacy_template_name = str(bundle.get("legacy_static_prompt_template") or "").strip()
+    if legacy_template_name:
+        if not Path(legacy_template_name).suffix:
+            legacy_template_name = f"{legacy_template_name}.md"
+        legacy_prompt = (project_root / "Config" / "Prompt_Templates" / legacy_template_name).read_text(encoding="utf-8")
+        for key, value in values.items():
+            legacy_prompt = legacy_prompt.replace(f"{{{{{key}}}}}", value)
+        unresolved_legacy = re.findall(r"\{\{[A-Z0-9_]+\}\}", legacy_prompt)
+        if unresolved_legacy:
+            raise TemplateCompileError(
+                "UNRESOLVED_PLACEHOLDER",
+                f"Unresolved legacy Scene Appearance placeholders: {', '.join(unresolved_legacy)}",
+            )
+        _write(output_dir / "Final_Image_Prompt_V1.md", legacy_prompt)
     _write(paths["compiled_sections"], f"# Scene Appearance\n\n{values['ARRANGEMENT_INSTRUCTIONS']}")
+    prompt_line_count = len(prompt.splitlines())
     paths["source_map"].write_text(json.dumps({
         "job_id": job_id,
         "task": task,
@@ -100,6 +152,10 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "template_path": str(template_path),
         "view_token": view_token,
         "metadata": values,
+        "fragments": [
+            {"prompt_start_line": item["prompt_start_line"], "prompt_end_line": item["prompt_end_line"], **item["source"]}
+            for item in source_fragments
+        ],
     }, indent=2) + "\n", encoding="utf-8")
     paths["dependency_manifest"].write_text(json.dumps({
         "job_id": job_id,
@@ -111,6 +167,7 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
         "body_view_token": view_token,
         "required_reference_roles": ["scene_appearance_source", *expected_roles],
         "resources": references,
+        **contract_manifest,
     }, indent=2) + "\n", encoding="utf-8")
     _write(paths["prompt_review"], f"""# Prompt Review
 

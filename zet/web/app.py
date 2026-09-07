@@ -65,6 +65,9 @@ def _render_console_asset_for_task(zet_app: ZetApp, task):
 
 def _render_console_reference_files(zet_app: ZetApp, task) -> list[dict]:
     """Return the current asset references for a render task when available."""
+    manifest_references = task.manifest.get("reference_files") or []
+    if task.manifest.get("image_inputs") and manifest_references:
+        return manifest_references
     asset = _render_console_asset_for_task(zet_app, task)
     if asset is not None and asset.reference_files:
         return asset.reference_files

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 import json
 from pathlib import Path
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.models.reference import reference_files_payload
+from zet.services.chatgpt_prompt_contract import (
+    enrich_reference_files,
+    manifest_contract,
+    write_prompt_diagnostics,
+)
 from zet.services.scene_render_compiler import (
     compile_scene_render_ir,
     final_image_prompt_text,
@@ -48,6 +54,19 @@ class StoryRenderService:
             },
             default_prompt_sections,
         )
+        references_by_tag = {
+            str(reference.get("tag") or "").strip(): reference
+            for reference in references
+            if str(reference.get("tag") or "").strip()
+        }
+        ordered_references = []
+        for image_input in ir["image_inputs"]:
+            tag = str(image_input.get("tag") or "").strip()
+            reference = references_by_tag.get(tag)
+            if reference is None or not str(reference.get("path") or "").strip():
+                raise self.error_type(f"Unresolved scene image input: {tag or '<blank>'}")
+            ordered_references.append(reference)
+        references = enrich_reference_files(ordered_references, ir["image_inputs"])
         return references, ir, story.scene_render_target_service.input_hash(ir, story_settings, references)
 
     def _compile(
@@ -136,11 +155,17 @@ class StoryRenderService:
         prompt_path = pipeline_path / "Final_Image_Prompt.md"
         prompt_path.write_text(prompt, encoding="utf-8")
         story._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+        write_prompt_diagnostics(
+            pipeline_path / "Prompt_Compile_Diagnostics.json",
+            prompt,
+            ir["image_inputs"],
+            ir["render_mode"],
+        )
         story._write_json(
             pipeline_path / "Prompt_Source_Map.json",
             story._scene_prompt_source_map(
                 ir, prompt, prompt_path, scene_builder_path, story_settings_path,
-                ["Scene_Render_IR.json", "Final_Image_Prompt.md"],
+                ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Prompt_Compile_Diagnostics.json"],
             ),
         )
         return prompt_path
@@ -173,9 +198,21 @@ class StoryRenderService:
         story._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
         final_prompt_path.write_text(prompt, encoding="utf-8")
         story._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+        write_prompt_diagnostics(
+            pipeline_path / "Prompt_Compile_Diagnostics.json",
+            prompt,
+            ir["image_inputs"],
+            ir["render_mode"],
+        )
+        legacy_ir = copy.deepcopy(ir)
+        legacy_ir["prompt_schema_version"] = 1
+        (pipeline_path / "Final_Image_Prompt_V1.md").write_text(final_image_prompt_text(legacy_ir), encoding="utf-8")
         story._write_json(pipeline_path / "Local_Render_Brief.json", brief)
         (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
-        artifacts = ["Scene_Render_IR.json", "Final_Image_Prompt.md", "Local_Render_Brief.json", "Local_Render_Prompt.md"]
+        artifacts = [
+            "Scene_Render_IR.json", "Final_Image_Prompt.md", "Final_Image_Prompt_V1.md",
+            "Prompt_Compile_Diagnostics.json", "Local_Render_Brief.json", "Local_Render_Prompt.md",
+        ]
         if getattr(story.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
             (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
             artifacts.append("Local_Render_Forge_Couple_Prompt.md")
@@ -185,10 +222,12 @@ class StoryRenderService:
             pipeline_path / "Prompt_Source_Map.json",
             story._scene_prompt_source_map(ir, prompt, final_prompt_path, scene_builder_path, story_settings_path, artifacts),
         )
+        contract = manifest_contract(ir["render_mode"], ir["image_inputs"])
         story._write_json(pipeline_path / "dependency_manifest.json", {
             "story_slug": safe_story_slug,
             "scene_slug": safe_scene_slug,
             "reference_files": reference_files_payload(references),
+            **contract,
         })
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -211,6 +250,7 @@ class StoryRenderService:
             "scene_image_review": True,
             "pipeline_path": str(pipeline_path), "reference_files": reference_files_payload(references),
             "aspect_ratio": str((ir.get("canvas") or {}).get("aspect_ratio") or ""),
+            **contract,
         }
         story._write_json(ask_path / "ask_manifest.json", manifest)
         (ask_path / "Final_Image_Prompt.md").write_text(prompt, encoding="utf-8")

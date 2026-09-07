@@ -416,6 +416,46 @@ test("@desktop-smoke scene and Scene Builder changes require explicit save", asy
   await page.unroute("**/api/stories/*/scenes/*/builder");
 });
 
+test("@desktop-smoke Scene Builder adds, reorders, and removes multiple references", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toBeVisible();
+  await page.evaluate(() => {
+    const element = {
+      id: "reference-test", display_name: "Reference Test", resource_type: "Scene-Only",
+      element_type: "Character", reference_images: [], fallback_visual_description: "Test subject",
+    };
+    state.sceneBuilder.scene_elements = [element];
+    state.sceneBuilder.placements = [{ id: "reference-test-placement", scene_element_id: element.id, position_within_cell: "center", depth: "foreground", pose: {}, motion: { state: "stationary" } }];
+    state.selectedBuilderElementId = element.id;
+    renderSceneBuilder();
+  });
+
+  await page.getByRole("button", { name: "Add reference" }).click();
+  await page.getByRole("button", { name: "Add reference" }).click();
+  const tags = page.locator('[data-builder-reference-field="tag"]');
+  await tags.nth(0).fill("{{ASSET:first}}");
+  await tags.nth(1).fill("{{AUX:second}}");
+  await page.locator('[data-builder-action="reference-down"][data-builder-reference-index="0"]').click();
+  await expect(tags.nth(0)).toHaveValue("{{AUX:second}}");
+  await expect(tags.nth(1)).toHaveValue("{{ASSET:first}}");
+  await page.locator('[data-builder-action="reference-remove"][data-builder-reference-index="0"]').click();
+  await expect(tags).toHaveCount(1);
+  await expect(tags.nth(0)).toHaveValue("{{ASSET:first}}");
+});
+
+test("render console labels references in attachment order", async ({ page }) => {
+  await openPage(page, "render-console");
+  await page.evaluate(() => renderConsoleReferenceFiles([
+    { image_index: 1, prompt_role: "edit_base", label: "Canvas", path: "canvas.png" },
+    { image_index: 2, prompt_role: "subject_reference", label: "Hero", path: "hero.png" },
+  ]));
+
+  const titles = page.locator("#render-console-reference-files h3");
+  await expect(titles.nth(0)).toHaveText("Image 1 — edit_base — Canvas");
+  await expect(titles.nth(1)).toHaveText("Image 2 — subject_reference — Hero");
+});
+
 test("@desktop-smoke Scene Builder interview applies locally without saving", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator("#scene-builder-open").click();

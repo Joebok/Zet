@@ -96,8 +96,11 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
 
         self.assertIn("Keep the face, hair, ears, and apparent age of the head exactly as they are.", prompt)
         self.assertIn("Keep the body proportions, pose, stance, framing, and orientation exactly as they are.", prompt)
-        self.assertIn("Make only the changes needed to join the head and neck naturally.", prompt)
+        self.assertIn("Change only the head/neck junction and the minimum style integration needed for a natural join.", prompt)
         self.assertNotIn("{{", prompt)
+        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+        self.assertEqual("composite", manifest["render_mode"])
+        self.assertEqual(["edit_base", "subject_reference"], [item["role"] for item in manifest["image_inputs"]])
 
     def test_missing_or_malformed_character_template_is_rejected(self) -> None:
         malformed_path = self.root / "Malformed.md"

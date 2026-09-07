@@ -3,6 +3,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from zet.services.chatgpt_prompt_contract import (
+    CHATGPT_ENGINE_PROFILE,
+    CHATGPT_PROMPT_SCHEMA_VERSION,
+    build_image_inputs,
+    change_contract_prompt,
+    image_input_prompt,
+    preserve_contract_prompt,
+    validate_image_inputs,
+)
 from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
 from zet.services.scene_prompt_sections import select_final_image_prompt_sections
 
@@ -13,7 +22,7 @@ def _clean(value: Any) -> str:
 
 def clean_prompt_sentence(value: Any) -> str:
     text = re.sub(r"\s+", " ", _clean(value)).strip()
-    if not text:
+    if not text or text.casefold().rstrip(".?!") in {"none", "n/a", "not applicable"}:
         return ""
     return re.sub(r"(?<!\.)[.]{2,}$", ".", text)
 
@@ -120,6 +129,8 @@ def compile_scene_render_ir(
                 "tag": reference.get("tag", ""),
                 "applies_to_element_id": element.get("id", ""),
                 "roles": reference.get("roles", []),
+                "preserve": reference.get("preserve", []),
+                "change": reference.get("change", []),
                 "ignore": reference.get("ignore", []),
                 "notes": reference.get("notes", ""),
             })
@@ -133,6 +144,8 @@ def compile_scene_render_ir(
             "tag": reference.get("tag", ""),
             "applies_to_element_id": target_anchor.get("id", ""),
             "roles": reference.get("roles", []),
+            "preserve": reference.get("preserve", []),
+            "change": reference.get("change", []),
             "ignore": reference.get("ignore", []),
             "notes": reference.get("notes", ""),
         })
@@ -140,8 +153,10 @@ def compile_scene_render_ir(
     prompt_sections = select_final_image_prompt_sections(
         default_prompt_sections or {}, scene_data.get("final_image_prompt_overrides")
     )
-    return {
+    ir = {
         "schema_version": 4,
+        "prompt_schema_version": CHATGPT_PROMPT_SCHEMA_VERSION,
+        "engine_profile": CHATGPT_ENGINE_PROFILE,
         "render_target": render_target,
         "render_inputs": _items(scene_data.get("_render_inputs")),
         "baked_landmarks": _items(scene_data.get("_baked_landmarks")),
@@ -179,6 +194,77 @@ def compile_scene_render_ir(
         "final_image_prompt_sections": prompt_sections,
         "resolved_sources": resolved_sources or {},
     }
+    ir["render_mode"] = "composite" if ir["render_inputs"] or ir["references"] else "generate"
+    ir["image_inputs"] = _scene_image_inputs(ir)
+    return ir
+
+
+def _scene_image_inputs(ir: dict[str, Any]) -> list[dict[str, Any]]:
+    resolved = {
+        _clean(item.get("tag")): item
+        for item in _items(ir.get("resolved_sources", {}).get("references"))
+        if _clean(item.get("tag"))
+    }
+    elements = _elements_by_id(ir)
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for render_input in _items(ir.get("render_inputs")):
+        tag = _clean(render_input.get("tag"))
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        source = dict(resolved.get(tag, {}))
+        prompt_role = _clean(render_input.get("prompt_role") or render_input.get("role")).casefold()
+        if prompt_role not in {"edit_base", "background_reference", "group_reference"}:
+            prompt_role = "background_reference"
+        source.update({
+            "tag": tag,
+            "label": clean_prompt_sentence(render_input.get("label")) or source.get("label") or tag,
+            "prompt_role": prompt_role,
+            "applies_to": _clean(render_input.get("target_id")),
+            "preserve": _lines(render_input.get("preserve")) or ["the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"],
+            "change": _lines(render_input.get("change")),
+            "ignore": _lines(render_input.get("ignore")) or ["outer placement, final-canvas framing, and any content assigned to other image inputs"],
+            "notes": _clean(render_input.get("notes") or render_input.get("assembly_role")),
+        })
+        records.append(source)
+    for reference in _items(ir.get("references")):
+        tag = _clean(reference.get("tag"))
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        element_id = _clean(reference.get("applies_to_element_id"))
+        element = elements.get(element_id, {})
+        roles = {value.casefold() for value in _lines(reference.get("roles"))}
+        element_type = _clean(element.get("element_type"))
+        resource_type = _clean(element.get("resource_type"))
+        explicit_prompt_role = next((
+            role for role in (
+                "edit_base", "subject_reference", "costume_reference", "object_reference",
+                "group_reference", "background_reference", "style_reference",
+            ) if role in roles
+        ), "")
+        prompt_role = explicit_prompt_role or (
+            "group_reference" if "internal arrangement" in roles
+            else "background_reference" if element_type == "Backdrop" or resource_type == "Place"
+            else "object_reference" if element_type == "Prop" or resource_type == "Object"
+            else "costume_reference" if "costume" in roles
+            else "subject_reference"
+        )
+        default_preserve, default_ignore = _reference_defaults(element, reference)
+        source = dict(resolved.get(tag, {}))
+        source.update({
+            "tag": tag,
+            "label": f"{get_element_display_name(element_id, elements)} — {source.get('label') or tag}",
+            "prompt_role": prompt_role,
+            "applies_to": element_id,
+            "preserve": _lines(reference.get("preserve")) or [default_preserve],
+            "change": _lines(reference.get("change")),
+            "ignore": _lines(reference.get("ignore")) or [default_ignore],
+            "notes": _clean(reference.get("notes")),
+        })
+        records.append(source)
+    return build_image_inputs(records, render_mode=ir["render_mode"])
 
 
 def validate_scene_render_ir(ir: dict[str, Any]) -> None:
@@ -186,6 +272,10 @@ def validate_scene_render_ir(ir: dict[str, Any]) -> None:
         raise ValueError("Scene render IR must be a JSON object.")
     if ir.get("schema_version") != 4:
         raise ValueError("Scene render IR schema_version must be 4.")
+    if "prompt_schema_version" in ir and ir.get("prompt_schema_version") not in {1, CHATGPT_PROMPT_SCHEMA_VERSION}:
+        raise ValueError("Scene render IR prompt_schema_version is unsupported.")
+    if "image_inputs" in ir or "render_mode" in ir:
+        validate_image_inputs(_items(ir.get("image_inputs")), _clean(ir.get("render_mode")))
     for key in ("scene", "source", "canvas", "composition", "environment", "resolved_sources"):
         if not isinstance(ir.get(key), dict):
             raise ValueError(f"Scene render IR {key} must be an object.")
@@ -663,6 +753,8 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     element = _element(ir, element_id)
     pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
     pose_summary = clean_prompt_sentence(pose.get("summary") if pose else placement.get("pose"))
+    if pose_summary.casefold() in {"standing", "stands"}:
+        pose_summary = ""
     world_position = clean_prompt_sentence(placement.get("world_position"))
     if world_position:
         name = get_element_display_name(element_id, elements_by_id)
@@ -693,17 +785,17 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
         return " ".join(item for item in sentences if item)
     region = _semantic_region(ir, placement)
     element_type = _clean(element.get("element_type"))
-    verb = "occupies" if element_type in {"Place", "Backdrop"} or _clean(element.get("resource_type")) == "Place" else "stands"
+    verb = "stands" if ir.get("prompt_schema_version") == 1 else "occupies"
     first = verb.capitalize()
     trailing_action = ""
-    if pose_summary and pose_summary.lower() not in {"standing", "stands"} and verb == "stands":
+    if pose_summary and pose_summary.lower() not in {"standing", "stands"}:
         pose_match = re.match(r"^(.*?),\s*(.+?)(?:,)?$", pose_summary)
         if pose_match and region:
             first, trailing_action = pose_match.group(1), pose_match.group(2)
         else:
             first = pose_summary
     if region:
-        first += f" in the {region}" if verb == "stands" else f" the {region}"
+        first += f" in the {region}" if pose_summary else f" the {region}"
     if trailing_action:
         first += f", {trailing_action}"
     first = first[:1].upper() + first[1:]
@@ -783,12 +875,62 @@ def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, A
     for subject, relationship, target in records:
         if (subject, relationship, target) in used:
             continue
-        lines.append(_sentence(f"{get_element_display_name(subject, elements_by_id)} {relationship} {get_element_display_name(target, elements_by_id)}"))
+        source = next((
+            item for item in ir.get("interactions", [])
+            if _clean(item.get("subject_element_id")) == subject
+            and _clean(item.get("target_element_id")) == target
+            and _relationship_key(item.get("relationship") or item.get("type")) == relationship
+        ), {})
+        note = clean_prompt_sentence(source.get("note"))
+        line = f"{get_element_display_name(subject, elements_by_id)} {relationship} {get_element_display_name(target, elements_by_id)}"
+        if note:
+            line += f"; {note}"
+        lines.append(_sentence(line))
     return lines
 
 
 def _custom_interaction_lines(ir: dict[str, Any]) -> list[str]:
     return [line if line.startswith("- ") else f"- {line}" for value in str(ir.get("custom_interactions") or "").splitlines() if (line := value.strip())]
+
+
+def _risk_constraint_lines(ir: dict[str, Any]) -> list[str]:
+    elements = _items(ir.get("elements"))
+    placements = _items(ir.get("placements"))
+    visible_ids = {_clean(item.get("scene_element_id")) for item in placements}
+    visible_subjects = [
+        item for item in elements
+        if _clean(item.get("id")) in visible_ids
+        and _clean(item.get("element_type")) in {"Character", "Monster"}
+    ]
+    relationship_text = " ".join(
+        _clean(item.get("relationship")) + " " + _clean(item.get("note"))
+        for item in _items(ir.get("interactions"))
+    ).casefold()
+    pose_text = " ".join(
+        _clean((item.get("pose") or {}).get("summary")) + " " + _clean(item.get("placement_notes"))
+        for item in placements
+    ).casefold()
+    identity_text = " ".join(
+        _clean((item.get("resolved_source_sections") or {}).get("identity_preservation_core"))
+        for item in elements
+    ).casefold()
+    lines: list[str] = []
+    if visible_subjects:
+        lines.append(f"- Render exactly {len(visible_subjects)} visible character subject{'s' if len(visible_subjects) != 1 else ''}; do not duplicate or merge them.")
+        lines.append("- Keep visible anatomy naturally connected and consistent with the specified pose and action.")
+    if any(token in relationship_text + " " + pose_text for token in ("hand", "hold", "grip", "carry", "gesture")):
+        lines.append("- Make every specified hand-to-object assignment unambiguous, with a natural grip and no extra or fused fingers.")
+    if any(token in relationship_text for token in ("touch", "contact", "occlud", "overlap", "perch", "embrace")):
+        lines.append("- Preserve the specified contact or occlusion without merging bodies, limbs, clothing, or props.")
+    if "ear" in identity_text or "ear" in pose_text:
+        lines.append("- Keep each visible ear attached, correctly shaped, and consistent with its reference; honor intentional occlusion.")
+    if any(_clean((item.get("motion") or {}).get("state")).casefold() == "moving" for item in placements):
+        lines.append("- Make the described motion readable through pose, balance, clothing, and environmental response; do not turn it into a stationary stance.")
+    if ir.get("dialogue"):
+        lines.append("- Render only the quoted dialogue text, exactly once, with clear readable lettering and the specified pointer target.")
+    if elements:
+        lines.append("- Do not add unrequested characters, props, text, logos, watermarks, panels, or labels.")
+    return list(dict.fromkeys(lines))
 
 
 def final_image_prompt_text(ir: dict[str, Any]) -> str:
@@ -821,7 +963,9 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
         if anchor_notes:
             lines.append(f"- **Target notes:** {_sentence(anchor_notes)}")
         lines.append("")
-    if ir.get("render_inputs"):
+    legacy_prompt = ir.get("prompt_schema_version") == 1
+    image_inputs = _items(ir.get("image_inputs"))
+    if legacy_prompt and ir.get("render_inputs"):
         lines.extend(["# Locked Render Inputs", ""])
         for render_input in ir["render_inputs"]:
             lines.extend([
@@ -831,10 +975,25 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
                 "  Do not crop, repaint, replace, move, or redesign its existing content; add only the remaining scene elements and final overlays.",
             ])
         lines.append("")
+    if image_inputs and not legacy_prompt:
+        lines.extend([
+            "# Image Inputs",
+            "",
+            *image_input_prompt(image_inputs).splitlines(),
+            "",
+            "# Change Contract",
+            "",
+            change_contract_prompt(_clean(ir.get("render_mode")), image_inputs),
+            "",
+            "# Preserve Contract",
+            "",
+            preserve_contract_prompt(_clean(ir.get("render_mode")), image_inputs),
+            "",
+        ])
     story_beat = clean_prompt_sentence(ir.get("scene", {}).get("story_beat"))
     if story_beat:
         lines.extend(["# Story Beat", "", f"- {_sentence(story_beat)}", ""])
-    if ir.get("references"):
+    if legacy_prompt and ir.get("references"):
         lines.extend(["# Reference Image Assignment", ""])
         for ref in ir["references"]:
             element_id = _clean(ref.get("applies_to_element_id"))
@@ -1020,8 +1179,15 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     for element in ir.get("elements", []):
         element_id = _clean(element.get("id"))
         sections = element.get("resolved_source_sections", {}) if isinstance(element.get("resolved_source_sections"), dict) else {}
-        identity = clean_prompt_sentence(sections.get("identity_preservation_core"))
-        costume = clean_prompt_sentence(sections.get("identity_preservation_costume"))
+        is_reference_backed = not legacy_prompt and element_id in referenced_element_ids
+        identity = clean_prompt_sentence(
+            (sections.get("identity_anchors") if is_reference_backed else "")
+            or sections.get("identity_preservation_core")
+        )
+        costume = clean_prompt_sentence(
+            (sections.get("costume_anchors") if is_reference_backed else "")
+            or sections.get("identity_preservation_costume")
+        )
         override = clean_prompt_sentence(element.get("element_visual_override"))
         fallback = clean_prompt_sentence(element.get("fallback_visual_description")) if element_id not in referenced_element_ids else ""
         if identity or costume or override or fallback:
@@ -1042,9 +1208,14 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
         lines.extend(["", "# Scene Element Preservation", "", *preserve_lines])
     markdown = "\n".join(_capitalize_bullet(line) for line in lines).strip() + "\n"
     core = cleanup_compiled_scene_prompt(markdown).rstrip()
-    sections = ir.get("final_image_prompt_sections") or {}
-    tail = "\n\n".join(str(section).strip() for section in sections.values())
-    return f"{core}\n\n{tail}\n"
+    if ir.get("prompt_schema_version") == 1:
+        sections = ir.get("final_image_prompt_sections") or {}
+        tail = "\n\n".join(str(section).strip() for section in sections.values())
+        return f"{core}\n\n{tail}\n"
+    constraints = _risk_constraint_lines(ir)
+    if not constraints:
+        return core + "\n"
+    return f"{core}\n\n# Constraints\n\n" + "\n".join(constraints) + "\n"
 
 
 def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = None) -> dict[str, Any]:

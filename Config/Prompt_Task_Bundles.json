@@ -4,7 +4,8 @@
     "body-reference": {
       "description": "Static technical full-body reference prompt. No AI prompt finalizer.",
       "prompt_builder": "static",
-      "static_prompt_template": "body_reference_v1",
+      "static_prompt_template": "body_reference_v2",
+      "legacy_static_prompt_template": "body_reference_v1",
       "review_checklist": "body_reference_prompt_review_v1",
       "resources": {
         "allow_external_images": false,
@@ -23,7 +24,8 @@
     "head-image": {
       "description": "Static head prompt using exactly one required source image and either transform or standard character sections.",
       "prompt_builder": "static",
-      "static_prompt_template": "head_image_v1",
+      "static_prompt_template": "head_image_v2",
+      "legacy_static_prompt_template": "head_image_v1",
       "resources": {
         "required_reference_roles": [
           "head_image_source"
@@ -41,7 +43,8 @@
     "character-assembly": {
       "description": "Static full-character assembly prompt using locked body-reference and Head-Image references. No prompt review.",
       "prompt_builder": "static",
-      "static_prompt_template": "character_assembly_v1",
+      "static_prompt_template": "character_assembly_v2",
+      "legacy_static_prompt_template": "character_assembly_v1",
       "resources": {
         "required_reference_roles": [
           "body_reference",
@@ -60,7 +63,8 @@
     "costume-dressing": {
       "description": "Static costume dressing prompt using a locked assembled character reference and a selected costume markdown file.",
       "prompt_builder": "static",
-      "static_prompt_template": "costume_dressing_v1",
+      "static_prompt_template": "costume_dressing_v2",
+      "legacy_static_prompt_template": "costume_dressing_v1",
       "resources": {
         "required_reference_roles": [
           "character_assembly"
@@ -78,7 +82,8 @@
     "scene-appearance": {
       "description": "Static Scene Appearance prompt using one locked same-view costume source and ordered supporting references.",
       "prompt_builder": "static",
-      "static_prompt_template": "scene_appearance_v1",
+      "static_prompt_template": "scene_appearance_v2",
+      "legacy_static_prompt_template": "scene_appearance_v1",
       "resources": {
         "required_reference_roles": [
           "scene_appearance_source"
@@ -96,7 +101,8 @@
     "expression": {
       "description": "Static standalone expression prompt using a selected Identity Key and one expression definition markdown file.",
       "prompt_builder": "static",
-      "static_prompt_template": "expression_v1",
+      "static_prompt_template": "expression_v2",
+      "legacy_static_prompt_template": "expression_v1",
       "resources": {
         "required_reference_roles": [
           "identity_key"

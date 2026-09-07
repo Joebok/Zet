@@ -32,7 +32,8 @@ class ExpressionCompilerTests(unittest.TestCase):
             "Prompt_Section_Metadata.json",
         ):
             shutil.copyfile(PROJECT_ROOT / "Config" / name, config_dir / name)
-        shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Templates" / "expression_v1.md", prompt_dir / "expression_v1.md")
+        for name in ("expression_v1.md", "expression_v2.md"):
+            shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Templates" / name, prompt_dir / name)
         self.root.joinpath("config.toml").write_text(
             "\n".join(
                 [
@@ -93,6 +94,9 @@ class ExpressionCompilerTests(unittest.TestCase):
         )
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
         source_map = json.loads((output / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+        self.assertEqual("edit", manifest["render_mode"])
+        self.assertEqual("edit_base", manifest["image_inputs"][0]["role"])
         self.assertIn("Preserve the blue travel coat.", prompt)
         costume_fragments = [
             item for item in source_map["fragments"] if item.get("section_name") == "COSTUME_IDENTITY_RULES"

@@ -125,6 +125,10 @@ class StoryService:
             return {
                 "identity_preservation_core": self._source_section(character_template, "SCENE_CHARACTER_IDENTITY"),
                 "identity_preservation_costume": self._source_section(costume_template, "SCENE_COSTUME_IDENTITY"),
+                "identity_anchors": self._source_section(character_template, "SCENE_CHARACTER_ANCHORS"),
+                "costume_anchors": self._source_section(costume_template, "SCENE_COSTUME_ANCHORS"),
+                "identity_anchor_source": self._library_relative_path(character_template),
+                "costume_anchor_source": self._library_relative_path(costume_template) if costume else "",
                 "identity_source": self._library_relative_path(character_template),
                 "costume_source": self._library_relative_path(costume_template) if costume else "",
             }
@@ -166,6 +170,7 @@ class StoryService:
             )
             if catalog_item is not None:
                 return {
+                    **self._canonical_element_source_sections(element),
                     "identity_preservation_core": catalog_item.identity_text,
                     "identity_preservation_costume": catalog_item.costume_text,
                     "identity_source": self._library_relative_path(self.path_service.image_catalog_inventory_path()),
@@ -902,26 +907,40 @@ class StoryService:
                 }
             elif current_element and stripped.startswith(("**Identity:**", "**Location design:**")):
                 sections = current_element.get("resolved_source_sections") or {}
-                source_path = str(sections.get("identity_source") or "")
+                uses_anchor = bool(sections.get("identity_anchors") and sections.get("identity_anchors") in stripped)
+                source_path = str((sections.get("identity_anchor_source") if uses_anchor else "") or sections.get("identity_source") or "")
                 if source_path:
                     source = {
                         "source_kind": "image_catalog_section" if sections.get("catalog_id") else "auxiliary_template_section" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "character_template_section",
                         "source_path": source_path,
                         "source_label": f"{current_element.get('display_name') or current_element.get('id')} identity",
-                        "section_name": "IDENTITY_PRESERVATION_SCENE" if current_element.get("resource_type") in {"Person", "Place", "Object"} else "SCENE_CHARACTER_IDENTITY",
+                        "section_name": (
+                            "SCENE_CHARACTER_ANCHORS"
+                            if uses_anchor
+                            else "IDENTITY_PRESERVATION_SCENE"
+                            if current_element.get("resource_type") in {"Person", "Place", "Object"}
+                            else "SCENE_CHARACTER_IDENTITY"
+                        ),
                         "editable": True,
                     }
                     if sections.get("catalog_id"):
                         source["catalog_id"] = sections["catalog_id"]
             elif current_element and stripped.startswith("**Costume"):
                 sections = current_element.get("resolved_source_sections") or {}
-                source_path = str(sections.get("costume_source") or "")
+                uses_anchor = bool(sections.get("costume_anchors") and sections.get("costume_anchors") in stripped)
+                source_path = str((sections.get("costume_anchor_source") if uses_anchor else "") or sections.get("costume_source") or "")
                 if source_path:
                     source = {
                         "source_kind": "image_catalog_section" if sections.get("catalog_id") else "auxiliary_template_section" if current_element.get("resource_type") == "Person" else "costume_template_section",
                         "source_path": source_path,
                         "source_label": f"{current_element.get('display_name') or current_element.get('id')} costume",
-                        "section_name": "IDENTITY_PRESERVATION_COSTUME_SCENE" if current_element.get("resource_type") == "Person" else "SCENE_COSTUME_IDENTITY",
+                        "section_name": (
+                            "SCENE_COSTUME_ANCHORS"
+                            if uses_anchor
+                            else "IDENTITY_PRESERVATION_COSTUME_SCENE"
+                            if current_element.get("resource_type") == "Person"
+                            else "SCENE_COSTUME_IDENTITY"
+                        ),
                         "editable": True,
                     }
                     if sections.get("catalog_id"):
@@ -1291,10 +1310,17 @@ class StoryService:
             item.setdefault("reference_images", [])
             if item.get("image_tag") and not item["reference_images"]:
                 item["reference_images"].append({"tag": item.pop("image_tag"), "roles": ["visual reference"], "ignore": ["source pose", "source background", "source framing"], "notes": ""})
-            item["reference_images"] = [
-                reference for reference in item["reference_images"]
-                if isinstance(reference, dict) and str(reference.get("tag") or "").strip()
-            ][:1]
+            normalized_references = []
+            for reference in item["reference_images"]:
+                if not isinstance(reference, dict) or not str(reference.get("tag") or "").strip():
+                    continue
+                normalized_reference = copy.deepcopy(reference)
+                normalized_reference["tag"] = str(normalized_reference["tag"]).strip()
+                normalized_reference.setdefault("roles", ["visual reference"])
+                normalized_reference.setdefault("ignore", ["source pose", "source background", "source framing"])
+                normalized_reference.setdefault("notes", "")
+                normalized_references.append(normalized_reference)
+            item["reference_images"] = normalized_references
             item.pop("identity_prompt", None)
             if item.get("default_visual_description") and not item.get("fallback_visual_description"):
                 item["fallback_visual_description"] = item.pop("default_visual_description")
@@ -1448,6 +1474,7 @@ class StoryService:
             if element_id not in elements:
                 warnings.append(f"Left-to-right visual read references missing scene element {element_id}.")
         seen: set[str] = set()
+        seen_reference_tags: set[str] = set()
         for element in data.get("scene_elements") or []:
             element_id = str(element.get("id") or "")
             element_type = element.get("element_type")
@@ -1460,6 +1487,14 @@ class StoryService:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid element_type {element_type}.")
             has_source = element.get("resource_type") in {"Character", "Person", "Place", "Object"}
             has_reference = any(str(item.get("tag") or "").strip() for item in element.get("reference_images") or [] if isinstance(item, dict))
+            for reference in element.get("reference_images") or []:
+                if not isinstance(reference, dict):
+                    warnings.append(f"Scene element {element_id or element.get('display_name')} has an invalid image reference record.")
+                    continue
+                tag = str(reference.get("tag") or "").strip()
+                if tag and tag in seen_reference_tags:
+                    warnings.append(f"Image reference tag {tag} is assigned more than once; one numbered input will be used.")
+                seen_reference_tags.add(tag)
             if not has_reference and not str(element.get("fallback_visual_description") or "").strip():
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has no image reference tag or fallback visual description.")
         for placement in data.get("placements") or []:
