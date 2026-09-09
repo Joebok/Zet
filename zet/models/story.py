@@ -95,6 +95,7 @@ class StoryRenderTask:
     expected_output: str
     reference_files: list[dict]
     render_target_id: str = "main"
+    warning: str = ""
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import hashlib
 import mimetypes
 from pathlib import Path
 import random
@@ -20,6 +21,8 @@ from zet.services.comfyui_workflow_registry import (
 )
 from zet.services.local_render_types import LocalRenderError, LocalRenderUnavailable
 from zet.services.scene_render_compiler import validate_scene_render_ir
+from zet.services.atomic_file_service import write_json_atomic, write_bytes_atomic
+from zet.services.workflow_storage import file_lock, validate_image
 
 
 @dataclass(frozen=True)
@@ -217,18 +220,43 @@ def run_comfyui_workflow(
     poll_seconds: float = 1.0,
     timeout_seconds: float = 300.0,
 ) -> ComfyUIRunResult:
+    with file_lock(output_dir / "ComfyUI_Submission.lock"):
+        return _run_comfyui_workflow(workflow, server_url=server_url, output_dir=output_dir,
+                                    reference_files=reference_files, poll_seconds=poll_seconds,
+                                    timeout_seconds=timeout_seconds)
+
+
+def _run_comfyui_workflow(workflow, *, server_url, output_dir, reference_files, poll_seconds, timeout_seconds):
     base_url = server_url.rstrip("/")
-    for reference in reference_files or []:
-        _upload_comfyui_input(base_url, reference)
-    submitted = _request_json(f"{base_url}/prompt", "POST", {"prompt": workflow})
+    journal_path = output_dir / "ComfyUI_Submission.json"
+    journal = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.is_file() else {}
+    fingerprint = hashlib.sha256(json.dumps(workflow, sort_keys=True).encode("utf-8")).hexdigest()
+    if journal.get("status") == "SUBMITTING":
+        raise LocalRenderError(f"Previous ComfyUI submission has an unknown outcome. Check the server queue before resetting {journal_path}.")
+    resuming = journal.get("status") == "PENDING" and journal.get("prompt_id")
+    if resuming:
+        if journal.get("server_url") != base_url:
+            raise LocalRenderError("A pending ComfyUI render belongs to another server; recover it before starting another render.")
+        if journal.get("workflow_sha256") != fingerprint:
+            raise LocalRenderError("A pending ComfyUI render uses different inputs. Restore its settings and retry before starting another render.")
+        submitted = {"prompt_id": journal["prompt_id"]}
+    else:
+        for reference in reference_files or []:
+            _upload_comfyui_input(base_url, reference)
+        journal = {"status": "SUBMITTING", "server_url": base_url, "workflow_sha256": fingerprint}
+        write_json_atomic(journal_path, journal)
+        submitted = _request_json(f"{base_url}/prompt", "POST", {"prompt": workflow})
     if not isinstance(submitted, dict):
         raise LocalRenderError("ComfyUI prompt response must be a JSON object.")
     if submitted.get("node_errors") or submitted.get("error"):
         details = submitted.get("node_errors") or submitted.get("error")
+        write_json_atomic(journal_path, {**journal, "status": "FAILED", "error": details})
         raise LocalRenderError(f"ComfyUI workflow validation failed: {json.dumps(details, ensure_ascii=False)}")
     prompt_id = str(submitted.get("prompt_id") or "")
     if not prompt_id:
         raise LocalRenderError("ComfyUI prompt response did not include prompt_id.")
+    journal.update(status="PENDING", prompt_id=prompt_id)
+    write_json_atomic(journal_path, journal)
 
     deadline = time.monotonic() + timeout_seconds
     record: dict[str, Any] | None = None
@@ -239,9 +267,10 @@ def run_comfyui_workflow(
             break
         time.sleep(max(0.0, poll_seconds))
     if record is None:
-        raise LocalRenderError(f"ComfyUI workflow timed out after {timeout_seconds:g} seconds.")
+        raise LocalRenderError(f"ComfyUI workflow {prompt_id} timed out after {timeout_seconds:g} seconds. Retry to resume this job.")
     status = record.get("status") if isinstance(record.get("status"), dict) else {}
     if status.get("status_str") == "error":
+        write_json_atomic(journal_path, {**journal, "status": "FAILED", "error": status})
         raise LocalRenderError(f"ComfyUI execution failed: {json.dumps(status, ensure_ascii=False)}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -259,9 +288,13 @@ def run_comfyui_workflow(
                 "type": image.get("type", "output"),
             })
             safe_name = Path(str(image["filename"])).name
-            destination = output_dir / safe_name
-            destination.write_bytes(_request_bytes(f"{base_url}/view?{query}"))
+            job_key = hashlib.sha256(prompt_id.encode("utf-8")).hexdigest()[:12]
+            destination = output_dir / f"{job_key}_{len(image_paths) + 1}_{safe_name}"
+            contents = _request_bytes(f"{base_url}/view?{query}")
+            validate_image(contents)
+            write_bytes_atomic(destination, contents)
             image_paths.append(destination)
     if not image_paths:
         raise LocalRenderError("ComfyUI completed without returning an image.")
+    write_json_atomic(journal_path, {**journal, "status": "COMPLETE", "image_paths": [str(path) for path in image_paths]})
     return ComfyUIRunResult(prompt_id=prompt_id, image_paths=image_paths, outputs=outputs, history=record)

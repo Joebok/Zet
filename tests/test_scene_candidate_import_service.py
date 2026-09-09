@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from zet.services.config_service import Config, SceneCandidateSourceConfig
 from zet.services.path_service import PathService
@@ -35,6 +36,31 @@ class AuxiliaryRepository:
 
 
 class SceneCandidateImportServiceTests(unittest.TestCase):
+    def test_retry_after_partial_scene_creation_reuses_reserved_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _, story, service = self._setup(root, self._candidate())
+            with patch.object(story, "save_scene_builder_data", side_effect=OSError("interrupted import")):
+                with self.assertRaises(OSError):
+                    service.import_candidate("moonsea", "moonsea-test-a", "Moonsea")
+            result = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea")
+            self.assertEqual(1, len(story.list_scenes("Moonsea")))
+            self.assertEqual("A-Test", result.scene_slug)
+            self.assertEqual("moonsea-test-a", result.data["source_provenance"]["candidate_id"])
+
+    def test_scene_save_rejects_a_stale_draft(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            _, story, service = self._setup(Path(temp_dir), self._candidate())
+            result = service.import_candidate("moonsea", "moonsea-test-a", "Moonsea")
+            first = story.load_scene_builder_data("Moonsea", result.scene_slug).data
+            stale = story.load_scene_builder_data("Moonsea", result.scene_slug).data
+            first["scene"]["name"] = "New name"
+            story.save_scene_builder_data("Moonsea", result.scene_slug, first)
+            from zet.services.story_service import StoryServiceError
+            with self.assertRaisesRegex(StoryServiceError, "changed since"):
+                story.save_scene_builder_data("Moonsea", result.scene_slug, stale)
+            self.assertEqual("New name", story.load_scene_builder_data("Moonsea", result.scene_slug).data["scene"]["name"])
+
     def _setup(self, root: Path, markdown: str, resources=None):
         source = root / "Scene_Candidate_Index.md"
         source.write_text(markdown, encoding="utf-8")

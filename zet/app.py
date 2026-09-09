@@ -106,8 +106,8 @@ class AssetRef:
     def regenerate_and_clear_references(self) -> Asset:
         return self._app.asset_service.regenerate_and_clear_references(self._character, self._phase, self._asset_id)
 
-    def promote_to_locked(self) -> Asset:
-        return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id)
+    def promote_to_locked(self, replace_existing: bool = False) -> Asset:
+        return self._app.asset_service.promote_to_locked(self._character, self._phase, self._asset_id, replace_existing)
 
     def discard_candidate(self) -> Asset:
         return self._app.asset_service.discard_candidate(self._character, self._phase, self._asset_id)
@@ -605,7 +605,18 @@ class ZetApp:
             story_slug, scene_slug, render_target_id, allow_stale_dependencies
         )
         if self.config.ai_prompt_analysis_auto_queue_on_render:
-            self.queue_scene_prompt_analysis(story_slug, scene_slug, render_target_id)
+            try:
+                self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id,
+                                                         Path(task.ask_path) / "Final_Image_Prompt.md")
+            except Exception as exc:
+                from dataclasses import replace
+                from zet.services.atomic_file_service import write_json_atomic
+                warning = f"Render is staged, but prompt analysis could not be queued: {exc}. Retry analysis from Scene Builder."
+                task = replace(task, warning=warning)
+                try:
+                    write_json_atomic(Path(task.ask_path) / "analysis_queue_error.json", {"error": str(exc), "recovery": warning})
+                except OSError:
+                    pass  # The returned task still carries the recovery message.
         return task
 
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
@@ -623,8 +634,20 @@ class ZetApp:
     def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
         return self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id)
 
-    def scene_prompt_analysis_status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
-        return self.scene_prompt_analysis_service.status(story_slug, scene_slug, render_target_id)
+    def scene_prompt_analysis_status(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = "main",
+        *,
+        current_prompt_text: str | None = None,
+    ) -> dict:
+        return self.scene_prompt_analysis_service.status(
+            story_slug,
+            scene_slug,
+            render_target_id,
+            current_prompt_text=current_prompt_text,
+        )
 
     def list_scene_prompt_analyses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
         return self.scene_prompt_analysis_service.list_statuses(story_slug, scene_slug)
@@ -889,7 +912,10 @@ class ZetApp:
         asset_id: int,
         invalidate_review_artifacts: bool = False,
     ) -> PromptReviewContext:
-        return self.prompt_review_service.recompile(character, phase, asset_id, invalidate_review_artifacts)
+        with self.asset_repository.transaction(character, phase):
+            context = self.prompt_review_service.recompile(character, phase, asset_id, invalidate_review_artifacts)
+            self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+            return context
 
     def harvest_ai_answers(self):
         results = self.asset_service.harvest_ai_answers()

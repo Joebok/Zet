@@ -3,6 +3,7 @@ import shutil
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from contextlib import nullcontext
 
 from zet.models.ai_proxy import AIProxyAnswer, HarvestResult
 from zet.repositories.asset_repository import AssetRepository
@@ -11,6 +12,8 @@ from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
 from zet.services.state_machine import StateMachine
+from zet.services.atomic_file_service import write_json_atomic
+from zet.services.workflow_storage import atomic_copy, file_lock, task_state_path
 
 
 class AIAnswerHarvesterError(Exception):
@@ -193,6 +196,8 @@ class AIAnswerHarvester:
         return self.path_service.pipeline_path(asset) / "Render_Review_Comment.md"
 
     def _expected_attempt(self, asset) -> str | None:
+        if asset.active_attempt_id:
+            return asset.active_attempt_id
         last_ai_update = asset.last_ai_update or ""
         if "(" in last_ai_update and last_ai_update.endswith(")"):
             return last_ai_update.rsplit("(", 1)[1][:-1]
@@ -214,10 +219,8 @@ class AIAnswerHarvester:
             "seed": local_render_metadata.get("seed"),
             "harvested_at": self.timestamp_provider(),
         }
-        self._harvest_manifest_path(answer_path).write_text(
-            json.dumps(payload, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        write_json_atomic(self._harvest_manifest_path(answer_path), payload)
+        (answer_path / "harvest_error.json").unlink(missing_ok=True)
 
     def _archive_harvested_answer(self, answer_path: Path) -> None:
         archive_root = self.ai_proxy_path_service.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
@@ -231,6 +234,17 @@ class AIAnswerHarvester:
 
     def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
+        if asset.applied_attempt_id == answer.ollama_attempt_id:
+            self.housekeeping_service.prepare_stage(asset)
+            return asset
+        ask_manifest = self._load_ask_manifest(answer_path)
+        if asset.actor != "AI_AGENT" or asset.pipeline_stage != ask_manifest.get("pipeline_stage"):
+            raise AIAnswerHarvesterError("Answer no longer matches the asset stage and actor; retained for recovery.")
+        pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
+        next_stage = self.state_machine.next_stage(pipeline, asset.pipeline_stage)
+        next_actor = pipeline.actor_by_stage.get(next_stage)
+        if next_actor is None:
+            raise AIAnswerHarvesterError(f"Pipeline {pipeline.name} has no actor for {next_stage}")
         response_path = answer_path / answer.expected_output
         if not response_path.exists():
             raise AIAnswerHarvesterError(f"Missing expected output file {answer.expected_output} in {answer_path}")
@@ -238,7 +252,7 @@ class AIAnswerHarvester:
         pipeline_path = self.path_service.pipeline_path(asset)
         pipeline_path.mkdir(parents=True, exist_ok=True)
         dest_response_path = pipeline_path / response_path.name
-        shutil.copy2(response_path, dest_response_path)
+        atomic_copy(response_path, dest_response_path)
         self._copy_final_image_prompt(answer_path, pipeline_path)
         answer_manifest = self._read_json(answer_path / "answer_manifest.json")
         comment = str(answer_manifest.get("render_comment") or "").strip()
@@ -255,23 +269,11 @@ class AIAnswerHarvester:
             if metadata_path.exists():
                 shutil.copy2(metadata_path, pipeline_path / metadata_path.name)
 
-        updated_asset = replace(asset)
-        updated_asset.ai_state = None
-        updated_asset.last_ai_update = f"AI answer harvested: {answer.ask_id} ({answer.ollama_attempt_id})"
-        updated_asset.updated_at = self.timestamp_provider()
-        updated_asset.error_code = None
-        updated_asset.error_message = None
-        self.asset_repository.save_asset(updated_asset)
-
-        refreshed_asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
-        pipeline = self.pipeline_repository.get_pipeline(character, phase, refreshed_asset.pipeline)
-        next_stage = self.state_machine.next_stage(pipeline, refreshed_asset.pipeline_stage)
-        next_actor = pipeline.actor_by_stage.get(next_stage)
-        if next_actor is None:
-            raise AIAnswerHarvesterError(
-                f"Pipeline {pipeline.name} has no actor configured for stage {next_stage}"
-            )
-        final_asset = replace(refreshed_asset)
+        final_asset = replace(asset)
+        final_asset.applied_attempt_id = answer.ollama_attempt_id
+        final_asset.last_ai_update = f"AI answer harvested: {answer.ask_id} ({answer.ollama_attempt_id})"
+        final_asset.error_code = None
+        final_asset.error_message = None
         final_asset.pipeline_stage = next_stage
         final_asset.actor = next_actor
         final_asset.asset_state = "IN_PROGRESS"
@@ -282,6 +284,27 @@ class AIAnswerHarvester:
         return final_asset
 
     def _apply_auxiliary_answer(self, answer_path: Path, answer: AIProxyAnswer, ask_manifest: dict) -> HarvestResult:
+        if ask_manifest.get("task_type") == "scene_prompt_analysis":
+            directory = Path(str(ask_manifest["target_output_dir"]))
+            with file_lock(directory / "Prompt_Analysis.lock"):
+                request_path = directory / "AI_Prompt_Analysis.request.json"
+                request = self._read_json(request_path) if request_path.is_file() else {}
+                if request.get("ask_id") and request["ask_id"] != answer.ask_id:
+                    result = HarvestResult(answer_path=answer_path, ask_id=answer.ask_id, asset_id=answer.asset_id,
+                                           status="SUPERSEDED", message="Preserved analysis of an older prompt.")
+                    self._write_harvest_manifest(answer_path, result)
+                    return result
+                result = self._apply_auxiliary_output(answer_path, answer, ask_manifest)
+                write_json_atomic(directory / "AI_Prompt_Analysis.result.json", {
+                    "ask_id": answer.ask_id, "prompt_sha256": ask_manifest.get("source_prompt_sha256", ""),
+                    "status": "SUCCESS" if result.status.endswith("_APPLIED") else "FAILED",
+                    "error": "" if result.status.endswith("_APPLIED") else result.message,
+                })
+                self._write_harvest_manifest(answer_path, result)
+                return result
+        return self._apply_auxiliary_output(answer_path, answer, ask_manifest)
+
+    def _apply_auxiliary_output(self, answer_path: Path, answer: AIProxyAnswer, ask_manifest: dict) -> HarvestResult:
         task_type = str(ask_manifest.get("task_type") or "auxiliary")
         if answer.status != "SUCCESS":
             result = HarvestResult(
@@ -291,7 +314,8 @@ class AIAnswerHarvester:
                 status=f"{task_type.upper()}_{answer.status}",
                 message=f"Auxiliary task {task_type} completed with status {answer.status}: {answer.error_message or ''}".strip(),
             )
-            self._write_harvest_manifest(answer_path, result)
+            if task_type != "scene_prompt_analysis":
+                self._write_harvest_manifest(answer_path, result)
             return result
 
         response_path = answer_path / answer.expected_output
@@ -305,7 +329,8 @@ class AIAnswerHarvester:
                 status=f"{task_type.upper()}_INVALID",
                 message=f"Auxiliary task {task_type} produced an empty output file.",
             )
-            self._write_harvest_manifest(answer_path, result)
+            if task_type != "scene_prompt_analysis":
+                self._write_harvest_manifest(answer_path, result)
             return result
 
         target_output_dir_text = str(ask_manifest.get("target_output_dir") or "").strip()
@@ -347,7 +372,8 @@ class AIAnswerHarvester:
             status=f"{task_type.upper()}_APPLIED",
             message=f"Applied auxiliary task {task_type} output to {target_path}.",
         )
-        self._write_harvest_manifest(answer_path, result)
+        if task_type != "scene_prompt_analysis":
+            self._write_harvest_manifest(answer_path, result)
         if task_type == "prompt_condense" and self.ai_proxy_service is not None:
             character = str(ask_manifest.get("character") or "")
             phase = str(ask_manifest.get("phase") or "")
@@ -405,7 +431,13 @@ class AIAnswerHarvester:
             and str(ask_manifest.get("story_slug") or "").strip()
             and str(ask_manifest.get("scene_slug") or "").strip()
         ):
+            previously_applied = bool(self._read_json(answer_path / "answer_manifest.json").get("scene_image_applied"))
             disposition, target_path = self.scene_image_review_service.apply_answer(answer_path, response_path, ask_manifest)
+            if disposition == "stale":
+                result = HarvestResult(answer_path=answer_path, ask_id=answer.ask_id, asset_id=answer.asset_id,
+                                       status="SUPERSEDED", message=f"Preserved late scene render at {target_path}.")
+                self._write_harvest_manifest(answer_path, result)
+                return result
             pipeline_path = Path(str(ask_manifest.get("pipeline_path") or ""))
             if not str(pipeline_path).strip() or str(pipeline_path) == ".":
                 pipeline_path = self.path_service.story_pipeline_path(
@@ -413,11 +445,12 @@ class AIAnswerHarvester:
                     str(ask_manifest["scene_slug"]),
                 )
             api_call_path = answer_path / "Stable_Matrix_API_Call.json"
-            if api_call_path.exists():
+            if api_call_path.exists() and not previously_applied:
                 pipeline_path.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(api_call_path, pipeline_path / api_call_path.name)
-            self._copy_final_image_prompt(answer_path, pipeline_path)
-            self._copy_local_render_artifacts(answer_path, pipeline_path)
+            if not previously_applied:
+                self._copy_final_image_prompt(answer_path, pipeline_path)
+                self._copy_local_render_artifacts(answer_path, pipeline_path)
             result = HarvestResult(
                 answer_path=answer_path,
                 ask_id=answer.ask_id,
@@ -449,34 +482,22 @@ class AIAnswerHarvester:
         return result
 
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
+        queue_root = Path(self.path_service.config.base_ai_queue_path)
+        with file_lock(task_state_path(queue_root, "Locks", answer_path.name)):
+            manifest = self._load_ask_manifest(answer_path)
+            character, phase = manifest.get("character"), manifest.get("phase")
+            transaction = self.asset_repository.transaction(character, phase) if character and phase else nullcontext()
+            with transaction:
+                if (task_state_path(queue_root, "Superseded", answer_path.name).exists()
+                        and not self._harvest_manifest_path(answer_path).exists()):
+                    result = HarvestResult(answer_path, answer_path.name, manifest.get("asset_id"), "SUPERSEDED", "A newer operation superseded this answer; files retained.")
+                    self._write_harvest_manifest(answer_path, result)
+                    return result
+                return self._apply_answer_folder(answer_path)
+
+    def _apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         if self._harvest_manifest_path(answer_path).exists():
             payload = self._read_json(self._harvest_manifest_path(answer_path))
-            if payload.get("status") == "APPLIED":
-                answer = self._load_answer(answer_path)
-                ask_manifest = self._load_ask_manifest(answer_path)
-                character = str(ask_manifest.get("character") or "")
-                phase = str(ask_manifest.get("phase") or "")
-                if character and phase and answer.status == "SUCCESS":
-                    asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
-                    expected_attempt = self._expected_attempt(asset)
-                    if (
-                        asset.pipeline_stage == str(ask_manifest.get("pipeline_stage") or "")
-                        and asset.actor == "AI_AGENT"
-                        and expected_attempt == answer.ollama_attempt_id
-                    ):
-                        final_asset = self._apply_successful_answer(answer_path, answer, character, phase)
-                        result = HarvestResult(
-                            answer_path=answer_path,
-                            ask_id=answer.ask_id,
-                            asset_id=answer.asset_id,
-                            status="REAPPLIED",
-                            message=(
-                                f"Re-applied harvested answer and advanced asset {answer.asset_id} "
-                                f"to {final_asset.pipeline_stage}."
-                            ),
-                        )
-                        self._write_harvest_manifest(answer_path, result)
-                        return result
             return HarvestResult(
                 answer_path=answer_path,
                 ask_id=str(payload.get("ask_id", answer_path.name)),
@@ -487,6 +508,12 @@ class AIAnswerHarvester:
 
         answer = self._load_answer(answer_path)
         ask_manifest = self._load_ask_manifest(answer_path)
+        for key, actual in (("ask_id", answer.ask_id), ("asset_id", answer.asset_id),
+                            ("expected_output", answer.expected_output), ("ollama_attempt_id", answer.ollama_attempt_id)):
+            if key in ask_manifest and ask_manifest[key] != actual:
+                raise AIAnswerHarvesterError(f"Answer {key} does not match its ask; files retained for recovery.")
+        if not answer.expected_output or Path(answer.expected_output).name != answer.expected_output:
+            raise AIAnswerHarvesterError("Answer expected_output must be a filename.")
 
         character = str(ask_manifest.get("character") or "")
         phase = str(ask_manifest.get("phase") or "")
@@ -525,6 +552,8 @@ class AIAnswerHarvester:
             return result
 
         if answer.status == "RETRY_LATER":
+            if asset.actor != "AI_AGENT" or asset.pipeline_stage != ask_manifest.get("pipeline_stage"):
+                raise AIAnswerHarvesterError("Retry answer no longer matches the asset stage; retained for recovery.")
             updated_asset = replace(asset)
             updated_asset.ai_state = "ASKED"
             updated_asset.last_ai_update = (
@@ -544,6 +573,8 @@ class AIAnswerHarvester:
             return result
 
         if answer.status == "REJECTED":
+            if asset.actor != "AI_AGENT" or asset.pipeline_stage != ask_manifest.get("pipeline_stage"):
+                raise AIAnswerHarvesterError("Rejected answer no longer matches the asset stage; retained for recovery.")
             updated_asset = replace(asset)
             updated_asset.ai_state = None
             updated_asset.last_ai_update = (
@@ -563,6 +594,8 @@ class AIAnswerHarvester:
             return result
 
         if answer.status == "ERROR":
+            if asset.actor != "AI_AGENT" or asset.pipeline_stage != ask_manifest.get("pipeline_stage"):
+                raise AIAnswerHarvesterError("Failed answer no longer matches the asset stage; retained for recovery.")
             updated_asset = replace(asset)
             updated_asset.asset_state = "BLOCKED"
             updated_asset.pipeline_stage = "ERROR"
@@ -593,17 +626,22 @@ class AIAnswerHarvester:
             try:
                 result = self.apply_answer_folder(answer_path)
                 if result.status.startswith("ALREADY_"):
-                    self._archive_harvested_answer(answer_path)
                     continue
                 results.append(result)
-            except AIAnswerHarvesterError as exc:
+            except Exception as exc:
                 result = HarvestResult(
                     answer_path=answer_path,
                     ask_id=answer_path.name,
                     asset_id=None,
-                    status="MALFORMED",
+                    status="HARVEST_FAILED",
                     message=str(exc),
                 )
-                self._write_harvest_manifest(answer_path, result)
+                try:
+                    write_json_atomic(answer_path / "harvest_error.json", {
+                        "status": result.status, "message": str(exc), "updated_at": self.timestamp_provider(),
+                        "recovery": "Fix the reported problem, then retry harvest. The answer is retained.",
+                    })
+                except OSError:
+                    pass
                 results.append(result)
         return results

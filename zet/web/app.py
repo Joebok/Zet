@@ -368,6 +368,7 @@ def _story_render_task_payload(task) -> dict[str, Any]:
         "expected_output": task.expected_output,
         "reference_files": _jsonable(task.reference_files),
         "render_target_id": task.render_target_id,
+        "warning": task.warning,
     }
 
 
@@ -455,7 +456,10 @@ def _render_console_detail_payload(zet_app: ZetApp, queue: RenderConsoleQueue, t
                 source_map_path = pipeline_path / "Prompt_Source_Map.json"
                 source_map = zet_app.story_service.scene_prompt_source_map(pipeline_path, prompt)
             prompt_analysis = zet_app.scene_prompt_analysis_status(
-                story_slug, scene_slug, str(manifest.get("render_target_id") or "main")
+                story_slug,
+                scene_slug,
+                str(manifest.get("render_target_id") or "main"),
+                current_prompt_text=prompt,
             )
         except Exception:
             pass
@@ -1633,7 +1637,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             )
             return {
                 "task": _story_render_task_payload(task),
-                "message": f"Staged scene {task.scene_slug} for Render Console.",
+                "message": task.warning or f"Staged scene {task.scene_slug} for Render Console.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2226,7 +2230,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             )
             return {
                 "task": _story_render_task_payload(task),
-                "message": f"Staged {target_id} render for {task.scene_slug}.",
+                "message": task.warning or f"Staged {target_id} render for {task.scene_slug}.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2620,7 +2624,7 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
                     status_code=409,
                     detail="A locked image already exists. Confirm replacement before promoting.",
                 )
-            updated = asset_ref.promote_to_locked()
+            updated = asset_ref.promote_to_locked(replace_existing=replace_existing)
             return {
                 "message": f"Render approved. Asset {updated.asset_id} moved to LOCKED.",
                 "asset": _asset_payload(zet_app, updated),
@@ -3211,7 +3215,8 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
             )
             if context.prompt_text is None:
                 raise ValueError(f"No Final_Image_Prompt.md found for Asset {task.asset_id}.")
-            service.replace_prompt(task, context.prompt_text)
+            task = next(item for item in queue.list_tasks()
+                        if item.asset_id == task.asset_id and item.character == task.character and item.phase == task.phase)
             payload = _render_console_detail_payload(zet_app, queue, task)
             payload["message"] = f"Prompt recompiled for Asset {task.asset_id}."
             return payload

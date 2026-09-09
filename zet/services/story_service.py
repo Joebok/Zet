@@ -1224,19 +1224,29 @@ class StoryService:
 
     def save_scene_builder_data(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
         """Save Scene Builder JSON atomically."""
+        from zet.services.workflow_storage import file_lock
+        _, _, json_path = self._scene_builder_paths(self.safe_slug(story_slug), self.safe_slug(scene_slug))
+        with file_lock(json_path.with_suffix(".lock")):
+            return self._save_scene_builder_data(story_slug, scene_slug, data)
+
+    def _save_scene_builder_data(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         _, _, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
+        current = json.loads(json_path.read_text(encoding="utf-8")) if json_path.is_file() else {}
+        revision = int(current.get("_revision", 0))
+        if int(data.get("_revision", 0)) != revision:
+            raise StoryServiceError("Scene changed since it was loaded. Reload before saving; your draft was not written.")
         normalized = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, data)
+        normalized["_revision"] = revision + 1
         self.scene_render_target_service.assert_valid_graph(normalized)
         now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         normalized.setdefault("metadata", {})
         normalized["metadata"].setdefault("created_at", now)
         normalized["metadata"]["updated_at"] = now
         json_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = json_path.with_name(f".{json_path.name}.tmp")
-        temp_path.write_text(json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        temp_path.replace(json_path)
+        from zet.services.atomic_file_service import write_json_atomic
+        write_json_atomic(json_path, normalized)
         return self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
 
     def save_scene_builder_subscene_data(
@@ -1655,15 +1665,11 @@ class StoryService:
         """Write JSON with stable formatting."""
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
-    def _clear_scene_render_queue_items(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> None:
+    def _clear_scene_render_queue_items(self, story_slug: str, scene_slug: str, render_target_id: str = "main", exclude_ask_id: str = "") -> None:
         """Remove stale queued render work for one story scene."""
         proxy_root = Path(self.path_service.config.base_ai_queue_path) / "Manual_Render_Queue"
-        target_token = "" if render_target_id == "main" else f"_{render_target_id}"
-        ask_prefix = f"Ask_Story_{story_slug}_{scene_slug}{target_token}_RENDER_"
 
         def matches(path: Path) -> bool:
-            if path.name.startswith(ask_prefix):
-                return True
             manifest_path = path / "ask_manifest.json"
             if not manifest_path.exists():
                 return False
@@ -1680,8 +1686,9 @@ class StoryService:
         for root in (proxy_root / "Ask", proxy_root / "Answer"):
             if root.exists():
                 for path in root.iterdir():
-                    if path.is_dir() and matches(path):
-                        shutil.rmtree(path, ignore_errors=True)
+                    if path.is_dir() and not path.name.startswith(".") and path.name != exclude_ask_id and matches(path):
+                        from zet.services.workflow_storage import supersede_task
+                        supersede_task(Path(self.path_service.config.base_ai_queue_path), path, "A newer scene render was staged.")
 
     def stage_scene_render(
         self,

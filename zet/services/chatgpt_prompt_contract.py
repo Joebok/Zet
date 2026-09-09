@@ -95,6 +95,7 @@ def build_image_inputs(
             "ignore": _strings(item.get("ignore")),
             "notes": str(item.get("notes") or "").strip(),
             "source_role": str(item.get("role") or "").strip(),
+            "assignments": [dict(assignment) for assignment in item.get("assignments") or []],
         })
     validate_image_inputs(inputs, render_mode)
     return inputs
@@ -131,6 +132,7 @@ def enrich_reference_files(
         item["change"] = list(image_input.get("change") or [])
         item["ignore"] = list(image_input.get("ignore") or [])
         item["notes"] = str(image_input.get("notes") or "")
+        item["assignments"] = [dict(assignment) for assignment in image_input.get("assignments") or []]
         enriched.append(item)
     return enriched
 
@@ -160,6 +162,15 @@ def image_input_prompt(image_inputs: list[Mapping[str, Any]]) -> str:
         notes = str(item.get("notes") or "").strip()
         if notes:
             lines.append(f"  Notes: {notes.rstrip('.')}.")
+        # The first assignment is already rendered above; add the remaining uses of this image.
+        for assignment in (item.get("assignments") or [])[1:]:
+            lines.append(f"  For {assignment.get('applies_to') or 'the scene'}, use as {assignment.get('prompt_role') or item['role']}.")
+            for label, key in (("Preserve", "preserve"), ("Change", "change"), ("Ignore", "ignore")):
+                values = _strings(assignment.get(key))
+                if values:
+                    lines.append(f"  {label} for this assignment: {'; '.join(values)}.")
+            if assignment.get("notes"):
+                lines.append(f"  Notes for this assignment: {str(assignment['notes']).rstrip('.')}.")
     return "\n".join(lines)
 
 

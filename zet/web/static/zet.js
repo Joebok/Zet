@@ -29,6 +29,7 @@ const state = {
   selectedPromptReviewAskId: null,
   promptReviewDetail: null,
   promptAnalysisTasks: [],
+  promptAnalysisRequest: 0,
   renderReviewTasks: [],
   selectedRenderReviewKey: null,
   renderReviewDetail: null,
@@ -6287,28 +6288,76 @@ function renderSceneBuilderInterview(payload = state.sceneBuilderInterview) {
   sceneBuilderInterviewApply.hidden = !payload?.complete;
 }
 
-function openSceneBuilderInterview(seed = null) {
+function sceneBuilderInterviewCheckpointKey() {
+  return `zet:scene-interview:${encodeURIComponent(state.selectedStorySlug)}:${encodeURIComponent(state.selectedSceneSlug)}`;
+}
+
+function checkpointSceneBuilderInterview() {
+  const answers = {};
+  for (const control of sceneBuilderInterviewQuestions.querySelectorAll("[data-interview-answer]")) {
+    answers[control.dataset.interviewAnswer] = control.value;
+  }
+  try {
+    localStorage.setItem(sceneBuilderInterviewCheckpointKey(), JSON.stringify({
+      payload: state.sceneBuilderInterview,
+      seed: state.sceneBuilderInterviewSeed,
+      narrative: sceneBuilderInterviewNarrative.value,
+      answers,
+      revision: state.sceneBuilder?._revision || 0,
+    }));
+    return true;
+  } catch (error) {
+    sceneBuilderInterviewStatus.textContent = `Unable to save interview progress on this device: ${error.message}`;
+    return false;
+  }
+}
+
+sceneBuilderInterviewNarrative.addEventListener("input", checkpointSceneBuilderInterview);
+sceneBuilderInterviewQuestions.addEventListener("input", checkpointSceneBuilderInterview);
+document.querySelector("#scene-builder-interview-restart").addEventListener("click", () => restartSceneBuilderInterview(true));
+
+function openSceneBuilderInterview(seed = null, restart = false) {
   if (!state.sceneBuilder) return;
   builderSyncControls();
   state.sceneBuilderInterview = null;
   state.sceneBuilderInterviewSeed = seed || null;
   sceneBuilderInterviewNarrative.value = seed?.narrative || "";
-  renderSceneBuilderInterview();
+  let checkpoint = null;
+  try {
+    if (restart) {
+      const key = sceneBuilderInterviewCheckpointKey();
+      const previous = localStorage.getItem(key);
+      if (previous) localStorage.setItem(`${key}:previous`, previous);
+      localStorage.removeItem(key);
+    }
+    else checkpoint = JSON.parse(localStorage.getItem(sceneBuilderInterviewCheckpointKey()) || "null");
+  } catch (error) {
+    showSceneBuilderMessage(`Unable to restore interview progress: ${error.message}`, "error");
+  }
+  if (checkpoint) {
+    state.sceneBuilderInterview = checkpoint.payload;
+    state.sceneBuilderInterviewSeed = checkpoint.seed;
+    sceneBuilderInterviewNarrative.value = checkpoint.narrative || "";
+  }
+  renderSceneBuilderInterview(state.sceneBuilderInterview);
+  for (const control of sceneBuilderInterviewQuestions.querySelectorAll("[data-interview-answer]")) {
+    control.value = checkpoint?.answers?.[control.dataset.interviewAnswer] || "";
+  }
   sceneBuilderInterviewModal.showModal();
   sceneBuilderInterviewNarrative.focus();
 }
 
-async function restartSceneBuilderInterview() {
+async function restartSceneBuilderInterview(restart = false) {
   const provenance = state.sceneBuilder?.source_provenance || {};
   if (provenance.source_type !== "scene_candidate_markdown") {
-    openSceneBuilderInterview();
+    openSceneBuilderInterview(null, restart);
     return;
   }
   try {
     const seed = await fetchJson(
       `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/interview-seed`,
     );
-    openSceneBuilderInterview(seed);
+    openSceneBuilderInterview(seed, restart);
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
@@ -6324,6 +6373,7 @@ async function runSceneBuilderInterview() {
     }
   }
   sceneBuilderInterviewNext.disabled = true;
+  checkpointSceneBuilderInterview();
   sceneBuilderInterviewStatus.textContent = started ? "Processing clarification..." : "Identifying scene elements...";
   try {
     const base = `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/interview`;
@@ -6340,6 +6390,7 @@ async function runSceneBuilderInterview() {
     });
     state.sceneBuilderInterview = payload;
     renderSceneBuilderInterview(payload);
+    if (!checkpointSceneBuilderInterview()) return;
     while (!payload.complete && !(payload.questions || []).length) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       sceneBuilderInterviewStatus.textContent = `Analyzing ${payload.phase_label || "scene"}...`;
@@ -6350,6 +6401,7 @@ async function runSceneBuilderInterview() {
       });
       state.sceneBuilderInterview = payload;
       renderSceneBuilderInterview(payload);
+      if (!checkpointSceneBuilderInterview()) return;
     }
     sceneBuilderInterviewQuestions.querySelector("textarea")?.focus();
   } catch (error) {
@@ -6362,6 +6414,10 @@ async function runSceneBuilderInterview() {
 async function applySceneBuilderInterview() {
   const draft = state.sceneBuilderInterview?.draft;
   if (!draft) return;
+  if ((draft._revision || 0) !== (state.sceneBuilder?._revision || 0)) {
+    showSceneBuilderMessage("The scene changed since this interview began. Your saved interview is preserved; restart from the current scene before applying.", "error");
+    return;
+  }
   state.sceneBuilder = draft;
   state.selectedBuilderElementId = draft.scene_elements?.[0]?.id || null;
   state.selectedBuilderPlacementId = draft.placements?.[0]?.id || null;
@@ -8030,16 +8086,10 @@ function movePhaseComparison(delta) {
 }
 
 async function loadPromptReviewTasks(preferredAskId = null) {
+  clearPromptReview();
   promptReviewStatus.textContent = "Loading prompt reviews...";
-  const analysisRequest = state.workspace === "story"
-    ? fetchJson(`/api/prompt-analysis/tasks?${productionQuery().toString()}`)
-    : Promise.resolve({ tasks: [] });
-  const [payload, analyses] = await Promise.all([
-    fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`),
-    analysisRequest,
-  ]);
+  const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
   state.promptReviewTasks = payload.tasks || [];
-  state.promptAnalysisTasks = analyses.tasks || [];
   const taskIds = new Set(state.promptReviewTasks.map((task) => task.ask_id));
   state.selectedPromptReviewAskId =
     preferredAskId || state.selectedPromptReviewAskId || state.promptReviewTasks[0]?.ask_id || null;
@@ -8054,7 +8104,25 @@ async function loadPromptReviewTasks(preferredAskId = null) {
   } else {
     clearPromptReview();
   }
-  refreshProductionWorkSummary();
+  void loadPromptAnalysisTasks();
+  void refreshProductionWorkSummary();
+}
+
+async function loadPromptAnalysisTasks() {
+  const request = ++state.promptAnalysisRequest;
+  if (state.workspace !== "story") {
+    state.promptAnalysisTasks = [];
+    renderPromptAnalysisTaskList();
+    return;
+  }
+  try {
+    const analyses = await fetchJson(`/api/prompt-analysis/tasks?${productionQuery().toString()}`);
+    if (request !== state.promptAnalysisRequest) return;
+    state.promptAnalysisTasks = analyses.tasks || [];
+    renderPromptAnalysisTaskList();
+  } catch (error) {
+    console.error("Unable to load prompt analyses.", error);
+  }
 }
 
 function renderPromptAnalysisTaskList() {
@@ -8092,7 +8160,7 @@ async function selectPromptReviewTask(askId) {
   state.selectedPromptReviewAskId = askId;
   updateSelectableRows(promptReviewTaskBody, (row) => row.dataset.askId === state.selectedPromptReviewAskId);
   const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`);
-  renderPromptReview(detail);
+  if (state.selectedPromptReviewAskId === askId) renderPromptReview(detail);
 }
 
 function clearPromptReview() {
@@ -9204,7 +9272,7 @@ function renderAiControls(payload) {
     `Ask: ${counts.ask || 0} | Running: ${counts.running || 0} | Answer: ${counts.answer || 0}`;
   renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
   renderRows(queueRunningTableBody, payload.queue?.running || [], ["ask_id", "asset_id", "worker_type", "task_type"]);
-  renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id"]);
+  renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id", "recovery"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
   renderRows(recentHarvestTableBody, payload.recent_harvests || [], ["harvested_at", "ask_id", "task_type", "asset_id", "status", "details"]);
@@ -9776,6 +9844,10 @@ async function runBatchRenderReset() {
 }
 
 async function loadRenderConsoleTasks(preferredAskId = null) {
+  renderConsoleReviewPrompt.disabled = true;
+  renderConsoleSceneBuilder.disabled = true;
+  renderConsoleSaveImage.disabled = true;
+  renderConsoleFailTask.disabled = true;
   renderConsoleStatus.textContent = "Loading render tasks...";
   const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
   state.renderConsoleTasks = payload.tasks || [];
@@ -9807,9 +9879,13 @@ function renderRenderConsoleTaskTable() {
 
 async function selectRenderConsoleTask(askId) {
   state.selectedRenderConsoleAskId = askId;
+  renderConsoleReviewPrompt.disabled = true;
+  renderConsoleSceneBuilder.disabled = true;
+  renderConsoleSaveImage.disabled = true;
+  renderConsoleFailTask.disabled = true;
   updateSelectableRows(renderConsoleTaskBody, (row) => row.dataset.askId === state.selectedRenderConsoleAskId);
   const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`);
-  renderRenderConsoleDetail(detail);
+  if (state.selectedRenderConsoleAskId === askId) renderRenderConsoleDetail(detail);
 }
 
 function clearRenderConsole() {
@@ -10064,7 +10140,7 @@ async function selectLocalImageReviewTask(askId) {
   const detail = await fetchJson(
     `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`,
   );
-  renderLocalImageReviewDetail(detail);
+  if (state.selectedLocalImageReviewAskId === askId) renderLocalImageReviewDetail(detail);
 }
 
 function clearLocalImageReview() {

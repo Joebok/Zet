@@ -19,8 +19,12 @@ def _matching_asset(
     body_view: str,
     head_view: str | None = None,
     costume: str | None = None,
+    selected: dict | None = None,
 ):
+    matches = []
     for record in payload.get("assets", []):
+        if selected is not None and record.get("asset_id") != selected.get("source_asset_id"):
+            continue
         if record.get("pipeline") != pipeline:
             continue
         if record.get("asset_state") != "LOCKED" or record.get("pipeline_stage") != "LOCKED":
@@ -37,8 +41,16 @@ def _matching_asset(
         path = context.character_asset_path / final_image_output
         if not path.exists() or not path.is_file():
             continue
-        return record, path
-    return None, None
+        if selected is not None:
+            from pathlib import Path
+            selected_path = (context.path_service.resolve_path(str(selected.get("path") or ""))
+                             if context.path_service else Path(str(selected.get("path") or "")))
+            if path.resolve() != selected_path.resolve():
+                continue
+        matches.append((record, path))
+    if len(matches) > 1:
+        raise ValueError(f"Multiple locked {pipeline} images match this view. Select a source reference explicitly.")
+    return matches[0] if matches else (None, None)
 
 
 def run(asset, context) -> WorkerResult:
@@ -51,12 +63,13 @@ def run(asset, context) -> WorkerResult:
             error_message=f"Expected Character-Assembly, got {asset.pipeline}.",
         )
 
-    assets_path, payload = _assets_payload(context)
+    _, payload = _assets_payload(context)
     body_record, body_path = _matching_asset(
         context,
         payload,
         pipeline="Body-Reference",
         body_view=asset.body_view,
+        selected=next((ref for ref in asset.reference_files if ref.get("role") == "body_reference"), None),
     )
     if body_record is None or body_path is None:
         return WorkerResult(
@@ -74,6 +87,7 @@ def run(asset, context) -> WorkerResult:
         pipeline="Head-Image",
         body_view=head_view,
         head_view=head_view,
+        selected=next((ref for ref in asset.reference_files if ref.get("role") == "head_image"), None),
     )
     if head_record is None or head_path is None:
         return WorkerResult(
@@ -106,24 +120,10 @@ def run(asset, context) -> WorkerResult:
         },
     ]
 
-    import json
-
-    for record in payload.get("assets", []):
-        if record.get("asset_id") == asset.asset_id:
-            record["reference_files"] = references
-            break
-    else:
-        return WorkerResult(
-            success=False,
-            message=f"Asset {asset.asset_id} not found in Assets.json.",
-            advance_stage=False,
-            error_code="ASSET_NOT_FOUND",
-            error_message=f"Asset {asset.asset_id} not found in {assets_path}.",
-        )
-    assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return WorkerResult(
         success=True,
         message=f"Resolved character-assembly references for Asset {asset.asset_id}.",
         output_files=[str(body_path), str(head_path)],
         advance_stage=True,
+        reference_files=references,
     )

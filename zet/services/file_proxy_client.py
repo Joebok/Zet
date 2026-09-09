@@ -184,19 +184,24 @@ class FileProxyClient:
         return True
 
     def answer_is_ready(self, answer: Path) -> bool:
+        return not self.answer_blocked_reason(answer)
+
+    def answer_blocked_reason(self, answer: Path) -> str:
         if (answer / "harvest_manifest.json").is_file():
-            return True
+            return ""
         try:
             job = json.loads((answer / "job.json").read_text(encoding="utf-8"))
             result = json.loads((answer / "proxy_result.json").read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):
-            return False
+            return "Job or result manifest is missing or invalid. Wait for transfer to complete; then retry harvest."
         producer_id = str(job.get("producer_id") or "")
         if producer_id and producer_id.casefold() != socket.gethostname().casefold():
-            return False
+            return "Answer belongs to another producer computer. Harvest it on that computer."
         if job.get("route_required") and not (self.route_root / f"{answer.name}.json").is_file():
-            return False
-        return self._inventory_complete(answer, result.get("output_files"))
+            return "Local route is missing. Restore its Zet_File_Proxy_State/Routes record before harvesting."
+        if not self._inventory_complete(answer, result.get("output_files")):
+            return "Output transfer is incomplete or its checksum does not match. Preserve the answer and retry transfer."
+        return ""
 
     def _localize_references(self, staging: Path, manifest: dict) -> dict[str, str]:
         references = manifest.get("reference_files")

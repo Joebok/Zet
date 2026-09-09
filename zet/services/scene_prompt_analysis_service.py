@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+import hashlib
 from pathlib import Path
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.services.ai_proxy_path_service import AIProxyPathService
+from zet.services.atomic_file_service import write_json_atomic
+from zet.services.workflow_storage import file_lock, supersede_task, task_state_path
 
 
 class ScenePromptAnalysisService:
@@ -20,11 +23,18 @@ class ScenePromptAnalysisService:
         self.story_service = story_service
         self.path_service = AIProxyPathService(config)
 
-    def queue(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
+    def queue(self, story_slug: str, scene_slug: str, render_target_id: str = "main", prompt_path: Path | None = None) -> dict:
+        pipeline = self.story_service.scene_pipeline_path(story_slug, scene_slug, render_target_id)
+        with file_lock(pipeline / "Prompt_Analysis.lock"):
+            return self._queue(story_slug, scene_slug, render_target_id, prompt_path)
+
+    def _queue(self, story_slug, scene_slug, render_target_id, prompt_path):
         target_id = str(render_target_id or "main").strip()
-        prompt_path = self.story_service.compile_scene_prompt(story_slug, scene_slug, target_id)
-        status = self.status(story_slug, scene_slug, target_id)
-        if status["pending"]:
+        prompt_path = prompt_path or self.story_service.compile_scene_prompt(story_slug, scene_slug, target_id)
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+        prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
+        status = self.status(story_slug, scene_slug, target_id, current_prompt_text=prompt_text)
+        if status["pending"] and status.get("prompt_sha256") == prompt_hash:
             return status
         result_path = Path(status["result_path"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -52,27 +62,78 @@ class ScenePromptAnalysisService:
             "story_slug": story_slug,
             "scene_slug": scene_slug,
             "render_target_id": target_id,
+            "source_prompt_sha256": prompt_hash,
             "ai_prompt_analysis_instructions_file": self.config.ai_prompt_analysis_instructions_file,
         }
         (ask_path / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         instructions = instructions_path.read_text(encoding="utf-8")
         (ask_path / self.PROMPT_FILE).write_text(
-            instructions.replace("{{FINAL_IMAGE_PROMPT}}", prompt_path.read_text(encoding="utf-8")), encoding="utf-8"
+            instructions.replace("{{FINAL_IMAGE_PROMPT}}", prompt_text), encoding="utf-8"
         )
-        self.path_service.file_proxy_client.publish(ask_path, ask_id, "ollama_generate")
-        return self.status(story_slug, scene_slug, target_id)
+        request_path = result_path.with_suffix(".request.json")
+        previous = json.loads(request_path.read_text(encoding="utf-8")) if request_path.is_file() else None
+        write_json_atomic(request_path, {"ask_id": ask_id, "prompt_sha256": prompt_hash})
+        try:
+            self.path_service.file_proxy_client.publish(ask_path, ask_id, "ollama_generate")
+        except Exception:
+            if not self.path_service.file_proxy_client.ready_path(ask_id).exists():
+                if previous is None:
+                    request_path.unlink(missing_ok=True)
+                else:
+                    write_json_atomic(request_path, previous)
+            raise
+        for path in self.path_service.task_paths("ask", "answer", "running"):
+            previous = self.path_service.read_ask_manifest(path)
+            if previous.get("task_type") == self.TASK_TYPE and previous.get("story_slug") == story_slug and previous.get("scene_slug") == scene_slug and str(previous.get("render_target_id") or "main") == target_id and previous.get("ask_id") != ask_id:
+                supersede_task(Path(self.config.base_ai_queue_path), path, "New prompt analysis requested")
+        return self.status(story_slug, scene_slug, target_id, current_prompt_text=prompt_text)
 
-    def status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
+    def status(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = "main",
+        *,
+        current_prompt_text: str | None = None,
+        pending: bool | None = None,
+        verify_current: bool = True,
+    ) -> dict:
         target_id = str(render_target_id or "main").strip()
         pipeline_path = self.story_service.scene_pipeline_path(story_slug, scene_slug, target_id)
         result_path = pipeline_path / self.RESULT_FILE
-        pending = self._has_pending(story_slug, scene_slug, target_id)
-        complete = result_path.is_file() and result_path.stat().st_size > 0 and not pending
-        return {"pending": pending, "complete": complete, "result_path": str(result_path), "render_target_id": target_id}
+        pending = self._has_pending(story_slug, scene_slug, target_id) if pending is None else pending
+        def metadata(path):
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return {}
+        request = metadata(result_path.with_suffix(".request.json"))
+        result = metadata(result_path.with_suffix(".result.json"))
+        prompt = pipeline_path / "Final_Image_Prompt.md"
+        if current_prompt_text is not None:
+            current_hash = hashlib.sha256(current_prompt_text.encode("utf-8")).hexdigest()
+        else:
+            current_hash = hashlib.sha256(prompt.read_text(encoding="utf-8").encode("utf-8")).hexdigest() if prompt.is_file() else ""
+        renderer = getattr(self.story_service, "story_render_service", None)
+        if verify_current and current_prompt_text is None and renderer is not None:
+            try:
+                current_prompt = renderer._compile(story_slug, scene_slug, target_id, allow_stale_dependencies=True,
+                                                   allow_incomplete_reference_descriptions=True)[-2]
+                current_hash = hashlib.sha256(current_prompt.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+            except Exception:
+                current_hash = ""  # Uncompilable current inputs cannot have a current analysis.
+        complete = bool(result_path.is_file() and result_path.stat().st_size > 0 and not pending and
+                        result.get("ask_id") == request.get("ask_id") and current_hash and
+                        result.get("prompt_sha256") == current_hash and result.get("status") == "SUCCESS")
+        return {"pending": pending, "complete": complete, "result_path": str(result_path), "render_target_id": target_id,
+                "prompt_sha256": request.get("prompt_sha256", ""), "error": result.get("error", ""),
+                "stale": bool(result_path.is_file() and not complete and not pending)}
 
     def pending_count(self, story_slug: str = "", scene_slug: str = "") -> int:
         count = 0
         for path in self.path_service.task_paths("ask", "answer", "running"):
+            if task_state_path(Path(self.config.base_ai_queue_path), "Superseded", path.name).exists():
+                continue
             if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():
                 continue
             manifest = self.path_service.read_ask_manifest(path)
@@ -87,13 +148,19 @@ class ScenePromptAnalysisService:
 
     def list_statuses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
         rows = []
+        pending_keys = self._pending_keys()
         for story in self.story_service.list_stories():
             if story_slug and story.slug != story_slug:
                 continue
             for scene in self.story_service.list_scenes(story.slug):
                 if scene_slug and scene.slug != scene_slug:
                     continue
-                status = self.status(story.slug, scene.slug)
+                status = self.status(
+                    story.slug,
+                    scene.slug,
+                    pending=(story.slug, scene.slug, "main") in pending_keys,
+                    verify_current=False,
+                )
                 if status["pending"] or status["complete"]:
                     rows.append({
                         "story_slug": story.slug,
@@ -104,15 +171,20 @@ class ScenePromptAnalysisService:
         return rows
 
     def _has_pending(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> bool:
+        return (story_slug, scene_slug, render_target_id) in self._pending_keys()
+
+    def _pending_keys(self) -> set[tuple[str, str, str]]:
+        keys: set[tuple[str, str, str]] = set()
         for path in self.path_service.task_paths("ask", "answer", "running"):
+            if task_state_path(Path(self.config.base_ai_queue_path), "Superseded", path.name).exists():
+                continue
             if (path / "harvest_manifest.json").exists() or not (path / "ask_manifest.json").exists():
                 continue
             manifest = self.path_service.read_ask_manifest(path)
-            if (
-                manifest.get("task_type") == self.TASK_TYPE
-                and manifest.get("story_slug") == story_slug
-                and manifest.get("scene_slug") == scene_slug
-                and str(manifest.get("render_target_id") or "main") == render_target_id
-            ):
-                return True
-        return False
+            if manifest.get("task_type") == self.TASK_TYPE:
+                keys.add((
+                    str(manifest.get("story_slug") or ""),
+                    str(manifest.get("scene_slug") or ""),
+                    str(manifest.get("render_target_id") or "main"),
+                ))
+        return keys

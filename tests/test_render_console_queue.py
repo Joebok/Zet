@@ -9,6 +9,7 @@ from AI_Manager import local_image_proxy_worker
 from zet.render_console.queue import RenderConsoleQueue
 from zet.app import ZetApp
 from zet.services.config_service import Config
+from tests.support.image_fixture import png_bytes
 
 
 class RenderConsoleQueueTests(unittest.TestCase):
@@ -47,12 +48,18 @@ class RenderConsoleQueueTests(unittest.TestCase):
             task = queue.get_task("Ask_Story_Test")
             self.assertEqual(task.to_dict()["display_label"], "FirstDay / At-the-Arch")
 
-            queue.write_answer_image(task, b"image bytes", "image/png")
+            queue.write_answer_image(task, png_bytes(), "image/png")
 
             self.assertFalse(target_path.exists())
             answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test"
-            self.assertEqual(b"image bytes", (answer_path / "At-the-Arch.png").read_bytes())
-            self.assertEqual(b"image bytes", (root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Story_Test" / "At-the-Arch.png").read_bytes())
+            self.assertEqual(png_bytes(), (answer_path / "At-the-Arch.png").read_bytes())
+            self.assertEqual([], queue.list_tasks())
+            self.assertIsNotNone(queue.get_task(task.ask_id))
+            self.assertEqual(answer_path, queue.write_answer_image(task, png_bytes(), "image/png"))
+            with self.assertRaises(FileExistsError):
+                queue.write_answer_image(task, png_bytes("blue"), "image/png")
+            with self.assertRaises(ValueError):
+                queue.write_answer_image(task, b"image bytes", "image/png")
 
     def test_harvester_applies_story_target_output_answer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

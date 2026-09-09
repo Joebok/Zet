@@ -3,6 +3,7 @@ import shutil
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from zet.models.ai_proxy import (
     AI_PROXY_PROTOCOL_VERSION,
@@ -23,6 +24,7 @@ from zet.services.chatgpt_prompt_contract import (
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
 from zet.services.prompt_artifact_service import PromptArtifactService
+from zet.services.workflow_storage import snapshot_manual_ask, subject_key, supersede_task
 
 
 class AIProxyServiceError(Exception):
@@ -83,22 +85,12 @@ class AIProxyService:
     def clear_asset_queue_items(self, asset) -> int:
         self._ensure_queue_dirs()
         removed = 0
-        asset_prefix = f"Ask_Asset_{asset.asset_id}_"
-
-        def remove_path(path: Path) -> None:
-            nonlocal removed
-            if path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
-                removed += 1
-            elif path.exists():
-                path.unlink(missing_ok=True)
-                removed += 1
-
-        for item in self.ai_proxy_path_service.task_paths("ask", "answer"):
+        key = ("asset", asset.character, asset.phase, str(asset.asset_id))
+        for item in self.ai_proxy_path_service.task_paths("ask", "answer", "running"):
             manifest = self._read_json_if_exists(item / "ask_manifest.json")
-            if manifest.get("asset_id") == asset.asset_id or item.name.startswith(asset_prefix):
-                remove_path(item)
-                self.ai_proxy_path_service.file_proxy_client.remove_route(item.name)
+            if subject_key(manifest) == key:
+                supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "Superseded by a new asset operation.")
+                removed += 1
 
         return removed
 
@@ -127,8 +119,9 @@ class AIProxyService:
     def _build_ask(self, asset) -> AIProxyAsk:
         """Build the queue ask appropriate for an asset's current pipeline stage."""
         stamp = self._timestamp_compact()
-        ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}"
-        attempt_id = f"{stamp}_{asset.asset_id}_{asset.pipeline_stage}"
+        token = uuid4().hex
+        ask_id = f"Ask_Asset_{asset.asset_id}_{asset.pipeline_stage}_{stamp}_{token}"
+        attempt_id = token
         if asset.pipeline == "Body-Reference" and asset.pipeline_stage == "RENDER":
             render_backend = self._render_backend()
             if render_backend == "manual_chatgpt":
@@ -189,14 +182,19 @@ class AIProxyService:
 
     def _create_ask_folder(self, ask_id: str, worker_type: str) -> Path:
         if worker_type == "manual_chatgpt_render":
-            path = self.ai_proxy_path_service.manual_ask_path(ask_id)
+            path = self.ai_proxy_path_service.manual_ask_path(f".{ask_id}.staging")
             path.mkdir(parents=True, exist_ok=False)
             return path
         return self.ai_proxy_path_service.file_proxy_client.create_staging(ask_id)
 
     def _publish_ask_folder(self, path: Path, ask_id: str, worker_type: str) -> Path:
         if worker_type == "manual_chatgpt_render":
-            return path
+            ready = self.ai_proxy_path_service.manual_ask_path(ask_id)
+            manifest = self._read_json_if_exists(path / "ask_manifest.json")
+            if not manifest.get("render_bundle_hash"):
+                snapshot_manual_ask(path, ready, manifest, self.path_service.resolve_path)
+            path.rename(ready)
+            return ready
         return self.ai_proxy_path_service.file_proxy_client.publish(path, ask_id, worker_type)
 
     def _manifest_payload(self, ask: AIProxyAsk) -> dict:
@@ -322,6 +320,10 @@ class AIProxyService:
         )
 
     def stage_current_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
+        with self.asset_repository.transaction(character, phase):
+            return self._stage_current_ai_ask(character, phase, asset_id)
+
+    def _stage_current_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
         """Write an AI queue ask for the asset's current AI_AGENT stage."""
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.actor != "AI_AGENT":
@@ -341,14 +343,31 @@ class AIProxyService:
 
         prompt_path = ask_path / ask.prompt_file
         self._write_text_atomic(prompt_path, self._prompt_contents(asset))
+        if ask.worker_type == "manual_chatgpt_render":
+            snapshot_manual_ask(ask_path, self.ai_proxy_path_service.manual_ask_path(ask.ask_id),
+                                self._read_json_if_exists(manifest_path), self.path_service.resolve_path)
         updated_asset = replace(asset)
         updated_asset.ai_state = "ASKED"
+        updated_asset.active_attempt_id = ask.ollama_attempt_id
         updated_asset.last_ai_update = f"AI ask staged: {ask.ask_id} ({ask.ollama_attempt_id})"
         updated_asset.updated_at = self._timestamp()
 
         self.asset_repository.save_asset(updated_asset)
-        self.housekeeping_service.prepare_stage(updated_asset)
-        return self._publish_ask_folder(ask_path, ask.ask_id, ask.worker_type)
+        try:
+            self.housekeeping_service.prepare_stage(updated_asset)
+            published = self._publish_ask_folder(ask_path, ask.ask_id, ask.worker_type)
+        except Exception:
+            ready = (self.ai_proxy_path_service.manual_ask_path(ask.ask_id) if ask.worker_type == "manual_chatgpt_render"
+                     else self.ai_proxy_path_service.file_proxy_client.ready_path(ask.ask_id))
+            if not ready.exists():
+                self.asset_repository.save_asset(replace(asset, revision=updated_asset.revision))
+            raise
+        for item in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
+            manifest = self._read_json_if_exists(item / "ask_manifest.json")
+            if (item.name != ask.ask_id and subject_key(manifest) == subject_key(self._manifest_payload(ask))
+                    and not manifest.get("auxiliary")):
+                supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "A newer render attempt was staged.")
+        return published
 
     def _prompt_condense_enabled(self) -> bool:
         return bool(getattr(self.path_service.config, "prompt_condense_enabled", False))
@@ -441,19 +460,22 @@ class AIProxyService:
             if (ask_path / "harvest_manifest.json").exists():
                 continue
             if (
-                manifest.get("asset_id") == asset.asset_id
+                subject_key(manifest) == ("asset", asset.character, asset.phase, str(asset.asset_id))
                 and manifest.get("task_type") == task_type
                 and manifest.get("auxiliary") is True
             ):
-                shutil.rmtree(ask_path, ignore_errors=True)
+                supersede_task(Path(self.path_service.config.base_ai_queue_path), ask_path, "A newer auxiliary attempt was staged.")
 
     def _has_pending_auxiliary_task(self, asset, task_type: str) -> bool:
         for ask_path in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
+            from zet.services.workflow_storage import task_state_path
+            if task_state_path(Path(self.path_service.config.base_ai_queue_path), "Superseded", ask_path.name).exists():
+                continue
             manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
             if (ask_path / "harvest_manifest.json").exists():
                 continue
             if (
-                manifest.get("asset_id") == asset.asset_id
+                subject_key(manifest) == ("asset", asset.character, asset.phase, str(asset.asset_id))
                 and manifest.get("task_type") == task_type
                 and manifest.get("auxiliary") is True
             ):
@@ -966,10 +988,26 @@ class AIProxyService:
                     "asset_id": payload.get("asset_id"),
                     "status": payload.get("status"),
                     "worker_id": payload.get("worker_id"),
+                    "recovery": self._read_json_if_exists(answer_path / "harvest_error.json").get("message", ""),
                     "task_type": ask_payload.get("task_type"),
                     "source_ask_id": ask_payload.get("source_ask_id"),
                     "ollama_attempt_id": payload.get("ollama_attempt_id"),
                 }
             )
 
+        for root in (self.ai_proxy_path_service.answer_root(), self.ai_proxy_path_service.manual_answer_root()):
+            if not root.exists():
+                continue
+            known = {item["ask_id"] for item in snapshot["answer"]}
+            for path in root.iterdir():
+                if not path.is_dir() or path.name in known or (path / "harvest_manifest.json").exists():
+                    continue
+                reason = ("Interrupted publication. Original task is preserved; retry the image upload."
+                          if path.name.startswith(".") else
+                          self.ai_proxy_path_service.file_proxy_client.answer_blocked_reason(path)
+                          if root == self.ai_proxy_path_service.answer_root() else
+                          "Answer manifest missing. Original task is preserved; retry the image upload.")
+                if reason:
+                    snapshot["answer"].append({"ask_id": path.name, "asset_id": None, "status": "RECOVERY_NEEDED",
+                                               "worker_id": "", "recovery": reason})
         return snapshot

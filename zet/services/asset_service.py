@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from functools import wraps
+import hashlib
+import json
+from uuid import uuid4
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
@@ -14,6 +18,16 @@ from zet.services.path_service import PathService
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
+from zet.services.workflow_storage import atomic_copy
+from zet.services.atomic_file_service import write_json_atomic
+
+
+def serialized_asset(method):
+    @wraps(method)
+    def operation(self, character, phase, *args, **kwargs):
+        with self.asset_repository.transaction(character, phase):
+            return method(self, character, phase, *args, **kwargs)
+    return operation
 
 VALID_ACTORS = {"PYTHON", "AI_AGENT", "HUMAN_AGENT"}
 MISSING_REFERENCE_ERROR_CODES = {
@@ -159,23 +173,36 @@ class AssetService:
             "Image_Review.md",
         ]
         for name in generated_files:
-            (output_dir / name).unlink(missing_ok=True)
+            source = output_dir / name
+            if source.is_file():
+                backup = self.path_service.character_backup_path(asset.character, asset.phase) / f"Asset_{asset.asset_id}_generated_{uuid4().hex}"
+                backup.mkdir(parents=True, exist_ok=True)
+                source.rename(backup / source.name)
 
         local_render_dir = output_dir / "Local_Test_Renders"
         if local_render_dir.exists():
-            shutil.rmtree(local_render_dir, ignore_errors=True)
+            backup = self.path_service.character_backup_path(asset.character, asset.phase) / f"Asset_{asset.asset_id}_local_{uuid4().hex}"
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            local_render_dir.rename(backup)
 
     def _clear_regeneration_outputs(self, asset: Asset) -> None:
         pipeline_path = self.path_service.pipeline_path(asset)
         if pipeline_path.exists():
-            shutil.rmtree(pipeline_path, ignore_errors=True)
+            destination = self.path_service.character_backup_path(asset.character, asset.phase) / f"Asset_{asset.asset_id}_{uuid4().hex}"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            pipeline_path.rename(destination)
         self._clear_body_reference_generated_artifacts(asset)
         self.ai_proxy_service.clear_asset_queue_items(asset)
 
+    @serialized_asset
     def move_next(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.pipeline_stage == "ERROR":
             raise AssetServiceError(f"Asset {asset_id} is in ERROR stage and cannot move next")
+        if asset.actor == "AI_AGENT":
+            raise AssetServiceError("Wait for an AI answer or retry the render; AI stages cannot be advanced manually.")
+        if asset.pipeline_stage == "RENDER_REVIEW":
+            raise AssetServiceError("Review the candidate and use Promote, Keep Locked, or Discard to continue.")
 
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         next_stage = self.state_machine.next_stage(pipeline, asset.pipeline_stage)
@@ -209,12 +236,15 @@ class AssetService:
         return self.housekeeping_service.prepare_stage(asset)
 
     def _clear_render_outputs(self, asset: Asset) -> None:
+        backup = self.path_service.character_backup_path(asset.character, asset.phase) / f"Asset_{asset.asset_id}_render_{uuid4().hex}"
         for path in (
             self.path_service.candidate_image_path(asset),
             self.path_service.pipeline_path(asset) / "LOCAL_RENDER_METADATA.json",
             self.render_review_comment_path(asset),
         ):
-            path.unlink(missing_ok=True)
+            if path.is_file():
+                backup.mkdir(parents=True, exist_ok=True)
+                path.rename(backup / path.name)
 
     def render_review_comment_path(self, asset: Asset) -> Path:
         """Return the render-review comment sidecar path for an asset."""
@@ -299,6 +329,7 @@ class AssetService:
             for asset, skip_message in candidates
         ]
 
+    @serialized_asset
     def reset_pipeline_assets_to_render(
         self,
         character: str,
@@ -382,6 +413,7 @@ class AssetService:
 
         return results
 
+    @serialized_asset
     def regenerate(self, character: str, phase: str, asset_id: int, clear_references: bool = False) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
@@ -395,6 +427,9 @@ class AssetService:
         updated_asset = replace(asset)
         updated_asset.asset_state = "IN_PROGRESS"
         updated_asset.pipeline_stage = "MANIFEST"
+        updated_asset.active_attempt_id = None
+        updated_asset.applied_attempt_id = None
+        updated_asset.last_ai_update = None
         updated_asset.actor = manifest_actor
         updated_asset.ai_state = "ASKED" if manifest_actor == "AI_AGENT" else None
         updated_asset.error_code = None
@@ -411,7 +446,8 @@ class AssetService:
         self.regenerate(character, phase, asset_id)
         return self.run_current_worker_chain(character, phase, asset_id)
 
-    def promote_to_locked(self, character: str, phase: str, asset_id: int) -> Asset:
+    @serialized_asset
+    def promote_to_locked(self, character: str, phase: str, asset_id: int, replace_existing: bool = False) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         candidate_image_path = self.path_service.candidate_image_path(asset)
         locked_image_path = self.path_service.locked_image_path(asset)
@@ -419,15 +455,29 @@ class AssetService:
         if not candidate_image_path.exists():
             raise AssetServiceError("Cannot promote: candidate image does not exist.")
 
+        digest = hashlib.sha256(candidate_image_path.read_bytes()).hexdigest()
+        journal_path = self.path_service.pipeline_path(asset) / "Promotion.json"
+        journal = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.exists() else {}
+        if asset.pipeline_stage == "LOCKED" and journal.get("image_sha256") == digest:
+            self.housekeeping_service.prepare_stage(asset)
+            return asset
+        if asset.pipeline_stage != "RENDER_REVIEW" or asset.actor != "HUMAN_AGENT":
+            raise AssetServiceError("Promotion requires RENDER_REVIEW / HUMAN_AGENT.")
+        if locked_image_path.exists() and not replace_existing and journal.get("image_sha256") != digest:
+            raise AssetServiceError("A locked image already exists. Confirm replacement before promoting.")
+
         locked_image_path.parent.mkdir(parents=True, exist_ok=True)
-        if locked_image_path.exists():
+        if journal.get("image_sha256") != digest and locked_image_path.exists():
             backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_name = f"{locked_image_path.stem}.backup.{backup_suffix}{locked_image_path.suffix}"
             backup_dir = self.path_service.character_backup_path(character, phase)
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(locked_image_path, backup_dir / backup_name)
+            journal = {"backup": str(backup_dir / backup_name)}
 
-        shutil.copy2(candidate_image_path, locked_image_path)
+        journal.update({"image_sha256": digest, "status": "PREPARED"})
+        write_json_atomic(journal_path, journal)
+        atomic_copy(candidate_image_path, locked_image_path)
 
         updated_asset = replace(asset)
         updated_asset.asset_state = "LOCKED"
@@ -440,8 +490,10 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
+        write_json_atomic(journal_path, {**journal, "status": "COMMITTED"})
         return updated_asset
 
+    @serialized_asset
     def discard_candidate(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         candidate_image_path = self.path_service.candidate_image_path(asset)
@@ -470,6 +522,7 @@ class AssetService:
         self.housekeeping_service.prepare_stage(updated_asset)
         return updated_asset
 
+    @serialized_asset
     def keep_locked(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         locked_image_path = self.path_service.locked_image_path(asset)
@@ -497,6 +550,7 @@ class AssetService:
     def regenerate_and_clear_references(self, character: str, phase: str, asset_id: int) -> Asset:
         return self.regenerate(character, phase, asset_id, clear_references=True)
 
+    @serialized_asset
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.pipeline_stage != "RENDER_REVIEW" or asset.actor != "HUMAN_AGENT":
@@ -524,6 +578,7 @@ class AssetService:
             self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
         return self.asset_repository.get_asset(character, phase, asset_id)
 
+    @serialized_asset
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
         if asset.actor != "PYTHON":

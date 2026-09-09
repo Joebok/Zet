@@ -39,7 +39,7 @@ class RepositoryJsonStorageTests(unittest.TestCase):
 
 
 
-    def test_asset_codec_applies_defaults_and_drops_unknown_replaced_fields(self) -> None:
+    def test_asset_codec_applies_defaults_and_preserves_unknown_replaced_fields(self) -> None:
         self.character_dir.mkdir(parents=True)
         path = self.character_dir / "Assets.json"
         path.write_text(
@@ -64,7 +64,7 @@ class RepositoryJsonStorageTests(unittest.TestCase):
         self.asset_repository.save_asset(asset)
 
         payload = json.loads(path.read_text(encoding="utf-8"))
-        self.assertNotIn("future_field", payload["assets"][0])
+        self.assertEqual("preserved only until replacement", payload["assets"][0]["future_field"])
         self.assertTrue(payload["future_top_level"])
         self.assertTrue(list((self.character_dir / "_backup").glob("Assets.backup.*.json")))
         self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))

@@ -478,6 +478,17 @@ test("@desktop-smoke Scene Builder interview applies locally without saving", as
   await page.locator("#scene-builder-interview-narrative").fill("A concise scene description.");
   await page.locator("#scene-builder-interview-next").click();
   await expect(page.locator("#scene-builder-interview-apply")).toBeVisible();
+  // A completed interview survives both reopening and a full page reload.
+  await page.evaluate(() => document.querySelector("#scene-builder-interview-modal").close());
+  await page.getByRole("button", { name: "Interview", exact: true }).click();
+  await expect(page.locator("#scene-builder-interview-narrative")).toHaveValue("A concise scene description.");
+  await expect(page.locator("#scene-builder-interview-apply")).toBeVisible();
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.evaluate(() => window.activatePage("scenes", { skipAutosave: true }));
+  await page.locator("#scene-builder-open").click();
+  await page.getByRole("button", { name: "Interview", exact: true }).click();
+  await expect(page.locator("#scene-builder-interview-apply")).toBeVisible();
   await page.locator("#scene-builder-interview-apply").click();
 
   await expect(page.locator('[data-builder-field="scene.story_beat"]')).toHaveValue("Interview draft beat");

@@ -52,6 +52,8 @@ class ManualRenderSubmissionService:
         return task
 
     def replace_prompt(self, task: ManualRenderTask, prompt: str) -> Path:
+        if task.manifest.get("render_bundle_hash") or (task.ask_path / "submission.json").exists():
+            raise ValueError("This prompt belongs to a staged render bundle. Recompile to create a new render attempt.")
         path = task.ask_path / task.prompt_file
         path.write_text(prompt, encoding="utf-8")
         return path

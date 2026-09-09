@@ -64,3 +64,13 @@ def write_json_atomic(path: Path, data: dict, timeout_seconds: float = 15.0) -> 
         json.dumps(data, indent=2, ensure_ascii=False) + "\n",
         timeout_seconds,
     )
+
+
+def write_bytes_atomic(path: Path, contents: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp.{uuid4().hex}")
+    try:
+        temporary.write_bytes(contents)
+        replace_with_retry(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)

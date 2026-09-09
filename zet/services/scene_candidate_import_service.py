@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from zet.models.scene_candidate import SceneCandidate, SceneCandidateImportResult, SceneCandidateSource
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.story_cast_service import StoryCastService
+from zet.services.workflow_storage import file_lock
 
 
 class SceneCandidateImportError(Exception):
@@ -573,6 +574,12 @@ class SceneCandidateImportService:
         }
 
     def import_candidate(self, source_key: str, candidate_id: str, story_slug: str, confirm_update: bool = False) -> SceneCandidateImportResult:
+        root = self.story_service.path_service.story_pipeline_path(self.story_service.safe_slug(story_slug), "_Imports")
+        # Reserve a target before creating any scene files so retries reuse a partial import.
+        with file_lock(root / "Imports.lock"):
+            return self._import_candidate(source_key, candidate_id, story_slug, confirm_update, root)
+
+    def _import_candidate(self, source_key, candidate_id, story_slug, confirm_update, root):
         candidate = self.get_candidate(source_key, candidate_id)
         if any("Duplicate Candidate ID" in warning for warning in candidate.warnings):
             raise SceneCandidateImportError("Duplicate Candidate ID must be fixed before import.")
@@ -580,6 +587,9 @@ class SceneCandidateImportService:
         if not any(story.slug == story_slug for story in self.story_service.list_stories()):
             raise SceneCandidateImportError(f"Target story does not exist: {story_slug}")
         imported = self._imported_scenes().get((source_key, candidate_id))
+        key = hashlib.sha256(json.dumps([source_key, candidate_id]).encode("utf-8")).hexdigest()
+        reservation_path = root / f"{key}.json"
+        reservation = json.loads(reservation_path.read_text(encoding="utf-8")) if reservation_path.is_file() else {}
         created = imported is None
         if imported:
             imported_story, scene_slug, existing = imported
@@ -603,7 +613,9 @@ class SceneCandidateImportService:
             base_slug = self.story_service.safe_slug(candidate.title)
             scene_slug = base_slug
             existing_slugs = {scene.slug for scene in self.story_service.list_scenes(story_slug)}
-            if scene_slug in existing_slugs:
+            if reservation.get("scene_slug"):
+                scene_slug = reservation["scene_slug"]
+            elif scene_slug in existing_slugs:
                 suffix = self.story_service.safe_slug(candidate.session or candidate.candidate_id)
                 scene_slug = self.story_service.safe_slug(f"{base_slug}-{suffix}")
                 counter = 2
@@ -611,9 +623,18 @@ class SceneCandidateImportService:
                     scene_slug = self.story_service.safe_slug(f"{base_slug}-{suffix}-{counter}")
                     counter += 1
             create_title = candidate.title if scene_slug == base_slug else scene_slug.replace("-", " ")
-            created_document = self.story_service.create_scene(story_slug, create_title)
-            scene_slug = created_document.record.slug
+            write_json_atomic(reservation_path, {"scene_slug": scene_slug, "source_key": source_key, "candidate_id": candidate_id})
+            if scene_slug not in existing_slugs:
+                created_document = self.story_service.create_scene(story_slug, create_title)
+                scene_slug = created_document.record.slug
         data = self._candidate_data(candidate, story_slug, scene_slug)
+        current = self.story_service.load_scene_builder_data(story_slug, scene_slug)
+        if current.blocked:
+            raise SceneCandidateImportError(current.error or "Existing scene is blocked; recover it before importing.")
+        data["_revision"] = current.data.get("_revision", 0)
+        if imported:
+            # Confirmed source replacement remains recoverable, including hand-edited layout.
+            write_json_atomic(root / f"{key}.before-reimport.{data['_revision']}.json", current.data)
         document = self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
         readiness = self.readiness(document.data)
         return SceneCandidateImportResult(

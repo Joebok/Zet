@@ -23,17 +23,6 @@ def _identity_key_record(payload: dict, identity_key_id: str) -> dict | None:
     return None
 
 
-def _assets_payload(context) -> tuple[Path, dict]:
-    """Load the character phase Assets.json payload."""
-    assets_path = context.character_path / "Assets.json"
-    if not assets_path.exists():
-        raise ValueError(f"Assets.json not found: {assets_path}")
-    payload = json.loads(assets_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("assets"), list):
-        raise ValueError(f"Assets.json is malformed: {assets_path}")
-    return assets_path, payload
-
-
 def _resolve_reference_path(path_text: str) -> Path:
     """Resolve a stored project-relative or absolute reference path."""
     path = Path(path_text)
@@ -103,23 +92,10 @@ def run(asset, context) -> WorkerResult:
         }
     ]
 
-    assets_path, assets_payload = _assets_payload(context)
-    for record in assets_payload.get("assets", []):
-        if record.get("asset_id") == asset.asset_id:
-            record["reference_files"] = references
-            break
-    else:
-        return WorkerResult(
-            success=False,
-            message=f"Asset {asset.asset_id} not found in Assets.json.",
-            advance_stage=False,
-            error_code="ASSET_NOT_FOUND",
-            error_message=f"Asset {asset.asset_id} not found in {assets_path}.",
-        )
-    assets_path.write_text(json.dumps(assets_payload, indent=2) + "\n", encoding="utf-8")
     return WorkerResult(
         success=True,
         message=f"Resolved Identity Key reference for Asset {asset.asset_id}.",
         output_files=[str(image_path)],
         advance_stage=True,
+        reference_files=references,
     )

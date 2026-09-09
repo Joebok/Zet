@@ -1,4 +1,5 @@
 import json
+from tests.support.image_fixture import png_bytes
 import tempfile
 import unittest
 from pathlib import Path
@@ -481,7 +482,7 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 "zet.services.comfyui_render_service._request_json",
                 side_effect=[submitted, history],
             ),
-            patch("zet.services.comfyui_render_service._request_bytes", return_value=b"png"),
+            patch("zet.services.comfyui_render_service._request_bytes", return_value=png_bytes()),
             patch("zet.services.comfyui_render_service._upload_comfyui_input") as upload,
         ):
             reference_files = [{"path": "reference.png", "comfyui_input_name": "Zet/hash/reference.png"}]
@@ -496,8 +497,9 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
 
             upload.assert_called_once_with("http://127.0.0.1:8188", reference_files[0])
             self.assertEqual("prompt-1", result.prompt_id)
-            self.assertEqual(Path(temp_dir) / "unsafe.png", result.image_paths[0])
-            self.assertEqual(b"png", result.image_paths[0].read_bytes())
+            self.assertEqual(Path(temp_dir), result.image_paths[0].parent)
+            self.assertTrue(result.image_paths[0].name.endswith("_1_unsafe.png"))
+            self.assertEqual(png_bytes(), result.image_paths[0].read_bytes())
 
     def test_upload_stages_reference_in_requested_subfolder(self) -> None:
         response = MagicMock()
@@ -642,7 +644,7 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
             self.assertEqual(0.45, adapter["inputs"]["weight"])
 
     def test_run_reports_validation_error(self) -> None:
-        with patch(
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
             "zet.services.comfyui_render_service._request_json",
             return_value={"node_errors": {"1": "bad checkpoint"}},
         ):
@@ -650,11 +652,11 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 run_comfyui_workflow(
                     {},
                     server_url="http://127.0.0.1:8188",
-                    output_dir=Path("."),
+                    output_dir=Path(temp_dir),
                 )
 
     def test_run_reports_execution_error(self) -> None:
-        with patch(
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
             "zet.services.comfyui_render_service._request_json",
             side_effect=[
                 {"prompt_id": "prompt-1"},
@@ -665,13 +667,13 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 run_comfyui_workflow(
                     {},
                     server_url="http://127.0.0.1:8188",
-                    output_dir=Path("."),
+                    output_dir=Path(temp_dir),
                     poll_seconds=0,
                     timeout_seconds=1,
                 )
 
     def test_run_times_out(self) -> None:
-        with patch(
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
             "zet.services.comfyui_render_service._request_json",
             return_value={"prompt_id": "prompt-1"},
         ):
@@ -679,7 +681,7 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 run_comfyui_workflow(
                     {},
                     server_url="http://127.0.0.1:8188",
-                    output_dir=Path("."),
+                    output_dir=Path(temp_dir),
                     timeout_seconds=0,
                 )
 

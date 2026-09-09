@@ -1,4 +1,5 @@
 import json
+from tests.support.image_fixture import png_bytes
 import tempfile
 import unittest
 from pathlib import Path
@@ -284,12 +285,12 @@ class WebAppTests(unittest.TestCase):
             saved = client.post(
                 "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
                 params={"render_comment": "First render has strong silhouette."},
-                content=b"image bytes",
+                content=png_bytes(),
                 headers={"content-type": "image/png"},
             )
             self.assertEqual(saved.status_code, 200)
             self.assertEqual(saved.json()["status"], "SUCCESS")
-            self.assertFalse(ask_path.exists())
+            self.assertTrue((ask_path / "submission.json").exists())
             answer_path = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Asset_1_RENDER_TEST"
             self.assertTrue((answer_path / "front.png").exists())
             self.assertEqual(

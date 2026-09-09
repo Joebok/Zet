@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import wraps
+import hashlib
 import json
-import os
 from pathlib import Path
-import shutil
-import tempfile
 
 from zet.models.story import SceneImageReviewStatus
 from zet.services.scene_render_target_service import SceneRenderTargetService
+from zet.services.workflow_storage import atomic_copy, file_lock
+from zet.services.atomic_file_service import write_json_atomic
+
+
+def serialized_review(method):
+    @wraps(method)
+    def run(self, story_slug, scene_slug, *args, **kwargs):
+        # Serialize all targets in a scene, including review comments and re-locks.
+        path = self.path_service.story_pipeline_path(*self._slugs(story_slug, scene_slug))
+        with file_lock(path / "Scene_Review.lock"):
+            return method(self, story_slug, scene_slug, *args, **kwargs)
+    return run
 
 
 class SceneImageReviewError(Exception):
@@ -35,29 +46,8 @@ class SceneImageReviewService:
         suffix = "" if render_target_id == "main" else f":{render_target_id}"
         return f"scene:{story_slug}:{scene_slug}{suffix}"
 
-    @staticmethod
-    def _atomic_copy(source: Path, target: Path) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
-        os.close(descriptor)
-        temporary_path = Path(temporary_name)
-        try:
-            shutil.copy2(source, temporary_path)
-            temporary_path.replace(target)
-        finally:
-            temporary_path.unlink(missing_ok=True)
-
-    @staticmethod
-    def _write_json(path: Path, data: dict) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        os.close(descriptor)
-        temporary_path = Path(temporary_name)
-        try:
-            temporary_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-            temporary_path.replace(path)
-        finally:
-            temporary_path.unlink(missing_ok=True)
+    _atomic_copy = staticmethod(atomic_copy)
+    _write_json = staticmethod(write_json_atomic)
 
     def status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
@@ -78,6 +68,7 @@ class SceneImageReviewService:
         if target_id != "main":
             if target_service.definition(document.data, target_id) is None:
                 raise SceneImageReviewError(f"Scene subscene not found: {target_id}")
+        if locked_path.is_file():
             try:
                 current_hash = self.story_service.story_render_service._compile(safe_story, safe_scene, target_id)[-1]
                 freshness = target_service.freshness(safe_story, safe_scene, target_id, current_hash)
@@ -123,6 +114,7 @@ class SceneImageReviewService:
                         rows.append(target_status)
         return rows
 
+    @serialized_review
     def save_comment(self, story_slug: str, scene_slug: str, comment: str, render_target_id: str = "main") -> str:
         status = self.status(story_slug, scene_slug, render_target_id)
         if not status.candidate_exists:
@@ -138,6 +130,11 @@ class SceneImageReviewService:
 
     def apply_answer(self, answer_path: Path, response_path: Path, ask_manifest: dict) -> tuple[str, Path]:
         safe_story, safe_scene = self._slugs(ask_manifest.get("story_slug"), ask_manifest.get("scene_slug"))
+        with file_lock(self.path_service.story_pipeline_path(safe_story, safe_scene) / "Scene_Review.lock"):
+            return self._apply_answer(answer_path, response_path, ask_manifest)
+
+    def _apply_answer(self, answer_path: Path, response_path: Path, ask_manifest: dict) -> tuple[str, Path]:
+        safe_story, safe_scene = self._slugs(ask_manifest.get("story_slug"), ask_manifest.get("scene_slug"))
         target_id = str(ask_manifest.get("render_target_id") or "main").strip()
         paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
         answer_manifest_path = answer_path / "answer_manifest.json"
@@ -146,63 +143,99 @@ class SceneImageReviewService:
         except (OSError, json.JSONDecodeError) as exc:
             raise SceneImageReviewError(f"Invalid scene answer manifest: {answer_manifest_path}") from exc
 
-        disposition = str(answer_manifest.get("scene_image_disposition") or "").strip().lower()
-        if disposition not in {"locked", "candidate"}:
-            locked = paths["locked"]
-            candidate = paths["candidate"]
-            disposition = "locked" if not locked.is_file() and not candidate.is_file() else "candidate"
-            answer_manifest["scene_image_disposition"] = disposition
-            answer_manifest["scene_image_review_key"] = self.review_key(safe_story, safe_scene, target_id)
+        # Every response has an immutable recovery copy, independent of the current candidate.
+        attempt = str(ask_manifest.get("ask_id") or answer_path.name)
+        attempt_key = hashlib.sha256(attempt.encode("utf-8")).hexdigest()
+        pipeline = self.target_service.pipeline_path(safe_story, safe_scene, target_id)
+        history = pipeline / "Render_Attempts" / attempt_key
+        archived_image = history / response_path.name
+        if not archived_image.is_file():
+            atomic_copy(response_path, archived_image)
+        write_json_atomic(history / "ask_manifest.json", ask_manifest)
+        active_path = pipeline / "Active_Render.json"
+        active = json.loads(active_path.read_text(encoding="utf-8")) if active_path.is_file() else {}
+        if active and active.get("ask_id") != attempt:
+            answer_manifest.update(scene_image_applied=True, scene_image_disposition="stale")
             self._write_json(answer_manifest_path, answer_manifest)
+            return "stale", archived_image
+        if answer_manifest.get("scene_image_applied"):
+            return str(answer_manifest.get("scene_image_disposition") or "candidate"), archived_image
 
-        target = (
-            paths["locked"]
-            if disposition == "locked"
-            else paths["candidate"]
-        )
-        if not bool(answer_manifest.get("scene_image_applied")):
-            self._atomic_copy(response_path, target)
-            comment = str(answer_manifest.get("render_comment") or "").strip()
-            comment_path = paths["comment"]
-            if disposition == "candidate":
-                if comment:
-                    comment_path.parent.mkdir(parents=True, exist_ok=True)
-                    comment_path.write_text(comment + "\n", encoding="utf-8")
-                else:
-                    comment_path.unlink(missing_ok=True)
-            else:
-                comment_path.unlink(missing_ok=True)
-            metadata_path = paths["metadata"] if disposition == "locked" else paths["candidate"].with_suffix(".render.json")
-            self._write_json(metadata_path, {
-                "story_slug": safe_story,
-                "scene_slug": safe_scene,
-                "render_target_id": target_id,
-                "render_input_hash": str(ask_manifest.get("render_input_hash") or ""),
-                "locked_at": datetime.now().isoformat(timespec="seconds") if disposition == "locked" else "",
-            })
-            answer_manifest["scene_image_applied"] = True
-            self._write_json(answer_manifest_path, answer_manifest)
+        disposition = "candidate"
+        # Preserve the previous candidate and provenance before installing another.
+        if paths["candidate"].is_file():
+            previous = hashlib.sha256(paths["candidate"].read_bytes()).hexdigest()
+            atomic_copy(paths["candidate"], pipeline / "Render_Attempts" / previous / "candidate.png")
+            old_metadata = paths["candidate"].with_suffix(".render.json")
+            if old_metadata.is_file():
+                atomic_copy(old_metadata, pipeline / "Render_Attempts" / previous / "candidate.render.json")
+        answer_manifest["scene_image_disposition"] = disposition
+        answer_manifest["scene_image_review_key"] = self.review_key(safe_story, safe_scene, target_id)
+
+        target = paths["candidate"]
+        self._atomic_copy(response_path, target)
+        comment = str(answer_manifest.get("render_comment") or "").strip()
+        comment_path = paths["comment"]
+        if comment:
+            comment_path.parent.mkdir(parents=True, exist_ok=True)
+            comment_path.write_text(comment + "\n", encoding="utf-8")
+        else:
+            comment_path.unlink(missing_ok=True)
+        self._write_json(target.with_suffix(".render.json"), {
+            "ask_id": attempt,
+            "image_sha256": hashlib.sha256(response_path.read_bytes()).hexdigest(),
+            "render_bundle_hash": str(ask_manifest.get("render_bundle_hash") or ""),
+            "story_slug": safe_story,
+            "scene_slug": safe_scene,
+            "render_target_id": target_id,
+            "render_input_hash": str(ask_manifest.get("render_input_hash") or ""),
+            "locked_at": "",
+        })
+        answer_manifest["scene_image_applied"] = True
+        self._write_json(answer_manifest_path, answer_manifest)
         return disposition, target
 
+    @serialized_review
     def promote(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
         target_id = str(render_target_id or "main").strip()
         paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
         candidate, locked = paths["candidate"], paths["locked"]
+        journal_path = self.target_service.pipeline_path(safe_story, safe_scene, target_id) / "Promotion.json"
+        journal = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.is_file() else {}
         if not candidate.is_file():
+            if journal.get("status") == "COMMITTED" and locked.is_file() and journal.get("image_sha256") == hashlib.sha256(locked.read_bytes()).hexdigest():
+                return self.status(safe_story, safe_scene, target_id)
             raise SceneImageReviewError("Scene has no candidate image to promote.")
-        if locked.is_file():
+        candidate_metadata = candidate.with_suffix(".render.json")
+        # Parse provenance before touching either image. A malformed sidecar is recoverable.
+        try:
+            metadata = json.loads(candidate_metadata.read_text(encoding="utf-8"))
+            if not isinstance(metadata, dict):
+                raise ValueError("Expected an object")
+        except (OSError, ValueError) as exc:
+            raise SceneImageReviewError("Candidate provenance is missing or invalid; candidate was preserved.") from exc
+        renderer = getattr(self.story_service, "story_render_service", None)
+        if renderer is not None:
+            current_hash = renderer._compile(safe_story, safe_scene, target_id)[-1]
+            if metadata.get("render_input_hash") != current_hash:
+                raise SceneImageReviewError("Candidate is out of date. Render the current scene before promoting.")
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        if metadata.get("image_sha256") and metadata["image_sha256"] != digest:
+            raise SceneImageReviewError("Candidate image and provenance do not match. Retry harvesting its answer before promotion.")
+        if locked.is_file() and journal.get("image_sha256") != digest:
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup = paths["backups"] / f"{safe_scene}_{target_id}_{stamp}.png"
             self._atomic_copy(locked, backup)
+            if paths["metadata"].is_file():
+                self._atomic_copy(paths["metadata"], backup.with_suffix(".render.json"))
+        self._write_json(journal_path, {"status": "PREPARED", "image_sha256": digest})
         self._atomic_copy(candidate, locked)
+        metadata["locked_at"] = datetime.now().isoformat(timespec="seconds")
+        self._write_json(paths["metadata"], metadata)
+        self._write_json(journal_path, {"status": "COMMITTED", "image_sha256": digest})
         candidate.unlink()
-        candidate_metadata = candidate.with_suffix(".render.json")
-        if candidate_metadata.is_file():
-            metadata = json.loads(candidate_metadata.read_text(encoding="utf-8"))
-            metadata["locked_at"] = datetime.now().isoformat(timespec="seconds")
-            self._write_json(paths["metadata"], metadata)
-            candidate_metadata.unlink()
+        candidate_metadata.unlink()
         paths["comment"].unlink(missing_ok=True)
         try:
             candidate.parent.rmdir()
@@ -210,6 +243,7 @@ class SceneImageReviewService:
             pass
         return self.status(safe_story, safe_scene, target_id)
 
+    @serialized_review
     def relock_current(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
         target_id = str(render_target_id or "main").strip()
@@ -238,6 +272,7 @@ class SceneImageReviewService:
         self._write_json(paths["metadata"], metadata)
         return self.status(safe_story, safe_scene, target_id)
 
+    @serialized_review
     def discard(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
         target_id = str(render_target_id or "main").strip()

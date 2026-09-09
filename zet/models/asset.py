@@ -31,4 +31,7 @@ class Asset:
     scene_appearance: Optional[str] = None
     scene_appearance_definition_path: Optional[str] = None
     assembly_style_mode: str = "MATCHED_STYLE"
+    revision: int = 0
+    active_attempt_id: Optional[str] = None
+    applied_attempt_id: Optional[str] = None
 

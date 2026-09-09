@@ -4,6 +4,9 @@ import copy
 from datetime import datetime
 import json
 from pathlib import Path
+from uuid import uuid4
+from zet.services.workflow_storage import atomic_copy, file_lock, snapshot_manual_ask
+from zet.services.atomic_file_service import write_json_atomic
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.models.reference import reference_files_payload
@@ -177,6 +180,11 @@ class StoryRenderService:
         render_target_id: str = MAIN_RENDER_TARGET,
         allow_stale_dependencies: bool = False,
     ):
+        pipeline = self.story.path_service.story_pipeline_path(self.story.safe_slug(story_slug), self.story.safe_slug(scene_slug))
+        with file_lock(pipeline / "Scene_Review.lock"):
+            return self._stage_scene_render(story_slug, scene_slug, render_target_id, allow_stale_dependencies)
+
+    def _stage_scene_render(self, story_slug, scene_slug, render_target_id, allow_stale_dependencies):
         story = self.story
         safe_story_slug = story.safe_slug(story_slug)
         safe_scene_slug = story.safe_slug(scene_slug)
@@ -231,10 +239,10 @@ class StoryRenderService:
         })
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        story._clear_scene_render_queue_items(safe_story_slug, safe_scene_slug, target_id)
         target_token = "" if target_id == MAIN_RENDER_TARGET else f"_{target_id}"
-        ask_id = f"Ask_Story_{safe_story_slug}_{safe_scene_slug}{target_token}_RENDER_{stamp}"
-        ask_path = Path(story.path_service.config.base_ai_queue_path) / "Manual_Render_Queue" / "Ask" / ask_id
+        ask_id = f"Ask_Story_{safe_story_slug}_{safe_scene_slug}{target_token}_RENDER_{stamp}_{uuid4().hex}"
+        ready_path = Path(story.path_service.config.base_ai_queue_path) / "Manual_Render_Queue" / "Ask" / ask_id
+        ask_path = ready_path.with_name(f".{ask_id}.staging")
         ask_path.mkdir(parents=True, exist_ok=False)
         expected_output = f"{safe_scene_slug}.png" if target_id == MAIN_RENDER_TARGET else f"{target_id}.png"
         target_paths = story.scene_render_target_service.review_paths(safe_story_slug, safe_scene_slug, target_id)
@@ -254,9 +262,29 @@ class StoryRenderService:
         }
         story._write_json(ask_path / "ask_manifest.json", manifest)
         (ask_path / "Final_Image_Prompt.md").write_text(prompt, encoding="utf-8")
+        manifest = snapshot_manual_ask(ask_path, ready_path, manifest, story.path_service.resolve_path)
+        for artifact in artifacts:
+            if artifact != "Final_Image_Prompt.md":
+                atomic_copy(pipeline_path / artifact, ask_path / artifact)
+        active = {"ask_id": ask_id, "attempt_id": manifest["ollama_attempt_id"], "render_input_hash": render_input_hash,
+                  "render_bundle_hash": manifest["render_bundle_hash"], "ask_path": str(ready_path)}
+        active_path = pipeline_path / "Active_Render.json"
+        previous_active = json.loads(active_path.read_text(encoding="utf-8")) if active_path.is_file() else None
+        write_json_atomic(active_path, active)
+        try:
+            ask_path.rename(ready_path)
+        except Exception:
+            if not ready_path.exists():
+                if previous_active is None:
+                    active_path.unlink(missing_ok=True)
+                else:
+                    write_json_atomic(active_path, previous_active)
+            raise
+        ask_path = ready_path
+        story._clear_scene_render_queue_items(safe_story_slug, safe_scene_slug, target_id, exclude_ask_id=ask_id)
         return self.render_task_type(
             story_slug=safe_story_slug, scene_slug=safe_scene_slug, ask_id=ask_id, ask_path=str(ask_path),
             pipeline_path=str(pipeline_path), final_prompt_path=str(final_prompt_path),
-            expected_output=expected_output, reference_files=references,
+            expected_output=expected_output, reference_files=manifest["reference_files"],
             render_target_id=target_id,
         )

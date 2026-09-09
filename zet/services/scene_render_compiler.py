@@ -230,7 +230,7 @@ def _scene_image_inputs(ir: dict[str, Any]) -> list[dict[str, Any]]:
         records.append(source)
     for reference in _items(ir.get("references")):
         tag = _clean(reference.get("tag"))
-        if not tag or tag in seen:
+        if not tag:
             continue
         seen.add(tag)
         element_id = _clean(reference.get("applies_to_element_id"))
@@ -264,7 +264,16 @@ def _scene_image_inputs(ir: dict[str, Any]) -> list[dict[str, Any]]:
             "notes": _clean(reference.get("notes")),
         })
         records.append(source)
-    return build_image_inputs(records, render_mode=ir["render_mode"])
+    # Attach each image once, but retain every role/element assignment.
+    by_tag = {}
+    for record in records:
+        tag = record["tag"]
+        assignment = {key: record.get(key) for key in ("applies_to", "prompt_role", "preserve", "change", "ignore", "notes")}
+        if tag not in by_tag:
+            by_tag[tag] = {**record, "assignments": []}
+        if assignment not in by_tag[tag]["assignments"]:
+            by_tag[tag]["assignments"].append(assignment)
+    return build_image_inputs(by_tag.values(), render_mode=ir["render_mode"])
 
 
 def validate_scene_render_ir(ir: dict[str, Any]) -> None:

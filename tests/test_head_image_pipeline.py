@@ -169,8 +169,19 @@ class DirectAssemblyHeadImageDefaultTests(unittest.TestCase):
             result = character_assembly_manifest_worker.run(Asset(**records[2]), context)
             self.assertTrue(result.success)
             saved = json.loads((character_path / "Assets.json").read_text(encoding="utf-8"))["assets"][2]
-            self.assertEqual([item["role"] for item in saved["reference_files"]], ["body_reference", "head_image"])
-            self.assertEqual(saved["reference_files"][1]["source_asset_id"], 2)
+            self.assertEqual(saved["reference_files"], [])
+            self.assertEqual([item["role"] for item in result.reference_files], ["body_reference", "head_image"])
+            self.assertEqual(result.reference_files[1]["source_asset_id"], 2)
+            other = asset_path / "Head-Image_Front_other.png"
+            other.write_bytes(b"other head")
+            records.append({**records[1], "asset_id": 4, "final_image_output": other.name})
+            (character_path / "Assets.json").write_text(json.dumps({"assets": records}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Select a source reference"):
+                character_assembly_manifest_worker.run(Asset(**records[2]), context)
+            selected = Asset(**records[2])
+            selected.reference_files = [{"role": "head_image", "source_asset_id": 4, "path": str(other)}]
+            result = character_assembly_manifest_worker.run(selected, context)
+            self.assertEqual(4, result.reference_files[1]["source_asset_id"])
 
 
 if __name__ == "__main__":

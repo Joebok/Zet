@@ -83,6 +83,12 @@ def render_preview(
         or "core_txt2img_scene_preview"
     )
     server_url = str(config.get("ServerURL") or "http://127.0.0.1:8188")
+    render_dir = job_output_dir / str(profile.get("output_subdir") or "Local_Test_Renders")
+    submission_path = render_dir / "ComfyUI_Submission.json"
+    pending = json.loads(submission_path.read_text(encoding="utf-8")) if submission_path.is_file() else {}
+    debug_path = job_output_dir / "ComfyUI_Compilation_Debug.json"
+    if pending.get("status") == "PENDING" and debug_path.is_file() and str(selected_seed).lower() == "random":
+        selected_seed = json.loads(debug_path.read_text(encoding="utf-8"))["seed"]
 
     ir: dict[str, Any] | None = None
     ir_hash = ""
@@ -126,6 +132,10 @@ def render_preview(
         )
 
     workflow_path = job_output_dir / "ComfyUI_Workflow_API.json"
+    if pending.get("status") == "PENDING":
+        fingerprint = hashlib.sha256(json.dumps(compilation.workflow, sort_keys=True).encode("utf-8")).hexdigest()
+        if pending.get("workflow_sha256") != fingerprint:
+            raise LocalRenderError("Pending ComfyUI render inputs changed. Restore the previous settings to recover it; its artifacts are preserved.")
     debug_path = job_output_dir / "ComfyUI_Compilation_Debug.json"
     pose_path = job_output_dir / "ComfyUI_Pose_Layout_Control.json"
     _write_json(workflow_path, compilation.workflow)

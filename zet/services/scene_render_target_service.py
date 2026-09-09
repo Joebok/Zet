@@ -145,8 +145,6 @@ class SceneRenderTargetService:
     def freshness(self, story_slug: str, scene_slug: str, target_id: str, current_hash: str) -> dict:
         paths = self.review_paths(story_slug, scene_slug, target_id)
         locked_exists = paths["locked"].is_file()
-        if target_id == MAIN_RENDER_TARGET:
-            return {"locked_exists": locked_exists, "locked_current": locked_exists, "stale_reason": ""}
         stored_hash = ""
         if paths["metadata"].is_file():
             try:

@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION, AIProxyAskManifest
 from zet.repositories.asset_repository import AssetRepository, AssetRepositoryError
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
 from zet.services.path_service import PathService
+from zet.services.atomic_file_service import write_json_atomic
+from zet.services.workflow_storage import file_lock, task_state_path, validate_image
 
 
 MANUAL_CHATGPT_WORKER_TYPE = "manual_chatgpt_render"
@@ -137,7 +141,11 @@ class RenderConsoleQueue:
         if not self.ask_root.exists():
             return []
         tasks: list[ManualRenderTask] = []
-        for ask_path in sorted(path for path in self.ask_root.iterdir() if path.is_dir()):
+        for ask_path in sorted(path for path in self.ask_root.iterdir() if path.is_dir() and not path.name.startswith(".")):
+            if ((ask_path / "submission.json").exists()
+                    or task_state_path(Path(self.config.base_ai_queue_path), "Superseded", ask_path.name).exists()
+                    or (self.answer_root / ask_path.name / "answer_manifest.json").is_file()):
+                continue
             task = self._task_from_ask_path(ask_path)
             if task is not None:
                 tasks.append(task)
@@ -145,6 +153,11 @@ class RenderConsoleQueue:
         return tasks
 
     def get_task(self, ask_id: str) -> ManualRenderTask | None:
+        if Path(ask_id).name == ask_id:
+            for root in (self.ask_root, self.answer_root):
+                path = root / ask_id
+                if (path / "ask_manifest.json").is_file():
+                    return self._task_from_ask_path(path)
         for task in self.list_tasks():
             if task.ask_id == ask_id or task.ask_path.name == ask_id:
                 return task
@@ -158,23 +171,12 @@ class RenderConsoleQueue:
 
     def write_answer_image(self, task: ManualRenderTask, image_bytes: bytes, content_type: str = "", render_comment: str = "") -> Path:
         """Write a successful manual render answer and optional review comment."""
-        if not image_bytes:
-            raise ValueError("No image data was provided.")
+        validate_image(image_bytes)
         if not task.expected_output:
             raise ValueError(f"Task {task.ask_id} has no expected_output.")
 
-        self.answer_root.mkdir(parents=True, exist_ok=True)
-        answer_path = self.answer_root / task.ask_path.name
-        if answer_path.exists():
-            raise FileExistsError(f"Answer folder already exists: {answer_path}")
-
-        shutil.copytree(task.ask_path, answer_path)
-        output_path = answer_path / task.expected_output
-        output_path.write_bytes(image_bytes)
         target_output = str(task.manifest.get("target_output_file") or "").strip()
         comment = str(render_comment or "").strip()
-        if comment:
-            (answer_path / "Render_Review_Comment.md").write_text(comment + "\n", encoding="utf-8")
 
         completed_at = self._timestamp()
         answer_manifest = {
@@ -193,21 +195,11 @@ class RenderConsoleQueue:
             "content_type": content_type,
             "render_comment": comment,
             "target_output_file": target_output,
+            "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
         }
-        (answer_path / "answer_manifest.json").write_text(
-            json.dumps(answer_manifest, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        shutil.rmtree(task.ask_path)
-        return answer_path
+        return self._publish_answer(task, answer_manifest, image_bytes)
 
     def write_failed_answer(self, task: ManualRenderTask, reason: str = "") -> Path:
-        self.answer_root.mkdir(parents=True, exist_ok=True)
-        answer_path = self.answer_root / task.ask_path.name
-        if answer_path.exists():
-            raise FileExistsError(f"Answer folder already exists: {answer_path}")
-
-        shutil.copytree(task.ask_path, answer_path)
         completed_at = self._timestamp()
         message = reason.strip() or "Manual ChatGPT render failed from Render Console."
         answer_manifest = {
@@ -224,9 +216,30 @@ class RenderConsoleQueue:
             "error_type": "MANUAL_RENDER_FAILED",
             "error_message": message,
         }
-        (answer_path / "answer_manifest.json").write_text(
-            json.dumps(answer_manifest, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        shutil.rmtree(task.ask_path)
-        return answer_path
+        return self._publish_answer(task, answer_manifest)
+
+    def _publish_answer(self, task: ManualRenderTask, manifest: dict, image_bytes: bytes | None = None) -> Path:
+        if Path(task.expected_output).name != task.expected_output:
+            raise ValueError("Expected output must be a filename.")
+        lock = task_state_path(Path(self.config.base_ai_queue_path), "Locks", task.ask_id)
+        with file_lock(lock):
+            self.answer_root.mkdir(parents=True, exist_ok=True)
+            answer_path = self.answer_root / task.ask_id
+            if answer_path.exists():
+                previous = self._read_json_if_exists(answer_path / "answer_manifest.json")
+                same = all(previous.get(key) == manifest.get(key) for key in (
+                    "status", "image_sha256", "render_comment", "error_message",
+                ))
+                if previous and same:
+                    return answer_path
+                raise FileExistsError("A different or incomplete answer already exists; it has been preserved for recovery.")
+            staging = self.answer_root / f".{task.ask_id}.{uuid4().hex}.staging"
+            shutil.copytree(task.ask_path, staging)
+            if image_bytes is not None:
+                (staging / task.expected_output).write_bytes(image_bytes)
+            if manifest.get("render_comment"):
+                (staging / "Render_Review_Comment.md").write_text(manifest["render_comment"] + "\n", encoding="utf-8")
+            write_json_atomic(staging / "answer_manifest.json", manifest)
+            staging.rename(answer_path)
+            write_json_atomic(task.ask_path / "submission.json", {"answer_path": str(answer_path)})
+            return answer_path

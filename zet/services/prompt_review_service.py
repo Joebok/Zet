@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-import shutil
 
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
@@ -222,15 +221,22 @@ class PromptReviewService:
             raise ValueError(str(exc)) from exc
         if not result.success:
             raise ValueError(result.error_message or result.message)
+        if result.reference_files is not None:
+            from dataclasses import replace
+            self.asset_repository.save_asset(replace(asset, reference_files=result.reference_files))
         return self.get_context(character, phase, asset_id)
 
     def _clear_review_aids(self, prompt_path: Path) -> None:
+        from uuid import uuid4
+        backup = prompt_path.parent / "Review_History" / uuid4().hex
         condensed_prompt = prompt_path.parent / "Condensed_Image_Prompt.md"
         if condensed_prompt.exists():
-            condensed_prompt.unlink()
+            backup.mkdir(parents=True, exist_ok=True)
+            condensed_prompt.rename(backup / condensed_prompt.name)
         local_render_dir = prompt_path.parent / "Local_Test_Renders"
         if local_render_dir.exists() and local_render_dir.is_dir():
-            shutil.rmtree(local_render_dir)
+            backup.mkdir(parents=True, exist_ok=True)
+            local_render_dir.rename(backup / local_render_dir.name)
 
     def generate_local_test_render(self, character: str, phase: str, asset_id: int) -> LocalRenderResult:
         context = self.get_context(character, phase, asset_id)

@@ -12,7 +12,7 @@ def run(asset, context) -> WorkerResult:
             error_message=f"Expected Costume-Dressing, got {asset.pipeline}.",
         )
 
-    assets_path, payload = _assets_payload(context)
+    _, payload = _assets_payload(context)
     head_view = asset.head_view or asset.body_view
     assembled_record, assembled_path = _matching_asset(
         context,
@@ -20,6 +20,7 @@ def run(asset, context) -> WorkerResult:
         pipeline="Character-Assembly",
         body_view=asset.body_view,
         head_view=head_view,
+        selected=next((ref for ref in asset.reference_files if ref.get("role") == "character_assembly"), None),
     )
     if assembled_record is None or assembled_path is None:
         return WorkerResult(
@@ -41,24 +42,10 @@ def run(asset, context) -> WorkerResult:
         }
     ]
 
-    import json
-
-    for record in payload.get("assets", []):
-        if record.get("asset_id") == asset.asset_id:
-            record["reference_files"] = references
-            break
-    else:
-        return WorkerResult(
-            success=False,
-            message=f"Asset {asset.asset_id} not found in Assets.json.",
-            advance_stage=False,
-            error_code="ASSET_NOT_FOUND",
-            error_message=f"Asset {asset.asset_id} not found in {assets_path}.",
-        )
-    assets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return WorkerResult(
         success=True,
         message=f"Resolved costume-dressing reference for Asset {asset.asset_id}.",
         output_files=[str(assembled_path)],
         advance_stage=True,
+        reference_files=references,
     )

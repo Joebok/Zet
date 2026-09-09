@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from zet.models.ai_proxy import AIProxyAnswerManifest, AIProxyAskManifest
 from zet.services.config_service import Config
 from zet.services.file_proxy_client import FileProxyClient
+from zet.services.workflow_storage import task_state_path
 
 
 class AIProxyPathService:
@@ -58,12 +59,17 @@ class AIProxyPathService:
                     path for path in root.iterdir()
                     if path.is_dir() and not path.name.startswith(".")
                 )
+                if state == "ask":
+                    paths = [path for path in paths if not (path / "submission.json").exists()
+                             and not task_state_path(Path(self.config.base_ai_queue_path), "Superseded", path.name).exists()]
                 if state == "answer" and root == self.answer_root():
                     paths = [
                         path
                         for path in paths
                         if self.file_proxy_client.answer_is_ready(path)
                     ]
+                if state == "answer" and root == self.manual_answer_root():
+                    paths = [path for path in paths if (path / "answer_manifest.json").is_file()]
                 yield from paths
 
     @staticmethod

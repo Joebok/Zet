@@ -51,7 +51,7 @@ class SceneImageReviewServiceTests(unittest.TestCase):
         }
         return answer, response, manifest
 
-    def test_first_answer_locks_and_later_answers_replace_candidate(self):
+    def test_every_answer_requires_review_and_previous_candidates_are_preserved(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             service = SceneImageReviewService(_StoryService(root))
@@ -61,9 +61,10 @@ class SceneImageReviewServiceTests(unittest.TestCase):
 
             answer, response, manifest = self._answer(root, "answer-1", b"locked")
             disposition, target = service.apply_answer(answer, response, manifest)
-            self.assertEqual(disposition, "locked")
+            self.assertEqual(disposition, "candidate")
             self.assertEqual(target.read_bytes(), b"locked")
-            self.assertFalse(service.status("story", "scene").candidate_exists)
+            self.assertTrue(service.status("story", "scene").candidate_exists)
+            self.assertFalse(service.status("story", "scene").locked_exists)
 
             answer, response, manifest = self._answer(root, "answer-2", b"candidate-1", "compare this")
             disposition, target = service.apply_answer(answer, response, manifest)
@@ -75,6 +76,8 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             service.apply_answer(answer, response, manifest)
             self.assertEqual(service.status("story", "scene").comment, "")
             self.assertEqual(target.read_bytes(), b"candidate-2")
+            history = service.path_service.story_pipeline_path("story", "scene") / "Render_Attempts"
+            self.assertTrue(any(path.read_bytes() == b"candidate-1" for path in history.rglob("*.png")))
 
 
 
@@ -88,6 +91,7 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             candidate.parent.mkdir(parents=True)
             locked.write_bytes(b"old")
             candidate.write_bytes(b"new")
+            candidate.with_suffix(".render.json").write_text("{}", encoding="utf-8")
 
             service.promote("story", "scene")
             self.assertEqual(locked.read_bytes(), b"new")
@@ -107,14 +111,13 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             service = SceneImageReviewService(_StoryService(root))
             answer, response, manifest = self._answer(root, "answer", b"first")
             service.apply_answer(answer, response, manifest)
-            service.path_service.scene_locked_image_path("story", "scene").unlink()
-            service.path_service.scene_candidate_image_path("story", "scene").parent.mkdir(parents=True)
+            service.path_service.scene_candidate_image_path("story", "scene").parent.mkdir(parents=True, exist_ok=True)
             service.path_service.scene_candidate_image_path("story", "scene").write_bytes(b"other")
 
             disposition, target = service.apply_answer(answer, response, manifest)
-            self.assertEqual(disposition, "locked")
-            self.assertEqual(target, service.path_service.scene_locked_image_path("story", "scene"))
-            self.assertFalse(target.exists())
+            self.assertEqual(disposition, "candidate")
+            self.assertEqual(b"first", target.read_bytes())
+            self.assertEqual(b"other", service.path_service.scene_candidate_image_path("story", "scene").read_bytes())
 
     def test_subscene_answers_use_independent_paths_and_provenance(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -125,13 +128,13 @@ class SceneImageReviewServiceTests(unittest.TestCase):
 
             disposition, target = service.apply_answer(answer, response, manifest)
 
-            self.assertEqual("locked", disposition)
+            self.assertEqual("candidate", disposition)
             self.assertEqual(
-                service.path_service.scene_subscene_locked_path("story", "scene", "background"),
+                service.path_service.scene_subscene_candidate_path("story", "scene", "background"),
                 target,
             )
             metadata = json.loads(
-                service.path_service.scene_subscene_locked_metadata_path("story", "scene", "background").read_text(encoding="utf-8")
+                target.with_suffix(".render.json").read_text(encoding="utf-8")
             )
             self.assertEqual("hash-1", metadata["render_input_hash"])
             self.assertFalse(service.path_service.scene_locked_image_path("story", "scene").exists())

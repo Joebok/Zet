@@ -11,6 +11,7 @@ from zet.repositories.json_storage import (
     write_json_atomic,
 )
 from zet.services.path_service import PathService
+from zet.services.workflow_storage import file_lock
 
 
 class AssetRepositoryError(Exception):
@@ -32,6 +33,9 @@ class AssetRepository:
     def _backup_dir(self, character: str, phase: str) -> Path:
         """Return the backup folder for asset writes."""
         return self.path_service.character_backup_path(character, phase)
+
+    def transaction(self, character: str, phase: str):
+        return file_lock(self._assets_json_path(character, phase).with_suffix(".lock"))
 
     def _load_payload(self, character: str, phase: str) -> dict:
         """Load the raw asset storage payload."""
@@ -102,6 +106,12 @@ class AssetRepository:
         self.save_assets([asset])
 
     def save_assets(self, assets: list[Asset]) -> None:
+        if not assets:
+            return
+        with self.transaction(assets[0].character, assets[0].phase):
+            self._save_assets(assets)
+
+    def _save_assets(self, assets: list[Asset]) -> None:
         """Replace existing asset records in one storage write."""
         if not assets:
             return
@@ -125,7 +135,11 @@ class AssetRepository:
                 raise AssetRepositoryError("Each asset record in Assets.json must be an object")
             asset_id = record.get("asset_id")
             if asset_id in replacements:
-                updated_records.append(replacements[asset_id])
+                replacement = replacements[asset_id]
+                if int(record.get("revision", 0)) != replacement["revision"]:
+                    raise AssetRepositoryError(f"Asset {asset_id} changed. Reload it before saving.")
+                replacement["revision"] += 1
+                updated_records.append({**record, **replacement})
                 found.add(asset_id)
             else:
                 updated_records.append(record)
@@ -136,12 +150,20 @@ class AssetRepository:
 
         payload["assets"] = updated_records
         self._write_payload(character, phase, payload)
+        for asset in assets:
+            asset.revision = replacements[asset.asset_id]["revision"]
 
     def create_asset(self, asset: Asset) -> Asset:
         """Append a new asset and advance next_asset_id."""
         return self.create_assets([asset])[0]
 
     def create_assets(self, assets: list[Asset]) -> list[Asset]:
+        if not assets:
+            return []
+        with self.transaction(assets[0].character, assets[0].phase):
+            return self._create_assets(assets)
+
+    def _create_assets(self, assets: list[Asset]) -> list[Asset]:
         """Append assets and advance next_asset_id in one storage write."""
         if not assets:
             return []
