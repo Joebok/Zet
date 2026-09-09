@@ -456,6 +456,20 @@ test("render console labels references in attachment order", async ({ page }) =>
   await expect(titles.nth(1)).toHaveText("Image 2 — subject_reference — Hero");
 });
 
+test("render console captures optional refinement telemetry", async ({ page }) => {
+  await openPage(page, "render-console");
+  const checkbox = page.locator("#render-console-refinement-required");
+  const fields = page.locator("#render-console-refinement-fields");
+  await expect(checkbox).not.toBeChecked();
+  await expect(fields).toBeHidden();
+  await checkbox.check();
+  await expect(fields).toBeVisible();
+  await page.locator("#render-console-refinement-count").fill("3");
+  await page.locator("#render-console-refinement-note").fill("Corrected orientation.");
+  await checkbox.uncheck();
+  await expect(fields).toBeHidden();
+});
+
 test("@desktop-smoke Scene Builder interview applies locally without saving", async ({ page }) => {
   await openPage(page, "scenes");
   await page.locator("#scene-builder-open").click();

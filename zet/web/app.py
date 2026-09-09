@@ -20,6 +20,7 @@ from zet.services.character_phase_discovery_service import CharacterPhaseDiscove
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
+from zet.services.manual_render_metrics_service import ManualRenderMetricsService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
@@ -3105,6 +3106,14 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/render-console/refinement-metrics")
+    def render_console_refinement_metrics() -> dict[str, Any]:
+        """Summarize explicit refinement telemetry from manual ChatGPT renders."""
+        try:
+            return ManualRenderMetricsService(ConfigService.load(app.state.config_path)).summary()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/render-console/tasks/{ask_id}")
     def render_console_task_detail(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Return one manual render task for the selected character phase."""
@@ -3302,6 +3311,9 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         ask_id: str,
         request: Request,
         render_comment: str = Query("", max_length=10000),
+        refinement_required: bool = Query(False),
+        additional_image_generations: int = Query(0, ge=0, le=10000),
+        refinement_note: str = Query("", max_length=2000),
         character: str = Query(""),
         phase: str = Query(""),
     ) -> dict[str, Any]:
@@ -3314,7 +3326,15 @@ def create_app(config_path: str | Path = "config.toml") -> FastAPI:
         image_bytes = await request.body()
         content_type = request.headers.get("content-type", "")
         try:
-            answer_path = service.submit_image(task, image_bytes, content_type, render_comment)
+            answer_path = service.submit_image(
+                task,
+                image_bytes,
+                content_type,
+                render_comment,
+                refinement_required,
+                additional_image_generations,
+                refinement_note,
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         review = None

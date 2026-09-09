@@ -6,6 +6,23 @@
 
 ---
 
+## 2026-09-09 — ChatGPT Images 2.5 Addendum
+
+ChatGPT Images 2.5 strengthens the preservation, precise-editing, and multi-turn behavior this plan targets. Zet now identifies newly compiled manual-render artifacts with engine profile `chatgpt_images_2_5_v1`; existing 2.0 artifacts remain historical and are not migrated.
+
+Zet's `render_mode` is an internal image-authority contract, not an OpenAI API field. The supported values remain `generate`, `edit`, and `composite`. A future repair attempt will remain an `edit` and carry separate attempt lineage instead of adding a fourth render mode.
+
+The current V2 prompt text remains the initial 2.5 baseline. Preservation and orientation constraints will not be removed based on the release announcement alone: OpenAI's 2.5 prompting guidance recommends testing unchanged prompts and complete edit sequences, and warns that repeated edits can still change details intended to remain fixed.
+
+Manual final-image submission now records whether follow-up image generations were needed, how many additional images were generated, and an optional process note. These immutable answer records provide first-pass and refinement statistics before Zet commits to guided or automatic repair prompts. Dashboard metrics begin with the 2.5 rollout on 2026-09-09; missing telemetry encountered from that date forward is reported as unknown, while older 2.0 artifacts remain untouched and outside the live dashboard scan. Flare/Sunburst selection remains out of scope while production rendering is performed manually in ChatGPT rather than through the Images or Responses API.
+
+Official references:
+
+- https://developers.openai.com/api/docs/guides/image-prompting
+- https://developers.openai.com/api/docs/guides/image-generation
+
+---
+
 ## 1. Executive Summary
 
 The existing Zet image pipeline has a strong architectural foundation: deterministic Python compilation, explicit source maps, versioned prompt templates, typed pipeline stages, reference manifests, human image review, and scene IR. Those pieces should be preserved.

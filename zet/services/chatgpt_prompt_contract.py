@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 CHATGPT_PROMPT_SCHEMA_VERSION = 2
-CHATGPT_ENGINE_PROFILE = "chatgpt_images_2_0_v1"
+CHATGPT_ENGINE_PROFILE = "chatgpt_images_2_5_v1"
 
 IMAGE_INPUT_ROLES = {
     "edit_base",

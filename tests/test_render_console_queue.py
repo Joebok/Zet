@@ -9,10 +9,54 @@ from AI_Manager import local_image_proxy_worker
 from zet.render_console.queue import RenderConsoleQueue
 from zet.app import ZetApp
 from zet.services.config_service import Config
+from zet.services.manual_render_submission_service import ManualRenderSubmissionService
 from tests.support.image_fixture import png_bytes
 
 
 class RenderConsoleQueueTests(unittest.TestCase):
+
+    def test_manual_submission_validates_and_persists_refinement_telemetry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Test"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text(json.dumps({
+                "ask_id": "Ask_Test",
+                "worker_type": "manual_chatgpt_render",
+                "prompt_file": "Final_Image_Prompt.md",
+                "expected_output": "image.png",
+            }), encoding="utf-8")
+            (ask_path / "Final_Image_Prompt.md").write_text("prompt\n", encoding="utf-8")
+            queue = RenderConsoleQueue(Config(
+                base_library_path=str(root),
+                base_character_path=str(root / "Characters"),
+                base_asset_path=str(root / "Assets"),
+                base_pipeline_path=str(root / "Pipelines"),
+                base_ai_queue_path=str(root / "Queue"),
+            ))
+            service = ManualRenderSubmissionService(queue)
+            task = service.get_task("Ask_Test")
+
+            with self.assertRaisesRegex(ValueError, "at least 1"):
+                service.submit_image(task, png_bytes(), refinement_required=True)
+            with self.assertRaisesRegex(ValueError, "require the refinement checkbox"):
+                service.submit_image(task, png_bytes(), refinement_note="changed pose")
+
+            answer_path = service.submit_image(
+                task,
+                png_bytes(),
+                "image/png",
+                refinement_required=True,
+                additional_image_generations=2,
+                refinement_note="Changed pose.",
+            )
+            manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual({
+                "schema_version": 1,
+                "required": True,
+                "additional_image_generations": 2,
+                "note": "Changed pose.",
+            }, manifest["chatgpt_refinement"])
 
     def test_write_answer_image_defers_story_target_output_to_harvester(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

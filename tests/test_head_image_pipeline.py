@@ -65,7 +65,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                     self.assertEqual(["edit_base"], [item["prompt_role"] for item in manifest["resources"]])
                     self.assertEqual([str(source)], [item["path"] for item in manifest["resources"]])
                     self.assertEqual(2, manifest["prompt_schema_version"])
-                    self.assertEqual("chatgpt_images_2_0_v1", manifest["engine_profile"])
+                    self.assertEqual("chatgpt_images_2_5_v1", manifest["engine_profile"])
                     self.assertEqual("edit", manifest["render_mode"])
 
 

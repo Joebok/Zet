@@ -64,8 +64,37 @@ class ManualRenderSubmissionService:
         image_bytes: bytes,
         content_type: str = "",
         render_comment: str = "",
+        refinement_required: bool = False,
+        additional_image_generations: int = 0,
+        refinement_note: str = "",
     ) -> Path:
-        return self.queue.write_answer_image(task, image_bytes, content_type, render_comment)
+        note = str(refinement_note or "").strip()
+        if not isinstance(refinement_required, bool):
+            raise ValueError("Refinement required must be a boolean.")
+        if isinstance(additional_image_generations, bool) or not isinstance(additional_image_generations, int):
+            raise ValueError("Additional image generations must be an integer.")
+        if additional_image_generations < 0 or additional_image_generations > 10000:
+            raise ValueError("Additional image generations must be between 0 and 10000.")
+        if len(note) > 2000:
+            raise ValueError("Refinement note must be 2000 characters or fewer.")
+        if refinement_required:
+            if additional_image_generations < 1:
+                raise ValueError("Additional image generations must be at least 1 when refinement was required.")
+        elif additional_image_generations or note:
+            raise ValueError("Refinement count and note require the refinement checkbox.")
+        refinement = {
+            "schema_version": 1,
+            "required": bool(refinement_required),
+            "additional_image_generations": int(additional_image_generations),
+            "note": note,
+        }
+        return self.queue.write_answer_image(
+            task,
+            image_bytes,
+            content_type,
+            render_comment,
+            chatgpt_refinement=refinement,
+        )
 
     def submit_failure(self, task: ManualRenderTask, reason: str = "") -> Path:
         return self.queue.write_failed_answer(task, reason)

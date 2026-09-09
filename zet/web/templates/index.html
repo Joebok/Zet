@@ -1272,6 +1272,11 @@
             </thead>
             <tbody></tbody>
           </table>
+          <details class="render-console-metrics-panel">
+            <summary>Refinement statistics</summary>
+            <div id="render-console-refinement-metrics" class="overview-metrics"></div>
+            <div id="render-console-refinement-groups" class="status-text"></div>
+          </details>
         </aside>
         <section class="review-main">
           <div class="review-header">
@@ -1303,6 +1308,20 @@
             Image Answer Comment
             <textarea id="render-console-answer-comment" placeholder="Optional note saved with this image answer"></textarea>
           </label>
+          <label class="checkbox-row">
+            <input id="render-console-refinement-required" type="checkbox">
+            Needed follow-up image generations or edits after the first result
+          </label>
+          <div id="render-console-refinement-fields" class="render-console-refinement-fields" hidden>
+            <label>
+              Additional generated images
+              <input id="render-console-refinement-count" type="number" min="1" max="10000" step="1" value="1">
+            </label>
+            <label>
+              Refinement note
+              <textarea id="render-console-refinement-note" maxlength="2000" placeholder="Optional: what needed correction?"></textarea>
+            </label>
+          </div>
           <button id="render-console-save-image" class="primary-action" disabled>Save Image Answer</button>
           <p id="render-console-save-status" class="status-text"></p>
           <div id="render-console-reference-files" class="reference-preview-list"></div>

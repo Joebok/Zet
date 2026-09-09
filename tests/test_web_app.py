@@ -284,7 +284,12 @@ class WebAppTests(unittest.TestCase):
             )
             saved = client.post(
                 "/api/render-console/tasks/Ask_Asset_1_RENDER_TEST/answer-image",
-                params={"render_comment": "First render has strong silhouette."},
+                params={
+                    "render_comment": "First render has strong silhouette.",
+                    "refinement_required": "true",
+                    "additional_image_generations": "2",
+                    "refinement_note": "Corrected hand placement.",
+                },
                 content=png_bytes(),
                 headers={"content-type": "image/png"},
             )
@@ -300,6 +305,11 @@ class WebAppTests(unittest.TestCase):
             manifest = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "SUCCESS")
             self.assertEqual(manifest["render_comment"], "First render has strong silhouette.")
+            self.assertEqual(2, manifest["chatgpt_refinement"]["additional_image_generations"])
+            metrics = client.get("/api/render-console/refinement-metrics")
+            self.assertEqual(200, metrics.status_code)
+            self.assertEqual(1, metrics.json()["classified_count"])
+            self.assertEqual(1, metrics.json()["refined_count"])
 
     def test_story_management_api_renames_reorders_and_moves(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -459,6 +459,8 @@ const promptAnalysisDialog = document.querySelector("#prompt-analysis-dialog");
 const promptAnalysisClose = document.querySelector("#prompt-analysis-close");
 const promptAnalysisFrame = document.querySelector("#prompt-analysis-frame");
 const renderConsoleStatus = document.querySelector("#render-console-status");
+const renderConsoleRefinementMetrics = document.querySelector("#render-console-refinement-metrics");
+const renderConsoleRefinementGroups = document.querySelector("#render-console-refinement-groups");
 const renderConsoleTaskBody = document.querySelector("#render-console-task-table tbody");
 const renderConsolePrev = document.querySelector("#render-console-prev");
 const renderConsoleNext = document.querySelector("#render-console-next");
@@ -487,6 +489,10 @@ const renderConsoleImagePreview = document.querySelector("#render-console-image-
 const renderConsoleSaveImage = document.querySelector("#render-console-save-image");
 const renderConsoleSaveStatus = document.querySelector("#render-console-save-status");
 const renderConsoleAnswerComment = document.querySelector("#render-console-answer-comment");
+const renderConsoleRefinementRequired = document.querySelector("#render-console-refinement-required");
+const renderConsoleRefinementFields = document.querySelector("#render-console-refinement-fields");
+const renderConsoleRefinementCount = document.querySelector("#render-console-refinement-count");
+const renderConsoleRefinementNote = document.querySelector("#render-console-refinement-note");
 const renderConsoleFailReason = document.querySelector("#render-console-fail-reason");
 const renderConsoleFailTask = document.querySelector("#render-console-fail-task");
 const renderConsoleFailStatus = document.querySelector("#render-console-fail-status");
@@ -9849,7 +9855,11 @@ async function loadRenderConsoleTasks(preferredAskId = null) {
   renderConsoleSaveImage.disabled = true;
   renderConsoleFailTask.disabled = true;
   renderConsoleStatus.textContent = "Loading render tasks...";
-  const payload = await fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`);
+  const [payload, metrics] = await Promise.all([
+    fetchJson(`/api/render-console/tasks?${productionQuery().toString()}`),
+    fetchJson("/api/render-console/refinement-metrics").catch(() => null),
+  ]);
+  renderRenderConsoleRefinementMetrics(metrics);
   state.renderConsoleTasks = payload.tasks || [];
   const askIds = new Set(state.renderConsoleTasks.map((task) => task.ask_id));
   state.selectedRenderConsoleAskId =
@@ -9908,6 +9918,10 @@ function clearRenderConsole() {
   renderConsoleImagePreview.removeAttribute("src");
   renderConsoleSaveImage.disabled = true;
   renderConsoleAnswerComment.value = "";
+  renderConsoleRefinementRequired.checked = false;
+  renderConsoleRefinementFields.hidden = true;
+  renderConsoleRefinementCount.value = "1";
+  renderConsoleRefinementNote.value = "";
   renderConsoleSceneBuilder.hidden = true;
   renderConsoleSceneBuilder.disabled = true;
   renderConsoleReviewPrompt.disabled = true;
@@ -10007,6 +10021,10 @@ function clearRenderConsoleImageSelection() {
   renderConsoleSaveImage.disabled = true;
   renderConsoleSaveStatus.textContent = "";
   renderConsoleAnswerComment.value = "";
+  renderConsoleRefinementRequired.checked = false;
+  renderConsoleRefinementFields.hidden = true;
+  renderConsoleRefinementCount.value = "1";
+  renderConsoleRefinementNote.value = "";
   renderConsoleFailReason.value = "";
   renderConsoleFailStatus.textContent = "";
 }
@@ -10141,6 +10159,41 @@ async function selectLocalImageReviewTask(askId) {
     `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`,
   );
   if (state.selectedLocalImageReviewAskId === askId) renderLocalImageReviewDetail(detail);
+}
+
+function renderRenderConsoleRefinementMetrics(metrics) {
+  renderConsoleRefinementMetrics.replaceChildren();
+  renderConsoleRefinementGroups.textContent = "";
+  if (!metrics) {
+    renderConsoleRefinementMetrics.textContent = "Refinement statistics unavailable.";
+    return;
+  }
+  const classified = Number(metrics.classified_count || 0);
+  const cards = [
+    [classified, "classified"],
+    [classified ? `${Math.round(Number(metrics.first_pass_rate || 0) * 100)}%` : "—", "first pass"],
+    [classified ? Number(metrics.average_additional_image_generations || 0).toFixed(2) : "—", "extra images / submission"],
+    [Number(metrics.unknown_count || 0), "unknown since 2.5"],
+  ];
+  for (const [value, label] of cards) {
+    const card = document.createElement("div");
+    card.className = "overview-metric";
+    const strong = document.createElement("strong");
+    strong.textContent = String(value);
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    card.append(strong, caption);
+    renderConsoleRefinementMetrics.append(card);
+  }
+  const groupText = (metrics.by_engine_profile || []).map((group) => {
+    const rate = group.classified_count ? Math.round(Number(group.first_pass_rate || 0) * 100) : 0;
+    return `${group.value}: ${group.classified_count} classified, ${rate}% first pass`;
+  });
+  const pipelineText = (metrics.by_pipeline || []).map((group) => {
+    const rate = group.classified_count ? Math.round(Number(group.refinement_rate || 0) * 100) : 0;
+    return `${group.value}: ${rate}% refined`;
+  });
+  renderConsoleRefinementGroups.textContent = [...groupText, ...pipelineText].join(" | ") || "No classified submissions yet.";
 }
 
 function clearLocalImageReview() {
@@ -10952,8 +11005,18 @@ async function saveRenderConsoleImage() {
   renderConsoleSaveImage.disabled = true;
   renderConsoleSaveStatus.textContent = "Saving image answer...";
   try {
+    const refinementRequired = renderConsoleRefinementRequired.checked;
+    const additionalImageGenerations = refinementRequired
+      ? Number.parseInt(renderConsoleRefinementCount.value, 10)
+      : 0;
+    if (refinementRequired && (!Number.isInteger(additionalImageGenerations) || additionalImageGenerations < 1)) {
+      throw new Error("Enter at least 1 additional generated image.");
+    }
     const params = productionQuery();
     params.set("render_comment", renderConsoleAnswerComment.value || "");
+    params.set("refinement_required", refinementRequired ? "true" : "false");
+    params.set("additional_image_generations", String(additionalImageGenerations));
+    params.set("refinement_note", refinementRequired ? renderConsoleRefinementNote.value || "" : "");
     const response = await fetch(
       `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/answer-image?${params.toString()}`,
       {
@@ -12150,6 +12213,10 @@ renderConsoleFileInput.addEventListener("change", () => {
   setRenderConsoleImageSelection(renderConsoleFileInput.files?.[0]);
 });
 renderConsoleSaveImage.addEventListener("click", saveRenderConsoleImage);
+renderConsoleRefinementRequired.addEventListener("change", () => {
+  renderConsoleRefinementFields.hidden = !renderConsoleRefinementRequired.checked;
+  if (renderConsoleRefinementRequired.checked) renderConsoleRefinementCount.focus();
+});
 renderConsoleFailTask.addEventListener("click", failRenderConsoleTask);
 bodyReferenceSelect.addEventListener("change", updateManifestPreviews);
 headshotReferenceSelect.addEventListener("change", updateManifestPreviews);

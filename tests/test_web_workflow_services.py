@@ -59,7 +59,7 @@ class WebWorkflowServiceTests(unittest.TestCase):
             def get_task(self, ask_id):
                 return matching if ask_id == "one" else None
 
-            def write_answer_image(self, *args):
+            def write_answer_image(self, *args, **kwargs):
                 return Path("answer")
 
             def write_failed_answer(self, *args):

@@ -2555,6 +2555,23 @@ tr.auxiliary-row td:last-child {
   min-width: 0;
 }
 
+.render-console-metrics-panel {
+  margin-top: 12px;
+}
+
+.render-console-metrics-panel .overview-metrics {
+  margin-top: 10px;
+}
+
+.render-console-metrics-panel .overview-metric {
+  padding: 8px;
+}
+
+.render-console-refinement-fields {
+  display: grid;
+  gap: 8px;
+}
+
 .turnaround-layout {
   display: grid;
   gap: 12px;

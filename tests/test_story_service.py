@@ -481,7 +481,7 @@ Morning light.
             self.assertEqual(image_path.read_bytes(), Path(task.reference_files[0]["path"]).read_bytes())
             manifest = json.loads((Path(task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(2, manifest["prompt_schema_version"])
-            self.assertEqual("chatgpt_images_2_0_v1", manifest["engine_profile"])
+            self.assertEqual("chatgpt_images_2_5_v1", manifest["engine_profile"])
             self.assertEqual("composite", manifest["render_mode"])
             self.assertEqual([1], [item["index"] for item in manifest["image_inputs"]])
             self.assertEqual([1], [item["image_index"] for item in manifest["reference_files"]])

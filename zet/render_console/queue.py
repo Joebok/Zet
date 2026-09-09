@@ -169,7 +169,14 @@ class RenderConsoleQueue:
             return ""
         return prompt_path.read_text(encoding="utf-8")
 
-    def write_answer_image(self, task: ManualRenderTask, image_bytes: bytes, content_type: str = "", render_comment: str = "") -> Path:
+    def write_answer_image(
+        self,
+        task: ManualRenderTask,
+        image_bytes: bytes,
+        content_type: str = "",
+        render_comment: str = "",
+        chatgpt_refinement: dict[str, Any] | None = None,
+    ) -> Path:
         """Write a successful manual render answer and optional review comment."""
         validate_image(image_bytes)
         if not task.expected_output:
@@ -194,6 +201,7 @@ class RenderConsoleQueue:
             "error_message": "",
             "content_type": content_type,
             "render_comment": comment,
+            "chatgpt_refinement": dict(chatgpt_refinement) if chatgpt_refinement is not None else None,
             "target_output_file": target_output,
             "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
         }
@@ -228,7 +236,7 @@ class RenderConsoleQueue:
             if answer_path.exists():
                 previous = self._read_json_if_exists(answer_path / "answer_manifest.json")
                 same = all(previous.get(key) == manifest.get(key) for key in (
-                    "status", "image_sha256", "render_comment", "error_message",
+                    "status", "image_sha256", "render_comment", "chatgpt_refinement", "error_message",
                 ))
                 if previous and same:
                     return answer_path
