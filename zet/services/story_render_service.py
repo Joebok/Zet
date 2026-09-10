@@ -5,8 +5,9 @@ from datetime import datetime
 import json
 from pathlib import Path
 from uuid import uuid4
-from zet.services.workflow_storage import atomic_copy, file_lock, snapshot_manual_ask
+from zet.services.workflow_storage import atomic_copy, file_lock, snapshot_manual_ask, subject_key
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.manual_render_publication_service import ManualRenderPublicationService
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.models.reference import reference_files_payload
@@ -34,6 +35,24 @@ class StoryRenderService:
         self.reference_service = reference_service
         self.render_task_type = render_task_type
         self.error_type = error_type
+        self.publication_service = ManualRenderPublicationService(self.story.path_service.config)
+
+    def manual_render_dependencies_current(self, manifest: dict) -> bool | str:
+        """Verify that a staged story render still targets current dependencies."""
+        story_slug = str(manifest.get("story_slug") or "").strip()
+        scene_slug = str(manifest.get("scene_slug") or "").strip()
+        expected_hash = str(manifest.get("render_input_hash") or "")
+        if not story_slug or not scene_slug or not expected_hash:
+            return True
+        try:
+            current_hash = self._compile(
+                story_slug,
+                scene_slug,
+                str(manifest.get("render_target_id") or MAIN_RENDER_TARGET),
+            )[-1]
+        except Exception:
+            return False
+        return current_hash == expected_hash
 
     def _compile_projected(
         self,
@@ -257,6 +276,7 @@ class StoryRenderService:
             "target_output_file": str(target_paths["candidate"]),
             "scene_image_review": True,
             "pipeline_path": str(pipeline_path), "reference_files": reference_files_payload(references),
+            "publication_files": ["ask_manifest.json", "Final_Image_Prompt.md", *artifacts],
             "aspect_ratio": str((ir.get("canvas") or {}).get("aspect_ratio") or ""),
             **contract,
         }
@@ -269,19 +289,14 @@ class StoryRenderService:
         active = {"ask_id": ask_id, "attempt_id": manifest["ollama_attempt_id"], "render_input_hash": render_input_hash,
                   "render_bundle_hash": manifest["render_bundle_hash"], "ask_path": str(ready_path)}
         active_path = pipeline_path / "Active_Render.json"
-        previous_active = json.loads(active_path.read_text(encoding="utf-8")) if active_path.is_file() else None
-        write_json_atomic(active_path, active)
-        try:
-            ask_path.rename(ready_path)
-        except Exception:
-            if not ready_path.exists():
-                if previous_active is None:
-                    active_path.unlink(missing_ok=True)
-                else:
-                    write_json_atomic(active_path, previous_active)
-            raise
-        ask_path = ready_path
-        story._clear_scene_render_queue_items(safe_story_slug, safe_scene_slug, target_id, exclude_ask_id=ask_id)
+        ask_path = self.publication_service.publish(
+            ask_path,
+            ready_path,
+            active_render_path=active_path,
+            active_render=active,
+            publication_subject=subject_key(manifest),
+            supersede_reason="A newer scene render was staged.",
+        )
         return self.render_task_type(
             story_slug=safe_story_slug, scene_slug=safe_scene_slug, ask_id=ask_id, ask_path=str(ask_path),
             pipeline_path=str(pipeline_path), final_prompt_path=str(final_prompt_path),

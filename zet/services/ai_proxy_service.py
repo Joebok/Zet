@@ -22,6 +22,7 @@ from zet.services.chatgpt_prompt_contract import (
     manifest_contract,
 )
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
 from zet.services.performance_instrumentation import record
 from zet.services.prompt_artifact_service import PromptArtifactService
@@ -48,6 +49,7 @@ class AIProxyService:
         self.prompt_artifact_service = prompt_artifact_service
         self.ai_proxy_path_service = ai_proxy_path_service
         self.housekeeping_service = housekeeping_service
+        self.manual_render_publication_service = ManualRenderPublicationService(path_service.config)
 
     def _timestamp(self) -> str:
         return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -194,8 +196,13 @@ class AIProxyService:
             manifest = self._read_json_if_exists(path / "ask_manifest.json")
             if not manifest.get("render_bundle_hash"):
                 snapshot_manual_ask(path, ready, manifest, self.path_service.resolve_path)
-            path.rename(ready)
-            return ready
+                manifest = self._read_json_if_exists(path / "ask_manifest.json")
+            return self.manual_render_publication_service.publish(
+                path,
+                ready,
+                publication_subject=subject_key(manifest),
+                supersede_reason="A newer render attempt was staged.",
+            )
         return self.ai_proxy_path_service.file_proxy_client.publish(path, ask_id, worker_type)
 
     def _manifest_payload(self, ask: AIProxyAsk) -> dict:
@@ -363,11 +370,12 @@ class AIProxyService:
             if not ready.exists():
                 self.asset_repository.save_asset(replace(asset, revision=updated_asset.revision))
             raise
-        for item in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
-            manifest = self._read_json_if_exists(item / "ask_manifest.json")
-            if (item.name != ask.ask_id and subject_key(manifest) == subject_key(self._manifest_payload(ask))
-                    and not manifest.get("auxiliary")):
-                supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "A newer render attempt was staged.")
+        if ask.worker_type != "manual_chatgpt_render":
+            for item in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
+                manifest = self._read_json_if_exists(item / "ask_manifest.json")
+                if (item.name != ask.ask_id and subject_key(manifest) == subject_key(self._manifest_payload(ask))
+                        and not manifest.get("auxiliary")):
+                    supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "A newer render attempt was staged.")
         return published
 
     def _prompt_condense_enabled(self) -> bool:

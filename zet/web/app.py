@@ -3135,6 +3135,29 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/render-console/publications")
+    def render_console_publications() -> dict[str, Any]:
+        """Inspect durable manual-render publication intents and staging bundles."""
+        try:
+            return {"publications": _app(app.state.config_path).inspect_manual_render_publications()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/render-console/publications/{ask_id}/recover")
+    def render_console_recover_publication(ask_id: str) -> dict[str, Any]:
+        """Explicitly recover one complete manual-render publication."""
+        zet_app = _app(app.state.config_path)
+        try:
+            answer_path = zet_app.recover_manual_render_publication(ask_id)
+            return {
+                "ask_id": ask_id,
+                "ready_path": str(answer_path),
+                "publications": zet_app.inspect_manual_render_publications(),
+                "message": f"Recovered manual render publication {ask_id}.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/render-console/tasks/{ask_id}")
     def render_console_task_detail(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         """Return one manual render task for the selected character phase."""

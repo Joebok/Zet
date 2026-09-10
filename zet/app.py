@@ -25,6 +25,7 @@ from zet.services.expression_service import ExpressionCreateResult, ExpressionSe
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.image_catalog_service import ImageCatalogService
+from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
@@ -180,6 +181,7 @@ class ZetApp:
         self.character_onboarding_service = character_onboarding_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.manual_render_publication_service = ManualRenderPublicationService(config)
         self.image_catalog_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
@@ -350,6 +352,8 @@ class ZetApp:
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
+        app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
+        app.story_service.story_render_service.publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
         return app
 
@@ -1039,6 +1043,19 @@ class ZetApp:
 
     def queue_snapshot(self):
         return self.ai_proxy_service.queue_snapshot()
+
+    def inspect_manual_render_publications(self) -> list[dict]:
+        """Inspect manual-render publication journals and staging bundles."""
+        return self.manual_render_publication_service.inspect(
+            dependency_validator=self.story_service.story_render_service.manual_render_dependencies_current,
+        )
+
+    def recover_manual_render_publication(self, ask_id: str):
+        """Explicitly recover one complete manual-render publication."""
+        return self.manual_render_publication_service.recover(
+            ask_id,
+            dependency_validator=self.story_service.story_render_service.manual_render_dependencies_current,
+        )
 
     def asset_ai_proxy_status(self, asset_id: int):
         return self.ai_proxy_service.asset_job_status(asset_id)

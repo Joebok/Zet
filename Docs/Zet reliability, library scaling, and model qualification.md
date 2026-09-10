@@ -108,6 +108,14 @@ Handoff:
 
 **Acceptance:** Inject WinError 5/32/33, timeout, conflicting destination, duplicate recovery, and crashes at each publication boundary. Exactly one ready task results; earlier tasks are superseded only after successful publication.
 
+Handoff:
+
+* New invariants introduced: Manual render asks publish from a complete, hash-verified staging bundle through a durable publication journal; the ready destination and active render identity are conflict-checked; retry exhaustion preserves staging; older matching manual tasks are superseded only after ready publication and active-render recording.
+* APIs/contracts changed: Added `ManualRenderPublicationService.publish()`, `inspect()`, and `recover()`; `ZetApp.inspect_manual_render_publications()` and `recover_manual_render_publication()`; dashboard `GET /api/render-console/publications` and `POST /api/render-console/publications/{ask_id}/recover`. Story and asset manual ask publication now use the service.
+* New tests/fixtures available to later WPs: `tests/test_wp05_reliability.py` covers WinError 5/32/33, timeout, bundle/hash/dependency validation, conflicting destinations and newer active renders, duplicate recovery, crash-boundary recovery, superseding order, and ZetApp/dashboard exposure using temporary queues.
+* Assumptions later WPs may rely on: WP05 acceptance is PASS: the focused suite passed 6 tests, the full suite passed 260 tests, `node --check zet/web/static/zet.js` passed, and the isolated WP01 benchmark passed at 1x/10x/100x cold and warm scales. The investigation’s live orphan and live queue bundles were not recovered, deleted, superseded, or otherwise mutated; its live recovery status remains unverified.
+* Deviations from master plan: None.
+
 ### WP06 — Preserve overrides and reconcile AI status
 **Executor:** Light/local. **Dependencies:** WP01.
 

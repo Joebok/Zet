@@ -476,6 +476,8 @@ const renderConsoleTaskBody = document.querySelector("#render-console-task-table
 const renderConsolePrev = document.querySelector("#render-console-prev");
 const renderConsoleNext = document.querySelector("#render-console-next");
 const renderConsoleRefresh = document.querySelector("#render-console-refresh");
+const renderConsolePublicationsRefresh = document.querySelector("#render-console-publications-refresh");
+const renderConsolePublications = document.querySelector("#render-console-publications");
 const renderConsoleTitle = document.querySelector("#render-console-title");
 const renderConsoleSceneBuilder = document.querySelector("#render-console-scene-builder");
 const renderConsoleReviewPrompt = document.querySelector("#render-console-review-prompt");
@@ -10184,6 +10186,50 @@ async function loadRenderConsoleTasks(preferredAskId = null) {
   refreshProductionWorkSummary();
 }
 
+async function loadRenderConsolePublications() {
+  renderConsolePublications.textContent = "Inspecting publication bundles...";
+  try {
+    const payload = await fetchJson("/api/render-console/publications");
+    renderConsolePublications.replaceChildren();
+    const items = payload.publications || [];
+    if (!items.length) {
+      renderConsolePublications.textContent = "No durable publication intents or staging bundles found.";
+      return;
+    }
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = "publication-recovery-row";
+      const summary = document.createElement("span");
+      summary.textContent = `${item.ask_id}: ${item.status}${item.errors?.length ? ` — ${item.errors.join("; ")}` : ""}`;
+      row.append(summary);
+      if (item.recoverable) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Recover";
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            const result = await fetchJson(
+              `/api/render-console/publications/${encodeURIComponent(item.ask_id)}/recover`,
+              { method: "POST" },
+            );
+            showRenderConsoleMessage(result.message || "Publication recovered.");
+            await loadRenderConsoleTasks(item.ask_id);
+            await loadRenderConsolePublications();
+          } catch (error) {
+            showRenderConsoleMessage(error.message, "error");
+            button.disabled = false;
+          }
+        });
+        row.append(button);
+      }
+      renderConsolePublications.append(row);
+    }
+  } catch (error) {
+    renderConsolePublications.textContent = `Inspection failed: ${error.message}`;
+  }
+}
+
 function renderRenderConsoleTaskTable() {
   renderAssetTaskTable(
     renderConsoleTaskBody,
@@ -12275,6 +12321,7 @@ sceneBuilderPrevious.addEventListener("click", () => navigateSceneBuilder(-1));
 sceneBuilderNext.addEventListener("click", () => navigateSceneBuilder(1));
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
+renderConsolePublicationsRefresh.addEventListener("click", loadRenderConsolePublications);
 renderConsoleSceneBuilder.addEventListener("click", async () => {
   const manifest = state.renderConsoleDetail?.manifest || {};
   if (!manifest.story_slug || !manifest.scene_slug) return;
