@@ -128,7 +128,7 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(200, deleted.status_code, deleted.text)
             self.assertTrue(list((root / "ImageCatalog" / "_trash").glob("*.jpg")))
 
-    def test_ai_controls_lists_recent_live_and_archived_harvests(self):
+    def test_ai_controls_loads_recent_live_and_archived_harvests_separately(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
@@ -158,10 +158,14 @@ class WebAppTests(unittest.TestCase):
                     "error_message": error_message,
                 }), encoding="utf-8")
 
-            response = TestClient(create_app(config_path)).get("/api/ai-controls")
+            client = TestClient(create_app(config_path))
+            response = client.get("/api/ai-controls")
 
             self.assertEqual(200, response.status_code)
-            recent = response.json()["recent_harvests"]
+            self.assertNotIn("recent_harvests", response.json())
+            history = client.get("/api/ai-controls/recent-harvests")
+            self.assertEqual(200, history.status_code)
+            recent = history.json()["recent_harvests"]
             self.assertEqual(["Ask_Live", "Ask_Archived"], [item["ask_id"] for item in recent])
             self.assertEqual("prompt_condense", recent[0]["task_type"])
             self.assertEqual("MODEL_FAILURE: Ollama timed out.", recent[1]["details"])

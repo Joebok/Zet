@@ -144,6 +144,14 @@ Handoff:
 
 **Acceptance:** With an empty Answer queue and 100× archived history, archive access is zero and the action returns within 500 ms on the reference host. Failed answers remain available for retry.
 
+Handoff:
+
+* New invariants introduced: Harvest processes only live Answer folders without `harvest_manifest.json` and returns immediately when none are harvestable; harvest actions, active AI-controls payloads, and toolbar refreshes do not enumerate harvested archives; failed harvest folders retain `harvest_error.json` and remain in the active Answer queue for retry.
+* APIs/contracts changed: `GET /api/ai-controls` and POST action responses contain active queue/process state and action results but no recent history; `GET /api/ai-controls/recent-harvests?limit=` provides bounded recent history separately; failed harvest action responses identify the count of failures retained for retry.
+* New tests/fixtures available to later WPs: `tests/test_wp07_reliability.py` proves zero archive access with an access-failing archive double over 100 archived records, sub-500 ms empty harvest, and failed-answer retention/action feedback; `tests/test_web_app.py` verifies separate recent-history loading; existing workflow reliability tests continue to cover failed harvest isolation.
+* Assumptions later WPs may rely on: WP07 acceptance is PASS: focused WP07/web/workflow validation passed 27 tests, the WP01 dependency suite passed 4 tests, JavaScript syntax validation passed, and the isolated WP01 benchmark passed at 1x/10x/100x cold and warm scales using `.venv\\Scripts\\python.exe`; recent history remains an explicit archive-reading operation and is not indexed or backfilled here.
+* Deviations from master plan: None.
+
 ## Larger-library work packages
 
 ### WP08 — Catalog record format and explicit migration

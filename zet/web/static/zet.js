@@ -9603,6 +9603,13 @@ async function loadAiControls() {
   status.textContent = "Loading processes and queues...";
   const payload = await fetchJson("/api/ai-controls");
   renderAiControls(payload);
+  if (activePageName() === "ai-controls") {
+    try {
+      await loadRecentAiHarvests();
+    } catch (error) {
+      showAiControlsMessage(`Queue loaded, but recent history could not be loaded: ${error.message}`, "error");
+    }
+  }
 }
 
 function renderAiControls(payload) {
@@ -9615,11 +9622,16 @@ function renderAiControls(payload) {
   renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id", "recovery"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
-  renderRows(recentHarvestTableBody, payload.recent_harvests || [], ["harvested_at", "ask_id", "task_type", "asset_id", "status", "details"]);
-  recentHarvestCount.textContent = `${(payload.recent_harvests || []).length} recent harvested job(s)`;
   renderProcessRows(payload.processes || []);
   aiControlsStatus.textContent = "Ready";
   if (activePageName() === "local-image-config") localImageConfigStatus.textContent = "Ready";
+}
+
+async function loadRecentAiHarvests() {
+  const payload = await fetchJson("/api/ai-controls/recent-harvests");
+  const rows = payload.recent_harvests || [];
+  renderRows(recentHarvestTableBody, rows, ["harvested_at", "ask_id", "task_type", "asset_id", "status", "details"]);
+  recentHarvestCount.textContent = `${rows.length} recent harvested job(s)`;
 }
 
 function renderProcessRows(processes) {

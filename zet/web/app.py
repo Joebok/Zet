@@ -621,9 +621,12 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
         "queue": _jsonable(queue_snapshot),
         "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
         "manual_render_asks": _jsonable(manual_render_asks),
-        "recent_harvests": _jsonable(zet_app.recent_ai_harvests()),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
     }
+
+
+def _recent_harvests_payload(zet_app: ZetApp, limit: int = 20) -> dict[str, Any]:
+    return {"recent_harvests": _jsonable(zet_app.recent_ai_harvests(limit))}
 
 
 def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
@@ -3031,7 +3034,16 @@ def create_app(
         try:
             results = zet_app.harvest_ai_answers()
             payload = _ai_controls_payload(zet_app)
-            payload["message"] = f"Harvested {len(results)} AI answer folder(s)." if results else "No AI answer folders found."
+            failed_count = sum(1 for result in results if result.status == "HARVEST_FAILED")
+            if not results:
+                payload["message"] = "No AI answer folders found."
+            elif failed_count:
+                payload["message"] = (
+                    f"Harvested {len(results)} AI answer folder(s); "
+                    f"{failed_count} failed and remain available for retry."
+                )
+            else:
+                payload["message"] = f"Harvested {len(results)} AI answer folder(s)."
             payload["harvest_results"] = _jsonable(results)
             return payload
         except Exception as exc:
@@ -3071,6 +3083,14 @@ def create_app(
             payload = _ai_controls_payload(zet_app)
             payload["message"] = message
             return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/ai-controls/recent-harvests")
+    def ai_controls_recent_harvests(limit: int = Query(20, ge=0, le=200)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            return _recent_harvests_payload(zet_app, limit)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

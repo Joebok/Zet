@@ -619,8 +619,16 @@ class AIAnswerHarvester:
         raise AIAnswerHarvesterError(f"Unsupported answer status {answer.status} in {answer_path}")
 
     def harvest_once(self) -> list[HarvestResult]:
+        answer_paths = [
+            answer_path
+            for answer_path in self.ai_proxy_path_service.task_paths("answer")
+            if not (answer_path / "harvest_manifest.json").is_file()
+        ]
+        if not answer_paths:
+            return []
+
         results: list[HarvestResult] = []
-        for answer_path in self.ai_proxy_path_service.task_paths("answer"):
+        for answer_path in answer_paths:
             if self._has_external_consumer(answer_path):
                 continue
             try:
