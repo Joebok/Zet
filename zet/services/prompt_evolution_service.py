@@ -22,8 +22,8 @@ from zet.services.character_grid_service import CharacterGridOptions, CharacterG
 CANVAS_WIDTH = 768
 CANVAS_HEIGHT = 1024
 RUN_VERSION = 3
-DEFAULT_VISION_MODEL = "vision-analysis:latest"
-DEFAULT_CHECKLIST_MODEL = "vision-analysis-alt:latest"
+DEFAULT_VISION_MODEL = "image-analysis:latest"
+DEFAULT_CHECKLIST_MODEL = "image-analysis-alt:latest"
 TEMPLATE_NAMES = (
     "bootstrap", "visual_critic", "regression_check", "batch_synthesis",
     "prompt_diagnosis", "prompt_edit", "repair", "directed_refinement",

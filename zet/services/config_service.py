@@ -26,14 +26,14 @@ class Config:
     base_pipeline_path: str
     base_ai_queue_path: str
     prompt_condense_enabled: bool = False
-    prompt_condense_model: str = "structured-reasoning:latest"
+    prompt_condense_model: str = "general:latest"
     prompt_condense_file: str = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
-    ai_asset_workflow_model: str = "general-purpose:latest"
-    ai_scene_builder_model: str = "structured-reasoning:latest"
-    ai_prompt_evolution_critic_model_a: str = "vision-analysis:latest"
-    ai_prompt_evolution_critic_model_b: str = "vision-analysis-alt:latest"
-    ai_prompt_evolution_analysis_model: str = "vision-analysis:latest"
-    ai_prompt_evolution_check_model: str = "vision-analysis-alt:latest"
+    ai_asset_workflow_model: str = "general:latest"
+    ai_scene_builder_model: str = "general:latest"
+    ai_prompt_evolution_critic_model_a: str = "image-analysis:latest"
+    ai_prompt_evolution_critic_model_b: str = "image-analysis-alt:latest"
+    ai_prompt_evolution_analysis_model: str = "image-analysis:latest"
+    ai_prompt_evolution_check_model: str = "image-analysis-alt:latest"
     local_render_auto_queue_after_condense: bool = False
     local_render_backend: str = "stable_matrix"
     local_render_preset: str = "body-reference-preview"
@@ -57,8 +57,8 @@ class Config:
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     render_backend: str = "local_image"
-    ai_prompt_analysis_model: str = "structured-reasoning:latest"
-    ai_image_description_model: str = "vision-analysis:latest"
+    ai_prompt_analysis_model: str = "general:latest"
+    ai_image_description_model: str = "image-analysis:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
     scene_candidate_sources: tuple[SceneCandidateSourceConfig, ...] = ()
@@ -202,24 +202,24 @@ class ConfigService:
                 base_ai_queue_path=ConfigService._normalize_path_value(base_folders["BaseAIQueuePath"]),
                 prompt_condense_enabled=bool(prompt_condense.get("Enabled", False)),
                 prompt_condense_model=str(
-                    ai_models.get("PromptCondense", prompt_condense.get("Model", "structured-reasoning:latest"))
+                    ai_models.get("PromptCondense", prompt_condense.get("Model", "general:latest"))
                 ),
                 prompt_condense_file=str(
                     prompt_condense.get("PromptFile", "Config/Prompt_Condense_Tasks/body_reference_condense.md")
                 ),
-                ai_asset_workflow_model=str(ai_models.get("AssetWorkflow", "general-purpose:latest")),
-                ai_scene_builder_model=str(ai_models.get("SceneBuilder", "structured-reasoning:latest")),
+                ai_asset_workflow_model=str(ai_models.get("AssetWorkflow", "general:latest")),
+                ai_scene_builder_model=str(ai_models.get("SceneBuilder", "general:latest")),
                 ai_prompt_evolution_critic_model_a=str(
-                    ai_models.get("PromptEvolutionCriticA", "vision-analysis:latest")
+                    ai_models.get("PromptEvolutionCriticA", "image-analysis:latest")
                 ),
                 ai_prompt_evolution_critic_model_b=str(
-                    ai_models.get("PromptEvolutionCriticB", "vision-analysis-alt:latest")
+                    ai_models.get("PromptEvolutionCriticB", "image-analysis-alt:latest")
                 ),
                 ai_prompt_evolution_analysis_model=str(
-                    ai_models.get("PromptEvolutionAnalysis", "vision-analysis:latest")
+                    ai_models.get("PromptEvolutionAnalysis", "image-analysis:latest")
                 ),
                 ai_prompt_evolution_check_model=str(
-                    ai_models.get("PromptEvolutionCheck", "vision-analysis-alt:latest")
+                    ai_models.get("PromptEvolutionCheck", "image-analysis-alt:latest")
                 ),
                 local_render_auto_queue_after_condense=bool(local_render.get("AutoQueueAfterCondense", False)),
                 local_render_backend=str(local_render.get("Backend", "stable_matrix")).strip().lower(),
@@ -256,10 +256,10 @@ class ConfigService:
                 render_backend=str(render.get("Backend", "local_image")),
                 ai_prompt_analysis_model=str(
                     ai_models.get(
-                        "PromptAnalysis", ai_prompt_analysis.get("Model", "structured-reasoning:latest")
+                        "PromptAnalysis", ai_prompt_analysis.get("Model", "general:latest")
                     )
                 ),
-                ai_image_description_model=str(ai_models.get("ImageDescription", "vision-analysis:latest")),
+                ai_image_description_model=str(ai_models.get("ImageDescription", "image-analysis:latest")),
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),

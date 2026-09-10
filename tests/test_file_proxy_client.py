@@ -14,7 +14,7 @@ def test_atomic_publication_writes_generic_job_manifest(tmp_path: Path) -> None:
             {
                 "ask_id": "job-1",
                 "worker_type": "ollama_generate",
-                "ollama_model": "vision-analysis:latest",
+                "ollama_model": "image-analysis:latest",
                 "prompt_file": "prompt.md",
                 "target_output_dir": str((tmp_path / "outputs").resolve()),
             }
@@ -31,7 +31,7 @@ def test_atomic_publication_writes_generic_job_manifest(tmp_path: Path) -> None:
     assert job["subscriber_id"] == "zet"
     assert job["worker"] == "ollama"
     assert job["producer_id"] == socket.gethostname()
-    assert job["resource_key"] == "ollama:vision-analysis:latest"
+    assert job["resource_key"] == "ollama:image-analysis:latest"
     assert {item["path"] for item in job["files"]} == {"ask_manifest.json", "prompt.md"}
     assert job["route_required"] is True
     ask = json.loads((ready / "ask_manifest.json").read_text(encoding="utf-8"))

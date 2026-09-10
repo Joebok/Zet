@@ -16,7 +16,7 @@ from zet.services.image_quality_review_service import ImageQualityReviewService
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Prefilter a Recipe Lab experiment with local vision QA.")
     parser.add_argument("experiment", type=Path)
-    parser.add_argument("--model", default="vision-analysis:latest")
+    parser.add_argument("--model", default="image-analysis:latest")
     return parser
 
 

@@ -311,7 +311,7 @@ def process_claimed(
     ask_manifest = read_ask_manifest(folder / "ask_manifest.json")
     prompt_file = str(ask_manifest.get("prompt_file") or "")
     expected_output = str(ask_manifest.get("expected_output") or "")
-    model = str(ask_manifest.get("ollama_model") or "general-purpose:latest")
+    model = str(ask_manifest.get("ollama_model") or "general:latest")
     job_id = str(ask_manifest.get("ask_id") or folder.name)
     asset_id = str(ask_manifest.get("asset_id") or "")
     attempt_id = str(ask_manifest.get("ollama_attempt_id") or "")

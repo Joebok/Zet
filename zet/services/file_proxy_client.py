@@ -82,7 +82,7 @@ class FileProxyClient:
     def _resource_key(staging: Path, worker_type: str) -> str:
         manifest = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
         if worker_type == "ollama_generate":
-            model = str(manifest.get("ollama_model") or "").strip() or "general-purpose:latest"
+            model = str(manifest.get("ollama_model") or "").strip() or "general:latest"
             return f"ollama:{model}"
         backend = str(manifest.get("image_generation") or "").strip().lower() or "stable_matrix"
         checkpoint = str(manifest.get("checkpoint") or "").strip() or "default"
