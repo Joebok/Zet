@@ -13,6 +13,154 @@ async function openPage(page, pageName) {
   await expect(page.locator(`#${pageName}-page`)).toHaveClass(/active/);
 }
 
+function delayedGate(delayMs = 120_000) {
+  let release;
+  const promise = new Promise((resolve) => {
+    const timer = setTimeout(resolve, delayMs);
+    release = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+  });
+  return { promise, release };
+}
+
+test("navigation cancels a delayed review load and ignores its late response", async ({ page }) => {
+  await openPage(page, "stories");
+  let markStarted;
+  const requestStarted = new Promise((resolve) => { markStarted = resolve; });
+  const delayedResponse = delayedGate();
+  await page.route(/\/api\/render-review\/tasks/, async (route) => {
+    markStarted();
+    await delayedResponse.promise;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [{ review_key: "late-review", review_kind: "asset", asset_id: 999 }] }),
+    }).catch(() => {});
+  });
+
+  await page.evaluate(() => { window.wp02DelayedPage = window.activatePage("render-review", { skipAutosave: true }); });
+  await requestStarted;
+  const elapsed = await page.evaluate(async () => {
+    const started = performance.now();
+    await window.activatePage("stories", { skipAutosave: true });
+    return performance.now() - started;
+  });
+  expect(elapsed).toBeLessThan(250);
+  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+
+  delayedResponse.release();
+  await page.waitForTimeout(100);
+  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+  await expect(page.locator("#render-review-task-table tbody")).not.toContainText("999");
+});
+
+test("a late review error cannot replace the newly active page", async ({ page }) => {
+  await openPage(page, "stories");
+  let markStarted;
+  const requestStarted = new Promise((resolve) => { markStarted = resolve; });
+  const delayedResponse = delayedGate();
+  await page.route(/\/api\/render-review\/tasks/, async (route) => {
+    markStarted();
+    await delayedResponse.promise;
+    await route.fulfill({ status: 503, body: "late failure" }).catch(() => {});
+  });
+
+  await page.evaluate(() => { window.wp02DelayedError = window.activatePage("render-review", { skipAutosave: true }); });
+  await requestStarted;
+  await page.evaluate(() => window.activatePage("stories", { skipAutosave: true }));
+  delayedResponse.release();
+  await page.waitForTimeout(100);
+  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+  await expect(page.locator("#story-status")).not.toContainText(/failed/i);
+});
+
+test("candidate loading, empty, and failed states stay distinct", async ({ page }) => {
+  await openPage(page, "stories");
+  await page.route("**/api/scene-candidate-sources", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ sources: [{ key: "wp02", label: "WP02", path: "fixture", default_story_slug: "Alpha-Story" }] }),
+  }));
+  const candidatesResponse = delayedGate();
+  await page.route(/\/api\/scene-candidates\?source_key=/, async (route) => {
+    await candidatesResponse.promise;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ candidates: [] }) });
+  });
+
+  await page.evaluate(() => { window.wp02CandidateLoad = window.activatePage("scene-candidates", { skipAutosave: true }); });
+  await expect(page.locator("#scene-candidate-status")).toHaveText("Loading candidates...");
+  const elapsed = await page.evaluate(async () => {
+    const started = performance.now();
+    await window.activatePage("stories", { skipAutosave: true });
+    return performance.now() - started;
+  });
+  expect(elapsed).toBeLessThan(250);
+  candidatesResponse.release();
+  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+
+  await page.unroute(/\/api\/scene-candidates\?source_key=/);
+  await page.route(/\/api\/scene-candidates\?source_key=/, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ candidates: [] }),
+  }));
+  await page.evaluate(() => window.activatePage("scene-candidates", { skipAutosave: true }));
+  await expect(page.locator("#scene-candidate-status")).toHaveText("0 candidates");
+  await expect(page.locator("#scene-candidate-list")).toContainText("No candidates match this filter.");
+
+  await page.unroute(/\/api\/scene-candidates\?source_key=/);
+  await page.route(/\/api\/scene-candidates\?source_key=/, (route) => route.fulfill({ status: 503, body: "unavailable" }));
+  await page.evaluate(() => window.activatePage("stories", { skipAutosave: true }));
+  await page.evaluate(() => window.activatePage("scene-candidates", { skipAutosave: true }));
+  await expect(page.locator("#scene-candidate-status")).toHaveText("Load failed.");
+  await expect(page.locator("#scene-candidate-message")).toContainText("503");
+});
+
+test("summary refreshes never overlap and pause while hidden", async ({ page }) => {
+  await openPage(page, "stories");
+  await expect.poll(() => page.evaluate(() => eval("Boolean(state.productionWorkPromise)"))).toBe(false);
+  await page.evaluate(() => eval("state.productionWorkTimer && window.clearTimeout(state.productionWorkTimer); state.productionWorkTimer = null"));
+  let active = 0;
+  let maximumActive = 0;
+  let requestCount = 0;
+  let releaseSummary;
+  const summaryResponse = new Promise((resolve) => { releaseSummary = resolve; });
+  await page.route(/\/api\/production-work-summary\?/, async (route) => {
+    requestCount += 1;
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    if (requestCount === 1) await summaryResponse;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ current: {}, project: {} }) });
+    active -= 1;
+  });
+
+  await page.evaluate(() => {
+    window.wp02SummaryPromise = window.refreshProductionWorkSummary();
+    void window.refreshProductionWorkSummary();
+    void window.refreshProductionWorkSummary();
+  });
+  await expect.poll(() => page.evaluate(() => eval("state.productionWorkRefreshPending"))).toBe(true);
+  await expect.poll(() => requestCount).toBe(1);
+  releaseSummary();
+  await page.evaluate(() => window.wp02SummaryPromise);
+  await expect.poll(() => requestCount).toBe(2);
+  expect(maximumActive).toBe(1);
+
+  await page.evaluate(() => {
+    window.wp02Hidden = true;
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => window.wp02Hidden });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.scheduleProductionWorkSummary(0);
+  });
+  await page.waitForTimeout(100);
+  expect(requestCount).toBe(2);
+  await page.evaluate(() => {
+    window.wp02Hidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => requestCount).toBe(3);
+  expect(maximumActive).toBe(1);
+});
+
 test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });

@@ -3,6 +3,12 @@ const state = {
   productionWorkSummary: { current: {}, project: {} },
   productionWorkRequest: 0,
   productionWorkTimer: null,
+  productionWorkPromise: null,
+  productionWorkRefreshPending: false,
+  pageGeneration: 0,
+  pageController: null,
+  selectionGenerations: {},
+  selectionControllers: {},
   workspaceSummary: { character: null, story: null },
   lastWorkspacePages: { character: "onboarding", story: "scenes" },
   characters: [],
@@ -869,6 +875,45 @@ const phaseComparisonLeftMeta = document.querySelector("#phase-comparison-left-m
 const phaseComparisonRightMeta = document.querySelector("#phase-comparison-right-meta");
 const busyCounts = new WeakMap();
 
+class RequestCancelledError extends Error {
+  constructor() {
+    super("Request cancelled");
+    this.name = "RequestCancelledError";
+  }
+}
+
+function isRequestCancellation(error) {
+  return error?.name === "AbortError" || error?.name === "RequestCancelledError";
+}
+
+function beginPageLoad(page) {
+  state.pageController?.abort();
+  for (const controller of Object.values(state.selectionControllers)) controller.abort();
+  state.selectionControllers = {};
+  state.pageGeneration += 1;
+  state.pageController = new AbortController();
+  return { page, generation: state.pageGeneration, controller: state.pageController };
+}
+
+function pageLoadIsCurrent(load) {
+  return load.generation === state.pageGeneration && !load.controller.signal.aborted;
+}
+
+function beginSelection(kind) {
+  state.selectionControllers[kind]?.abort();
+  const generation = (state.selectionGenerations[kind] || 0) + 1;
+  const controller = new AbortController();
+  state.selectionGenerations[kind] = generation;
+  state.selectionControllers[kind] = controller;
+  return { kind, generation, controller };
+}
+
+function selectionIsCurrent(selection) {
+  return selection.generation === state.selectionGenerations[selection.kind]
+    && state.selectionControllers[selection.kind] === selection.controller
+    && !selection.controller.signal.aborted;
+}
+
 function setBusy(container, busy) {
   if (!container) return;
   const next = Math.max(0, (busyCounts.get(container) || 0) + (busy ? 1 : -1));
@@ -879,9 +924,14 @@ function setBusy(container, busy) {
 
 async function fetchJson(url, options = {}) {
   const busyTarget = document.querySelector("main > .page.active");
+  const { bindToPage = true, pageGeneration = state.pageGeneration, ...fetchOptions } = options;
+  if (bindToPage && !fetchOptions.signal && state.pageController) {
+    fetchOptions.signal = state.pageController.signal;
+  }
   setBusy(busyTarget, true);
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, fetchOptions);
+    if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
     if (!response.ok) {
       let detail = `${response.status} ${response.statusText}`;
       try {
@@ -900,7 +950,12 @@ async function fetchJson(url, options = {}) {
       }
       throw new Error(detail);
     }
-    return response.json();
+    const payload = await response.json();
+    if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
+    return payload;
+  } catch (error) {
+    if (fetchOptions.signal?.aborted || isRequestCancellation(error)) throw new RequestCancelledError();
+    throw error;
   } finally {
     setBusy(busyTarget, false);
   }
@@ -1576,15 +1631,48 @@ function renderProductionWorkSummary() {
 }
 
 async function refreshProductionWorkSummary() {
-  const request = ++state.productionWorkRequest;
-  try {
-    const payload = await fetchJson(`/api/production-work-summary?${productionSummaryQuery().toString()}`);
-    if (request !== state.productionWorkRequest) return;
-    state.productionWorkSummary = payload;
-    renderProductionWorkSummary();
-  } catch (error) {
-    console.error("Unable to refresh production work summary.", error);
+  if (document.hidden) return null;
+  if (state.productionWorkPromise) {
+    state.productionWorkRefreshPending = true;
+    return state.productionWorkPromise;
   }
+  const request = ++state.productionWorkRequest;
+  const query = productionSummaryQuery().toString();
+  state.productionWorkPromise = (async () => {
+    try {
+      const payload = await fetchJson(`/api/production-work-summary?${query}`, { bindToPage: false });
+      if (request !== state.productionWorkRequest || query !== productionSummaryQuery().toString()) {
+        state.productionWorkRefreshPending = true;
+        return null;
+      }
+      state.productionWorkSummary = payload;
+      renderProductionWorkSummary();
+      return payload;
+    } catch (error) {
+      if (!isRequestCancellation(error)) console.error("Unable to refresh production work summary.", error);
+      return null;
+    } finally {
+      state.productionWorkPromise = null;
+      const refreshAgain = state.productionWorkRefreshPending;
+      state.productionWorkRefreshPending = false;
+      if (refreshAgain && !document.hidden) {
+        window.queueMicrotask(() => void refreshProductionWorkSummary());
+      } else {
+        scheduleProductionWorkSummary();
+      }
+    }
+  })();
+  return state.productionWorkPromise;
+}
+
+function scheduleProductionWorkSummary(delay = 45000) {
+  if (state.productionWorkTimer) window.clearTimeout(state.productionWorkTimer);
+  state.productionWorkTimer = null;
+  if (document.hidden || document.body.dataset.dashboardReady !== "true") return;
+  state.productionWorkTimer = window.setTimeout(() => {
+    state.productionWorkTimer = null;
+    void refreshProductionWorkSummary();
+  }, delay);
 }
 
 async function reloadActiveProductionPage() {
@@ -2887,17 +2975,15 @@ async function guardCurrentEditor() {
 
 async function runGuardedTransition(action) {
   const previous = state.transitionPromise;
-  const execute = async () => {
-    if (!(await guardCurrentEditor())) return false;
-    await action();
-    return true;
-  };
+  const execute = () => guardCurrentEditor();
   const current = previous
     ? previous.catch(() => false).then(execute)
     : execute();
   state.transitionPromise = current;
   try {
-    return await current;
+    const allowed = await current;
+    if (!allowed) return false;
+    return (await action()) !== false;
   } finally {
     if (state.transitionPromise === current) {
       state.transitionPromise = null;
@@ -2993,6 +3079,7 @@ async function activatePage(page, options = {}) {
     storyProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     return false;
   }
+  const pageLoad = beginPageLoad(page);
   rememberPage(page);
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
@@ -3037,6 +3124,7 @@ async function activatePage(page, options = {}) {
   renderResponsiveSectionMenu(page);
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
+  try {
   if (page === "prompt-review") {
     await loadPromptReviewTasks(options.preferredAskId || null);
   }
@@ -3123,6 +3211,10 @@ async function activatePage(page, options = {}) {
   if (page === "help") {
     await loadTemplateManuals();
   }
+  } catch (error) {
+    if (!isRequestCancellation(error)) throw error;
+  }
+  if (!pageLoadIsCurrent(pageLoad)) return true;
   // Badge counts are supplemental navigation chrome.  Updating them can scan
   // project-wide queues, so do not hold the newly selected page open on it.
   void refreshProductionWorkSummary();
@@ -3946,6 +4038,7 @@ async function loadStories(selectSlug = state.selectedStorySlug) {
     }
     await loadWorkspaceSummary();
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     storyStatus.textContent = "Load failed.";
     showStoryMessage(error.message, "error");
   }
@@ -4493,6 +4586,7 @@ async function loadScenesPage() {
     await loadSceneImageReferences();
     await loadWorkspaceSummary();
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     clearSceneEditor();
     sceneStatus.textContent = "Load failed.";
     showSceneMessage(error.message, "error");
@@ -4567,6 +4661,7 @@ async function loadSceneDetail(storySlug, sceneSlug) {
     state.savedBaselines.scene = sceneSnapshot();
     setSaveState(sceneSaveState, "Saved", "saved");
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     clearSceneEditor();
     showSceneMessage(error.message, "error");
   }
@@ -4956,6 +5051,7 @@ async function loadZineStorySources() {
     }));
     zineFillStory.disabled = !state.zineStorySources.length;
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     zineFillStory.disabled = true;
     showZineMessage(error.message, "error");
   }
@@ -4985,6 +5081,7 @@ async function loadZines() {
     }
     zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     zineStatus.textContent = "Load failed.";
     showZineMessage(error.message, "error");
   }
@@ -6225,6 +6322,7 @@ async function loadSceneCandidates() {
     sceneCandidateStatus.textContent = `${state.sceneCandidates.length} candidate${state.sceneCandidates.length === 1 ? "" : "s"}`;
     renderSceneCandidates();
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     sceneCandidateStatus.textContent = "Load failed.";
     showSceneCandidateMessage(error.message, "error");
   }
@@ -7970,6 +8068,7 @@ async function loadPhaseComparison({ preserveSlot = true, resetIndex = false } =
     const payload = await fetchJson(`/api/phase-comparison?${params.toString()}`);
     renderPhaseComparison(payload);
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     clearPhaseComparison("Phase comparison failed.");
     showPhaseComparisonMessage(error.message, "error");
   }
@@ -8127,6 +8226,7 @@ async function loadPromptAnalysisTasks() {
     state.promptAnalysisTasks = analyses.tasks || [];
     renderPromptAnalysisTaskList();
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     console.error("Unable to load prompt analyses.", error);
   }
 }
@@ -8163,10 +8263,15 @@ function renderPromptReviewTaskTable() {
 }
 
 async function selectPromptReviewTask(askId) {
+  const selection = beginSelection("prompt-review");
   state.selectedPromptReviewAskId = askId;
   updateSelectableRows(promptReviewTaskBody, (row) => row.dataset.askId === state.selectedPromptReviewAskId);
-  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`);
-  if (state.selectedPromptReviewAskId === askId) renderPromptReview(detail);
+  try {
+    const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`, { signal: selection.controller.signal });
+    if (selectionIsCurrent(selection) && state.selectedPromptReviewAskId === askId) renderPromptReview(detail);
+  } catch (error) {
+    if (!isRequestCancellation(error)) throw error;
+  }
 }
 
 function clearPromptReview() {
@@ -8636,12 +8741,17 @@ function renderReviewEndpoint(task, action = "") {
 }
 
 async function selectRenderReview(reviewKey) {
+  const selection = beginSelection("render-review");
   state.selectedRenderReviewKey = reviewKey;
   updateSelectableRows(renderReviewTaskBody, (row) => row.dataset.reviewKey === state.selectedRenderReviewKey);
   const task = selectedRenderReviewTask();
   if (!task) return;
-  const detail = await fetchJson(renderReviewEndpoint(task));
-  renderRenderReview(detail);
+  try {
+    const detail = await fetchJson(renderReviewEndpoint(task), { signal: selection.controller.signal });
+    if (selectionIsCurrent(selection) && state.selectedRenderReviewKey === reviewKey) renderRenderReview(detail);
+  } catch (error) {
+    if (!isRequestCancellation(error)) throw error;
+  }
 }
 
 function clearRenderReview() {
@@ -9426,6 +9536,7 @@ async function loadPipelineInspections() {
     pipelineInspectionStatus.textContent = `${state.pipelineInspections.length} pipeline(s)`;
     if (state.selectedPipelineInspectionId) await selectPipelineInspection(state.selectedPipelineInspectionId);
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     pipelineInspectionStatus.textContent = "Unable to load pipelines";
     showMessageElement(pipelineInspectionMessage, error.message, "error");
   }
@@ -9888,14 +9999,19 @@ function renderRenderConsoleTaskTable() {
 }
 
 async function selectRenderConsoleTask(askId) {
+  const selection = beginSelection("render-console");
   state.selectedRenderConsoleAskId = askId;
   renderConsoleReviewPrompt.disabled = true;
   renderConsoleSceneBuilder.disabled = true;
   renderConsoleSaveImage.disabled = true;
   renderConsoleFailTask.disabled = true;
   updateSelectableRows(renderConsoleTaskBody, (row) => row.dataset.askId === state.selectedRenderConsoleAskId);
-  const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`);
-  if (state.selectedRenderConsoleAskId === askId) renderRenderConsoleDetail(detail);
+  try {
+    const detail = await fetchJson(`/api/render-console/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`, { signal: selection.controller.signal });
+    if (selectionIsCurrent(selection) && state.selectedRenderConsoleAskId === askId) renderRenderConsoleDetail(detail);
+  } catch (error) {
+    if (!isRequestCancellation(error)) throw error;
+  }
 }
 
 function clearRenderConsole() {
@@ -10153,12 +10269,18 @@ function renderLocalImageReviewTaskTable() {
 }
 
 async function selectLocalImageReviewTask(askId) {
+  const selection = beginSelection("local-image-review");
   state.selectedLocalImageReviewAskId = askId;
   updateSelectableRows(localImageReviewTaskBody, (row) => row.dataset.askId === askId);
-  const detail = await fetchJson(
-    `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`,
-  );
-  if (state.selectedLocalImageReviewAskId === askId) renderLocalImageReviewDetail(detail);
+  try {
+    const detail = await fetchJson(
+      `/api/local-image-review/tasks/${encodeURIComponent(askId)}?${productionQuery().toString()}`,
+      { signal: selection.controller.signal },
+    );
+    if (selectionIsCurrent(selection) && state.selectedLocalImageReviewAskId === askId) renderLocalImageReviewDetail(detail);
+  } catch (error) {
+    if (!isRequestCancellation(error)) throw error;
+  }
 }
 
 function renderRenderConsoleRefinementMetrics(metrics) {
@@ -10883,6 +11005,7 @@ async function loadPromptEvolution() {
   try {
     await refreshPromptEvolutionCheckpoints();
   } catch (error) {
+    if (isRequestCancellation(error)) return;
     promptEvolutionStatus.textContent = error.message;
   }
   restorePromptEvolutionSettings(stickySettings);
@@ -12277,6 +12400,7 @@ async function main() {
   });
   sourceEditorText.placeholder = "Open an editable source from Prompt Inspection.";
   setupTabs();
+  const startupLoad = beginPageLoad(null);
   loadStoredAssetFilters();
   try {
     const workspacePreferences = loadStoredWorkspacePreferences();
@@ -12288,8 +12412,11 @@ async function main() {
     state.selectedStorySlug = storyContext.story || null;
     state.selectedSceneSlug = storyContext.scene || null;
     await loadContext();
+    if (!pageLoadIsCurrent(startupLoad)) return;
     await loadAssets();
+    if (!pageLoadIsCurrent(startupLoad)) return;
     await loadStories(state.selectedStorySlug);
+    if (!pageLoadIsCurrent(startupLoad)) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("page") === "render-review") {
       const preferredReviewKey = params.get("review_kind") === "scene"
@@ -12309,20 +12436,19 @@ async function main() {
       await activatePage(storyContext.scene ? "scenes" : "stories", { skipAutosave: true });
     }
   } catch (error) {
-    assetStatus.textContent = error.message;
+    if (!isRequestCancellation(error)) assetStatus.textContent = error.message;
   } finally {
     document.body.dataset.dashboardReady = "true";
-    if (!state.productionWorkTimer) {
-      state.productionWorkTimer = window.setInterval(() => {
-        if (!document.hidden) refreshProductionWorkSummary();
-      }, 45000);
-    }
+    scheduleProductionWorkSummary();
   }
 }
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && document.body.dataset.dashboardReady === "true") {
-    refreshProductionWorkSummary();
+    void refreshProductionWorkSummary();
+  } else if (document.hidden && state.productionWorkTimer) {
+    window.clearTimeout(state.productionWorkTimer);
+    state.productionWorkTimer = null;
   }
 });
 

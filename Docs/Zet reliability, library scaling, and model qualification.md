@@ -49,6 +49,14 @@ Handoff:
 
 **Acceptance:** With review/candidate requests delayed by 120 seconds, another page activates within 250 ms. Late success and error responses cannot alter the new page. Loading, empty, and failed states remain distinct.
 
+Handoff:
+
+* New invariants introduced: Each page activation owns a monotonically increasing generation and `AbortController`; production-review selections have independent per-view generations/controllers; only the current generation may consume a response; request cancellation does not render empty or failed UI; production summary refreshes are completion-scheduled, single-flight, and paused while the document is hidden.
+* APIs/contracts changed: `fetchJson(url, options)` now accepts internal `bindToPage` and `pageGeneration` options in addition to standard fetch options and binds ordinary requests to the active page signal by default; `activatePage()` activates chrome before awaiting page data and may supersede an earlier in-flight activation.
+* New tests/fixtures available to later WPs: `tests/browser/dashboard.spec.mjs` provides 120-second delayed response gates and regressions for sub-250 ms review/candidate navigation, stale success/error isolation, distinct loading/empty/failed candidate states, single-flight summary refresh, and visibility pause/resume.
+* Assumptions later WPs may rely on: WP03 selection routes may use the existing page/selection generation helpers; cancellation preserves the newly requested story/scene context and does not clear editors or emit user-facing failures.
+* Deviations from master plan: Primary tab handlers were already attached before startup awaits, so WP02 retained that ordering and added a startup generation guard. The full browser suite still has two unrelated pre-existing failures (`cards` is undefined in the imported-image test, and the AI Queue recent-harvest fixture is not surfaced); the other 24 browser tests pass, so later WPs must not assume the unfiltered suite is green until those fixture/test defects are repaired.
+
 ### WP03 — One Scene Builder selection contract
 **Executor:** Medium. **Dependencies:** WP02.
 
