@@ -736,10 +736,13 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
                 "ai_prompt_evolution_critic_model_b", defaults.ai_prompt_evolution_critic_model_b
             )
         ),
-        ai_prompt_evolution_analysis_model=str(
+        ai_prompt_evolution_vision_model=str(
             payload.get(
-                "ai_prompt_evolution_analysis_model", defaults.ai_prompt_evolution_analysis_model
+                "ai_prompt_evolution_vision_model", defaults.ai_prompt_evolution_vision_model
             )
+        ),
+        ai_prompt_evolution_text_model=str(
+            payload.get("ai_prompt_evolution_text_model", defaults.ai_prompt_evolution_text_model)
         ),
         ai_prompt_evolution_check_model=str(
             payload.get("ai_prompt_evolution_check_model", defaults.ai_prompt_evolution_check_model)

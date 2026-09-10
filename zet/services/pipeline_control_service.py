@@ -45,7 +45,8 @@ class AutomationSettings:
     ai_scene_builder_model: str = "general:latest"
     ai_prompt_evolution_critic_model_a: str = "image-analysis:latest"
     ai_prompt_evolution_critic_model_b: str = "image-analysis-alt:latest"
-    ai_prompt_evolution_analysis_model: str = "image-analysis:latest"
+    ai_prompt_evolution_vision_model: str = "image-analysis:latest"
+    ai_prompt_evolution_text_model: str = "image-analysis:latest"
     ai_prompt_evolution_check_model: str = "image-analysis-alt:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
@@ -169,18 +170,23 @@ class PipelineControlService:
                 "templates": [self._llm_template("Visual critic", f"{prompt_evolution_root}/visual_critic.md")],
             },
             {
-                "key": "prompt_evolution_analysis",
-                "description": "Bootstraps, diagnoses, synthesizes, and edits evolved prompts.",
+                "key": "prompt_evolution_vision",
+                "description": "Vision role shared by bootstrap, image-grounded diagnosis, and directed refinement.",
                 "templates": [
                     self._llm_template(name.replace("_", " ").title(), f"{prompt_evolution_root}/{name}.md")
                     for name in (
                         "bootstrap",
-                        "batch_synthesis",
                         "prompt_diagnosis",
-                        "prompt_edit",
                         "directed_refinement",
-                        "repair",
                     )
+                ],
+            },
+            {
+                "key": "prompt_evolution_text",
+                "description": "Text role shared by cross-seed synthesis, minimal prompt editing, and JSON repair.",
+                "templates": [
+                    self._llm_template(name.replace("_", " ").title(), f"{prompt_evolution_root}/{name}.md")
+                    for name in ("batch_synthesis", "prompt_edit", "repair")
                 ],
             },
             {
@@ -230,7 +236,8 @@ class PipelineControlService:
             ai_scene_builder_model=str(self.config.ai_scene_builder_model),
             ai_prompt_evolution_critic_model_a=str(self.config.ai_prompt_evolution_critic_model_a),
             ai_prompt_evolution_critic_model_b=str(self.config.ai_prompt_evolution_critic_model_b),
-            ai_prompt_evolution_analysis_model=str(self.config.ai_prompt_evolution_analysis_model),
+            ai_prompt_evolution_vision_model=str(self.config.ai_prompt_evolution_vision_model),
+            ai_prompt_evolution_text_model=str(self.config.ai_prompt_evolution_text_model),
             ai_prompt_evolution_check_model=str(self.config.ai_prompt_evolution_check_model),
             ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
             zine_print_scale=float(self.config.zine_print_scale),
@@ -286,7 +293,8 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIModels.SceneBuilder", "Value": self.config.ai_scene_builder_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticA", "Value": self.config.ai_prompt_evolution_critic_model_a},
             {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticB", "Value": self.config.ai_prompt_evolution_critic_model_b},
-            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionAnalysis", "Value": self.config.ai_prompt_evolution_analysis_model},
+            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionVision", "Value": self.config.ai_prompt_evolution_vision_model},
+            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionText", "Value": self.config.ai_prompt_evolution_text_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCheck", "Value": self.config.ai_prompt_evolution_check_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
@@ -332,7 +340,8 @@ class PipelineControlService:
             ("AIModels", "SceneBuilder"): settings.ai_scene_builder_model,
             ("AIModels", "PromptEvolutionCriticA"): settings.ai_prompt_evolution_critic_model_a,
             ("AIModels", "PromptEvolutionCriticB"): settings.ai_prompt_evolution_critic_model_b,
-            ("AIModels", "PromptEvolutionAnalysis"): settings.ai_prompt_evolution_analysis_model,
+            ("AIModels", "PromptEvolutionVision"): settings.ai_prompt_evolution_vision_model,
+            ("AIModels", "PromptEvolutionText"): settings.ai_prompt_evolution_text_model,
             ("AIModels", "PromptEvolutionCheck"): settings.ai_prompt_evolution_check_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
@@ -379,7 +388,8 @@ class PipelineControlService:
             ("Scene Builder", settings.ai_scene_builder_model),
             ("Prompt Evolution critic A", settings.ai_prompt_evolution_critic_model_a),
             ("Prompt Evolution critic B", settings.ai_prompt_evolution_critic_model_b),
-            ("Prompt Evolution analysis", settings.ai_prompt_evolution_analysis_model),
+            ("Prompt Evolution vision", settings.ai_prompt_evolution_vision_model),
+            ("Prompt Evolution text", settings.ai_prompt_evolution_text_model),
             ("Prompt Evolution regression check", settings.ai_prompt_evolution_check_model),
         )
         for label, model in model_settings:

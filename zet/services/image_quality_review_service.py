@@ -139,17 +139,20 @@ class ImageQualityReviewService:
                 raise ImageQualityReviewError(f"Candidate image not found: {image_path}")
             review_image = self._review_image(image_path, cache_dir, max_side=768)
             started = time.perf_counter()
-            response = self.model_service.generate_json(
-                model,
-                system,
-                prompt,
-                schema,
-                images=[review_reference, review_image],
-            )
+            if hasattr(self.model_service, "generate_json_with_evidence"):
+                response, runtime_evidence = self.model_service.generate_json_with_evidence(
+                    model, system, prompt, schema, images=[review_reference, review_image]
+                )
+            else:
+                response = self.model_service.generate_json(
+                    model, system, prompt, schema, images=[review_reference, review_image]
+                )
+                runtime_evidence = {}
             weighted_mean = self._weighted_mean(response["scores"], rubric)
             review = {
                 "candidate_id": candidate_id,
                 **response,
+                "runtime_evidence": runtime_evidence,
                 "weighted_mean": weighted_mean,
                 "elapsed_seconds": round(time.perf_counter() - started, 3),
             }

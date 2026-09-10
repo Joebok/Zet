@@ -33,6 +33,7 @@ for import_path in (PROJECT_ROOT, PROJECT_ROOT / "Scripts"):
 
 from zet.models.ai_proxy import AIProxyAskManifest
 from zet.services.atomic_file_service import write_json_atomic, write_text_atomic as atomic_write_text
+from zet.services.ollama_model_service import OllamaModelService
 from AI_Manager.proxy_worker_output import log_job
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -160,7 +161,6 @@ def call_ollama_once(
     model: str,
     prompt: str,
     temperature: float = 0.1,
-    num_ctx: int | None = None,
     timeout: int = 600,
     images: list[str] | None = None,
     json_output: bool = False,
@@ -197,8 +197,6 @@ def call_ollama_once(
         payload["format"] = response_schema
     elif json_output:
         payload["format"] = "json"
-    if num_ctx:
-        payload["options"]["num_ctx"] = int(num_ctx)
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         request_url,
@@ -229,7 +227,6 @@ def call_ollama(
     model: str,
     prompt: str,
     temperature: float = 0.1,
-    num_ctx: int | None = None,
     timeout: int = 600,
     retries: int = 8,
     retry_seconds: float = 10.0,
@@ -247,7 +244,7 @@ def call_ollama(
     for attempt in range(1, total_attempts + 1):
         try:
             return call_ollama_once(
-                url, model, prompt, temperature=temperature, num_ctx=num_ctx,
+                url, model, prompt, temperature=temperature,
                 timeout=timeout, images=images, json_output=json_output, response_schema=response_schema,
                 keep_alive=keep_alive,
             )
@@ -270,7 +267,7 @@ def scheduled_keep_alive(model: str) -> str | int:
     return DEFAULT_KEEP_ALIVE if os.environ.get("AI_PROXY_NEXT_RESOURCE_KEY") == current_key else 0
 
 
-def ollama_generation_options(ask_manifest: dict) -> tuple[float, int | None]:
+def ollama_generation_options(ask_manifest: dict) -> float:
     raw_temperature = ask_manifest.get("ollama_temperature")
     if raw_temperature is None or raw_temperature == "":
         temperature = 0.1
@@ -284,19 +281,16 @@ def ollama_generation_options(ask_manifest: dict) -> tuple[float, int | None]:
         if not 0.0 <= temperature <= 2.0:
             raise ValueError("ask_manifest ollama_temperature must be a number between 0 and 2")
 
-    raw_num_ctx = ask_manifest.get("ollama_num_ctx")
-    if raw_num_ctx is None or raw_num_ctx == "":
-        num_ctx = None
-    else:
-        if isinstance(raw_num_ctx, bool):
-            raise ValueError("ask_manifest ollama_num_ctx must be a positive integer")
-        try:
-            num_ctx = int(raw_num_ctx)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("ask_manifest ollama_num_ctx must be a positive integer") from exc
-        if num_ctx <= 0 or isinstance(raw_num_ctx, float) and not raw_num_ctx.is_integer():
-            raise ValueError("ask_manifest ollama_num_ctx must be a positive integer")
-    return temperature, num_ctx
+    return temperature
+
+
+def ollama_runtime_evidence(url: str, model: str, timeout: int) -> dict:
+    base_url = url
+    for endpoint in ("/api/generate", "/api/chat"):
+        if base_url.endswith(endpoint):
+            base_url = base_url[: -len(endpoint)]
+            break
+    return OllamaModelService(base_url=base_url, timeout_seconds=min(timeout, 30)).runtime_evidence(model)
 
 
 def process_claimed(
@@ -334,7 +328,7 @@ def process_claimed(
     t0 = time.time()
     log_job(ask_manifest, "START")
     try:
-        temperature, num_ctx = ollama_generation_options(ask_manifest)
+        temperature = ollama_generation_options(ask_manifest)
         if not prompt_file or not (folder / prompt_file).exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
         if not expected_output:
@@ -350,12 +344,12 @@ def process_claimed(
             if not image_path.is_file():
                 raise FileNotFoundError(f"Ollama image missing: {name}")
             encoded_images.append(base64.b64encode(image_path.read_bytes()).decode("ascii"))
+        answer_manifest["ollama_runtime"] = ollama_runtime_evidence(ollama_url, model, timeout)
         response = call_ollama(
             ollama_url,
             model,
             prompt,
             temperature=temperature,
-            num_ctx=num_ctx,
             timeout=timeout,
             retries=ollama_retries,
             retry_seconds=ollama_retry_seconds,

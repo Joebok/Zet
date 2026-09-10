@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from datetime import datetime
 import os
 import platform
 from pathlib import Path
+import re
 import tomllib
 
 
@@ -32,7 +34,8 @@ class Config:
     ai_scene_builder_model: str = "general:latest"
     ai_prompt_evolution_critic_model_a: str = "image-analysis:latest"
     ai_prompt_evolution_critic_model_b: str = "image-analysis-alt:latest"
-    ai_prompt_evolution_analysis_model: str = "image-analysis:latest"
+    ai_prompt_evolution_vision_model: str = "image-analysis:latest"
+    ai_prompt_evolution_text_model: str = "image-analysis:latest"
     ai_prompt_evolution_check_model: str = "image-analysis-alt:latest"
     local_render_auto_queue_after_condense: bool = False
     local_render_backend: str = "stable_matrix"
@@ -105,6 +108,67 @@ class ConfigService:
     def _ai_models_config(payload: dict) -> dict:
         ai_models = payload.get("AIModels", {})
         return ai_models if isinstance(ai_models, dict) else {}
+
+    @staticmethod
+    def _validate_prompt_evolution_roles(ai_models: dict, path: Path) -> None:
+        if "PromptEvolutionAnalysis" in ai_models:
+            raise ConfigServiceError(
+                "Legacy AIModels.PromptEvolutionAnalysis is no longer supported. "
+                f"Run `python3 -m zet.scripts.migrate_wp13_config --config {path}`."
+            )
+        present = {
+            key for key in ("PromptEvolutionVision", "PromptEvolutionText")
+            if key in ai_models
+        }
+        if present and len(present) != 2:
+            missing = ({"PromptEvolutionVision", "PromptEvolutionText"} - present).pop()
+            raise ConfigServiceError(f"AIModels.{missing} is required when Prompt Evolution roles are configured.")
+
+    @staticmethod
+    def migrate_prompt_evolution_roles(config_path: str | Path) -> Path | None:
+        """Explicitly split the legacy Prompt Evolution assignment without changing its model."""
+        path = Path(config_path)
+        if not path.exists():
+            raise ConfigServiceError(f"Config file not found: {path}")
+        original = path.read_text(encoding="utf-8")
+        try:
+            payload = tomllib.loads(original)
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigServiceError(f"Config file is invalid TOML at {path}: {exc}") from exc
+        ai_models = ConfigService._ai_models_config(payload)
+        legacy = ai_models.get("PromptEvolutionAnalysis")
+        if legacy is None:
+            ConfigService._validate_prompt_evolution_roles(ai_models, path)
+            return None
+
+        values = {
+            "PromptEvolutionVision": ai_models.get("PromptEvolutionVision", legacy),
+            "PromptEvolutionText": ai_models.get("PromptEvolutionText", legacy),
+        }
+        legacy_pattern = re.compile(r"(?m)^PromptEvolutionAnalysis\s*=.*(?:\r?\n|$)")
+        replacement = "".join(f'{key} = {ConfigService._toml_string(value)}\n' for key, value in values.items())
+        updated, count = legacy_pattern.subn(replacement, original, count=1)
+        if count != 1:
+            raise ConfigServiceError("Could not locate AIModels.PromptEvolutionAnalysis for migration.")
+
+        backup = path.with_name(
+            f"{path.stem}.backup.wp13.{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}{path.suffix}"
+        )
+        temp = path.with_name(f".{path.name}.wp13.tmp")
+        backup.write_text(original, encoding="utf-8")
+        try:
+            temp.write_text(updated, encoding="utf-8")
+            ConfigService.load(temp)
+            temp.replace(path)
+        finally:
+            if temp.exists():
+                temp.unlink()
+        return backup
+
+    @staticmethod
+    def _toml_string(value: object) -> str:
+        text = str(value)
+        return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
     @staticmethod
     def _local_render_config(payload: dict) -> dict:
@@ -185,6 +249,7 @@ class ConfigService:
             base_folders = ConfigService._base_folders_for_platform(payload)
             prompt_condense = ConfigService._prompt_condense_config(payload)
             ai_models = ConfigService._ai_models_config(payload)
+            ConfigService._validate_prompt_evolution_roles(ai_models, path)
             local_render = ConfigService._local_render_config(payload)
             stable_matrix = ConfigService._stable_matrix_config(payload)
             comfyui = ConfigService._comfyui_config(payload)
@@ -215,8 +280,11 @@ class ConfigService:
                 ai_prompt_evolution_critic_model_b=str(
                     ai_models.get("PromptEvolutionCriticB", "image-analysis-alt:latest")
                 ),
-                ai_prompt_evolution_analysis_model=str(
-                    ai_models.get("PromptEvolutionAnalysis", "image-analysis:latest")
+                ai_prompt_evolution_vision_model=str(
+                    ai_models.get("PromptEvolutionVision", "image-analysis:latest")
+                ),
+                ai_prompt_evolution_text_model=str(
+                    ai_models.get("PromptEvolutionText", "image-analysis:latest")
                 ),
                 ai_prompt_evolution_check_model=str(
                     ai_models.get("PromptEvolutionCheck", "image-analysis-alt:latest")
@@ -266,6 +334,8 @@ class ConfigService:
                 ai_prompt_analysis_auto_queue_on_render=bool(ai_prompt_analysis.get("AutoQueueOnRender", False)),
                 scene_candidate_sources=ConfigService._scene_candidate_sources(payload),
             )
+        except ConfigServiceError:
+            raise
         except Exception as exc:
             raise ConfigServiceError(f"Config file is missing required BaseFolders entries: {path}") from exc
 

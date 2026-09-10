@@ -15,6 +15,13 @@ class ScriptedLlm:
         self.calls.append({"model": model, "system": system, "prompt": prompt, "schema": schema})
         return self.responses.pop(0)
 
+    def generate_json_with_evidence(self, model, system, prompt, schema):
+        response = self.generate_json(model, system, prompt, schema)
+        return response, {
+            "requested_alias": model, "effective_alias": model, "digest": "sha256:test",
+            "runtime_settings": {"num_ctx": 65536, "num_predict": 2048},
+        }
+
 
 def _element_result(questions=None):
     return {
@@ -106,6 +113,7 @@ class SceneBuilderInterviewServiceTests(unittest.TestCase):
         service = SceneBuilderInterviewService("qwen-local", llm)
 
         payload = service.start("Mara runs onto the rain-soaked platform as the last train disappears.", self._data())
+        self.assertEqual(65536, payload["session"]["runtime_evidence"][0]["runtime_settings"]["num_ctx"])
         while not payload["complete"]:
             payload = service.step(payload["session"], {})
 

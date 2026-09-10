@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+import re
 from urllib import request
 
 
@@ -47,10 +48,10 @@ class OllamaModelService:
                 capability_metadata_available = True
                 if "vision" in {str(item).strip().lower() for item in capabilities}:
                     vision_models.append(name)
-        filtered = capability_metadata_available and bool(vision_models)
         return {
-            "models": vision_models if filtered else names,
-            "vision_filtered": filtered,
+            "models": names,
+            "vision_models": vision_models,
+            "capability_metadata_available": capability_metadata_available,
         }
 
     def generate_json(
@@ -62,6 +63,18 @@ class OllamaModelService:
         *,
         images: list[str | Path] | None = None,
     ) -> dict:
+        value, _ = self.generate_json_with_evidence(model, system, prompt, schema, images=images)
+        return value
+
+    def generate_json_with_evidence(
+        self,
+        model: str,
+        system: str,
+        prompt: str,
+        schema: dict,
+        *,
+        images: list[str | Path] | None = None,
+    ) -> tuple[dict, dict]:
         """Generate one structured JSON response with a local Ollama model."""
         user_message: dict = {"role": "user", "content": prompt}
         if images:
@@ -80,7 +93,7 @@ class OllamaModelService:
                     {"role": "system", "content": system},
                     user_message,
                 ],
-                "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 4096},
+                "options": {"temperature": 0.2},
             },
         )
         content = response.get("message", {}).get("content")
@@ -92,4 +105,47 @@ class OllamaModelService:
             raise RuntimeError("Ollama returned invalid JSON.") from exc
         if not isinstance(value, dict):
             raise RuntimeError("Ollama JSON response must be an object.")
-        return value
+        return value, self.runtime_evidence(model, response)
+
+    def runtime_evidence(self, requested_alias: str, response: dict | None = None) -> dict:
+        """Resolve the active managed alias artifact and its Modelfile-owned runtime limits."""
+        tags = self._request_json("/api/tags").get("models", [])
+        show = self._request_json("/api/show", {"model": requested_alias})
+        effective_alias = str((response or {}).get("model") or requested_alias)
+        digest = ""
+        requested_names = {requested_alias, effective_alias}
+        requested_names.update(
+            f"{name}:latest" for name in tuple(requested_names) if ":" not in name
+        )
+        for item in tags if isinstance(tags, list) else []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or item.get("model") or "")
+            if name in requested_names:
+                digest = str(item.get("digest") or "")
+                break
+        parameters = str(show.get("parameters") or "")
+        if not parameters:
+            parameters = str(show.get("modelfile") or "")
+        runtime_settings = {}
+        for key in ("num_ctx", "num_predict"):
+            match = re.search(rf"(?m)^(?:PARAMETER\s+)?{key}\s+([^\s#]+)", parameters)
+            if match:
+                raw = match.group(1)
+                runtime_settings[key] = int(raw) if raw.isdigit() else raw
+        missing = [key for key in ("num_ctx", "num_predict") if key not in runtime_settings]
+        if not digest or missing:
+            details = []
+            if not digest:
+                details.append("alias digest")
+            if missing:
+                details.append("managed " + "/".join(missing))
+            raise RuntimeError(
+                f"Ollama runtime evidence for {requested_alias} is incomplete: missing {', '.join(details)}."
+            )
+        return {
+            "requested_alias": requested_alias,
+            "effective_alias": effective_alias,
+            "digest": digest,
+            "runtime_settings": runtime_settings,
+        }

@@ -204,7 +204,8 @@ class SceneBuilderInterviewService:
                 "answers": clean_answers,
             })
         phase = phases[phase_index]
-        response = self._run_phase(phase, state)
+        response, runtime_evidence = self._run_phase(phase, state)
+        state.setdefault("runtime_evidence", []).append({"phase": phase["key"], **runtime_evidence})
         result = response.get("result")
         if not isinstance(result, dict):
             raise SceneBuilderInterviewError("The local model returned no Scene Builder result.")
@@ -218,7 +219,7 @@ class SceneBuilderInterviewService:
                 state["complete"] = True
         return self._payload(state)
 
-    def _run_phase(self, phase: dict[str, Any], state: dict) -> dict:
+    def _run_phase(self, phase: dict[str, Any], state: dict) -> tuple[dict, dict]:
         schema = _object({
             "result": phase["result_schema"],
             "questions": _array(_QUESTION_SCHEMA),
@@ -232,7 +233,11 @@ class SceneBuilderInterviewService:
             "PRIOR CLARIFICATIONS:\n" + json.dumps(state.get("history") or [], ensure_ascii=False),
         ])
         try:
-            return self.llm.generate_json(self.model, self.SYSTEM_PROMPT, prompt, schema)
+            if hasattr(self.llm, "generate_json_with_evidence"):
+                return self.llm.generate_json_with_evidence(
+                    self.model, self.SYSTEM_PROMPT, prompt, schema
+                )
+            return self.llm.generate_json(self.model, self.SYSTEM_PROMPT, prompt, schema), {}
         except Exception as exc:
             raise SceneBuilderInterviewError(f"Local Scene Builder interview failed: {exc}") from exc
 

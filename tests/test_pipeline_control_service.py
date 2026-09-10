@@ -101,7 +101,9 @@ Backend = "local_image"
                     "Config\\AI_Prompt_Analysis_Instructions.md"
                 )
             )
-            self.assertEqual(len(roles), 9)
+            self.assertEqual(len(roles), 10)
+            self.assertIn("shared by bootstrap", roles["prompt_evolution_vision"]["description"])
+            self.assertIn("shared by cross-seed synthesis", roles["prompt_evolution_text"]["description"])
 
             app.save_automation_settings(
                 AutomationSettings(
@@ -121,7 +123,8 @@ Backend = "local_image"
                     ai_scene_builder_model="scene-builder-model",
                     ai_prompt_evolution_critic_model_a="critic-a-model",
                     ai_prompt_evolution_critic_model_b="critic-b-model",
-                    ai_prompt_evolution_analysis_model="evolution-analysis-model",
+                    ai_prompt_evolution_vision_model="evolution-vision-model",
+                    ai_prompt_evolution_text_model="evolution-text-model",
                     ai_prompt_evolution_check_model="check-model",
                     zine_print_scale=0.965,
                     zine_page_margin=8,
@@ -145,7 +148,8 @@ Backend = "local_image"
             self.assertEqual(reloaded.ai_scene_builder_model, "scene-builder-model")
             self.assertEqual(reloaded.ai_prompt_evolution_critic_model_a, "critic-a-model")
             self.assertEqual(reloaded.ai_prompt_evolution_critic_model_b, "critic-b-model")
-            self.assertEqual(reloaded.ai_prompt_evolution_analysis_model, "evolution-analysis-model")
+            self.assertEqual(reloaded.ai_prompt_evolution_vision_model, "evolution-vision-model")
+            self.assertEqual(reloaded.ai_prompt_evolution_text_model, "evolution-text-model")
             self.assertEqual(reloaded.ai_prompt_evolution_check_model, "check-model")
             self.assertEqual(reloaded.zine_print_scale, 0.965)
             self.assertEqual(reloaded.zine_page_margin, 8)

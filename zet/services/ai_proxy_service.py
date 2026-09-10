@@ -228,7 +228,6 @@ class AIProxyService:
             "render_preset": ask.render_preset,
             "reference_files": references,
             "ollama_temperature": ask.ollama_temperature,
-            "ollama_num_ctx": ask.ollama_num_ctx,
             "consumer": ask.consumer,
         }
         if ask.worker_type == "manual_chatgpt_render" and ask.pipeline in {
@@ -313,18 +312,9 @@ class AIProxyService:
                 raise AIProxyServiceError(f"No Final_Image_Prompt.md found for Asset {asset.asset_id}.")
             return prompt_path.read_text(encoding="utf-8")
 
-        head_view = self._safe_head_view(asset.head_view)
-        return (
-            "# Zet Ollama Prompt\n\n"
-            f"AssetID: {asset.asset_id}\n"
-            f"Character: {asset.character}\n"
-            f"Phase: {asset.phase}\n"
-            f"Pipeline: {asset.pipeline}\n"
-            f"PipelineStage: {asset.pipeline_stage}\n"
-            f"BodyView: {asset.body_view}\n"
-            f"HeadView: {head_view}\n"
-            f"FinalImageOutput: {asset.final_image_output}\n\n"
-            "This is a staged placeholder prompt for Zet AI proxy testing.\n"
+        raise AIProxyServiceError(
+            f"Unsupported AI task for {asset.pipeline} stage {asset.pipeline_stage}; "
+            "no production prompt contract is registered."
         )
 
     def stage_current_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:

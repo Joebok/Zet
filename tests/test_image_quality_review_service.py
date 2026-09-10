@@ -9,6 +9,12 @@ from zet.services.image_quality_review_service import ImageQualityReviewService
 
 
 class StubVisionService:
+    def generate_json_with_evidence(self, model, system, prompt, schema, *, images):
+        return self.generate_json(model, system, prompt, schema, images=images), {
+            "requested_alias": model, "effective_alias": model, "digest": "sha256:test",
+            "runtime_settings": {"num_ctx": 65536, "num_predict": 2048},
+        }
+
     def generate_json(self, _model, _system, _prompt, _schema, *, images):
         assert len(images) == 2
         return {
@@ -49,6 +55,7 @@ def test_reviews_experiment_and_preserves_human_decision(tmp_path: Path) -> None
     assert result["human_decision_required"] is True
     assert result["reviews"][0]["prefilter_pass"] is True
     assert result["reviews"][0]["weighted_mean"] == 3.3
+    assert result["reviews"][0]["runtime_evidence"]["digest"] == "sha256:test"
     assert result["status"] == "COMPLETE"
     assert Path(result["output_path"]).is_file()
     assert max(Image.open(tmp_path / "review_inputs" / "reference.jpg").size) == 768

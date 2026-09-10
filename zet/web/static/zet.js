@@ -434,7 +434,8 @@ const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
 const settingAiPromptEvolutionCriticAModel = document.querySelector("#setting-ai-prompt-evolution-critic-a-model");
 const settingAiPromptEvolutionCriticBModel = document.querySelector("#setting-ai-prompt-evolution-critic-b-model");
-const settingAiPromptEvolutionAnalysisModel = document.querySelector("#setting-ai-prompt-evolution-analysis-model");
+const settingAiPromptEvolutionVisionModel = document.querySelector("#setting-ai-prompt-evolution-vision-model");
+const settingAiPromptEvolutionTextModel = document.querySelector("#setting-ai-prompt-evolution-text-model");
 const settingAiPromptEvolutionCheckModel = document.querySelector("#setting-ai-prompt-evolution-check-model");
 const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
@@ -9911,7 +9912,8 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
   setOllamaModelValue(settingAiPromptEvolutionCriticAModel, automation.ai_prompt_evolution_critic_model_a || "");
   setOllamaModelValue(settingAiPromptEvolutionCriticBModel, automation.ai_prompt_evolution_critic_model_b || "");
-  setOllamaModelValue(settingAiPromptEvolutionAnalysisModel, automation.ai_prompt_evolution_analysis_model || "");
+  setOllamaModelValue(settingAiPromptEvolutionVisionModel, automation.ai_prompt_evolution_vision_model || "");
+  setOllamaModelValue(settingAiPromptEvolutionTextModel, automation.ai_prompt_evolution_text_model || "");
   setOllamaModelValue(settingAiPromptEvolutionCheckModel, automation.ai_prompt_evolution_check_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   renderManagedLlmRoles(payload.managed_llm_roles || []);
@@ -9945,7 +9947,8 @@ const ollamaModelControls = () => [
   settingAiSceneBuilderModel,
   settingAiPromptEvolutionCriticAModel,
   settingAiPromptEvolutionCriticBModel,
-  settingAiPromptEvolutionAnalysisModel,
+  settingAiPromptEvolutionVisionModel,
+  settingAiPromptEvolutionTextModel,
   settingAiPromptEvolutionCheckModel,
 ];
 
@@ -10006,7 +10009,7 @@ async function refreshOllamaModelOptions() {
     }
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
     showMessage(
-      `Loaded ${(payload.models || []).length} Ollama model(s)${payload.vision_filtered ? " with vision capability" : ""}.`,
+      `Loaded ${(payload.models || []).length} Ollama model(s); ${(payload.vision_models || []).length} report vision capability.`,
     );
   } catch (error) {
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
@@ -10113,7 +10116,8 @@ function automationPayloadFromForm() {
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
     ai_prompt_evolution_critic_model_a: settingAiPromptEvolutionCriticAModel.value,
     ai_prompt_evolution_critic_model_b: settingAiPromptEvolutionCriticBModel.value,
-    ai_prompt_evolution_analysis_model: settingAiPromptEvolutionAnalysisModel.value,
+    ai_prompt_evolution_vision_model: settingAiPromptEvolutionVisionModel.value,
+    ai_prompt_evolution_text_model: settingAiPromptEvolutionTextModel.value,
     ai_prompt_evolution_check_model: settingAiPromptEvolutionCheckModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,

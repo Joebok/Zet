@@ -15,14 +15,16 @@ class PromptEvolutionServiceV3Tests(TestCase):
         service.app = SimpleNamespace(config=SimpleNamespace(
             ai_prompt_evolution_critic_model_a="critic-a",
             ai_prompt_evolution_critic_model_b="critic-b",
-            ai_prompt_evolution_analysis_model="analysis",
+            ai_prompt_evolution_vision_model="vision",
+            ai_prompt_evolution_text_model="text",
             ai_prompt_evolution_check_model="check",
         ))
 
         self.assertEqual({
             "critic_model_a": "critic-a",
             "critic_model_b": "critic-b",
-            "analysis_model": "analysis",
+            "vision_model": "vision",
+            "text_model": "text",
             "check_model": "check",
         }, service._configured_models())
 

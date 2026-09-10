@@ -515,8 +515,11 @@ class PromptEvolutionService:
             "critic_model_b": str(
                 getattr(self.app.config, "ai_prompt_evolution_critic_model_b", DEFAULT_CHECKLIST_MODEL)
             ),
-            "analysis_model": str(
-                getattr(self.app.config, "ai_prompt_evolution_analysis_model", DEFAULT_VISION_MODEL)
+            "vision_model": str(
+                getattr(self.app.config, "ai_prompt_evolution_vision_model", DEFAULT_VISION_MODEL)
+            ),
+            "text_model": str(
+                getattr(self.app.config, "ai_prompt_evolution_text_model", DEFAULT_VISION_MODEL)
             ),
             "check_model": str(
                 getattr(self.app.config, "ai_prompt_evolution_check_model", DEFAULT_CHECKLIST_MODEL)
@@ -660,7 +663,7 @@ class PromptEvolutionService:
             "version": AI_PROXY_PROTOCOL_VERSION, "ask_id": ask_id, "asset_id": None,
             "character": run["character"], "phase": run["phase"], "pipeline": "Prompt-Evolution",
             "pipeline_stage": task.upper(), "ollama_attempt_id": stamp, "worker_type": "ollama_generate",
-            "ollama_model": model or run["analysis_model"], "prompt_file": "OLLAMA_PROMPT.md", "image_files": image_names,
+            "ollama_model": model or self._run_model(run, "text"), "prompt_file": "OLLAMA_PROMPT.md", "image_files": image_names,
             "json_output": True, "expected_output": raw_output_name, "task_type": f"prompt_evolution_{task}",
             "auxiliary": True, "target_output_dir": str(output.parent.resolve()), "target_output_file": output.name,
             "prompt_evolution_run_id": run["run_id"],
@@ -671,7 +674,7 @@ class PromptEvolutionService:
             manifest["ollama_temperature"] = temperature
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         self.proxy.publish(staging, ask_id, "ollama_generate")
-        selected_model = model or run["analysis_model"]
+        selected_model = model or self._run_model(run, "text")
         batch_number = int(run.get("current_batch", 0)) + 1
         parts = task.split("_")
         if len(parts) >= 3 and parts[0] == "critic":
@@ -694,6 +697,17 @@ class PromptEvolutionService:
             message = f"Queued {task.replace('_', ' ')} ({selected_model})."
         self._log(run, message, task=task, ask_id=ask_id, model=selected_model)
         return ask_id
+
+    @staticmethod
+    def _run_model(run: dict[str, Any], role: str) -> str:
+        key = f"{role}_model"
+        model = str(run.get(key) or "").strip()
+        if model:
+            return model
+        legacy = str(run.get("analysis_model") or "").strip()
+        if legacy:
+            return legacy
+        raise PromptEvolutionError(f"Prompt Evolution run has no recorded {role} model assignment.")
 
     def _format_template(self, run: dict[str, Any], name: str, values: dict[str, str]) -> str:
         templates = self._read_json(Path(run["root"]) / "template_snapshot.json")
@@ -735,7 +749,7 @@ class PromptEvolutionService:
             prompt += f"\n\nThe prior response was rejected: {prior_error}\nReturn only a corrected response that fixes this rejection."
         run["bootstrap_ask_id"] = self._queue_ollama(
             run, task="bootstrap_retry" if prior_error else "bootstrap", prompt=prompt, output=root / "bootstrap.json", images=[Path(run["reference_image"])],
-            model=run["analysis_model"], response_schema=BOOTSTRAP_SCHEMA, temperature=0,
+            model=self._run_model(run, "vision"), response_schema=BOOTSTRAP_SCHEMA, temperature=0,
         )
         self._save_run(run)
 
@@ -759,7 +773,8 @@ class PromptEvolutionService:
                 })
                 repair_model = (
                     str(run.get("check_model") or self._configured_models()["check_model"])
-                    if path.stem.startswith("regression_check_") else None
+                    if path.stem.startswith("regression_check_")
+                    else self._run_model(run, "text")
                 )
                 self._queue_ollama(
                     run, task=f"repair_{path.stem}", prompt=prompt, output=repair_path, images=[], model=repair_model,
@@ -781,10 +796,9 @@ class PromptEvolutionService:
                 for key, count in run.get("validation_retries", {}).items() if int(count) >= 1
             )
             if retry_used:
-                positive = "character matching the canonical reference image"
-                self._log(run, f"Bootstrap retry still omitted a positive prompt; using a conservative fallback for {path.name}.", "warning")
-                self._save_run(run)
-                return positive, negative
+                raise PromptEvolutionError(
+                    f"Bootstrap retry still omitted a positive prompt; unsupported fallback generation was not run: {path}"
+                )
             raise PromptEvolutionError(f"LLM response omitted positive_prompt: {path}")
         return positive, negative
 
@@ -1248,7 +1262,7 @@ class PromptEvolutionService:
             }) + f"\n\nThe prior response was rejected: {error}\nReturn only a corrected response that fixes this rejection."
             directed.update({"output": str(output), "ask_id": self._queue_ollama(
                 run, task="directed_refinement_retry", prompt=prompt, output=output, images=[Path(run["reference_image"])],
-                model=run["analysis_model"], response_schema=PROMPT_CORE_SCHEMA, temperature=0,
+                model=self._run_model(run, "vision"), response_schema=PROMPT_CORE_SCHEMA, temperature=0,
             )})
             run["directed_refinement"] = directed
             self._log(run, f"Rejected directed refinement output; queued one corrected retry: {error}", "warning")
@@ -1264,7 +1278,7 @@ class PromptEvolutionService:
                 "BATCH_EVIDENCE": json.dumps(batch.get("candidates", []), ensure_ascii=False),
             }) + f"\n\nThe prior response was rejected: {error}\nReturn only a corrected response that fixes this rejection."
             batch["synthesis"] = {"output": str(output), "ask_id": self._queue_ollama(
-                run, task="batch_synthesis_retry", prompt=prompt, output=output, images=[], model=run["analysis_model"],
+                run, task="batch_synthesis_retry", prompt=prompt, output=output, images=[], model=self._run_model(run, "text"),
                 response_schema=SYNTHESIS_SCHEMA, temperature=0,
             )}
             batch["status"] = "SYNTHESIZING"
@@ -1277,7 +1291,7 @@ class PromptEvolutionService:
             }) + f"\n\nThe prior response was rejected: {error}"
             batch["diagnosis"] = {"output": str(output), "ask_id": self._queue_ollama(
                 run, task="prompt_diagnosis_retry", prompt=prompt, output=output,
-                images=[Path(run["reference_image"])], model=run["analysis_model"], response_schema=DIAGNOSIS_SCHEMA, temperature=0,
+                images=[Path(run["reference_image"])], model=self._run_model(run, "vision"), response_schema=DIAGNOSIS_SCHEMA, temperature=0,
             )}
             batch["status"] = "DIAGNOSING"
             run["status"] = "DIAGNOSING"
@@ -1290,7 +1304,7 @@ class PromptEvolutionService:
                 "STABLE_SUCCESSES": json.dumps(batch["synthesis"].get("stable_successes", []), ensure_ascii=False),
             }) + f"\n\nThe prior response was rejected: {error}"
             batch["edit"] = {"output": str(output), "ask_id": self._queue_ollama(
-                run, task="prompt_edit_retry", prompt=prompt, output=output, images=[], model=run["analysis_model"],
+                run, task="prompt_edit_retry", prompt=prompt, output=output, images=[], model=self._run_model(run, "text"),
                 response_schema=EDIT_SCHEMA, temperature=0,
             )}
             batch["status"] = "EDITING"
@@ -1410,7 +1424,7 @@ class PromptEvolutionService:
                     synthesis_output = batch_path / "batch_synthesis.json"
                     synthesis_prompt = self._format_template(run, "batch_synthesis", {"BATCH_EVIDENCE": json.dumps(evidence, ensure_ascii=False)})
                     batch["synthesis"] = {"output": str(synthesis_output), "ask_id": self._queue_ollama(
-                        run, task="batch_synthesis", prompt=synthesis_prompt, output=synthesis_output, images=[], model=run["analysis_model"],
+                        run, task="batch_synthesis", prompt=synthesis_prompt, output=synthesis_output, images=[], model=self._run_model(run, "text"),
                         response_schema=SYNTHESIS_SCHEMA, temperature=0,
                     )}
                     batch["status"] = "SYNTHESIZING"
@@ -1449,7 +1463,7 @@ class PromptEvolutionService:
                         })
                         batch["diagnosis"] = {"output": str(diagnosis_output), "ask_id": self._queue_ollama(
                             run, task="prompt_diagnosis", prompt=diagnosis_prompt, output=diagnosis_output,
-                            images=[Path(run["reference_image"])], model=run["analysis_model"], response_schema=DIAGNOSIS_SCHEMA, temperature=0,
+                            images=[Path(run["reference_image"])], model=self._run_model(run, "vision"), response_schema=DIAGNOSIS_SCHEMA, temperature=0,
                         )}
                         batch["status"] = "DIAGNOSING"
                         self._write_json(batch_path / "batch.json", batch)
@@ -1484,7 +1498,7 @@ class PromptEvolutionService:
                             "STABLE_SUCCESSES": json.dumps(batch["synthesis"].get("stable_successes", []), ensure_ascii=False),
                         })
                         batch["edit"] = {"output": str(edit_output), "ask_id": self._queue_ollama(
-                            run, task="prompt_edit", prompt=edit_prompt, output=edit_output, images=[], model=run["analysis_model"],
+                            run, task="prompt_edit", prompt=edit_prompt, output=edit_output, images=[], model=self._run_model(run, "text"),
                             response_schema=EDIT_SCHEMA, temperature=0,
                         )}
                         batch["status"] = "EDITING"
@@ -1596,7 +1610,7 @@ class PromptEvolutionService:
         })
         ask_id = self._queue_ollama(
             run, task="directed_refinement", prompt=prompt, output=output, images=[Path(run["reference_image"])],
-            model=run["analysis_model"], response_schema=PROMPT_CORE_SCHEMA, temperature=0,
+            model=self._run_model(run, "vision"), response_schema=PROMPT_CORE_SCHEMA, temperature=0,
         )
         run["directed_refinement"] = {"status": "QUEUED", "instructions": instructions.strip(), "ask_id": ask_id, "output": str(output)}
         run["status"] = "DIRECTED_REFINING"

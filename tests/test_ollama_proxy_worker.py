@@ -81,8 +81,6 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         for manifest in (
             {"ollama_temperature": True},
             {"ollama_temperature": 2.1},
-            {"ollama_num_ctx": 0},
-            {"ollama_num_ctx": 1.5},
         ):
             with self.subTest(manifest=manifest), self.assertRaises(ValueError):
                 ollama_generation_options(manifest)
@@ -109,7 +107,13 @@ class OllamaProxyWorkerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value="ok") as call:
+            runtime = {
+                "requested_alias": "qwen3.5:9b", "effective_alias": "qwen3.5:9b",
+                "digest": "sha256:model", "runtime_settings": {"num_ctx": 65536, "num_predict": 2048},
+            }
+            with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value="ok") as call, patch(
+                "AI_Manager.ollama_proxy_worker.ollama_runtime_evidence", return_value=runtime
+            ):
                 result = process_claimed(
                     folder,
                     "worker-1",
@@ -122,6 +126,8 @@ class OllamaProxyWorkerTests(unittest.TestCase):
 
             self.assertEqual("SUCCESS", result)
             self.assertEqual(0.7, call.call_args.kwargs["temperature"])
-            self.assertEqual(32768, call.call_args.kwargs["num_ctx"])
+            self.assertNotIn("num_ctx", call.call_args.kwargs)
             self.assertEqual({"type": "object"}, call.call_args.kwargs["response_schema"])
             self.assertEqual("5m", call.call_args.kwargs["keep_alive"])
+            answer = json.loads((folder / "answer_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(runtime, answer["ollama_runtime"])
