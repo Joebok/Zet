@@ -75,6 +75,7 @@ Handoff:
 * New tests/fixtures available to later WPs: The browser fixture now gives Alpha Story eight ordered scenes and supplies a valid harvested-answer manifest. WP03 tests cover all eight scenes, first/last arrows, complete back/forward traversal, late scene-document, Scene Builder, and cross-story responses, disabled mutation controls while loading, invalid-scene fallback, and successful/failed To Do and Template Instruction Manuals navigation. The imported-image test now uses an exact card locator and waits for the completed metadata refresh before continuing.
 * Assumptions later WPs may rely on: WP03 acceptance and the previously failing WP02 handoff cases are green. An equivalent full Playwright run using a temporary port-8766 config passed all 33 browser tests on 2026-09-10; the standard `npx playwright test` command could not start locally because an unrelated process already occupied port 8765. `node --check zet/web/static/zet.js` and `.venv\\Scripts\\python.exe -m pytest tests/test_web_app.py` also passed (9 tests). The temporary Playwright config was removed and is not part of the delivered change.
 * Deviations from master plan: No backend scene API, production dependency, or WP04 work was added. The existing workspace-summary scene rows remain the browser’s canonical ordered collection, with the scene-list endpoint populating the same collection when the Scenes page loads. The three pre-existing browser failures recorded across the WP02/WP03 handoffs were repaired as prerequisite test/fixture defects rather than deferred again.
+* WP02 and WP03 issues should now be fixed.
 
 ### WP04 — Remove redundant review and summary work
 **Executor:** Medium. **Dependencies:** WP01.
@@ -86,6 +87,14 @@ Handoff:
 - Add process-level single-flight summary computation with a 15-second cache, invalidated by relevant Zet mutations. Browser cancellation alone must not be treated as backend cancellation.
 
 **Acceptance:** Zero-candidate scenes cause zero render compiles. One summary request performs at most one catalog discovery. Concurrent identical summary requests share computation. Counts match review rows for the same snapshot.
+
+Handoff:
+
+* New invariants introduced: Candidate review discovery checks main and subscene candidate paths before detailed status evaluation; a discovery pass loads each scene's Scene Builder data at most once; zero-candidate targets never enter freshness compilation; scoped and project summary counts derive from one discovered dataset; identical summaries single-flight through a 15-second process-local cache; relevant Zet mutations invalidate cached summaries.
+* APIs/contracts changed: Added `DiscoveryContext` and `SceneDiscoveryRecord`; `ZetApp.discovery_context()` creates a request-scoped context; scene review listing/status and image-catalog listing accept an optional `discovery_context`; `ScenePromptAnalysisService.pending_keys()` exposes one queue snapshot; `SummaryCache` provides process-local single-flight caching and invalidation.
+* New tests/fixtures available to later WPs: `tests/test_wp04_reliability.py` covers main/subscene candidates, zero-candidate compile suppression, shared catalog/scene discovery, concurrent summaries, snapshot count parity, and mutation invalidation. WP01's `write_reliability_fixture()` remains the isolated 1x/10x/100x dataset source; `Scripts/Benchmark_WP01.py` records the operation counters used during validation.
+* Assumptions later WPs may rely on: WP04 acceptance is PASS. Focused validation passed with 34 tests, and the isolated WP01 benchmark completed for 1x/10x/100x cold and warm runs. Backend work continues if a browser request is cancelled; browser cancellation is not propagated as backend cancellation.
+* Deviations from master plan: None.
 
 ### WP05 — Durable manual-render publication
 **Executor:** Medium. **Dependencies:** WP01.

@@ -34,6 +34,7 @@ from zet.services.prompt_review_service import PromptReviewContext, PromptReview
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.prompt_evolution_service import PromptEvolutionService
 from zet.services.production_work_summary_service import ProductionWorkSummaryService
+from zet.services.discovery_context import DiscoveryContext
 from zet.services.reference_service import ReferenceService
 from zet.services.scene_appearance_service import (
     SceneAppearanceCreateResult,
@@ -472,6 +473,10 @@ class ZetApp:
         """List scene markdown files for one story."""
         return self.story_service.list_scenes(story_slug)
 
+    def discovery_context(self) -> DiscoveryContext:
+        """Create one request-scoped discovery context for related reads."""
+        return DiscoveryContext(self.story_service, self.path_service)
+
     def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
         """Create a new scene markdown file from template."""
         return self.story_service.create_scene(story_slug, scene_name)
@@ -514,8 +519,18 @@ class ZetApp:
     def scene_image_review_status(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
         return self.scene_image_review_service.status(story_slug, scene_slug, render_target_id)
 
-    def list_pending_scene_image_reviews(self, story_slug: str = "", scene_slug: str = ""):
-        return self.scene_image_review_service.list_pending(story_slug, scene_slug)
+    def list_pending_scene_image_reviews(
+        self,
+        story_slug: str = "",
+        scene_slug: str = "",
+        *,
+        discovery_context: DiscoveryContext | None = None,
+    ):
+        return self.scene_image_review_service.list_pending(
+            story_slug,
+            scene_slug,
+            discovery_context=discovery_context,
+        )
 
     def list_pending_asset_image_reviews(self, character: str = "", phase: str = ""):
         return self.production_work_summary_service.list_asset_reviews(character, phase)
@@ -692,7 +707,9 @@ class ZetApp:
             costume_status=item.costume_status,
         ) for item in items]
 
-    def image_catalog_items(self, **filters):
+    def image_catalog_items(self, *, discovery_context: DiscoveryContext | None = None, **filters):
+        if discovery_context is not None:
+            filters["discovery_context"] = discovery_context
         return self.image_catalog_service.list_items(**filters)
 
     def image_catalog_item(self, catalog_id: str):
@@ -920,6 +937,8 @@ class ZetApp:
     def harvest_ai_answers(self):
         results = self.asset_service.harvest_ai_answers()
         self.prompt_evolution_service.advance_active_runs()
+        from zet.services.summary_cache import invalidate_summary_cache
+        invalidate_summary_cache()
         return results
 
     def prompt_evolution_options(self, character: str, phase: str):

@@ -9,6 +9,7 @@ from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock, supersede_task, task_state_path
+from zet.services.summary_cache import invalidate_summary_cache
 
 
 class ScenePromptAnalysisService:
@@ -86,6 +87,7 @@ class ScenePromptAnalysisService:
             previous = self.path_service.read_ask_manifest(path)
             if previous.get("task_type") == self.TASK_TYPE and previous.get("story_slug") == story_slug and previous.get("scene_slug") == scene_slug and str(previous.get("render_target_id") or "main") == target_id and previous.get("ask_id") != ask_id:
                 supersede_task(Path(self.config.base_ai_queue_path), path, "New prompt analysis requested")
+        invalidate_summary_cache()
         return self.status(story_slug, scene_slug, target_id, current_prompt_text=prompt_text)
 
     def status(
@@ -130,7 +132,22 @@ class ScenePromptAnalysisService:
                 "stale": bool(result_path.is_file() and not complete and not pending)}
 
     def pending_count(self, story_slug: str = "", scene_slug: str = "") -> int:
-        count = 0
+        return sum(
+            1
+            for story, scene, _target in self._pending_records()
+            if (not story_slug or story == story_slug)
+            and (not scene_slug or scene == scene_slug)
+        )
+
+    def pending_keys(self) -> set[tuple[str, str, str]]:
+        return set(self._pending_records())
+
+    def pending_records(self) -> list[tuple[str, str, str]]:
+        """Return the current pending task snapshot, preserving duplicate tasks."""
+        return self._pending_records()
+
+    def _pending_records(self) -> list[tuple[str, str, str]]:
+        records: list[tuple[str, str, str]] = []
         for path in self.path_service.task_paths("ask", "answer", "running"):
             if task_state_path(Path(self.config.base_ai_queue_path), "Superseded", path.name).exists():
                 continue
@@ -139,12 +156,12 @@ class ScenePromptAnalysisService:
             manifest = self.path_service.read_ask_manifest(path)
             if manifest.get("task_type") != self.TASK_TYPE:
                 continue
-            if story_slug and manifest.get("story_slug") != story_slug:
-                continue
-            if scene_slug and manifest.get("scene_slug") != scene_slug:
-                continue
-            count += 1
-        return count
+            records.append((
+                str(manifest.get("story_slug") or ""),
+                str(manifest.get("scene_slug") or ""),
+                str(manifest.get("render_target_id") or "main"),
+            ))
+        return records
 
     def list_statuses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
         rows = []

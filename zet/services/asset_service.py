@@ -20,6 +20,7 @@ from zet.services.state_machine import StateMachine
 from zet.services.worker_service import WorkerService
 from zet.services.workflow_storage import atomic_copy
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.summary_cache import invalidate_summary_cache
 
 
 def serialized_asset(method):
@@ -224,6 +225,7 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
+        invalidate_summary_cache()
         if next_actor == "AI_AGENT":
             self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
             return self.asset_repository.get_asset(character, phase, asset_id)
@@ -266,6 +268,7 @@ class AssetService:
             path.write_text(cleaned + "\n", encoding="utf-8")
         else:
             path.unlink(missing_ok=True)
+        invalidate_summary_cache()
         return cleaned
 
     def _render_reset_skip_message(self, asset: Asset) -> str | None:
@@ -491,6 +494,7 @@ class AssetService:
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
         write_json_atomic(journal_path, {**journal, "status": "COMMITTED"})
+        invalidate_summary_cache()
         return updated_asset
 
     @serialized_asset
@@ -520,6 +524,7 @@ class AssetService:
 
         self.asset_repository.save_asset(updated_asset)
         self.housekeeping_service.prepare_stage(updated_asset)
+        invalidate_summary_cache()
         return updated_asset
 
     @serialized_asset
@@ -640,7 +645,9 @@ class AssetService:
         return failed_asset
 
     def stage_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
-        return self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+        result = self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
+        invalidate_summary_cache()
+        return result
 
     def run_current_worker_chain(self, character: str, phase: str, asset_id: int, max_steps: int = 10) -> WorkerChainResult:
         asset = self.asset_repository.get_asset(character, phase, asset_id)

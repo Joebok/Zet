@@ -8,6 +8,8 @@ from pathlib import Path
 
 from zet.models.story import SceneImageReviewStatus
 from zet.services.scene_render_target_service import SceneRenderTargetService
+from zet.services.discovery_context import DiscoveryContext
+from zet.services.summary_cache import invalidate_summary_cache
 from zet.services.workflow_storage import atomic_copy, file_lock
 from zet.services.atomic_file_service import write_json_atomic
 
@@ -49,23 +51,47 @@ class SceneImageReviewService:
     _atomic_copy = staticmethod(atomic_copy)
     _write_json = staticmethod(write_json_atomic)
 
-    def status(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
+    def status(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = "main",
+        *,
+        discovery_context: DiscoveryContext | None = None,
+    ) -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
         target_id = str(render_target_id or "main").strip()
         target_service = self.target_service
         paths = target_service.review_paths(safe_story, safe_scene, target_id)
         locked_path, candidate_path, comment_path = paths["locked"], paths["candidate"], paths["comment"]
         title = safe_scene
-        scene = next(
-            (item for item in self.story_service.list_scenes(safe_story) if item.slug == safe_scene),
-            None,
-        )
-        if scene is not None:
-            title = scene.title
-        document = self.story_service.load_scene_builder_data(safe_story, safe_scene) if target_id != "main" else None
-        target_label = target_service.target_label(document.data, target_id) if document else "Full Scene"
+        discovery_record = None
+        if discovery_context is not None:
+            discovery_record = next(
+                (
+                    item for item in discovery_context.filtered_scene_records(safe_story, safe_scene)
+                    if item.render_target_id == target_id
+                ),
+                None,
+            )
+            if discovery_record is not None:
+                title = discovery_record.scene_title
+        if discovery_record is None:
+            scene = next(
+                (item for item in self.story_service.list_scenes(safe_story) if item.slug == safe_scene),
+                None,
+            )
+            if scene is not None:
+                title = scene.title
+        if discovery_record is not None and target_id != "main":
+            if discovery_record.definition is None:
+                raise SceneImageReviewError(f"Scene subscene not found: {target_id}")
+            target_label = discovery_record.render_target_label
+        else:
+            document = self.story_service.load_scene_builder_data(safe_story, safe_scene) if target_id != "main" else None
+            target_label = target_service.target_label(document.data, target_id) if document else "Full Scene"
         freshness = {"locked_current": locked_path.is_file(), "stale_reason": ""}
-        if target_id != "main":
+        if target_id != "main" and discovery_record is None:
             if target_service.definition(document.data, target_id) is None:
                 raise SceneImageReviewError(f"Scene subscene not found: {target_id}")
         if locked_path.is_file():
@@ -91,27 +117,27 @@ class SceneImageReviewService:
             stale_reason=str(freshness.get("stale_reason") or ""),
         )
 
-    def list_pending(self, story_slug: str = "", scene_slug: str = "") -> list[SceneImageReviewStatus]:
+    def list_pending(
+        self,
+        story_slug: str = "",
+        scene_slug: str = "",
+        *,
+        discovery_context: DiscoveryContext | None = None,
+    ) -> list[SceneImageReviewStatus]:
         safe_story = self.story_service.safe_slug(story_slug) if story_slug else ""
         safe_scene = self.story_service.safe_slug(scene_slug) if scene_slug else ""
+        context = discovery_context or DiscoveryContext(self.story_service, self.path_service)
         rows: list[SceneImageReviewStatus] = []
-        for story in self.story_service.list_stories():
-            if safe_story and story.slug != safe_story:
+        for item in context.filtered_scene_records(safe_story, safe_scene):
+            # Candidate existence is the cheap gate. Detailed freshness may compile a render.
+            if not item.candidate_exists:
                 continue
-            for scene in self.story_service.list_scenes(story.slug):
-                if safe_scene and scene.slug != safe_scene:
-                    continue
-                status = self.status(story.slug, scene.slug)
-                if status.candidate_exists:
-                    rows.append(status)
-                document = self.story_service.load_scene_builder_data(story.slug, scene.slug)
-                for definition in document.data.get("subscenes") or []:
-                    target_id = str(definition.get("id") or "")
-                    if not target_id:
-                        continue
-                    target_status = self.status(story.slug, scene.slug, target_id)
-                    if target_status.candidate_exists:
-                        rows.append(target_status)
+            rows.append(self.status(
+                item.story_slug,
+                item.scene_slug,
+                item.render_target_id,
+                discovery_context=context,
+            ))
         return rows
 
     @serialized_review
@@ -126,12 +152,15 @@ class SceneImageReviewService:
             path.write_text(clean + "\n", encoding="utf-8")
         else:
             path.unlink(missing_ok=True)
+        invalidate_summary_cache()
         return clean
 
     def apply_answer(self, answer_path: Path, response_path: Path, ask_manifest: dict) -> tuple[str, Path]:
         safe_story, safe_scene = self._slugs(ask_manifest.get("story_slug"), ask_manifest.get("scene_slug"))
         with file_lock(self.path_service.story_pipeline_path(safe_story, safe_scene) / "Scene_Review.lock"):
-            return self._apply_answer(answer_path, response_path, ask_manifest)
+            result = self._apply_answer(answer_path, response_path, ask_manifest)
+        invalidate_summary_cache()
+        return result
 
     def _apply_answer(self, answer_path: Path, response_path: Path, ask_manifest: dict) -> tuple[str, Path]:
         safe_story, safe_scene = self._slugs(ask_manifest.get("story_slug"), ask_manifest.get("scene_slug"))
@@ -241,6 +270,7 @@ class SceneImageReviewService:
             candidate.parent.rmdir()
         except OSError:
             pass
+        invalidate_summary_cache()
         return self.status(safe_story, safe_scene, target_id)
 
     @serialized_review
@@ -270,6 +300,7 @@ class SceneImageReviewService:
             "locked_at": datetime.now().isoformat(timespec="seconds"),
         })
         self._write_json(paths["metadata"], metadata)
+        invalidate_summary_cache()
         return self.status(safe_story, safe_scene, target_id)
 
     @serialized_review
@@ -287,4 +318,5 @@ class SceneImageReviewService:
             candidate.parent.rmdir()
         except OSError:
             pass
+        invalidate_summary_cache()
         return self.status(safe_story, safe_scene, target_id)

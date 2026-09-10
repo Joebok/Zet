@@ -35,6 +35,7 @@ from zet.services.scene_render_target_service import SceneRenderTargetService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
+from zet.services.summary_cache import invalidate_summary_cache
 
 
 class StoryServiceError(Exception):
@@ -1185,6 +1186,7 @@ class StoryService:
 
     def load_scene_builder_data(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         """Load Scene Builder data or return defaults when JSON does not exist."""
+        record_performance("scene_builder_loads")
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         scene_path, image_path, json_path = self._scene_builder_paths(safe_story_slug, safe_scene_slug)
@@ -1229,7 +1231,9 @@ class StoryService:
         from zet.services.workflow_storage import file_lock
         _, _, json_path = self._scene_builder_paths(self.safe_slug(story_slug), self.safe_slug(scene_slug))
         with file_lock(json_path.with_suffix(".lock")):
-            return self._save_scene_builder_data(story_slug, scene_slug, data)
+            result = self._save_scene_builder_data(story_slug, scene_slug, data)
+        invalidate_summary_cache()
+        return result
 
     def _save_scene_builder_data(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
         safe_story_slug = self.safe_slug(story_slug)
@@ -1700,9 +1704,11 @@ class StoryService:
         allow_stale_dependencies: bool = False,
     ) -> StoryRenderTask:
         """Compile one story scene prompt and stage it for the Render Console."""
-        return self.story_render_service.stage_scene_render(
+        result = self.story_render_service.stage_scene_render(
             story_slug, scene_slug, render_target_id, allow_stale_dependencies
         )
+        invalidate_summary_cache()
+        return result
 
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
         return self.scene_render_target_service.enable_background(story_slug, scene_slug)

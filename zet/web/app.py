@@ -1712,7 +1712,9 @@ def create_app(
         """Search the unified logical image inventory."""
         zet_app = _app(app.state.config_path)
         try:
+            discovery_context = zet_app.discovery_context()
             items = zet_app.image_catalog_items(
+                discovery_context=discovery_context,
                 q=q,
                 source_type=source_type,
                 semantic_category=semantic_category,
@@ -2536,11 +2538,16 @@ def create_app(
     ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
+            discovery_context = zet_app.discovery_context()
             assets = zet_app.list_pending_asset_image_reviews(character, phase) if character or phase else []
-            scenes = zet_app.list_pending_scene_image_reviews(story_slug, scene_slug) if story_slug or scene_slug else []
+            scenes = zet_app.list_pending_scene_image_reviews(
+                story_slug,
+                scene_slug,
+                discovery_context=discovery_context,
+            ) if story_slug or scene_slug else []
             if not any((character, phase, story_slug, scene_slug)):
                 assets = zet_app.list_pending_asset_image_reviews()
-                scenes = zet_app.list_pending_scene_image_reviews()
+                scenes = zet_app.list_pending_scene_image_reviews(discovery_context=discovery_context)
             tasks = [_render_review_task_payload(zet_app, asset) for asset in assets]
             tasks.extend(_scene_render_review_task_payload(status) for status in scenes)
             return {"tasks": tasks}

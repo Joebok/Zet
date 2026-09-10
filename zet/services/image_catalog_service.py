@@ -11,6 +11,7 @@ from pathlib import Path
 
 from zet.models.image_catalog import ImageCatalogItem
 from zet.services.ai_proxy_path_service import AIProxyPathService
+from zet.services.discovery_context import DiscoveryContext
 from zet.services.performance_instrumentation import record
 
 
@@ -281,7 +282,9 @@ class ImageCatalogService:
                 ))
         return rows
 
-    def _discover_scenes(self) -> list[dict]:
+    def _discover_scenes(self, discovery_context: DiscoveryContext | None = None) -> list[dict]:
+        if discovery_context is not None:
+            return self._discover_scenes_from_context(discovery_context)
         rows = []
         for story in self.story_service.list_stories():
             for scene in self.story_service.list_scenes(story.slug):
@@ -345,6 +348,78 @@ class ImageCatalogService:
                         inherited_costume=inherited_costume,
                         costume_applicable=costume_applicable,
                     ))
+        return rows
+
+    def _discover_scenes_from_context(self, context: DiscoveryContext) -> list[dict]:
+        rows = []
+        for item in context.scene_records():
+            if not item.locked_exists:
+                continue
+            if item.render_target_id == "main":
+                rows.append(self._base_record(
+                    f"scene:{item.story_slug}:{item.scene_slug}:main",
+                    source_type="scene",
+                    tag=f"{{{{SCENE:{item.story_slug}:{item.scene_slug}}}}}",
+                    label=f"{item.story_title} - {item.scene_title}",
+                    image_path=str(item.locked_path),
+                    thumbnail_path=str(item.locked_path),
+                    semantic_category="Composite/Scene",
+                    pipeline="Rendered Scene",
+                    story_slug=item.story_slug,
+                    scene_slug=item.scene_slug,
+                    candidate_pending=item.candidate_exists,
+                    image_review_key=f"scene:{item.story_slug}:{item.scene_slug}",
+                ))
+                continue
+
+            definition = item.definition or {}
+            composition = (
+                (definition.get("setup") or {}).get("composition") or {}
+                if definition.get("kind") == "element"
+                else definition.get("prompt_overrides") or {}
+            )
+            composition_identity = str(composition.get("composition_notes") or "").strip()
+            inherited_identity = composition_identity
+            inherited_costume = ""
+            category = "Composite/Scene"
+            costume_applicable = False
+            if definition.get("kind") == "element":
+                elements = {
+                    str(element.get("id") or ""): element
+                    for element in item.scene_elements
+                    if isinstance(element, dict)
+                }
+                anchor = elements.get(str(definition.get("anchor_element_id") or ""), {})
+                sections = self.story_service._canonical_element_source_sections(anchor)
+                if sections:
+                    inherited_identity = str(sections.get("identity_preservation_core") or composition_identity)
+                    inherited_costume = str(sections.get("identity_preservation_costume") or "")
+                    category = {
+                        "Character": "Person",
+                        "Person": "Person",
+                        "Place": "Place",
+                        "Object": "Object",
+                    }.get(str(anchor.get("resource_type") or ""), "Composite/Scene")
+                    costume_applicable = category == "Person"
+            target_id = item.render_target_id
+            rows.append(self._base_record(
+                f"scene:{item.story_slug}:{item.scene_slug}:{target_id}",
+                source_type="subscene",
+                tag=self.story_service.scene_render_target_service.image_tag(item.story_slug, item.scene_slug, target_id),
+                label=f"{item.story_title} - {item.scene_title} - {definition.get('name') or target_id}",
+                image_path=str(item.locked_path),
+                thumbnail_path=str(item.locked_path),
+                semantic_category=category,
+                pipeline="Rendered Scene Subscene",
+                story_slug=item.story_slug,
+                scene_slug=item.scene_slug,
+                subscene_id=target_id,
+                candidate_pending=item.candidate_exists,
+                image_review_key=f"scene:{item.story_slug}:{item.scene_slug}:{target_id}",
+                inherited_identity=inherited_identity,
+                inherited_costume=inherited_costume,
+                costume_applicable=costume_applicable,
+            ))
         return rows
 
     def _pending_ids(self) -> set[str]:
@@ -425,10 +500,22 @@ class ImageCatalogService:
         )
 
     def list_items(self, **filters) -> list[ImageCatalogItem]:
-        record("catalog_discoveries")
+        discovery_context = filters.pop("discovery_context", None)
         payload = self.repository.load()
         pending_ids = self._pending_ids()
-        sources = [*self._discover_managed(payload), *self._discover_character_images(), *self._discover_scenes()]
+        def discover() -> list[dict]:
+            record("catalog_discoveries")
+            return [
+                *self._discover_managed(payload),
+                *self._discover_character_images(),
+                *self._discover_scenes(discovery_context),
+            ]
+
+        sources = (
+            discovery_context.catalog_sources(self, discover)
+            if isinstance(discovery_context, DiscoveryContext)
+            else discover()
+        )
         items = [self._materialize(source, payload, pending_ids) for source in sources]
         include_base = bool(filters.get("include_base", True))
         text_filter = str(filters.get("q") or "").strip().lower()

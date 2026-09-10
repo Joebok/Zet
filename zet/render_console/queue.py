@@ -16,6 +16,7 @@ from zet.services.config_service import Config
 from zet.services.path_service import PathService
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock, task_state_path, validate_image
+from zet.services.summary_cache import invalidate_summary_cache
 
 
 MANUAL_CHATGPT_WORKER_TYPE = "manual_chatgpt_render"
@@ -250,4 +251,5 @@ class RenderConsoleQueue:
             write_json_atomic(staging / "answer_manifest.json", manifest)
             staging.rename(answer_path)
             write_json_atomic(task.ask_path / "submission.json", {"answer_path": str(answer_path)})
+            invalidate_summary_cache()
             return answer_path
