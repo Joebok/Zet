@@ -1,7 +1,8 @@
+from __future__ import annotations
+
+import hashlib
 import json
 import shutil
-import hashlib
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -13,9 +14,18 @@ class ImageCatalogRepositoryError(Exception):
 
 
 class ImageCatalogRepository:
-    """Persist user-managed image metadata without owning image files."""
+    """Persist the versioned, record-oriented image catalog."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
+    RECORD_VERSION = 1
+    ORGANIZATION_VERSION = 1
+    MANIFEST = {
+        "schema_version": SCHEMA_VERSION,
+        "status": "complete",
+        "records": {"directory": "Records", "record_version": RECORD_VERSION},
+        "reference_sets": {"directory": "ReferenceSets", "record_version": RECORD_VERSION},
+        "organization": {"path": "Organization.json", "schema_version": ORGANIZATION_VERSION},
+    }
 
     def __init__(self, path_service):
         self.path_service = path_service
@@ -31,132 +41,208 @@ class ImageCatalogRepository:
         }
 
     @staticmethod
-    def _catalog_id(source_key: str) -> str:
+    def catalog_id(source_key: str) -> str:
         return "img_" + hashlib.sha256(source_key.encode("utf-8")).hexdigest()[:20]
 
     @staticmethod
-    def _section(path: Path, name: str) -> str:
-        if not path.is_file():
-            return ""
-        match = re.search(
-            rf"<!-- ZET:BEGIN {re.escape(name)} -->\s*(.*?)\s*<!-- ZET:END {re.escape(name)} -->",
-            path.read_text(encoding="utf-8"),
-            re.DOTALL,
+    def reference_filename(reference_set_id: str) -> str:
+        digest = hashlib.sha256(reference_set_id.encode("utf-8")).hexdigest()
+        return f"ref_{digest[:24]}.json"
+
+    @property
+    def root(self) -> Path:
+        return self.path_service.image_catalog_root()
+
+    @property
+    def records_path(self) -> Path:
+        return self.root / "Records"
+
+    @property
+    def reference_sets_path(self) -> Path:
+        return self.root / "ReferenceSets"
+
+    @property
+    def organization_path(self) -> Path:
+        return self.root / "Organization.json"
+
+    def record_path(self, catalog_id: str) -> Path:
+        return self.records_path / f"{catalog_id}.json"
+
+    def reference_set_path(self, reference_set_id: str) -> Path:
+        return self.reference_sets_path / self.reference_filename(reference_set_id)
+
+    def _migration_error(self, detail: str) -> ImageCatalogRepositoryError:
+        return ImageCatalogRepositoryError(
+            f"{detail} Run `python3 -m zet.scripts.migrate_image_catalog --config <config.toml>` to migrate the catalog."
         )
-        return str(match.group(1)).strip() if match else ""
 
-    def _migrate_legacy_auxiliary(self, payload: dict) -> dict:
-        """Adopt legacy auxiliary records without moving or rewriting their image files."""
-        legacy_path = self.path_service.auxiliary_resource_inventory_path()
-        if not legacy_path.is_file():
-            legacy_path = self.path_service.auxiliary_resource_inventory_default_path()
-        if not legacy_path.is_file():
-            return payload
+    @staticmethod
+    def _read_object(path: Path, description: str) -> dict:
         try:
-            legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
+            value = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            raise ImageCatalogRepositoryError(f"AuxiliaryResources.json is malformed at {legacy_path}: {exc}") from exc
-        resources = legacy.get("resources") if isinstance(legacy, dict) else None
-        if not isinstance(resources, list):
-            raise ImageCatalogRepositoryError("AuxiliaryResources.json must contain a resources list.")
-        category_map = {"person": "Person", "place": "Place", "thing": "Object"}
-        managed = payload.setdefault("managed_images", {})
-        reference_sets = payload.setdefault("reference_sets", {})
-        seen_source_keys: set[str] = set()
-        for resource in resources:
-            if not isinstance(resource, dict):
-                continue
-            set_id = str(resource.get("resource_id") or "").strip()
-            category = str(resource.get("category") or "thing").strip().lower()
-            if not set_id:
-                raise ImageCatalogRepositoryError("Auxiliary resource id is required.")
-            if set_id in reference_sets:
-                raise ImageCatalogRepositoryError(f"Duplicate auxiliary resource id: {set_id}")
-            template = self.path_service.resolve_path(str(resource.get("template_path") or ""))
-            reference_sets[set_id] = {
-                "reference_set_id": set_id,
-                "label": str(resource.get("label") or set_id),
-                "identity_text": self._section(template, "IDENTITY_PRESERVATION_SCENE"),
-                "costume_text": self._section(template, "IDENTITY_PRESERVATION_COSTUME_SCENE"),
-                "legacy_category": category,
-                "created_at": str(resource.get("created_at") or ""),
-                "updated_at": str(resource.get("updated_at") or ""),
-            }
-            for image in resource.get("images") or []:
-                if not isinstance(image, dict):
-                    continue
-                image_id = str(image.get("image_id") or "").strip()
-                source_key = f"aux:{category}:{set_id}:{image_id}"
-                if not image_id or source_key in seen_source_keys:
-                    raise ImageCatalogRepositoryError(f"Duplicate or missing auxiliary image id in {set_id}.")
-                seen_source_keys.add(source_key)
-                image_path = self.path_service.resolve_path(str(image.get("image_path") or ""))
-                if not image_path.is_file():
-                    raise ImageCatalogRepositoryError(f"Auxiliary image is missing: {image_path}")
-                catalog_id = self._catalog_id(source_key)
-                managed[catalog_id] = {
-                    "catalog_id": catalog_id,
-                    "source_key": source_key,
-                    "label": str(image.get("label") or image_id),
-                    "image_path": str(image_path),
-                    "mime_type": {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}.get(image_path.suffix.lower(), "image/png"),
-                    "tag": str(image.get("tag") or f"{{{{AUX:{category}:{set_id}:{image_id}}}}}"),
-                    "semantic_category": category_map.get(category, "Object"),
-                    "reference_set_id": set_id,
-                    "created_at": str(image.get("created_at") or resource.get("created_at") or ""),
-                    "updated_at": str(image.get("updated_at") or resource.get("updated_at") or ""),
-                }
-        writable_legacy = self.path_service.auxiliary_resource_inventory_path()
-        if legacy_path.resolve() == writable_legacy.resolve():
-            backup_dir = legacy_path.parent / "_backup"
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            shutil.copy2(legacy_path, backup_dir / f"AuxiliaryResources.migration.{stamp}.json")
-        return payload
+            raise ImageCatalogRepositoryError(f"{description} is malformed at {path}: {exc}") from exc
+        if not isinstance(value, dict):
+            raise ImageCatalogRepositoryError(f"{description} must contain a JSON object: {path}")
+        return value
 
-    def _upgrade(self, payload: dict) -> dict:
-        version = int(payload.get("schema_version") or 1)
-        changed = False
-        if version > self.SCHEMA_VERSION:
-            raise ImageCatalogRepositoryError(f"Unsupported ImageCatalog.json schema version: {version}")
-        payload.setdefault("items", {})
-        payload.setdefault("collections", [])
-        payload.setdefault("keywords", [])
-        payload.setdefault("managed_images", {})
-        payload.setdefault("reference_sets", {})
-        if version < 2:
-            payload = self._migrate_legacy_auxiliary(payload)
-            payload["schema_version"] = 2
-            changed = True
-        for record in payload["managed_images"].values():
-            if isinstance(record, dict) and "content_type" in record and "mime_type" not in record:
-                record["mime_type"] = record.pop("content_type")
-                changed = True
-        if changed:
-            self.save(payload)
-        return payload
+    def _validate_manifest(self, manifest: dict) -> None:
+        if manifest.get("schema_version") != self.SCHEMA_VERSION:
+            raise self._migration_error(
+                f"ImageCatalog.json uses unsupported schema version {manifest.get('schema_version')!r}."
+            )
+        if manifest.get("status") != "complete":
+            raise self._migration_error("The image catalog migration is incomplete.")
+        for key in ("records", "reference_sets", "organization"):
+            if manifest.get(key) != self.MANIFEST[key]:
+                raise self._migration_error(f"The image catalog manifest has an invalid {key} layout.")
 
     def load(self) -> dict:
-        path = self.path_service.image_catalog_inventory_path()
-        if not path.exists():
-            payload = self._migrate_legacy_auxiliary(self.empty_payload())
-            if payload["managed_images"] or payload["reference_sets"]:
-                self.save(payload)
-            return payload
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ImageCatalogRepositoryError(f"ImageCatalog.json is malformed at {path}: {exc}") from exc
-        if not isinstance(payload, dict) or not isinstance(payload.get("items", {}), dict):
-            raise ImageCatalogRepositoryError("ImageCatalog.json must contain an items object.")
-        return self._upgrade(payload)
+        manifest_path = self.path_service.image_catalog_inventory_path()
+        migration_path = self.root / ".migration-v3"
+        if not manifest_path.exists():
+            if migration_path.exists():
+                raise self._migration_error("The image catalog migration is incomplete.")
+            legacy_auxiliary = self.path_service.auxiliary_resource_inventory_path()
+            if legacy_auxiliary.is_file():
+                raise self._migration_error("Legacy auxiliary catalog data was detected.")
+            return self.empty_payload()
+
+        manifest = self._read_object(manifest_path, "ImageCatalog.json")
+        self._validate_manifest(manifest)
+        if not self.records_path.is_dir() or not self.reference_sets_path.is_dir() or not self.organization_path.is_file():
+            raise self._migration_error("The image catalog record set is incomplete.")
+
+        payload = self.empty_payload()
+        source_keys: set[str] = set()
+        catalog_ids: set[str] = set()
+        for path in sorted(self.records_path.glob("*.json")):
+            record = self._read_object(path, "Image catalog record")
+            catalog_id = str(record.get("catalog_id") or "")
+            source_key = str(record.get("source_key") or "")
+            if record.get("record_version") != self.RECORD_VERSION or not catalog_id or not source_key:
+                raise ImageCatalogRepositoryError(f"Invalid image catalog record: {path}")
+            if path.name != f"{catalog_id}.json" or source_key in source_keys or catalog_id in catalog_ids:
+                raise ImageCatalogRepositoryError(f"Duplicate or mismatched image catalog record: {path}")
+            source_keys.add(source_key)
+            catalog_ids.add(catalog_id)
+            metadata = record.get("metadata")
+            managed = record.get("managed_image")
+            if metadata is not None:
+                if not isinstance(metadata, dict):
+                    raise ImageCatalogRepositoryError(f"Catalog metadata must be an object or null: {path}")
+                payload["items"][source_key] = metadata
+            if managed is not None:
+                if not isinstance(managed, dict) or str(managed.get("catalog_id") or "") != catalog_id:
+                    raise ImageCatalogRepositoryError(f"Invalid managed image record: {path}")
+                payload["managed_images"][catalog_id] = managed
+
+        for path in sorted(self.reference_sets_path.glob("*.json")):
+            record = self._read_object(path, "Image catalog reference-set record")
+            set_id = str(record.get("reference_set_id") or "")
+            if record.get("record_version") != self.RECORD_VERSION or not set_id:
+                raise ImageCatalogRepositoryError(f"Invalid reference-set record: {path}")
+            if path.name != self.reference_filename(set_id) or set_id in payload["reference_sets"]:
+                raise ImageCatalogRepositoryError(f"Duplicate or mismatched reference-set record: {path}")
+            payload["reference_sets"][set_id] = {key: value for key, value in record.items() if key != "record_version"}
+
+        organization = self._read_object(self.organization_path, "Image catalog organization")
+        if organization.get("schema_version") != self.ORGANIZATION_VERSION:
+            raise ImageCatalogRepositoryError("Unsupported image catalog organization schema version.")
+        for name in ("collections", "keywords"):
+            values = organization.get(name)
+            if not isinstance(values, list) or any(not isinstance(item, dict) for item in values):
+                raise ImageCatalogRepositoryError(f"Image catalog organization {name} must be a list of objects.")
+            payload[name] = values
+
+        missing = sorted(
+            {str(item.get("reference_set_id") or "") for item in payload["managed_images"].values()}
+            - {""}
+            - set(payload["reference_sets"])
+        )
+        if missing:
+            raise ImageCatalogRepositoryError(f"Managed image records reference missing sets: {', '.join(missing)}")
+        return payload
+
+    def record_payloads(self, payload: dict) -> dict[str, dict]:
+        by_id: dict[str, dict] = {}
+        managed_by_source = {
+            str(record.get("source_key") or ""): record
+            for record in payload.get("managed_images", {}).values()
+            if isinstance(record, dict)
+        }
+        source_keys = set(payload.get("items", {})) | set(managed_by_source)
+        for source_key in source_keys:
+            metadata = payload.get("items", {}).get(source_key)
+            managed = managed_by_source.get(source_key)
+            catalog_id = str(
+                (metadata or {}).get("catalog_id")
+                or (managed or {}).get("catalog_id")
+                or self.catalog_id(source_key)
+            )
+            if not source_key or not catalog_id or catalog_id in by_id:
+                raise ImageCatalogRepositoryError(f"Duplicate or missing catalog id for source key {source_key!r}.")
+            by_id[catalog_id] = {
+                "record_version": self.RECORD_VERSION,
+                "catalog_id": catalog_id,
+                "source_key": source_key,
+                "metadata": metadata,
+                "managed_image": managed,
+            }
+        return by_id
+
+    def _backup(self, path: Path, kind: str) -> None:
+        if not path.is_file():
+            return
+        backup = self.root / "_backup" / kind
+        backup.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        shutil.copy2(path, backup / f"{path.stem}.{stamp}.json")
+
+    def _sync_directory(self, directory: Path, desired: dict[str, dict], kind: str) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        existing = {path.name: path for path in directory.glob("*.json")}
+        for filename, value in desired.items():
+            path = directory / filename
+            current = self._read_object(path, kind) if path.is_file() else None
+            if current == value:
+                continue
+            self._backup(path, kind)
+            write_json_atomic(path, path.with_suffix(".tmp"), value)
+        for filename, path in existing.items():
+            if filename not in desired:
+                self._backup(path, kind)
+                path.unlink()
 
     def save(self, payload: dict) -> None:
-        path = self.path_service.image_catalog_inventory_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            backup = path.parent / "_backup"
-            backup.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            shutil.copy2(path, backup / f"ImageCatalog.backup.{stamp}.json")
-        write_json_atomic(path, path.with_suffix(".tmp"), payload)
+        manifest_path = self.path_service.image_catalog_inventory_path()
+        if manifest_path.exists():
+            self._validate_manifest(self._read_object(manifest_path, "ImageCatalog.json"))
+        elif (self.root / ".migration-v3").exists():
+            raise self._migration_error("The image catalog migration is incomplete.")
+
+        records = {
+            f"{catalog_id}.json": value for catalog_id, value in self.record_payloads(payload).items()
+        }
+        references = {
+            self.reference_filename(set_id): {**record, "record_version": self.RECORD_VERSION}
+            for set_id, record in payload.get("reference_sets", {}).items()
+        }
+        organization = {
+            "schema_version": self.ORGANIZATION_VERSION,
+            "collections": payload.get("collections", []),
+            "keywords": payload.get("keywords", []),
+        }
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._sync_directory(self.records_path, records, "Records")
+        self._sync_directory(self.reference_sets_path, references, "ReferenceSets")
+        current_organization = (
+            self._read_object(self.organization_path, "Image catalog organization")
+            if self.organization_path.is_file()
+            else None
+        )
+        if current_organization != organization:
+            self._backup(self.organization_path, "Organization")
+            write_json_atomic(self.organization_path, self.organization_path.with_suffix(".tmp"), organization)
+        if not manifest_path.exists():
+            write_json_atomic(manifest_path, manifest_path.with_suffix(".tmp"), self.MANIFEST)

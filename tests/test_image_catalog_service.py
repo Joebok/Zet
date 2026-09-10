@@ -10,6 +10,7 @@ from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepo
 from zet.repositories.image_catalog_repository import ImageCatalogRepository
 from zet.services.config_service import Config
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict, ImageCatalogService, ImageCatalogServiceError
+from zet.services.image_catalog_migration_service import ImageCatalogMigrationService
 from zet.services.path_service import PathService
 from zet.services.story_service import StoryService, StoryServiceError
 
@@ -126,6 +127,7 @@ class ImageCatalogServiceTests(unittest.TestCase):
             empty,
             EmptyStoryService(),
         )
+        ImageCatalogMigrationService(paths).run()
         return service, paths
 
     def test_aux_images_share_inheritance_but_support_independent_overrides(self):
@@ -209,7 +211,7 @@ class ImageCatalogServiceTests(unittest.TestCase):
             items = service.list_items(include_base=True)
             payload = service.repository.load()
 
-            self.assertEqual(2, payload["schema_version"])
+            self.assertEqual(3, payload["schema_version"])
             self.assertEqual(2, len(payload["managed_images"]))
             self.assertEqual("shared hell", payload["reference_sets"]["hell"]["identity_text"])
             self.assertTrue(all(item.is_managed for item in items))

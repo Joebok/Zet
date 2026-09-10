@@ -175,8 +175,12 @@ class StoryService:
                     **self._canonical_element_source_sections(element),
                     "identity_preservation_core": catalog_item.identity_text,
                     "identity_preservation_costume": catalog_item.costume_text,
-                    "identity_source": self._library_relative_path(self.path_service.image_catalog_inventory_path()),
-                    "costume_source": self._library_relative_path(self.path_service.image_catalog_inventory_path()),
+                    "identity_source": self._library_relative_path(
+                        self.image_catalog_service.repository.record_path(catalog_item.catalog_id)
+                    ),
+                    "costume_source": self._library_relative_path(
+                        self.image_catalog_service.repository.record_path(catalog_item.catalog_id)
+                    ),
                     "catalog_id": catalog_item.catalog_id,
                     "identity_status": catalog_item.identity_status,
                     "costume_status": catalog_item.costume_status,

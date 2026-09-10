@@ -804,8 +804,8 @@ class ImageCatalogService:
         return {
             "identity_preservation_core": str(record.get("identity_text") or ""),
             "identity_preservation_costume": str(record.get("costume_text") or ""),
-            "identity_source": str(self.path_service.image_catalog_inventory_path()),
-            "costume_source": str(self.path_service.image_catalog_inventory_path()),
+            "identity_source": str(self.repository.reference_set_path(str(reference_set_id or ""))),
+            "costume_source": str(self.repository.reference_set_path(str(reference_set_id or ""))),
         }
 
     def bulk_update(self, catalog_ids: list[str], changes: dict) -> list[ImageCatalogItem]:

@@ -62,7 +62,7 @@ class PathService:
             return raw_path
         if parts and parts[0] == "_Lib":
             return self.library_path(*parts[1:])
-        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "Stories"}:
+        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog", "Stories"}:
             return self.library_path(*parts)
         return self.project_root.joinpath(*parts)
 

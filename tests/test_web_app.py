@@ -8,6 +8,9 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from support.project_fixture import write_manual_render_ask, write_project_fixture
+from zet.services.config_service import ConfigService
+from zet.services.image_catalog_migration_service import ImageCatalogMigrationService
+from zet.services.path_service import PathService
 from zet.web.app import create_app
 
 
@@ -54,6 +57,7 @@ class WebAppTests(unittest.TestCase):
                     {"image_id": "reference", "image_path": str(aux / "tusk.png")}
                 ]},
             ]}), encoding="utf-8")
+            ImageCatalogMigrationService(PathService(ConfigService.load(config_path), root)).run()
             client = TestClient(create_app(config_path))
             body = {
                 "appearance_id": "hell-adventures", "name": "Hell Adventures",

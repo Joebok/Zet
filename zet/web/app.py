@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -816,12 +817,20 @@ def _action_response(zet_app: ZetApp, character: str, phase: str, asset_id: int,
 def create_app(
     config_path: str | Path = "config.toml",
     performance: PerformanceInstrumentation | None = None,
+    *,
+    validate_catalog_on_create: bool = True,
 ) -> FastAPI:
     config_path = Path(config_path)
     config = ConfigService.load(config_path)
-    app = FastAPI(title="Zet Web")
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        application.state.zet_app.image_catalog_service.repository.load()
+        yield
+
+    app = FastAPI(title="Zet Web", lifespan=lifespan)
     app.state.config_path = str(config_path)
-    app.state.zet_app = ZetApp.from_config(config_path)
+    app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
 
     if performance is not None:
         @app.middleware("http")
@@ -3515,7 +3524,7 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(validate_catalog_on_create=False)
 
 
 def build_parser() -> argparse.ArgumentParser:

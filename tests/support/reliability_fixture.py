@@ -8,6 +8,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from zet.repositories.image_catalog_repository import ImageCatalogRepository
+from zet.services.path_service import PathService
+
 
 SCENE_TITLES = (
     "Arrival",
@@ -209,9 +212,11 @@ def write_reliability_fixture(root: Path, *, scale: int = 1) -> ReliabilityFixtu
         "collections": [],
         "keywords": [],
     }
-    catalog_path = root / "ImageCatalog" / "ImageCatalog.json"
-    catalog_path.parent.mkdir(parents=True)
-    catalog_path.write_text(json.dumps(image_catalog, indent=2) + "\n", encoding="utf-8")
+    catalog_config = type("CatalogConfig", (), {
+        "base_library_path": str(root),
+        "base_character_path": str(root / "Characters"),
+    })()
+    ImageCatalogRepository(PathService(catalog_config, root)).save(image_catalog)
 
     queue_root = root / "Queue" / "Manual_Render_Queue"
     for index in range(1, scale + 1):
@@ -287,4 +292,3 @@ def write_reliability_fixture(root: Path, *, scale: int = 1) -> ReliabilityFixtu
         completed_queue_records=scale,
     )
     return ReliabilityFixture(root, config_path, story_slug, scene_slugs, counts)
-

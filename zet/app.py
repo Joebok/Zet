@@ -241,7 +241,7 @@ class ZetApp:
         return self.pipeline_inspection_service.open_folder(pipeline_id, file_id)
 
     @classmethod
-    def from_config(cls, config_path: str | Path) -> "ZetApp":
+    def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True) -> "ZetApp":
         config = ConfigService.load(config_path)
         path_service = PathService(config, Path(config_path).resolve().parent)
         asset_repository = AssetRepository(path_service)
@@ -321,6 +321,8 @@ class ZetApp:
             turnaround_repository,
         )
         image_catalog_repository = ImageCatalogRepository(path_service)
+        if validate_catalog:
+            image_catalog_repository.load()
         image_catalog_service = ImageCatalogService(
             config,
             path_service,
