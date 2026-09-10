@@ -11,6 +11,7 @@ from pathlib import Path
 
 from zet.models.image_catalog import ImageCatalogItem
 from zet.services.ai_proxy_path_service import AIProxyPathService
+from zet.services.performance_instrumentation import record
 
 
 SEMANTIC_CATEGORIES = {"Person", "Place", "Object", "Composite/Scene"}
@@ -424,6 +425,7 @@ class ImageCatalogService:
         )
 
     def list_items(self, **filters) -> list[ImageCatalogItem]:
+        record("catalog_discoveries")
         payload = self.repository.load()
         pending_ids = self._pending_ids()
         sources = [*self._discover_managed(payload), *self._discover_character_images(), *self._discover_scenes()]

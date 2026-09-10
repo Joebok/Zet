@@ -14,6 +14,7 @@ from zet.services.chatgpt_prompt_contract import (
 )
 from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
 from zet.services.scene_prompt_sections import select_final_image_prompt_sections
+from zet.services.performance_instrumentation import record
 
 
 def _clean(value: Any) -> str:
@@ -101,6 +102,7 @@ def compile_scene_render_ir(
     resolved_sources: dict[str, Any] | None = None,
     default_prompt_sections: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    record("render_compiles")
     setup = scene_data.get("setup", {})
     placements = [
         _compiled_placement(item)

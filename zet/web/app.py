@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_metrics_service import ManualRenderMetricsService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
+from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.prompt_evolution_service import PromptEvolutionError
@@ -808,12 +810,24 @@ def _action_response(zet_app: ZetApp, character: str, phase: str, asset_id: int,
     }
 
 
-def create_app(config_path: str | Path = "config.toml") -> FastAPI:
+def create_app(
+    config_path: str | Path = "config.toml",
+    performance: PerformanceInstrumentation | None = None,
+) -> FastAPI:
     config_path = Path(config_path)
     config = ConfigService.load(config_path)
     app = FastAPI(title="Zet Web")
     app.state.config_path = str(config_path)
     app.state.zet_app = ZetApp.from_config(config_path)
+
+    if performance is not None:
+        @app.middleware("http")
+        async def performance_middleware(request: Request, call_next):
+            started = time.perf_counter()
+            try:
+                return await call_next(request)
+            finally:
+                performance.record_duration("endpoint_duration", time.perf_counter() - started)
 
     def _app(_config_path: str | Path) -> ZetApp:
         return app.state.zet_app

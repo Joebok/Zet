@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
+from zet.services.performance_instrumentation import record
 
 
 REFINEMENT_TELEMETRY_START_DATE = "2026-09-09"
@@ -27,6 +28,7 @@ class ManualRenderMetricsService:
         return payload if isinstance(payload, dict) else {}
 
     def _answer_folders(self) -> Iterable[Path]:
+        record("archive_traversals")
         live_root = self.path_service.manual_answer_root()
         if live_root.is_dir():
             yield from (

@@ -115,3 +115,11 @@ def write_manual_render_ask(root: Path) -> Path:
     )
     (ask_path / "Final_Image_Prompt.md").write_text("manual render prompt\n", encoding="utf-8")
     return ask_path
+
+
+def write_reliability_fixture(root: Path, *, scale: int = 1):
+    """Expose the WP01 fixture beside the existing project fixture helpers."""
+
+    from .reliability_fixture import write_reliability_fixture as _write_reliability_fixture
+
+    return _write_reliability_fixture(root, scale=scale)

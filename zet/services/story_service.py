@@ -29,6 +29,7 @@ from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.path_service import PathService
+from zet.services.performance_instrumentation import record as record_performance
 from zet.services.scene_document_service import SceneDocumentService
 from zet.services.scene_render_target_service import SceneRenderTargetService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
@@ -571,6 +572,7 @@ class StoryService:
 
     def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
         """Load one scene markdown file."""
+        record_performance("scene_document_loads")
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         path = self.path_service.scene_file_path(safe_story_slug, safe_scene_slug)

@@ -30,6 +30,14 @@ No files were changed and no tests were run during this planning review.
 
 **Acceptance:** Repeated generation produces identical logical data; benchmarks use temporary roots and cannot mutate the live library or queue. Existing failures have reproducible regression cases or recorded operation-count baselines.
 
+Handoff:
+
+* New invariants introduced: Reliability fixture roots must be empty before generation; generated logical data uses fixed ordering, identifiers, timestamps, and reusable image bytes; application instrumentation is inactive unless explicitly enabled.
+* APIs/contracts changed: `create_app(config_path, performance=None)` accepts an optional `PerformanceInstrumentation`; `collect()` activates bounded operation counters and temporary Path read hooks; service counters use `catalog_discoveries`, `scene_document_loads`, `render_compiles`, `file_reads`, `archive_traversals`, and `endpoint_duration`.
+* New tests/fixtures available to later WPs: `tests.support.reliability_fixture.write_reliability_fixture()` creates 1x/10x/100x isolated datasets; `ReliabilityFixture.logical_snapshot()` compares logical output; `tests/test_wp01_reliability.py` covers determinism, scale counts, inherited metadata, queue state, instrumentation, and benchmark reporting.
+* Assumptions later WPs may rely on: Eight base scenes are ordered as `scene-001` through `scene-008`; every base scene has a main and `background` subscene candidate; queue fixtures contain one active Ask and one completed Answer at 1x; benchmark output records environment, counts, cold/warm state, and concurrent activity.
+* Deviations from master plan: The repository had no shared story reliability fixture or performance instrumentation, so WP01 extended the existing fixture helper with a dedicated reliability module; no production dependency or later work package was started.
+
 ### WP02 — Navigation independent of pending requests
 **Executor:** Medium. **Dependencies:** WP01.
 

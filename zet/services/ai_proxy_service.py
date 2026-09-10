@@ -23,6 +23,7 @@ from zet.services.chatgpt_prompt_contract import (
 )
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.path_service import PathService
+from zet.services.performance_instrumentation import record
 from zet.services.prompt_artifact_service import PromptArtifactService
 from zet.services.workflow_storage import snapshot_manual_ask, subject_key, supersede_task
 
@@ -876,6 +877,7 @@ class AIProxyService:
         )
 
     def recent_harvests(self, limit: int = 20) -> list[dict]:
+        record("archive_traversals")
         self._ensure_queue_dirs()
         limit = max(0, int(limit))
         if not limit:
