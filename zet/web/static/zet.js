@@ -7811,6 +7811,7 @@ function renderImageCatalog() {
 function selectImageCatalogItem(catalogId) {
   const item = state.imageCatalogItems.find((candidate) => candidate.catalog_id === catalogId);
   if (!item) return;
+  beginSelection("image-catalog");
   state.selectedImageCatalogId = catalogId;
   imageCatalogEditorTitle.textContent = item.label || item.tag;
   imageCatalogPreview.src = fileUrl(item.image_path);
@@ -7834,9 +7835,10 @@ function selectImageCatalogItem(catalogId) {
   imageCatalogReplaceSubmit.disabled = true;
   imageCatalogEditCategory.value = item.semantic_category;
   imageCatalogIdentityMode.value = item.identity_mode || "inherit";
-  imageCatalogIdentityText.value = item.identity_text || "";
+  imageCatalogIdentityText.value = item.identity_override_text || "";
   imageCatalogCostumeMode.value = item.costume_mode || "not_applicable";
-  imageCatalogCostumeText.value = item.costume_text || "";
+  imageCatalogCostumeText.value = item.costume_override_text || "";
+  syncImageCatalogOverrideControls();
   imageCatalogAiIdentity.value = item.ai_draft_identity || "";
   imageCatalogAiCostume.value = item.ai_draft_costume || "";
   imageCatalogAiReview.hidden = item.description_status !== "ai_review_required";
@@ -7848,10 +7850,15 @@ function selectImageCatalogItem(catalogId) {
   } else if (item.description_status === "ai_review_required") {
     showMessageElement(imageCatalogAiStatus, "AI answer harvested. Review and approve the draft below.", "success");
   } else {
-    imageCatalogAiStatus.hidden = true;
+    showMessageElement(imageCatalogAiStatus, "", "info");
   }
   renderImageCatalogOrganization();
   renderImageCatalog();
+}
+
+function syncImageCatalogOverrideControls() {
+  imageCatalogIdentityText.disabled = imageCatalogIdentityMode.value !== "override";
+  imageCatalogCostumeText.disabled = imageCatalogCostumeMode.value !== "override";
 }
 
 async function loadImageCatalog() {
@@ -7879,12 +7886,16 @@ async function loadImageCatalog() {
 async function saveImageCatalogItem() {
   const item = selectedImageCatalogItem();
   if (!item) return;
+  const identity = { mode: imageCatalogIdentityMode.value, provenance: "manual" };
+  const costume = { mode: imageCatalogCostumeMode.value, provenance: "manual" };
+  if (identity.mode === "override") identity.approved_text = imageCatalogIdentityText.value;
+  if (costume.mode === "override") costume.approved_text = imageCatalogCostumeText.value;
   const changes = {
     semantic_category: imageCatalogEditCategory.value,
     collection_ids: Array.from(imageCatalogEditCollections.selectedOptions, (option) => option.value),
     keyword_ids: Array.from(imageCatalogEditKeywords.selectedOptions, (option) => option.value),
-    identity: { mode: imageCatalogIdentityMode.value, approved_text: imageCatalogIdentityText.value, provenance: "manual" },
-    costume: { mode: imageCatalogCostumeMode.value, approved_text: imageCatalogCostumeText.value, provenance: "manual" },
+    identity,
+    costume,
   };
   if (item.is_managed) {
     changes.label = imageCatalogManagedLabel.value;
@@ -7904,15 +7915,19 @@ async function saveImageCatalogItem() {
 async function queueImageCatalogDescription() {
   const item = selectedImageCatalogItem();
   if (!item) return;
+  const selection = beginSelection("image-catalog");
+  const catalogId = item.catalog_id;
   imageCatalogAi.disabled = true;
   showMessageElement(imageCatalogAiStatus, "Initiating AI image description...", "info");
   try {
-    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/ai-description`, { method: "POST" });
-    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === item.catalog_id);
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(catalogId)}/ai-description`, { method: "POST" });
+    if (!selectionIsCurrent(selection) || state.selectedImageCatalogId !== catalogId) return;
+    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === catalogId);
     if (index >= 0) state.imageCatalogItems[index] = payload.item;
-    selectImageCatalogItem(item.catalog_id);
+    selectImageCatalogItem(catalogId);
     showAuxResourceMessage(payload.message || "Image description job queued.", "success");
   } catch (error) {
+    if (!selectionIsCurrent(selection) || isRequestCancellation(error)) return;
     imageCatalogAi.disabled = false;
     showMessageElement(imageCatalogAiStatus, error.message, "error");
     showAuxResourceMessage(error.message, "error");
@@ -7922,15 +7937,19 @@ async function queueImageCatalogDescription() {
 async function harvestImageCatalogDescription() {
   const item = selectedImageCatalogItem();
   if (!item) return;
+  const selection = beginSelection("image-catalog");
+  const catalogId = item.catalog_id;
   imageCatalogAiCheck.disabled = true;
   showMessageElement(imageCatalogAiStatus, "Checking for an AI answer...", "info");
   try {
-    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/ai-description/harvest`, { method: "POST" });
-    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === item.catalog_id);
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(catalogId)}/ai-description/harvest`, { method: "POST" });
+    if (!selectionIsCurrent(selection) || state.selectedImageCatalogId !== catalogId) return;
+    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === catalogId);
     if (index >= 0) state.imageCatalogItems[index] = payload.item;
-    selectImageCatalogItem(item.catalog_id);
+    selectImageCatalogItem(catalogId);
     showAuxResourceMessage(payload.message, payload.item.description_status === "ai_review_required" ? "success" : "info");
   } catch (error) {
+    if (!selectionIsCurrent(selection) || isRequestCancellation(error)) return;
     imageCatalogAiCheck.disabled = false;
     showMessageElement(imageCatalogAiStatus, error.message, "error");
     showAuxResourceMessage(error.message, "error");
@@ -7940,6 +7959,8 @@ async function harvestImageCatalogDescription() {
 async function reviewImageCatalogDraft(approve) {
   const item = selectedImageCatalogItem();
   if (!item) return;
+  const selection = beginSelection("image-catalog");
+  const catalogId = item.catalog_id;
   const suffix = approve ? "approve" : "reject";
   const options = { method: "POST" };
   if (approve) {
@@ -7947,11 +7968,16 @@ async function reviewImageCatalogDraft(approve) {
     options.body = JSON.stringify({ identity_text: imageCatalogAiIdentity.value, costume_text: imageCatalogAiCostume.value, costume_not_applicable: imageCatalogCostumeMode.value === "not_applicable" });
   }
   try {
-    await fetchJson(`/api/image-catalog/${encodeURIComponent(item.catalog_id)}/ai-description/${suffix}`, options);
+    const payload = await fetchJson(`/api/image-catalog/${encodeURIComponent(catalogId)}/ai-description/${suffix}`, options);
+    if (!selectionIsCurrent(selection) || state.selectedImageCatalogId !== catalogId) return;
+    const index = state.imageCatalogItems.findIndex((candidate) => candidate.catalog_id === catalogId);
+    if (index >= 0 && payload.item) state.imageCatalogItems[index] = payload.item;
     await loadImageCatalog();
-    selectImageCatalogItem(item.catalog_id);
+    if (!selectionIsCurrent(selection) || state.selectedImageCatalogId !== catalogId) return;
+    selectImageCatalogItem(catalogId);
     showAuxResourceMessage(approve ? "AI draft approved." : "AI draft rejected.", "success");
   } catch (error) {
+    if (!selectionIsCurrent(selection) || isRequestCancellation(error)) return;
     showAuxResourceMessage(error.message, "error");
   }
 }
@@ -12380,6 +12406,8 @@ imageCatalogRefresh.addEventListener("click", async () => {
   await loadImageCatalog();
 });
 imageCatalogSave.addEventListener("click", saveImageCatalogItem);
+imageCatalogIdentityMode.addEventListener("change", syncImageCatalogOverrideControls);
+imageCatalogCostumeMode.addEventListener("change", syncImageCatalogOverrideControls);
 imageCatalogAi.addEventListener("click", queueImageCatalogDescription);
 imageCatalogAiCheck.addEventListener("click", harvestImageCatalogDescription);
 imageCatalogAiApprove.addEventListener("click", () => reviewImageCatalogDraft(true));

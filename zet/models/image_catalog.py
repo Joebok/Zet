@@ -63,6 +63,10 @@ class ImageCatalogItem:
     is_base_pipeline: bool = False
     identity_text: str = ""
     costume_text: str = ""
+    identity_override_text: str = ""
+    costume_override_text: str = ""
+    identity_provenance: str = ""
+    costume_provenance: str = ""
     identity_status: str = "missing"
     costume_status: str = "not_applicable"
     description_status: str = "missing"

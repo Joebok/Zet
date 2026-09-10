@@ -145,6 +145,63 @@ class ImageCatalogServiceTests(unittest.TestCase):
             self.assertEqual("shared hell", refreshed["{{AUX:place:hell:stairs}}"].identity_text)
             self.assertEqual("approved", refreshed[arena.tag].identity_status)
 
+    def test_identity_override_retains_raw_text_and_provenance_across_mode_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _ = self.make_service(Path(temp_dir))
+            arena = next(item for item in service.list_items(include_base=True) if item.tag.endswith(":arena}}"))
+
+            overridden = service.update_item(arena.catalog_id, {
+                "identity": {"mode": "override", "approved_text": "specific identity", "provenance": "ai_reviewed"},
+            })
+            self.assertEqual("specific identity", overridden.identity_text)
+            self.assertEqual("specific identity", overridden.identity_override_text)
+            self.assertEqual("ai_reviewed", overridden.identity_provenance)
+
+            inherited = service.update_item(arena.catalog_id, {"identity": {"mode": "inherit"}})
+            self.assertEqual("shared hell", inherited.identity_text)
+            self.assertEqual("specific identity", inherited.identity_override_text)
+            self.assertEqual("ai_reviewed", inherited.identity_provenance)
+
+            restored = service.update_item(arena.catalog_id, {"identity": {"mode": "override"}})
+            self.assertEqual("specific identity", restored.identity_text)
+            self.assertEqual("specific identity", restored.identity_override_text)
+            self.assertEqual("ai_reviewed", restored.identity_provenance)
+
+            cleared = service.update_item(arena.catalog_id, {
+                "identity": {"mode": "override", "approved_text": "", "provenance": "manual"},
+            })
+            self.assertEqual("", cleared.identity_override_text)
+            self.assertEqual("manual", cleared.identity_provenance)
+
+    def test_costume_override_retains_raw_text_until_explicitly_cleared(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _ = self.make_service(Path(temp_dir))
+            service.save_reference_set({"label": "Hell", "identity_text": "shared hell", "costume_text": "shared costume"}, "hell")
+            arena = next(item for item in service.list_items(include_base=True) if item.tag.endswith(":arena}}"))
+            service.update_item(arena.catalog_id, {"semantic_category": "Person"})
+
+            overridden = service.update_item(arena.catalog_id, {
+                "costume": {"mode": "override", "approved_text": "specific costume", "provenance": "manual"},
+            })
+            self.assertEqual("specific costume", overridden.costume_text)
+            self.assertEqual("specific costume", overridden.costume_override_text)
+            self.assertEqual("manual", overridden.costume_provenance)
+
+            not_applicable = service.update_item(arena.catalog_id, {"costume": {"mode": "not_applicable"}})
+            self.assertEqual("not_applicable", not_applicable.costume_status)
+            self.assertEqual("specific costume", not_applicable.costume_override_text)
+            self.assertEqual("manual", not_applicable.costume_provenance)
+
+            restored = service.update_item(arena.catalog_id, {"costume": {"mode": "override"}})
+            self.assertEqual("specific costume", restored.costume_text)
+            self.assertEqual("specific costume", restored.costume_override_text)
+
+            cleared = service.update_item(arena.catalog_id, {
+                "costume": {"mode": "override", "approved_text": "", "provenance": "manual"},
+            })
+            self.assertEqual("", cleared.costume_override_text)
+            self.assertEqual("manual", cleared.costume_provenance)
+
     def test_legacy_auxiliary_records_migrate_to_managed_images_and_reference_sets(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, paths = self.make_service(Path(temp_dir))

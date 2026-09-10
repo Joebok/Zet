@@ -126,6 +126,14 @@ Handoff:
 
 **Acceptance:** Both override sections survive override → inherit/not-applicable → save → reload → override exactly. AI drafts survive navigation; approval produces one consistent final status.
 
+Handoff:
+
+* New invariants introduced: Effective identity/costume text is selected by mode, while raw override text and provenance remain retained independently in the existing `sections.*.approved_text` and `sections.*.provenance` records. Omitted text leaves the retained raw value and provenance unchanged; an explicitly supplied empty text clears the raw value. Inherit and not-applicable editors are disabled in the dashboard, and AI status messaging is rendered from the latest selected catalog record.
+* APIs/contracts changed: `ImageCatalogItem` and catalog API payloads now expose `identity_override_text`, `costume_override_text`, `identity_provenance`, and `costume_provenance` alongside effective `identity_text` and `costume_text`. Dashboard metadata saves omit `approved_text` for non-override modes; override mode submits the editor value, including an explicit empty value.
+* New tests/fixtures available to later WPs: `tests/test_image_catalog_service.py` covers independent identity and costume raw-text/provenance retention, inherit/not-applicable round trips, omitted text, and explicit clearing. `tests/browser/dashboard.spec.mjs` covers disabled mode editors, draft persistence across navigation, and clearing the harvested status after approval.
+* Assumptions later WPs may rely on: WP06 acceptance is PASS. Focused catalog/web tests passed (22 tests), the WP01 dependency suite passed (4 tests), the Image Inventory browser tests passed (3 tests), JavaScript syntax validation passed, and the isolated WP01 benchmark passed at 1x/10x/100x cold and warm scales using temporary roots. The full 33-test Playwright run had 32 passes and one unrelated pre-existing WP03 direct-scene history failure (`scene-builder-status` remained `Market-Meeting` where the test expected `Opening-Scene`); rerunning that case reproduced it, so the full browser suite is not green. WP08 must migrate the existing `sections` storage contract deliberately: `approved_text` is the raw override field and `identity_text`/`costume_text` in API models are effective fields; no catalog format migration was introduced here.
+* Deviations from master plan: None.
+
 ### WP07 — Empty harvest and bounded history
 **Executor:** Light/local. **Dependencies:** WP01.
 

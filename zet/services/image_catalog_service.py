@@ -457,8 +457,12 @@ class ImageCatalogService:
         costume_mode = str(costume_meta.get("mode") or ("inherit" if source["costume_applicable"] else "not_applicable"))
         if costume_mode == "inherit" and not source["costume_applicable"]:
             costume_mode = "not_applicable"
-        identity_text = str(identity_meta.get("approved_text") or "") if identity_mode == "override" else str(source["inherited_identity"] or "")
-        costume_text = str(costume_meta.get("approved_text") or "") if costume_mode == "override" else str(source["inherited_costume"] or "")
+        identity_override_text = str(identity_meta.get("approved_text") or "")
+        costume_override_text = str(costume_meta.get("approved_text") or "")
+        identity_provenance = str(identity_meta.get("provenance") or "")
+        costume_provenance = str(costume_meta.get("provenance") or "")
+        identity_text = identity_override_text if identity_mode == "override" else str(source["inherited_identity"] or "")
+        costume_text = costume_override_text if costume_mode == "override" else str(source["inherited_costume"] or "")
         draft = self._draft(source["catalog_id"])
         semantic_category = str(metadata.get("semantic_category") or source["semantic_category"])
         identity_status = "approved" if identity_mode == "override" and identity_text else "inherited" if identity_text else "missing"
@@ -486,6 +490,10 @@ class ImageCatalogService:
             keywords=[keywords_by_id[item] for item in metadata.get("keyword_ids", []) if item in keywords_by_id],
             identity_text=identity_text,
             costume_text=costume_text,
+            identity_override_text=identity_override_text,
+            costume_override_text=costume_override_text,
+            identity_provenance=identity_provenance,
+            costume_provenance=costume_provenance,
             identity_status=identity_status,
             costume_status=costume_status,
             description_status=description_status,

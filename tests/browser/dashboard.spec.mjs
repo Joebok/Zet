@@ -420,6 +420,12 @@ test("Image Inventory filters base outputs and edits logical metadata", async ({
   await cards.filter({ hasText: "Head-Image" }).click();
   await expect(page.locator("#image-catalog-editor-title")).toContainText("Head-Image");
   await expect(page.locator("#image-catalog-identity-mode")).toHaveValue("inherit");
+  await expect(page.locator("#image-catalog-identity-text")).toBeDisabled();
+  await expect(page.locator("#image-catalog-costume-text")).toBeDisabled();
+  await page.locator("#image-catalog-identity-mode").selectOption("override");
+  await expect(page.locator("#image-catalog-identity-text")).toBeEnabled();
+  await page.locator("#image-catalog-identity-mode").selectOption("inherit");
+  await expect(page.locator("#image-catalog-identity-text")).toBeDisabled();
   await page.locator("#image-catalog-preview").click();
   await expect(page.locator(".fullscreen-image-overlay")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -483,6 +489,31 @@ test("Image Inventory reports queued AI descriptions and harvests drafts without
   await expect(page.locator("#image-catalog-ai-identity")).toHaveValue("Stable physical identity.");
   await expect(page.locator("#image-catalog-ai-costume")).toHaveValue("Visible costume details.");
   await expect(page.locator("#image-catalog-ai-status")).toContainText("answer harvested");
+
+  await page.evaluate(() => window.activatePage("stories", { skipAutosave: true }));
+  await page.evaluate(() => window.activatePage("auxiliary-resources", { skipAutosave: true }));
+  await expect(page.locator("#image-catalog-ai-review")).toBeVisible();
+  await expect(page.locator("#image-catalog-ai-status")).toContainText("answer harvested");
+
+  await page.route(/\/api\/image-catalog\/[^/]+\/ai-description\/approve$/, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        item: {
+          ...item,
+          description_status: "approved",
+          ai_draft_identity: "",
+          ai_draft_costume: "",
+          identity_text: "Approved identity.",
+          costume_text: "Approved costume.",
+        },
+        message: "Image description approved.",
+      }),
+    });
+  });
+  await page.locator("#image-catalog-ai-approve").click();
+  await expect(page.locator("#image-catalog-ai-review")).toBeHidden();
+  await expect(page.locator("#image-catalog-ai-status")).toBeHidden();
 });
 
 test("Image Inventory manages imported images and optional reference sets", async ({ page }) => {
