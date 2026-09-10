@@ -1,0 +1,473 @@
+{
+  "runner": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.6",
+    "temporary_roots": true
+  },
+  "requirements": {
+    "navigation_p95_seconds": 2,
+    "review_listing_p95_seconds": 3,
+    "runs": 30
+  },
+  "migration_rehearsal": {
+    "dry_run": {
+      "status": "dry-run",
+      "dry_run": true,
+      "catalog_records": 1,
+      "reference_sets": 1,
+      "organization_entries": 0,
+      "image_files": 1,
+      "image_hashes_verified": 1,
+      "backup_path": "C:\\Users\\Joe\\AppData\\Local\\Temp\\zet-wp12-se12tcu8\\migration\\library\\ImageCatalog\\_backup\\ImageCatalog.pre-v3.json",
+      "staging_path": "C:\\Users\\Joe\\AppData\\Local\\Temp\\zet-wp12-se12tcu8\\migration\\library\\ImageCatalog\\.migration-v3"
+    },
+    "interrupted_checkpoint_resumed": true,
+    "migration": {
+      "status": "migrated",
+      "dry_run": false,
+      "catalog_records": 1,
+      "reference_sets": 1,
+      "organization_entries": 0,
+      "image_files": 1,
+      "image_hashes_verified": 1,
+      "backup_path": "C:\\Users\\Joe\\AppData\\Local\\Temp\\zet-wp12-se12tcu8\\migration\\library\\ImageCatalog\\_backup\\ImageCatalog.pre-v3.json",
+      "staging_path": "C:\\Users\\Joe\\AppData\\Local\\Temp\\zet-wp12-se12tcu8\\migration\\library\\ImageCatalog\\.migration-v3"
+    },
+    "comparison_equal": true,
+    "comparison": {
+      "before": {
+        "entity_counts": {
+          "stories": 1,
+          "scenes": 8,
+          "catalog_records": 1,
+          "reference_sets": 1,
+          "tasks": 10
+        },
+        "references": [
+          [
+            "img_wp01_001",
+            "wp01-inherited"
+          ]
+        ],
+        "overrides": {
+          "wp01:identity:001": {
+            "identity": {
+              "mode": "override",
+              "approved_text": "  exact WP12 identity override\nsecond line  ",
+              "provenance": "wp12-rehearsal"
+            },
+            "costume": {
+              "mode": "override",
+              "approved_text": "exact WP12 costume override",
+              "provenance": "wp12-rehearsal"
+            }
+          }
+        },
+        "image_hashes": {
+          "img_wp01_001": "b08290a06f1c96f9f449a53e2e569465265fae125bacde019b5a976581c721d2"
+        },
+        "prompt_hashes": {
+          "scene-001": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-002": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-003": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-004": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-005": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-006": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-007": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-008": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944"
+        },
+        "associations": {
+          "scene-001": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP01_ACTIVE_001",
+                "scene-001",
+                "main"
+              ],
+              [
+                "WP12_FIRST_DAY_001",
+                "scene-001",
+                "main"
+              ]
+            ]
+          },
+          "scene-002": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_002",
+                "scene-002",
+                "main"
+              ]
+            ]
+          },
+          "scene-003": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_003",
+                "scene-003",
+                "main"
+              ]
+            ]
+          },
+          "scene-004": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_004",
+                "scene-004",
+                "main"
+              ]
+            ]
+          },
+          "scene-005": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_005",
+                "scene-005",
+                "main"
+              ]
+            ]
+          },
+          "scene-006": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_006",
+                "scene-006",
+                "main"
+              ]
+            ]
+          },
+          "scene-007": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_007",
+                "scene-007",
+                "main"
+              ]
+            ]
+          },
+          "scene-008": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP01_COMPLETED_001",
+                "scene-008",
+                "main"
+              ],
+              [
+                "WP12_FIRST_DAY_008",
+                "scene-008",
+                "main"
+              ]
+            ]
+          }
+        }
+      },
+      "after": {
+        "entity_counts": {
+          "stories": 1,
+          "scenes": 8,
+          "catalog_records": 1,
+          "reference_sets": 1,
+          "tasks": 10
+        },
+        "references": [
+          [
+            "img_wp01_001",
+            "wp01-inherited"
+          ]
+        ],
+        "overrides": {
+          "wp01:identity:001": {
+            "identity": {
+              "mode": "override",
+              "approved_text": "  exact WP12 identity override\nsecond line  ",
+              "provenance": "wp12-rehearsal"
+            },
+            "costume": {
+              "mode": "override",
+              "approved_text": "exact WP12 costume override",
+              "provenance": "wp12-rehearsal"
+            }
+          }
+        },
+        "image_hashes": {
+          "img_wp01_001": "b08290a06f1c96f9f449a53e2e569465265fae125bacde019b5a976581c721d2"
+        },
+        "prompt_hashes": {
+          "scene-001": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-002": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-003": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-004": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-005": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-006": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-007": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944",
+          "scene-008": "d02bbcc49557076d8ab967e6e5028b4076fc694081d59b434b204c7becf21944"
+        },
+        "associations": {
+          "scene-001": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP01_ACTIVE_001",
+                "scene-001",
+                "main"
+              ],
+              [
+                "WP12_FIRST_DAY_001",
+                "scene-001",
+                "main"
+              ]
+            ]
+          },
+          "scene-002": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_002",
+                "scene-002",
+                "main"
+              ]
+            ]
+          },
+          "scene-003": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_003",
+                "scene-003",
+                "main"
+              ]
+            ]
+          },
+          "scene-004": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_004",
+                "scene-004",
+                "main"
+              ]
+            ]
+          },
+          "scene-005": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_005",
+                "scene-005",
+                "main"
+              ]
+            ]
+          },
+          "scene-006": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_006",
+                "scene-006",
+                "main"
+              ]
+            ]
+          },
+          "scene-007": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP12_FIRST_DAY_007",
+                "scene-007",
+                "main"
+              ]
+            ]
+          },
+          "scene-008": {
+            "main_candidate": true,
+            "background_candidate": true,
+            "tasks": [
+              [
+                "WP01_COMPLETED_001",
+                "scene-008",
+                "main"
+              ],
+              [
+                "WP12_FIRST_DAY_008",
+                "scene-008",
+                "main"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "index_counts": {
+      "stories": 1,
+      "scenes": 8,
+      "render_targets": 16,
+      "catalog_records": 1,
+      "reference_relationships": 1,
+      "active_work": 9,
+      "job_summaries": 1,
+      "errors": 0
+    },
+    "backup_exists": true
+  },
+  "scale_acceptance": [
+    {
+      "environment": {
+        "platform": "Windows-11-10.0.26200-SP0",
+        "python": "3.14.6"
+      },
+      "dataset_counts": {
+        "stories": 1,
+        "scenes": 8,
+        "main_candidates": 8,
+        "subscene_candidates": 8,
+        "catalog_images": 1,
+        "active_queue_records": 1,
+        "completed_queue_records": 1
+      },
+      "scale": 1,
+      "state": "warm",
+      "concurrent_activity": "simultaneous reconciliation",
+      "runs": 30,
+      "cold_rebuild_seconds": 0.171136,
+      "navigation_p95_seconds": 0.002215,
+      "review_listing_p95_seconds": 0.002253,
+      "navigation_page_items": 8,
+      "review_page_items": 16,
+      "review_total": 16,
+      "archive_traversals": 0,
+      "reconciliation_maximum_active": 1,
+      "summary_maximum_active": 1,
+      "rebuild_recovery": {
+        "interrupted": true,
+        "navigation_retained_generation": true,
+        "navigation_seconds": 0.00324,
+        "resumed": true
+      },
+      "index_counts": {
+        "stories": 1,
+        "scenes": 8,
+        "render_targets": 16,
+        "catalog_records": 1,
+        "reference_relationships": 1,
+        "active_work": 9,
+        "job_summaries": 1,
+        "errors": 0
+      },
+      "pass": true
+    },
+    {
+      "environment": {
+        "platform": "Windows-11-10.0.26200-SP0",
+        "python": "3.14.6"
+      },
+      "dataset_counts": {
+        "stories": 1,
+        "scenes": 80,
+        "main_candidates": 80,
+        "subscene_candidates": 80,
+        "catalog_images": 10,
+        "active_queue_records": 10,
+        "completed_queue_records": 10
+      },
+      "scale": 10,
+      "state": "warm",
+      "concurrent_activity": "simultaneous reconciliation",
+      "runs": 30,
+      "cold_rebuild_seconds": 0.915208,
+      "navigation_p95_seconds": 0.00287,
+      "review_listing_p95_seconds": 0.003058,
+      "navigation_page_items": 50,
+      "review_page_items": 50,
+      "review_total": 160,
+      "archive_traversals": 0,
+      "reconciliation_maximum_active": 1,
+      "summary_maximum_active": 1,
+      "rebuild_recovery": {
+        "interrupted": true,
+        "navigation_retained_generation": true,
+        "navigation_seconds": 0.004598,
+        "resumed": true
+      },
+      "index_counts": {
+        "stories": 1,
+        "scenes": 80,
+        "render_targets": 160,
+        "catalog_records": 10,
+        "reference_relationships": 10,
+        "active_work": 18,
+        "job_summaries": 10,
+        "errors": 0
+      },
+      "pass": true
+    },
+    {
+      "environment": {
+        "platform": "Windows-11-10.0.26200-SP0",
+        "python": "3.14.6"
+      },
+      "dataset_counts": {
+        "stories": 1,
+        "scenes": 800,
+        "main_candidates": 800,
+        "subscene_candidates": 800,
+        "catalog_images": 100,
+        "active_queue_records": 100,
+        "completed_queue_records": 100
+      },
+      "scale": 100,
+      "state": "warm",
+      "concurrent_activity": "simultaneous reconciliation",
+      "runs": 30,
+      "cold_rebuild_seconds": 8.680459,
+      "navigation_p95_seconds": 0.003381,
+      "review_listing_p95_seconds": 0.005716,
+      "navigation_page_items": 50,
+      "review_page_items": 50,
+      "review_total": 1600,
+      "archive_traversals": 0,
+      "reconciliation_maximum_active": 1,
+      "summary_maximum_active": 1,
+      "rebuild_recovery": {
+        "interrupted": true,
+        "navigation_retained_generation": true,
+        "navigation_seconds": 0.00539,
+        "resumed": true
+      },
+      "index_counts": {
+        "stories": 1,
+        "scenes": 800,
+        "render_targets": 1600,
+        "catalog_records": 100,
+        "reference_relationships": 100,
+        "active_work": 108,
+        "job_summaries": 100,
+        "errors": 0
+      },
+      "pass": true
+    }
+  ],
+  "passed": true
+}

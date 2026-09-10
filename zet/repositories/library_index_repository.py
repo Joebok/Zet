@@ -308,8 +308,8 @@ class LibraryIndexRepository:
             ).fetchone()
             if not row or row[0] != "building":
                 raise LibraryIndexError(f"Generation {generation} is not available for publication.")
-            connection.execute("BEGIN IMMEDIATE")
             try:
+                connection.execute("BEGIN IMMEDIATE")
                 for table, rows in table_rows.items():
                     for row_data in rows:
                         values = {"generation": generation, **dict(row_data)}
@@ -333,8 +333,14 @@ class LibraryIndexRepository:
                             for payload in snapshot.source_payloads
                         ],
                     )
-                if before_activate is not None:
-                    before_activate()
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            if before_activate is not None:
+                before_activate()
+            try:
+                connection.execute("BEGIN IMMEDIATE")
                 connection.execute(
                     "UPDATE generations SET status = 'complete', completed_at = CURRENT_TIMESTAMP WHERE generation = ?",
                     (generation,),

@@ -7015,12 +7015,12 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
       showSceneBuilderMessage(document.error || "Scene Builder JSON is blocked.", "error");
       return;
     }
-    state.loadedBuilderContext = {
+    const loadedBuilderContext = {
       storySlug: document.story?.slug || storySlug,
       sceneSlug: document.scene?.slug || sceneSlug,
     };
     if (!state.sceneDetail || !sceneDocumentMatches()) {
-      state.loadedSceneContext = { ...state.loadedBuilderContext };
+      state.loadedSceneContext = { ...loadedBuilderContext };
     }
     state.sceneBuilder = document.data || {};
     state.sceneBuilderRenderTargets = document.render_targets || [];
@@ -7040,6 +7040,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal });
     if (!selectionMatches()) return;
+    state.loadedBuilderContext = loadedBuilderContext;
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     updateDirtyIndicators();

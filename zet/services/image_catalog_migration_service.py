@@ -184,10 +184,23 @@ class ImageCatalogMigrationService:
         for source_key, metadata in payload["items"].items():
             if not isinstance(metadata, dict):
                 raise ImageCatalogMigrationError(f"Catalog metadata for {source_key!r} must be an object.")
-            catalog_id = str(metadata.get("catalog_id") or self.repository.catalog_id(source_key))
+            managed = next(
+                (
+                    record for record in payload["managed_images"].values()
+                    if isinstance(record, dict) and str(record.get("source_key") or "") == source_key
+                ),
+                None,
+            )
+            catalog_id = str(
+                metadata.get("catalog_id")
+                or (managed or {}).get("catalog_id")
+                or self.repository.catalog_id(source_key)
+            )
             metadata["catalog_id"] = catalog_id
-            managed = payload["managed_images"].get(catalog_id)
-            if managed is not None and str(managed.get("source_key") or "") != source_key:
+            if managed is not None and (
+                str(managed.get("source_key") or "") != source_key
+                or str(managed.get("catalog_id") or "") != catalog_id
+            ):
                 raise ImageCatalogMigrationError(f"Catalog id {catalog_id} has conflicting source keys.")
         self.repository.record_payloads(payload)
         return image_hashes

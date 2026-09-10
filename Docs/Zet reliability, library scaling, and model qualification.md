@@ -244,6 +244,14 @@ Handoff:
 
 **Acceptance:** Scale report passes latency and structural work limits. All eight First Day tasks remain associated correctly; no rendering or candidate approval is required.
 
+Handoff:
+
+* New invariants introduced: Scene Builder loaded context is published only after its complete editable state and saved baseline are ready. Catalog migration retains a managed image's existing catalog ID when matching legacy metadata omits the ID. Index publication commits an inactive generation before the short atomic activation transaction, so reads continue against the prior generation through cancellation.
+* APIs/contracts changed: `Scripts/Benchmark_WP12.py` runs an isolated migration/rebuild rehearsal and 30-run 1x/10x/100x scale acceptance, optionally writing JSON with `--output`; no dashboard or authored-library API changed.
+* New tests/fixtures available to later WPs: `tests/test_wp12_scale_acceptance.py` verifies migration interruption/resume, pre/post entity/reference/prompt/override/hash/association parity, bounded hot pages, zero archive traversal, single-flight reconciliation/summary work, and non-blocking interrupted index publication. `Docs/WP12 Scale Report.json` contains reference-host evidence; `Docs/WP12 Live Cutover Checklist.md` records backup, validation, migration, rebuild, and restore commands.
+* Assumptions later WPs may rely on: WP12 acceptance is PASS. At 100x (800 scenes and 1,600 review rows), 30-run p95 was 0.003381 seconds for navigation and 0.005716 seconds for review listing; cold rebuild was 8.680459 seconds, interrupted-publication navigation was 0.005390 seconds, pages held at most 50 rows, archive traversals were zero, and reconciliation/summary maximum concurrency was one. The focused WP09-WP12 suite passed 19 tests, the WP08/WP12 migration suite passed 7 tests, all 33 dashboard tests passed, and JavaScript syntax validation passed. An extra full Python run had 286 passes plus 43 subtests and two unrelated fixture failures in `tests/test_scene_render_auto_analysis.py`, whose `ZetApp.__new__` instances omit the required `library_index_service`; WP12 acceptance paths are unaffected, but later work must not claim the full Python suite is green until that fixture is repaired.
+* Deviations from master plan: WP03's declared PASS was contradicted by a reproducible partially loaded Scene Builder readiness race and was repaired before WP12 began. The rehearsal also found and repaired legacy metadata-to-managed-image ID loss. No live migration, render submission, candidate approval, external publication, or ModelUpdater work was performed.
+
 ## ModelUpdater work packages and evaluation cases
 
 ### WP13 — Authoritative runtime and role contracts
