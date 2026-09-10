@@ -29,6 +29,7 @@ class ImageCatalogRepository:
 
     def __init__(self, path_service):
         self.path_service = path_service
+        self.after_write = None
 
     def empty_payload(self) -> dict:
         return {
@@ -246,3 +247,5 @@ class ImageCatalogRepository:
             write_json_atomic(self.organization_path, self.organization_path.with_suffix(".tmp"), organization)
         if not manifest_path.exists():
             write_json_atomic(manifest_path, manifest_path.with_suffix(".tmp"), self.MANIFEST)
+        if self.after_write is not None:
+            self.after_write()

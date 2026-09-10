@@ -29,6 +29,7 @@ class IndexSnapshot:
     work_items: Sequence[Mapping] = field(default_factory=tuple)
     job_summaries: Sequence[Mapping] = field(default_factory=tuple)
     errors: Sequence[Mapping] = field(default_factory=tuple)
+    source_payloads: Sequence[Mapping] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,21 @@ class LibraryIndexRepository:
                 message TEXT NOT NULL, fingerprint TEXT NOT NULL,
                 PRIMARY KEY (generation, source_path)
             );
+            CREATE TABLE IF NOT EXISTS source_payloads (
+                source_path TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                parsed_json TEXT, error_message TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (source_path, fingerprint)
+            );
+            CREATE TABLE IF NOT EXISTS dependency_edges (
+                scope_key TEXT NOT NULL, dependency_path TEXT NOT NULL,
+                dependency_fingerprint TEXT NOT NULL,
+                PRIMARY KEY (scope_key, dependency_path)
+            );
+            CREATE TABLE IF NOT EXISTS compilation_cache (
+                scope_key TEXT PRIMARY KEY, compiler_version TEXT NOT NULL,
+                dependency_fingerprint TEXT NOT NULL, result_fingerprint TEXT NOT NULL,
+                compiled_at TEXT NOT NULL, result_json TEXT NOT NULL DEFAULT '{}'
+            );
             CREATE INDEX IF NOT EXISTS scenes_scope_order ON scenes(generation, story_slug, position, scene_slug);
             CREATE INDEX IF NOT EXISTS targets_scope_order ON render_targets(generation, story_slug, scene_slug, position, target_id);
             CREATE INDEX IF NOT EXISTS catalog_query ON catalog_records(generation, reference_set_id, semantic_category, name, catalog_id);
@@ -154,6 +170,13 @@ class LibraryIndexRepository:
         connection.execute(
             "INSERT OR IGNORE INTO metadata(key, value) VALUES ('library_key', ?)", (self.library_key,)
         )
+        compilation_columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(compilation_cache)")
+        }
+        if "result_json" not in compilation_columns:
+            connection.execute(
+                "ALTER TABLE compilation_cache ADD COLUMN result_json TEXT NOT NULL DEFAULT '{}'"
+            )
         schema_version = self._metadata(connection, "schema_version")
         library_key = self._metadata(connection, "library_key")
         if schema_version != str(self.SCHEMA_VERSION):
@@ -254,6 +277,20 @@ class LibraryIndexRepository:
                             f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})",
                             tuple(values[column] for column in columns),
                         )
+                if snapshot.source_payloads:
+                    connection.executemany(
+                        "INSERT OR REPLACE INTO source_payloads "
+                        "(source_path, fingerprint, parsed_json, error_message) VALUES (?, ?, ?, ?)",
+                        [
+                            (
+                                str(payload["source_path"]),
+                                str(payload["fingerprint"]),
+                                payload.get("parsed_json"),
+                                str(payload.get("error_message") or ""),
+                            )
+                            for payload in snapshot.source_payloads
+                        ],
+                    )
                 if before_activate is not None:
                     before_activate()
                 connection.execute(
@@ -272,6 +309,163 @@ class LibraryIndexRepository:
 
         self._run(operation)
 
+    def cached_source_payload(self, source_path: str, fingerprint: str) -> dict | None:
+        def operation(connection: sqlite3.Connection) -> dict | None:
+            row = connection.execute(
+                "SELECT parsed_json, error_message FROM source_payloads "
+                "WHERE source_path = ? AND fingerprint = ?",
+                (source_path, fingerprint),
+            ).fetchone()
+            return dict(row) if row else None
+
+        return self._run(operation)
+
+    def active_source_fingerprints(self) -> dict[str, str]:
+        def operation(connection: sqlite3.Connection) -> dict[str, str]:
+            generation = self._active_generation(connection)
+            if generation is None:
+                return {}
+            return {
+                str(row["source_path"]): str(row["fingerprint"])
+                for row in connection.execute(
+                    "SELECT source_path, fingerprint FROM sources WHERE generation = ?", (generation,)
+                )
+            }
+
+        return dict(self._run(operation))
+
+    def complete_reconciliation(
+        self,
+        *,
+        generation: int,
+        completed_at: str,
+        cursor: str,
+        changed_sources: Sequence[str],
+        errors: Sequence[Mapping],
+    ) -> None:
+        def operation(connection: sqlite3.Connection) -> None:
+            values = {
+                "reconciliation_generation": str(generation),
+                "reconciliation_last_completed_at": completed_at,
+                "reconciliation_cursor": cursor,
+                "reconciliation_changed_sources": json.dumps(list(changed_sources), separators=(",", ":")),
+                "reconciliation_errors": json.dumps(list(errors), separators=(",", ":")),
+            }
+            connection.executemany(
+                "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)", values.items()
+            )
+            connection.commit()
+
+        self._run(operation)
+
+    def fail_reconciliation(self, *, completed_at: str, message: str) -> None:
+        def operation(connection: sqlite3.Connection) -> None:
+            connection.executemany(
+                "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+                (
+                    ("reconciliation_last_completed_at", completed_at),
+                    ("reconciliation_errors", json.dumps([{"message": message}], separators=(",", ":"))),
+                ),
+            )
+            connection.commit()
+
+        self._run(operation)
+
+    def record_compilation(
+        self,
+        scope_key: str,
+        *,
+        compiler_version: str,
+        dependency_fingerprint: str,
+        result_fingerprint: str,
+        compiled_at: str,
+        dependencies: Mapping[str, str],
+        result: Mapping | None = None,
+    ) -> None:
+        def operation(connection: sqlite3.Connection) -> None:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM dependency_edges WHERE scope_key = ?", (scope_key,))
+            connection.executemany(
+                "INSERT INTO dependency_edges(scope_key, dependency_path, dependency_fingerprint) "
+                "VALUES (?, ?, ?)",
+                [(scope_key, path, fingerprint) for path, fingerprint in dependencies.items()],
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO compilation_cache "
+                "(scope_key, compiler_version, dependency_fingerprint, result_fingerprint, compiled_at, result_json) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    scope_key,
+                    compiler_version,
+                    dependency_fingerprint,
+                    result_fingerprint,
+                    compiled_at,
+                    json.dumps(dict(result or {}), separators=(",", ":"), ensure_ascii=False),
+                ),
+            )
+            connection.commit()
+
+        self._run(operation)
+
+    def compilation(self, scope_key: str) -> dict | None:
+        def operation(connection: sqlite3.Connection) -> dict | None:
+            row = connection.execute(
+                "SELECT * FROM compilation_cache WHERE scope_key = ?", (scope_key,)
+            ).fetchone()
+            if row is None:
+                return None
+            value = dict(row)
+            value["result"] = json.loads(value.pop("result_json"))
+            return value
+
+        return self._run(operation)
+
+    def dependencies(self, scope_key: str) -> dict[str, str]:
+        def operation(connection: sqlite3.Connection) -> dict[str, str]:
+            return {
+                str(row["dependency_path"]): str(row["dependency_fingerprint"])
+                for row in connection.execute(
+                    "SELECT dependency_path, dependency_fingerprint FROM dependency_edges WHERE scope_key = ?",
+                    (scope_key,),
+                )
+            }
+
+        return dict(self._run(operation))
+
+    def all_dependencies(self) -> dict[str, str]:
+        def operation(connection: sqlite3.Connection) -> dict[str, str]:
+            return {
+                str(row["dependency_path"]): str(row["dependency_fingerprint"])
+                for row in connection.execute(
+                    "SELECT dependency_path, dependency_fingerprint FROM dependency_edges"
+                )
+            }
+
+        return dict(self._run(operation))
+
+    def invalidate_dependencies(self, changed_paths: Sequence[str]) -> list[str]:
+        if not changed_paths:
+            return []
+
+        def operation(connection: sqlite3.Connection) -> list[str]:
+            placeholders = ", ".join("?" for _ in changed_paths)
+            scopes = [
+                str(row[0])
+                for row in connection.execute(
+                    f"SELECT DISTINCT scope_key FROM dependency_edges WHERE dependency_path IN ({placeholders})",
+                    tuple(changed_paths),
+                )
+            ]
+            if scopes:
+                scope_placeholders = ", ".join("?" for _ in scopes)
+                connection.execute(
+                    f"DELETE FROM compilation_cache WHERE scope_key IN ({scope_placeholders})", tuple(scopes)
+                )
+            connection.commit()
+            return scopes
+
+        return list(self._run(operation))
+
     def status(self) -> dict:
         def operation(connection: sqlite3.Connection) -> dict:
             active = self._metadata(connection, "active_generation")
@@ -284,6 +478,19 @@ class LibraryIndexRepository:
                 "last_build_error": self._metadata(connection, "last_build_error"),
                 "database_path": str(self.database_path),
                 "library_key": self.library_key,
+                "last_reconciliation_completed_at": self._metadata(
+                    connection, "reconciliation_last_completed_at"
+                ),
+                "reconciliation_generation": int(reconciliation_generation)
+                if (reconciliation_generation := self._metadata(connection, "reconciliation_generation"))
+                else None,
+                "reconciliation_cursor": self._metadata(connection, "reconciliation_cursor"),
+                "reconciliation_changed_sources": json.loads(
+                    self._metadata(connection, "reconciliation_changed_sources") or "[]"
+                ),
+                "reconciliation_errors": json.loads(
+                    self._metadata(connection, "reconciliation_errors") or "[]"
+                ),
             }
 
         return dict(self._run(operation))

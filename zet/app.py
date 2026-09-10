@@ -53,6 +53,7 @@ from zet.services.template_manual_service import TemplateManualService
 from zet.services.worker_service import WorkerService
 from zet.services.workspace_summary_service import WorkspaceSummaryService
 from zet.services.zine_service import ZineService
+from zet.services.library_index_service import LibraryIndexReconciler, LibraryIndexService
 
 
 class AssetRef:
@@ -181,6 +182,12 @@ class ZetApp:
         self.character_onboarding_service = character_onboarding_service
         self.phase_comparison_service = phase_comparison_service
         self.story_service = story_service
+        self.library_index_service = LibraryIndexService(
+            config,
+            project_root=self.config_path.resolve().parent,
+        )
+        self.library_index_reconciler = LibraryIndexReconciler(self.library_index_service)
+        self.story_service.library_index_service = self.library_index_service
         self.manual_render_publication_service = ManualRenderPublicationService(config)
         self.image_catalog_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
@@ -357,7 +364,23 @@ class ZetApp:
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
         app.story_service.story_render_service.publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
+        image_catalog_repository.after_write = app.refresh_library_index
         return app
+
+    def refresh_library_index(self) -> dict:
+        """Synchronously reconcile successful writes before returning refreshed state."""
+        report = self.library_index_service.reconcile()
+        if report.get("changed_sources") or report.get("invalidated_scopes"):
+            from zet.services.summary_cache import invalidate_summary_cache
+            invalidate_summary_cache()
+        return report
+
+    def _indexed_write(self, operation):
+        result = operation()
+        from zet.services.summary_cache import invalidate_summary_cache
+        invalidate_summary_cache()
+        self.refresh_library_index()
+        return result
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return sorted(self.asset_repository.list_assets(character, phase), key=asset_sort_key)
@@ -422,7 +445,7 @@ class ZetApp:
 
     def create_story(self, title: str) -> StoryDocument:
         """Create a story folder and main story markdown file."""
-        return self.story_service.create_story(title)
+        return self._indexed_write(lambda: self.story_service.create_story(title))
 
     def load_story(self, story_slug: str) -> StoryDocument:
         """Load one story markdown document."""
@@ -430,15 +453,15 @@ class ZetApp:
 
     def save_story(self, story_slug: str, text: str) -> StoryDocument:
         """Save one story markdown document."""
-        return self.story_service.save_story(story_slug, text)
+        return self._indexed_write(lambda: self.story_service.save_story(story_slug, text))
 
     def rename_story(self, story_slug: str, title: str) -> StoryDocument:
         """Rename one story without changing its stable slug."""
-        return self.story_service.rename_story(story_slug, title)
+        return self._indexed_write(lambda: self.story_service.rename_story(story_slug, title))
 
     def reorder_stories(self, story_slugs: list[str]) -> list[StoryRecord]:
         """Persist the display order for all stories."""
-        return self.story_service.reorder_stories(story_slugs)
+        return self._indexed_write(lambda: self.story_service.reorder_stories(story_slugs))
 
     def load_story_settings(self, story_slug: str) -> dict:
         """Load one story settings JSON document."""
@@ -451,12 +474,14 @@ class ZetApp:
         """Save one story settings JSON document."""
         path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
         self.story_service.save_story_settings(path, data)
+        self.refresh_library_index()
         return self.story_service.load_story_settings(path)
 
     def delete_story(self, story_slug: str) -> StoryGitResult:
         """Commit and delete one story folder."""
         result = self.story_service.delete_story(story_slug)
         self.image_catalog_service.rebind_source_prefix(f"scene:{story_slug}:")
+        self.refresh_library_index()
         return result
 
     def story_git_has_changes(self) -> bool:
@@ -485,7 +510,7 @@ class ZetApp:
 
     def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
         """Create a new scene markdown file from template."""
-        return self.story_service.create_scene(story_slug, scene_name)
+        return self._indexed_write(lambda: self.story_service.create_scene(story_slug, scene_name))
 
     def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
         """Load one scene markdown document."""
@@ -493,15 +518,15 @@ class ZetApp:
 
     def save_scene(self, story_slug: str, scene_slug: str, text: str) -> SceneDocument:
         """Save one scene markdown document."""
-        return self.story_service.save_scene(story_slug, scene_slug, text)
+        return self._indexed_write(lambda: self.story_service.save_scene(story_slug, scene_slug, text))
 
     def rename_scene(self, story_slug: str, scene_slug: str, title: str) -> SceneDocument:
         """Rename one scene without changing its stable slug."""
-        return self.story_service.rename_scene(story_slug, scene_slug, title)
+        return self._indexed_write(lambda: self.story_service.rename_scene(story_slug, scene_slug, title))
 
     def reorder_scenes(self, story_slug: str, scene_slugs: list[str]) -> list[SceneRecord]:
         """Persist the display order for one story's scenes."""
-        return self.story_service.reorder_scenes(story_slug, scene_slugs)
+        return self._indexed_write(lambda: self.story_service.reorder_scenes(story_slug, scene_slugs))
 
     def move_scene(self, story_slug: str, scene_slug: str, target_story_slug: str) -> SceneDocument:
         """Move one scene and its artifacts to another story."""
@@ -510,12 +535,14 @@ class ZetApp:
             f"scene:{story_slug}:{scene_slug}:",
             f"scene:{target_story_slug}:{scene_slug}:",
         )
+        self.refresh_library_index()
         return document
 
     def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
         """Commit and delete one scene markdown and image."""
         result = self.story_service.delete_scene(story_slug, scene_slug)
         self.image_catalog_service.rebind_source_prefix(f"scene:{story_slug}:{scene_slug}:")
+        self.refresh_library_index()
         return result
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
@@ -558,10 +585,14 @@ class ZetApp:
         )
 
     def promote_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
-        return self.scene_image_review_service.promote(story_slug, scene_slug, render_target_id)
+        return self._indexed_write(
+            lambda: self.scene_image_review_service.promote(story_slug, scene_slug, render_target_id)
+        )
 
     def relock_current_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
-        return self.scene_image_review_service.relock_current(story_slug, scene_slug, render_target_id)
+        return self._indexed_write(
+            lambda: self.scene_image_review_service.relock_current(story_slug, scene_slug, render_target_id)
+        )
 
     def discard_scene_image_candidate(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
         return self.scene_image_review_service.discard(story_slug, scene_slug, render_target_id)
@@ -575,19 +606,25 @@ class ZetApp:
 
     def save_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
         """Save Scene Builder JSON for one story scene."""
-        return self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
+        return self._indexed_write(
+            lambda: self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
+        )
 
     def save_scene_builder_subscene(
         self, story_slug: str, scene_slug: str, target_id: str, subscene: dict
     ) -> SceneBuilderDocument:
         """Save one Scene Builder subscene without replacing the full scene."""
-        return self.story_service.save_scene_builder_subscene_data(
-            story_slug, scene_slug, target_id, subscene
+        return self._indexed_write(
+            lambda: self.story_service.save_scene_builder_subscene_data(
+                story_slug, scene_slug, target_id, subscene
+            )
         )
 
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
         """Copy reusable visual setup from another scene in the same story."""
-        return self.story_service.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
+        return self._indexed_write(
+            lambda: self.story_service.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
+        )
 
     def generate_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> dict:
         """Generate Scene Builder outputs without saving."""
@@ -595,7 +632,9 @@ class ZetApp:
 
     def export_scene_builder_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
         """Export Scene Builder-managed markdown into the scene file."""
-        return self.story_service.export_scene_markdown(story_slug, scene_slug, data)
+        return self._indexed_write(
+            lambda: self.story_service.export_scene_markdown(story_slug, scene_slug, data)
+        )
 
     def scene_builder_options(self) -> dict:
         """Return Scene Builder option lists."""
@@ -638,22 +677,31 @@ class ZetApp:
                     write_json_atomic(Path(task.ask_path) / "analysis_queue_error.json", {"error": str(exc), "recovery": warning})
                 except OSError:
                     pass  # The returned task still carries the recovery message.
+        self.refresh_library_index()
         return task
 
     def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
-        return self.story_service.enable_background_subscene(story_slug, scene_slug)
+        return self._indexed_write(
+            lambda: self.story_service.enable_background_subscene(story_slug, scene_slug)
+        )
 
     def create_subscene(self, story_slug: str, scene_slug: str) -> tuple[SceneBuilderDocument, str]:
-        return self.story_service.create_subscene(story_slug, scene_slug)
+        return self._indexed_write(lambda: self.story_service.create_subscene(story_slug, scene_slug))
 
     def enable_element_subscene(self, story_slug: str, scene_slug: str, element_id: str) -> SceneBuilderDocument:
-        return self.story_service.enable_element_subscene(story_slug, scene_slug, element_id)
+        return self._indexed_write(
+            lambda: self.story_service.enable_element_subscene(story_slug, scene_slug, element_id)
+        )
 
     def disable_scene_subscene(self, story_slug: str, scene_slug: str, target_id: str) -> SceneBuilderDocument:
-        return self.story_service.disable_scene_subscene(story_slug, scene_slug, target_id)
+        return self._indexed_write(
+            lambda: self.story_service.disable_scene_subscene(story_slug, scene_slug, target_id)
+        )
 
     def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
-        return self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id)
+        return self._indexed_write(
+            lambda: self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id)
+        )
 
     def scene_prompt_analysis_status(
         self,
@@ -945,6 +993,7 @@ class ZetApp:
         self.prompt_evolution_service.advance_active_runs()
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
+        self.refresh_library_index()
         return results
 
     def prompt_evolution_options(self, character: str, phase: str):

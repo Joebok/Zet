@@ -826,7 +826,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.zet_app.image_catalog_service.repository.load()
-        yield
+        application.state.zet_app.library_index_reconciler.start()
+        try:
+            yield
+        finally:
+            application.state.zet_app.library_index_reconciler.stop()
 
     app = FastAPI(title="Zet Web", lifespan=lifespan)
     app.state.config_path = str(config_path)
@@ -845,7 +849,9 @@ def create_app(
         return app.state.zet_app
 
     def _reload_app() -> ZetApp:
+        app.state.zet_app.library_index_reconciler.stop()
         app.state.zet_app = ZetApp.from_config(app.state.config_path)
+        app.state.zet_app.library_index_reconciler.start()
         return app.state.zet_app
 
     app.include_router(

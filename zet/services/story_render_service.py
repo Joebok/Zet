@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from datetime import datetime
 import json
+import re
 from pathlib import Path
 from uuid import uuid4
 from zet.services.workflow_storage import atomic_copy, file_lock, snapshot_manual_ask, subject_key
@@ -162,6 +163,41 @@ class StoryRenderService:
         _, references, ir, render_input_hash = compile_target(target_id)
         ir["source"]["scene_json_path"] = str(scene_builder_path)
         ir["source"]["story_settings_path"] = str(story_settings_path)
+        index_service = getattr(story, "library_index_service", None)
+        if index_service is not None:
+            dependency_paths = [scene_builder_path, story_settings_path, sections_path]
+            dependency_paths.extend(
+                Path(str(reference["path"])) for reference in references if str(reference.get("path") or "")
+            )
+            for sections in (ir.get("resolved_sources") or {}).values():
+                if not isinstance(sections, dict):
+                    continue
+                for key, value in sections.items():
+                    if key.endswith("_source") and str(value or ""):
+                        dependency_paths.append(story._library_absolute_path(str(value)))
+            catalog_service = getattr(story, "image_catalog_service", None)
+            if catalog_service is not None:
+                for catalog_id in sorted(
+                    set(re.findall(r"\{\{IMAGE:(img_[A-Za-z0-9_-]+)\}\}", json.dumps(normalized_scene)))
+                ):
+                    dependency_paths.append(catalog_service.repository.record_path(catalog_id))
+                    try:
+                        reference_set_id = catalog_service.get_item(catalog_id).reference_set_id
+                    except Exception:
+                        reference_set_id = ""
+                    if reference_set_id:
+                        dependency_paths.append(
+                            catalog_service.repository.reference_set_path(reference_set_id)
+                        )
+            index_service.record_compilation(
+                safe_story_slug,
+                safe_scene_slug,
+                target_id,
+                dependency_paths=dependency_paths,
+                compiler_version="scene_render_v4",
+                result_fingerprint=render_input_hash,
+                result={"ir": ir, "prompt": final_image_prompt_text(ir), "references": references},
+            )
         return pipeline_path, scene_builder_path, normalized_scene, references, ir, story_settings_path, final_image_prompt_text(ir), render_input_hash
 
     def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = MAIN_RENDER_TARGET) -> Path:

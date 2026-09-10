@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Mapping, Sequence
 
 from zet.repositories.image_catalog_repository import ImageCatalogRepository
 from zet.repositories.library_index_repository import IndexSnapshot, LibraryIndexRepository
@@ -22,13 +24,19 @@ class LibraryIndexService:
         *,
         index_root: str | Path | None = None,
         project_root: str | Path | None = None,
+        now: Callable[[], datetime] | None = None,
     ):
         self.config = config
         self.paths = PathService(config, project_root or Path.cwd())
         self.queue_paths = AIProxyPathService(config)
         self.repository = LibraryIndexRepository(config.base_library_path, index_root=index_root)
+        self.project_root = Path(project_root or Path.cwd()).resolve()
+        self._now = now or (lambda: datetime.now(timezone.utc))
         self._sources: list[dict] = []
         self._errors: list[dict] = []
+        self._source_payloads: list[dict] = []
+        self._reconcile_lock = threading.Lock()
+        self.last_scan_metrics = {"parsed_sources": 0, "reused_sources": 0}
 
     @staticmethod
     def _fingerprint(contents: bytes) -> str:
@@ -52,13 +60,48 @@ class LibraryIndexService:
             self._record_error(source_path, source_kind, fingerprint, str(exc))
             return None, source_path, fingerprint
         fingerprint = self._fingerprint(contents)
+        cached = self.repository.cached_source_payload(source_path, fingerprint)
+        if cached is not None:
+            self.last_scan_metrics["reused_sources"] += 1
+            if cached["parsed_json"] is None:
+                self._record_error(
+                    source_path, source_kind, fingerprint, str(cached["error_message"] or "Invalid JSON.")
+                )
+                return None, source_path, fingerprint
+            value = json.loads(str(cached["parsed_json"]))
+            self._sources.append(
+                {
+                    "source_path": source_path,
+                    "source_kind": source_kind,
+                    "fingerprint": fingerprint,
+                    "parse_status": "valid",
+                }
+            )
+            return value, source_path, fingerprint
+        self.last_scan_metrics["parsed_sources"] += 1
         try:
             value = json.loads(contents)
             if not isinstance(value, dict):
                 raise ValueError("the JSON root must be an object")
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            self._source_payloads.append(
+                {
+                    "source_path": source_path,
+                    "fingerprint": fingerprint,
+                    "parsed_json": None,
+                    "error_message": str(exc),
+                }
+            )
             self._record_error(source_path, source_kind, fingerprint, str(exc))
             return None, source_path, fingerprint
+        self._source_payloads.append(
+            {
+                "source_path": source_path,
+                "fingerprint": fingerprint,
+                "parsed_json": json.dumps(value, separators=(",", ":"), ensure_ascii=False),
+                "error_message": "",
+            }
+        )
         self._sources.append(
             {
                 "source_path": source_path,
@@ -378,7 +421,11 @@ class LibraryIndexService:
                         "fingerprint": fingerprint,
                     }
                 )
-        history_roots = (self.queue_paths.answer_root(), self.queue_paths.manual_answer_root(), self.queue_paths.archive_root())
+        history_roots = (
+            self.queue_paths.answer_root(),
+            self.queue_paths.manual_answer_root(),
+            self.queue_paths.archive_root(),
+        )
         seen_paths: set[Path] = set()
         for root in history_roots:
             if not root.is_dir():
@@ -417,6 +464,8 @@ class LibraryIndexService:
     def snapshot(self) -> IndexSnapshot:
         self._sources = []
         self._errors = []
+        self._source_payloads = []
+        self.last_scan_metrics = {"parsed_sources": 0, "reused_sources": 0}
         stories, scenes, targets = self._scan_stories()
         catalog, relationships = self._scan_catalog()
         work, history = self._scan_jobs()
@@ -430,7 +479,157 @@ class LibraryIndexService:
             work_items=tuple(work),
             job_summaries=tuple(history),
             errors=tuple(self._errors),
+            source_payloads=tuple(self._source_payloads),
         )
+
+    @staticmethod
+    def _cursor(fingerprints: Mapping[str, str]) -> str:
+        encoded = json.dumps(sorted(fingerprints.items()), separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _completed_at(self) -> str:
+        value = self._now()
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+
+    def reconcile(self) -> dict:
+        """Publish changed authored/queue sources and invalidate only their dependents."""
+        with self._reconcile_lock:
+            return self._reconcile()
+
+    def _reconcile(self) -> dict:
+        previous = self.repository.active_source_fingerprints()
+        if self.repository.status()["active_generation"] is None:
+            report = self.rebuild()
+            current = self.repository.active_source_fingerprints()
+            self.repository.complete_reconciliation(
+                generation=int(report["active_generation"]),
+                completed_at=self._completed_at(),
+                cursor=self._cursor(current),
+                changed_sources=tuple(sorted(current)),
+                errors=tuple(self.repository.query_errors(limit=500).items),
+            )
+            return {**self.repository.status(), "changed_sources": sorted(current), **self.last_scan_metrics}
+
+        try:
+            snapshot = self.snapshot()
+            current = {str(row["source_path"]): str(row["fingerprint"]) for row in snapshot.sources}
+            changed_authored = {
+                path for path in set(previous) | set(current) if previous.get(path) != current.get(path)
+            }
+            changed_dependencies = {
+                path
+                for path, expected in self.repository.all_dependencies().items()
+                if self._dependency_fingerprint(path) != expected
+            }
+            changed = sorted(changed_authored | changed_dependencies)
+            if changed_authored:
+                generation = self.repository.begin_rebuild()
+                try:
+                    self.repository.publish(generation, snapshot)
+                except Exception as exc:
+                    self.repository.fail_rebuild(generation, str(exc))
+                    raise
+            else:
+                generation = int(self.repository.status()["active_generation"])
+            invalidated = self.repository.invalidate_dependencies(changed)
+            self.repository.complete_reconciliation(
+                generation=generation,
+                completed_at=self._completed_at(),
+                cursor=self._cursor(current),
+                changed_sources=changed,
+                errors=tuple(snapshot.errors),
+            )
+            return {
+                **self.repository.status(),
+                "changed_sources": changed,
+                "invalidated_scopes": invalidated,
+                **self.last_scan_metrics,
+            }
+        except Exception as exc:
+            self.repository.fail_reconciliation(completed_at=self._completed_at(), message=str(exc))
+            raise
+
+    def dependency_path(self, path: str | Path) -> str:
+        resolved = Path(path).resolve()
+        roots = (
+            (self.paths.library_path().resolve(), "library"),
+            (Path(self.config.base_ai_queue_path).resolve(), "queue"),
+            (self.project_root, "project"),
+        )
+        for root, prefix in roots:
+            try:
+                return f"{prefix}/{resolved.relative_to(root).as_posix()}"
+            except ValueError:
+                pass
+        return "external/" + hashlib.sha256(str(resolved).encode("utf-8")).hexdigest()
+
+    def dependency_fingerprints(self, paths: Sequence[str | Path]) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for path in paths:
+            resolved = Path(path).resolve()
+            key = self.dependency_path(resolved)
+            try:
+                result[key] = self._fingerprint(resolved.read_bytes())
+            except OSError:
+                result[key] = "missing"
+        return result
+
+    def _dependency_absolute_path(self, path: str) -> Path | None:
+        if path.startswith("library/"):
+            return self.paths.library_path() / path.removeprefix("library/")
+        if path.startswith("queue/"):
+            return Path(self.config.base_ai_queue_path) / path.removeprefix("queue/")
+        if path.startswith("project/"):
+            return self.project_root / path.removeprefix("project/")
+        return None
+
+    def _dependency_fingerprint(self, path: str) -> str:
+        resolved = self._dependency_absolute_path(path)
+        if resolved is None:
+            return "unresolvable"
+        try:
+            return self._fingerprint(resolved.read_bytes())
+        except OSError:
+            return "missing"
+
+    def record_compilation(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        target_id: str,
+        *,
+        dependency_paths: Sequence[str | Path],
+        compiler_version: str,
+        result_fingerprint: str,
+        result: Mapping | None = None,
+    ) -> dict:
+        dependencies = self.dependency_fingerprints(dependency_paths)
+        combined = self._cursor({"compiler": compiler_version, **dependencies})
+        scope_key = f"scene:{story_slug}:{scene_slug}:{target_id}"
+        self.repository.record_compilation(
+            scope_key,
+            compiler_version=compiler_version,
+            dependency_fingerprint=combined,
+            result_fingerprint=result_fingerprint,
+            compiled_at=self._completed_at(),
+            dependencies=dependencies,
+            result=result,
+        )
+        return dict(self.repository.compilation(scope_key) or {})
+
+    def compilation_is_current(self, story_slug: str, scene_slug: str, target_id: str) -> bool:
+        scope_key = f"scene:{story_slug}:{scene_slug}:{target_id}"
+        cached = self.repository.compilation(scope_key)
+        if cached is None:
+            return False
+        dependencies = self.repository.dependencies(scope_key)
+        actual: dict[str, str] = {}
+        for path in dependencies:
+            actual[path] = self._dependency_fingerprint(path)
+        expected = self._cursor({"compiler": str(cached["compiler_version"]), **actual})
+        return expected == cached["dependency_fingerprint"]
 
     def rebuild(self) -> dict:
         generation = self.repository.begin_rebuild()
@@ -452,3 +651,44 @@ class LibraryIndexService:
             "errors": len(snapshot.errors),
         }
         return status
+
+
+class LibraryIndexReconciler:
+    """One restartable loop whose delay begins after each completed scan."""
+
+    def __init__(
+        self,
+        service: LibraryIndexService,
+        *,
+        interval_seconds: float = 60.0,
+        wait: Callable[[float], bool] | None = None,
+    ):
+        self.service = service
+        self.interval_seconds = interval_seconds
+        self._stop = threading.Event()
+        self._wait = wait or self._stop.wait
+        self._thread: threading.Thread | None = None
+
+    def run_cycle(self) -> dict:
+        return self.service.reconcile()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.run_cycle()
+            except Exception:
+                pass
+            if self._wait(self.interval_seconds):
+                break
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="zet-library-index-reconciler", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
