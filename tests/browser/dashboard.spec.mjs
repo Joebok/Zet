@@ -161,6 +161,195 @@ test("summary refreshes never overlap and pause while hidden", async ({ page }) 
   expect(maximumActive).toBe(1);
 });
 
+test("WP03 direct scene entry uses ordered selection and browser history", async ({ page }) => {
+  const scenes = (await (await page.request.get("/api/stories/Alpha-Story/scenes")).json()).scenes;
+  expect(scenes).toHaveLength(8);
+  const firstScene = scenes[0].slug;
+  const lastScene = scenes.at(-1).slug;
+  await page.goto(`/?page=scene-builder&story_slug=Alpha-Story&scene_slug=${firstScene}`);
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${firstScene}`);
+  await expect(page.locator("#scene-builder-previous")).toBeDisabled();
+  await expect(page.locator("#scene-builder-next")).toBeEnabled();
+
+  for (let index = 1; index < scenes.length; index += 1) {
+    await page.locator("#scene-builder-next").click();
+    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${scenes[index].slug}`);
+    await expect.poll(() => page.evaluate(() => state.loadedBuilderContext.sceneSlug)).toBe(scenes[index].slug);
+  }
+  await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${lastScene}`);
+  await expect(page.locator("#scene-builder-next")).toBeDisabled();
+  await expect(page.locator("#scene-builder-previous")).toBeEnabled();
+
+  expect(page.url()).toContain(`scene_slug=${encodeURIComponent(lastScene)}`);
+  for (let index = scenes.length - 2; index >= 0; index -= 1) {
+    await page.evaluate(() => window.history.back());
+    await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${scenes[index].slug}`);
+    await expect.poll(() => page.evaluate(() => state.loadedBuilderContext.sceneSlug)).toBe(scenes[index].slug);
+  }
+  for (let index = 1; index < scenes.length; index += 1) {
+    await page.evaluate(() => window.history.forward());
+    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${scenes[index].slug}`);
+    await expect.poll(() => page.evaluate(() => state.loadedBuilderContext.sceneSlug)).toBe(scenes[index].slug);
+  }
+});
+
+test("WP03 rapid scene selection cannot stage a late previous document", async ({ page }) => {
+  await openPage(page, "scenes");
+  const delayed = delayedGate();
+  let openingStarted;
+  const openingRequest = new Promise((resolve) => { openingStarted = resolve; });
+  await page.route(/\/api\/stories\/Alpha-Story\/scenes\/(Opening-Scene|Closing-Scene)$/, async (route) => {
+    const scene = route.request().url().split("/").pop();
+    if (scene === "Opening-Scene") {
+      openingStarted();
+      const response = await route.fetch();
+      await delayed.promise;
+      await route.fulfill({ response }).catch(() => {});
+      return;
+    }
+    await route.continue();
+  });
+
+  const first = page.evaluate(() => selectStoryScene("Alpha-Story", "Opening-Scene", { skipGuard: true }));
+  await openingRequest;
+  await page.evaluate(() => selectStoryScene("Alpha-Story", "Closing-Scene", { skipGuard: true }));
+  await expect(page.locator("#scene-editor-title")).toHaveText("Closing Scene");
+  delayed.release();
+  await first;
+  await expect(page.locator("#scene-editor-title")).toHaveText("Closing Scene");
+  await expect(page.locator("#scene-save")).toBeEnabled();
+  await expect(page.locator("#scene-stage-render")).toBeEnabled();
+});
+
+test("WP03 scene mutations stay disabled until the requested document loads", async ({ page }) => {
+  await openPage(page, "scenes");
+  const currentScene = await page.locator("#header-scene-select").inputValue();
+  const targetScene = await page.locator("#header-scene-select option").evaluateAll(
+    (options, current) => options.find((item) => item.value && item.value !== current)?.value,
+    currentScene,
+  );
+  const delayed = delayedGate();
+  let requestStarted;
+  const sceneRequest = new Promise((resolve) => { requestStarted = resolve; });
+  await page.route(`**/api/stories/Alpha-Story/scenes/${targetScene}`, async (route) => {
+    requestStarted();
+    const response = await route.fetch();
+    await delayed.promise;
+    await route.fulfill({ response });
+  });
+
+  const selection = page.evaluate((sceneSlug) => selectStoryScene("Alpha-Story", sceneSlug, { skipGuard: true }), targetScene);
+  await sceneRequest;
+  for (const selector of ["#scene-save", "#scene-stage-render", "#scene-builder-open", "#scene-delete", "#scene-rename", "#scene-move"]) {
+    await expect(page.locator(selector)).toBeDisabled();
+  }
+  delayed.release();
+  await selection;
+  await expect(page.locator("#scene-save")).toBeEnabled();
+  await expect(page.locator("#scene-stage-render")).toBeEnabled();
+});
+
+test("WP03 a late Scene Builder response cannot replace the requested builder", async ({ page }) => {
+  await openPage(page, "scenes");
+  const delayed = delayedGate();
+  let builderRequestStarted;
+  const builderRequest = new Promise((resolve) => { builderRequestStarted = resolve; });
+  await page.route("**/api/stories/Alpha-Story/scenes/Opening-Scene/builder", async (route) => {
+    builderRequestStarted();
+    const response = await route.fetch();
+    await delayed.promise;
+    await route.fulfill({ response }).catch(() => {});
+  });
+
+  const first = page.evaluate(() => selectStoryScene("Alpha-Story", "Opening-Scene", {
+    skipGuard: true,
+    destination: "scene-builder",
+  }));
+  await builderRequest;
+  await page.evaluate(() => selectStoryScene("Alpha-Story", "Closing-Scene", {
+    skipGuard: true,
+    destination: "scene-builder",
+  }));
+  await expect(page.locator("#scene-builder-status")).toHaveText("Alpha-Story / Closing-Scene");
+  expect(await page.evaluate(() => state.loadedBuilderContext)).toEqual({
+    storySlug: "Alpha-Story",
+    sceneSlug: "Closing-Scene",
+  });
+  delayed.release();
+  await first;
+  await expect(page.locator("#scene-builder-status")).toHaveText("Alpha-Story / Closing-Scene");
+  await expect(page.locator("[data-builder-action='render']").first()).toBeEnabled();
+});
+
+test("WP03 rapid story selection cannot restore stale workspace context", async ({ page }) => {
+  await openPage(page, "scenes");
+  const delayed = delayedGate();
+  let betaSummaryStarted;
+  const summaryRequest = new Promise((resolve) => { betaSummaryStarted = resolve; });
+  await page.route(/\/api\/workspace-summary\?.*story_slug=Beta-Story/, async (route) => {
+    betaSummaryStarted();
+    const response = await route.fetch();
+    await delayed.promise;
+    await route.fulfill({ response }).catch(() => {});
+  });
+
+  const first = page.evaluate(() => selectStoryScene("Beta-Story", "Opening-Scene", { skipGuard: true }));
+  await summaryRequest;
+  await page.evaluate(() => selectStoryScene("Gamma-Story", "Opening-Scene", { skipGuard: true }));
+  await expect(page.locator("#header-story-select")).toHaveValue("Gamma-Story");
+  await expect(page.locator("#scene-editor-title")).toHaveText("Opening Scene");
+  delayed.release();
+  await first;
+  await expect(page.locator("#header-story-select")).toHaveValue("Gamma-Story");
+  await expect(page.locator("#scene-save")).toBeEnabled();
+});
+
+test("WP03 invalid scene selections fall back to the canonical first scene", async ({ page }) => {
+  await openPage(page, "scenes");
+  const scenes = (await (await page.request.get("/api/stories/Alpha-Story/scenes")).json()).scenes;
+  await page.evaluate(() => selectStoryScene("Alpha-Story", "Missing-Scene", { skipGuard: true }));
+  await expect(page.locator("#header-scene-select")).toHaveValue(scenes[0].slug);
+  await expect(page.locator("#scene-editor-title")).toHaveText(scenes[0].title);
+});
+
+test("WP03 To Do and Template Instruction Manuals open and report load failures", async ({ page }) => {
+  await openPage(page, "assets");
+  await page.locator("#toolbar-settings-button").click();
+  await page.locator("#toolbar-todo-button").click();
+  await expect(page.locator("#todo-dialog")).toBeVisible();
+  await page.locator("#todo-dialog").evaluate((dialog) => dialog.close());
+
+  await page.locator("#help-menu-button").click();
+  await page.locator("#help-menu button[data-page='help']").click();
+  await expect(page.locator("#help-page")).toHaveClass(/active/);
+  await expect(page.locator("#help-status")).not.toHaveText("");
+
+  await page.route("**/api/todo", (route) => route.fulfill({
+    status: 500,
+    contentType: "application/json",
+    body: '{"detail":"Seeded To Do failure"}',
+  }));
+  await page.locator("#toolbar-settings-button").click();
+  await page.locator("#toolbar-todo-button").click();
+  await expect(page.locator("#action-message")).toContainText("Unable to open To Do: Seeded To Do failure");
+
+  await page.evaluate(() => { state.templateManuals = []; });
+  await page.route("**/api/help/template-manuals", (route) => route.fulfill({
+    status: 500,
+    contentType: "application/json",
+    body: '{"detail":"Seeded manuals failure"}',
+  }));
+  await page.evaluate(() => activatePage("assets", { skipAutosave: true }));
+  await page.locator("#help-menu-button").click();
+  await page.locator("#help-menu button[data-page='help']").click();
+  await expect(page.locator("#action-message")).toContainText(
+    "Unable to open Template Instruction Manuals: Seeded manuals failure",
+  );
+});
+
 test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });
@@ -331,12 +520,14 @@ test("Image Inventory manages imported images and optional reference sets", asyn
   await page.locator("#image-catalog-add-submit").click();
   await added;
   await expect(page.locator("#image-catalog-editor-title")).toContainText("Browser Lantern Alternate");
-  await cards.filter({ hasText: "Browser Props - Browser Lantern" }).click();
+  await page.getByRole("button", { name: "Edit Browser Props - Browser Lantern", exact: true }).click();
   await page.locator("#image-catalog-managed-label").fill("Renamed Lantern");
   await page.locator("#image-catalog-managed-set").selectOption("");
   const saved = page.waitForResponse((response) => response.url().includes("/api/image-catalog/img_") && response.request().method() === "PATCH" && response.ok());
   await page.locator("#image-catalog-save").click();
   await saved;
+  await expect(page.locator("#image-catalog-editor-title")).toHaveText("Renamed Lantern");
+  await expect(page.locator("#aux-resource-message")).toContainText("Image metadata saved.");
   await expect(page.locator("#image-catalog-managed-label")).toHaveValue("Renamed Lantern");
 
   await expect(page.locator("#image-catalog-replace-upload")).toBeHidden();
@@ -500,12 +691,12 @@ test("@desktop-smoke story changes require explicit save and guard selection cha
 test("@desktop-smoke scene and Scene Builder changes require explicit save", async ({ page }) => {
   await openPage(page, "scenes");
   const rows = page.locator("#scene-table .row-selection-button");
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(8);
   const initialSceneSlug = await page.locator("#scene-table tr.selected").getAttribute("data-scene-slug");
   const initialSceneText = await page.locator("#scene-text").inputValue();
   const initialSceneTitle = initialSceneText.split("\n", 1)[0];
   await page.locator("#scene-text").fill(`${initialSceneTitle}\n\nUnsaved scene change.\n`);
-  await page.locator("#scene-table tr:not(.selected) .row-selection-button").click();
+  await page.locator("#scene-table tr:not(.selected) .row-selection-button").first().click();
   const dialog = page.locator("#unsaved-changes-dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Discard" }).click();

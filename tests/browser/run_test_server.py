@@ -125,6 +125,20 @@ for name, size, color in (
     Image.new("RGB", size, color).save(local_images / name)
 
 stories_root = root / "Stories"
+story_scene_slugs = {
+    "Alpha-Story": (
+        "Closing-Scene",
+        "Forest-Arrival",
+        "Lantern-Discovery",
+        "Market-Meeting",
+        "River-Crossing",
+        "Storm-Shelter",
+        "Sunrise-Departure",
+        "Opening-Scene",
+    ),
+    "Beta-Story": ("Opening-Scene", "Closing-Scene"),
+    "Gamma-Story": ("Opening-Scene", "Closing-Scene"),
+}
 for slug, title in (
     ("Alpha-Story", "Alpha Story"),
     ("Beta-Story", "Beta Story"),
@@ -136,7 +150,7 @@ for slug, title in (
         f"Title: `[{title}]`\n\nA deterministic browser-test story.\n",
         encoding="utf-8",
     )
-    for scene_slug in ("Opening-Scene", "Closing-Scene"):
+    for scene_slug in story_scene_slugs[slug]:
         (story_dir / f"{scene_slug}.md").write_text(
             f"Scene: `[{scene_slug.replace('-', ' ')}]`\n\nScene text.\n",
             encoding="utf-8",
@@ -150,7 +164,7 @@ for story_slug in ("Alpha-Story", "Beta-Story", "Gamma-Story"):
         stories_root / story_slug / f"{story_slug}.story.json",
         zet_app.story_service.create_default_story_settings(story_path),
     )
-    for scene_slug in ("Opening-Scene", "Closing-Scene"):
+    for scene_slug in story_scene_slugs[story_slug]:
         builder_path = zet_app.story_service.scene_builder_json_path(story_slug, scene_slug)
         zet_app.story_service.save_scene_v3(
             builder_path,
@@ -207,6 +221,10 @@ answer_dir.mkdir(parents=True, exist_ok=True)
 )
 (answer_dir / "ask_manifest.json").write_text(
     json.dumps({"ask_id": "Ask_Harvested", "task_type": "prompt_condense"}) + "\n",
+    encoding="utf-8",
+)
+(answer_dir / "answer_manifest.json").write_text(
+    json.dumps({"ask_id": "Ask_Harvested", "asset_id": 1, "status": "SUCCESS"}) + "\n",
     encoding="utf-8",
 )
 

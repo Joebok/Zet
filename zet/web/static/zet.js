@@ -98,7 +98,11 @@ const state = {
   storyDetail: null,
   storySettings: null,
   scenes: [],
+  sceneCollection: { storySlug: "", items: [] },
   selectedSceneSlug: null,
+  requestedSceneContext: { storySlug: "", sceneSlug: "" },
+  loadedSceneContext: { storySlug: "", sceneSlug: "" },
+  loadedBuilderContext: { storySlug: "", sceneSlug: "" },
   sceneDetail: null,
   zines: [],
   selectedZineSlug: null,
@@ -162,6 +166,7 @@ const state = {
     zine: "",
     settings: "",
   },
+  navigationRequest: 0,
   transitionPromise: null,
 };
 
@@ -1777,10 +1782,7 @@ function renderHeaderStoryContext() {
   if (!storyOptions.length) storyOptions.push(option("", "No stories"));
   headerStorySelect.replaceChildren(...storyOptions);
   headerStorySelect.value = state.selectedStorySlug || "";
-  const summaryScenes = state.workspaceSummary.story?.story_slug === state.selectedStorySlug
-    ? state.workspaceSummary.story.scenes || []
-    : [];
-  const sceneRows = summaryScenes.length ? summaryScenes : state.scenes;
+  const sceneRows = canonicalSceneCollection(state.selectedStorySlug);
   const sceneOptions = sceneRows.map((scene) => option(scene.slug, scene.title || scene.slug));
   if (!sceneOptions.length) sceneOptions.push(option("", state.selectedStorySlug ? "No scenes" : "Select a story"));
   headerSceneSelect.replaceChildren(...sceneOptions);
@@ -1863,9 +1865,14 @@ function rememberPage(page) {
 async function switchWorkspace(workspace) {
   if (workspace === state.workspace) return true;
   return runGuardedTransition(async () => {
+    const navigationRequest = ++state.navigationRequest;
+    const workspaceTransitionGeneration = state.pageGeneration;
     state.workspace = workspace;
     applyWorkspaceChrome();
-    if (workspace === "story" && !state.stories.length) await loadStories();
+    if (workspace === "story" && !state.stories.length) {
+      await loadStories();
+      if (navigationRequest !== state.navigationRequest || workspaceTransitionGeneration !== state.pageGeneration) return false;
+    }
     const fallback = workspace === "character" ? "onboarding" : (state.selectedStorySlug ? "scenes" : "stories");
     const target = state.lastWorkspacePages[workspace] || fallback;
     await activatePage(target, { skipAutosave: true });
@@ -1874,6 +1881,11 @@ async function switchWorkspace(workspace) {
 
 async function navigateSceneWorkflow(destination) {
   if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  await selectStoryScene(state.selectedStorySlug, state.selectedSceneSlug, {
+    skipGuard: true,
+    renderTargetId: state.activeBuilderRenderTarget || "main",
+    ...(destination === "locked-image" ? {} : { destination }),
+  });
   if (destination === "locked-image") {
     const detail = await fetchJson(
       `/api/render-review/scenes/${encodeURIComponent(state.selectedStorySlug)}/${encodeURIComponent(state.selectedSceneSlug)}`,
@@ -1884,12 +1896,6 @@ async function navigateSceneWorkflow(destination) {
     openFullscreenImage(fileUrl(detail.locked_image_path, Date.now().toString()), `${detail.title || state.selectedSceneSlug} locked image`);
     return;
   }
-  await activatePage(destination, {
-    skipAutosave: true,
-    preferredReviewKey: destination === "render-review"
-      ? `scene:${state.selectedStorySlug}:${state.selectedSceneSlug}`
-      : null,
-  });
 }
 
 function overviewMetric(value, label) {
@@ -2010,15 +2016,12 @@ function renderStoryPhoneViewer() {
 }
 
 function moveStoryPhoneScene(delta) {
-  const scenes = state.workspaceSummary.story?.scenes || [];
+  const scenes = canonicalSceneCollection(state.selectedStorySlug);
   const current = selectedStoryOverviewScene();
   const index = scenes.findIndex((scene) => scene.slug === current?.slug);
   const next = scenes[index + delta];
   if (!next) return;
-  state.selectedSceneSlug = next.slug;
-  saveStoredStoryContext();
-  renderHeaderStoryContext();
-  renderStoryOverview();
+  void selectStoryScene(state.selectedStorySlug, next.slug);
 }
 
 function renderStoryOverview() {
@@ -2059,25 +2062,25 @@ function renderStoryOverview() {
     const imageState = document.createElement("span");
     imageState.textContent = scene.candidate_pending ? `● ${scene.image_state}` : scene.image_state;
     card.append(title, imageState);
-    card.addEventListener("click", () => runGuardedTransition(async () => {
-      state.selectedSceneSlug = scene.slug;
-      saveStoredStoryContext();
-      renderHeaderStoryContext();
-      await activatePage("scene-builder", { skipAutosave: true });
+    card.addEventListener("click", () => void selectStoryScene(state.selectedStorySlug, scene.slug, {
+      destination: "scene-builder",
     }));
     storyOverviewScenes.append(card);
   }
 }
 
-async function loadWorkspaceSummary() {
+async function loadWorkspaceSummary(options = {}) {
   const params = currentQuery();
   if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
-  const payload = await fetchJson(`/api/workspace-summary?${params.toString()}`);
+  const payload = await fetchJson(`/api/workspace-summary?${params.toString()}`, options);
   state.workspaceSummary = {
     character: payload.character || null,
     story: payload.story || null,
   };
   const summaryScenes = state.workspaceSummary.story?.scenes || [];
+  if (state.workspaceSummary.story?.story_slug === state.selectedStorySlug) {
+    setCanonicalSceneCollection(state.selectedStorySlug, summaryScenes);
+  }
   if (
     state.workspaceSummary.story?.story_slug === state.selectedStorySlug
     && !summaryScenes.some((scene) => scene.slug === state.selectedSceneSlug)
@@ -2425,6 +2428,78 @@ async function uploadOnboardingTemplate() {
   } catch (error) {
     showOnboardingMessage(error.message, "error");
   }
+}
+
+function canonicalSceneCollection(storySlug = state.selectedStorySlug) {
+  if (state.sceneCollection.storySlug === storySlug) return state.sceneCollection.items || [];
+  return [];
+}
+
+function setCanonicalSceneCollection(storySlug, scenes) {
+  const items = Array.isArray(scenes) ? scenes.slice() : [];
+  state.sceneCollection = { storySlug: storySlug || "", items };
+  if (storySlug === state.selectedStorySlug) state.scenes = items.slice();
+}
+
+function sceneDocumentMatches(storySlug = state.selectedStorySlug, sceneSlug = state.selectedSceneSlug) {
+  const document = state.sceneDetail;
+  const builderMatches = state.loadedBuilderContext.storySlug === storySlug
+    && state.loadedBuilderContext.sceneSlug === sceneSlug;
+  return Boolean(
+    (document || state.sceneBuilder)
+    && state.loadedSceneContext.storySlug === storySlug
+    && state.loadedSceneContext.sceneSlug === sceneSlug
+    && (document ? document.story?.slug === storySlug && document.scene?.slug === sceneSlug : builderMatches)
+    && state.requestedSceneContext.storySlug === storySlug
+    && state.requestedSceneContext.sceneSlug === sceneSlug,
+  );
+}
+
+function updateSceneContextControls() {
+  const ready = sceneDocumentMatches();
+  const enabled = Boolean(state.selectedStorySlug && state.selectedSceneSlug && ready);
+  sceneSave.disabled = !enabled;
+  sceneStageRender.disabled = !enabled;
+  sceneBuilderOpen.disabled = !enabled;
+  sceneDelete.disabled = !enabled;
+  sceneRename.disabled = !enabled;
+  sceneMove.disabled = !enabled;
+  return ready;
+}
+
+function clearRequestedSceneDocument(message = "Loading scene...") {
+  state.sceneDetail = null;
+  state.loadedSceneContext = { storySlug: "", sceneSlug: "" };
+  state.loadedBuilderContext = { storySlug: "", sceneSlug: "" };
+  state.savedBaselines.scene = "";
+  sceneEditorTitle.textContent = message;
+  sceneText.value = "";
+  sceneRenameTitle.value = "";
+  setSaveState(sceneSaveState, "");
+  closeSceneBuilder();
+  updateSceneContextControls();
+}
+
+function browserRouteUrl() {
+  const params = new URLSearchParams();
+  const page = activePageName();
+  if (page) params.set("page", page);
+  if (state.workspace === "story") {
+    if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
+    if (state.selectedSceneSlug) params.set("scene_slug", state.selectedSceneSlug);
+    if (page === "scene-builder" && state.activeBuilderRenderTarget && state.activeBuilderRenderTarget !== "main") {
+      params.set("render_target_id", state.activeBuilderRenderTarget);
+    }
+  }
+  const query = params.toString();
+  return `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+}
+
+function syncBrowserRoute({ replace = false } = {}) {
+  const url = browserRouteUrl();
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (url === current) return;
+  window.history[replace ? "replaceState" : "pushState"]({}, "", url);
 }
 
 async function addMissingHeadImages() {
@@ -2999,7 +3074,7 @@ async function saveStoryBeforeNavigation() {
 }
 
 async function saveSceneBeforeNavigation() {
-  if (!state.selectedStorySlug || !state.selectedSceneSlug || !state.sceneDetail) {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
     return true;
   }
   setSaveState(sceneSaveState, "Saving", "saving");
@@ -3009,7 +3084,7 @@ async function saveSceneBeforeNavigation() {
       headers: { "Content-Type": "text/markdown; charset=utf-8" },
       body: sceneText.value || "",
     });
-    state.scenes = payload.scenes || state.scenes;
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || state.scenes);
     updateStoryGitWarning(payload.has_story_changes);
     state.sceneDetail = payload.document || null;
     state.selectedSceneSlug = state.sceneDetail?.scene?.slug || state.selectedSceneSlug;
@@ -3063,10 +3138,15 @@ async function loadTemplateManuals() {
 
 async function openTemplateManual(manualId) {
   state.selectedTemplateManual = manualId;
-  await activatePage("help", { skipAutosave: true });
+  try {
+    await activatePage("help", { skipAutosave: true });
+  } catch (error) {
+    showActionMessage(`Unable to open Template Instruction Manuals: ${error.message}`, "error");
+  }
 }
 
 async function activatePage(page, options = {}) {
+  state.navigationRequest += 1;
   if (
     !selectedPhaseReady()
     && state.workspace === "character"
@@ -3122,6 +3202,7 @@ async function activatePage(page, options = {}) {
       !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "scene-appearances", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
     );
   renderResponsiveSectionMenu(page);
+  if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   try {
@@ -3237,7 +3318,11 @@ function setupTabs() {
       }
       closeToolbarSettingsMenu();
       closeHelpMenu();
-      await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
+      try {
+        await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
+      } catch (error) {
+        showActionMessage(`Unable to open ${button.textContent.trim()}: ${error.message}`, "error");
+      }
     });
   }
 }
@@ -3277,10 +3362,14 @@ function closeNewMenu(returnFocus = false) {
 
 async function openTodoDialog() {
   closeToolbarSettingsMenu();
-  const payload = await fetchJson("/api/todo");
-  todoText.value = payload.text || "";
-  todoDialog.dataset.savedText = todoText.value;
-  todoDialog.showModal();
+  try {
+    const payload = await fetchJson("/api/todo");
+    todoText.value = payload.text || "";
+    todoDialog.dataset.savedText = todoText.value;
+    todoDialog.showModal();
+  } catch (error) {
+    showActionMessage(`Unable to open To Do: ${error.message}`, "error");
+  }
 }
 
 async function persistTodo() {
@@ -4014,11 +4103,11 @@ async function saveExpression() {
   }
 }
 
-async function loadStories(selectSlug = state.selectedStorySlug) {
+async function loadStories(selectSlug = state.selectedStorySlug, options = {}) {
   // Load shared story documents for the Stories and Scenes pages.
   storyStatus.textContent = "Loading stories...";
   try {
-    const payload = await fetchJson("/api/stories");
+    const payload = await fetchJson("/api/stories", options);
     state.stories = payload.stories || [];
     updateStoryGitWarning(payload.has_story_changes);
     if (selectSlug && state.stories.some((item) => item.slug === selectSlug)) {
@@ -4036,7 +4125,7 @@ async function loadStories(selectSlug = state.selectedStorySlug) {
     } else if (!state.selectedStorySlug) {
       clearStoryEditor();
     }
-    await loadWorkspaceSummary();
+    await loadWorkspaceSummary(options);
   } catch (error) {
     if (isRequestCancellation(error)) return;
     storyStatus.textContent = "Load failed.";
@@ -4507,7 +4596,7 @@ function renderSceneStoryOptions() {
   }
   const destinations = state.stories.filter((story) => story.slug !== state.selectedStorySlug);
   sceneMoveStory.replaceChildren(...destinations.map((story) => option(story.slug, story.title || story.slug)));
-  sceneMove.disabled = !state.sceneDetail || !destinations.length;
+  sceneMove.disabled = !sceneDocumentMatches() || !destinations.length;
   saveStoredStoryContext();
   renderHeaderStoryContext();
 }
@@ -4515,8 +4604,12 @@ function renderSceneStoryOptions() {
 function clearSceneEditor() {
   // Reset the scene editor when no story or scene is selected.
   state.sceneDetail = null;
+  state.loadedSceneContext = { storySlug: "", sceneSlug: "" };
+  state.loadedBuilderContext = { storySlug: "", sceneSlug: "" };
+  state.requestedSceneContext = { storySlug: "", sceneSlug: "" };
   state.selectedSceneSlug = null;
   state.scenes = [];
+  state.sceneCollection = { storySlug: state.selectedStorySlug || "", items: [] };
   sceneTableBody.replaceChildren();
   sceneEditorTitle.textContent = "Select a scene";
   sceneText.value = "";
@@ -4566,13 +4659,14 @@ async function loadScenesPage() {
   sceneStatus.textContent = "Loading scenes...";
   try {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes`);
-    state.scenes = payload.scenes || [];
-    if (state.selectedSceneSlug && !state.scenes.some((item) => item.slug === state.selectedSceneSlug)) {
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || []);
+    if (state.selectedSceneSlug && !canonicalSceneCollection().some((item) => item.slug === state.selectedSceneSlug)) {
       state.selectedSceneSlug = null;
     }
-    if (!state.selectedSceneSlug && state.scenes.length) {
-      state.selectedSceneSlug = state.scenes[0].slug;
+    if (!state.selectedSceneSlug && canonicalSceneCollection().length) {
+      state.selectedSceneSlug = canonicalSceneCollection()[0].slug;
     }
+    state.requestedSceneContext = { storySlug: state.selectedStorySlug || "", sceneSlug: state.selectedSceneSlug || "" };
     saveStoredStoryContext();
     renderHeaderStoryContext();
     renderSceneTable();
@@ -4623,7 +4717,7 @@ async function reorderScene(index, offset) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slugs }),
     });
-    state.scenes = payload.scenes || state.scenes;
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || state.scenes);
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneTable();
     showSceneMessage(payload.message || "Scene order saved.");
@@ -4632,28 +4726,39 @@ async function reorderScene(index, offset) {
   }
 }
 
-async function loadSceneDetail(storySlug, sceneSlug) {
+async function loadSceneDetail(storySlug, sceneSlug, selection = null) {
   // Load one scene markdown document into the scene editor.
   if (!storySlug || !sceneSlug) {
     clearSceneEditor();
     return;
   }
+  const activeSelection = selection || beginSelection("story-scene");
+  state.requestedSceneContext = { storySlug, sceneSlug };
+  clearRequestedSceneDocument();
+  state.selectedStorySlug = storySlug;
+  state.selectedSceneSlug = sceneSlug;
+  renderHeaderStoryContext();
+  renderSceneTable();
   sceneEditorTitle.textContent = "Loading scene...";
   try {
-    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}`);
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}`, {
+      signal: activeSelection.controller.signal,
+    });
+    if (!selectionIsCurrent(activeSelection) || state.requestedSceneContext.storySlug !== storySlug || state.requestedSceneContext.sceneSlug !== sceneSlug) {
+      return;
+    }
     state.sceneDetail = payload.document || null;
-    state.selectedSceneSlug = state.sceneDetail?.scene?.slug || sceneSlug;
+    state.loadedSceneContext = {
+      storySlug: state.sceneDetail?.story?.slug || storySlug,
+      sceneSlug: state.sceneDetail?.scene?.slug || sceneSlug,
+    };
     saveStoredStoryContext();
     renderHeaderStoryContext();
     renderSceneTable();
     sceneEditorTitle.textContent = state.sceneDetail?.scene?.title || "Scene";
     sceneRenameTitle.value = state.sceneDetail?.scene?.title || "";
     sceneText.value = state.sceneDetail?.text || "";
-    sceneSave.disabled = !state.sceneDetail;
-    sceneStageRender.disabled = !state.sceneDetail;
-    sceneBuilderOpen.disabled = !state.sceneDetail;
-    sceneDelete.disabled = !state.sceneDetail;
-    sceneRename.disabled = !state.sceneDetail;
+    updateSceneContextControls();
     renderSceneStoryOptions();
     closeSceneBuilder();
     updateSceneImageToggle();
@@ -4662,19 +4767,80 @@ async function loadSceneDetail(storySlug, sceneSlug) {
     setSaveState(sceneSaveState, "Saved", "saved");
   } catch (error) {
     if (isRequestCancellation(error)) return;
-    clearSceneEditor();
+    if (!selectionIsCurrent(activeSelection)) return;
+    state.loadedSceneContext = { storySlug: "", sceneSlug: "" };
+    state.sceneDetail = null;
+    updateSceneContextControls();
+    sceneEditorTitle.textContent = "Scene unavailable";
+    sceneText.value = "";
+    sceneRenameTitle.value = "";
+    state.savedBaselines.scene = "";
     showSceneMessage(error.message, "error");
   }
 }
 
 async function selectScene(sceneSlug) {
-  // Select one scene within the currently selected story.
-  if (sceneSlug === state.selectedSceneSlug) return;
-  await runGuardedTransition(async () => {
-    state.selectedSceneSlug = sceneSlug;
+  await selectStoryScene(state.selectedStorySlug, sceneSlug);
+}
+
+async function selectStoryScene(storySlug, sceneSlug = null, options = {}) {
+  const execute = async () => {
+    const nextStory = storySlug || null;
+    const storyChanged = nextStory !== state.selectedStorySlug;
+    const selection = beginSelection("story-scene");
+    state.selectionControllers["scene-builder"]?.abort();
+    if (storyChanged) {
+      state.selectedStorySlug = nextStory;
+      state.selectedSceneSlug = null;
+      state.requestedSceneContext = { storySlug: nextStory || "", sceneSlug: "" };
+      state.loadedSceneContext = { storySlug: "", sceneSlug: "" };
+      state.sceneDetail = null;
+      state.scenes = [];
+      state.sceneCollection = { storySlug: nextStory || "", items: [] };
+      saveStoredStoryContext();
+      renderHeaderStoryContext();
+      if (nextStory) {
+        await loadStories(nextStory, { signal: selection.controller.signal });
+        if (!selectionIsCurrent(selection)) return false;
+      }
+    }
+
+    const scenes = canonicalSceneCollection(nextStory);
+    const nextScene = sceneSlug
+      ? (scenes.some((item) => item.slug === sceneSlug) ? sceneSlug : scenes[0]?.slug || null)
+      : scenes[0]?.slug || null;
+    state.selectedStorySlug = nextStory;
+    state.selectedSceneSlug = nextScene;
+    state.requestedSceneContext = { storySlug: nextStory || "", sceneSlug: nextScene || "" };
+    saveStoredStoryContext();
+    renderHeaderStoryContext();
+    renderStoryOverview();
     renderSceneTable();
-    await loadSceneDetail(state.selectedStorySlug, sceneSlug);
-  });
+    if (options.updateHistory !== false && !options.fromHistory
+      && (!options.destination || activePageName() === options.destination)) {
+      syncBrowserRoute();
+    }
+
+    if (nextStory && nextScene && !sceneDocumentMatches(nextStory, nextScene)) {
+      await loadSceneDetail(nextStory, nextScene, selection);
+    }
+    if (options.destination) {
+      await activatePage(options.destination, {
+        skipAutosave: true,
+        updateHistory: false,
+        renderTargetId: options.renderTargetId || (options.destination === "scene-builder" ? state.activeBuilderRenderTarget : "main"),
+        preferredAskId: options.preferredAskId,
+        preferredReviewKey: options.destination === "render-review" ? `scene:${nextStory}:${nextScene}` : null,
+      });
+    } else if (activePageName() === "scene-builder" && nextScene) {
+      await openSceneBuilder(options.renderTargetId || state.activeBuilderRenderTarget || "main");
+    } else if (PRODUCTION_PAGES.has(activePageName())) {
+      await reloadActiveProductionPage();
+    }
+    if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
+    return true;
+  };
+  return options.skipGuard ? execute() : runGuardedTransition(execute);
 }
 
 async function createScene() {
@@ -4695,10 +4861,15 @@ async function createScene() {
       `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes?${new URLSearchParams({ scene_name: sceneName }).toString()}`,
       { method: "POST" },
     );
-    state.scenes = payload.scenes || state.scenes;
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || state.scenes);
     updateStoryGitWarning(payload.has_story_changes);
     state.sceneDetail = payload.document || null;
     state.selectedSceneSlug = state.sceneDetail?.scene?.slug || state.selectedSceneSlug;
+    state.requestedSceneContext = {
+      storySlug: state.selectedStorySlug || "",
+      sceneSlug: state.selectedSceneSlug || "",
+    };
+    state.loadedSceneContext = { ...state.requestedSceneContext };
     sceneEditorTitle.textContent = state.sceneDetail?.scene?.title || "Scene";
     sceneRenameTitle.value = state.sceneDetail?.scene?.title || "";
     sceneNewName.value = "";
@@ -4707,11 +4878,7 @@ async function createScene() {
       sceneEditorTitle.textContent = state.sceneDetail.scene.title || "Scene";
       sceneRenameTitle.value = state.sceneDetail.scene.title || "";
       sceneText.value = state.sceneDetail.text || "";
-      sceneSave.disabled = false;
-      sceneStageRender.disabled = false;
-      sceneBuilderOpen.disabled = false;
-      sceneDelete.disabled = false;
-      sceneRename.disabled = false;
+      updateSceneContextControls();
       renderSceneStoryOptions();
       updateSceneImageToggle();
       renderValidationBox(sceneValidation, state.sceneDetail.validation_errors || [], "Scene markdown is valid.");
@@ -4728,7 +4895,7 @@ async function createScene() {
 }
 
 async function renameScene() {
-  if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) return;
   const title = sceneRenameTitle.value.trim();
   if (!title) {
     showSceneMessage("Scene title is required.", "error");
@@ -4745,7 +4912,7 @@ async function renameScene() {
         body: JSON.stringify({ title }),
       },
     );
-    state.scenes = payload.scenes || state.scenes;
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || state.scenes);
     state.sceneDetail = payload.document || state.sceneDetail;
     updateStoryGitWarning(payload.has_story_changes);
     sceneEditorTitle.textContent = state.sceneDetail?.scene?.title || title;
@@ -4758,12 +4925,12 @@ async function renameScene() {
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
-    sceneRename.disabled = !state.sceneDetail;
+    updateSceneContextControls();
   }
 }
 
 async function moveScene() {
-  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneMoveStory.value) return;
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneMoveStory.value || !sceneDocumentMatches()) return;
   if (!(await guardCurrentEditor())) return;
   const sourceStorySlug = state.selectedStorySlug;
   const sceneSlug = state.selectedSceneSlug;
@@ -4781,7 +4948,7 @@ async function moveScene() {
     );
     state.selectedStorySlug = targetStorySlug;
     state.selectedSceneSlug = sceneSlug;
-    state.scenes = payload.target_scenes || [];
+    setCanonicalSceneCollection(targetStorySlug, payload.target_scenes || []);
     state.sceneDetail = payload.document || null;
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneStoryOptions();
@@ -4798,8 +4965,8 @@ async function moveScene() {
 
 async function saveScene() {
   // Save the current scene markdown document.
-  if (!state.selectedStorySlug || !state.selectedSceneSlug) {
-    showSceneMessage("Select a scene first.", "error");
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
+    showSceneMessage("Wait for the requested scene to finish loading before saving.", "error");
     return;
   }
   sceneSave.disabled = true;
@@ -4810,7 +4977,7 @@ async function saveScene() {
       headers: { "Content-Type": "text/markdown; charset=utf-8" },
       body: sceneText.value || "",
     });
-    state.scenes = payload.scenes || state.scenes;
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || state.scenes);
     updateStoryGitWarning(payload.has_story_changes);
     state.sceneDetail = payload.document || null;
     state.selectedSceneSlug = state.sceneDetail?.scene?.slug || state.selectedSceneSlug;
@@ -4828,13 +4995,14 @@ async function saveScene() {
     setSaveState(sceneSaveState, "Error", "error");
     return false;
   } finally {
-    sceneSave.disabled = false;
+    updateSceneContextControls();
   }
 }
 
 async function deleteScene() {
   // Confirm, commit current story files, then delete the selected scene markdown and image.
-  if (!state.selectedStorySlug || !state.selectedSceneSlug || !confirm(`Delete scene ${state.selectedSceneSlug}?`)) {
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()
+      || !confirm(`Delete scene ${state.selectedSceneSlug}?`)) {
     return;
   }
   sceneDelete.disabled = true;
@@ -4846,8 +5014,8 @@ async function deleteScene() {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}`, {
       method: "DELETE",
     });
-    state.scenes = payload.scenes || [];
-    state.selectedSceneSlug = state.scenes[0]?.slug || null;
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || []);
+    state.selectedSceneSlug = canonicalSceneCollection()[0]?.slug || null;
     state.sceneDetail = null;
     updateStoryGitWarning(payload.has_story_changes);
     renderSceneTable();
@@ -4865,16 +5033,13 @@ async function deleteScene() {
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
-    sceneSave.disabled = !state.sceneDetail;
-    sceneStageRender.disabled = !state.sceneDetail;
-    sceneBuilderOpen.disabled = !state.sceneDetail;
-    sceneDelete.disabled = !state.sceneDetail;
+    updateSceneContextControls();
   }
 }
 
 async function stageSceneRender() {
-  if (!state.selectedStorySlug || !state.selectedSceneSlug) {
-    showSceneMessage("Select a scene first.", "error");
+  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
+    showSceneMessage("Wait for the requested scene to finish loading before staging a render.", "error");
     return;
   }
   sceneStageRender.disabled = true;
@@ -4892,9 +5057,7 @@ async function stageSceneRender() {
   } catch (error) {
     showSceneMessage(error.message, "error");
   } finally {
-    sceneStageRender.disabled = false;
-    sceneSave.disabled = false;
-    sceneBuilderOpen.disabled = !state.sceneDetail;
+    updateSceneContextControls();
   }
 }
 
@@ -5219,6 +5382,7 @@ async function deleteZine() {
 function closeSceneBuilder() {
   state.sceneBuilderOpen = false;
   state.sceneBuilder = null;
+  state.loadedBuilderContext = { storySlug: "", sceneSlug: "" };
   state.sceneBuilderRenderTargets = [];
   state.activeBuilderRenderTarget = "main";
   state.selectedBuilderPlacementId = null;
@@ -5238,17 +5402,19 @@ function updateSceneBuilderNavigation() {
 
 async function navigateSceneBuilder(offset) {
   if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
-  let index = state.scenes.findIndex((scene) => scene.slug === state.selectedSceneSlug);
+  const scenes = canonicalSceneCollection(state.selectedStorySlug);
+  let index = scenes.findIndex((scene) => scene.slug === state.selectedSceneSlug);
   if (index < 0) {
     const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes`);
-    state.scenes = payload.scenes || [];
-    index = state.scenes.findIndex((scene) => scene.slug === state.selectedSceneSlug);
+    setCanonicalSceneCollection(state.selectedStorySlug, payload.scenes || []);
+    index = canonicalSceneCollection(state.selectedStorySlug).findIndex((scene) => scene.slug === state.selectedSceneSlug);
   }
-  const target = state.scenes[index + offset];
+  const target = canonicalSceneCollection(state.selectedStorySlug)[index + offset];
   if (!target) return;
-  state.selectedSceneSlug = target.slug;
-  await loadSceneDetail(state.selectedStorySlug, target.slug);
-  await openSceneBuilder();
+  await selectStoryScene(state.selectedStorySlug, target.slug, {
+    destination: "scene-builder",
+    renderTargetId: "main",
+  });
 }
 
 async function returnToScenesFromBuilder() {
@@ -5618,12 +5784,12 @@ async function builderLoadElementCostumes() {
   ]);
 }
 
-async function builderLoadSelectedElementCostumes(element = builderSelectedElement()) {
+async function builderLoadSelectedElementCostumes(element = builderSelectedElement(), options = {}) {
   if (element?.resource_type !== "Character" || !element.character || !element.phase) return;
   const key = `${element.character}\n${element.phase}`;
   if (state.builderCostumesByCharacterPhase[key]) return;
   const params = new URLSearchParams({ character: element.character, phase: element.phase });
-  const payload = await fetchJson(`/api/costumes?${params.toString()}`);
+  const payload = await fetchJson(`/api/costumes?${params.toString()}`, options);
   state.builderCostumesByCharacterPhase[key] = payload.costumes || [];
 }
 
@@ -6332,9 +6498,10 @@ async function importSelectedSceneCandidate() {
   const candidate = selectedSceneCandidate();
   if (!candidate) return;
   if (candidate.imported_scene_slug && candidate.import_state !== "source_changed") {
-    state.selectedStorySlug = candidate.imported_story_slug;
-    state.selectedSceneSlug = candidate.imported_scene_slug;
-    await activatePage("scene-builder", { skipAutosave: true });
+    await selectStoryScene(candidate.imported_story_slug, candidate.imported_scene_slug, {
+      skipGuard: true,
+      destination: "scene-builder",
+    });
     return;
   }
   const storySlug = document.querySelector("#scene-candidate-story")?.value;
@@ -6352,16 +6519,15 @@ async function importSelectedSceneCandidate() {
       body: JSON.stringify({ story_slug: storySlug, confirm_update: confirmUpdate }),
     });
     const result = payload.result;
-    state.selectedStorySlug = result.story_slug;
-    state.selectedSceneSlug = result.scene_slug;
-    state.scenes = payload.scenes || [];
-    state.sceneBuilder = payload.document?.data || result.data;
     state.sceneBuilderInterviewSeed = {
       narrative: result.interview_narrative,
       phases: result.interview_phases || [],
     };
     updateStoryGitWarning(payload.has_story_changes);
-    await activatePage("scene-builder", { skipAutosave: true });
+    await selectStoryScene(result.story_slug, result.scene_slug, {
+      skipGuard: true,
+      destination: "scene-builder",
+    });
     if (state.sceneBuilderInterviewSeed.phases.length) {
       openSceneBuilderInterview(state.sceneBuilderInterviewSeed);
     } else {
@@ -6579,6 +6745,7 @@ async function selectSceneBuilderTarget(targetId) {
   try {
     await loadScenePromptAnalysis(state.activeBuilderRenderTarget);
     updateBuilderAnalysisActions();
+    syncBrowserRoute({ replace: true });
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
@@ -6702,7 +6869,9 @@ function renderSceneBuilder() {
   const activeSubscene = builderActiveSubscene();
   const renderBlocker = builderTargetRenderBlocker();
   const staleWarning = builderTargetStaleWarning();
-  const renderDisabled = Boolean(renderBlocker)
+  const contextReady = sceneDocumentMatches();
+  const renderDisabled = !contextReady
+    || Boolean(renderBlocker)
     || Boolean(staleWarning) && !builderAllowsStaleDependencies()
     || activeSubscene?.enabled === false;
   const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
@@ -6724,7 +6893,7 @@ function renderSceneBuilder() {
           <button type="button" data-builder-action="interview">${importedCandidate ? "Restart Interview" : "Interview"}</button>
           ${builderRenderAnalysisAction()}
           ${activeSubscene ? '<button type="button" data-builder-action="cancel-subscene">Cancel Subscene Edits</button>' : ""}
-          <button type="button" class="scene-builder-save" data-builder-action="save">${activeSubscene ? "Save Subscene" : "Save Full Scene"}</button>
+          <button type="button" class="scene-builder-save" data-builder-action="save"${contextReady ? "" : " disabled"}>${activeSubscene ? "Save Subscene" : "Save Full Scene"}</button>
           <button type="button" class="primary-action scene-builder-render" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
           ${builderRenderMoreMenu()}
         </div>
@@ -6806,9 +6975,10 @@ function openSceneBuilderContext() {
   sceneBuilderContextDialog.showModal();
 }
 
-async function loadScenePromptAnalysis(renderTargetId = state.activeBuilderRenderTarget || "main") {
+async function loadScenePromptAnalysis(renderTargetId = state.activeBuilderRenderTarget || "main", options = {}) {
   const analysis = await fetchJson(
     `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(renderTargetId)}`,
+    options,
   );
   if (state.activeBuilderRenderTarget === renderTargetId) state.scenePromptAnalysis = analysis;
   return analysis;
@@ -6819,17 +6989,36 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     showSceneBuilderMessage("Select a scene first.", "error");
     return;
   }
+  const storySlug = state.selectedStorySlug;
+  const sceneSlug = state.selectedSceneSlug;
+  const selection = beginSelection("scene-builder");
+  const selectionMatches = () => selectionIsCurrent(selection)
+    && state.selectedStorySlug === storySlug
+    && state.selectedSceneSlug === sceneSlug
+    && state.requestedSceneContext.storySlug === storySlug
+    && state.requestedSceneContext.sceneSlug === sceneSlug;
   sceneBuilderOpen.disabled = true;
-  sceneBuilderStatus.textContent = `${state.selectedStorySlug} / ${state.selectedSceneSlug}`;
+  sceneBuilderStatus.textContent = `${storySlug} / ${sceneSlug}`;
   updateSceneBuilderNavigation();
   showSceneBuilderMessage("Loading Scene Builder...");
   try {
     await loadSceneImageReferences();
-    const payload = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder`);
+    if (!selectionMatches()) return;
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/builder`, {
+      signal: selection.controller.signal,
+    });
+    if (!selectionMatches()) return;
     const document = payload.document || {};
     if (document.blocked) {
       showSceneBuilderMessage(document.error || "Scene Builder JSON is blocked.", "error");
       return;
+    }
+    state.loadedBuilderContext = {
+      storySlug: document.story?.slug || storySlug,
+      sceneSlug: document.scene?.slug || sceneSlug,
+    };
+    if (!state.sceneDetail || !sceneDocumentMatches()) {
+      state.loadedSceneContext = { ...state.loadedBuilderContext };
     }
     state.sceneBuilder = document.data || {};
     state.sceneBuilderRenderTargets = document.render_targets || [];
@@ -6840,13 +7029,15 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
       || (state.sceneBuilder.subscenes || []).some((item) => item.id === preferredRenderTargetId)
       ? preferredRenderTargetId
       : "main";
-    await loadScenePromptAnalysis(state.activeBuilderRenderTarget);
+    await loadScenePromptAnalysis(state.activeBuilderRenderTarget, { signal: selection.controller.signal });
+    if (!selectionMatches()) return;
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
     state.builderAllowStaleTarget = "";
     state.sceneBuilderOpen = true;
-    await builderLoadSelectedElementCostumes();
+    await builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal });
+    if (!selectionMatches()) return;
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     updateDirtyIndicators();
@@ -6855,7 +7046,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   } finally {
-    sceneBuilderOpen.disabled = !state.sceneDetail;
+    updateSceneContextControls();
   }
 }
 
@@ -6864,11 +7055,15 @@ async function activateSceneBuilderPage() {
     showSceneMessage("Select a scene first.", "error");
     return;
   }
-  await activatePage("scene-builder");
+  await selectStoryScene(state.selectedStorySlug, state.selectedSceneSlug, {
+    destination: "scene-builder",
+    renderTargetId: state.activeBuilderRenderTarget || "main",
+  });
 }
 
 async function saveSceneBuilder() {
-  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
+  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
+    showSceneBuilderMessage("Wait for the requested scene to finish loading before saving.", "error");
     return;
   }
   builderSyncControls();
@@ -6993,7 +7188,7 @@ async function setBackgroundSubsceneEnabled(enabled) {
     updateDirtyIndicators();
     showSceneBuilderMessage(payload.message, "success");
   } catch (error) {
-    showSceneBuilderMessage(error.message, "error");
+    if (!isRequestCancellation(error)) showSceneBuilderMessage(error.message, "error");
   }
 }
 
@@ -7057,7 +7252,8 @@ async function disableSceneSubscene(targetId) {
 }
 
 async function renderSceneBuilderScene() {
-  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug) {
+  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
+    showSceneBuilderMessage("Wait for the requested scene to finish loading before rendering.", "error");
     return;
   }
   if (!requireSavedSceneBuilder("staging a render")) return;
@@ -11630,40 +11826,13 @@ newSceneButton.addEventListener("click", () => runGuardedTransition(async () => 
 }));
 headerStorySelect.addEventListener("change", async () => {
   const requestedStory = headerStorySelect.value || null;
-  const previousStory = state.selectedStorySlug;
-  const allowed = await guardCurrentEditor();
-  if (!allowed) {
-    headerStorySelect.value = previousStory || "";
-    return;
-  }
-  state.selectedStorySlug = requestedStory;
-  state.selectedSceneSlug = null;
-  state.scenes = [];
-  await loadStories(requestedStory);
-  const scenes = state.workspaceSummary.story?.scenes || [];
-  state.selectedSceneSlug = scenes[0]?.slug || null;
-  saveStoredStoryContext();
-  renderHeaderStoryContext();
-  renderStoryOverview();
-  if (activePageName() === "scenes") await loadScenesPage();
-  if (activePageName() === "scene-builder" && state.selectedSceneSlug) await openSceneBuilder();
-  if (PRODUCTION_PAGES.has(activePageName())) await reloadActiveProductionPage();
+  const changed = await selectStoryScene(requestedStory, null);
+  if (changed === false) headerStorySelect.value = state.selectedStorySlug || "";
 });
 headerSceneSelect.addEventListener("change", async () => {
   const requestedScene = headerSceneSelect.value || null;
-  const previousScene = state.selectedSceneSlug;
-  const allowed = await guardCurrentEditor();
-  if (!allowed) {
-    headerSceneSelect.value = previousScene || "";
-    return;
-  }
-  state.selectedSceneSlug = requestedScene;
-  saveStoredStoryContext();
-  renderHeaderStoryContext();
-  renderStoryOverview();
-  if (activePageName() === "scenes" && requestedScene) await loadSceneDetail(state.selectedStorySlug, requestedScene);
-  if (activePageName() === "scene-builder" && requestedScene) await openSceneBuilder();
-  if (PRODUCTION_PAGES.has(activePageName())) await reloadActiveProductionPage();
+  const changed = await selectStoryScene(state.selectedStorySlug, requestedScene);
+  if (changed === false) headerSceneSelect.value = state.selectedSceneSlug || "";
 });
 characterRecommendedAction.addEventListener("click", () => runGuardedTransition(async () => {
   const destination = characterRecommendedAction.dataset.destination || "onboarding";
@@ -11791,17 +11960,10 @@ storyGitPull.addEventListener("click", () => runStoryGitAction("pull"));
 storyGitCommit.addEventListener("click", () => runStoryGitAction("commit"));
 sceneStorySelect.addEventListener("change", async () => {
   const requestedStory = sceneStorySelect.value || null;
-  const previousStory = state.selectedStorySlug;
   sceneStorySelect.disabled = true;
-  const allowed = await guardCurrentEditor();
+  const changed = await selectStoryScene(requestedStory, null);
   sceneStorySelect.disabled = false;
-  if (!allowed) {
-    sceneStorySelect.value = previousStory || "";
-    return;
-  }
-  state.selectedStorySlug = requestedStory;
-  state.selectedSceneSlug = null;
-  await loadScenesPage();
+  if (changed === false) sceneStorySelect.value = state.selectedStorySlug || "";
 });
 sceneCreate.addEventListener("click", createScene);
 sceneSave.addEventListener("click", saveScene);
@@ -12047,9 +12209,10 @@ copyPromptButton.addEventListener("click", () => copyText(state.promptReviewDeta
 promptReviewSceneBuilder.addEventListener("click", async () => {
   const scene = selectedPromptReviewScene();
   if (!scene) return;
-  state.selectedStorySlug = scene.storySlug;
-  state.selectedSceneSlug = scene.sceneSlug;
-  await activatePage("scene-builder", { skipAutosave: true, renderTargetId: scene.renderTargetId });
+  await selectStoryScene(scene.storySlug, scene.sceneSlug, {
+    destination: "scene-builder",
+    renderTargetId: scene.renderTargetId || "main",
+  });
 });
 promptReviewRenderConsole.addEventListener("click", async () => {
   const askId = state.promptReviewDetail?.task?.ask_id;
@@ -12108,16 +12271,17 @@ settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpoint
 refreshComfyuiCheckpoints.addEventListener("click", refreshComfyuiCheckpointOptions);
 settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions);
 settingLocalRenderBackend.addEventListener("change", syncLocalRenderBackendPanels);
-sceneBuilderPrevious.addEventListener("click", () => runGuardedTransition(() => navigateSceneBuilder(-1)));
-sceneBuilderNext.addEventListener("click", () => runGuardedTransition(() => navigateSceneBuilder(1)));
+sceneBuilderPrevious.addEventListener("click", () => navigateSceneBuilder(-1));
+sceneBuilderNext.addEventListener("click", () => navigateSceneBuilder(1));
 batchRenderResetButton.addEventListener("click", runBatchRenderReset);
 renderConsoleRefresh.addEventListener("click", () => loadRenderConsoleTasks());
 renderConsoleSceneBuilder.addEventListener("click", async () => {
   const manifest = state.renderConsoleDetail?.manifest || {};
   if (!manifest.story_slug || !manifest.scene_slug) return;
-  state.selectedStorySlug = manifest.story_slug;
-  state.selectedSceneSlug = manifest.scene_slug;
-  await activatePage("scene-builder", { skipAutosave: true, renderTargetId: manifest.render_target_id || "main" });
+  await selectStoryScene(manifest.story_slug, manifest.scene_slug, {
+    destination: "scene-builder",
+    renderTargetId: manifest.render_target_id || "main",
+  });
 });
 renderConsoleReviewPrompt.addEventListener("click", async () => {
   const askId = state.renderConsoleDetail?.task?.ask_id;
@@ -12418,11 +12582,30 @@ async function main() {
     await loadStories(state.selectedStorySlug);
     if (!pageLoadIsCurrent(startupLoad)) return;
     const params = new URLSearchParams(window.location.search);
+    const routeStory = params.get("story_slug");
+    const routeScene = params.get("scene_slug");
+    if (routeStory && state.stories.some((item) => item.slug === routeStory)) {
+      state.selectedStorySlug = routeStory;
+      await loadWorkspaceSummary();
+      const routeScenes = canonicalSceneCollection(routeStory);
+      state.selectedSceneSlug = routeScene && routeScenes.some((item) => item.slug === routeScene)
+        ? routeScene
+        : routeScenes[0]?.slug || null;
+      state.requestedSceneContext = { storySlug: routeStory, sceneSlug: state.selectedSceneSlug || "" };
+      saveStoredStoryContext();
+    }
     if (params.get("page") === "render-review") {
       const preferredReviewKey = params.get("review_kind") === "scene"
         ? `scene:${params.get("story_slug") || ""}:${params.get("scene_slug") || ""}`
         : null;
       await activatePage("render-review", { skipAutosave: true, preferredReviewKey });
+    } else if (params.get("page")) {
+      await activatePage(params.get("page"), {
+        skipAutosave: true,
+        fromHistory: true,
+        updateHistory: false,
+        renderTargetId: params.get("render_target_id") || "main",
+      });
     } else if (workspacePreferences) {
       await activatePage(state.lastWorkspacePages[state.workspace], { skipAutosave: true });
     } else if (!selectedPhaseReady()) {
@@ -12442,6 +12625,31 @@ async function main() {
     scheduleProductionWorkSummary();
   }
 }
+
+window.addEventListener("popstate", () => {
+  void (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get("page") || state.lastWorkspacePages[state.workspace] || "scenes";
+    const story = params.get("story_slug") || state.selectedStorySlug;
+    const scene = params.get("scene_slug") || null;
+    const allowed = await guardCurrentEditor();
+    if (!allowed) {
+      syncBrowserRoute({ replace: true });
+      return;
+    }
+    if (pageWorkspace(page) === "story" || PRODUCTION_PAGES.has(page)) {
+      await selectStoryScene(story, scene, {
+        skipGuard: true,
+        fromHistory: true,
+        updateHistory: false,
+        destination: page,
+        renderTargetId: params.get("render_target_id") || "main",
+      });
+    } else {
+      await activatePage(page, { skipAutosave: true, fromHistory: true, updateHistory: false });
+    }
+  })().catch((error) => showActionMessage(`Unable to restore navigation context: ${error.message}`, "error"));
+});
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && document.body.dataset.dashboardReady === "true") {
