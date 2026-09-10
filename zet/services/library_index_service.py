@@ -37,6 +37,7 @@ class LibraryIndexService:
         self._source_payloads: list[dict] = []
         self._reconcile_lock = threading.Lock()
         self.last_scan_metrics = {"parsed_sources": 0, "reused_sources": 0}
+        self.list_items_provider: Callable[[], Sequence[Mapping]] | None = None
 
     @staticmethod
     def _fingerprint(contents: bytes) -> str:
@@ -383,7 +384,64 @@ class LibraryIndexService:
             return []
         return sorted(path for path in root.iterdir() if path.is_dir() and not path.name.startswith("."))
 
-    def _scan_jobs(self) -> tuple[list[dict], list[dict]]:
+    def _job_history_row(self, answer_path: Path) -> dict | None:
+        answer, source_path, fingerprint = self._read_json(answer_path, "job_history", queue=True)
+        if answer is None:
+            return None
+        ask_path = answer_path.parent / "ask_manifest.json"
+        ask: dict = {}
+        if ask_path.is_file():
+            loaded, _, _ = self._read_json(ask_path, "job_history_ask", queue=True)
+            ask = loaded or {}
+        job_id = str(answer.get("ask_id") or ask.get("ask_id") or answer_path.parent.name)
+        scope_kind, story, scene, target = self._scope(ask)
+        def read_optional(name: str) -> dict:
+            path = answer_path.parent / name
+            if not path.is_file():
+                return {}
+            value, _, _ = self._read_json(path, "job_history_detail", queue=True)
+            return value or {}
+        harvest = read_optional("harvest_manifest.json")
+        proxy = read_optional("proxy_result.json")
+        error_type = answer.get("error_type") or proxy.get("error_type") or ""
+        error_message = answer.get("error_message") or proxy.get("error_message") or ""
+        details = str(error_message or harvest.get("message") or "")
+        if error_type and error_message:
+            details = f"{error_type}: {error_message}"
+        completed_at = str(harvest.get("harvested_at") or answer.get("completed_at") or "")
+        history_payload = {
+            "harvested_at": completed_at,
+            "ask_id": job_id,
+            "task_type": str(ask.get("task_type") or ask.get("worker_type") or job_id),
+            "asset_id": answer.get("asset_id", ask.get("asset_id")),
+            "status": str(answer.get("status") or "unknown"),
+            "details": details,
+        }
+        return {
+            "job_id": job_id,
+            "scope_kind": scope_kind,
+            "story_slug": story,
+            "scene_slug": scene,
+            "render_target_id": target,
+            "status": str(answer.get("status") or "unknown").lower(),
+            "name": str(ask.get("task_type") or ask.get("worker_type") or job_id),
+            "completed_at": completed_at,
+            "source_path": source_path,
+            "fingerprint": fingerprint,
+            "payload_json": json.dumps(history_payload, separators=(",", ":"), ensure_ascii=False),
+        }
+
+    def _existing_history(self) -> list[dict]:
+        rows: list[dict] = []
+        cursor = None
+        while True:
+            page = self.repository.query_job_history(cursor=cursor, limit=500)
+            rows.extend(page.items)
+            cursor = page.next_cursor
+            if not cursor:
+                return rows
+
+    def _scan_jobs(self, *, include_archive: bool = False) -> tuple[list[dict], list[dict]]:
         active: list[dict] = []
         history: list[dict] = []
         active_roots = (
@@ -421,12 +479,17 @@ class LibraryIndexService:
                         "fingerprint": fingerprint,
                     }
                 )
-        history_roots = (
+        history_roots = [
             self.queue_paths.answer_root(),
             self.queue_paths.manual_answer_root(),
-            self.queue_paths.archive_root(),
-        )
+        ]
+        if include_archive:
+            history_roots.append(self.queue_paths.harvested_archive_root())
         seen_paths: set[Path] = set()
+        history_by_key = {
+            (str(row["job_id"]), str(row["source_path"])): row
+            for row in ([] if include_archive else self._existing_history())
+        }
         for root in history_roots:
             if not root.is_dir():
                 continue
@@ -435,40 +498,31 @@ class LibraryIndexService:
                 if resolved in seen_paths:
                     continue
                 seen_paths.add(resolved)
-                answer, source_path, fingerprint = self._read_json(answer_path, "job_history", queue=True)
-                if answer is None:
-                    continue
-                ask_path = answer_path.parent / "ask_manifest.json"
-                ask: dict = {}
-                if ask_path.is_file():
-                    loaded, _, _ = self._read_json(ask_path, "job_history_ask", queue=True)
-                    ask = loaded or {}
-                job_id = str(answer.get("ask_id") or ask.get("ask_id") or answer_path.parent.name)
-                scope_kind, story, scene, target = self._scope(ask)
-                history.append(
-                    {
-                        "job_id": job_id,
-                        "scope_kind": scope_kind,
-                        "story_slug": story,
-                        "scene_slug": scene,
-                        "render_target_id": target,
-                        "status": str(answer.get("status") or "unknown").lower(),
-                        "name": str(ask.get("task_type") or ask.get("worker_type") or job_id),
-                        "completed_at": str(answer.get("completed_at") or ""),
-                        "source_path": source_path,
-                        "fingerprint": fingerprint,
-                    }
-                )
+                row = self._job_history_row(answer_path)
+                if row is not None:
+                    history_by_key[(row["job_id"], row["source_path"])] = row
+        history.extend(history_by_key.values())
         return active, history
 
-    def snapshot(self) -> IndexSnapshot:
+    def snapshot(self, *, include_archive_history: bool = False) -> IndexSnapshot:
         self._sources = []
         self._errors = []
         self._source_payloads = []
         self.last_scan_metrics = {"parsed_sources": 0, "reused_sources": 0}
         stories, scenes, targets = self._scan_stories()
         catalog, relationships = self._scan_catalog()
-        work, history = self._scan_jobs()
+        work, history = self._scan_jobs(include_archive=include_archive_history)
+        list_items = tuple(self.list_items_provider()) if self.list_items_provider is not None else ()
+        if self.list_items_provider is not None:
+            list_fingerprint = self._fingerprint(
+                json.dumps(list_items, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            )
+            self._sources.append({
+                "source_path": "project/.indexed-dashboard",
+                "source_kind": "indexed_dashboard",
+                "fingerprint": list_fingerprint,
+                "parse_status": "valid",
+            })
         return IndexSnapshot(
             sources=tuple(self._sources),
             stories=tuple(stories),
@@ -480,6 +534,7 @@ class LibraryIndexService:
             job_summaries=tuple(history),
             errors=tuple(self._errors),
             source_payloads=tuple(self._source_payloads),
+            list_items=list_items,
         )
 
     @staticmethod
@@ -501,7 +556,7 @@ class LibraryIndexService:
     def _reconcile(self) -> dict:
         previous = self.repository.active_source_fingerprints()
         if self.repository.status()["active_generation"] is None:
-            report = self.rebuild()
+            report = self.rebuild(backfill_history=False)
             current = self.repository.active_source_fingerprints()
             self.repository.complete_reconciliation(
                 generation=int(report["active_generation"]),
@@ -631,10 +686,10 @@ class LibraryIndexService:
         expected = self._cursor({"compiler": str(cached["compiler_version"]), **actual})
         return expected == cached["dependency_fingerprint"]
 
-    def rebuild(self) -> dict:
+    def rebuild(self, *, backfill_history: bool = True) -> dict:
         generation = self.repository.begin_rebuild()
         try:
-            snapshot = self.snapshot()
+            snapshot = self.snapshot(include_archive_history=backfill_history)
             self.repository.publish(generation, snapshot)
         except Exception as exc:
             self.repository.fail_rebuild(generation, str(exc))
@@ -651,6 +706,41 @@ class LibraryIndexService:
             "errors": len(snapshot.errors),
         }
         return status
+
+    def backfill_history(self, *, batch_size: int = 200) -> dict:
+        """Resume one explicit, bounded archive-history import."""
+        if batch_size < 1 or batch_size > 200:
+            raise ValueError("History backfill batch size must be between 1 and 200.")
+        state = self.repository.history_backfill_status()
+        cursor = str(state["cursor"])
+        paths = []
+        archive_root = self.queue_paths.harvested_archive_root()
+        if archive_root.is_dir():
+            paths = sorted(
+                self._source_name(path, queue=True)
+                for path in archive_root.rglob("answer_manifest.json")
+            )
+        remaining = [path for path in paths if path > cursor]
+        selected = remaining[:batch_size]
+        self._sources = []
+        self._errors = []
+        self._source_payloads = []
+        rows = []
+        for source_path in selected:
+            relative = source_path.removeprefix("queue/")
+            row = self._job_history_row(Path(self.config.base_ai_queue_path) / relative)
+            if row is not None:
+                rows.append(row)
+        next_cursor = selected[-1] if selected else cursor
+        complete = len(remaining) <= batch_size
+        self.repository.upsert_job_history(rows, cursor=next_cursor, complete=complete)
+        return {
+            "processed": len(selected),
+            "indexed": len(rows),
+            "cursor": next_cursor,
+            "complete": complete,
+            "errors": list(self._errors),
+        }
 
 
 class LibraryIndexReconciler:

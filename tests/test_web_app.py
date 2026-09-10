@@ -167,9 +167,11 @@ class WebAppTests(unittest.TestCase):
 
             self.assertEqual(200, response.status_code)
             self.assertNotIn("recent_harvests", response.json())
-            history = client.get("/api/ai-controls/recent-harvests")
+            backfill = client.post("/api/library-index/history-backfill")
+            self.assertEqual(200, backfill.status_code)
+            history = client.get("/api/ai-controls/recent-harvests", params={"limit": 2})
             self.assertEqual(200, history.status_code)
-            recent = history.json()["recent_harvests"]
+            recent = history.json()["items"]
             self.assertEqual(["Ask_Live", "Ask_Archived"], [item["ask_id"] for item in recent])
             self.assertEqual("prompt_condense", recent[0]["task_type"])
             self.assertEqual("MODEL_FAILURE: Ollama timed out.", recent[1]["details"])
@@ -235,8 +237,8 @@ class WebAppTests(unittest.TestCase):
 
             tasks = client.get("/api/render-review/tasks", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(tasks.status_code, 200)
-            self.assertEqual(tasks.json()["tasks"][0]["asset_id"], 1)
-            self.assertTrue(tasks.json()["tasks"][0]["candidate_image_exists"])
+            self.assertEqual(tasks.json()["items"][0]["asset_id"], 1)
+            self.assertTrue(tasks.json()["items"][0]["candidate_image_exists"])
 
             detail = client.get("/api/render-review/1", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(detail.status_code, 200)

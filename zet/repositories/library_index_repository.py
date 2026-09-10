@@ -30,12 +30,16 @@ class IndexSnapshot:
     job_summaries: Sequence[Mapping] = field(default_factory=tuple)
     errors: Sequence[Mapping] = field(default_factory=tuple)
     source_payloads: Sequence[Mapping] = field(default_factory=tuple)
+    list_items: Sequence[Mapping] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
 class IndexPage:
     items: list[dict]
     next_cursor: str | None
+    total: int = 0
+    generation: int | None = None
+    freshness: dict = field(default_factory=dict)
 
 
 class LibraryIndexRepository:
@@ -133,7 +137,7 @@ class LibraryIndexRepository:
                 generation INTEGER NOT NULL, job_id TEXT NOT NULL, scope_kind TEXT NOT NULL,
                 story_slug TEXT NOT NULL, scene_slug TEXT NOT NULL, render_target_id TEXT NOT NULL,
                 status TEXT NOT NULL, name TEXT NOT NULL, completed_at TEXT NOT NULL,
-                source_path TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                source_path TEXT NOT NULL, fingerprint TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}',
                 PRIMARY KEY (generation, job_id, source_path)
             );
             CREATE TABLE IF NOT EXISTS index_errors (
@@ -145,6 +149,19 @@ class LibraryIndexRepository:
                 source_path TEXT NOT NULL, fingerprint TEXT NOT NULL,
                 parsed_json TEXT, error_message TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (source_path, fingerprint)
+            );
+            CREATE TABLE IF NOT EXISTS indexed_list_items (
+                generation INTEGER NOT NULL, list_kind TEXT NOT NULL, item_key TEXT NOT NULL,
+                sort_key TEXT NOT NULL, character_name TEXT NOT NULL DEFAULT '',
+                phase TEXT NOT NULL DEFAULT '', story_slug TEXT NOT NULL DEFAULT '',
+                scene_slug TEXT NOT NULL DEFAULT '', source_key TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT '', source_type TEXT NOT NULL DEFAULT '',
+                semantic_category TEXT NOT NULL DEFAULT '', costume TEXT NOT NULL DEFAULT '',
+                pipeline TEXT NOT NULL DEFAULT '', subscene_id TEXT NOT NULL DEFAULT '',
+                collections_text TEXT NOT NULL DEFAULT '', keywords_text TEXT NOT NULL DEFAULT '',
+                search_text TEXT NOT NULL DEFAULT '', is_base INTEGER NOT NULL DEFAULT 0,
+                payload_json TEXT NOT NULL,
+                PRIMARY KEY (generation, list_kind, item_key)
             );
             CREATE TABLE IF NOT EXISTS dependency_edges (
                 scope_key TEXT NOT NULL, dependency_path TEXT NOT NULL,
@@ -161,6 +178,9 @@ class LibraryIndexRepository:
             CREATE INDEX IF NOT EXISTS catalog_query ON catalog_records(generation, reference_set_id, semantic_category, name, catalog_id);
             CREATE INDEX IF NOT EXISTS work_query ON work_items(generation, status, story_slug, scene_slug, name, work_id);
             CREATE INDEX IF NOT EXISTS jobs_query ON job_summaries(generation, status, story_slug, scene_slug, completed_at, job_id);
+            CREATE INDEX IF NOT EXISTS indexed_list_query ON indexed_list_items(
+                generation, list_kind, character_name, phase, story_slug, scene_slug, source_key, status, sort_key, item_key
+            );
             """
         )
         connection.execute(
@@ -176,6 +196,27 @@ class LibraryIndexRepository:
         if "result_json" not in compilation_columns:
             connection.execute(
                 "ALTER TABLE compilation_cache ADD COLUMN result_json TEXT NOT NULL DEFAULT '{}'"
+            )
+        indexed_columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(indexed_list_items)")
+        }
+        for column, declaration in {
+            "source_type": "TEXT NOT NULL DEFAULT ''",
+            "semantic_category": "TEXT NOT NULL DEFAULT ''",
+            "costume": "TEXT NOT NULL DEFAULT ''",
+            "pipeline": "TEXT NOT NULL DEFAULT ''",
+            "subscene_id": "TEXT NOT NULL DEFAULT ''",
+            "collections_text": "TEXT NOT NULL DEFAULT ''",
+            "keywords_text": "TEXT NOT NULL DEFAULT ''",
+            "search_text": "TEXT NOT NULL DEFAULT ''",
+            "is_base": "INTEGER NOT NULL DEFAULT 0",
+        }.items():
+            if column not in indexed_columns:
+                connection.execute(f"ALTER TABLE indexed_list_items ADD COLUMN {column} {declaration}")
+        job_columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(job_summaries)")}
+        if "payload_json" not in job_columns:
+            connection.execute(
+                "ALTER TABLE job_summaries ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'"
             )
         schema_version = self._metadata(connection, "schema_version")
         library_key = self._metadata(connection, "library_key")
@@ -258,6 +299,7 @@ class LibraryIndexRepository:
             "work_items": snapshot.work_items,
             "job_summaries": snapshot.job_summaries,
             "index_errors": snapshot.errors,
+            "indexed_list_items": snapshot.list_items,
         }
 
         def operation(connection: sqlite3.Connection) -> None:
@@ -516,6 +558,9 @@ class LibraryIndexRepository:
         value = self._metadata(connection, "active_generation")
         return int(value) if value else None
 
+    def _snapshot_token(self, connection: sqlite3.Connection, generation: int) -> str:
+        return f"{generation}:{self._metadata(connection, 'index_revision') or '0'}"
+
     def _page(
         self,
         table: str,
@@ -524,6 +569,8 @@ class LibraryIndexRepository:
         order: Sequence[tuple[str, str]],
         cursor: str | None,
         limit: int,
+        extra_clauses: Sequence[str] = (),
+        extra_params: Sequence[object] = (),
     ) -> IndexPage:
         if limit < 1 or limit > 500:
             raise LibraryIndexError("Index page limit must be between 1 and 500.")
@@ -531,24 +578,39 @@ class LibraryIndexRepository:
         def operation(connection: sqlite3.Connection) -> IndexPage:
             generation = self._active_generation(connection)
             if generation is None:
-                return IndexPage([], None)
+                return IndexPage([], None, 0, None, self._freshness(connection, None))
             clauses = ["generation = ?"]
             params: list[object] = [generation]
             for column, value in (filters or {}).items():
                 if value is not None:
                     clauses.append(f"{column} = ?")
                     params.append(value)
-            cursor_values = self._decode_cursor(cursor, len(order))
+            clauses.extend(extra_clauses)
+            params.extend(extra_params)
+            count_clauses = list(clauses)
+            count_params = list(params)
+            decoded = self._decode_cursor(cursor, len(order) + 1)
+            cursor_values = None
+            if decoded is not None:
+                cursor_generation, *cursor_values = decoded
+                if cursor_generation != self._snapshot_token(connection, generation):
+                    raise LibraryIndexError(
+                        "The index changed while paging; discard the stale cursor and reload the first page."
+                    )
             if cursor_values is not None:
                 terms = []
-                for index, (column, _direction) in enumerate(order):
+                for index, (column, direction) in enumerate(order):
                     equal = " AND ".join(f"{prior[0]} = ?" for prior in order[:index])
-                    comparison = f"{column} > ?"
+                    comparison = f"{column} {'<' if direction.upper() == 'DESC' else '>'} ?"
                     terms.append(f"({equal + ' AND ' if equal else ''}{comparison})")
                     params.extend(cursor_values[:index])
                     params.append(cursor_values[index])
                 clauses.append("(" + " OR ".join(terms) + ")")
             order_sql = ", ".join(f"{column} {direction}" for column, direction in order)
+            total = int(connection.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE {' AND '.join(count_clauses)}",
+                tuple(count_params),
+            ).fetchone()[0])
             rows = connection.execute(
                 f"SELECT * FROM {table} WHERE {' AND '.join(clauses)} ORDER BY {order_sql} LIMIT ?",
                 (*params, limit + 1),
@@ -558,10 +620,31 @@ class LibraryIndexRepository:
             items = [{key: row[key] for key in row.keys() if key != "generation"} for row in rows]
             next_cursor = None
             if has_more and rows:
-                next_cursor = self._encode_cursor([rows[-1][column] for column, _ in order])
-            return IndexPage(items, next_cursor)
+                next_cursor = self._encode_cursor(
+                    [self._snapshot_token(connection, generation), *[rows[-1][column] for column, _ in order]]
+                )
+            return IndexPage(
+                items, next_cursor, total, generation, self._freshness(connection, generation)
+            )
 
         return self._run(operation)
+
+    def _freshness(self, connection: sqlite3.Connection, generation: int | None) -> dict:
+        errors = []
+        if generation is not None:
+            errors = [
+                {"source_path": str(row[0]), "message": str(row[1])}
+                for row in connection.execute(
+                    "SELECT source_path, message FROM index_errors WHERE generation = ? "
+                    "ORDER BY source_path LIMIT 20",
+                    (generation,),
+                )
+            ]
+        return {
+            "state": "ready" if generation is not None else "building",
+            "last_completed_at": self._metadata(connection, "reconciliation_last_completed_at"),
+            "errors": errors,
+        }
 
     def query_stories(self, *, name: str | None = None, cursor: str | None = None, limit: int = 100) -> IndexPage:
         return self._page("stories", filters={"name": name}, order=(("name", "ASC"), ("story_slug", "ASC")), cursor=cursor, limit=limit)
@@ -578,8 +661,152 @@ class LibraryIndexRepository:
     def query_active_work(self, *, status: str | None = None, story_slug: str | None = None, scene_slug: str | None = None, name: str | None = None, cursor: str | None = None, limit: int = 100) -> IndexPage:
         return self._page("work_items", filters={"status": status, "story_slug": story_slug, "scene_slug": scene_slug, "name": name}, order=(("name", "ASC"), ("work_id", "ASC"), ("source_path", "ASC")), cursor=cursor, limit=limit)
 
-    def query_job_history(self, *, status: str | None = None, story_slug: str | None = None, scene_slug: str | None = None, name: str | None = None, cursor: str | None = None, limit: int = 100) -> IndexPage:
-        return self._page("job_summaries", filters={"status": status, "story_slug": story_slug, "scene_slug": scene_slug, "name": name}, order=(("completed_at", "ASC"), ("job_id", "ASC"), ("source_path", "ASC")), cursor=cursor, limit=limit)
+    def query_job_history(self, *, status: str | None = None, story_slug: str | None = None, scene_slug: str | None = None, name: str | None = None, harvested_only: bool = False, cursor: str | None = None, limit: int = 100) -> IndexPage:
+        return self._page(
+            "job_summaries",
+            filters={"status": status, "story_slug": story_slug, "scene_slug": scene_slug, "name": name},
+            order=(("completed_at", "DESC"), ("job_id", "DESC"), ("source_path", "DESC")),
+            cursor=cursor,
+            limit=limit,
+            extra_clauses=("payload_json <> '{}'",) if harvested_only else (),
+        )
 
     def query_errors(self, *, cursor: str | None = None, limit: int = 100) -> IndexPage:
         return self._page("index_errors", filters=None, order=(("source_path", "ASC"),), cursor=cursor, limit=limit)
+
+    def query_indexed_list(
+        self,
+        list_kind: str,
+        *,
+        character: str | None = None,
+        phase: str | None = None,
+        story_slug: str | None = None,
+        scene_slug: str | None = None,
+        source_key: str | None = None,
+        status: str | None = None,
+        source_type: str | None = None,
+        semantic_category: str | None = None,
+        costume: str | None = None,
+        pipeline: str | None = None,
+        subscene_id: str | None = None,
+        collection: str | None = None,
+        keyword: str | None = None,
+        q: str | None = None,
+        include_base: bool = True,
+        cursor: str | None = None,
+        limit: int = 50,
+    ) -> IndexPage:
+        if limit < 1 or limit > 200:
+            raise LibraryIndexError("Indexed list page limit must be between 1 and 200.")
+        page = self._page(
+            "indexed_list_items",
+            filters={
+                "list_kind": list_kind,
+                "character_name": character,
+                "phase": phase,
+                "story_slug": story_slug,
+                "scene_slug": scene_slug,
+                "source_key": source_key,
+                "status": status,
+                "source_type": source_type,
+                "semantic_category": semantic_category,
+                "costume": costume,
+                "pipeline": pipeline,
+                "subscene_id": subscene_id,
+            },
+            order=(("sort_key", "ASC"), ("item_key", "ASC")),
+            cursor=cursor,
+            limit=limit,
+            extra_clauses=tuple(
+                (["collections_text LIKE ?"] if collection else [])
+                + (["keywords_text LIKE ?"] if keyword else [])
+                + (["is_base = 0"] if not include_base else [])
+                + ["search_text LIKE ?" for _ in str(q or "").split()]
+            ),
+            extra_params=tuple(
+                ([f"%|{collection}|%"] if collection else [])
+                + ([f"%|{keyword}|%"] if keyword else [])
+                + [f"%{term.casefold()}%" for term in str(q or "").split()]
+            ),
+        )
+        return IndexPage(
+            [json.loads(str(item["payload_json"])) for item in page.items],
+            page.next_cursor,
+            page.total,
+            page.generation,
+            page.freshness,
+        )
+
+    def indexed_list_counts(self, scopes: Mapping[str, Mapping[str, object]]) -> tuple[int | None, dict[str, int], dict]:
+        """Count several list scopes against one active-generation transaction."""
+        allowed = {
+            "list_kind", "character_name", "phase", "story_slug", "scene_slug", "source_key", "status"
+        }
+
+        def operation(connection: sqlite3.Connection):
+            generation = self._active_generation(connection)
+            if generation is None:
+                return None, {name: 0 for name in scopes}, self._freshness(connection, None)
+            counts = {}
+            for name, filters in scopes.items():
+                clauses = ["generation = ?"]
+                params: list[object] = [generation]
+                for column, value in filters.items():
+                    if column not in allowed:
+                        raise LibraryIndexError(f"Unsupported indexed count field: {column}")
+                    if value is not None:
+                        clauses.append(f"{column} = ?")
+                        params.append(value)
+                counts[name] = int(connection.execute(
+                    f"SELECT COUNT(*) FROM indexed_list_items WHERE {' AND '.join(clauses)}",
+                    tuple(params),
+                ).fetchone()[0])
+            return generation, counts, self._freshness(connection, generation)
+
+        return self._run(operation)
+
+    def upsert_job_history(self, rows: Sequence[Mapping], *, cursor: str, complete: bool) -> None:
+        """Persist one explicit history-backfill batch into the active generation."""
+        def operation(connection: sqlite3.Connection) -> None:
+            generation = self._active_generation(connection)
+            if generation is None:
+                raise LibraryIndexError("Build the library index before backfilling history.")
+            connection.executemany(
+                "INSERT OR REPLACE INTO job_summaries "
+                "(generation, job_id, scope_kind, story_slug, scene_slug, render_target_id, "
+                "status, name, completed_at, source_path, fingerprint, payload_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        generation,
+                        row["job_id"], row["scope_kind"], row["story_slug"], row["scene_slug"],
+                        row["render_target_id"], row["status"], row["name"], row["completed_at"],
+                        row["source_path"], row["fingerprint"], str(row.get("payload_json") or "{}"),
+                    )
+                    for row in rows
+                ],
+            )
+            connection.executemany(
+                "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+                (
+                    ("history_backfill_cursor", cursor),
+                    ("history_backfill_complete", "1" if complete else "0"),
+                ),
+            )
+            revision = int(self._metadata(connection, "index_revision") or "0") + 1
+            connection.execute(
+                "INSERT OR REPLACE INTO metadata(key, value) VALUES ('index_revision', ?)",
+                (str(revision),),
+            )
+            connection.commit()
+
+        self._run(operation)
+
+    def history_backfill_status(self) -> dict:
+        def operation(connection: sqlite3.Connection) -> dict:
+            return {
+                "cursor": self._metadata(connection, "history_backfill_cursor") or "",
+                "complete": self._metadata(connection, "history_backfill_complete") == "1",
+            }
+
+        return dict(self._run(operation))

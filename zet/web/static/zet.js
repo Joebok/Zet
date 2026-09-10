@@ -6483,7 +6483,7 @@ async function loadSceneCandidates() {
     sceneCandidateSourceMeta.textContent = `${source.path} • modified ${source.modified_at || "unknown"} • read-only`;
     state.selectedSceneCandidateStorySlug ||= source.default_story_slug || null;
     const payload = await fetchJson(`/api/scene-candidates?source_key=${encodeURIComponent(source.key)}`);
-    state.sceneCandidates = payload.candidates || [];
+    state.sceneCandidates = payload.items || [];
     if (!state.sceneCandidates.some((item) => item.candidate_id === state.selectedSceneCandidateId)) {
       state.selectedSceneCandidateId = state.sceneCandidates[0]?.candidate_id || null;
     }
@@ -8905,7 +8905,7 @@ async function copyText(value, label = "Copied.") {
 async function loadRenderReviewTasks(preferredReviewKey = null) {
   renderReviewStatus.textContent = "Loading render reviews...";
   const payload = await fetchJson(`/api/render-review/tasks?${productionQuery().toString()}`);
-  state.renderReviewTasks = payload.tasks || [];
+  state.renderReviewTasks = payload.items || [];
   const taskKeys = new Set(state.renderReviewTasks.map((task) => task.review_key));
   state.selectedRenderReviewKey =
     preferredReviewKey || state.selectedRenderReviewKey || state.renderReviewTasks[0]?.review_key || null;
@@ -9629,7 +9629,7 @@ function renderAiControls(payload) {
 
 async function loadRecentAiHarvests() {
   const payload = await fetchJson("/api/ai-controls/recent-harvests");
-  const rows = payload.recent_harvests || [];
+  const rows = payload.items || [];
   renderRows(recentHarvestTableBody, rows, ["harvested_at", "ask_id", "task_type", "asset_id", "status", "details"]);
   recentHarvestCount.textContent = `${rows.length} recent harvested job(s)`;
 }

@@ -630,6 +630,16 @@ def _recent_harvests_payload(zet_app: ZetApp, limit: int = 20) -> dict[str, Any]
     return {"recent_harvests": _jsonable(zet_app.recent_ai_harvests(limit))}
 
 
+def _indexed_page_payload(page, *, items: list | None = None) -> dict[str, Any]:
+    return {
+        "items": page.items if items is None else items,
+        "total": page.total,
+        "next_cursor": page.next_cursor,
+        "generation": page.generation,
+        "freshness": page.freshness,
+    }
+
+
 def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
     """Build automation settings, preserving current values for omitted fields."""
     defaults = defaults or AutomationSettings(
@@ -835,6 +845,9 @@ def create_app(
     app = FastAPI(title="Zet Web", lifespan=lifespan)
     app.state.config_path = str(config_path)
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
+    # Publish the first complete snapshot before any request can observe a validated app.
+    if validate_catalog_on_create:
+        app.state.zet_app.library_index_service.reconcile()
 
     if performance is not None:
         @app.middleware("http")
@@ -1463,10 +1476,16 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/scene-candidates")
-    def scene_candidates(source_key: str = Query(...)) -> dict[str, Any]:
+    def scene_candidates(
+        source_key: str = Query(...), cursor: str = Query(""),
+        limit: int = Query(50, ge=1, le=200),
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            return {"candidates": [asdict(candidate) for candidate in zet_app.list_scene_candidates(source_key)]}
+            page = zet_app.indexed_list(
+                "scene_candidate", source_key=source_key, cursor=cursor or None, limit=limit
+            )
+            return _indexed_page_payload(page)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1726,29 +1745,23 @@ def create_app(
         subscene_id: str = Query(""),
         status: str = Query(""),
         include_base: bool = Query(True),
+        cursor: str = Query(""),
+        limit: int = Query(50, ge=1, le=200),
     ) -> dict[str, Any]:
         """Search the unified logical image inventory."""
         zet_app = _app(app.state.config_path)
         try:
-            discovery_context = zet_app.discovery_context()
-            items = zet_app.image_catalog_items(
-                discovery_context=discovery_context,
-                q=q,
-                source_type=source_type,
-                semantic_category=semantic_category,
-                collection=collection,
-                keyword=keyword,
-                character=character,
-                phase=phase,
-                costume=costume,
-                pipeline=pipeline,
-                story_slug=story_slug,
-                scene_slug=scene_slug,
-                subscene_id=subscene_id,
-                status=status,
+            page = zet_app.indexed_list(
+                "inventory", q=q or None, source_type=source_type or None,
+                semantic_category=semantic_category or None, collection=collection or None,
+                keyword=keyword or None, character=character or None, phase=phase or None,
+                costume=costume or None, pipeline=pipeline or None,
+                story_slug=story_slug or None, scene_slug=scene_slug or None,
+                subscene_id=subscene_id or None, status=status or None,
                 include_base=include_base,
+                cursor=cursor or None, limit=limit,
             )
-            return {"items": [_jsonable(item) for item in items]}
+            return _indexed_page_payload(page)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2553,22 +2566,29 @@ def create_app(
         phase: str = Query(""),
         story_slug: str = Query(""),
         scene_slug: str = Query(""),
+        cursor: str = Query(""),
+        limit: int = Query(50, ge=1, le=200),
     ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            discovery_context = zet_app.discovery_context()
-            assets = zet_app.list_pending_asset_image_reviews(character, phase) if character or phase else []
-            scenes = zet_app.list_pending_scene_image_reviews(
-                story_slug,
-                scene_slug,
-                discovery_context=discovery_context,
-            ) if story_slug or scene_slug else []
-            if not any((character, phase, story_slug, scene_slug)):
-                assets = zet_app.list_pending_asset_image_reviews()
-                scenes = zet_app.list_pending_scene_image_reviews(discovery_context=discovery_context)
-            tasks = [_render_review_task_payload(zet_app, asset) for asset in assets]
-            tasks.extend(_scene_render_review_task_payload(status) for status in scenes)
-            return {"tasks": tasks}
+            kind = (
+                "image_review_asset" if character or phase
+                else "image_review_scene" if story_slug or scene_slug
+                else "image_review"
+            )
+            page = zet_app.indexed_list(
+                kind, character=character or None, phase=phase or None,
+                story_slug=story_slug or None, scene_slug=scene_slug or None,
+                cursor=cursor or None, limit=limit,
+            )
+            tasks = page.items
+            tasks = [
+                asdict(zet_app.scene_image_review_status(
+                    item["story_slug"], item["scene_slug"], item["render_target_id"]
+                )) if item.get("review_kind") == "scene" else item
+                for item in tasks
+            ]
+            return _indexed_page_payload(page, items=tasks)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2584,7 +2604,7 @@ def create_app(
             raise HTTPException(status_code=400, detail=f"Unsupported workspace: {workspace}")
         try:
             return _jsonable(
-                _app(app.state.config_path).production_work_summary(
+                _app(app.state.config_path).indexed_production_work_summary(
                     workspace,
                     character,
                     phase,
@@ -3102,10 +3122,31 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/ai-controls/recent-harvests")
-    def ai_controls_recent_harvests(limit: int = Query(20, ge=0, le=200)) -> dict[str, Any]:
+    def ai_controls_recent_harvests(
+        limit: int = Query(50, ge=1, le=200), cursor: str = Query("")
+    ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            return _recent_harvests_payload(zet_app, limit)
+            page = zet_app.library_index_service.repository.query_job_history(
+                harvested_only=True, cursor=cursor or None, limit=limit
+            )
+            items = []
+            for item in page.items:
+                try:
+                    items.append(json.loads(str(item.get("payload_json") or "{}")))
+                except json.JSONDecodeError:
+                    items.append({})
+            return _indexed_page_payload(page, items=items)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/library-index/history-backfill")
+    def library_index_history_backfill(
+        batch_size: int = Query(200, ge=1, le=200),
+    ) -> dict[str, Any]:
+        """Explicitly resume the bounded one-time harvested-history import."""
+        try:
+            return _app(app.state.config_path).backfill_ai_harvest_history(batch_size)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

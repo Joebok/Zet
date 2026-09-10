@@ -84,7 +84,7 @@ test("candidate loading, empty, and failed states stay distinct", async ({ page 
   const candidatesResponse = delayedGate();
   await page.route(/\/api\/scene-candidates\?source_key=/, async (route) => {
     await candidatesResponse.promise;
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ candidates: [] }) });
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], total: 0, next_cursor: null, generation: 1, freshness: {} }) });
   });
 
   await page.evaluate(() => { window.wp02CandidateLoad = window.activatePage("scene-candidates", { skipAutosave: true }); });
@@ -101,7 +101,7 @@ test("candidate loading, empty, and failed states stay distinct", async ({ page 
   await page.unroute(/\/api\/scene-candidates\?source_key=/);
   await page.route(/\/api\/scene-candidates\?source_key=/, (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ candidates: [] }),
+    body: JSON.stringify({ items: [], total: 0, next_cursor: null, generation: 1, freshness: {} }),
   }));
   await page.evaluate(() => window.activatePage("scene-candidates", { skipAutosave: true }));
   await expect(page.locator("#scene-candidate-status")).toHaveText("0 candidates");

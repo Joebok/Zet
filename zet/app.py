@@ -1,5 +1,7 @@
 from pathlib import Path
 from datetime import datetime
+from dataclasses import asdict
+import json
 
 from zet.models.asset import Asset
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
@@ -364,8 +366,187 @@ class ZetApp:
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
         app.story_service.story_render_service.publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
+        app.library_index_service.list_items_provider = app._indexed_list_rows
         image_catalog_repository.after_write = app.refresh_library_index
         return app
+
+    @staticmethod
+    def _indexed_row(kind: str, key: str, sort_key: str, payload: dict, **scope) -> dict:
+        return {
+            "list_kind": kind,
+            "item_key": key,
+            "sort_key": sort_key,
+            "character_name": str(scope.get("character") or ""),
+            "phase": str(scope.get("phase") or ""),
+            "story_slug": str(scope.get("story_slug") or ""),
+            "scene_slug": str(scope.get("scene_slug") or ""),
+            "source_key": str(scope.get("source_key") or ""),
+            "status": str(scope.get("status") or ""),
+            "source_type": str(scope.get("source_type") or ""),
+            "semantic_category": str(scope.get("semantic_category") or ""),
+            "costume": str(scope.get("costume") or ""),
+            "pipeline": str(scope.get("pipeline") or ""),
+            "subscene_id": str(scope.get("subscene_id") or ""),
+            "collections_text": "|" + "|".join(str(item) for item in scope.get("collections") or []) + "|",
+            "keywords_text": "|" + "|".join(str(item) for item in scope.get("keywords") or []) + "|",
+            "search_text": str(scope.get("search_text") or "").casefold(),
+            "is_base": int(bool(scope.get("is_base"))),
+            "payload_json": json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str),
+        }
+
+    def _indexed_list_rows(self) -> list[dict]:
+        """Build dashboard list rows during reconciliation, never during list requests."""
+        rows: list[dict] = []
+        context = self.discovery_context()
+        try:
+            inventory_items = self.image_catalog_service.list_items(
+                discovery_context=context, include_base=True
+            )
+        except Exception as exc:
+            self.library_index_service._record_error(
+                "project/.indexed-dashboard/inventory", "indexed_dashboard", "provider", str(exc)
+            )
+            inventory_items = []
+        for item in inventory_items:
+            payload = asdict(item)
+            rows.append(self._indexed_row(
+                "inventory", item.catalog_id, f"{item.semantic_category.casefold()}\0{item.label.casefold()}",
+                payload, character=item.character, phase=item.phase, story_slug=item.story_slug,
+                scene_slug=item.scene_slug, status=item.description_status,
+                source_type=item.source_type, semantic_category=item.semantic_category,
+                costume=item.costume, pipeline=item.pipeline, subscene_id=item.subscene_id,
+                collections=item.collections, keywords=item.keywords, is_base=item.is_base_pipeline,
+                search_text=" ".join(str(value) for value in (
+                    item.tag, item.label, item.source_type, item.semantic_category, item.character,
+                    item.phase, item.costume, item.pipeline, item.view, item.story_slug,
+                    item.scene_slug, item.subscene_id, *item.collections, *item.keywords,
+                )),
+            ))
+        for source in self.scene_candidate_import_service.list_sources():
+            if not source.exists:
+                continue
+            try:
+                candidates = self.scene_candidate_import_service.list_candidates(source.key)
+            except Exception as exc:
+                self.library_index_service._record_error(
+                    f"project/.indexed-dashboard/candidates/{source.key}",
+                    "indexed_dashboard", "provider", str(exc),
+                )
+                candidates = []
+            for item in candidates:
+                rows.append(self._indexed_row(
+                    "scene_candidate", f"{source.key}:{item.candidate_id}",
+                    f"{item.title.casefold()}\0{item.candidate_id}", asdict(item),
+                    source_key=source.key, status=item.import_state,
+                ))
+        for asset in self.production_work_summary_service.list_asset_reviews():
+            candidate = self.path_service.candidate_image_path(asset)
+            locked = self.path_service.locked_image_path(asset)
+            payload = {
+                **asdict(asset),
+                "review_kind": "asset",
+                "review_key": f"asset:{asset.character}:{asset.phase}:{asset.asset_id}",
+                "title": f"{asset.pipeline} #{asset.asset_id}",
+                "candidate_image_path": str(candidate),
+                "candidate_image_exists": candidate.is_file(),
+                "locked_image_path": str(locked),
+                "locked_image_exists": locked.is_file(),
+            }
+            rows.append(self._indexed_row(
+                "image_review_asset", payload["review_key"], payload["title"].casefold(), payload,
+                character=asset.character, phase=asset.phase,
+            ))
+            rows.append(self._indexed_row(
+                "image_review", payload["review_key"], payload["title"].casefold(), payload,
+                character=asset.character, phase=asset.phase,
+            ))
+        try:
+            scene_records = context.scene_records()
+        except Exception as exc:
+            self.library_index_service._record_error(
+                "project/.indexed-dashboard/scene-reviews",
+                "indexed_dashboard", "provider", str(exc),
+            )
+            scene_records = ()
+        for item in scene_records:
+            if item.candidate_exists:
+                payload = {
+                    "review_kind": "scene", "story_slug": item.story_slug,
+                    "scene_slug": item.scene_slug, "render_target_id": item.render_target_id,
+                }
+                key = self.scene_image_review_service.review_key(
+                    item.story_slug, item.scene_slug, item.render_target_id
+                )
+                rows.append(self._indexed_row(
+                    "image_review_scene", key,
+                    f"{item.story_slug}\0{item.scene_slug}\0{item.render_target_id}", payload,
+                    story_slug=item.story_slug, scene_slug=item.scene_slug,
+                ))
+                rows.append(self._indexed_row(
+                    "image_review", key,
+                    f"{item.story_slug}\0{item.scene_slug}\0{item.render_target_id}", payload,
+                    story_slug=item.story_slug, scene_slug=item.scene_slug,
+                ))
+        for task in self.production_work_summary_service._manual_tasks():
+            manifest = task.manifest
+            key = str(manifest.get("ask_id") or getattr(task, "ask_id", ""))
+            rows.append(self._indexed_row(
+                "manual_task", key, key, {"ask_id": key},
+                character=getattr(task, "character", ""), phase=getattr(task, "phase", ""),
+                story_slug=manifest.get("story_slug"), scene_slug=manifest.get("scene_slug"),
+            ))
+        for story, scene, target in self.scene_prompt_analysis_service.pending_records():
+            key = f"{story}:{scene}:{target}"
+            rows.append(self._indexed_row(
+                "analysis_pending", key, key,
+                {"story_slug": story, "scene_slug": scene, "render_target_id": target},
+                story_slug=story, scene_slug=scene,
+            ))
+        return rows
+
+    def indexed_list(self, kind: str, **filters):
+        return self.library_index_service.repository.query_indexed_list(kind, **filters)
+
+    def indexed_production_work_summary(
+        self, workspace: str, character: str = "", phase: str = "",
+        story_slug: str = "", scene_slug: str = "",
+    ) -> dict:
+        current_scope = {}
+        if workspace == "character":
+            current_scope = {"character_name": character or None, "phase": phase or None}
+        elif workspace == "story":
+            current_scope = {"story_slug": story_slug or None, "scene_slug": scene_slug or None}
+        scopes = {}
+        for prefix, scope in (("project", {}), ("current", current_scope)):
+            scopes[f"{prefix}_manual"] = {"list_kind": "manual_task", **scope}
+            scopes[f"{prefix}_analysis"] = {
+                "list_kind": "analysis_pending",
+                **(scope if workspace == "story" or prefix == "project" else {}),
+            }
+            scopes[f"{prefix}_asset"] = {
+                "list_kind": (
+                    "image_review_asset" if workspace == "character" or prefix == "project" else "__none__"
+                ), **(scope if workspace == "character" or prefix == "project" else {})
+            }
+            scopes[f"{prefix}_scene"] = {
+                "list_kind": (
+                    "image_review_scene" if workspace == "story" or prefix == "project" else "__none__"
+                ), **(scope if workspace == "story" or prefix == "project" else {})
+            }
+        generation, counts, freshness = self.library_index_service.repository.indexed_list_counts(scopes)
+        def payload(prefix: str) -> dict:
+            return {
+                "prompt_available": counts[f"{prefix}_manual"],
+                "analysis_pending": counts[f"{prefix}_analysis"],
+                "render_waiting": counts[f"{prefix}_manual"],
+                "image_review_waiting": counts[f"{prefix}_asset"] + counts[f"{prefix}_scene"],
+            }
+        return {
+            "scope": {"workspace": workspace, "character": character, "phase": phase,
+                      "story_slug": story_slug, "scene_slug": scene_slug},
+            "current": payload("current"), "project": payload("project"),
+            "generation": generation, "freshness": freshness,
+        }
 
     def refresh_library_index(self) -> dict:
         """Synchronously reconcile successful writes before returning refreshed state."""
@@ -407,18 +588,20 @@ class ZetApp:
         return self.scene_candidate_import_service.get_candidate(source_key, candidate_id)
 
     def set_scene_candidate_passed(self, source_key: str, candidate_id: str, passed: bool):
-        return self.scene_candidate_import_service.set_passed(source_key, candidate_id, passed)
+        return self._indexed_write(
+            lambda: self.scene_candidate_import_service.set_passed(source_key, candidate_id, passed)
+        )
 
     def scene_candidate_image_path(self, source_key: str, candidate_id: str) -> Path:
         return self.scene_candidate_import_service.candidate_image_path(source_key, candidate_id)
 
     def import_scene_candidate(self, source_key: str, candidate_id: str, story_slug: str, confirm_update: bool = False):
-        return self.scene_candidate_import_service.import_candidate(
+        return self._indexed_write(lambda: self.scene_candidate_import_service.import_candidate(
             source_key,
             candidate_id,
             story_slug,
             confirm_update,
-        )
+        ))
 
     def scene_readiness(self, data: dict) -> dict:
         readiness = self.scene_candidate_import_service.readiness(data)
@@ -1113,13 +1296,19 @@ class ZetApp:
 
     def archive_harvested_answers(self):
         """Archive harvested AI answer folders."""
-        return self.ai_proxy_service.archive_harvested_answers()
+        return self._indexed_write(self.ai_proxy_service.archive_harvested_answers)
 
     def harvested_answer_count(self) -> int:
         return self.ai_proxy_service.harvested_answer_count()
 
     def recent_ai_harvests(self, limit: int = 20):
-        return self.ai_proxy_service.recent_harvests(limit)
+        rows = self.library_index_service.repository.query_job_history(
+            harvested_only=True, limit=limit
+        ).items
+        return [json.loads(str(row.get("payload_json") or "{}")) for row in rows]
+
+    def backfill_ai_harvest_history(self, batch_size: int = 200) -> dict:
+        return self.library_index_service.backfill_history(batch_size=batch_size)
 
     def process_statuses(self):
         return self.process_service.statuses()
