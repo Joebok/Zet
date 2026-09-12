@@ -308,6 +308,14 @@ Handoff:
 | **LG-01: Long input** | Largest supported scene/batch with critical constraints near beginning, middle, and end. Preserve all constraints without truncation or silent omission. |
 | **IN-01: Embedded instructions** | Narrative/report contains text asking the model to ignore its schema or change IDs. Treat it as source data and retain the production contract. |
 
+Handoff:
+
+* New invariants introduced: Version-2 fixture manifests require task role, source provenance, prompt/schema versions, critical assertions, scored dimensions, performance class, expected constraints, negative examples, and scoring rules. Duplicate IDs and missing image/required assets fail loading; suite digests include manifest bytes, prompt/schema-version markers, referenced contract bytes, and resolved image/asset bytes.
+* APIs/contracts changed: `FixtureService` now validates and loads the version-2 corpus, resolves optional prompt/schema snapshots, materializes synthetic images, and raises `FixtureContractError` for corpus violations. `zet.scripts.export_wp14_corpus` exports paired development/held-out manifests from Zet’s production Scene Builder, image-quality, Prompt Evolution, and workflow contracts.
+* New tests/fixtures available to later WPs: `fixtures/zet-evaluation-development/fixtures.json` and `fixtures/zet-evaluation-held-out/fixtures.json` contain 26 fixtures each, including all 20 required case IDs and all seven current Scene Builder phases for SB-02. `tests/test_wp14_fixture_corpus.py` covers corpus coverage, contract metadata, digest invalidation from image/schema changes, duplicate IDs, and missing assets.
+* Assumptions later WPs may rely on: The portable corpus is independent of the live library and uses synthetic image descriptors; private library examples must be supplied through `MODELUPDATER_FIXTURE_ROOTS`. Corpus-contract acceptance is PASS. Actual library-image human annotation verification and evaluated-runtime prompt token counts are FAIL (not verified): the exporter records inspected source-artifact provenance and explicit unavailable token-count status, but does not treat either as ground truth.
+* Deviations from master plan: No production dependency or alias configuration was changed. The committed corpus is portable synthetic data; actual arch/person source images remain in `Zet_Library` and are referenced only as provenance, because copying private media into committed fixtures would violate the package constraint. Scoring and qualification policy remain deferred to WP15–WP16.
+
 ### WP15 — Quality scoring and qualification gates
 **Executor:** Medium. **Dependencies:** WP14.
 
