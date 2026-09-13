@@ -129,9 +129,8 @@ Open **Tools > AI Controls** and check the process state and Ask, Running, and A
 ## Documentation
 
 - [Tutorial.md](Tutorial.md) — feature-oriented usage guide
-- [Docs/Zet.md](Docs/Zet.md) — implementation and pipeline details
 - [Docs/Local_Image_Generation.md](Docs/Local_Image_Generation.md) — local rendering configuration and operation
-- [Docs/Zet_Data_Schema_Object_Model_Decisions.md](Docs/Zet_Data_Schema_Object_Model_Decisions.md) — data-model decisions
+- [Docs/Zet reliability, library scaling, and model qualification.md](Docs/Zet%20reliability,%20library%20scaling,%20and%20model%20qualification.md) — active reliability and scaling plan
 
 ## Status
 
