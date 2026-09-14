@@ -162,6 +162,36 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             metadata = json.loads(paths["metadata"].read_text(encoding="utf-8"))
             self.assertEqual("hash-2", metadata["render_input_hash"])
 
+    def test_promote_accepts_candidate_against_current_render_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_service = _StoryService(root)
+            compile_calls = []
+
+            def compile_current(*args, **kwargs):
+                compile_calls.append((args, kwargs))
+                return (None, None, None, None, None, None, None, "current-hash")
+
+            story_service.story_render_service = SimpleNamespace(
+                _compile=compile_current
+            )
+            service = SceneImageReviewService(story_service)
+            candidate = service.path_service.scene_candidate_image_path("story", "scene")
+            candidate.parent.mkdir(parents=True)
+            candidate.write_bytes(b"accepted image")
+            candidate.with_suffix(".render.json").write_text(
+                json.dumps({"render_input_hash": "stale-hash"}), encoding="utf-8"
+            )
+
+            updated = service.promote("story", "scene")
+
+            self.assertTrue(updated.locked_exists)
+            metadata_path = service.target_service.review_paths("story", "scene", "main")["metadata"]
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertEqual("current-hash", metadata["render_input_hash"])
+            self.assertTrue(compile_calls[0][1]["allow_stale_dependencies"])
+            self.assertTrue(compile_calls[0][1]["accept_stale_dependencies"])
+
 
 if __name__ == "__main__":
     unittest.main()

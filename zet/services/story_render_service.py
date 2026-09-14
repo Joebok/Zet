@@ -99,6 +99,7 @@ class StoryRenderService:
         render_target_id: str = MAIN_RENDER_TARGET,
         allow_stale_dependencies: bool = False,
         allow_incomplete_reference_descriptions: bool = False,
+        accept_stale_dependencies: bool = False,
     ) -> tuple[Path, Path, dict, list[dict], dict, Path, str, str]:
         story = self.story
         safe_story_slug = story.safe_slug(story_slug)
@@ -146,6 +147,15 @@ class StoryRenderService:
                         f"{definition.get('name') or subscene_id} is not current. "
                         f"{freshness['stale_reason']} Render and lock that subscene first."
                     )
+                if (
+                    accept_stale_dependencies
+                    and freshness["locked_exists"]
+                    and not freshness["locked_current"]
+                ):
+                    story.scene_render_target_service.accept_locked_current(
+                        safe_story_slug, safe_scene_slug, subscene_id, current_hash
+                    )
+                    statuses[subscene_id].update(locked_current=True, stale_reason="")
             projected = (
                 story.scene_render_target_service.project_main(normalized_scene, statuses)
                 if current_target_id == MAIN_RENDER_TARGET
@@ -245,7 +255,11 @@ class StoryRenderService:
         safe_scene_slug = story.safe_slug(scene_slug)
         target_id = str(render_target_id or MAIN_RENDER_TARGET).strip()
         pipeline_path, scene_builder_path, normalized_scene, references, ir, story_settings_path, prompt, render_input_hash = self._compile(
-            safe_story_slug, safe_scene_slug, target_id, allow_stale_dependencies
+            safe_story_slug,
+            safe_scene_slug,
+            target_id,
+            allow_stale_dependencies,
+            accept_stale_dependencies=allow_stale_dependencies,
         )
         if target_id != MAIN_RENDER_TARGET:
             definition = story.scene_render_target_service.definition(normalized_scene, target_id)

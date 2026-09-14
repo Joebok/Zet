@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -14,6 +15,43 @@ from tests.support.image_fixture import png_bytes
 
 
 class RenderConsoleQueueTests(unittest.TestCase):
+
+    def test_answer_publication_retries_transient_directory_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Test"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text(json.dumps({
+                "ask_id": "Ask_Test",
+                "worker_type": "manual_chatgpt_render",
+                "prompt_file": "Final_Image_Prompt.md",
+                "expected_output": "image.png",
+            }), encoding="utf-8")
+            (ask_path / "Final_Image_Prompt.md").write_text("prompt\n", encoding="utf-8")
+            queue = RenderConsoleQueue(Config(
+                base_library_path=str(root),
+                base_character_path=str(root / "Characters"),
+                base_asset_path=str(root / "Assets"),
+                base_pipeline_path=str(root / "Pipelines"),
+                base_ai_queue_path=str(root / "Queue"),
+            ))
+
+            real_replace = os.replace
+            directory_attempts = 0
+
+            def transient_directory_lock(source, destination):
+                nonlocal directory_attempts
+                if Path(source).is_dir():
+                    directory_attempts += 1
+                    if directory_attempts == 1:
+                        raise PermissionError(13, "file is being used by another process")
+                return real_replace(source, destination)
+
+            with patch("zet.services.atomic_file_service.os.replace", side_effect=transient_directory_lock):
+                answer_path = queue.write_answer_image(queue.get_task("Ask_Test"), png_bytes(), "image/png")
+
+            self.assertEqual(2, directory_attempts)
+            self.assertTrue((answer_path / "image.png").is_file())
 
     def test_manual_submission_validates_and_persists_refinement_telemetry(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

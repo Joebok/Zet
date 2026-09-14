@@ -804,7 +804,7 @@ class ZetApp:
         )
 
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
-        """Copy reusable visual setup from another scene in the same story."""
+        """Copy another scene's complete editable structure into this scene."""
         return self._indexed_write(
             lambda: self.story_service.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
         )

@@ -244,14 +244,21 @@ class SceneImageReviewService:
                 raise ValueError("Expected an object")
         except (OSError, ValueError) as exc:
             raise SceneImageReviewError("Candidate provenance is missing or invalid; candidate was preserved.") from exc
-        renderer = getattr(self.story_service, "story_render_service", None)
-        if renderer is not None:
-            current_hash = renderer._compile(safe_story, safe_scene, target_id)[-1]
-            if metadata.get("render_input_hash") != current_hash:
-                raise SceneImageReviewError("Candidate is out of date. Render the current scene before promoting.")
         digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
         if metadata.get("image_sha256") and metadata["image_sha256"] != digest:
             raise SceneImageReviewError("Candidate image and provenance do not match. Retry harvesting its answer before promotion.")
+        renderer = getattr(self.story_service, "story_render_service", None)
+        if renderer is not None:
+            current_hash = renderer._compile(
+                safe_story,
+                safe_scene,
+                target_id,
+                allow_stale_dependencies=True,
+                accept_stale_dependencies=True,
+            )[-1]
+            # Promotion explicitly accepts the candidate and its locked dependency
+            # tree as representing the scene's current editable state.
+            metadata["render_input_hash"] = current_hash
         if locked.is_file() and journal.get("image_sha256") != digest:
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup = paths["backups"] / f"{safe_scene}_{target_id}_{stamp}.png"

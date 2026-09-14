@@ -14,7 +14,7 @@ from zet.repositories.asset_repository import AssetRepository, AssetRepositoryEr
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
 from zet.services.path_service import PathService
-from zet.services.atomic_file_service import write_json_atomic
+from zet.services.atomic_file_service import replace_with_retry, write_json_atomic
 from zet.services.workflow_storage import file_lock, task_state_path, validate_image
 from zet.services.summary_cache import invalidate_summary_cache
 
@@ -249,7 +249,7 @@ class RenderConsoleQueue:
             if manifest.get("render_comment"):
                 (staging / "Render_Review_Comment.md").write_text(manifest["render_comment"] + "\n", encoding="utf-8")
             write_json_atomic(staging / "answer_manifest.json", manifest)
-            staging.rename(answer_path)
+            replace_with_retry(staging, answer_path)
             write_json_atomic(task.ask_path / "submission.json", {"answer_path": str(answer_path)})
             invalidate_summary_cache()
             return answer_path

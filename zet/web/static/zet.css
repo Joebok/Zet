@@ -2480,7 +2480,7 @@ tr.auxiliary-row td:last-child {
 .render-console-layout {
   display: grid;
   gap: 12px;
-  grid-template-columns: 260px minmax(0, 1fr) minmax(380px, 440px);
+  grid-template-columns: 360px minmax(0, 1fr) minmax(480px, 540px);
 }
 
 .local-image-review-layout {
@@ -2491,6 +2491,22 @@ tr.auxiliary-row td:last-child {
 
 .asset-task-table {
   table-layout: fixed;
+}
+
+.asset-task-table td {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.asset-task-label,
+.asset-task-subtext {
+  display: block;
+}
+
+.asset-task-subtext {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
 }
 
 .asset-task-sidebar {

@@ -1278,7 +1278,7 @@ class StoryService:
         return self.save_scene_builder_data(story_slug, scene_slug, data)
 
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
-        """Copy the reusable visual setup from another scene in the same story."""
+        """Create an independent structural copy of another scene in the same story."""
         safe_story_slug = self.safe_slug(story_slug)
         safe_scene_slug = self.safe_slug(scene_slug)
         safe_source_scene_slug = self.safe_slug(source_scene_slug)
@@ -1290,15 +1290,21 @@ class StoryService:
         target = self.load_scene_builder_data(safe_story_slug, safe_scene_slug)
         if target.blocked:
             raise StoryServiceError(target.error or "Current Scene Builder JSON is blocked.")
-        data = copy.deepcopy(target.data)
-        data.setdefault("setup", {})["canvas"] = copy.deepcopy(source.data.get("setup", {}).get("canvas", {}))
-        data["setup"]["composition"] = copy.deepcopy(source.data.get("setup", {}).get("composition", {}))
-        data["setup"]["environment"] = copy.deepcopy(source.data.get("setup", {}).get("environment", {}))
-        data["scene_elements"] = copy.deepcopy(source.data.get("scene_elements", []))
-        for element in data["scene_elements"]:
-            if isinstance(element, dict):
-                element["subscene_id"] = ""
-        data["placements"] = copy.deepcopy(source.data.get("placements", []))
+        data = copy.deepcopy(source.data)
+
+        # Continue From is a one-time clone of the editable scene structure. Keep
+        # only the destination's identity and lifecycle state so the saved copy
+        # belongs to the new scene and evolves independently from its source.
+        source_scene = data.setdefault("scene", {})
+        target_scene = target.data.get("scene", {})
+        for key in ("id", "name", "slug", "story_settings_path", "associated_png_path"):
+            if key in target_scene:
+                source_scene[key] = copy.deepcopy(target_scene[key])
+            else:
+                source_scene.pop(key, None)
+        data["metadata"] = copy.deepcopy(target.data.get("metadata", {}))
+        data["_revision"] = target.data.get("_revision", 0)
+        data.pop("_validation_warnings", None)
         return self.save_scene_builder_data(safe_story_slug, safe_scene_slug, data)
 
     def generate_scene_builder_outputs(self, story_slug: str, scene_slug: str, data: dict) -> dict:

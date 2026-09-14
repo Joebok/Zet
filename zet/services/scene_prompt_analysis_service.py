@@ -181,6 +181,7 @@ class ScenePromptAnalysisService:
                 if status["pending"] or status["complete"]:
                     rows.append({
                         "story_slug": story.slug,
+                        "story_title": story.title,
                         "scene_slug": scene.slug,
                         "title": scene.title,
                         **status,

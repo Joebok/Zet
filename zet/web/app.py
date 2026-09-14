@@ -436,6 +436,51 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     }
 
 
+def _render_console_task_payload(zet_app: ZetApp, task) -> dict[str, Any]:
+    """Add canonical story/scene names to a queued render task."""
+    payload = task.to_dict()
+    story_slug = str(task.manifest.get("story_slug") or "")
+    scene_slug = str(task.manifest.get("scene_slug") or "")
+    if not story_slug or not scene_slug:
+        return payload
+
+    story_title = story_slug
+    scene_title = scene_slug
+    render_target_id = str(task.manifest.get("render_target_id") or "main")
+    render_target_label = "Background" if render_target_id == "background" else ""
+    try:
+        story = next((item for item in zet_app.list_stories() if item.slug == story_slug), None)
+        if story is not None:
+            story_title = story.title
+        scene = next((item for item in zet_app.list_scenes(story_slug) if item.slug == scene_slug), None)
+        if scene is not None:
+            scene_title = scene.title
+        if render_target_id != "main":
+            builder = zet_app.load_scene_builder(story_slug, scene_slug)
+            definition = next(
+                (item for item in builder.data.get("subscenes", []) if str(item.get("id") or "") == render_target_id),
+                None,
+            )
+            render_target_label = str((definition or {}).get("name") or render_target_id)
+    except Exception:
+        # Queue inspection must remain available even when a referenced scene is
+        # incomplete or was removed after the task was staged.
+        pass
+
+    payload.update({
+        "story_title": story_title,
+        "scene_title": scene_title,
+        "render_target_label": render_target_label,
+        "display_label": f"{story_title} / {scene_title}",
+        "display_subtext": (
+            f"Background subscene: {render_target_label}"
+            if render_target_id == "background"
+            else (f"Subscene: {render_target_label}" if render_target_id != "main" else "")
+        ),
+    })
+    return payload
+
+
 def _render_console_detail_payload(zet_app: ZetApp, queue: RenderConsoleQueue, task) -> dict[str, Any]:
     """Return render-task prompt review data for assets and story scenes."""
     prompt = queue.read_prompt(task)
@@ -468,7 +513,7 @@ def _render_console_detail_payload(zet_app: ZetApp, queue: RenderConsoleQueue, t
         except Exception:
             pass
     return {
-        "task": task.to_dict(),
+        "task": _render_console_task_payload(zet_app, task),
         "manifest": _jsonable(manifest),
         "reference_files": _jsonable(_render_console_reference_files(zet_app, task)),
         "prompt_path": str(task.ask_path / task.prompt_file),
@@ -1372,7 +1417,7 @@ def create_app(
 
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/continue-from")
     def scene_builder_continue_from(story_slug: str, scene_slug: str, source_scene_slug: str = Query(...)) -> dict[str, Any]:
-        """Copy reusable visual setup from another scene in the same story."""
+        """Copy another scene's complete editable structure into this scene."""
         zet_app = _app(app.state.config_path)
         try:
             document = zet_app.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
@@ -3194,12 +3239,13 @@ def create_app(
         scene_slug: str = Query(""),
     ) -> dict[str, Any]:
         """List manual render tasks for the selected workspace context."""
+        zet_app = _app(app.state.config_path)
         queue = _render_console_queue(app.state.config_path)
         service = ManualRenderSubmissionService(queue)
         try:
             return {
                 "tasks": [
-                    task.to_dict()
+                    _render_console_task_payload(zet_app, task)
                     for task in service.list_tasks(character, phase, story_slug, scene_slug)
                 ]
             }

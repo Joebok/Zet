@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime
 import hashlib
 import json
 import re
@@ -160,6 +161,27 @@ class SceneRenderTargetService:
         else:
             reason = ""
         return {"locked_exists": locked_exists, "locked_current": locked_exists and not reason, "stale_reason": reason}
+
+    def accept_locked_current(self, story_slug: str, scene_slug: str, target_id: str, current_hash: str) -> None:
+        """Accept an existing locked image against the target's current render inputs."""
+        paths = self.review_paths(story_slug, scene_slug, target_id)
+        if not paths["locked"].is_file():
+            raise self.error_type(f"{self.target_label({}, target_id)} has no locked image to accept.")
+        metadata: dict = {}
+        if paths["metadata"].is_file():
+            try:
+                loaded = json.loads(paths["metadata"].read_text(encoding="utf-8"))
+                metadata = loaded if isinstance(loaded, dict) else {}
+            except (OSError, json.JSONDecodeError):
+                metadata = {}
+        metadata.update({
+            "story_slug": story_slug,
+            "scene_slug": scene_slug,
+            "render_target_id": target_id,
+            "render_input_hash": current_hash,
+            "locked_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        self.story._write_json(paths["metadata"], metadata)
 
     def target_graph(self, data: dict) -> dict:
         definitions: dict[str, dict] = {}

@@ -644,6 +644,86 @@ ink wash
             self.assertTrue(any("gaze target references missing element missing" in warning for warning in validation["warnings"]))
             self.assertIn("No Story Beat specified.", validation["warnings"])
 
+    def test_continue_from_clones_complete_structure_but_keeps_target_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            for slug in ("Source", "Target"):
+                (story_dir / f"{slug}.md").write_text(f"Scene: `[{slug}]`\n", encoding="utf-8")
+
+            service = self._service(root)
+            service.save_story_settings(
+                story_dir / "Demo.story.json",
+                service.create_default_story_settings(story_dir / "Demo.md"),
+            )
+
+            source = service.create_default_scene_builder_data("Demo", "Source")
+            source["scene"]["story_beat"] = "The party enters the rift."
+            source["setup"]["environment"] = {
+                "location": "a violet rift",
+                "lighting": "arcane flashes",
+                "mood": "dangerous",
+                "weather_or_atmosphere": "sparks in the air",
+                "general_background_notes": "A ruined city beyond the portal.",
+                "general_foreground_notes": "Cracked flagstones.",
+            }
+            source["scene_elements"] = [{
+                "id": "ruins",
+                "display_name": "Ruins",
+                "element_type": "Backdrop",
+                "subscene_id": "background",
+            }]
+            source["subscenes"] = [{
+                "id": "background",
+                "name": "Rift Background",
+                "kind": "background",
+                "enabled": True,
+                "assembly_role": "backdrop",
+                "prompt_overrides": {"location": "inside the rift"},
+            }]
+            source["placements"] = [{
+                "id": "placement_001",
+                "scene_element_id": "ruins",
+                "position_within_cell": "center",
+                "depth": "background",
+            }]
+            source["interactions"] = [{"subject": "ruins", "action": "surround", "object": "party"}]
+            source["custom_interactions"] = "Purple lightning crosses the portal."
+            source["dialogue"] = [{"speaker": "Guide", "text": "Stay close."}]
+            source["final_image_prompt_overrides"]["avoid"] = "Avoid a mundane sky."
+            source["builder_extension"] = {"background_config": {"strength": 0.75}}
+            source["metadata"]["source_only"] = True
+            service.save_scene_builder_data("Demo", "Source", source)
+
+            target = service.create_default_scene_builder_data("Demo", "Target")
+            target["metadata"]["target_only"] = True
+            service.save_scene_builder_data("Demo", "Target", target)
+
+            continued = service.continue_scene_builder_from("Demo", "Target", "Source")
+
+            self.assertEqual("Target", continued.data["scene"]["name"])
+            self.assertEqual("Target", continued.data["scene"]["slug"])
+            self.assertIn("Target.png", continued.data["scene"]["associated_png_path"])
+            self.assertEqual("The party enters the rift.", continued.data["scene"]["story_beat"])
+            self.assertEqual(source["setup"], continued.data["setup"])
+            self.assertEqual("background", continued.data["scene_elements"][0]["subscene_id"])
+            self.assertEqual("Rift Background", continued.data["subscenes"][0]["name"])
+            self.assertEqual(source["interactions"], continued.data["interactions"])
+            self.assertEqual(source["custom_interactions"], continued.data["custom_interactions"])
+            self.assertEqual(source["dialogue"], continued.data["dialogue"])
+            self.assertEqual("Avoid a mundane sky.", continued.data["final_image_prompt_overrides"]["avoid"])
+            self.assertEqual(source["builder_extension"], continued.data["builder_extension"])
+            self.assertTrue(continued.data["metadata"]["target_only"])
+            self.assertNotIn("source_only", continued.data["metadata"])
+
+            changed_target = copy.deepcopy(continued.data)
+            changed_target["setup"]["environment"]["location"] = "an edited destination"
+            service.save_scene_builder_data("Demo", "Target", changed_target)
+            reloaded_source = service.load_scene_builder_data("Demo", "Source")
+            self.assertEqual("a violet rift", reloaded_source.data["setup"]["environment"]["location"])
+
     def test_story_and_scene_orders_are_persisted_independently_of_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -722,6 +802,15 @@ ink wash
                 "Demo", "Opening", allow_stale_dependencies=True
             )
             self.assertEqual("main", stale_override_task.render_target_id)
+            refreshed_metadata = json.loads(target_paths["metadata"].read_text(encoding="utf-8"))
+            refreshed_hash = service.story_render_service._compile("Demo", "Opening", "background")[-1]
+            self.assertEqual(refreshed_hash, refreshed_metadata["render_input_hash"])
+            self.assertTrue(
+                service.scene_render_target_service.freshness(
+                    "Demo", "Opening", "background", refreshed_hash
+                )["locked_current"]
+            )
+            service.stage_scene_render("Demo", "Opening")
 
             service.disable_scene_subscene("Demo", "Opening", "background")
             disabled_main = service.stage_scene_render("Demo", "Opening")

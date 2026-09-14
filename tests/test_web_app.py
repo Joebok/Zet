@@ -321,6 +321,54 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(1, metrics.json()["classified_count"])
             self.assertEqual(1, metrics.json()["refined_count"])
 
+    def test_render_console_uses_renamed_scene_and_subscene_labels(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f'[BaseFolders]\nBaseLibraryPath = "{root.as_posix()}"\n',
+                ),
+                encoding="utf-8",
+            )
+            story_dir = root / "Stories" / "Arcane-Tales"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Arcane-Tales.md").write_text("Title: `[Arcane Tales]`\n", encoding="utf-8")
+            (story_dir / "Into-the-Celestial-Sphere.md").write_text(
+                "Scene: `[Wild Magic Surge]`\n", encoding="utf-8"
+            )
+            (story_dir / "Into-the-Celestial-Sphere.scene.json").write_text(json.dumps({
+                "schema_version": 4,
+                "file_kind": "scene",
+                "scene": {"name": "Wild Magic Surge", "slug": "Into-the-Celestial-Sphere"},
+                "subscenes": [{"id": "background", "name": "Celestial Backdrop", "enabled": True}],
+            }), encoding="utf-8")
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Story_Background"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text(json.dumps({
+                "version": 1,
+                "ask_id": "Ask_Story_Background",
+                "asset_id": None,
+                "worker_type": "manual_chatgpt_render",
+                "prompt_file": "Final_Image_Prompt.md",
+                "expected_output": "background.png",
+                "story_slug": "Arcane-Tales",
+                "scene_slug": "Into-the-Celestial-Sphere",
+                "render_target_id": "background",
+            }), encoding="utf-8")
+            (ask_path / "Final_Image_Prompt.md").write_text("scene prompt\n", encoding="utf-8")
+
+            client = TestClient(create_app(config_path))
+            response = client.get("/api/render-console/tasks")
+
+            self.assertEqual(200, response.status_code, response.text)
+            task = response.json()["tasks"][0]
+            self.assertEqual("Arcane Tales / Wild Magic Surge", task["display_label"])
+            self.assertEqual("Background subscene: Celestial Backdrop", task["display_subtext"])
+            detail = client.get("/api/render-console/tasks/Ask_Story_Background").json()
+            self.assertEqual("Wild Magic Surge", detail["task"]["scene_title"])
+
     def test_story_management_api_renames_reorders_and_moves(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

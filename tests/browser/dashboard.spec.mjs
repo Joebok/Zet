@@ -169,16 +169,16 @@ test("WP03 direct scene entry uses ordered selection and browser history", async
   await page.goto(`/?page=scene-builder&story_slug=Alpha-Story&scene_slug=${firstScene}`);
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
-  await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${firstScene}`);
+  await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha Story / ${scenes[0].title}`);
   await expect(page.locator("#scene-builder-previous")).toBeDisabled();
   await expect(page.locator("#scene-builder-next")).toBeEnabled();
 
   for (let index = 1; index < scenes.length; index += 1) {
     await page.locator("#scene-builder-next").click();
-    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${scenes[index].slug}`);
+    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha Story / ${scenes[index].title}`);
     await expect.poll(() => page.evaluate(() => state.loadedBuilderContext.sceneSlug)).toBe(scenes[index].slug);
   }
-  await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${lastScene}`);
+  await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha Story / ${scenes.at(-1).title}`);
   await expect(page.locator("#scene-builder-next")).toBeDisabled();
   await expect(page.locator("#scene-builder-previous")).toBeEnabled();
 
@@ -186,12 +186,12 @@ test("WP03 direct scene entry uses ordered selection and browser history", async
   for (let index = scenes.length - 2; index >= 0; index -= 1) {
     await page.evaluate(() => window.history.back());
     await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
-    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${scenes[index].slug}`);
+    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha Story / ${scenes[index].title}`);
     await expect.poll(() => page.evaluate(() => state.loadedBuilderContext.sceneSlug)).toBe(scenes[index].slug);
   }
   for (let index = 1; index < scenes.length; index += 1) {
     await page.evaluate(() => window.history.forward());
-    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha-Story / ${scenes[index].slug}`);
+    await expect(page.locator("#scene-builder-status")).toHaveText(`Alpha Story / ${scenes[index].title}`);
     await expect.poll(() => page.evaluate(() => state.loadedBuilderContext.sceneSlug)).toBe(scenes[index].slug);
   }
 });
@@ -273,14 +273,14 @@ test("WP03 a late Scene Builder response cannot replace the requested builder", 
     skipGuard: true,
     destination: "scene-builder",
   }));
-  await expect(page.locator("#scene-builder-status")).toHaveText("Alpha-Story / Closing-Scene");
+  await expect(page.locator("#scene-builder-status")).toHaveText("Alpha Story / Closing Scene");
   expect(await page.evaluate(() => state.loadedBuilderContext)).toEqual({
     storySlug: "Alpha-Story",
     sceneSlug: "Closing-Scene",
   });
   delayed.release();
   await first;
-  await expect(page.locator("#scene-builder-status")).toHaveText("Alpha-Story / Closing-Scene");
+  await expect(page.locator("#scene-builder-status")).toHaveText("Alpha Story / Closing Scene");
   await expect(page.locator("[data-builder-action='render']").first()).toBeEnabled();
 });
 
@@ -1048,8 +1048,8 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   await enabled;
   await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
   await expect(page.locator(".scene-builder-active-target")).toHaveText("Editing Subscene: Background");
-  await expect(page.locator(".scene-builder-subscene-element-summary")).toContainText("Hall");
-  await expect(page.locator(".scene-builder-subscene-element-summary")).not.toContainText("Hero");
+  await expect(page.locator(".scene-builder-element-list")).toContainText("Hall");
+  await expect(page.locator(".scene-builder-element-list")).not.toContainText("Hero");
 
   const stagedForConsole = page.waitForResponse((response) => response.url().includes("/render-targets/background/stage-render") && response.ok());
   await page.locator(".scene-builder-render").first().click();
@@ -1072,6 +1072,14 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   await expect(page.locator("#scene-builder-open")).toBeEnabled();
   await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
 
+  await page.getByRole("button", { name: "Add Element" }).click();
+  await page.locator("#builder-element-resource-type").selectOption("Scene-Only");
+  await page.locator("#builder-element-scene-name").fill("Background Statue");
+  await page.locator("#builder-element-add").click();
+  await expect(page.locator(".scene-builder-element-list")).toContainText("Background Statue");
+  await expect(page.locator("[data-builder-element-field='subscene_id']")).toHaveValue("background");
+  expect(await page.evaluate(() => state.sceneBuilder.scene_elements.find((item) => item.display_name === "Background Statue")?.subscene_id)).toBe("background");
+
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect.poll(() => page.locator(".scene-builder-sticky-context").evaluate((element) => Math.round(element.getBoundingClientRect().top))).toBe(0);
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -1088,6 +1096,9 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT" && response.ok());
   await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
   await fullSceneSaved;
+  const persistedAfterAdd = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const persistedAddedElement = (await persistedAfterAdd.json()).document.data.scene_elements.find((item) => item.display_name === "Background Statue");
+  expect(persistedAddedElement?.subscene_id).toBe("background");
 
   await expect(page.locator(".scene-builder-render").first()).toBeDisabled();
   const disabled = page.waitForResponse((response) => response.url().endsWith("/subscenes/background/disable") && response.ok());
@@ -1171,6 +1182,15 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   expect(persistedData.scene.story_beat).toBe("Persisted story beat");
   expect(persistedData.subscenes.find((item) => item.id === "background").prompt_overrides.focal_point).toBe("Distant ruined tower");
 
+  await page.getByRole("button", { name: "Full Scene", exact: true }).click();
+  const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT");
+  await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
+  expect((await fullSceneSaved).ok()).toBe(true);
+  const persistedFullScene = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  expect((await persistedFullScene.json()).document.data.scene.story_beat).toBe("Unsaved full-scene beat");
+
+  await page.getByRole("button", { name: "Background", exact: true }).click();
+
   await focalPoint.fill("Wrong target edit");
   await page.getByRole("button", { name: "Cancel Subscene Edits", exact: true }).click();
   await expect(focalPoint).toHaveValue("Distant ruined tower");
@@ -1194,7 +1214,10 @@ test("@desktop-smoke imported candidate context and prompt analysis use side pan
     state.sceneBuilderReadiness = { status: "needs_attention", blockers: ["Resolve the missing guide"] };
     renderSceneBuilder();
   });
-  await expect(page.locator(".scene-builder-sticky-context .status-badge")).toHaveText("Needs attention");
+  const attentionBadge = page.locator(".scene-builder-sticky-context .status-badge");
+  await expect(attentionBadge).toHaveText("Needs attention");
+  await expect(attentionBadge).toHaveAttribute("title", "Resolve the missing guide");
+  await expect(attentionBadge).toHaveAttribute("aria-label", "Needs attention: Resolve the missing guide");
   await expect(page.locator("#scene-builder-panel > .scene-builder-card").filter({ hasText: "Imported candidate" })).toHaveCount(0);
   await page.getByRole("button", { name: "Imported candidate details" }).click();
   await expect(page.locator("#scene-builder-context-dialog")).toBeVisible();
@@ -1207,6 +1230,47 @@ test("@desktop-smoke imported candidate context and prompt analysis use side pan
   await expect(page.locator("#prompt-analysis-dialog")).toBeVisible();
   await expect(page.locator("#prompt-analysis-frame")).toHaveAttribute("src", /render_target_id=background/);
   expect(await page.locator("#prompt-analysis-dialog").evaluate((element) => Math.abs(element.getBoundingClientRect().right - window.innerWidth) <= 20)).toBe(true);
+});
+
+test("running prompt analysis harvests and opens without changing the selected prompt", async ({ page }) => {
+  await openPage(page, "prompt-review");
+  await expect(page.locator("#prompt-review-title")).not.toHaveText("Select a prompt");
+  await page.evaluate(() => {
+    state.promptReviewDetail.manifest.story_slug = "Alpha-Story";
+    state.promptReviewDetail.manifest.scene_slug = "Opening-Scene";
+    state.promptReviewDetail.manifest.render_target_id = "main";
+    state.promptReviewDetail.prompt_analysis = {
+      pending: true,
+      complete: false,
+      result_path: "AI_Prompt_Analysis.md",
+    };
+    renderPromptReview(state.promptReviewDetail);
+  });
+
+  const analysisButton = page.locator("#analyze-prompt");
+  await expect(analysisButton).toHaveText("Analysis running");
+  await expect(analysisButton).toBeEnabled();
+  await page.route(/\/prompt-analysis\/harvest\?render_target_id=/, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      pending: false,
+      complete: true,
+      result_path: "AI_Prompt_Analysis.md",
+      render_target_id: "main",
+    }),
+  }));
+
+  let queuedAgain = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && /\/prompt-analysis\?render_target_id=/.test(request.url())) queuedAgain += 1;
+  });
+  const harvested = page.waitForRequest((request) => request.url().includes("/prompt-analysis/harvest?") && request.method() === "POST");
+  await analysisButton.click();
+  await harvested;
+  await expect(page.locator("#prompt-analysis-dialog")).toBeVisible();
+  await expect(page.locator("#prompt-review-message")).toHaveText("Prompt analysis is ready.");
+  await expect(page.locator("#analyze-prompt")).toHaveText("Run analysis again");
+  expect(queuedAgain).toBe(0);
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

@@ -1204,7 +1204,16 @@ function formatLocalTimestamp(value) {
 
 function appendAssetSelectionCell(row, task) {
   const cell = document.createElement("td");
-  cell.textContent = task.display_label || (task.asset_id != null ? `Asset ${task.asset_id}` : task.ask_id);
+  const label = document.createElement("span");
+  label.className = "asset-task-label";
+  label.textContent = task.display_label || (task.asset_id != null ? `Asset ${task.asset_id}` : task.ask_id);
+  cell.append(label);
+  if (task.display_subtext) {
+    const subtext = document.createElement("small");
+    subtext.className = "asset-task-subtext";
+    subtext.textContent = task.display_subtext;
+    cell.append(subtext);
+  }
   cell.title = task.ask_id || "";
   row.append(cell);
 }
@@ -5403,6 +5412,19 @@ function updateSceneBuilderNavigation() {
   sceneBuilderNext.disabled = index < 0 || index >= state.scenes.length - 1;
 }
 
+function sceneBuilderNavigationLabel(document = null) {
+  const storySlug = state.selectedStorySlug || "";
+  const sceneSlug = state.selectedSceneSlug || "";
+  const storyTitle = document?.story?.title
+    || state.stories.find((story) => story.slug === storySlug)?.title
+    || storySlug;
+  const sceneTitle = document?.scene?.title
+    || canonicalSceneCollection(storySlug).find((scene) => scene.slug === sceneSlug)?.title
+    || state.sceneBuilder?.scene?.name
+    || sceneSlug;
+  return [storyTitle, sceneTitle].filter(Boolean).join(" / ");
+}
+
 async function navigateSceneBuilder(offset) {
   if (!state.selectedStorySlug || !state.selectedSceneSlug) return;
   const scenes = canonicalSceneCollection(state.selectedStorySlug);
@@ -6346,9 +6368,11 @@ function updateBuilderAnalysisActions() {
 
 function builderRenderImportStatus() {
   if (!state.sceneBuilder?.source_provenance) return "";
-  const needsAttention = Boolean((state.sceneBuilderReadiness?.blockers || []).length);
+  const blockers = state.sceneBuilderReadiness?.blockers || [];
+  const needsAttention = Boolean(blockers.length);
+  const attentionReason = blockers.join("\n");
   return `<span class="scene-builder-import-status">
-    ${needsAttention ? '<span class="status-badge needs-attention">Needs attention</span>' : ""}
+    ${needsAttention ? `<span class="status-badge needs-attention" title="${escapeHtml(attentionReason)}" aria-label="Needs attention: ${escapeHtml(blockers.join("; "))}">Needs attention</span>` : ""}
     <button type="button" data-builder-action="candidate-details">Imported candidate details</button>
   </span>`;
 }
@@ -6931,7 +6955,7 @@ function renderSceneBuilder() {
       </section>
       ${builderPhoneSectionToggle("elements", "Elements")}
       <section id="builder-panel-elements" class="scene-builder-section scene-builder-elements" data-builder-section-panel="elements" aria-label="Element workspace">
-        ${activeSubscene ? builderRenderSubsceneElementsSummary() : `${builderRenderElements()}${builderRenderElementWorkspace()}`}
+        ${builderRenderElements()}${builderRenderElementWorkspace()}
       </section>
       ${builderPhoneSectionToggle("dialogue", "Dialogue")}
       <section id="builder-panel-dialogue" class="scene-builder-section scene-builder-relationships" data-builder-section-panel="dialogue" aria-label="Dialogue and relationships">
@@ -7001,7 +7025,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     && state.requestedSceneContext.storySlug === storySlug
     && state.requestedSceneContext.sceneSlug === sceneSlug;
   sceneBuilderOpen.disabled = true;
-  sceneBuilderStatus.textContent = `${storySlug} / ${sceneSlug}`;
+  sceneBuilderStatus.textContent = sceneBuilderNavigationLabel();
   updateSceneBuilderNavigation();
   showSceneBuilderMessage("Loading Scene Builder...");
   try {
@@ -7020,6 +7044,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
       storySlug: document.story?.slug || storySlug,
       sceneSlug: document.scene?.slug || sceneSlug,
     };
+    sceneBuilderStatus.textContent = sceneBuilderNavigationLabel(document);
     if (!state.sceneDetail || !sceneDocumentMatches()) {
       state.loadedSceneContext = { ...loadedBuilderContext };
     }
@@ -7083,10 +7108,15 @@ async function saveSceneBuilder() {
       body: JSON.stringify(activeSubscene || state.sceneBuilder),
     });
     if (activeSubscene) {
-      const persistedSubscene = builderSubsceneFromData(payload.document?.data, targetId);
+      const persistedData = payload.document?.data;
+      const persistedSubscene = builderSubsceneFromData(persistedData, targetId);
       replaceBuilderSubscene(state.sceneBuilder, targetId, persistedSubscene);
       const baseline = savedSceneBuilderData();
       replaceBuilderSubscene(baseline, targetId, persistedSubscene);
+      if (persistedData && Object.hasOwn(persistedData, "_revision")) {
+        state.sceneBuilder._revision = persistedData._revision;
+        baseline._revision = persistedData._revision;
+      }
       state.savedBaselines.sceneBuilder = JSON.stringify(baseline);
     } else {
       state.sceneBuilder = payload.document?.data || state.sceneBuilder;
@@ -7303,7 +7333,12 @@ async function viewScenePromptAnalysis() {
   try {
     state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/harvest?render_target_id=${encodeURIComponent(targetId)}`, { method: "POST" });
     renderSceneBuilder();
-    showSceneBuilderMessage(state.scenePromptAnalysis.message || "AI answers harvested.", "success");
+    if (state.scenePromptAnalysis.complete && state.scenePromptAnalysis.result_path) {
+      showSceneBuilderMessage("Prompt analysis is ready.", "success");
+      openPromptAnalysisDialog(state.selectedStorySlug, state.selectedSceneSlug, targetId);
+    } else {
+      showSceneBuilderMessage(state.scenePromptAnalysis.error || "Analysis is still running. Check again after the AI worker finishes.", state.scenePromptAnalysis.error ? "error" : "info");
+    }
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   }
@@ -8467,12 +8502,17 @@ function renderPromptAnalysisTaskList() {
     const row = document.createElement("div");
     row.className = "production-task-item";
     const label = document.createElement("span");
-    label.textContent = `${task.story_slug} / ${task.title || task.scene_slug}`;
+    label.textContent = `${task.story_title || task.story_slug} / ${task.title || task.scene_slug}`;
     const action = document.createElement("button");
     action.type = "button";
     action.textContent = task.pending ? "Analysis running" : "View analysis";
-    action.disabled = Boolean(task.pending);
-    action.addEventListener("click", () => openPromptAnalysisDialog(task.story_slug, task.scene_slug, task.render_target_id || "main"));
+    action.addEventListener("click", () => {
+      if (task.pending) {
+        void harvestPromptAnalysis(task.story_slug, task.scene_slug, task.render_target_id || "main");
+      } else {
+        openPromptAnalysisDialog(task.story_slug, task.scene_slug, task.render_target_id || "main");
+      }
+    });
     row.append(label, action);
     promptAnalysisTaskList.append(row);
   }
@@ -8524,7 +8564,7 @@ function renderPromptReview(detail) {
   state.promptReviewDetail = detail;
   const task = detail.task;
   const storyLabel = detail.manifest?.story_slug && detail.manifest?.scene_slug
-    ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
+    ? `Story ${task.story_title || detail.manifest.story_slug} / ${task.scene_title || detail.manifest.scene_slug}`
     : "";
   promptReviewTitle.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
   const fullPromptPath = detail.prompt_path || "";
@@ -8535,7 +8575,7 @@ function renderPromptReview(detail) {
   promptReviewSceneBuilder.hidden = !storyLabel;
   promptReviewSceneBuilder.disabled = !storyLabel;
   promptReviewRenderConsole.disabled = !task.ask_id;
-  analyzePromptButton.disabled = !storyLabel || Boolean(detail.prompt_analysis?.pending);
+  analyzePromptButton.disabled = !storyLabel;
   analyzePromptButton.textContent = detail.prompt_analysis?.complete ? "Run analysis again" : (detail.prompt_analysis?.pending ? "Analysis running" : "Run analysis");
   viewPromptAnalysisButton.hidden = Boolean(detail.prompt_analysis?.pending && !detail.prompt_analysis?.complete);
   viewPromptAnalysisButton.disabled = !storyLabel || !detail.prompt_analysis?.complete;
@@ -8559,6 +8599,10 @@ function selectedPromptReviewScene() {
 async function analyzePromptReview() {
   const scene = selectedPromptReviewScene();
   if (!scene) return;
+  if (state.promptReviewDetail?.prompt_analysis?.pending) {
+    await harvestPromptAnalysis(scene.storySlug, scene.sceneSlug, scene.renderTargetId);
+    return;
+  }
   analyzePromptButton.disabled = true;
   showPromptMessage("Queuing prompt analysis...");
   try {
@@ -8569,7 +8613,33 @@ async function analyzePromptReview() {
   } catch (error) {
     showPromptMessage(error.message, "error");
   } finally {
-    analyzePromptButton.disabled = false;
+    if (state.promptReviewDetail) renderPromptReview(state.promptReviewDetail);
+  }
+}
+
+async function harvestPromptAnalysis(storySlug, sceneSlug, renderTargetId = "main") {
+  analyzePromptButton.disabled = true;
+  showPromptMessage("Checking for a completed prompt analysis...");
+  try {
+    const analysis = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/harvest?render_target_id=${encodeURIComponent(renderTargetId)}`, { method: "POST" });
+    const selected = selectedPromptReviewScene();
+    if (selected && selected.storySlug === storySlug && selected.sceneSlug === sceneSlug && selected.renderTargetId === renderTargetId) {
+      state.promptReviewDetail.prompt_analysis = analysis;
+      renderPromptReview(state.promptReviewDetail);
+    }
+    await loadPromptAnalysisTasks();
+    if (analysis.complete && analysis.result_path) {
+      showPromptMessage("Prompt analysis is ready.", "success");
+      openPromptAnalysisDialog(storySlug, sceneSlug, renderTargetId);
+    } else {
+      showPromptMessage(analysis.error || "Analysis is still running. Check again after the AI worker finishes.", analysis.error ? "error" : "info");
+    }
+    return analysis;
+  } catch (error) {
+    showPromptMessage(error.message, "error");
+    return null;
+  } finally {
+    if (state.promptReviewDetail) renderPromptReview(state.promptReviewDetail);
   }
 }
 
@@ -8935,7 +9005,7 @@ function renderRenderReviewTaskTable() {
     row.dataset.reviewKey = task.review_key;
     row.classList.toggle("selected", task.review_key === state.selectedRenderReviewKey);
     const isScene = task.review_kind === "scene";
-    const label = isScene ? `${task.story_slug}/${task.scene_slug}${task.render_target_id && task.render_target_id !== "main" ? ` / ${task.render_target_label || task.render_target_id}` : ""}` : task.asset_id;
+    const label = isScene ? `${task.title || task.scene_slug}${task.render_target_id && task.render_target_id !== "main" ? ` / ${task.render_target_label || task.render_target_id}` : ""}` : task.asset_id;
     const cell = document.createElement("td");
     const title = document.createElement("span");
     title.className = "review-task-title";
@@ -9109,7 +9179,7 @@ async function runRenderReviewAction(action) {
   if (!task) return;
   const resolvedAction = task.review_kind === "scene" ? "discard-candidate" : action;
   const itemLabel = task.review_kind === "scene"
-    ? `${task.story_slug} / ${task.scene_slug}`
+    ? `${task.title || task.scene_slug}`
     : `Asset ${task.asset_id}`;
   const labels = {
     "discard-candidate": ["Discard candidate", `Discard the candidate image for ${itemLabel}?`, "Discard Candidate"],
@@ -10339,7 +10409,7 @@ function renderRenderConsoleDetail(detail) {
   clearRenderConsoleImageSelection();
   const task = detail.task;
   const storyLabel = detail.manifest?.story_slug && detail.manifest?.scene_slug
-    ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
+    ? `Story ${task.story_title || detail.manifest.story_slug} / ${task.scene_title || detail.manifest.scene_slug}`
     : "";
   renderConsoleTitle.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
   consoleAskId.textContent = task.ask_id;
@@ -10619,7 +10689,7 @@ function renderLocalImageReviewDetail(detail) {
   state.localImageReviewDetail = detail;
   const task = detail.task;
   const storyLabel = detail.manifest?.story_slug && detail.manifest?.scene_slug
-    ? `Story ${detail.manifest.story_slug} / ${detail.manifest.scene_slug}`
+    ? `Story ${task.story_title || detail.manifest.story_slug} / ${task.scene_title || detail.manifest.scene_slug}`
     : "";
   localImageReviewTitle.textContent =
     storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
