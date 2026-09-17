@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -116,3 +117,44 @@ def test_scene_prompt_analysis_does_not_complete_for_empty_result(tmp_path: Path
     result.touch()
 
     assert service.status("Story", "Scene")["complete"] is False
+
+
+def test_scene_prompt_analysis_second_opinion_uses_alt_model(tmp_path: Path) -> None:
+    class StoryService:
+        def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
+            return self.scene_pipeline_path(story_slug, scene_slug, render_target_id) / "Final_Image_Prompt.md"
+
+        def scene_pipeline_path(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
+            return tmp_path / "Stories" / story_slug / scene_slug
+
+    config = Config(
+        base_library_path=str(tmp_path),
+        base_character_path=str(tmp_path / "Characters"),
+        base_asset_path=str(tmp_path / "Assets"),
+        base_pipeline_path=str(tmp_path / "Pipelines"),
+        base_ai_queue_path=str(tmp_path / "Queue"),
+        ai_prompt_analysis_model="general:latest",
+    )
+    service = ScenePromptAnalysisService(config, StoryService())
+    pipeline = tmp_path / "Stories" / "Story" / "Scene"
+    pipeline.mkdir(parents=True)
+    prompt_text = "compiled scene prompt"
+    prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
+    (pipeline / "Final_Image_Prompt.md").write_text(prompt_text, encoding="utf-8")
+    (pipeline / service.RESULT_FILE).write_text("Primary analysis", encoding="utf-8")
+    (pipeline / "AI_Prompt_Analysis.request.json").write_text(
+        json.dumps({"ask_id": "Ask_Primary", "prompt_sha256": prompt_hash}), encoding="utf-8"
+    )
+    (pipeline / "AI_Prompt_Analysis.result.json").write_text(
+        json.dumps({"ask_id": "Ask_Primary", "prompt_sha256": prompt_hash, "status": "SUCCESS"}),
+        encoding="utf-8",
+    )
+
+    status = service.queue("Story", "Scene", second_opinion=True)
+
+    ask = next(service.path_service.file_proxy_client.task_paths("ask"))
+    manifest = json.loads((ask / "ask_manifest.json").read_text(encoding="utf-8"))
+    assert status["pending"] is True
+    assert manifest["analysis_pass"] == "second_opinion"
+    assert manifest["ollama_model"] == "general-alt:latest"
+    assert "SECOND_OPINION" in manifest["ask_id"]

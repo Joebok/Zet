@@ -1777,6 +1777,20 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/prompt-analysis/second-opinion")
+    def scene_prompt_analysis_second_opinion(
+        story_slug: str, scene_slug: str, render_target_id: str = Query("main")
+    ) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            status = zet_app.queue_scene_prompt_analysis_second_opinion(
+                story_slug, scene_slug, render_target_id
+            )
+            status["message"] = "AI prompt analysis second opinion queued."
+            return status
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/image-catalog")
     def image_catalog(
         q: str = Query(""),

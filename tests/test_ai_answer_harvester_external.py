@@ -73,6 +73,40 @@ class AIAnswerHarvesterExternalConsumerTests(unittest.TestCase):
                 output,
             )
 
+    def test_scene_prompt_analysis_second_opinion_appends_to_primary(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            answer = root / "answer"
+            target = root / "target"
+            answer.mkdir()
+            target.mkdir()
+            (target / "result.md").write_text(
+                "# Primary\n\nFinding.\n\n---\n\nAnalysis completed earlier.", encoding="utf-8"
+            )
+            (answer / "result.md").write_text("# Alternate\n\nDifferent finding.", encoding="utf-8")
+            (answer / "answer_manifest.json").write_text(json.dumps({
+                "completed_at": "2026-08-25T10:21:45",
+                "elapsed_seconds": 12.35,
+            }), encoding="utf-8")
+            harvester = AIAnswerHarvester(None, None, None, None, None, None, lambda: "unused")
+
+            harvester._apply_auxiliary_answer(
+                answer,
+                SimpleNamespace(
+                    expected_output="result.md", status="SUCCESS", ask_id="Ask_Alternate", asset_id=None
+                ),
+                {
+                    "task_type": "scene_prompt_analysis",
+                    "target_output_dir": str(target),
+                    "analysis_pass": "second_opinion",
+                    "ollama_model": "general-alt:latest",
+                },
+            )
+
+            output = (target / "result.md").read_text(encoding="utf-8")
+            self.assertIn("Analysis completed earlier.\n\n## 2nd Opinion\n\n# Alternate", output)
+            self.assertIn("Analysis completed 8/25/26 10:21am by general-alt:latest", output)
+
     def test_harvest_once_ignores_external_consumer(self):
         with TemporaryDirectory() as temp_dir:
             answer_root = Path(temp_dir) / "Answer"

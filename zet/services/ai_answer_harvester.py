@@ -349,7 +349,15 @@ class AIAnswerHarvester:
         elif task_type == "scene_prompt_analysis":
             analysis = response_path.read_text(encoding="utf-8").rstrip()
             attribution = self._scene_prompt_analysis_attribution(answer_path, ask_manifest)
-            target_path.write_text(f"{analysis}\n\n---\n\n{attribution}\n", encoding="utf-8")
+            rendered_analysis = f"{analysis}\n\n---\n\n{attribution}\n"
+            if ask_manifest.get("analysis_pass") == "second_opinion":
+                original = target_path.read_text(encoding="utf-8").rstrip()
+                target_path.write_text(
+                    f"{original}\n\n## 2nd Opinion\n\n{rendered_analysis}",
+                    encoding="utf-8",
+                )
+            else:
+                target_path.write_text(rendered_analysis, encoding="utf-8")
         else:
             shutil.copy2(response_path, target_path)
             metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"

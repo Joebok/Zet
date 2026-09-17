@@ -3596,9 +3596,21 @@ dialog {
 
 .prompt-analysis-dialog-content {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   padding: 12px;
+}
+
+.prompt-analysis-footer {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+
+.prompt-analysis-footer .action-message {
+  margin-right: auto;
 }
 
 .prompt-analysis-dialog iframe {

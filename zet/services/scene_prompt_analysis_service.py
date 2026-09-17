@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-import json
 import hashlib
+import json
 from pathlib import Path
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
@@ -24,12 +24,31 @@ class ScenePromptAnalysisService:
         self.story_service = story_service
         self.path_service = AIProxyPathService(config)
 
-    def queue(self, story_slug: str, scene_slug: str, render_target_id: str = "main", prompt_path: Path | None = None) -> dict:
+    def queue(
+        self,
+        story_slug: str,
+        scene_slug: str,
+        render_target_id: str = "main",
+        prompt_path: Path | None = None,
+        *,
+        second_opinion: bool = False,
+    ) -> dict:
         pipeline = self.story_service.scene_pipeline_path(story_slug, scene_slug, render_target_id)
         with file_lock(pipeline / "Prompt_Analysis.lock"):
-            return self._queue(story_slug, scene_slug, render_target_id, prompt_path)
+            if second_opinion and not self.status(story_slug, scene_slug, render_target_id)["complete"]:
+                raise ValueError("A completed prompt analysis is required before requesting a second opinion.")
+            return self._queue(story_slug, scene_slug, render_target_id, prompt_path, second_opinion)
 
-    def _queue(self, story_slug, scene_slug, render_target_id, prompt_path):
+    @staticmethod
+    def _alternate_model(model: str) -> str:
+        name, separator, tag = str(model).rpartition(":")
+        if not separator:
+            name, tag = str(model), ""
+        if not name.endswith("-alt"):
+            name = f"{name}-alt"
+        return f"{name}:{tag}" if separator else name
+
+    def _queue(self, story_slug, scene_slug, render_target_id, prompt_path, second_opinion=False):
         target_id = str(render_target_id or "main").strip()
         prompt_path = prompt_path or self.story_service.compile_scene_prompt(story_slug, scene_slug, target_id)
         prompt_text = prompt_path.read_text(encoding="utf-8")
@@ -39,7 +58,8 @@ class ScenePromptAnalysisService:
             return status
         result_path = Path(status["result_path"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        ask_id = f"Ask_Story_{story_slug}_{scene_slug}_PROMPT_ANALYSIS_{stamp}"
+        pass_name = "SECOND_OPINION" if second_opinion else "PROMPT_ANALYSIS"
+        ask_id = f"Ask_Story_{story_slug}_{scene_slug}_{pass_name}_{stamp}"
         ask_path = self.path_service.file_proxy_client.create_staging(ask_id)
         instructions_path = Path(__file__).resolve().parents[2] / self.config.ai_prompt_analysis_instructions_file
         manifest = {
@@ -52,7 +72,11 @@ class ScenePromptAnalysisService:
             "pipeline_stage": "PROMPT_ANALYSIS",
             "ollama_attempt_id": f"{stamp}_PROMPT_ANALYSIS",
             "worker_type": "ollama_generate",
-            "ollama_model": self.config.ai_prompt_analysis_model,
+            "ollama_model": (
+                self._alternate_model(self.config.ai_prompt_analysis_model)
+                if second_opinion
+                else self.config.ai_prompt_analysis_model
+            ),
             "prompt_file": self.PROMPT_FILE,
             "expected_output": self.RESULT_FILE,
             "task_type": self.TASK_TYPE,
@@ -64,6 +88,7 @@ class ScenePromptAnalysisService:
             "scene_slug": scene_slug,
             "render_target_id": target_id,
             "source_prompt_sha256": prompt_hash,
+            "analysis_pass": "second_opinion" if second_opinion else "primary",
             "ai_prompt_analysis_instructions_file": self.config.ai_prompt_analysis_instructions_file,
         }
         (ask_path / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

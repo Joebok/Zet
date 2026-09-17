@@ -22,6 +22,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -48,6 +49,19 @@ ANSI_RED = "\033[31m"
 
 class TransientOllamaConnectionError(RuntimeError):
     """Raised when Ollama is temporarily unavailable and the ask should be retried later."""
+
+
+@dataclass(frozen=True)
+class OllamaGenerationResult:
+    response: str
+    done_reason: str
+    eval_count: int | None
+
+    def evidence(self) -> dict:
+        return {
+            "done_reason": self.done_reason,
+            "eval_count": self.eval_count,
+        }
 
 
 def now_iso() -> str:
@@ -166,7 +180,7 @@ def call_ollama_once(
     json_output: bool = False,
     response_schema: dict | None = None,
     keep_alive: str | int = 0,
-) -> str:
+) -> OllamaGenerationResult:
     multimodal_chat = bool(images and len(images) > 1)
     if multimodal_chat:
         prompt = ensure_explicit_image_tags(prompt, len(images))
@@ -216,10 +230,18 @@ def call_ollama_once(
         message = parsed.get("message")
         if not isinstance(message, dict) or "content" not in message:
             raise RuntimeError(f"Ollama chat response missing 'message.content': {body[:500]}")
-        return str(message["content"])
-    if "response" not in parsed:
-        raise RuntimeError(f"Ollama response missing 'response': {body[:500]}")
-    return str(parsed["response"])
+        response_text = str(message["content"])
+    else:
+        if "response" not in parsed:
+            raise RuntimeError(f"Ollama response missing 'response': {body[:500]}")
+        response_text = str(parsed["response"])
+    raw_eval_count = parsed.get("eval_count")
+    eval_count = raw_eval_count if isinstance(raw_eval_count, int) and not isinstance(raw_eval_count, bool) else None
+    return OllamaGenerationResult(
+        response=response_text,
+        done_reason=str(parsed.get("done_reason") or ""),
+        eval_count=eval_count,
+    )
 
 
 def call_ollama(
@@ -235,7 +257,7 @@ def call_ollama(
     json_output: bool = False,
     response_schema: dict | None = None,
     keep_alive: str | int = 0,
-) -> str:
+) -> OllamaGenerationResult:
     if preflight_attempts > 0:
         wait_for_ollama(url, attempts=preflight_attempts, delay_seconds=retry_seconds, timeout=min(timeout, 10))
 
@@ -345,7 +367,7 @@ def process_claimed(
                 raise FileNotFoundError(f"Ollama image missing: {name}")
             encoded_images.append(base64.b64encode(image_path.read_bytes()).decode("ascii"))
         answer_manifest["ollama_runtime"] = ollama_runtime_evidence(ollama_url, model, timeout)
-        response = call_ollama(
+        generation = call_ollama(
             ollama_url,
             model,
             prompt,
@@ -359,7 +381,8 @@ def process_claimed(
             response_schema=ask_manifest.get("response_schema"),
             keep_alive=scheduled_keep_alive(model),
         )
-        write_text_atomic(folder / expected_output, response)
+        write_text_atomic(folder / expected_output, generation.response)
+        answer_manifest["ollama_generation"] = generation.evidence()
         answer_manifest["status"] = "SUCCESS"
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)

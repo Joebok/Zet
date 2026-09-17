@@ -927,7 +927,12 @@ def _risk_constraint_lines(ir: dict[str, Any]) -> list[str]:
     ).casefold()
     lines: list[str] = []
     if visible_subjects:
-        lines.append(f"- Render exactly {len(visible_subjects)} visible character subject{'s' if len(visible_subjects) != 1 else ''}; do not duplicate or merge them.")
+        lines.append(
+            "- Render every listed visible character or character group. For a group element, render its described members; "
+            "if its membership is not stated, preserve the distinct group members shown in that element's subject reference. "
+            "Keep each individual distinct—do not omit, duplicate, merge, or invent characters. "
+            "Ignore people incidental to reference-image backgrounds."
+        )
         lines.append("- Keep visible anatomy naturally connected and consistent with the specified pose and action.")
     if any(token in relationship_text + " " + pose_text for token in ("hand", "hold", "grip", "carry", "gesture")):
         lines.append("- Make every specified hand-to-object assignment unambiguous, with a natural grip and no extra or fused fingers.")

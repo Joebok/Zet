@@ -285,6 +285,11 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertIn("right hand grips above the left hand", prompt)
         self.assertIn("hand-to-object assignment", prompt)
         self.assertIn("described motion readable", prompt)
+        self.assertIn("Render every listed visible character or character group.", prompt)
+        self.assertIn("preserve the distinct group members shown in that element's subject reference.", prompt)
+        self.assertIn("do not omit, duplicate, merge, or invent characters.", prompt)
+        self.assertIn("Ignore people incidental to reference-image backgrounds.", prompt)
+        self.assertNotIn("Render exactly", prompt)
         self.assertNotIn("dialogue text", prompt)
 
     def test_reference_backed_subject_uses_compact_anchors_with_full_identity_fallback(self):

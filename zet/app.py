@@ -886,6 +886,15 @@ class ZetApp:
             lambda: self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id)
         )
 
+    def queue_scene_prompt_analysis_second_opinion(
+        self, story_slug: str, scene_slug: str, render_target_id: str = "main"
+    ) -> dict:
+        return self._indexed_write(
+            lambda: self.scene_prompt_analysis_service.queue(
+                story_slug, scene_slug, render_target_id, second_opinion=True
+            )
+        )
+
     def scene_prompt_analysis_status(
         self,
         story_slug: str,

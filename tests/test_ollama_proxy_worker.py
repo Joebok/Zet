@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from AI_Manager.ollama_proxy_worker import (
+    OllamaGenerationResult,
     call_ollama_once,
     ensure_explicit_image_tags,
     ollama_generation_options,
@@ -26,7 +27,8 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         class FakeResponse:
             def __enter__(self): return self
             def __exit__(self, exc_type, exc, tb): return False
-            def read(self): return b'{"message":{"role":"assistant","content":"{}"}}'
+            def read(self):
+                return b'{"message":{"role":"assistant","content":"{}"},"done_reason":"length","eval_count":2048}'
 
         captured = {}
         def fake_urlopen(request, timeout):
@@ -35,7 +37,7 @@ class OllamaProxyWorkerTests(unittest.TestCase):
             return FakeResponse()
 
         with patch("AI_Manager.ollama_proxy_worker.urllib.request.urlopen", fake_urlopen):
-            call_ollama_once(
+            result = call_ollama_once(
                 "http://localhost:11434/api/generate", "vision", "compare",
                 images=["first", "second"], json_output=True,
             )
@@ -46,6 +48,9 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         self.assertEqual("Image 1: [img]\nImage 2: [img]\n\ncompare", message["content"])
         self.assertEqual("http://localhost:11434/api/chat", captured["url"])
         self.assertEqual("json", captured["payload"]["format"])
+        self.assertEqual("{}", result.response)
+        self.assertEqual("length", result.done_reason)
+        self.assertEqual(2048, result.eval_count)
 
 
     def test_call_ollama_once_forwards_response_schema_to_generate_and_chat(self):
@@ -111,7 +116,8 @@ class OllamaProxyWorkerTests(unittest.TestCase):
                 "requested_alias": "qwen3.5:9b", "effective_alias": "qwen3.5:9b",
                 "digest": "sha256:model", "runtime_settings": {"num_ctx": 65536, "num_predict": 2048},
             }
-            with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value="ok") as call, patch(
+            generation = OllamaGenerationResult(response="ok", done_reason="stop", eval_count=12)
+            with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value=generation) as call, patch(
                 "AI_Manager.ollama_proxy_worker.ollama_runtime_evidence", return_value=runtime
             ):
                 result = process_claimed(
@@ -131,3 +137,4 @@ class OllamaProxyWorkerTests(unittest.TestCase):
             self.assertEqual("5m", call.call_args.kwargs["keep_alive"])
             answer = json.loads((folder / "answer_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(runtime, answer["ollama_runtime"])
+            self.assertEqual({"done_reason": "stop", "eval_count": 12}, answer["ollama_generation"])

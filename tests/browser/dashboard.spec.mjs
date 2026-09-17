@@ -1201,6 +1201,7 @@ test("@desktop-smoke imported candidate context and prompt analysis use side pan
   await openPage(page, "scenes");
   await page.locator("#scene-builder-open").click();
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-builder-message")).toHaveText("Scene Builder loaded.");
   await expect(page.locator("#scene-builder-panel .scene-builder-toolbar")).toBeVisible();
   await page.evaluate(() => {
     state.sceneBuilder.source_provenance = {
@@ -1230,6 +1231,40 @@ test("@desktop-smoke imported candidate context and prompt analysis use side pan
   await expect(page.locator("#prompt-analysis-dialog")).toBeVisible();
   await expect(page.locator("#prompt-analysis-frame")).toHaveAttribute("src", /render_target_id=background/);
   expect(await page.locator("#prompt-analysis-dialog").evaluate((element) => Math.abs(element.getBoundingClientRect().right - window.innerWidth) <= 20)).toBe(true);
+
+  await page.route(/\/prompt-analysis\/second-opinion\?render_target_id=background/, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ pending: true, complete: false, render_target_id: "background" }),
+  }));
+  const secondOpinionRequest = page.waitForRequest((request) => request.url().includes("/prompt-analysis/second-opinion?") && request.method() === "POST");
+  await page.getByRole("button", { name: "2nd Opinion", exact: true }).click();
+  await secondOpinionRequest;
+  await expect(page.getByRole("button", { name: "Check 2nd Opinion", exact: true })).toBeVisible();
+});
+
+test("stale view latest analysis action queues a replacement analysis", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-builder-message")).toHaveText("Scene Builder loaded.");
+
+  await page.route(/\/prompt-analysis\?render_target_id=main$/, async (route) => {
+    const pending = route.request().method() === "POST";
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ pending, complete: false, result_path: "AI_Prompt_Analysis.md", render_target_id: "main" }),
+    });
+  });
+  await page.evaluate(() => {
+    state.scenePromptAnalysis = { pending: false, complete: true, result_path: "AI_Prompt_Analysis.md" };
+    renderSceneBuilder();
+  });
+
+  const queued = page.waitForRequest((request) => /\/prompt-analysis\?render_target_id=main$/.test(request.url()) && request.method() === "POST");
+  await page.locator(".scene-builder-analysis-action", { hasText: "View latest analysis" }).click();
+  await queued;
+  await expect(page.locator(".scene-builder-analysis-action")).toHaveText("Check analysis");
+  await expect(page.locator("#prompt-analysis-dialog")).toBeHidden();
 });
 
 test("running prompt analysis harvests and opens without changing the selected prompt", async ({ page }) => {

@@ -36,6 +36,7 @@ const state = {
   promptReviewDetail: null,
   promptAnalysisTasks: [],
   promptAnalysisRequest: 0,
+  promptAnalysisDialogContext: null,
   renderReviewTasks: [],
   selectedRenderReviewKey: null,
   renderReviewDetail: null,
@@ -470,6 +471,8 @@ const todoText = document.querySelector("#todo-text");
 const promptAnalysisDialog = document.querySelector("#prompt-analysis-dialog");
 const promptAnalysisClose = document.querySelector("#prompt-analysis-close");
 const promptAnalysisFrame = document.querySelector("#prompt-analysis-frame");
+const promptAnalysisSecondOpinion = document.querySelector("#prompt-analysis-second-opinion");
+const promptAnalysisActionMessage = document.querySelector("#prompt-analysis-action-message");
 const renderConsoleStatus = document.querySelector("#render-console-status");
 const renderConsoleRefinementMetrics = document.querySelector("#render-console-refinement-metrics");
 const renderConsoleRefinementGroups = document.querySelector("#render-console-refinement-groups");
@@ -7322,15 +7325,17 @@ async function analyzeScenePrompt() {
 
 async function viewScenePromptAnalysis() {
   const targetId = state.activeBuilderRenderTarget || "main";
-  if (state.scenePromptAnalysis?.complete && state.scenePromptAnalysis.result_path) {
-    openPromptAnalysisDialog(state.selectedStorySlug, state.selectedSceneSlug, targetId);
-    return;
-  }
-  if (!state.scenePromptAnalysis?.pending) {
-    showSceneBuilderMessage("No AI prompt analysis has been requested.", "info");
-    return;
-  }
   try {
+    state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(targetId)}`);
+    renderSceneBuilder();
+    if (state.scenePromptAnalysis.complete && state.scenePromptAnalysis.result_path) {
+      openPromptAnalysisDialog(state.selectedStorySlug, state.selectedSceneSlug, targetId);
+      return;
+    }
+    if (!state.scenePromptAnalysis.pending) {
+      await analyzeScenePrompt();
+      return;
+    }
     state.scenePromptAnalysis = await fetchJson(`/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/prompt-analysis/harvest?render_target_id=${encodeURIComponent(targetId)}`, { method: "POST" });
     renderSceneBuilder();
     if (state.scenePromptAnalysis.complete && state.scenePromptAnalysis.result_path) {
@@ -8510,7 +8515,7 @@ function renderPromptAnalysisTaskList() {
       if (task.pending) {
         void harvestPromptAnalysis(task.story_slug, task.scene_slug, task.render_target_id || "main");
       } else {
-        openPromptAnalysisDialog(task.story_slug, task.scene_slug, task.render_target_id || "main");
+        void viewOrRunPromptAnalysis(task.story_slug, task.scene_slug, task.render_target_id || "main");
       }
     });
     row.append(label, action);
@@ -8646,12 +8651,7 @@ async function harvestPromptAnalysis(storySlug, sceneSlug, renderTargetId = "mai
 async function viewPromptReviewAnalysis() {
   const scene = selectedPromptReviewScene();
   if (!scene) return;
-  const analysis = state.promptReviewDetail?.prompt_analysis || {};
-  if (analysis.complete && analysis.result_path) {
-    openPromptAnalysisDialog(scene.storySlug, scene.sceneSlug, scene.renderTargetId);
-    return;
-  }
-  showPromptMessage("Analysis is still running. Refresh after the AI worker finishes.");
+  await viewOrRunPromptAnalysis(scene.storySlug, scene.sceneSlug, scene.renderTargetId);
 }
 
 function compactPath(value) {
@@ -8661,9 +8661,95 @@ function compactPath(value) {
   return parts.slice(-2).join(" / ") || fullPath;
 }
 
+function promptAnalysisViewUrl(storySlug, sceneSlug, renderTargetId = "main") {
+  return `/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/view?render_target_id=${encodeURIComponent(renderTargetId)}`;
+}
+
+function recordPromptAnalysisStatus(storySlug, sceneSlug, renderTargetId, analysis) {
+  if (state.selectedStorySlug === storySlug && state.selectedSceneSlug === sceneSlug
+      && state.activeBuilderRenderTarget === renderTargetId) {
+    state.scenePromptAnalysis = analysis;
+    if (state.sceneBuilderOpen) updateBuilderAnalysisActions();
+  }
+  const selected = selectedPromptReviewScene();
+  if (selected && selected.storySlug === storySlug && selected.sceneSlug === sceneSlug
+      && selected.renderTargetId === renderTargetId && state.promptReviewDetail) {
+    state.promptReviewDetail.prompt_analysis = analysis;
+    renderPromptReview(state.promptReviewDetail);
+  }
+}
+
+async function viewOrRunPromptAnalysis(storySlug, sceneSlug, renderTargetId = "main") {
+  try {
+    let analysis = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(renderTargetId)}`);
+    recordPromptAnalysisStatus(storySlug, sceneSlug, renderTargetId, analysis);
+    if (analysis.complete && analysis.result_path) {
+      openPromptAnalysisDialog(storySlug, sceneSlug, renderTargetId);
+      return analysis;
+    }
+    if (analysis.pending) {
+      analysis = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/harvest?render_target_id=${encodeURIComponent(renderTargetId)}`, { method: "POST" });
+    } else {
+      analysis = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis?render_target_id=${encodeURIComponent(renderTargetId)}`, { method: "POST" });
+    }
+    recordPromptAnalysisStatus(storySlug, sceneSlug, renderTargetId, analysis);
+    if (analysis.complete && analysis.result_path) {
+      showPromptMessage("Prompt analysis is ready.", "success");
+      openPromptAnalysisDialog(storySlug, sceneSlug, renderTargetId);
+    } else {
+      showPromptMessage(analysis.message || analysis.error || "AI prompt analysis queued.", analysis.error ? "error" : "success");
+    }
+    return analysis;
+  } catch (error) {
+    showPromptMessage(error.message, "error");
+    return null;
+  }
+}
+
+function showPromptAnalysisActionMessage(message, type = "info") {
+  promptAnalysisActionMessage.textContent = message || "";
+  promptAnalysisActionMessage.className = `action-message ${type}`;
+  promptAnalysisActionMessage.hidden = !message;
+}
+
 function openPromptAnalysisDialog(storySlug, sceneSlug, renderTargetId = "main") {
-  promptAnalysisFrame.src = `/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/prompt-analysis/view?render_target_id=${encodeURIComponent(renderTargetId)}`;
+  state.promptAnalysisDialogContext = { storySlug, sceneSlug, renderTargetId, secondOpinionPending: false };
+  promptAnalysisSecondOpinion.textContent = "2nd Opinion";
+  promptAnalysisSecondOpinion.disabled = false;
+  showPromptAnalysisActionMessage("");
+  promptAnalysisFrame.src = promptAnalysisViewUrl(storySlug, sceneSlug, renderTargetId);
   promptAnalysisDialog.showModal();
+}
+
+async function runPromptAnalysisSecondOpinion() {
+  const context = state.promptAnalysisDialogContext;
+  if (!context) return;
+  promptAnalysisSecondOpinion.disabled = true;
+  showPromptAnalysisActionMessage(
+    context.secondOpinionPending ? "Checking the second opinion..." : "Queuing a second opinion..."
+  );
+  try {
+    const endpoint = context.secondOpinionPending ? "harvest" : "second-opinion";
+    const analysis = await fetchJson(
+      `/api/stories/${encodeURIComponent(context.storySlug)}/scenes/${encodeURIComponent(context.sceneSlug)}/prompt-analysis/${endpoint}?render_target_id=${encodeURIComponent(context.renderTargetId)}`,
+      { method: "POST" },
+    );
+    recordPromptAnalysisStatus(context.storySlug, context.sceneSlug, context.renderTargetId, analysis);
+    if (analysis.complete && analysis.result_path) {
+      context.secondOpinionPending = false;
+      promptAnalysisFrame.src = `${promptAnalysisViewUrl(context.storySlug, context.sceneSlug, context.renderTargetId)}&refresh=${Date.now()}`;
+      promptAnalysisSecondOpinion.textContent = "2nd Opinion";
+      showPromptAnalysisActionMessage("Second opinion added.", "success");
+    } else {
+      context.secondOpinionPending = true;
+      promptAnalysisSecondOpinion.textContent = "Check 2nd Opinion";
+      showPromptAnalysisActionMessage(analysis.message || analysis.error || "Second opinion is running.", analysis.error ? "error" : "success");
+    }
+  } catch (error) {
+    showPromptAnalysisActionMessage(error.message, "error");
+  } finally {
+    promptAnalysisSecondOpinion.disabled = false;
+  }
 }
 
 function closePromptAnalysisDialog() {
@@ -12042,6 +12128,7 @@ todoDialog.addEventListener("click", (event) => {
   }
 });
 promptAnalysisClose.addEventListener("click", closePromptAnalysisDialog);
+promptAnalysisSecondOpinion.addEventListener("click", runPromptAnalysisSecondOpinion);
 promptAnalysisDialog.addEventListener("click", (event) => {
   if (event.target === promptAnalysisDialog) {
     closePromptAnalysisDialog();
@@ -12049,6 +12136,8 @@ promptAnalysisDialog.addEventListener("click", (event) => {
 });
 promptAnalysisDialog.addEventListener("close", () => {
   promptAnalysisFrame.removeAttribute("src");
+  state.promptAnalysisDialogContext = null;
+  showPromptAnalysisActionMessage("");
 });
 sceneBuilderContextClose.addEventListener("click", () => sceneBuilderContextDialog.close());
 sceneBuilderContextDialog.addEventListener("click", (event) => {
