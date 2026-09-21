@@ -369,6 +369,50 @@ class WebAppTests(unittest.TestCase):
             detail = client.get("/api/render-console/tasks/Ask_Story_Background").json()
             self.assertEqual("Wild Magic Surge", detail["task"]["scene_title"])
 
+    def test_ir_scene_defaults_to_qwen_in_render_console_with_legacy_profile_configured(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            with config_path.open("a", encoding="utf-8") as config:
+                config.write('\n[LocalRender]\nBackend = "comfyui"\n'
+                             '\n[ComfyUI]\nProfile = "comfyui-ipadapter-preview"\n'
+                             'Checkpoint = "sdxl.safetensors"\n')
+            workspace = root / "Scene_Workspace"
+            workspace.mkdir()
+            (workspace / "Scene_Render_IR.json").write_text(json.dumps({
+                "canvas": {"aspect_ratio": "4:5"}, "scene": {"story_beat": "Tsaeytte enters the arch"},
+                "image_inputs": [],
+            }), encoding="utf-8")
+            (workspace / "Local_Render_Prompt.md").write_text("old SDXL scene prompt\n", encoding="utf-8")
+            ask_path = root / "Queue" / "Manual_Render_Queue" / "Ask" / "Ask_Qwen_Default"
+            ask_path.mkdir(parents=True)
+            (ask_path / "ask_manifest.json").write_text(json.dumps({
+                "version": 1, "ask_id": "Ask_Qwen_Default", "asset_id": None,
+                "worker_type": "manual_chatgpt_render", "prompt_file": "Final_Image_Prompt.md",
+                "expected_output": "scene.png", "story_slug": "FirstDay", "scene_slug": "Collision",
+                "pipeline_path": str(workspace),
+            }), encoding="utf-8")
+            (ask_path / "Final_Image_Prompt.md").write_text("manual prompt\n", encoding="utf-8")
+
+            client = TestClient(create_app(config_path))
+            response = client.get("/api/render-console/tasks/Ask_Qwen_Default")
+
+            self.assertEqual(200, response.status_code, response.text)
+            local = response.json()["local_prompt"]
+            self.assertEqual("comfyui-qwen-image-2-1-scene", local["default_local_profile"])
+            self.assertEqual("comfyui-ipadapter-preview", local["configured_local_profile"])
+            self.assertTrue(local["qwen_supports_local_test_render"])
+            self.assertIn("Tsaeytte enters the arch", local["qwen_prompt"])
+            with patch("zet.app.ZetApp.stage_scene_local_render_ask", return_value=root / "queued") as stage:
+                queued = client.post("/api/render-console/tasks/Ask_Qwen_Default/local-test-render")
+            self.assertEqual(200, queued.status_code, queued.text)
+            self.assertEqual("comfyui-qwen-image-2-1-scene", stage.call_args.kwargs["render_profile"])
+            with patch("zet.app.ZetApp.stage_scene_local_render_ask", return_value=root / "queued") as stage:
+                queued = client.post("/api/render-console/tasks/Ask_Qwen_Default/local-test-render",
+                                     json={"render_profile": "comfyui-ipadapter-preview"})
+            self.assertEqual(200, queued.status_code, queued.text)
+            self.assertEqual("comfyui-ipadapter-preview", stage.call_args.kwargs["render_profile"])
+
     def test_story_management_api_renames_reorders_and_moves(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

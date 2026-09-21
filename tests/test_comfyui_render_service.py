@@ -655,6 +655,94 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                     output_dir=Path(temp_dir),
                 )
 
+    def test_modern_reference_adapters_compile_native_workflows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            appearance, pose = root / "appearance.png", root / "pose.png"
+            appearance.write_bytes(b"appearance")
+            pose.write_bytes(b"pose")
+            references = [
+                {"role": "prompt_evolution_appearance", "path": str(appearance)},
+                {"role": "prompt_evolution_pose", "path": str(pose)},
+            ]
+            common_nodes = {
+                "UNETLoader", "CLIPLoader", "VAELoader", "LoadImage", "KSampler", "VAEDecode", "SaveImage",
+            }
+            flux = compile_prompt_to_comfyui_workflow(
+                "character", "bad anatomy",
+                {"prompt_workflow_kind": "flux2_reference_prompt_only", "width": 832, "height": 1216,
+                 "text_encoder": "qwen_3_4b.safetensors", "vae": "flux2-vae.safetensors", "cfg": 3.5},
+                checkpoint="flux2-klein-4b.safetensors", seed=11, reference_files=references,
+                available_node_types=common_nodes | {
+                    "ReferenceLatent", "EmptyFlux2LatentImage", "CLIPTextEncode", "VAEEncode", "FluxGuidance",
+                },
+            )
+            qwen = compile_prompt_to_comfyui_workflow(
+                "character", "bad anatomy",
+                {"prompt_workflow_kind": "qwen_image_edit_prompt_only", "width": 832, "height": 1216,
+                 "text_encoder": "qwen_2.5_vl.safetensors", "vae": "qwen_image_vae.safetensors", "cfg": 1},
+                checkpoint="qwen_image_edit_2511.safetensors", seed=12, reference_files=references,
+                available_node_types=common_nodes | {"TextEncodeQwenImageEditPlus", "EmptySD3LatentImage"},
+            )
+
+        self.assertEqual("flux2_reference_prompt_only", flux.workflow_kind)
+        self.assertEqual(2, sum(node["class_type"] == "ReferenceLatent" for node in flux.workflow.values()))
+        self.assertEqual("qwen_image_edit_prompt_only", qwen.workflow_kind)
+        qwen_encode = next(node for node in qwen.workflow.values() if node["class_type"] == "TextEncodeQwenImageEditPlus" and "image1" in node["inputs"])
+        self.assertIn("image2", qwen_encode["inputs"])
+
+    def test_qwen_21_scene_uses_all_references_and_independent_canvas(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ir = self._ir()
+            ir["render_mode"] = "composite"
+            ir["dialogue"] = [{"speaker_element_id": "tsaeytte", "text": "Come with me"}]
+            ir["image_inputs"] = []
+            for index in range(1, 6):
+                source = Path(temp_dir) / f"ref{index}.png"
+                source.write_bytes(b"reference")
+                ir["image_inputs"].append({"index": index, "role": "subject_reference", "path": str(source),
+                                           "label": f"Character {index}", "applies_to": f"Character {index}",
+                                           "preserve": ["identity"]})
+            profile = {"workflow_kind": "qwen_image_21_scene_preview", "pixel_budget": 1048576,
+                       "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+                       "vae": "qwen_image_2.1_vae_bf16.safetensors", "steps": 40}
+            nodes = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
+                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage"}
+            compilation = compile_ir_to_comfyui_workflow(ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors",
+                                                         seed=7, available_node_types=nodes)
+            workflow = compilation.workflow
+            self.assertEqual(5, len(compilation.debug["references_used"]))
+            self.assertEqual(["<image1>", "<image2>", "<image3>", "<image4>", "<image5>"],
+                             [f"<image{i}>" for i in range(1, 6) if f"<image{i}>" in compilation.prompts["global"]])
+            self.assertIn('"Come with me"', compilation.prompts["global"])
+            self.assertEqual((1376, 768), (compilation.width, compilation.height))
+            self.assertEqual(["5", 0], workflow["6"]["inputs"]["latent_image"])
+            self.assertEqual(5, sum(node["class_type"] == "LoadImage" for node in workflow.values()))
+            self.assertEqual("", workflow["4"]["inputs"]["negative_prompt"])
+            self.assertEqual(1.0, workflow["6"]["inputs"]["cfg"])
+            manual_refs = [{"image_index": index, "path": ir["image_inputs"][index - 1]["path"]}
+                           for index in range(5, 0, -1)]
+            ordered = compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes, reference_files=manual_refs)
+            self.assertEqual([1, 2, 3, 4, 5],
+                             [item["image_index"] for item in ordered.debug["references_used"]])
+            with self.assertRaisesRegex(LocalRenderError, "do not match the scene IR image slots"):
+                compile_ir_to_comfyui_workflow(
+                    ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                    available_node_types=nodes, reference_files=manual_refs[:-1])
+            self.assertEqual("A revised scene.", compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes, scene_prompt_override="A revised scene.").prompts["global"])
+            ir["image_inputs"][2]["path"] = str(Path(temp_dir) / "missing.png")
+            with self.assertRaisesRegex(LocalRenderError, "reference 3 is missing"):
+                compile_ir_to_comfyui_workflow(ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors",
+                                              seed=7, available_node_types=nodes)
+            ir["image_inputs"] = ir["image_inputs"] * 3
+            with self.assertRaisesRegex(LocalRenderError, "at most ten"):
+                compile_ir_to_comfyui_workflow(ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors",
+                                              seed=7, available_node_types=nodes)
+
     def test_run_reports_execution_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
             "zet.services.comfyui_render_service._request_json",
@@ -707,6 +795,25 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
 
         self.assertEqual(["one.safetensors", "two.safetensors"], [item["title"] for item in checkpoints])
 
+    def test_qwen_model_discovery_reads_diffusion_loader_choices(self) -> None:
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "UNETLoader": {"input": {"required": {"unet_name": [["qwen_image_2.1_int8_convrot.safetensors"]]}}}
+        }).encode()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            profiles_path = Path(temp_dir) / "profiles.json"
+            profiles_path.write_text(
+                json.dumps({"comfyui-qwen-image-2-1-scene": {"backend": "comfyui", "model_family": "qwen-image-2.1"}}),
+                encoding="utf-8",
+            )
+            with patch("zet.services.local_render_backend_service.urlopen", return_value=response) as request:
+                models = LocalRenderBackendService(profiles_path).list_checkpoints(
+                    "comfyui-qwen-image-2-1-scene", backend="comfyui", server_url="http://127.0.0.1:8188",
+                )
+
+        self.assertEqual(["qwen_image_2.1_int8_convrot.safetensors"], [item["title"] for item in models])
+        self.assertEqual("http://127.0.0.1:8188/object_info/UNETLoader", request.call_args.args[0].full_url)
+
     def test_comfyui_options_discovers_controlnet_and_sampler_choices(self) -> None:
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps({
@@ -715,6 +822,9 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
             "KSampler": {"input": {"required": {
                 "sampler_name": [["dpmpp_2m"]], "scheduler": [["karras"]],
             }}},
+            "UNETLoader": {"input": {"required": {"unet_name": [["flux2-klein-4b.safetensors"]]}}},
+            "CLIPLoader": {"input": {"required": {"clip_name": [["qwen_3_4b.safetensors"]]}}},
+            "VAELoader": {"input": {"required": {"vae_name": [["flux2-vae.safetensors"]]}}},
             "DWPreprocessor": {"input": {"required": {}}},
         }).encode()
         with patch("zet.services.local_render_backend_service.urlopen", return_value=response):
@@ -722,6 +832,9 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
 
         self.assertEqual(["pose.safetensors"], options["controlnet_models"])
         self.assertEqual(["dpmpp_2m"], options["samplers"])
+        self.assertEqual(["flux2-klein-4b.safetensors"], options["diffusion_models"])
+        self.assertEqual(["qwen_3_4b.safetensors"], options["text_encoders"])
+        self.assertEqual(["flux2-vae.safetensors"], options["vaes"])
         self.assertIn("DWPreprocessor", options["node_types"])
 
     def test_cli_compile_only_writes_workflow_beside_ir(self) -> None:

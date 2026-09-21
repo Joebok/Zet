@@ -1159,6 +1159,8 @@ class ZetApp:
         allow_parallel: bool = False,
         seed: int | None = None,
         checkpoint: str | None = None,
+        qwen_prompt_override: str | None = None,
+        render_profile: str | None = None,
     ):
         return self.ai_proxy_service.stage_scene_local_render_ask(
             manifest,
@@ -1166,6 +1168,8 @@ class ZetApp:
             allow_parallel=allow_parallel,
             seed=seed,
             checkpoint=checkpoint,
+            qwen_prompt_override=qwen_prompt_override,
+            render_profile=render_profile,
         )
 
     def recompile_prompt_review(

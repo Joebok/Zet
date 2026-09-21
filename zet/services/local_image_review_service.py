@@ -51,6 +51,7 @@ class LocalImageReviewService:
                 "image_generation": str(metadata.get("image_generation") or metadata.get("backend") or ""),
                 "render_profile": str(metadata.get("render_profile") or metadata.get("preset") or metadata.get("profile") or ""),
                 "checkpoint": str(metadata.get("checkpoint") or ""),
+                "prompt": str(metadata.get("prompt") or ""),
             })
         return result
 

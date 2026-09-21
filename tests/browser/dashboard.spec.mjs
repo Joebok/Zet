@@ -581,6 +581,109 @@ test("Image Inventory manages imported images and optional reference sets", asyn
 });
 
 
+test("Single Character Lab previews recipe search and persists candidate review", async ({ page }) => {
+  const automaticScores = {
+    identity_fidelity: 4, costume_fidelity: 3, pose_orientation: 2,
+    composition_framing: 3, technical_quality: 4, style_fit: 3,
+  };
+  const run = {
+    schema_version: 2, run_id: "20260917_010101_000001", status: "COMPLETE", mode: "recipe_search",
+    costume: "Adventure Gear", view: "Front", checkpoint: "tastyrice.safetensors", candidate_count: 2,
+    completed_count: 2, failed_count: 0, reference_image: "C:/fixture/appearance.png", pose_image: "C:/fixture/pose.png",
+    model_adapter: { label: "SDXL IP-Adapter + pose ControlNet" }, positive_prompt: "portrait", negative_prompt: "bad",
+    candidates: [{ candidate_id: "c001", recipe_id: "r001", seed: "9007199254740993", status: "COMPLETE",
+      image_path: "C:/fixture/candidate.png", render_seconds: 12.5,
+      automatic_review: { scores: automaticScores, hard_gates: { identity: true, costume: true, anatomy: true, composition: true }, evidence: "Visible details match.", uncertainty: "low" },
+      review: { decision: "undecided", shortlisted: false, failure_reasons: [], notes: "", cleanup_minutes: null } },
+    { candidate_id: "c002", recipe_id: "r001", seed: "9007199254740995", status: "COMPLETE",
+      image_path: "C:/fixture/candidate-2.png", render_seconds: 13,
+      automatic_review: { scores: { ...automaticScores, pose_orientation: 4 }, hard_gates: { identity: true, costume: true, anatomy: true, composition: true }, evidence: "Pose matches.", uncertainty: "" },
+      review: { decision: "undecided", shortlisted: false, failure_reasons: [], notes: "", cleanup_minutes: null } }],
+    summary: { reviewed_count: 0, acceptance_rate: null, estimated_remaining_seconds: null },
+  };
+  let deleted = false;
+  await page.route(/\/api\/single-character-lab\/options\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    appearances: [{ asset_id: 1, label: "Adventure Gear · Front", view: "Front", image_path: "C:/fixture/appearance.png" }],
+    poses: [{ tag: "pose-front", label: "Front", view: "Front", image_path: "C:/fixture/pose.png" }],
+    checkpoints: ["tastyrice.safetensors"], default_checkpoint: "tastyrice.safetensors",
+    default_reference_weight: 0.45, default_pose_weight: 0.75, candidate_counts: [1, 16, 64, 128],
+    adapters: [
+      { id: "sdxl", label: "SDXL IP-Adapter + pose ControlNet", available: true, missing: [] },
+      { id: "qwen-image-edit-2511", label: "Qwen Image Edit 2511", available: true, missing: [] },
+    ],
+    samplers: ["dpmpp_2m", "euler"], schedulers: ["karras", "simple"],
+  }) }));
+  await page.route(/\/api\/single-character-lab\/prompt\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ positive_prompt: "portrait", negative_prompt: "bad" }) }));
+  await page.route(/\/api\/single-character-lab\/runs\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ runs: deleted ? [] : [run] }) }));
+  await page.route(/\/api\/single-character-lab\/runs\/[^/?]+$/, (route) => {
+    if (route.request().method() === "DELETE") {
+      deleted = true;
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ deleted: true, run_id: run.run_id }) });
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(run) });
+  });
+  await page.route(/\/api\/single-character-lab\/runs\/[^/]+\/candidates\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ run_id: run.run_id, page: 1, pages: 1, total: 2, candidates: run.candidates }) }));
+  await page.route("**/api/single-character-lab/preview", async (route) => {
+    const payload = route.request().postDataJSON();
+    const recipeCount = payload.mode !== "recipe_search" ? 1 : payload.adapter_id === "sdxl"
+      ? payload.appearance_strengths.length * payload.pose_strengths.length
+      : payload.step_values.length * payload.guidance_values.length * payload.denoise_values.length;
+    const candidateCount = payload.mode === "recipe_search" ? recipeCount * payload.seed_count : payload.count;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ candidate_count: candidateCount, recipe_count: recipeCount, seed_count: payload.seed_count || payload.count }) });
+  });
+  const savedReviews = [];
+  await page.route(/\/candidates\/[^/]+\/review$/, async (route) => {
+    savedReviews.push(route.request().postDataJSON());
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ candidate: run.candidates[0], summary: {} }) });
+  });
+
+  await openPage(page, "single-character-lab");
+  await page.locator("#single-character-lab-mode").selectOption("recipe_search");
+  await expect(page.locator("#single-character-lab-plan")).toContainText("72 candidates");
+  await expect(page.locator("#single-character-lab-seed-controls")).toBeHidden();
+  await page.locator("#single-character-lab-adapter").selectOption("qwen-image-edit-2511");
+  await expect(page.locator("#single-character-lab-modern-recipe-controls")).toBeVisible();
+  await expect(page.locator("#single-character-lab-conditioning-recipe-controls")).toBeHidden();
+  await expect(page.locator("#single-character-lab-plan")).toContainText("24 candidates · 3 recipe(s)");
+  await expect(page.locator("#single-character-lab-sampler")).toHaveValue("euler");
+  await expect(page.locator("#single-character-lab-scheduler")).toHaveValue("simple");
+  await expect(page.locator("#single-character-lab-detail")).toContainText("c001");
+  await expect(page.locator('[data-candidate-id="c001"] [data-score="identity_fidelity"]')).toHaveValue("4");
+  await expect(page.locator('[data-candidate-id="c001"]')).toContainText("Add to shortlist");
+  await page.locator(".single-character-review-image-button").first().click();
+  const reviewDialog = page.locator(".single-character-review-dialog");
+  await expect(reviewDialog).toBeVisible();
+  await expect(reviewDialog.locator(".single-character-review-image-pane img")).toHaveAttribute("src", /candidate\.png/);
+  await expect(reviewDialog.locator('[data-score="identity_fidelity"]')).toHaveValue("4");
+  const firstScoreBox = await reviewDialog.locator('[data-score="identity_fidelity"]').boundingBox();
+  const secondScoreBox = await reviewDialog.locator('[data-score="costume_fidelity"]').boundingBox();
+  expect(firstScoreBox.width).toBeLessThan(70);
+  expect(Math.abs(firstScoreBox.y - secondScoreBox.y)).toBeLessThan(5);
+  await expect(reviewDialog.locator('[data-review-field="decision"]')).toHaveCount(3);
+  await expect(reviewDialog).toContainText("Estimated manual cleanup time (minutes)");
+  await reviewDialog.locator('[data-review-field="decision"][value="keep"]').check();
+  await reviewDialog.locator('[data-review-field="shortlisted"]').check();
+  await reviewDialog.locator('[data-score="costume_fidelity"]').fill("2");
+  await reviewDialog.locator(".single-character-review-next").click();
+  await expect.poll(() => savedReviews.at(-1)?.decision).toBe("keep");
+  expect(savedReviews.at(-1).shortlisted).toBe(true);
+  expect(savedReviews.at(-1).scores.costume_fidelity).toBe(2);
+  await expect(reviewDialog).toContainText("Candidate 2 of 2");
+  await expect(reviewDialog.locator(".single-character-review-image-pane img")).toHaveAttribute("src", /candidate-2\.png/);
+  await reviewDialog.locator('[data-review-field="decision"][value="reject"]').check();
+  await reviewDialog.locator(".single-character-review-previous").click();
+  await expect.poll(() => savedReviews.at(-1)?.decision).toBe("reject");
+  await expect(reviewDialog).toContainText("Candidate 1 of 2");
+  await reviewDialog.locator(".single-character-review-close").click();
+
+  await page.locator('[data-lab-action="delete"]').click();
+  await expect(page.locator("#confirmation-dialog")).toBeVisible();
+  await page.locator("#confirmation-confirm").click();
+  await expect.poll(() => deleted).toBe(true);
+  await expect(page.locator("#single-character-lab-detail")).toContainText("No runs yet");
+});
+
+
 test("Prompt Evolution v3 uses global role models, blinded prompt grids, and post-selection audits", async ({ page }) => {
   await openPage(page, "prompt-evolution");
   await page.locator("#prompt-evolution-show-setup").click();

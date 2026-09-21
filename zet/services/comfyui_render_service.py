@@ -43,6 +43,11 @@ def _render_size(ir: dict[str, Any] | None, profile: dict[str, Any]) -> tuple[in
         width_ratio, height_ratio = (float(item.strip()) for item in aspect_ratio.split(":", 1))
         if width_ratio <= 0 or height_ratio <= 0:
             raise ValueError
+        if profile.get("workflow_kind") == "qwen_image_21_scene_preview":
+            pixel_budget = int(profile.get("pixel_budget") or 1024 * 1024)
+            width = max(32, round((pixel_budget * width_ratio / height_ratio) ** 0.5 / 32) * 32)
+            height = max(32, round((pixel_budget * height_ratio / width_ratio) ** 0.5 / 32) * 32)
+            return width, height
         short_side = int(profile.get("short_side", 640))
         max_long_side = int(profile.get("max_long_side", 960))
         if width_ratio >= height_ratio:
@@ -76,7 +81,10 @@ def compile_ir_to_comfyui_workflow(
     output_prefix: str = "Zet/Scene",
     reference_files: list[dict[str, Any]] | None = None,
     available_node_types: set[str] | None = None,
+    scene_prompt_override: str = "",
 ) -> ComfyUICompilation:
+    if profile.get("workflow_kind") == "qwen_image_21_scene_preview" and len(ir.get("image_inputs") or []) > 10:
+        raise LocalRenderError("Qwen Image 2.1 supports at most ten scene reference images.")
     validate_scene_render_ir(ir)
     resolved_seed = _resolved_seed(profile, seed)
     width, height = _render_size(ir, profile)
@@ -93,6 +101,7 @@ def compile_ir_to_comfyui_workflow(
         output_prefix=output_prefix,
         reference_files=reference_files,
         available_node_types=available_node_types,
+        scene_prompt_override=scene_prompt_override,
     )
 
 

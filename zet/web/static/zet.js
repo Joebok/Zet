@@ -70,6 +70,10 @@ const state = {
   singleCharacterLabOptions: null,
   singleCharacterLabRuns: [],
   singleCharacterLabRun: null,
+  singleCharacterLabCandidatePage: null,
+  singleCharacterLabPage: 1,
+  singleCharacterLabBlind: false,
+  singleCharacterLabSort: "candidate",
   singleCharacterLabRefreshTimer: null,
   turnaroundRows: [],
   selectedTurnaroundId: null,
@@ -220,8 +224,30 @@ const singleCharacterLabPose = document.querySelector("#single-character-lab-pos
 const singleCharacterLabAppearancePreview = document.querySelector("#single-character-lab-appearance-preview");
 const singleCharacterLabPosePreview = document.querySelector("#single-character-lab-pose-preview");
 const singleCharacterLabCheckpoint = document.querySelector("#single-character-lab-checkpoint");
+const singleCharacterLabAdapter = document.querySelector("#single-character-lab-adapter");
+const singleCharacterLabWorkflow = document.querySelector("#single-character-lab-workflow");
+const singleCharacterLabMode = document.querySelector("#single-character-lab-mode");
 const singleCharacterLabCount = document.querySelector("#single-character-lab-count");
 const singleCharacterLabWeight = document.querySelector("#single-character-lab-weight");
+const singleCharacterLabPoseWeight = document.querySelector("#single-character-lab-pose-weight");
+const singleCharacterLabSeedControls = document.querySelector("#single-character-lab-seed-controls");
+const singleCharacterLabRecipeControls = document.querySelector("#single-character-lab-recipe-controls");
+const singleCharacterLabConditioningRecipeControls = document.querySelector("#single-character-lab-conditioning-recipe-controls");
+const singleCharacterLabModernRecipeControls = document.querySelector("#single-character-lab-modern-recipe-controls");
+const singleCharacterLabAppearanceStrengths = document.querySelector("#single-character-lab-appearance-strengths");
+const singleCharacterLabPoseStrengths = document.querySelector("#single-character-lab-pose-strengths");
+const singleCharacterLabStepValues = document.querySelector("#single-character-lab-step-values");
+const singleCharacterLabGuidanceValues = document.querySelector("#single-character-lab-guidance-values");
+const singleCharacterLabDenoiseValues = document.querySelector("#single-character-lab-denoise-values");
+const singleCharacterLabSeedCount = document.querySelector("#single-character-lab-seed-count");
+const singleCharacterLabPlan = document.querySelector("#single-character-lab-plan");
+const singleCharacterLabSteps = document.querySelector("#single-character-lab-steps");
+const singleCharacterLabGuidance = document.querySelector("#single-character-lab-guidance");
+const singleCharacterLabSampler = document.querySelector("#single-character-lab-sampler");
+const singleCharacterLabScheduler = document.querySelector("#single-character-lab-scheduler");
+const singleCharacterLabWidth = document.querySelector("#single-character-lab-width");
+const singleCharacterLabHeight = document.querySelector("#single-character-lab-height");
+const singleCharacterLabDenoise = document.querySelector("#single-character-lab-denoise");
 const singleCharacterLabPositive = document.querySelector("#single-character-lab-positive");
 const singleCharacterLabNegative = document.querySelector("#single-character-lab-negative");
 const singleCharacterLabGenerate = document.querySelector("#single-character-lab-generate");
@@ -493,6 +519,10 @@ const consolePipelineLabel = document.querySelector("#console-pipeline-label");
 const consoleExpectedOutput = document.querySelector("#console-expected-output");
 const renderConsolePrompt = document.querySelector("#render-console-prompt");
 const renderConsoleLocalTest = document.querySelector("#render-console-local-test");
+const renderConsoleLocalProfileField = document.querySelector("#render-console-local-profile-field");
+const renderConsoleLocalProfile = document.querySelector("#render-console-local-profile");
+const renderConsoleQwenPromptField = document.querySelector("#render-console-qwen-prompt-field");
+const renderConsoleQwenPrompt = document.querySelector("#render-console-qwen-prompt");
 const renderConsoleCopyLocalApiParams = document.querySelector("#render-console-copy-local-api-params");
 const renderConsoleLocalApiPopover = document.querySelector("#render-console-local-api-popover");
 const renderConsoleLocalApiText = document.querySelector("#render-console-local-api-text");
@@ -783,6 +813,23 @@ fullscreenImageOverlay.append(
   fullscreenCropBox,
 );
 document.body.append(fullscreenImageOverlay);
+const singleCharacterReviewDialog = document.createElement("dialog");
+singleCharacterReviewDialog.className = "single-character-review-dialog";
+singleCharacterReviewDialog.setAttribute("aria-label", "Single Character Lab candidate review");
+singleCharacterReviewDialog.innerHTML = `
+  <button type="button" class="single-character-review-close" aria-label="Close candidate review">Close</button>
+  <button type="button" class="single-character-review-navigation single-character-review-previous" aria-label="Previous candidate">‹</button>
+  <main class="single-character-review-dialog-layout">
+    <section class="single-character-review-image-pane"><img alt=""></section>
+    <aside class="single-character-review-panel"></aside>
+  </main>
+  <button type="button" class="single-character-review-navigation single-character-review-next" aria-label="Next candidate">›</button>`;
+document.body.append(singleCharacterReviewDialog);
+const singleCharacterReviewDialogImage = singleCharacterReviewDialog.querySelector("img");
+const singleCharacterReviewDialogPanel = singleCharacterReviewDialog.querySelector(".single-character-review-panel");
+const singleCharacterReviewPrevious = singleCharacterReviewDialog.querySelector(".single-character-review-previous");
+const singleCharacterReviewNext = singleCharacterReviewDialog.querySelector(".single-character-review-next");
+const singleCharacterReviewClose = singleCharacterReviewDialog.querySelector(".single-character-review-close");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
@@ -10222,7 +10269,7 @@ async function refreshLocalRenderCheckpointOptions() {
 
 async function refreshComfyuiCheckpointOptions() {
   const current = settingComfyuiCheckpoint.value || state.pipelineControls?.automation?.comfyui_checkpoint || "";
-  showLocalImageConfigMessage("Refreshing ComfyUI checkpoints...");
+  showLocalImageConfigMessage("Refreshing ComfyUI models...");
   try {
     const params = new URLSearchParams({
       preset: settingComfyuiProfile.value || "comfyui-core-preview",
@@ -10231,8 +10278,12 @@ async function refreshComfyuiCheckpointOptions() {
     const payload = await fetchJson(`/api/local-image/checkpoints?${params.toString()}`);
     const items = [{ value: "", label: "" }, ...(payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title }))];
     setSelectOptionsWithLabels(settingComfyuiCheckpoint, items);
-    setComfyuiCheckpointValue(current);
-    showLocalImageConfigMessage(`Loaded ${(payload.checkpoints || []).length} ComfyUI checkpoints.`);
+    const available = (payload.checkpoints || []).map((item) => item.title);
+    const selected = settingComfyuiProfile.value === "comfyui-qwen-image-2-1-scene" && !available.includes(current)
+      ? (available.includes(payload.default_model) ? payload.default_model : (available[0] || ""))
+      : current;
+    setComfyuiCheckpointValue(selected);
+    showLocalImageConfigMessage(`Loaded ${(payload.checkpoints || []).length} ComfyUI models.`);
   } catch (error) {
     showLocalImageConfigMessage(error.message, "error");
   }
@@ -10464,6 +10515,10 @@ function clearRenderConsole() {
   consolePipelineLabel.textContent = "";
   consoleExpectedOutput.textContent = "";
   renderConsolePrompt.value = "";
+  renderConsoleLocalProfileField.hidden = true;
+  renderConsoleLocalProfile.replaceChildren();
+  renderConsoleQwenPromptField.hidden = true;
+  renderConsoleQwenPrompt.value = "";
   renderConsoleLocalTest.disabled = true;
   renderConsoleCopyLocalApiParams.disabled = true;
   renderConsoleLocalApiPopover.hidden = true;
@@ -10491,6 +10546,9 @@ function clearRenderConsole() {
 }
 
 function renderRenderConsoleDetail(detail) {
+  const previousAskId = state.renderConsoleDetail?.task?.ask_id;
+  const previousProfile = renderConsoleLocalProfile.value;
+  const previousQwenPrompt = renderConsoleQwenPrompt.value;
   state.renderConsoleDetail = detail;
   clearRenderConsoleImageSelection();
   const task = detail.task;
@@ -10510,16 +10568,46 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleCopyPrompt.disabled = !detail.prompt;
   renderConsoleFailTask.disabled = false;
   const localPrompt = detail.local_prompt || {};
-  renderConsoleLocalTest.disabled = !localPrompt.supports_local_test_render;
+  const sceneTask = task.asset_id == null;
+  renderConsoleLocalProfileField.hidden = !sceneTask;
+  if (sceneTask) {
+    const qwenProfile = "comfyui-qwen-image-2-1-scene";
+    const configured = localPrompt.configured_local_profile || "";
+    const profiles = [{ value: qwenProfile, label: "Qwen Image 2.1 (new scene)" }];
+    if (configured && configured !== qwenProfile) {
+      profiles.push({ value: configured, label: `Configured: ${configured}` });
+    }
+    setSelectOptionsWithLabels(renderConsoleLocalProfile, profiles);
+    renderConsoleLocalProfile.value = previousAskId === task.ask_id
+      && profiles.some((item) => item.value === previousProfile)
+      ? previousProfile : (localPrompt.default_local_profile || qwenProfile);
+  }
+  renderConsoleQwenPrompt.value = previousAskId === task.ask_id
+    && previousProfile === "comfyui-qwen-image-2-1-scene"
+    ? previousQwenPrompt : (localPrompt.qwen_prompt || "");
+  applyRenderConsoleLocalProfile();
   renderConsoleCopyLocalApiParams.disabled = !localPrompt.local_api_call_exists;
   renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
-  const localRenderState = localPrompt.local_render_status?.state || "";
-  renderConsoleLocalStatus.textContent = [localPrompt.supports_local_test_render ? "Local prompt: READY" : "Local prompt: DISABLED", localRenderState ? `Local render: ${localRenderState}` : ""]
-    .filter(Boolean)
-    .join(" | ");
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
   renderConsoleReferenceFiles(detail.reference_files || []);
   updateRenderConsoleNavigation();
+}
+
+function applyRenderConsoleLocalProfile() {
+  const localPrompt = state.renderConsoleDetail?.local_prompt || {};
+  const qwenSelected = !renderConsoleLocalProfileField.hidden
+    && renderConsoleLocalProfile.value === "comfyui-qwen-image-2-1-scene";
+  const supported = renderConsoleLocalProfileField.hidden
+    ? localPrompt.supports_local_test_render
+    : qwenSelected ? localPrompt.qwen_supports_local_test_render : localPrompt.configured_supports_local_test_render;
+  renderConsoleQwenPromptField.hidden = !qwenSelected;
+  renderConsoleQwenPrompt.disabled = qwenSelected && Boolean(localPrompt.qwen_error);
+  renderConsoleLocalTest.disabled = !supported;
+  const localRenderState = localPrompt.local_render_status?.state || "";
+  const message = qwenSelected && localPrompt.qwen_error
+    ? localPrompt.qwen_error : supported ? "Local prompt: READY" : "Local prompt: DISABLED";
+  renderConsoleLocalStatus.textContent = [message, localRenderState ? `Local render: ${localRenderState}` : ""]
+    .filter(Boolean).join(" | ");
 }
 
 function renderRenderConsoleLocalTestRender(path) {
@@ -10606,9 +10694,16 @@ async function runRenderConsoleLocalAction(action) {
   renderConsoleLocalTest.disabled = true;
   renderConsoleClearLocalTest.disabled = true;
   try {
+    const options = { method: "POST" };
+    if (action === "local-test-render" && !renderConsoleLocalProfileField.hidden) {
+      options.headers = { "Content-Type": "application/json" };
+      const body = { render_profile: renderConsoleLocalProfile.value };
+      if (!renderConsoleQwenPromptField.hidden) body.qwen_prompt = renderConsoleQwenPrompt.value;
+      options.body = JSON.stringify(body);
+    }
     const payload = await fetchJson(
       `/api/render-console/tasks/${encodeURIComponent(state.selectedRenderConsoleAskId)}/${action}?${productionQuery().toString()}`,
-      { method: "POST" },
+      options,
     );
     renderRenderConsoleDetail(payload);
     showRenderConsoleMessage(payload.message || "Action complete.");
@@ -10818,9 +10913,18 @@ function renderLocalImageReviewGallery(images) {
     caption.textContent = [
       `Image Generation: ${generation || "Unknown"}`,
       `Render Profile: ${item.render_profile || "Unknown"}`,
-      `Checkpoint: ${item.checkpoint || "Unknown"}`,
+      `Model: ${item.checkpoint || "Unknown"}`,
     ].join(" · ");
     card.append(preview, caption);
+    if (item.prompt) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "Prompt used";
+      const prompt = document.createElement("pre");
+      prompt.textContent = item.prompt;
+      details.append(summary, prompt);
+      card.append(details);
+    }
     localImageReviewGallery.append(card);
   }
 }
@@ -11042,6 +11146,127 @@ function stopSingleCharacterLabPolling() {
   state.singleCharacterLabRefreshTimer = null;
 }
 
+const singleCharacterScoreDimensions = [
+  ["identity_fidelity", "Identity"],
+  ["costume_fidelity", "Costume"],
+  ["pose_orientation", "Pose / orientation"],
+  ["composition_framing", "Composition / framing"],
+  ["technical_quality", "Technical quality"],
+  ["style_fit", "Style fit"],
+];
+
+function singleCharacterReviewHtml(item, { expanded = false } = {}) {
+  const review = item.review || {};
+  const machine = item.automatic_review || {};
+  const machineScores = machine.scores || {};
+  const overrides = review.score_overrides || review.scores || {};
+  const scores = singleCharacterScoreDimensions.map(([key, label]) => {
+    const overridden = Object.hasOwn(overrides, key);
+    const value = overridden ? overrides[key] : machineScores[key];
+    const machineLabel = machineScores[key] == null ? "not scored" : `auto ${machineScores[key]}`;
+    return `<label class="single-character-score-field${overridden ? " human-override" : ""}">${escapeHtml(label)} <small>${escapeHtml(machineLabel)}</small><input data-score="${key}" data-machine-score="${machineScores[key] ?? ""}" type="number" min="0" max="4" value="${value ?? ""}"></label>`;
+  }).join("");
+  const hardGates = Object.entries(machine.hard_gates || {}).map(([key, value]) =>
+    `<li class="${value ? "pass" : "fail"}">${escapeHtml(key.replaceAll("_", " "))}: ${value ? "pass" : "fail"}</li>`
+  ).join("");
+  const machineDetails = machine.scores ? `<details class="single-character-machine-review" ${expanded ? "open" : ""}>
+    <summary>Automated review details</summary>
+    ${hardGates ? `<strong>Hard gates</strong><ul>${hardGates}</ul>` : ""}
+    ${machine.failure_reasons?.length ? `<p><strong>Automatic failure tags:</strong> ${escapeHtml(machine.failure_reasons.join(", "))}</p>` : ""}
+    ${machine.evidence ? `<p><strong>Evidence:</strong> ${escapeHtml(machine.evidence)}</p>` : ""}
+    ${machine.uncertainty ? `<p><strong>Uncertainty:</strong> ${escapeHtml(machine.uncertainty)}</p>` : ""}
+  </details>` : '<p class="status-text">Automated category scores have not been run for this candidate.</p>';
+  const decision = review.decision || "undecided";
+  const decisionName = `decision-${item.candidate_id}-${expanded ? "dialog" : "card"}`;
+  return `<div class="single-character-review-controls${expanded ? " expanded" : ""}" data-candidate-id="${escapeHtml(item.candidate_id)}">
+    ${expanded ? `<header><strong>${escapeHtml(item.candidate_id)}</strong><span>${escapeHtml(item.recipe_id || "")} · seed ${escapeHtml(item.seed || "")}</span></header>` : ""}
+    ${machineDetails}
+    <fieldset class="single-character-decision"><legend>Decision</legend><div class="single-character-decision-options">
+      <label><input type="radio" name="${escapeHtml(decisionName)}" data-review-field="decision" value="undecided" ${decision === "undecided" ? "checked" : ""}> Undecided</label>
+      <label><input type="radio" name="${escapeHtml(decisionName)}" data-review-field="decision" value="keep" ${decision === "keep" ? "checked" : ""}> Keep</label>
+      <label><input type="radio" name="${escapeHtml(decisionName)}" data-review-field="decision" value="reject" ${decision === "reject" ? "checked" : ""}> Reject</label>
+    </div></fieldset>
+    <label class="single-character-shortlist"><input type="checkbox" data-review-field="shortlisted" ${review.shortlisted ? "checked" : ""}> Add to shortlist</label>
+    <label>Human failure tags<input data-review-field="failure_reasons" value="${escapeHtml((review.failure_reasons || []).join(", "))}" placeholder="Comma-separated tags"></label>
+    <div class="form-grid compact single-character-component-scores">${scores}</div>
+    <p class="status-text single-character-score-help">Automatic scores are prefilled. Change only categories you disagree with; Zet stores those differences as human overrides.</p>
+    <label>Estimated manual cleanup time (minutes)<input data-review-field="cleanup_minutes" type="number" min="0" step="0.5" value="${review.cleanup_minutes ?? ""}" placeholder="Minutes needed before use"></label>
+    <small class="status-text">Estimate hands-on repair time needed before you would use the image. Leave blank when unknown.</small>
+    <label>Human review notes<input data-review-field="notes" value="${escapeHtml(review.notes || "")}" placeholder="What differs from the automated review?"></label>
+    <div class="button-row"><button type="button" data-save-review>Save human review</button>
+    ${item.recipe_id && item.recipe_id !== "legacy" ? `<button type="button" data-save-recipe="${escapeHtml(item.recipe_id)}">Save recipe</button>` : ""}</div>
+  </div>`;
+}
+
+function singleCharacterReviewCandidates() {
+  const candidates = (state.singleCharacterLabRun?.candidates || []).filter((item) => item.status === "COMPLETE" && item.image_path);
+  if (!state.singleCharacterLabBlind) return candidates;
+  const stableBlindKey = (item) => {
+    const source = `${state.singleCharacterLabRun.run_id}:${item.candidate_id}`;
+    let value = 0;
+    for (const character of source) value = Math.imul(value ^ character.charCodeAt(0), 16777619) >>> 0;
+    return value;
+  };
+  return candidates
+    .map(({ recipe_id: _recipeId, seed: _seed, automatic_review: _automaticReview, ...item }) => item)
+    .sort((left, right) => stableBlindKey(left) - stableBlindKey(right));
+}
+
+let singleCharacterReviewIndex = -1;
+
+function renderSingleCharacterReviewDialog() {
+  const candidates = singleCharacterReviewCandidates();
+  const item = candidates[singleCharacterReviewIndex];
+  if (!item) {
+    singleCharacterReviewDialog.close();
+    return;
+  }
+  singleCharacterReviewDialogImage.src = fileUrl(item.image_path, item.completed_at || "");
+  singleCharacterReviewDialogImage.alt = `${state.singleCharacterLabRun.costume || "Character"} candidate ${item.candidate_id}`;
+  singleCharacterReviewDialogPanel.innerHTML = `<p class="single-character-review-position">Candidate ${singleCharacterReviewIndex + 1} of ${candidates.length}</p>${singleCharacterReviewHtml(item, { expanded: true })}`;
+  singleCharacterReviewPrevious.disabled = singleCharacterReviewIndex <= 0;
+  singleCharacterReviewNext.disabled = singleCharacterReviewIndex >= candidates.length - 1;
+  singleCharacterReviewDialogPanel.querySelector("[data-save-review]")?.addEventListener("click", saveSingleCharacterCandidateReview);
+  singleCharacterReviewDialogPanel.querySelector("[data-save-recipe]")?.addEventListener("click", saveSingleCharacterRecipe);
+}
+
+function openSingleCharacterReview(candidateId) {
+  const candidates = singleCharacterReviewCandidates();
+  singleCharacterReviewIndex = candidates.findIndex((item) => item.candidate_id === candidateId);
+  if (singleCharacterReviewIndex < 0) return;
+  renderSingleCharacterReviewDialog();
+  if (!singleCharacterReviewDialog.open) singleCharacterReviewDialog.showModal();
+  singleCharacterReviewClose.focus();
+}
+
+async function navigateSingleCharacterReview(offset) {
+  const next = singleCharacterReviewIndex + offset;
+  if (next < 0 || next >= singleCharacterReviewCandidates().length) return;
+  const saveButton = singleCharacterReviewDialogPanel.querySelector("[data-save-review]");
+  if (saveButton) {
+    saveButton.disabled = true;
+    try {
+      await saveSingleCharacterCandidateReview({ currentTarget: saveButton });
+    } catch (error) {
+      singleCharacterLabMessage.textContent = `Review was not saved: ${error.message}`;
+      saveButton.disabled = false;
+      return;
+    }
+  }
+  singleCharacterReviewIndex = next;
+  renderSingleCharacterReviewDialog();
+}
+
+function enableSingleCharacterReviewImage(image) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "fullscreen-image-button single-character-review-image-button";
+  button.setAttribute("aria-label", `Open candidate review: ${image.alt || "image"}`);
+  image.replaceWith(button);
+  button.append(image);
+  button.addEventListener("click", () => openSingleCharacterReview(image.dataset.labReviewImage));
+}
+
 function renderSingleCharacterLabRun(run) {
   state.singleCharacterLabRun = run;
   if (!run) {
@@ -11049,34 +11274,160 @@ function renderSingleCharacterLabRun(run) {
     stopSingleCharacterLabPolling();
     return;
   }
-  const candidates = (run.candidates || []).map((item) => `
+  const candidatePage = state.singleCharacterLabCandidatePage?.run_id === run.run_id
+    ? state.singleCharacterLabCandidatePage
+    : { candidates: (run.candidates || []).slice(0, 24), page: 1, pages: Math.max(1, Math.ceil((run.candidates || []).length / 24)), total: (run.candidates || []).length };
+  const candidates = (candidatePage.candidates || []).map((item) => {
+    const machine = item.automatic_review;
+    return `
     <article class="prompt-evolution-candidate">
-      <img src="${fileUrl(item.image_path)}" alt="${escapeHtml(run.costume)} seed ${escapeHtml(item.seed)}">
-      <strong>Seed ${escapeHtml(item.seed)}</strong>
-      ${item.elapsed_seconds ? `<small>${escapeHtml(item.elapsed_seconds)} seconds</small>` : ""}
-    </article>`).join("");
-  const contactSheet = run.contact_sheet
-    ? `<figure class="single-character-contact-sheet"><figcaption>Contact sheet</figcaption><img src="${fileUrl(run.contact_sheet)}" alt="Single Character Lab contact sheet"></figure>`
-    : "";
+      ${item.image_path && item.status === "COMPLETE" ? `<img data-lab-review-image="${escapeHtml(item.candidate_id)}" src="${fileUrl(item.image_path)}" alt="${escapeHtml(run.costume)} candidate ${escapeHtml(item.candidate_id)}">` : `<div class="single-character-candidate-placeholder">${escapeHtml(item.status || "PENDING")}</div>`}
+      <strong>${escapeHtml(item.candidate_id)}</strong>
+      ${item.seed ? `<small>Seed ${escapeHtml(item.seed)} · ${escapeHtml(item.recipe_id || "")}</small>` : ""}
+      ${item.render_seconds != null ? `<small>${escapeHtml(item.render_seconds)} seconds</small>` : ""}
+      ${item.error ? `<small class="error">${escapeHtml(item.error)}</small>` : ""}
+      ${machine ? `<small>Machine: ${escapeHtml(machine.weighted_mean ?? "unscored")} ${escapeHtml(machine.uncertainty || "")}</small>` : ""}
+      ${item.status === "COMPLETE" ? singleCharacterReviewHtml(item) : ""}
+    </article>`;
+  }).join("");
+  const contactSheets = run.contact_sheets || (run.contact_sheet ? [run.contact_sheet] : []);
+  const contactSheet = contactSheets.map((path, index) => `<figure class="single-character-contact-sheet"><figcaption>Contact sheet ${index + 1}</figcaption><img src="${fileUrl(path)}" alt="Single Character Lab contact sheet ${index + 1}"></figure>`).join("");
+  const summary = run.summary || {};
+  const running = ["QUEUED", "RUNNING", "STOPPING"].includes(run.status);
+  const reviewing = ["QUEUED", "RUNNING"].includes(run.automatic_review?.status);
+  const polling = running || reviewing;
   singleCharacterLabDetail.innerHTML = `
     <div class="summary-bar">${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
-    <p><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint)} · <strong>Reference weight:</strong> ${escapeHtml(run.reference_weight)}</p>
+    <p><strong>Mode:</strong> ${escapeHtml(run.mode || "legacy")} · <strong>Adapter:</strong> ${escapeHtml(run.model_adapter?.label || "SDXL")} · <strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint)}</p>
+    <p><strong>Progress:</strong> ${escapeHtml(run.completed_count || 0)}/${escapeHtml(run.candidate_count || (run.candidates || []).length)} complete · ${escapeHtml(run.failed_count || 0)} failed · <strong>Reviewed:</strong> ${escapeHtml(summary.reviewed_count || 0)} · <strong>Acceptance:</strong> ${summary.acceptance_rate == null ? "—" : `${Math.round(summary.acceptance_rate * 100)}%`} · <strong>ETA:</strong> ${summary.estimated_remaining_seconds == null ? "unavailable" : `${Math.round(summary.estimated_remaining_seconds)}s`}</p>
+    ${(summary.recipes || []).length > 1 ? `<details><summary>Recipe yields</summary><div class="single-character-recipe-summary">${summary.recipes.map((item) => `<span>${escapeHtml(item.recipe_id)}: ${item.acceptance_rate == null ? "unreviewed" : `${Math.round(item.acceptance_rate * 100)}% (${item.kept_count}/${item.reviewed_count})`}</span>`).join("")}</div></details>` : ""}
+    <div class="button-row">
+      ${running ? '<button type="button" data-lab-action="stop">Stop after current</button>' : ""}
+      ${["STOPPED", "COMPLETE_WITH_ERRORS", "FAILED"].includes(run.status) ? '<button type="button" data-lab-action="resume">Resume</button>' : ""}
+      ${Number(run.failed_count || 0) ? '<button type="button" data-lab-action="retry">Retry failed</button>' : ""}
+      ${running || reviewing ? "" : '<button type="button" data-lab-action="machine-review">Score completed through AI Proxy</button>'}
+      ${running || reviewing ? "" : '<button type="button" class="danger-action" data-lab-action="delete">Delete run</button>'}
+      <label><input type="checkbox" data-lab-blind ${state.singleCharacterLabBlind ? "checked" : ""}> Blind review</label>
+      <label>Sort <select data-lab-sort><option value="candidate">Candidate</option><option value="decision">Human decision</option><option value="identity_fidelity">Identity score</option><option value="costume_fidelity">Costume score</option><option value="pose_orientation">Pose score</option><option value="technical_quality">Technical score</option></select></label>
+    </div>
     ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
-    ${["QUEUED", "RUNNING"].includes(run.status) ? '<p class="status-text">Rendering locally in ComfyUI…</p>' : ""}
+    ${run.automatic_review ? `<p class="status-text">AI Proxy review: ${escapeHtml(run.automatic_review.status)} · ${escapeHtml(run.automatic_review.model || "")}${run.automatic_review.jobs ? ` · ${escapeHtml(run.automatic_review.completed_count || 0)} complete · ${escapeHtml(run.automatic_review.pending_count || 0)} pending · ${escapeHtml(run.automatic_review.failed_count || 0)} failed` : " · legacy direct scoring"}${run.automatic_review.error ? ` · ${escapeHtml(run.automatic_review.error)}` : ""}</p>` : ""}
+    ${running ? '<p class="status-text">Rendering locally in ComfyUI…</p>' : ""}
+    <div class="prompt-evolution-reference-grid single-character-review-references">
+      <figure><figcaption>Appearance reference</figcaption><img src="${fileUrl(run.reference_image)}" alt="Frozen appearance reference"></figure>
+      <figure><figcaption>Requested pose</figcaption><img src="${fileUrl(run.pose_image)}" alt="Frozen pose reference"></figure>
+    </div>
     ${candidates ? `<div class="prompt-evolution-gallery">${candidates}</div>` : ""}
+    <div class="single-character-pagination"><button type="button" data-lab-page="prev" ${candidatePage.page <= 1 ? "disabled" : ""}>Previous</button><span>Page ${escapeHtml(candidatePage.page)} of ${escapeHtml(candidatePage.pages)} · ${escapeHtml(candidatePage.total)} candidates</span><button type="button" data-lab-page="next" ${candidatePage.page >= candidatePage.pages ? "disabled" : ""}>Next</button></div>
     ${contactSheet}
     <details><summary>Effective prompts</summary><div class="prompt-evolution-prompts"><strong>Positive</strong>\n${escapeHtml(run.positive_prompt || "")}\n\n<strong>Negative</strong>\n${escapeHtml(run.negative_prompt || "")}</div></details>`;
-  singleCharacterLabDetail.querySelectorAll("img").forEach((image) => enableFullscreenImage(image));
+  singleCharacterLabDetail.querySelectorAll("[data-lab-review-image]").forEach(enableSingleCharacterReviewImage);
+  singleCharacterLabDetail.querySelectorAll("img:not([data-lab-review-image])").forEach((image) => enableFullscreenImage(image));
+  singleCharacterLabDetail.querySelectorAll("[data-save-review]").forEach((button) => button.addEventListener("click", saveSingleCharacterCandidateReview));
+  singleCharacterLabDetail.querySelectorAll("[data-save-recipe]").forEach((button) => button.addEventListener("click", saveSingleCharacterRecipe));
+  singleCharacterLabDetail.querySelectorAll("[data-lab-action]").forEach((button) => button.addEventListener("click", handleSingleCharacterLabAction));
+  singleCharacterLabDetail.querySelectorAll("[data-lab-page]").forEach((button) => button.addEventListener("click", changeSingleCharacterLabPage));
+  singleCharacterLabDetail.querySelector("[data-lab-blind]")?.addEventListener("change", async (event) => {
+    state.singleCharacterLabBlind = event.currentTarget.checked;
+    state.singleCharacterLabPage = 1;
+    await loadSingleCharacterCandidatePage();
+  });
+  const sortControl = singleCharacterLabDetail.querySelector("[data-lab-sort]");
+  if (sortControl) {
+    sortControl.value = state.singleCharacterLabSort;
+    sortControl.addEventListener("change", async (event) => {
+      state.singleCharacterLabSort = event.currentTarget.value;
+      state.singleCharacterLabPage = 1;
+      await loadSingleCharacterCandidatePage();
+    });
+  }
   singleCharacterLabRuns.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("selected", button.dataset.runId === run.run_id);
   });
-  if (["QUEUED", "RUNNING"].includes(run.status) && !state.singleCharacterLabRefreshTimer) {
+  if (polling && !state.singleCharacterLabRefreshTimer) {
     state.singleCharacterLabRefreshTimer = window.setInterval(refreshSingleCharacterLabRun, 3000);
-  } else if (!["QUEUED", "RUNNING"].includes(run.status)) {
+  } else if (!polling) {
     stopSingleCharacterLabPolling();
     singleCharacterLabGenerate.disabled = false;
   }
 }
+
+async function loadSingleCharacterCandidatePage() {
+  const run = state.singleCharacterLabRun;
+  if (!run?.run_id) return;
+  const params = new URLSearchParams({ page: String(state.singleCharacterLabPage), page_size: "24", blind: String(state.singleCharacterLabBlind), sort: state.singleCharacterLabSort });
+  state.singleCharacterLabCandidatePage = await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(run.run_id)}/candidates?${params.toString()}`);
+  renderSingleCharacterLabRun(run);
+}
+
+async function changeSingleCharacterLabPage(event) {
+  state.singleCharacterLabPage += event.currentTarget.dataset.labPage === "next" ? 1 : -1;
+  await loadSingleCharacterCandidatePage();
+}
+
+async function saveSingleCharacterCandidateReview(event) {
+  const controls = event.currentTarget.closest("[data-candidate-id]");
+  const field = (name) => controls.querySelector(`[data-review-field="${name}"]`);
+  const selectedDecision = controls.querySelector('[data-review-field="decision"]:checked');
+  const candidateId = controls.dataset.candidateId;
+  const dialogWasOpen = singleCharacterReviewDialog.open;
+  await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}/candidates/${encodeURIComponent(candidateId)}/review`, {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision: selectedDecision?.value || "undecided", shortlisted: field("shortlisted").checked,
+      failure_reasons: field("failure_reasons").value.split(",").map((item) => item.trim()).filter(Boolean),
+      scores: Object.fromEntries([...controls.querySelectorAll("[data-score]")].filter((item) => item.value !== "").map((item) => [item.dataset.score, Number(item.value)])),
+      cleanup_minutes: field("cleanup_minutes").value || null, notes: field("notes").value }),
+  });
+  await refreshSingleCharacterLabRun();
+  if (dialogWasOpen) {
+    const candidates = singleCharacterReviewCandidates();
+    singleCharacterReviewIndex = candidates.findIndex((item) => item.candidate_id === candidateId);
+    if (singleCharacterReviewIndex >= 0) renderSingleCharacterReviewDialog();
+  }
+}
+
+async function saveSingleCharacterRecipe(event) {
+  const recipeId = event.currentTarget.dataset.saveRecipe;
+  await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}/recipes/${encodeURIComponent(recipeId)}/save`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  });
+  singleCharacterLabMessage.textContent = `Saved recipe ${recipeId}.`;
+}
+
+async function handleSingleCharacterLabAction(event) {
+  const action = event.currentTarget.dataset.labAction;
+  const runId = encodeURIComponent(state.singleCharacterLabRun.run_id);
+  if (action === "delete") {
+    const runLabel = `${state.singleCharacterLabRun.costume || "Character"} · ${state.singleCharacterLabRun.view || "Unknown view"}`;
+    if (!await confirmAction(
+      "Delete Character Lab run",
+      `Delete ${runLabel}? This removes its candidates, reviews, contact sheets, and saved run data.`,
+      "Delete run",
+    )) return;
+    await fetchJson(`/api/single-character-lab/runs/${runId}`, { method: "DELETE" });
+    if (singleCharacterReviewDialog.open) singleCharacterReviewDialog.close();
+    stopSingleCharacterLabPolling();
+    state.singleCharacterLabRun = null;
+    state.singleCharacterLabCandidatePage = null;
+    await loadSingleCharacterLabRuns();
+    singleCharacterLabMessage.textContent = "Character Lab run deleted.";
+    return;
+  }
+  if (action === "stop") await fetchJson(`/api/single-character-lab/runs/${runId}/stop`, { method: "POST" });
+  if (action === "resume" || action === "retry") await fetchJson(`/api/single-character-lab/runs/${runId}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retry_failed: action === "retry" }) });
+  if (action === "machine-review") await fetchJson(`/api/single-character-lab/runs/${runId}/automatic-review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  await refreshSingleCharacterLabRun();
+}
+
+singleCharacterReviewClose.addEventListener("click", () => singleCharacterReviewDialog.close());
+singleCharacterReviewPrevious.addEventListener("click", () => { void navigateSingleCharacterReview(-1); });
+singleCharacterReviewNext.addEventListener("click", () => { void navigateSingleCharacterReview(1); });
+singleCharacterReviewDialog.addEventListener("keydown", (event) => {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+  if (event.key === "ArrowLeft") { event.preventDefault(); void navigateSingleCharacterReview(-1); }
+  if (event.key === "ArrowRight") { event.preventDefault(); void navigateSingleCharacterReview(1); }
+});
+singleCharacterReviewDialog.addEventListener("close", () => { singleCharacterReviewIndex = -1; });
 
 function renderSingleCharacterLabRuns() {
   singleCharacterLabRuns.innerHTML = state.singleCharacterLabRuns.map((run) =>
@@ -11085,7 +11436,10 @@ function renderSingleCharacterLabRuns() {
 }
 
 async function selectSingleCharacterLabRun(runId) {
+  state.singleCharacterLabPage = 1;
+  state.singleCharacterLabCandidatePage = null;
   renderSingleCharacterLabRun(await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(runId)}`));
+  await loadSingleCharacterCandidatePage();
 }
 
 async function refreshSingleCharacterLabRun() {
@@ -11093,6 +11447,7 @@ async function refreshSingleCharacterLabRun() {
   try {
     const run = await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}`);
     renderSingleCharacterLabRun(run);
+    await loadSingleCharacterCandidatePage();
     singleCharacterLabStatus.textContent = `${run.costume} · ${run.status}`;
     if (!["QUEUED", "RUNNING"].includes(run.status)) await loadSingleCharacterLabRuns(run.run_id);
   } catch (error) {
@@ -11127,14 +11482,96 @@ async function loadSingleCharacterLab() {
     (item) => ({ value: item.tag, label: item.label }),
   ));
   setSelectOptions(singleCharacterLabCheckpoint, state.singleCharacterLabOptions.checkpoints || []);
+  setSelectOptionsWithLabels(singleCharacterLabAdapter, (state.singleCharacterLabOptions.adapters || []).map((item) => ({
+    value: item.id,
+    label: `${item.label}${item.available ? "" : ` — unavailable: ${(item.missing || []).join(", ")}`}`,
+    disabled: !item.available,
+  })));
+  singleCharacterLabAdapter.querySelectorAll("option").forEach((option) => {
+    const adapter = (state.singleCharacterLabOptions.adapters || []).find((item) => item.id === option.value);
+    option.disabled = adapter && !adapter.available;
+  });
+  singleCharacterLabAdapter.value = (state.singleCharacterLabOptions.adapters || []).find((item) => item.available)?.id || "";
+  setSelectOptionsWithLabels(singleCharacterLabWorkflow, (state.singleCharacterLabOptions.workflows || []).map((item) => ({ value: item.id, label: item.label })));
+  setSelectOptions(singleCharacterLabSampler, state.singleCharacterLabOptions.samplers || ["dpmpp_2m"]);
+  setSelectOptions(singleCharacterLabScheduler, state.singleCharacterLabOptions.schedulers || ["karras"]);
+  if ((state.singleCharacterLabOptions.samplers || []).includes("dpmpp_2m")) singleCharacterLabSampler.value = "dpmpp_2m";
+  if ((state.singleCharacterLabOptions.schedulers || []).includes("karras")) singleCharacterLabScheduler.value = "karras";
+  setSelectOptions(singleCharacterLabCount, (state.singleCharacterLabOptions.candidate_counts || [1, 2, 3, 4, 5, 6]).map(String));
+  singleCharacterLabCount.value = "3";
   singleCharacterLabCheckpoint.value = state.singleCharacterLabOptions.default_checkpoint || "";
   singleCharacterLabWeight.value = String(state.singleCharacterLabOptions.default_reference_weight ?? 0.45);
-  singleCharacterLabGenerate.disabled = !singleCharacterLabAppearance.value || !singleCharacterLabPose.value || !singleCharacterLabCheckpoint.value;
+  singleCharacterLabPoseWeight.value = String(state.singleCharacterLabOptions.default_pose_weight ?? 0.75);
+  singleCharacterLabGenerate.disabled = !singleCharacterLabAppearance.value || !singleCharacterLabPose.value || !singleCharacterLabCheckpoint.value || !singleCharacterLabAdapter.value;
   await syncSingleCharacterAppearance({ matchPose: true });
+  await previewSingleCharacterLabPlan();
   await loadSingleCharacterLabRuns();
   singleCharacterLabStatus.textContent = state.singleCharacterLabOptions.checkpoint_error
     ? `Configured checkpoint only · ${state.singleCharacterLabOptions.checkpoint_error}`
     : `${state.singleCharacterLabOptions.appearances.length} locked costume view(s)`;
+}
+
+function singleCharacterLabSearchPayload() {
+  const mode = singleCharacterLabMode.value;
+  const numberList = (control) => control.value.split(",").map((item) => Number(item.trim())).filter(Number.isFinite);
+  const payload = { mode, adapter_id: singleCharacterLabAdapter.value || "sdxl", workflow: singleCharacterLabWorkflow.value || "combined", count: Number(singleCharacterLabCount.value || 1),
+    reference_weight: Number(singleCharacterLabWeight.value || 0.45), pose_weight: Number(singleCharacterLabPoseWeight.value || 0.75),
+    steps: Number(singleCharacterLabSteps.value || 28), guidance: Number(singleCharacterLabGuidance.value || 6),
+    sampler: singleCharacterLabSampler.value, scheduler: singleCharacterLabScheduler.value,
+    width: Number(singleCharacterLabWidth.value || 832), height: Number(singleCharacterLabHeight.value || 1216),
+    denoise: Number(singleCharacterLabDenoise.value || 1) };
+  if (mode === "recipe_search") {
+    if (payload.adapter_id === "sdxl") {
+      payload.appearance_strengths = numberList(singleCharacterLabAppearanceStrengths);
+      payload.pose_strengths = numberList(singleCharacterLabPoseStrengths);
+    } else {
+      payload.step_values = numberList(singleCharacterLabStepValues);
+      payload.guidance_values = numberList(singleCharacterLabGuidanceValues);
+      payload.denoise_values = numberList(singleCharacterLabDenoiseValues);
+    }
+    payload.seed_count = Number(singleCharacterLabSeedCount.value || 8);
+  }
+  return payload;
+}
+
+async function previewSingleCharacterLabPlan() {
+  const recipeSearch = singleCharacterLabMode.value === "recipe_search";
+  const modern = singleCharacterLabAdapter.value !== "sdxl";
+  singleCharacterLabSeedControls.hidden = recipeSearch;
+  singleCharacterLabRecipeControls.hidden = !recipeSearch;
+  singleCharacterLabConditioningRecipeControls.hidden = modern;
+  singleCharacterLabModernRecipeControls.hidden = !modern;
+  try {
+    const preview = await fetchJson("/api/single-character-lab/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(singleCharacterLabSearchPayload()) });
+    singleCharacterLabPlan.textContent = `${preview.candidate_count} candidates · ${preview.recipe_count} recipe(s) · ${preview.seed_count} shared seed(s)`;
+    singleCharacterLabGenerate.disabled = !singleCharacterLabAppearance.value || !singleCharacterLabPose.value || !singleCharacterLabCheckpoint.value || !singleCharacterLabAdapter.value;
+  } catch (error) {
+    singleCharacterLabPlan.textContent = error.message;
+    singleCharacterLabGenerate.disabled = true;
+  }
+}
+
+async function syncSingleCharacterModelAdapter() {
+  const modern = singleCharacterLabAdapter.value !== "sdxl";
+  singleCharacterLabWorkflow.disabled = modern;
+  if (singleCharacterLabAdapter.value === "flux2-klein-4b") {
+    singleCharacterLabSteps.value = "4";
+    singleCharacterLabGuidance.value = "3.5";
+    singleCharacterLabStepValues.value = "4";
+    singleCharacterLabGuidanceValues.value = "2.5, 3.5, 4.5";
+    singleCharacterLabDenoiseValues.value = "1.0";
+    if ([...singleCharacterLabSampler.options].some((item) => item.value === "euler")) singleCharacterLabSampler.value = "euler";
+    if ([...singleCharacterLabScheduler.options].some((item) => item.value === "simple")) singleCharacterLabScheduler.value = "simple";
+  } else if (singleCharacterLabAdapter.value === "qwen-image-edit-2511") {
+    singleCharacterLabSteps.value = "20";
+    singleCharacterLabGuidance.value = "1";
+    singleCharacterLabStepValues.value = "16, 20, 24";
+    singleCharacterLabGuidanceValues.value = "1.0";
+    singleCharacterLabDenoiseValues.value = "1.0";
+    if ([...singleCharacterLabSampler.options].some((item) => item.value === "euler")) singleCharacterLabSampler.value = "euler";
+    if ([...singleCharacterLabScheduler.options].some((item) => item.value === "simple")) singleCharacterLabScheduler.value = "simple";
+  }
+  await previewSingleCharacterLabPlan();
 }
 
 async function generateSingleCharacterLabRun() {
@@ -11152,8 +11589,8 @@ async function generateSingleCharacterLabRun() {
         asset_id: appearance.asset_id,
         pose_tag: singleCharacterLabPose.value,
         checkpoint: singleCharacterLabCheckpoint.value,
-        count: Number(singleCharacterLabCount.value || 1),
-        reference_weight: Number(singleCharacterLabWeight.value || 0.45),
+        adapter_id: singleCharacterLabAdapter.value,
+        ...singleCharacterLabSearchPayload(),
         positive_prompt: singleCharacterLabPositive.value,
         negative_prompt: singleCharacterLabNegative.value,
       }),
@@ -12542,6 +12979,7 @@ renderConsoleCopyPrompt.addEventListener("click", async () => {
   showRenderConsoleMessage("Prompt copied.");
 });
 renderConsoleLocalTest.addEventListener("click", () => runRenderConsoleLocalAction("local-test-render"));
+renderConsoleLocalProfile.addEventListener("change", applyRenderConsoleLocalProfile);
 renderConsoleCopyLocalApiParams.addEventListener("click", copyRenderConsoleLocalApiParams);
 renderConsoleLocalApiCopy.addEventListener("click", copyDisplayedRenderConsoleLocalApiParams);
 document.addEventListener("click", (event) => {
@@ -12596,6 +13034,15 @@ imageCatalogBulkClear.addEventListener("click", () => {
   renderImageCatalog();
 });
 singleCharacterLabPose.addEventListener("change", renderSingleCharacterReferences);
+singleCharacterLabMode.addEventListener("change", previewSingleCharacterLabPlan);
+singleCharacterLabAdapter.addEventListener("change", syncSingleCharacterModelAdapter);
+[
+  singleCharacterLabWorkflow, singleCharacterLabCount, singleCharacterLabWeight, singleCharacterLabPoseWeight,
+  singleCharacterLabAppearanceStrengths, singleCharacterLabPoseStrengths, singleCharacterLabSeedCount,
+  singleCharacterLabStepValues, singleCharacterLabGuidanceValues, singleCharacterLabDenoiseValues,
+  singleCharacterLabSteps, singleCharacterLabGuidance, singleCharacterLabSampler, singleCharacterLabScheduler,
+  singleCharacterLabWidth, singleCharacterLabHeight, singleCharacterLabDenoise,
+].forEach((control) => control.addEventListener("change", previewSingleCharacterLabPlan));
 singleCharacterLabGenerate.addEventListener("click", generateSingleCharacterLabRun);
 singleCharacterLabRefresh.addEventListener("click", () => loadSingleCharacterLabRuns());
 singleCharacterLabRuns.addEventListener("click", (event) => {

@@ -30,7 +30,8 @@ class LocalRenderBackendService:
             or preset.get("server_url")
             or ("http://127.0.0.1:8188" if selected_backend == "comfyui" else "http://127.0.0.1:7860")
         ).rstrip("/")
-        api_path = "/object_info/CheckpointLoaderSimple" if selected_backend == "comfyui" else "/sdapi/v1/sd-models"
+        diffusion_profile = selected_backend == "comfyui" and preset.get("model_family") == "qwen-image-2.1"
+        api_path = ("/object_info/UNETLoader" if diffusion_profile else "/object_info/CheckpointLoaderSimple") if selected_backend == "comfyui" else "/sdapi/v1/sd-models"
         request = Request(selected_url + api_path, method="GET")
         try:
             with urlopen(request, timeout=10) as response:
@@ -38,9 +39,9 @@ class LocalRenderBackendService:
         except URLError as exc:
             raise RuntimeError("Local image backend unavailable.") from exc
         if selected_backend == "comfyui":
-            loader = data.get("CheckpointLoaderSimple", {}) if isinstance(data, dict) else {}
+            loader = data.get("UNETLoader" if diffusion_profile else "CheckpointLoaderSimple", {}) if isinstance(data, dict) else {}
             required = loader.get("input", {}).get("required", {}) if isinstance(loader, dict) else {}
-            choices = required.get("ckpt_name", [])
+            choices = required.get("unet_name" if diffusion_profile else "ckpt_name", [])
             names = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], list) else []
             return [
                 {"title": str(name), "model_name": str(name), "filename": str(name), "hash": ""}
@@ -85,5 +86,12 @@ class LocalRenderBackendService:
             "controlnet_models": choices("ControlNetLoader", "control_net_name"),
             "samplers": choices("KSampler", "sampler_name"),
             "schedulers": choices("KSampler", "scheduler"),
+            "diffusion_models": choices("UNETLoader", "unet_name"),
+            "text_encoders": sorted(set(
+                choices("CLIPLoader", "clip_name")
+                + choices("DualCLIPLoader", "clip_name1")
+                + choices("DualCLIPLoader", "clip_name2")
+            )),
+            "vaes": choices("VAELoader", "vae_name"),
             "node_types": sorted(str(name) for name in data),
         }

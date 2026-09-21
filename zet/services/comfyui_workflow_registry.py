@@ -8,6 +8,7 @@ from typing import Any, Callable
 from zet.services.comfyui_prompt_compiler import append_prompt_globals, compile_scene_prompts
 from zet.services.local_render_types import LocalRenderError
 from zet.services.scene_layout_planner import plan_scene_layout
+from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 
 
 CORE_SCENE_WORKFLOW = "core_txt2img_scene_preview"
@@ -19,6 +20,9 @@ IPADAPTER_PROMPT_WORKFLOW = "ipadapter_prompt_only"
 IPADAPTER_CONTROLNET_PROMPT_WORKFLOW = "ipadapter_controlnet_prompt_only"
 IPADAPTER_SCENE_WORKFLOW = "ipadapter_scene_preview"
 OPENPOSE_SCENE_WORKFLOW = "openpose_scene_preview"
+FLUX2_REFERENCE_PROMPT_WORKFLOW = "flux2_reference_prompt_only"
+QWEN_IMAGE_EDIT_PROMPT_WORKFLOW = "qwen_image_edit_prompt_only"
+QWEN_IMAGE_21_SCENE_WORKFLOW = "qwen_image_21_scene_preview"
 
 
 @dataclass(frozen=True)
@@ -648,6 +652,161 @@ def _ipadapter_controlnet_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUIC
     return _controlled_prompt_compiler(*args, **kwargs, workflow_kind=IPADAPTER_CONTROLNET_PROMPT_WORKFLOW)
 
 
+def _modern_reference_prompt_compiler(
+    positive_prompt: str,
+    negative_prompt: str,
+    profile: dict[str, Any],
+    *,
+    checkpoint: str,
+    seed: int,
+    width: int,
+    height: int,
+    output_prefix: str,
+    reference_files: list[dict[str, Any]] | None = None,
+    available_node_types: set[str] | None = None,
+    workflow_kind: str,
+    **_kwargs: Any,
+) -> ComfyUICompilation:
+    qwen = workflow_kind == QWEN_IMAGE_EDIT_PROMPT_WORKFLOW
+    required = {"UNETLoader", "CLIPLoader", "VAELoader", "LoadImage", "KSampler", "VAEDecode", "SaveImage"}
+    required.add("TextEncodeQwenImageEditPlus" if qwen else "ReferenceLatent")
+    required.add("EmptySD3LatentImage" if qwen else "EmptyFlux2LatentImage")
+    if not qwen:
+        required.update({"CLIPTextEncode", "VAEEncode", "FluxGuidance"})
+    missing = sorted(required - (available_node_types or set()))
+    if missing:
+        raise LocalRenderError("ComfyUI modern reference workflow requires unavailable nodes: " + ", ".join(missing))
+    text_encoder = str(profile.get("text_encoder") or "").strip()
+    vae_name = str(profile.get("vae") or "").strip()
+    if not checkpoint or not text_encoder or not vae_name:
+        raise LocalRenderError("Modern reference workflow requires diffusion model, text encoder, and VAE filenames.")
+    appearance = _prompt_reference(reference_files, "prompt_evolution_appearance")
+    pose = _prompt_reference(reference_files, "prompt_evolution_pose")
+    workflow: dict[str, Any] = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": checkpoint, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": text_encoder, "type": "qwen_image" if qwen else "flux2"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae_name}},
+        "4": {"class_type": "LoadImage", "inputs": {"image": appearance["comfyui_input_name"]}},
+        "5": {"class_type": "LoadImage", "inputs": {"image": pose["comfyui_input_name"]}},
+    }
+    if qwen:
+        workflow.update({
+            "6": {"class_type": "TextEncodeQwenImageEditPlus", "inputs": {
+                "clip": ["2", 0], "vae": ["3", 0], "image1": ["4", 0], "image2": ["5", 0],
+                "prompt": positive_prompt,
+            }},
+            "7": {"class_type": "TextEncodeQwenImageEditPlus", "inputs": {"clip": ["2", 0], "prompt": negative_prompt}},
+            "8": {"class_type": "EmptySD3LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        })
+        positive, negative, latent = ["6", 0], ["7", 0], ["8", 0]
+        next_id = 9
+    else:
+        workflow.update({
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": positive_prompt}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": negative_prompt}},
+            "8": {"class_type": "VAEEncode", "inputs": {"pixels": ["4", 0], "vae": ["3", 0]}},
+            "9": {"class_type": "VAEEncode", "inputs": {"pixels": ["5", 0], "vae": ["3", 0]}},
+            "10": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["6", 0], "latent": ["8", 0]}},
+            "11": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["10", 0], "latent": ["9", 0]}},
+            "12": {"class_type": "FluxGuidance", "inputs": {"conditioning": ["11", 0], "guidance": float(profile.get("cfg", 3.5))}},
+            "13": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        })
+        positive, negative, latent = ["12", 0], ["7", 0], ["13", 0]
+        next_id = 14
+    sampler_id, decode_id, save_id = str(next_id), str(next_id + 1), str(next_id + 2)
+    workflow[sampler_id] = {"class_type": "KSampler", "inputs": {
+        "seed": seed, "steps": int(profile.get("steps", 20)), "cfg": 1.0 if not qwen else float(profile.get("cfg", 1.0)),
+        "sampler_name": str(profile.get("sampler_name") or "euler"),
+        "scheduler": str(profile.get("scheduler") or "simple"), "denoise": float(profile.get("denoise", 1.0)),
+        "model": ["1", 0], "positive": positive, "negative": negative, "latent_image": latent,
+    }}
+    workflow[decode_id] = {"class_type": "VAEDecode", "inputs": {"samples": [sampler_id, 0], "vae": ["3", 0]}}
+    workflow[save_id] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": [decode_id, 0]}}
+    return ComfyUICompilation(
+        workflow=workflow, prompts={"global": positive_prompt, "negative": negative_prompt}, seed=seed,
+        width=width, height=height, workflow_kind=workflow_kind,
+        debug={"references_used": [appearance, pose], "pose_guidance": "reference_image"},
+    )
+
+
+def _flux2_reference_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _modern_reference_prompt_compiler(*args, **kwargs, workflow_kind=FLUX2_REFERENCE_PROMPT_WORKFLOW)
+
+
+def _qwen_image_edit_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _modern_reference_prompt_compiler(*args, **kwargs, workflow_kind=QWEN_IMAGE_EDIT_PROMPT_WORKFLOW)
+
+
+def _qwen_image_21_scene_compiler(
+    ir: dict[str, Any], profile: dict[str, Any], *, checkpoint: str, seed: int,
+    width: int, height: int, output_prefix: str,
+    reference_files: list[dict[str, Any]] | None = None,
+    available_node_types: set[str] | None = None,
+    scene_prompt_override: str = "", **_kwargs: Any,
+) -> ComfyUICompilation:
+    required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
+                "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}
+    image_inputs = ir.get("image_inputs") or []
+    if image_inputs:
+        required.update({"LoadImage"})
+    missing = sorted(required - (available_node_types or set()))
+    if missing:
+        raise LocalRenderError("Qwen Image 2.1 requires unavailable ComfyUI nodes: " + ", ".join(missing))
+    if len(image_inputs) > 10:
+        raise LocalRenderError("Qwen Image 2.1 supports at most ten scene reference images.")
+    encoder = str(profile.get("text_encoder") or "").strip()
+    vae = str(profile.get("vae") or "").strip()
+    if not checkpoint or not encoder or not vae:
+        raise LocalRenderError("Qwen Image 2.1 requires a diffusion model, text encoder, and VAE.")
+    prompt = scene_prompt_override.strip() or compile_qwen_scene_prompt(ir)
+    if not prompt:
+        raise LocalRenderError("Qwen Image 2.1 scene prompt is empty.")
+    supplied = reference_files or []
+    indices = [int(item.get("image_index") or 0) if isinstance(item, dict)
+               and str(item.get("image_index") or "").isdigit() else 0 for item in supplied]
+    if supplied and sorted(indices) != list(range(1, len(image_inputs) + 1)):
+        raise LocalRenderError(
+            "Qwen Image 2.1 manual references do not match the scene IR image slots. Recompile the scene."
+        )
+    sources = {index: item for index, item in zip(indices, supplied)}
+    bindings = []
+    workflow: dict[str, Any] = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": checkpoint, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": encoder, "type": "qwen_image"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae}},
+    }
+    encode_inputs: dict[str, Any] = {"clip": ["2", 0], "vae": ["3", 0], "prompt": prompt,
+                                     "negative_prompt": "", "resolution": int(profile.get("reference_resolution", 1024))}
+    for index, image_input in enumerate(image_inputs, start=1):
+        source = sources.get(index, image_input)
+        path = Path(str(source.get("path") or "")).expanduser()
+        if not path.is_file():
+            raise LocalRenderError(f"Qwen Image 2.1 scene reference {index} is missing: {path}")
+        input_name = str(source.get("comfyui_input_name") or "").strip()
+        if not input_name:
+            key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:12]
+            input_name = f"Zet/{key}/{path.name}"
+        node_id = str(10 + index)
+        workflow[node_id] = {"class_type": "LoadImage", "inputs": {"image": input_name}}
+        encode_inputs[f"images.image_{index}"] = [node_id, 0]
+        bindings.append({**source, "path": str(path), "comfyui_input_name": input_name,
+                         "image_index": index})
+    workflow["4"] = {"class_type": "TextEncodeQwenImage21", "inputs": encode_inputs}
+    workflow["5"] = {"class_type": "EmptyLatentImage", "inputs": {
+        "width": width, "height": height, "batch_size": 1}}
+    workflow["6"] = {"class_type": "KSampler", "inputs": {
+        "seed": seed, "steps": int(profile.get("steps", 40)), "cfg": 1.0,
+        "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
+        "model": ["1", 0], "positive": ["4", 0], "negative": ["4", 1],
+        "latent_image": ["5", 0],
+    }}
+    workflow["7"] = {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}}
+    workflow["8"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": ["7", 0]}}
+    return ComfyUICompilation(workflow=workflow, prompts={"global": prompt, "negative": ""}, seed=seed,
+                              width=width, height=height, workflow_kind=QWEN_IMAGE_21_SCENE_WORKFLOW,
+                              debug={"references_used": bindings})
+
+
 def compile_scene_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> ComfyUICompilation:
     compiler = _SCENE_COMPILERS.get(workflow_kind)
     if compiler is None:
@@ -666,9 +825,12 @@ def compile_prompt_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> Co
 
 register_scene_compiler(CORE_SCENE_WORKFLOW, _core_scene_compiler)
 register_scene_compiler(IPADAPTER_SCENE_WORKFLOW, _ipadapter_scene_compiler)
+register_scene_compiler(QWEN_IMAGE_21_SCENE_WORKFLOW, _qwen_image_21_scene_compiler)
 register_prompt_compiler(CORE_PROMPT_WORKFLOW, _core_prompt_compiler)
 register_prompt_compiler(IMG2IMG_PROMPT_WORKFLOW, _img2img_prompt_compiler)
 register_prompt_compiler(CONTROLNET_PROMPT_WORKFLOW, _controlnet_prompt_compiler)
 register_prompt_compiler(IMG2IMG_CONTROLNET_PROMPT_WORKFLOW, _img2img_controlnet_prompt_compiler)
 register_prompt_compiler(IPADAPTER_PROMPT_WORKFLOW, _ipadapter_prompt_compiler)
 register_prompt_compiler(IPADAPTER_CONTROLNET_PROMPT_WORKFLOW, _ipadapter_controlnet_prompt_compiler)
+register_prompt_compiler(FLUX2_REFERENCE_PROMPT_WORKFLOW, _flux2_reference_prompt_compiler)
+register_prompt_compiler(QWEN_IMAGE_EDIT_PROMPT_WORKFLOW, _qwen_image_edit_prompt_compiler)

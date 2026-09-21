@@ -27,6 +27,7 @@ from zet.services.manual_render_submission_service import ManualRenderSubmission
 from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
+from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.prompt_evolution_service import PromptEvolutionError
 from zet.services.single_character_lab_service import SingleCharacterLabService
 from zet.services.source_editor_service import SourceEditorService
@@ -418,10 +419,33 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     local_prompt_path = _render_console_scene_local_prompt_path(workspace)
     condensed_path = workspace / "Condensed_Image_Prompt.md"
     latest_render = _latest_render_console_local_test_render(workspace)
-    enabled = local_prompt_path.exists()
+    configured_backend = str(zet_app.config.local_render_backend).strip().lower()
+    configured_profile = (zet_app.config.comfyui_profile if configured_backend == "comfyui"
+                          else zet_app.config.local_render_preset)
+    ir_path = workspace / "Scene_Render_IR.json"
+    qwen_profile = "comfyui-qwen-image-2-1-scene"
+    default_profile = qwen_profile if ir_path.is_file() else configured_profile
+    qwen_prompt = ""
+    qwen_error = ""
+    try:
+        if not ir_path.is_file():
+            raise FileNotFoundError("Scene render IR is missing. Recompile the scene in Scene Builder.")
+        qwen_prompt = compile_qwen_scene_prompt(json.loads(ir_path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, KeyError) as exc:
+        qwen_error = str(exc)
+    qwen_enabled = bool(qwen_prompt) and not qwen_error
+    configured_enabled = local_prompt_path.exists() and (configured_backend != "comfyui" or ir_path.is_file())
+    enabled = qwen_enabled if default_profile == qwen_profile else configured_enabled
     condensed_current = condensed_path.exists() and prompt_path.exists() and condensed_path.stat().st_mtime >= prompt_path.stat().st_mtime
     return {
         "supports_local_test_render": enabled,
+        "qwen_supports_local_test_render": qwen_enabled,
+        "configured_supports_local_test_render": configured_enabled,
+        "default_local_profile": default_profile,
+        "configured_local_profile": configured_profile,
+        "configured_local_backend": configured_backend,
+        "qwen_prompt": qwen_prompt,
+        "qwen_error": qwen_error,
         "condensed_prompt_text": local_prompt_path.read_text(encoding="utf-8") if local_prompt_path.exists() else "",
         "latest_local_test_render": str(latest_render) if latest_render else None,
         "local_api_call_exists": _render_console_local_api_call_path(workspace).exists(),
@@ -528,12 +552,18 @@ def _render_console_detail_payload(zet_app: ZetApp, queue: RenderConsoleQueue, t
 def _local_image_review_payload(zet_app: ZetApp, task) -> dict[str, Any]:
     service = LocalImageReviewService(zet_app)
     local_prompt = _render_console_local_prompt_payload(zet_app, task)
+    configured_support = bool(local_prompt.get("supports_local_test_render"))
+    if task.asset_id is None:
+        configured_support = bool(local_prompt.get(
+            "qwen_supports_local_test_render" if local_prompt.get("configured_local_profile")
+            == "comfyui-qwen-image-2-1-scene" else "configured_supports_local_test_render"
+        ))
     return {
         "task": task.to_dict(),
         "manifest": _jsonable(task.manifest),
         "workspace": str(service.workspace(task)),
         "images": service.list_images(task),
-        "supports_local_test_render": bool(local_prompt.get("supports_local_test_render")),
+        "supports_local_test_render": configured_support,
         "local_render_status": local_prompt.get("local_render_status") or {"state": ""},
     }
 
@@ -2374,11 +2404,17 @@ def create_app(
     @app.get("/api/single-character-lab/runs/{run_id}")
     def single_character_lab_run(run_id: str) -> dict[str, Any]:
         try:
-            return SingleCharacterLabService(
-                _app(app.state.config_path), PROJECT_ROOT
-            ).detail(run_id)
+            service = SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT)
+            return service._public(service.detail(run_id))
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/single-character-lab/preview")
+    def preview_single_character_lab_run(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT).preview(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/single-character-lab/runs")
     def create_single_character_lab_run(
@@ -2390,6 +2426,88 @@ def create_app(
             run = service.create_run(payload)
             background_tasks.add_task(service.execute_run, run["run_id"])
             return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/single-character-lab/runs/{run_id}/candidates")
+    def single_character_lab_candidates(
+        run_id: str,
+        page: int = Query(1, ge=1),
+        page_size: int = Query(24, ge=1, le=96),
+        blind: bool = Query(False),
+        sort: str = Query("candidate"),
+    ) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT).candidate_page(
+                run_id, page, page_size, blind, sort
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/single-character-lab/runs/{run_id}/stop")
+    def stop_single_character_lab_run(run_id: str) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT).request_stop(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/single-character-lab/runs/{run_id}")
+    def delete_single_character_lab_run(run_id: str) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT).delete_run(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/single-character-lab/runs/{run_id}/resume")
+    def resume_single_character_lab_run(
+        run_id: str,
+        background_tasks: BackgroundTasks,
+        payload: dict[str, Any] = Body(default={}),
+    ) -> dict[str, Any]:
+        service = SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT)
+        try:
+            run = service.prepare_resume(
+                run_id,
+                retry_failed=bool(payload.get("retry_failed", False)),
+                candidate_id=str(payload.get("candidate_id") or ""),
+            )
+            background_tasks.add_task(service.execute_run, run_id)
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/single-character-lab/runs/{run_id}/candidates/{candidate_id}/review")
+    def review_single_character_lab_candidate(
+        run_id: str, candidate_id: str, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT).update_review(
+                run_id, candidate_id, payload
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/single-character-lab/runs/{run_id}/recipes/{recipe_id}/save")
+    def save_single_character_lab_recipe(
+        run_id: str, recipe_id: str, payload: dict[str, Any] = Body(default={})
+    ) -> dict[str, Any]:
+        try:
+            return SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT).save_recipe(
+                run_id, recipe_id, str(payload.get("name") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/single-character-lab/runs/{run_id}/automatic-review")
+    def review_single_character_lab_run(
+        run_id: str,
+        payload: dict[str, Any] = Body(default={}),
+    ) -> dict[str, Any]:
+        service = SingleCharacterLabService(_app(app.state.config_path), PROJECT_ROOT)
+        model = str(payload.get("model") or service.app.config.ai_prompt_evolution_vision_model)
+        candidate_ids = [str(item) for item in payload.get("candidate_ids") or []]
+        try:
+            return service.queue_automatic_review(run_id, model, candidate_ids)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -3234,7 +3352,10 @@ def create_app(
             profiles_path = Path(app.state.config_path).resolve().parent / "Config" / "Local_Render_Presets.json"
             service = LocalRenderBackendService(profiles_path)
             server_url = zet_app.config.comfyui_server_url if backend == "comfyui" else ""
-            return {"checkpoints": service.list_checkpoints(preset, backend=backend, server_url=server_url)}
+            return {
+                "checkpoints": service.list_checkpoints(preset, backend=backend, server_url=server_url),
+                "default_model": service.preset(preset).get("diffusion_model", ""),
+            }
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -3416,7 +3537,8 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/render-console/tasks/{ask_id}/local-test-render")
-    def render_console_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+    def render_console_local_test_render(ask_id: str, character: str = Query(""), phase: str = Query(""),
+                                         payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
         """Generate a local test render for a render-console task."""
         queue = _render_console_queue(app.state.config_path)
         task = ManualRenderSubmissionService(queue).get_task(ask_id, character, phase)
@@ -3432,7 +3554,14 @@ def create_app(
             else:
                 workspace = _render_console_task_workspace(task)
                 manifest = dict(task.manifest)
-                ask_path = zet_app.stage_scene_local_render_ask(manifest, workspace)
+                selected_profile = (str(payload["render_profile"]) if "render_profile" in payload else
+                                    "comfyui-qwen-image-2-1-scene" if (workspace / "Scene_Render_IR.json").is_file()
+                                    else None)
+                ask_path = zet_app.stage_scene_local_render_ask(
+                    manifest, workspace,
+                    qwen_prompt_override=str(payload["qwen_prompt"]) if "qwen_prompt" in payload else None,
+                    render_profile=selected_profile,
+                )
             payload = {
                 "task": task.to_dict(),
                 "manifest": _jsonable(task.manifest),

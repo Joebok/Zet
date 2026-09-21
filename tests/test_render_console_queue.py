@@ -222,8 +222,9 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             prompt_path.write_text("condensed prompt\n", encoding="utf-8")
             app = ZetApp.from_config(config_path)
 
+            source_ask_id = "Ask_Story_FirstDay_Chapter-07-Nice-Hair_RENDER_20260921_132624_987737_" + "a" * 32
             ask_path = app.stage_render_task_local_render_ask(
-                {"ask_id": "Ask_Story_Test", "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}], "aspect_ratio": "16:9"},
+                {"ask_id": source_ask_id, "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}], "aspect_ratio": "16:9"},
                 prompt_path,
                 workspace,
                 checkpoint="override-model.safetensors",
@@ -234,7 +235,9 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertEqual("local_image_render", manifest["worker_type"])
             self.assertEqual("image:stable_matrix:override-model.safetensors", job["resource_key"])
             self.assertEqual("local_test_render", manifest["task_type"])
-            self.assertEqual("Ask_Story_Test", manifest["source_ask_id"])
+            self.assertEqual(source_ask_id, manifest["source_ask_id"])
+            self.assertLessEqual(len(job["job_id"]), 128)
+            self.assertEqual(ask_path.name, job["job_id"])
             self.assertEqual("override-model.safetensors", manifest["checkpoint"])
             self.assertEqual("16:9", manifest["aspect_ratio"])
             route = app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.load_route(ask_path.name)
@@ -391,6 +394,66 @@ Checkpoint = "model.safetensors"
                 json.loads(ir_text),
                 json.loads((ask_path / "Scene_Render_IR.json").read_text(encoding="utf-8")),
             )
+
+    def test_qwen_scene_ask_snapshots_edited_prompt_without_local_prompt_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Config").mkdir()
+            (root / "Config" / "Local_Render_Presets.json").write_text(json.dumps({
+                "comfyui-ipadapter-preview": {"backend": "comfyui", "workflow_kind": "ipadapter_scene_preview"},
+                "comfyui-qwen-image-2-1-scene": {
+                    "backend": "comfyui", "workflow_kind": "qwen_image_21_scene_preview",
+                    "diffusion_model": "qwen.safetensors",
+                    "text_encoder": "encoder.safetensors", "vae": "vae.safetensors",
+                },
+            }), encoding="utf-8")
+            config_path = root / "config.toml"
+            config_path.write_text(f'''
+[BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
+BaseCharacterPath = "Characters"
+BaseAssetPath = "Assets"
+BasePipelinePath = "Pipelines"
+BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+
+[LocalRender]
+Backend = "comfyui"
+
+[ComfyUI]
+Profile = "comfyui-ipadapter-preview"
+Checkpoint = "sdxl.safetensors"
+'''.lstrip(), encoding="utf-8")
+            workspace = root / "Stories" / "FirstDay"
+            workspace.mkdir(parents=True)
+            (workspace / "Final_Image_Prompt.md").write_text("manual prompt\n", encoding="utf-8")
+            (workspace / "Scene_Render_IR.json").write_text(json.dumps({
+                "canvas": {"aspect_ratio": "4:5"}, "scene": {"story_beat": "Tsaeytte enters the arch"},
+                "image_inputs": [],
+            }), encoding="utf-8")
+            inventory = {"diffusion_models": ["qwen.safetensors"], "text_encoders": ["encoder.safetensors"],
+                         "vaes": ["vae.safetensors"], "node_types": []}
+            app = ZetApp.from_config(config_path)
+            with patch("zet.services.ai_proxy_service.LocalRenderBackendService.comfyui_options",
+                       return_value=inventory), patch("zet.services.ai_proxy_service.compile_ir_to_comfyui_workflow"):
+                ask_path = app.stage_scene_local_render_ask(
+                    {"ask_id": "Ask_Qwen_Scene"}, workspace, qwen_prompt_override="Edited natural-language scene.",
+                    render_profile="comfyui-qwen-image-2-1-scene")
+                revised_path = app.stage_scene_local_render_ask(
+                    {"ask_id": "Ask_Qwen_Scene"}, workspace, qwen_prompt_override="A different scene edit.",
+                    render_profile="comfyui-qwen-image-2-1-scene")
+
+            manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("Qwen_Image_2_1_Prompt.md", manifest["prompt_file"])
+            self.assertEqual("comfyui-qwen-image-2-1-scene", manifest["render_preset"])
+            self.assertEqual("qwen.safetensors", manifest["checkpoint"])
+            self.assertEqual("qwen_image_21_scene_preview", manifest["workflow_kind"])
+            self.assertEqual("Edited natural-language scene.",
+                             (ask_path / manifest["prompt_file"]).read_text(encoding="utf-8"))
+            self.assertNotEqual(ask_path, revised_path)
+            self.assertEqual("A different scene edit.",
+                             (revised_path / manifest["prompt_file"]).read_text(encoding="utf-8"))
+            self.assertFalse((workspace / "Qwen_Image_2_1_Prompt.md").exists())
+            self.assertEqual("manual prompt\n", (workspace / "Final_Image_Prompt.md").read_text(encoding="utf-8"))
 
 
 

@@ -22,6 +22,9 @@ from zet.services.chatgpt_prompt_contract import (
     manifest_contract,
 )
 from zet.services.housekeeping_service import HousekeepingService
+from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.comfyui_render_service import compile_ir_to_comfyui_workflow
+from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
 from zet.services.performance_instrumentation import record
@@ -619,7 +622,7 @@ class AIProxyService:
     ) -> dict:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
-        ask_id = f"Ask_Render_Task_{manifest.get('ask_id') or 'LOCAL'}_LOCAL_RENDER_{stamp}"
+        ask_id = f"Ask_Render_Task_LOCAL_RENDER_{stamp}_{uuid4().hex}"
         ask_manifest = {
             "version": AI_PROXY_PROTOCOL_VERSION,
             "ask_id": ask_id,
@@ -690,14 +693,22 @@ class AIProxyService:
         render_preset: str | None = None,
         image_generation: str | None = None,
         reference_files: list[dict] | None = None,
+        prompt_text_override: str | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
+        submitted_prompt = prompt_text_override if prompt_text_override is not None else prompt_path.read_text(encoding="utf-8")
+        selected_preset = render_preset or self._local_render_preset()
         if not allow_parallel:
-            for path in self.ai_proxy_path_service.task_paths("ask", "answer"):
+            for path in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
                 queued = self._read_json_if_exists(path / "ask_manifest.json")
                 if queued.get("task_type") == "local_test_render" and queued.get("source_ask_id") == manifest.get("ask_id"):
                     if not (path / "harvest_manifest.json").exists():
-                        return path
+                        queued_prompt = path / str(queued.get("prompt_file") or "")
+                        if (queued.get("render_preset") == selected_preset
+                                and (checkpoint is None or queued.get("checkpoint") == checkpoint)
+                                and queued_prompt.is_file()
+                                and queued_prompt.read_text(encoding="utf-8") == submitted_prompt):
+                            return path
 
         ask_manifest = self.render_task_local_render_api_params(
             manifest,
@@ -714,7 +725,7 @@ class AIProxyService:
         )
         ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
-        self._write_text_atomic(ask_path / prompt_path.name, prompt_path.read_text(encoding="utf-8"))
+        self._write_text_atomic(ask_path / prompt_path.name, submitted_prompt)
         if scene_render_ir_path is not None:
             self._write_text_atomic(
                 ask_path / scene_render_ir_path.name,
@@ -730,12 +741,20 @@ class AIProxyService:
         allow_parallel: bool = False,
         seed: int | None = None,
         checkpoint: str | None = None,
+        qwen_prompt_override: str | None = None,
+        render_profile: str | None = None,
     ) -> Path:
-        prompt_path = workspace / "Local_Render_Prompt.md"
-        if not prompt_path.exists():
+        configured_profile = self._local_render_preset()
+        profile_name = render_profile or configured_profile
+        if profile_name not in {configured_profile, "comfyui-qwen-image-2-1-scene"}:
+            raise AIProxyServiceError(f"Unsupported Render Console local scene profile: {profile_name}")
+        qwen_selected = profile_name == "comfyui-qwen-image-2-1-scene"
+        selected_backend = ("comfyui" if qwen_selected else
+                            str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower())
+        prompt_path = workspace / ("Qwen_Image_2_1_Prompt.md" if qwen_selected else "Local_Render_Prompt.md")
+        if not qwen_selected and not prompt_path.exists():
             raise FileNotFoundError(f"No local render prompt was found: {prompt_path}")
 
-        selected_backend = str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower()
         layout_backend = str(getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic"))
         brief_path = workspace / "Local_Render_Brief.json"
         brief = self._read_json_if_exists(brief_path)
@@ -782,7 +801,29 @@ class AIProxyService:
 
         ir_path = workspace / "Scene_Render_IR.json"
         if selected_backend == "comfyui" and not ir_path.exists():
-            raise FileNotFoundError(f"No canonical scene render IR was found: {ir_path}")
+            raise FileNotFoundError("Scene render IR is missing. Recompile the scene in Scene Builder before generating a local image.")
+        qwen_prompt = None
+        selected_model = checkpoint
+        if qwen_selected:
+            ir = json.loads(ir_path.read_text(encoding="utf-8"))
+            qwen_prompt = compile_qwen_scene_prompt(ir) if qwen_prompt_override is None else qwen_prompt_override.strip()
+            if not qwen_prompt:
+                raise AIProxyServiceError("Qwen Image 2.1 scene prompt is empty. Enter a prompt before generating.")
+            backend = LocalRenderBackendService(self.path_service.project_root / "Config" / "Local_Render_Presets.json")
+            profile = backend.preset(profile_name)
+            inventory = backend.comfyui_options(self.path_service.config.comfyui_server_url)
+            selected_model = str(checkpoint or profile.get("diffusion_model") or "").strip()
+            for name, available, label in (
+                (selected_model, inventory.get("diffusion_models") or [], "diffusion model"),
+                (str(profile.get("text_encoder") or ""), inventory.get("text_encoders") or [], "text encoder"),
+                (str(profile.get("vae") or ""), inventory.get("vaes") or [], "VAE"),
+            ):
+                if name not in available:
+                    raise AIProxyServiceError(f"Qwen Image 2.1 {label} is unavailable in ComfyUI: {name or '(none selected)'}")
+            compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint=selected_model, reference_files=manifest.get("reference_files") or [],
+                available_node_types=set(inventory.get("node_types") or []), scene_prompt_override=qwen_prompt,
+            )
         return self.stage_render_task_local_render_ask(
             staged_manifest,
             prompt_path,
@@ -791,7 +832,10 @@ class AIProxyService:
             ir_path if selected_backend == "comfyui" else None,
             allow_parallel=allow_parallel,
             seed=seed,
-            checkpoint=checkpoint,
+            checkpoint=selected_model,
+            render_preset=profile_name,
+            image_generation=selected_backend,
+            prompt_text_override=qwen_prompt,
         )
 
     def stage_prompt_inspection_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:

@@ -1336,6 +1336,14 @@
           <p id="render-console-fail-status" class="status-text"></p>
           <section class="render-console-local-panel">
             <h2>Local Image</h2>
+            <label id="render-console-local-profile-field" hidden>
+              Scene render profile
+              <select id="render-console-local-profile"></select>
+            </label>
+            <label id="render-console-qwen-prompt-field" hidden>
+              Qwen Image 2.1 scene prompt
+              <textarea id="render-console-qwen-prompt" rows="10" aria-label="Qwen Image 2.1 scene prompt"></textarea>
+            </label>
             <div class="button-row compact">
               <button id="render-console-local-test" type="button" disabled>Gen Local Image</button>
               <button id="render-console-copy-local-api-params" type="button" title="Copy render API parameters" disabled>⧉</button>
@@ -1678,10 +1686,10 @@
                 <input id="setting-comfyui-server-url" type="url" form="automation-form">
               </label>
               <label>
-                Checkpoint
+                Model
                 <select id="setting-comfyui-checkpoint" form="automation-form"></select>
               </label>
-              <button id="refresh-comfyui-checkpoints" type="button">Refresh ComfyUI Checkpoints</button>
+              <button id="refresh-comfyui-checkpoints" type="button">Refresh ComfyUI Models</button>
               <label>Positive prompt globals<textarea id="setting-comfyui-positive-globals" form="automation-form"></textarea></label>
               <label>Negative prompt globals<textarea id="setting-comfyui-negative-globals" form="automation-form"></textarea></label>
               <label>
@@ -1727,7 +1735,7 @@
       </div>
       <div class="single-character-lab-layout">
         <section class="control-panel settings-form single-character-lab-setup">
-          <h2>New Render</h2>
+          <h2>New Search</h2>
           <label>Locked costume / view<select id="single-character-lab-appearance"></select></label>
           <label>Body-reference pose<select id="single-character-lab-pose"></select></label>
           <div class="prompt-evolution-reference-grid">
@@ -1735,20 +1743,50 @@
             <figure><figcaption>Pose reference</figcaption><img id="single-character-lab-pose-preview" alt="Selected body-reference pose"></figure>
           </div>
           <label>Checkpoint<select id="single-character-lab-checkpoint"></select></label>
-          <div class="form-grid compact">
-            <label>Images<select id="single-character-lab-count"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
+          <label>Model adapter<select id="single-character-lab-adapter"></select></label>
+          <label>Workflow<select id="single-character-lab-workflow"></select></label>
+          <label>Search mode<select id="single-character-lab-mode"><option value="seed_search">Seed search</option><option value="recipe_search">Recipe search (72-image default)</option></select></label>
+          <div id="single-character-lab-seed-controls" class="form-grid compact">
+            <label>Images in seed search<select id="single-character-lab-count"></select></label>
             <label>Reference weight<input id="single-character-lab-weight" type="number" min="0" max="2" step="0.05" value="0.45"></label>
+            <label>Pose weight<input id="single-character-lab-pose-weight" type="number" min="0" max="2" step="0.05" value="0.75"></label>
           </div>
+          <div id="single-character-lab-recipe-controls" hidden>
+            <div id="single-character-lab-conditioning-recipe-controls">
+              <label>Appearance strengths<input id="single-character-lab-appearance-strengths" value="0.35, 0.45, 0.65"></label>
+              <label>Pose strengths<input id="single-character-lab-pose-strengths" value="0.5, 0.75, 1.0"></label>
+            </div>
+            <div id="single-character-lab-modern-recipe-controls" hidden>
+              <p class="status-text">These reference-editing nodes do not expose independent appearance or pose weights. Compare supported generation settings instead.</p>
+              <label>Step values<input id="single-character-lab-step-values" value="4"></label>
+              <label>Guidance values<input id="single-character-lab-guidance-values" value="3.5"></label>
+              <label>Denoise values<input id="single-character-lab-denoise-values" value="1.0"></label>
+            </div>
+            <label>Seeds per recipe<input id="single-character-lab-seed-count" type="number" min="1" max="256" value="8"></label>
+          </div>
+          <p id="single-character-lab-plan" class="status-text"></p>
+          <details>
+            <summary>Generation settings</summary>
+            <div class="form-grid compact">
+              <label>Steps<input id="single-character-lab-steps" type="number" min="1" value="28"></label>
+              <label>Guidance<input id="single-character-lab-guidance" type="number" min="0" step="0.1" value="6"></label>
+              <label>Sampler<select id="single-character-lab-sampler"></select></label>
+              <label>Scheduler<select id="single-character-lab-scheduler"></select></label>
+              <label>Width<input id="single-character-lab-width" type="number" min="64" step="8" value="832"></label>
+              <label>Height<input id="single-character-lab-height" type="number" min="64" step="8" value="1216"></label>
+              <label>Denoise<input id="single-character-lab-denoise" type="number" min="0" max="1" step="0.05" value="1"></label>
+            </div>
+          </details>
           <details>
             <summary>Generated prompts</summary>
             <label>Positive prompt<textarea id="single-character-lab-positive"></textarea></label>
             <label>Negative prompt<textarea id="single-character-lab-negative"></textarea></label>
           </details>
-          <button id="single-character-lab-generate" class="primary-action" type="button" disabled>Generate Images</button>
+          <button id="single-character-lab-generate" class="primary-action" type="button" disabled>Start Search</button>
           <p id="single-character-lab-message" class="status-text"></p>
         </section>
         <section class="review-main">
-          <div class="review-header"><h2>Runs</h2><button id="single-character-lab-refresh" type="button">Refresh</button></div>
+          <div class="review-header"><h2>Searches</h2><button id="single-character-lab-refresh" type="button">Refresh</button></div>
           <div id="single-character-lab-runs" class="prompt-evolution-runs"></div>
           <div id="single-character-lab-detail"></div>
         </section>

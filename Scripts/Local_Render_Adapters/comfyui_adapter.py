@@ -61,8 +61,11 @@ def render_preview(
     allowed_overrides = {
         "width", "height", "steps", "cfg", "sampler_name", "scheduler", "denoise",
         "character_reference_weight",
+        "character_reference_end_at", "ipadapter_model", "clip_vision_model",
+        "ipadapter_weight_type", "ipadapter_combine_embeds", "ipadapter_embeds_scaling",
         "control_preprocessor", "controlnet_model", "control_strength",
-        "control_start", "control_end",
+        "control_start", "control_end", "preprocessor_resolution",
+        "text_encoder", "vae",
     }
     profile = {
         **profile,
@@ -108,9 +111,11 @@ def render_preview(
             reference_files=reference_files,
             available_node_types=(
                 list_comfyui_node_types(server_url)
-                if workflow_kind == "ipadapter_scene_preview"
+                if workflow_kind in {"ipadapter_scene_preview", "qwen_image_21_scene_preview"}
                 else None
             ),
+            scene_prompt_override=(final_prompt_path.read_text(encoding="utf-8")
+                                   if workflow_kind == "qwen_image_21_scene_preview" else ""),
         )
     else:
         positive, negative = split_labeled_prompt(final_prompt_path.read_text(encoding="utf-8"))
@@ -157,7 +162,7 @@ def render_preview(
         output_dir=render_dir,
         reference_files=compilation.debug.get("references_used", []),
         poll_seconds=float(config.get("PollSeconds", 1.0)),
-        timeout_seconds=float(config.get("TimeoutSeconds", 300.0)),
+        timeout_seconds=float(profile.get("timeout_seconds") or config.get("TimeoutSeconds", 300.0)),
     )
     completed_at = datetime.now()
     metadata_path = render_dir / "ComfyUI_Render_Metadata.json"

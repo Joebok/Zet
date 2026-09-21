@@ -9,10 +9,11 @@ from AI_Manager import local_image_proxy_worker
 
 
 @pytest.mark.parametrize(
-    ("backend", "artifact_name", "artifact_payload"),
+    ("backend", "artifact_name", "artifact_payload", "workflow_kind"),
     [
-        ("stable_matrix", "Stable_Matrix_API_Call.json", {"api_path": "/sdapi/v1/txt2img"}),
-        ("comfyui", "ComfyUI_Compilation_Debug.json", {"workflow_kind": "ipadapter_scene_preview"}),
+        ("stable_matrix", "Stable_Matrix_API_Call.json", {"api_path": "/sdapi/v1/txt2img"}, ""),
+        ("comfyui", "ComfyUI_Compilation_Debug.json", {"workflow_kind": "ipadapter_scene_preview"}, "ipadapter_scene_preview"),
+        ("comfyui", "ComfyUI_Compilation_Debug.json", {"workflow_kind": "qwen_image_21_scene_preview"}, "qwen_image_21_scene_preview"),
     ],
 )
 def test_local_image_worker_outputs_remain_proxy_safe(
@@ -20,6 +21,7 @@ def test_local_image_worker_outputs_remain_proxy_safe(
     backend: str,
     artifact_name: str,
     artifact_payload: dict,
+    workflow_kind: str,
 ) -> None:
     job = tmp_path / "Running" / "zet" / f"{backend}-job"
     job.mkdir(parents=True)
@@ -44,7 +46,8 @@ def test_local_image_worker_outputs_remain_proxy_safe(
     generated.parent.mkdir()
     generated.write_bytes(b"image")
     metadata = generated.parent / "metadata.json"
-    metadata.write_text(json.dumps({"backend": backend, "final_prompt": str(prompt.resolve())}), encoding="utf-8")
+    metadata.write_text(json.dumps({"backend": backend, "final_prompt": str(prompt.resolve()),
+                                    "workflow_kind": workflow_kind}), encoding="utf-8")
     artifact = generated.parent / artifact_name
     artifact_payload = dict(artifact_payload)
     artifact_payload["reference_path"] = str(reference.resolve())
@@ -63,6 +66,9 @@ def test_local_image_worker_outputs_remain_proxy_safe(
     assert (job / "result.png").read_bytes() == b"image"
     assert json.loads((job / "answer_manifest.json").read_text())["status"] == "SUCCESS"
     assert json.loads((job / artifact_name).read_text())["reference_path"] == "references/reference.png"
+    local_metadata = json.loads((job / "LOCAL_RENDER_METADATA.json").read_text())
+    if workflow_kind == "qwen_image_21_scene_preview":
+        assert local_metadata["prompt"] == prompt.read_text(encoding="utf-8")
 
 
 def test_ollama_and_local_image_are_the_only_registered_proxy_workers(tmp_path: Path) -> None:

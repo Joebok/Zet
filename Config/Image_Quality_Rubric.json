@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "decision_question": "Would I use this image after no more than five minutes of cleanup?",
   "hard_gates": [
     {
@@ -36,8 +36,13 @@
       "weight": 2
     },
     {
-      "id": "composition_control",
-      "label": "Pose, view, framing, and subject count",
+      "id": "pose_orientation",
+      "label": "Requested pose, body orientation, and facing",
+      "weight": 2
+    },
+    {
+      "id": "composition_framing",
+      "label": "Framing, placement, crop, and subject count",
       "weight": 1
     },
     {

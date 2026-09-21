@@ -192,6 +192,8 @@ def process_claimed(
                 "render_profile": preset_name,
                 "checkpoint": ask_manifest.get("checkpoint") or backend_metadata.get("checkpoint"),
                 "workflow_kind": backend_metadata.get("workflow_kind"),
+                **({"prompt": prompt_path.read_text(encoding="utf-8")}
+                   if backend_metadata.get("workflow_kind") == "qwen_image_21_scene_preview" else {}),
                 "seed": backend_metadata.get("resolved_seed", backend_metadata.get("seed")),
                 "local_render": expected_output,
                 "local_render_metadata": Path(result.metadata_path).name,

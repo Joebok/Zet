@@ -1,0 +1,61 @@
+{
+  "qwen-image-edit-2511": {
+    "status": "qualified",
+    "qualified_at": "2026-09-17T10:12:17-07:00",
+    "hardware": {
+      "device": "NVIDIA GeForce RTX 5060 Ti",
+      "vram_total_gib": 15.928,
+      "qualification_reserve_gib": 1.0,
+      "minimum_sampled_free_vram_gib": 1.183
+    },
+    "runtime": {
+      "comfyui_version": "0.36.0",
+      "diffusion_model": "qwen_image_edit_2511_int8_convrot.safetensors",
+      "text_encoder": "qwen_2.5_vl_7b_nvfp4.safetensors",
+      "vae": "qwen_image_vae.safetensors",
+      "width": 832,
+      "height": 1216,
+      "steps": 20,
+      "cfg": 1.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "reference_count": 2
+    },
+    "runs": {
+      "cold": {
+        "prompt_id": "ad422141-0828-4281-853a-63fef88a17e1",
+        "status": "success",
+        "elapsed_seconds": 126.06,
+        "peak_vram_used_gib": 14.702,
+        "peak_vram_free_gib": 1.226,
+        "output": "D:\\Comfy-Desktop\\ComfyUI-Shared\\output\\Zet_Qualification\\Qwen2511_16GB_nvfp4_cold_00001_.png"
+      },
+      "warm": [
+        {
+          "prompt_id": "c1a9f9b1-85ad-4a46-841c-732b950c84b0",
+          "status": "success",
+          "elapsed_seconds": 96.05,
+          "peak_vram_used_gib": 14.71,
+          "peak_vram_free_gib": 1.218,
+          "output": "D:\\Comfy-Desktop\\ComfyUI-Shared\\output\\Zet_Qualification\\Qwen2511_16GB_nvfp4_warm_1_00001_.png"
+        },
+        {
+          "prompt_id": "e97e63a5-a395-4237-9713-25749c5d84d2",
+          "status": "success",
+          "elapsed_seconds": 96.91,
+          "peak_vram_used_gib": 14.656,
+          "peak_vram_free_gib": 1.272,
+          "output": "D:\\Comfy-Desktop\\ComfyUI-Shared\\output\\Zet_Qualification\\Qwen2511_16GB_nvfp4_warm_2_00001_.png"
+        },
+        {
+          "prompt_id": "ba61efa4-c2af-4919-8078-af89eab81635",
+          "status": "success",
+          "elapsed_seconds": 95.84,
+          "peak_vram_used_gib": 14.745,
+          "peak_vram_free_gib": 1.183,
+          "output": "D:\\Comfy-Desktop\\ComfyUI-Shared\\output\\Zet_Qualification\\Qwen2511_16GB_nvfp4_warm_3_00001_.png"
+        }
+      ]
+    }
+  }
+}
