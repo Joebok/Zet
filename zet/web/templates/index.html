@@ -123,6 +123,7 @@
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
           <button class="tab workflow-tab" data-page="single-character-lab">Single Character Lab</button>
+          <button id="toolbar-body-reference-experiment" type="button">Body-Reference Qwen Experiment</button>
           <button class="tab workflow-tab" data-page="prompt-evolution">Prompt Evolution</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
           <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
@@ -1521,6 +1522,14 @@
           </div>
         </section>
         <section class="control-panel ai-render-console-panel">
+          <h2>Codex Jobs · Body-Reference Luna Reviews</h2>
+          <div id="codex-job-counts" class="summary-bar"></div>
+          <table id="codex-jobs-table">
+            <thead><tr><th>batch</th><th>candidate</th><th>character</th><th>view</th><th>status</th><th>details</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section class="control-panel ai-render-console-panel">
           <h2>Render Console</h2>
           <button id="open-render-console-tab" class="navigation-action">Open Render Console</button>
           <div id="manual-render-count" class="summary-bar"></div>
@@ -1597,6 +1606,10 @@
             <button id="refresh-ollama-models" type="button">Refresh Models</button>
           </div>
           <div class="managed-llm-grid">
+            <article class="managed-llm-role">
+              <label>Codex default model<input id="setting-codex-default-model" type="text" form="automation-form" autocomplete="off"></label>
+              <p class="managed-llm-description">Model ID used by Codex CLI calls.</p>
+            </article>
             <article class="managed-llm-role" data-llm-role="asset_workflow">
               <label>Asset workflow<select id="setting-ai-asset-workflow-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
@@ -2068,6 +2081,6 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260830-scene-builder-usability"></script>
+  <script src="/static/zet.js?v=20260922-body-reference-experiment"></script>
 </body>
 </html>

@@ -57,7 +57,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def _compile(self, costume_sections: str, body_view: str = "FRONT", head_view: str | None = None) -> tuple[str, dict, dict]:
+    def _compile(self, costume_sections: str, body_view: str = "FRONT", head_view: str | None = None, *, prompt_variant: str = "generation") -> tuple[str, dict, dict]:
         costume_path = self.character_dir / "Costume_Test_Outfit.md"
         costume_path.write_text(
             "\n".join(
@@ -71,7 +71,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        output_dir = self.root / "output" / body_view / (head_view or body_view)
+        output_dir = self.root / "output" / body_view / (head_view or body_view) / prompt_variant
         result = compile_costume_dressing_job(
             {
                 "Job": f"Test_{body_view}_{head_view or body_view}",
@@ -87,10 +87,24 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "Reference Files": [{"role": "character_assembly", "path": str(self.reference)}],
             },
             self.root,
+            prompt_variant=prompt_variant,
         )
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
         source_map = json.loads((output_dir / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
         return prompt, source_map, result
+
+    def test_analysis_variant_preserves_costume_facts(self) -> None:
+        prompt, _, _ = self._compile(
+            "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+            "Blue coat and fitted boots.\n"
+            "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
+            prompt_variant="analysis",
+        )
+        self.assertIn("# Review Specification", prompt)
+        self.assertIn("Image 1", prompt)
+        self.assertIn("Blue coat and fitted boots.", prompt)
+        self.assertNotIn("# Render Task", prompt)
+        self.assertNotIn("<!-- ZET:", prompt)
 
     @staticmethod
     def _sections(*parts: str) -> str:

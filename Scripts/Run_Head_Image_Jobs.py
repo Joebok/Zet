@@ -59,7 +59,7 @@ def _source_reference(references: list[dict]) -> dict | None:
     return sources[0]
 
 
-def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
+def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -69,6 +69,8 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for head-image runner: {task}")
 
     bundle = load_bundle(project_root, task)
+    if prompt_variant == "analysis":
+        bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
     view_data = load_view_data(project_root, view_token)
     template_path = template_path_for_job(project_root, job, character, phase)
@@ -90,7 +92,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
             "HEAD_IMAGE_CHARACTER_REQUIREMENTS",
         ):
             sections[name] = ""
-    selection = select_prompt_sections(project_root, bundle, sections, section_sources, view_token)
+    selection = select_prompt_sections(project_root, bundle, sections, section_sources, view_token, prompt_variant=prompt_variant)
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )
@@ -140,6 +142,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         selection=selection,
         required_section_names=[],
         view_token=view_token,
+        prompt_variant=prompt_variant,
     )
     write_json_file(paths["dependency_manifest"], {
         **metadata,
@@ -154,7 +157,8 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
             "background": "transparent",
         },
     })
-    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
+    if prompt_variant == "generation":
+        finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
     paths["image_review"].write_text(
         f"""# Image Review
 
@@ -191,7 +195,7 @@ Reviewed At:
         "compiled_sections": str(paths["compiled_sections"]),
         "dependency_manifest": str(paths["dependency_manifest"]),
         "image_review": str(paths["image_review"]),
-        "diagnostics": str(paths["diagnostics"]),
+        "diagnostics": str(paths["diagnostics"]) if prompt_variant == "generation" else "",
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,

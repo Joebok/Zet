@@ -210,7 +210,7 @@ class StoryRenderService:
             )
         return pipeline_path, scene_builder_path, normalized_scene, references, ir, story_settings_path, final_image_prompt_text(ir), render_input_hash
 
-    def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = MAIN_RENDER_TARGET) -> Path:
+    def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = MAIN_RENDER_TARGET, *, prompt_variant: str = "generation") -> Path:
         story = self.story
         pipeline_path, scene_builder_path, _, _, ir, story_settings_path, prompt, _ = self._compile(
             story_slug,
@@ -220,6 +220,12 @@ class StoryRenderService:
             allow_incomplete_reference_descriptions=True,
         )
         pipeline_path.mkdir(parents=True, exist_ok=True)
+        if prompt_variant == "analysis":
+            prompt_path = pipeline_path / "Final_Analysis_Prompt.md"
+            prompt_path.write_text(final_image_prompt_text(ir, prompt_variant="analysis"), encoding="utf-8")
+            return prompt_path
+        if prompt_variant != "generation":
+            raise ValueError(f"Unsupported prompt variant: {prompt_variant}")
         prompt_path = pipeline_path / "Final_Image_Prompt.md"
         prompt_path.write_text(prompt, encoding="utf-8")
         story._write_json(pipeline_path / "Scene_Render_IR.json", ir)

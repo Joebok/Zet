@@ -39,6 +39,7 @@ class AutomationSettings:
     comfyui_poll_seconds: float = 1.0
     comfyui_timeout_seconds: float = 300.0
     ai_asset_workflow_model: str = "general:latest"
+    codex_default_model: str = "gpt-6-luna"
     prompt_condense_model: str = "general:latest"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
@@ -229,6 +230,7 @@ class PipelineControlService:
             comfyui_poll_seconds=float(self.config.comfyui_poll_seconds),
             comfyui_timeout_seconds=float(self.config.comfyui_timeout_seconds),
             ai_asset_workflow_model=str(self.config.ai_asset_workflow_model),
+            codex_default_model=str(self.config.codex_default_model),
             prompt_condense_model=str(self.config.prompt_condense_model),
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
             ai_prompt_analysis_auto_queue_on_render=bool(self.config.ai_prompt_analysis_auto_queue_on_render),
@@ -286,6 +288,7 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
             {"Scope": "Project config", "Setting": "AIModels.AssetWorkflow", "Value": self.config.ai_asset_workflow_model},
+            {"Scope": "Project config", "Setting": "AIModels.CodexDefault", "Value": self.config.codex_default_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptCondense", "Value": self.config.prompt_condense_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptAnalysis", "Value": self.config.ai_prompt_analysis_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.AutoQueueOnRender", "Value": self.config.ai_prompt_analysis_auto_queue_on_render},
@@ -333,6 +336,7 @@ class PipelineControlService:
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
             ("AIModels", "AssetWorkflow"): settings.ai_asset_workflow_model,
+            ("AIModels", "CodexDefault"): settings.codex_default_model,
             ("AIModels", "PromptCondense"): settings.prompt_condense_model,
             ("AIModels", "PromptAnalysis"): settings.ai_prompt_analysis_model,
             ("AIPromptAnalysis", "AutoQueueOnRender"): settings.ai_prompt_analysis_auto_queue_on_render,
@@ -382,6 +386,7 @@ class PipelineControlService:
             )
         model_settings = (
             ("Asset workflow", settings.ai_asset_workflow_model),
+            ("Codex default", settings.codex_default_model),
             ("Prompt condensation", settings.prompt_condense_model),
             ("AI prompt analysis", settings.ai_prompt_analysis_model),
             ("Image description", settings.ai_image_description_model),

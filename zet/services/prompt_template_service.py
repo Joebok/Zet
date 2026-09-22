@@ -11,6 +11,33 @@ from Scripts.Compile_Character_Template import (
 )
 
 
+def filter_prompt_variant_blocks(template_text: str, prompt_variant: str) -> str:
+    """Keep shared text and blocks marked for the requested prompt variant."""
+    if prompt_variant not in {"generation", "analysis"}:
+        raise ValueError(f"Unsupported prompt variant: {prompt_variant}")
+    selected_marker = "IMAGE_PROMPT_ONLY" if prompt_variant == "generation" else "ANALYSIS_PROMPT_ONLY"
+    active_marker = None
+    output = []
+    for line in template_text.splitlines(keepends=True):
+        marker = line.strip()
+        if marker in {"<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->", "<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->"}:
+            if active_marker is not None:
+                raise TemplateCompileError("INVALID_PROMPT_VARIANT_BLOCK", "Prompt variant blocks cannot be nested.")
+            active_marker = marker.removeprefix("<!-- ZET:BEGIN ").removesuffix(" -->")
+            continue
+        if marker in {"<!-- ZET:END IMAGE_PROMPT_ONLY -->", "<!-- ZET:END ANALYSIS_PROMPT_ONLY -->"}:
+            closing_marker = marker.removeprefix("<!-- ZET:END ").removesuffix(" -->")
+            if active_marker != closing_marker:
+                raise TemplateCompileError("INVALID_PROMPT_VARIANT_BLOCK", "Prompt variant block has a mismatched end tag.")
+            active_marker = None
+            continue
+        if active_marker is None or active_marker == selected_marker:
+            output.append(line)
+    if active_marker is not None:
+        raise TemplateCompileError("INVALID_PROMPT_VARIANT_BLOCK", "Prompt variant block has no end tag.")
+    return "".join(output)
+
+
 class PromptTemplateService:
     """Resolve direct prompt placeholders and write traceable prompt artifacts."""
 
@@ -43,11 +70,11 @@ class PromptTemplateService:
             for name in payload.get("sections", {})
         }
 
-    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str):
+    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, prompt_variant: str = "generation"):
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         return select_sections_for_prompt(
             all_sections,
-            template_file.read_text(encoding="utf-8"),
+            filter_prompt_variant_blocks(template_file.read_text(encoding="utf-8"), prompt_variant),
             view_token,
             section_sources,
             self._known_section_names(view_token),
@@ -67,10 +94,11 @@ class PromptTemplateService:
         required_section_names: list[str],
         view_token: str,
         ensure_ascii_source_map: bool = False,
+        prompt_variant: str = "generation",
     ) -> str:
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         prompt_text, source_map = render_static_prompt_with_source_map(
-            template_file.read_text(encoding="utf-8"),
+            filter_prompt_variant_blocks(template_file.read_text(encoding="utf-8"), prompt_variant),
             template_path=template_file,
             metadata=metadata_values,
             metadata_sources=metadata_sources,

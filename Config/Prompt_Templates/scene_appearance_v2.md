@@ -1,3 +1,4 @@
+<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 # Render Task
 
 Create one finished full-body technical Scene Appearance image of {{CHARACTER_NAME}} for **{{SCENE_APPEARANCE_NAME}}**, in {{BODY_VIEW_DISPLAY}}.
@@ -13,6 +14,17 @@ Create one finished full-body technical Scene Appearance image of {{CHARACTER_NA
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+<!-- ZET:END IMAGE_PROMPT_ONLY -->
+
+<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->
+# Review Specification
+
+Judge the candidate image against the visible requirements below and the supplied reference images.
+
+# Reference Images
+
+{{CHATGPT_IMAGE_INPUTS}}
+<!-- ZET:END ANALYSIS_PROMPT_ONLY -->
 
 Preserve Image 1's identity, face, hair, anatomy, proportions, costume, body and head direction, camera, full-body framing, lighting, rendering style, and neutral background. Change only the arm, hand, and contact geometry required by the configured arrangement. Supporting images control only their assigned subjects or objects; ignore their backgrounds, framing, pose, camera, lighting, and unrelated traits.
 

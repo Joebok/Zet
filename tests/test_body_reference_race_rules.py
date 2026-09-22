@@ -11,9 +11,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 from zet.services.pipeline_compiler_support import load_race_render_rules, load_view_data, technical_modesty_variant, view_instruction
+from zet.services.prompt_template_service import filter_prompt_variant_blocks
 
 
 class BodyReferenceRaceRulesTests(unittest.TestCase):
+    def test_prompt_variant_blocks_are_explicit_and_balanced(self) -> None:
+        template = (
+            "Shared\n"
+            "<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->\nImage only\n<!-- ZET:END IMAGE_PROMPT_ONLY -->\n"
+            "<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->\nAnalysis only\n<!-- ZET:END ANALYSIS_PROMPT_ONLY -->\n"
+        )
+        self.assertEqual("Shared\nImage only\n", filter_prompt_variant_blocks(template, "generation"))
+        self.assertEqual("Shared\nAnalysis only\n", filter_prompt_variant_blocks(template, "analysis"))
+        with self.assertRaises(TemplateCompileError):
+            filter_prompt_variant_blocks("<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->\nUnclosed", "generation")
+        with self.assertRaises(TemplateCompileError):
+            filter_prompt_variant_blocks("<!-- ZET:END ANALYSIS_PROMPT_ONLY -->", "analysis")
+
     def test_technical_modesty_variant_matrix(self) -> None:
         cases = {
             ("Adult", "female"): "TECHNICAL_MODESTY_LAYER_ADULT_FEMININE",
@@ -157,6 +171,34 @@ Gender Presentation: `[Feminine adult woman]`
             self.assertNotIn("HEAD OVERRIDE", prompt)
             self.assertNotIn("THREE-QUARTER ORIENTATION LOCK", prompt)
             self.assertNotIn("{{", prompt)
+            analysis_job = {
+                "Job": "test-body-front-analysis",
+                "Task": "body-reference",
+                "Character": "Testa",
+                "Phase": "Adult",
+                "Body View": "front",
+                "Output Directory": str(root / "analysis"),
+            }
+            analysis = compile_body_reference_job(analysis_job, root, prompt_variant="analysis")
+            analysis_text = Path(analysis["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("Lithe body proportions.", analysis_text)
+            self.assertIn("olive green tube top", analysis_text)
+            self.assertIn("Painterly semi-realistic fantasy illustration.", analysis_text)
+            self.assertIn("Use a neutral anatomical reference stance.", analysis_text)
+            self.assertIn("Long pointed elf ears rendered as neutral mannequin geometry.", analysis_text)
+            self.assertNotIn("Render in the Canonical Art Style", analysis_text)
+            self.assertNotIn("no cast shadow, contact shadow", analysis_text)
+            self.assertNotIn("BACKGROUND_TREATMENT", analysis_text)
+            self.assertNotIn("{{", analysis_text)
+            self.assertNotIn("<!-- ZET:", analysis_text)
+            self.assertIn("# Body-Reference specification", analysis_text)
+            self.assertNotIn("# Render Task", analysis_text)
+            self.assertIn("Render in the Canonical Art Style", prompt)
+            self.assertIn(
+                "Neutral technical background clearly separated from the character; "
+                "no cast shadow, contact shadow, halo, or vignette.", prompt
+            )
+            self.assertNotIn("<!-- ZET:", prompt)
 
 
 

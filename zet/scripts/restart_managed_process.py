@@ -35,7 +35,7 @@ def main() -> None:
     time.sleep(0.5)
     if platform.system() == "Windows":
         subprocess.Popen(
-            ["cmd.exe", "/k", "call", args.command],
+            ["cmd.exe", "/c", "call", args.command],
             cwd=str(args.cwd),
             creationflags=subprocess.CREATE_NEW_CONSOLE,
         )

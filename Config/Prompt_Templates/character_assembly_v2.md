@@ -1,3 +1,4 @@
+<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 # Render Task
 
 Create one finished full-character assembly for {{CHARACTER_NAME}}, {{CHARACTER_PHASE}} by joining the supplied head to the supplied body.
@@ -13,6 +14,17 @@ Create one finished full-character assembly for {{CHARACTER_NAME}}, {{CHARACTER_
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+<!-- ZET:END IMAGE_PROMPT_ONLY -->
+
+<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->
+# Review Specification
+
+Judge the candidate image against the visible requirements below and the supplied reference images.
+
+# Reference Images
+
+{{CHATGPT_IMAGE_INPUTS}}
+<!-- ZET:END ANALYSIS_PROMPT_ONLY -->
 
 - Preserve Image 1's body proportions, pose, stance, framing, and orientation.
 - Keep the body proportions, pose, stance, framing, and orientation exactly as they are.

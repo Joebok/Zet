@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Job_File_Utils import finalize_chatgpt_prompt, prepare_chatgpt_prompt_contract
+from zet.services.prompt_template_service import filter_prompt_variant_blocks
 from zet.services.pipeline_compiler_support import (
     job_get,
     load_bundle,
@@ -33,7 +34,7 @@ def _render_scene_appearance_line(line: str, values: dict[str, str]) -> str:
     return line
 
 
-def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
+def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
     job_id = require_job_field(job, "Job", "job_id")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -55,6 +56,8 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
         raise TemplateCompileError("DEFINITION_MISMATCH", "Scene Appearance character or phase does not match the asset.")
 
     bundle = load_bundle(project_root, "scene-appearance")
+    if prompt_variant == "analysis":
+        bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, body_view)
     view_data = load_view_data(project_root, view_token)
     references = reference_files_for_job(job)
@@ -97,7 +100,8 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
     if not Path(template_name).suffix:
         template_name = f"{template_name}.md"
     template_path = project_root / "Config" / "Prompt_Templates" / template_name
-    prompt = template_path.read_text(encoding="utf-8")
+    template_text = filter_prompt_variant_blocks(template_path.read_text(encoding="utf-8"), prompt_variant)
+    prompt = template_text
     for key, value in values.items():
         prompt = prompt.replace(f"{{{{{key}}}}}", value)
     unresolved = re.findall(r"\{\{[A-Z0-9_]+\}\}", prompt)
@@ -118,7 +122,7 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
     }
     source_fragments = []
     rendered_line_number = 1
-    for template_line in template_path.read_text(encoding="utf-8").splitlines():
+    for template_line in template_text.splitlines():
         source = definition_source if "{{ARRANGEMENT_INSTRUCTIONS}}" in template_line else template_source
         rendered_line_count = len(_render_scene_appearance_line(template_line, values).splitlines()) or 1
         rendered_end_line = rendered_line_number + rendered_line_count - 1
@@ -128,7 +132,8 @@ def compile_scene_appearance_job(job: dict, project_root: Path = PROJECT_ROOT) -
             source_fragments.append({"prompt_start_line": rendered_line_number, "prompt_end_line": rendered_end_line, "source": source})
         rendered_line_number = rendered_end_line + 1
     _write(paths["final_prompt"], prompt)
-    finalize_chatgpt_prompt(paths["diagnostics"], prompt, image_inputs, "composite")
+    if prompt_variant == "generation":
+        finalize_chatgpt_prompt(paths["diagnostics"], prompt, image_inputs, "composite")
     legacy_template_name = str(bundle.get("legacy_static_prompt_template") or "").strip()
     if legacy_template_name:
         if not Path(legacy_template_name).suffix:
@@ -200,6 +205,7 @@ Image File: {expected_output}
         "status": str(bundle.get("next_status") or "READY_FOR_RENDER"),
         "next_actor": str(bundle.get("next_actor") or "AI_AGENT"),
         **{key: str(path) for key, path in paths.items()},
+        "diagnostics": str(paths["diagnostics"]) if prompt_variant == "generation" else "",
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "reference_files": references,

@@ -67,6 +67,18 @@ class HeadImageCompilerTests(unittest.TestCase):
                     self.assertEqual(2, manifest["prompt_schema_version"])
                     self.assertEqual("chatgpt_images_2_5_v1", manifest["engine_profile"])
                     self.assertEqual("edit", manifest["render_mode"])
+                    if view == FOUNDATION_VIEWS[0]:
+                        analysis = compile_head_image_job({
+                            "Job": "head-analysis", "Task": "head-image", "Character": "Test",
+                            "Phase": "Adult", "Head View": view, "Template Path": str(template),
+                            "Output Directory": str(root / view / "analysis"), "Reference Files": references,
+                        }, PROJECT_ROOT, prompt_variant="analysis")
+                        analysis_text = Path(analysis["final_prompt"]).read_text(encoding="utf-8")
+                        self.assertIn("# Review Specification", analysis_text)
+                        self.assertIn("Image 1", analysis_text)
+                        self.assertIn("HEAD-IMAGE Adult CHARACTER REFERENCE", analysis_text)
+                        self.assertNotIn("# Render Task", analysis_text)
+                        self.assertNotIn("<!-- ZET:", analysis_text)
 
 
 

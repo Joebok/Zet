@@ -19,6 +19,7 @@ PromptFile = "Config/Prompt_Condense_Tasks/Condense_Zet.md"
 
 [AIModels]
 AssetWorkflow = "general:latest"
+CodexDefault = "gpt-6-luna"
 PromptCondense = "image-analysis:latest"
 PromptAnalysis = "image-analysis:latest"
 ImageDescription = "image-analysis:latest"

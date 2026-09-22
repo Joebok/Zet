@@ -1,3 +1,4 @@
+<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 # Render Task
 
 Edit the supplied assembled character into one finished full-body costume reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, wearing {{COSTUME_NAME}}.
@@ -16,6 +17,17 @@ Requested head view: {{HEAD_VIEW_DISPLAY}}.
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+<!-- ZET:END IMAGE_PROMPT_ONLY -->
+
+<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->
+# Review Specification
+
+Judge the candidate image against the visible requirements below and the supplied reference images.
+
+# Reference Images
+
+{{CHATGPT_IMAGE_INPUTS}}
+<!-- ZET:END ANALYSIS_PROMPT_ONLY -->
 
 Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, crop, lighting, rendering style, and all non-costume content from Image 1. The costume conforms to the existing body; the body does not change to fit the costume.
 
@@ -43,7 +55,9 @@ Replace only the generic fitment clothing, jewelry, equipment, and footwear cont
 
 {{FOOTWEAR_CONTACT}}
 
+<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 {{BACKGROUND_TREATMENT}}
+<!-- ZET:END IMAGE_PROMPT_ONLY -->
 
 # Constraints
 

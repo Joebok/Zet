@@ -74,6 +74,24 @@ class ExpressionCompilerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_analysis_variant_keeps_expression_and_identity_facts(self) -> None:
+        result = compile_expression_job({
+            "Task": "expression", "Character": "Test", "Phase": "Adult",
+            "Expression Label": "Happy", "Identity Key Label": "Test Key",
+            "Template Path": str(self.character_dir / "Character.md"),
+            "Expression Definition Path": str(self.definition),
+            "Costume Path": str(self.costume),
+            "Output Directory": str(self.root / "analysis"),
+            "Reference Files": [{"role": "identity_key", "path": str(self.reference)}],
+        }, self.root, prompt_variant="analysis")
+        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+        self.assertIn("# Review Specification", prompt)
+        self.assertIn("Image 1", prompt)
+        self.assertIn("A warm restrained smile.", prompt)
+        self.assertIn("Preserve the blue travel coat.", prompt)
+        self.assertNotIn("# Render Task", prompt)
+        self.assertNotIn("<!-- ZET:", prompt)
+
     def test_selected_costume_preservation_is_compiled_with_provenance(self) -> None:
         output = self.root / "output"
         result = compile_expression_job(

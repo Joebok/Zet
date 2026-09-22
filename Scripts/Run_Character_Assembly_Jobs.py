@@ -131,7 +131,7 @@ Reviewed At:
     )
 
 
-def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
+def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -143,6 +143,8 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for character-assembly runner: {task}")
 
     bundle = load_bundle(project_root, "character-assembly")
+    if prompt_variant == "analysis":
+        bundle = {**bundle, "legacy_static_prompt_template": ""}
     body_view_token = normalize_view(project_root, raw_body_view)
     head_view_token = normalize_view(project_root, raw_head_view)
     assembly_style_mode = normalize_assembly_style_mode(
@@ -170,7 +172,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
 
     template_path = template_path_for_job(project_root, job, character, phase)
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token)
+    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token, prompt_variant=prompt_variant)
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )
@@ -245,8 +247,10 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         selection=selection,
         required_section_names=[],
         view_token=body_view_token,
+        prompt_variant=prompt_variant,
     )
-    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "composite")
+    if prompt_variant == "generation":
+        finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "composite")
     write_dependency_manifest(
         manifest_path,
         job_id,
@@ -267,7 +271,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT)
         "compiled_sections": str(compiled_sections_path),
         "dependency_manifest": str(manifest_path),
         "image_review": str(image_review_path),
-        "diagnostics": str(paths["diagnostics"]),
+        "diagnostics": str(paths["diagnostics"]) if prompt_variant == "generation" else "",
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "body_view_token": body_view_token,

@@ -33,8 +33,12 @@ def select_prompt_sections(
     all_sections: dict[str, str],
     section_sources: dict[str, dict],
     view_token: str,
+    *,
+    prompt_variant: str = "generation",
 ):
-    return PromptTemplateService(project_root).select_sections(bundle, all_sections, section_sources, view_token)
+    return PromptTemplateService(project_root).select_sections(
+        bundle, all_sections, section_sources, view_token, prompt_variant=prompt_variant
+    )
 
 
 def render_static_prompt_artifacts(
@@ -51,6 +55,7 @@ def render_static_prompt_artifacts(
     required_section_names: list[str],
     view_token: str,
     ensure_ascii_source_map: bool = False,
+    prompt_variant: str = "generation",
 ) -> str:
     service = PromptTemplateService(project_root)
     prompt_text = service.render_artifacts(
@@ -65,6 +70,7 @@ def render_static_prompt_artifacts(
         required_section_names=required_section_names,
         view_token=view_token,
         ensure_ascii_source_map=ensure_ascii_source_map,
+        prompt_variant=prompt_variant,
     )
     legacy_template = str(bundle.get("legacy_static_prompt_template") or "").strip()
     if legacy_template:
@@ -83,6 +89,7 @@ def render_static_prompt_artifacts(
             required_section_names=required_section_names,
             view_token=view_token,
             ensure_ascii_source_map=ensure_ascii_source_map,
+            prompt_variant=prompt_variant,
         )
     return prompt_text
 

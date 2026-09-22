@@ -23,6 +23,8 @@ OPENPOSE_SCENE_WORKFLOW = "openpose_scene_preview"
 FLUX2_REFERENCE_PROMPT_WORKFLOW = "flux2_reference_prompt_only"
 QWEN_IMAGE_EDIT_PROMPT_WORKFLOW = "qwen_image_edit_prompt_only"
 QWEN_IMAGE_21_SCENE_WORKFLOW = "qwen_image_21_scene_preview"
+QWEN_BODY_REFERENCE_TEXT_WORKFLOW = "qwen_body_reference_text"
+QWEN_BODY_REFERENCE_EDIT_WORKFLOW = "qwen_body_reference_edit"
 
 
 @dataclass(frozen=True)
@@ -737,6 +739,71 @@ def _qwen_image_edit_prompt_compiler(*args: Any, **kwargs: Any) -> ComfyUICompil
     return _modern_reference_prompt_compiler(*args, **kwargs, workflow_kind=QWEN_IMAGE_EDIT_PROMPT_WORKFLOW)
 
 
+def _qwen_body_reference_prompt_compiler(
+    positive_prompt: str,
+    negative_prompt: str,
+    profile: dict[str, Any],
+    *,
+    checkpoint: str,
+    seed: int,
+    width: int,
+    height: int,
+    output_prefix: str,
+    reference_files: list[dict[str, Any]] | None = None,
+    available_node_types: set[str] | None = None,
+    workflow_kind: str,
+    **_kwargs: Any,
+) -> ComfyUICompilation:
+    refs = [item for item in (reference_files or []) if isinstance(item, dict) and item.get("path")]
+    if workflow_kind == QWEN_BODY_REFERENCE_TEXT_WORKFLOW and refs:
+        raise LocalRenderError("Text-first Body-Reference workflow cannot receive image references.")
+    if workflow_kind == QWEN_BODY_REFERENCE_EDIT_WORKFLOW and len(refs) != 1:
+        raise LocalRenderError("Front-conditioned Body-Reference workflow requires exactly one front anchor reference.")
+    required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}
+    if refs:
+        required.add("LoadImage")
+    missing = sorted(required - (available_node_types or set()))
+    if missing:
+        raise LocalRenderError("Qwen Body-Reference workflow requires unavailable ComfyUI nodes: " + ", ".join(missing))
+    if not checkpoint or not profile.get("text_encoder") or not profile.get("vae"):
+        raise LocalRenderError("Qwen Body-Reference workflow requires diffusion model, text encoder, and VAE.")
+    workflow: dict[str, Any] = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": checkpoint, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": profile["text_encoder"], "type": "qwen_image"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": profile["vae"]}},
+    }
+    encode: dict[str, Any] = {"clip": ["2", 0], "vae": ["3", 0], "prompt": positive_prompt,
+                               "negative_prompt": negative_prompt, "resolution": max(width, height)}
+    bindings = []
+    if refs:
+        ref = refs[0]
+        name = str(ref.get("comfyui_input_name") or Path(str(ref["path"])).name)
+        workflow["10"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        encode["images.image_1"] = ["10", 0]
+        bindings.append({**ref, "comfyui_input_name": name, "image_index": 1})
+    workflow["4"] = {"class_type": "TextEncodeQwenImage21", "inputs": encode}
+    workflow["5"] = {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}}
+    workflow["6"] = {"class_type": "KSampler", "inputs": {
+        "seed": seed, "steps": int(profile.get("steps", 40)), "cfg": float(profile.get("cfg", 1.0)),
+        "sampler_name": str(profile.get("sampler_name") or "euler"), "scheduler": str(profile.get("scheduler") or "simple"),
+        "denoise": float(profile.get("denoise", 1.0)), "model": ["1", 0], "positive": ["4", 0],
+        "negative": ["4", 1], "latent_image": ["5", 0],
+    }}
+    workflow["7"] = {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}}
+    workflow["8"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": ["7", 0]}}
+    return ComfyUICompilation(workflow=workflow, prompts={"global": positive_prompt, "negative": negative_prompt},
+                              seed=seed, width=width, height=height, workflow_kind=workflow_kind,
+                              debug={"references_used": bindings})
+
+
+def _qwen_body_reference_text_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _qwen_body_reference_prompt_compiler(*args, **kwargs, workflow_kind=QWEN_BODY_REFERENCE_TEXT_WORKFLOW)
+
+
+def _qwen_body_reference_edit_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
+    return _qwen_body_reference_prompt_compiler(*args, **kwargs, workflow_kind=QWEN_BODY_REFERENCE_EDIT_WORKFLOW)
+
+
 def _qwen_image_21_scene_compiler(
     ir: dict[str, Any], profile: dict[str, Any], *, checkpoint: str, seed: int,
     width: int, height: int, output_prefix: str,
@@ -834,3 +901,5 @@ register_prompt_compiler(IPADAPTER_PROMPT_WORKFLOW, _ipadapter_prompt_compiler)
 register_prompt_compiler(IPADAPTER_CONTROLNET_PROMPT_WORKFLOW, _ipadapter_controlnet_prompt_compiler)
 register_prompt_compiler(FLUX2_REFERENCE_PROMPT_WORKFLOW, _flux2_reference_prompt_compiler)
 register_prompt_compiler(QWEN_IMAGE_EDIT_PROMPT_WORKFLOW, _qwen_image_edit_prompt_compiler)
+register_prompt_compiler(QWEN_BODY_REFERENCE_TEXT_WORKFLOW, _qwen_body_reference_text_compiler)
+register_prompt_compiler(QWEN_BODY_REFERENCE_EDIT_WORKFLOW, _qwen_body_reference_edit_compiler)

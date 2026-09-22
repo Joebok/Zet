@@ -31,6 +31,7 @@ class Config:
     prompt_condense_model: str = "general:latest"
     prompt_condense_file: str = "Config/Prompt_Condense_Tasks/body_reference_condense.md"
     ai_asset_workflow_model: str = "general:latest"
+    codex_default_model: str = "gpt-6-luna"
     ai_scene_builder_model: str = "general:latest"
     ai_prompt_evolution_critic_model_a: str = "image-analysis:latest"
     ai_prompt_evolution_critic_model_b: str = "image-analysis-alt:latest"
@@ -273,6 +274,7 @@ class ConfigService:
                     prompt_condense.get("PromptFile", "Config/Prompt_Condense_Tasks/body_reference_condense.md")
                 ),
                 ai_asset_workflow_model=str(ai_models.get("AssetWorkflow", "general:latest")),
+                codex_default_model=str(ai_models.get("CodexDefault", "gpt-6-luna")),
                 ai_scene_builder_model=str(ai_models.get("SceneBuilder", "general:latest")),
                 ai_prompt_evolution_critic_model_a=str(
                     ai_models.get("PromptEvolutionCriticA", "image-analysis:latest")

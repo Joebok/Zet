@@ -101,6 +101,15 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
         self.assertEqual("composite", manifest["render_mode"])
         self.assertEqual(["edit_base", "subject_reference"], [item["role"] for item in manifest["image_inputs"]])
+        analysis = compile_character_assembly_job(
+            self._job(output_name="analysis"), PROJECT_ROOT, prompt_variant="analysis"
+        )
+        analysis_text = Path(analysis["final_prompt"]).read_text(encoding="utf-8")
+        self.assertIn("# Review Specification", analysis_text)
+        self.assertIn("Image 2", analysis_text)
+        self.assertIn("Keep the face, hair, ears, and apparent age", analysis_text)
+        self.assertNotIn("# Render Task", analysis_text)
+        self.assertNotIn("<!-- ZET:", analysis_text)
 
     def test_missing_or_malformed_character_template_is_rejected(self) -> None:
         malformed_path = self.root / "Malformed.md"

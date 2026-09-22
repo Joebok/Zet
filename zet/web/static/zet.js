@@ -210,6 +210,7 @@ const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
+const toolbarBodyReferenceExperiment = document.querySelector("#toolbar-body-reference-experiment");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const helpMenuButton = document.querySelector("#help-menu-button");
 const helpMenu = document.querySelector("#help-menu");
@@ -455,6 +456,7 @@ const settingAiHarvestAuto = document.querySelector("#setting-ai-harvest-auto");
 const settingAiHarvestInterval = document.querySelector("#setting-ai-harvest-interval");
 const settingAiPromptAnalysisAutoQueueOnRender = document.querySelector("#setting-ai-prompt-analysis-auto-queue-on-render");
 const settingAiAssetWorkflowModel = document.querySelector("#setting-ai-asset-workflow-model");
+const settingCodexDefaultModel = document.querySelector("#setting-codex-default-model");
 const settingPromptCondenseModel = document.querySelector("#setting-prompt-condense-model");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
@@ -9825,6 +9827,14 @@ function renderAiControls(payload) {
   renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
   renderRows(queueRunningTableBody, payload.queue?.running || [], ["ask_id", "asset_id", "worker_type", "task_type"]);
   renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id", "recovery"]);
+  const codexJobs = payload.codex_jobs || [];
+  const codexCounts = Object.fromEntries(["PENDING", "RUNNING", "COMPLETE", "FAILED"].map(
+    (status) => [status, codexJobs.filter((job) => job.status === status).length]
+  ));
+  document.querySelector("#codex-job-counts").textContent =
+    `Pending: ${codexCounts.PENDING} | Running: ${codexCounts.RUNNING} | Done: ${codexCounts.COMPLETE} | Failed: ${codexCounts.FAILED}`;
+  renderRows(document.querySelector("#codex-jobs-table tbody"), codexJobs,
+    ["run_id", "candidate_id", "character", "view", "status", "details"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
   renderProcessRows(payload.processes || []);
@@ -10109,6 +10119,7 @@ function renderPipelineControls(payload) {
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptAnalysisAutoQueueOnRender.checked = Boolean(automation.ai_prompt_analysis_auto_queue_on_render);
   setOllamaModelValue(settingAiAssetWorkflowModel, automation.ai_asset_workflow_model || "");
+  settingCodexDefaultModel.value = automation.codex_default_model || "gpt-6-luna";
   setOllamaModelValue(settingPromptCondenseModel, automation.prompt_condense_model || "");
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
@@ -10317,6 +10328,7 @@ function automationPayloadFromForm() {
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_analysis_auto_queue_on_render: settingAiPromptAnalysisAutoQueueOnRender.checked,
     ai_asset_workflow_model: settingAiAssetWorkflowModel.value,
+    codex_default_model: settingCodexDefaultModel.value.trim(),
     prompt_condense_model: settingPromptCondenseModel.value,
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_image_description_model: settingAiImageDescriptionModel.value,
@@ -12523,6 +12535,11 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
 }));
 toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
+toolbarBodyReferenceExperiment.addEventListener("click", () => {
+  window.location.assign("/character-experiments/body-reference");
+  closeToolbarSettingsMenu();
+});
+
 toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleToolbarSettingsMenu();

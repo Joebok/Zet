@@ -1291,6 +1291,11 @@ class ZetApp:
     def queue_snapshot(self):
         return self.ai_proxy_service.queue_snapshot()
 
+    def codex_jobs(self):
+        from zet.services.body_reference_experiment_service import BodyReferenceExperimentService
+
+        return BodyReferenceExperimentService(self, Path(__file__).resolve().parents[1]).list_codex_jobs()
+
     def inspect_manual_render_publications(self) -> list[dict]:
         """Inspect manual-render publication journals and staging bundles."""
         return self.manual_render_publication_service.inspect(

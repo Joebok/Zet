@@ -984,9 +984,11 @@ class StoryService:
             [path.name for path in Path(pipeline_path).iterdir() if path.is_file()],
         )
 
-    def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> Path:
-        """Compile the final image prompt used by Scene Builder automation."""
-        return self.story_render_service.compile_scene_prompt(story_slug, scene_slug, render_target_id)
+    def compile_scene_prompt(self, story_slug: str, scene_slug: str, render_target_id: str = "main", *, prompt_variant: str = "generation") -> Path:
+        """Compile the requested scene prompt variant."""
+        return self.story_render_service.compile_scene_prompt(
+            story_slug, scene_slug, render_target_id, prompt_variant=prompt_variant
+        )
 
     def get_scene_builder_json_path(self, scene_path: Path) -> Path:
         """Return the Scene Builder JSON path matching a scene markdown or image path."""

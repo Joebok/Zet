@@ -180,7 +180,7 @@ class ProcessService:
         env["PYTHONPATH"] = os.pathsep.join(python_paths)
         if platform.system() == "Windows":
             subprocess.Popen(
-                ["cmd.exe", "/k", "call", spec.command],
+                ["cmd.exe", "/c", "call", spec.command],
                 cwd=str(spec.cwd),
                 env=env,
                 creationflags=subprocess.CREATE_NEW_CONSOLE,

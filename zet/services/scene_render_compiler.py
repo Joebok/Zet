@@ -14,6 +14,7 @@ from zet.services.chatgpt_prompt_contract import (
 )
 from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
 from zet.services.scene_prompt_sections import select_final_image_prompt_sections
+from zet.services.prompt_template_service import filter_prompt_variant_blocks
 from zet.services.performance_instrumentation import record
 
 
@@ -949,7 +950,9 @@ def _risk_constraint_lines(ir: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(lines))
 
 
-def final_image_prompt_text(ir: dict[str, Any]) -> str:
+def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "generation") -> str:
+    if prompt_variant not in {"generation", "analysis"}:
+        raise ValueError(f"Unsupported prompt variant: {prompt_variant}")
     canvas = ir.get("canvas", {})
     environment = ir.get("environment", {})
     elements_by_id = _elements_by_id(ir)
@@ -960,18 +963,25 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     is_element_subscene = target.get("kind") == "element_subscene"
     target_anchor = target.get("anchor") if isinstance(target.get("anchor"), dict) else {}
     target_name = clean_prompt_sentence(target_anchor.get("display_name") or target.get("label")) or "the assigned element"
-    lines = [
-        "# Render Task",
-        "",
-        (
-            "Create one clean full-canvas background plate. Render only the assigned background subscene; do not add foreground subjects, dialogue, a planning grid, or comic panels."
-            if is_subscene else
-            f"Create one clean standalone visual reference for {target_name}. Render the element or group as a coherent subject; do not add dialogue, a planning grid, or comic panels."
-            if is_element_subscene else
-            "Create one finished scene. Do not show the planning grid or split the image into comic panels."
-        ),
-        "",
-    ]
+    lines = (
+        [
+            "# Render Task",
+            "",
+            (
+                "Create one clean full-canvas background plate. Render only the assigned background subscene; do not add foreground subjects, dialogue, a planning grid, or comic panels."
+                if is_subscene else
+                f"Create one clean standalone visual reference for {target_name}. Render the element or group as a coherent subject; do not add dialogue, a planning grid, or comic panels."
+                if is_element_subscene else
+                "Create one finished scene. Do not show the planning grid or split the image into comic panels."
+            ),
+            "",
+        ] if prompt_variant == "generation" else [
+            "# Review Specification",
+            "",
+            "Evaluate the candidate against the scene specification below. Judge visible evidence and the roles of any supplied images.",
+            "",
+        ]
+    )
     if is_element_subscene:
         anchor_description = clean_prompt_sentence(_descriptor_source(target_anchor))
         anchor_notes = clean_prompt_sentence(target_anchor.get("notes"))
@@ -997,6 +1007,9 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
             "",
             *image_input_prompt(image_inputs).splitlines(),
             "",
+        ])
+    if image_inputs and not legacy_prompt and prompt_variant == "generation":
+        lines.extend([
             "# Change Contract",
             "",
             change_contract_prompt(_clean(ir.get("render_mode")), image_inputs),
@@ -1226,7 +1239,9 @@ def final_image_prompt_text(ir: dict[str, Any]) -> str:
     core = cleanup_compiled_scene_prompt(markdown).rstrip()
     if ir.get("prompt_schema_version") == 1:
         sections = ir.get("final_image_prompt_sections") or {}
-        tail = "\n\n".join(str(section).strip() for section in sections.values())
+        tail = "\n\n".join(
+            filter_prompt_variant_blocks(str(section), prompt_variant).strip() for section in sections.values()
+        )
         return f"{core}\n\n{tail}\n"
     constraints = _risk_constraint_lines(ir)
     if not constraints:

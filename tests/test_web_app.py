@@ -163,9 +163,15 @@ class WebAppTests(unittest.TestCase):
                 }), encoding="utf-8")
 
             client = TestClient(create_app(config_path))
-            response = client.get("/api/ai-controls")
+            with patch("zet.app.ZetApp.codex_jobs", return_value=[{
+                "run_id": "20260922_120000_000001", "candidate_id": "c001",
+                "character": "Test", "phase": "Adult", "view": "FRONT",
+                "status": "PENDING", "details": "Waiting for candidate image",
+            }]):
+                response = client.get("/api/ai-controls")
 
             self.assertEqual(200, response.status_code)
+            self.assertEqual("PENDING", response.json()["codex_jobs"][0]["status"])
             self.assertNotIn("recent_harvests", response.json())
             backfill = client.post("/api/library-index/history-backfill")
             self.assertEqual(200, backfill.status_code)

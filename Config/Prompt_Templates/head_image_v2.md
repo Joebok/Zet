@@ -1,5 +1,6 @@
 # HEAD-IMAGE {{CHARACTER_PHASE}} CHARACTER REFERENCE
 
+<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 # Render Task
 
 Create one head-only reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, in {{VIEW_LABEL}}.
@@ -15,6 +16,17 @@ Create one head-only reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, in {{
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+<!-- ZET:END IMAGE_PROMPT_ONLY -->
+
+<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->
+# Review Specification
+
+Judge the candidate image against the visible requirements below and the supplied reference images.
+
+# Reference Images
+
+{{CHATGPT_IMAGE_INPUTS}}
+<!-- ZET:END ANALYSIS_PROMPT_ONLY -->
 
 # Requested Change
 

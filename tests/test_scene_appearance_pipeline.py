@@ -220,6 +220,19 @@ class SceneAppearancePipelineTests(unittest.TestCase):
         arrangement_source = next(item for item in source_map["fragments"] if item["source_kind"] == "scene_appearance_definition")
         self.assertEqual("/instructions", arrangement_source["json_pointer"])
         self.assertEqual(str(definition_path), arrangement_source["source_path"])
+        analysis_result = compile_scene_appearance_job({
+            "Job": "scene-front-analysis", "Task": "scene-appearance", "Character": "Tsaeytte",
+            "Phase": "Adult", "Body View": "FRONT", "Scene Appearance ID": "hell-adventures",
+            "Definition Path": str(definition_path), "Output Directory": str(output / "analysis"),
+            "Expected Output": "front.png", "Reference Files": refs,
+        }, self.root, prompt_variant="analysis")
+        analysis_prompt = Path(analysis_result["final_prompt"]).read_text(encoding="utf-8")
+        self.assertIn("# Review Specification", analysis_prompt)
+        self.assertIn("Image 3", analysis_prompt)
+        self.assertIn("anatomical left shoulder", analysis_prompt)
+        self.assertNotIn("# Render Task", analysis_prompt)
+        self.assertNotIn("{{CHATGPT_CHANGE_CONTRACT}}", analysis_prompt)
+        self.assertNotIn("<!-- ZET:", analysis_prompt)
 
     def test_legacy_asset_json_loads_without_scene_appearance_fields(self) -> None:
         asset = self.repository.get_asset("Tsaeytte", "Adult", 1)

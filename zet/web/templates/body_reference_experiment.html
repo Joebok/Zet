@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body-Reference Qwen Experiment</title>
+  <style>
+    :root { color-scheme: light; --ink:#202124; --muted:#667085; --line:#d8dee8; --panel:#fff; --surface:#f5f7fb; --accent:#2457a6; --danger:#b42318; }
+    * { box-sizing: border-box; }
+    body { background: var(--surface); color: var(--ink); font: 15px system-ui, sans-serif; margin: 0; }
+    header, main { margin: 0 auto; max-width: 1500px; padding: 1rem 1.5rem; }
+    header { align-items: center; display: flex; gap: 1rem; justify-content: space-between; }
+    h1, h2, h3 { margin: 0; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 1rem; padding: 1rem; }
+    .controls, .button-row { align-items: end; display: flex; flex-wrap: wrap; gap: .75rem; }
+    label { display: grid; gap: .3rem; min-width: 180px; }
+    input, select, textarea, button { border: 1px solid #b9c2d0; border-radius: 5px; font: inherit; padding: .5rem .65rem; }
+    button { background: #fff; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .danger { color: var(--danger); }
+    .muted, .hint { color: var(--muted); }
+    .hint { line-height: 1.45; margin: .5rem 0 0; }
+    #status { min-height: 1.5rem; }
+    .status { border-left: 4px solid var(--accent); padding-left: .65rem; }
+    .batch-form { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+    .batch-form[hidden] { display: none; }
+    .batch-form label { min-width: 145px; }
+    .views { display: grid; gap: 1.2rem; }
+    .view { border-top: 1px solid var(--line); padding-top: 1rem; }
+    .view-summary { align-items: center; cursor: pointer; display: flex; gap: 1rem; justify-content: space-between; list-style: none; }
+    .view-summary::-webkit-details-marker { display: none; }
+    .view-summary > span:first-child { align-items: baseline; display: flex; flex-wrap: wrap; gap: .65rem; }
+    .view-actions { align-items: center; display: flex; flex-wrap: wrap; gap: .4rem; }
+    .view-body { padding-top: .75rem; }
+    .cards { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; padding: .6rem; }
+    .card-anchor { border-color: #b7791f; box-shadow: 0 0 0 2px #f6d365 inset; }
+    .card-image { background: #111; border: 0; border-radius: 4px; display: block; padding: 0; width: 100%; }
+    .card-image img { aspect-ratio: 2 / 3; display: block; object-fit: contain; width: 100%; }
+    .card p { margin: .4rem 0; overflow-wrap: anywhere; }
+    .card-actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+    .ai-summary { font-size: .88rem; line-height: 1.35; }
+    dialog { border: 0; border-radius: 10px; height: min(94vh, 1000px); max-height: 94vh; max-width: 96vw; overflow: hidden; padding: 0; position: relative; width: min(1500px, 96vw); }
+    dialog::backdrop { background: rgb(0 0 0 / 82%); }
+    .review-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(340px, .8fr); height: 100%; }
+    .review-image { align-items: center; background: #111; display: flex; justify-content: center; min-height: 0; overflow: hidden; padding: 2.5rem 3rem; }
+    .review-image img { height: 100%; max-height: 100%; max-width: 100%; object-fit: contain; width: 100%; }
+    .review-panel { background: var(--panel); overflow-y: auto; padding: 1.5rem; }
+    .review-close { position: absolute; right: 1rem; top: .75rem; z-index: 2; }
+    .review-nav { border-radius: 999px; font-size: 2rem; height: 48px; line-height: 1; padding: 0; position: absolute; top: 50%; transform: translateY(-50%); width: 48px; z-index: 2; }
+    .review-prev { left: .75rem; } .review-next { right: .75rem; }
+    .review-section { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 1rem; }
+    .review-section p { line-height: 1.4; margin: .45rem 0; }
+    .review-panel textarea { min-height: 90px; width: 100%; }
+    .review-panel select { width: 100%; }
+    .decision-options { border: 0; display: flex; gap: 1rem; margin: 0; padding: 0; }
+    .decision-options legend { margin-bottom: .35rem; padding: 0; }
+    .decision-option { align-items: center; display: flex; gap: .35rem; min-width: 0; }
+    .decision-option input { margin: 0; }
+    .fail { color: var(--danger); }
+    .pass { color: #217a3c; }
+    @media (max-width: 900px) {
+      .review-layout { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 52%) minmax(0, 48%); }
+      .review-image { padding: 3rem 3.5rem 1rem; }
+      .review-panel { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header><div><h1>Body-Reference Qwen Experiment</h1><p class="muted">Experimental batches stay outside canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
+  <main>
+    <section class="panel">
+      <div class="controls">
+        <label>Character<select id="character"></select></label>
+        <label>Phase<select id="phase"></select></label>
+        <label style="min-width:340px">Run ID<select id="run"></select></label>
+        <button id="refresh-runs" type="button">Refresh runs</button>
+        <button id="rerun" type="button" disabled>Re-run batch</button>
+        <button id="reevaluate" type="button" disabled>Re-evaluate batch</button>
+        <button id="delete" class="danger" type="button" disabled>Delete batch</button>
+      </div>
+      <p class="hint">There can be many batches for one character and phase. Choose a Run ID above to load it. Use the controls on a view to regenerate or re-evaluate only that view; the batch controls apply to the whole batch.</p>
+      <details><summary>How to choose the front anchor</summary><p class="hint">Review a completed FRONT candidate after both Local and Luna reviews finish. Set its human decision to Pass, save it, then choose <strong>Use as front anchor</strong>. The anchor becomes the accepted front-view identity and proportion reference for the other views; it does not change canonical assets.</p></details>
+      <form id="new-batch" class="batch-form">
+        <label>Front candidates<input name="front_count" type="number" value="16" min="1"></label>
+        <label>Other candidates per method<input name="other_count" type="number" value="4" min="1"></label>
+        <button class="primary" type="submit">Create new batch</button>
+      </form>
+      <p id="status" class="status"></p>
+    </section>
+    <section id="gallery" class="views"></section>
+  </main>
+
+  <dialog id="review-dialog" aria-label="Body-Reference candidate review">
+    <button id="review-close" class="review-close" type="button">Close</button>
+    <button id="review-prev" class="review-nav review-prev" type="button" aria-label="Previous candidate">‹</button>
+    <div class="review-layout"><section class="review-image"><img id="review-image" alt=""></section><aside id="review-panel" class="review-panel"></aside></div>
+    <button id="review-next" class="review-nav review-next" type="button" aria-label="Next candidate">›</button>
+  </dialog>
+
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    const characterSelect = $('#character'), phaseSelect = $('#phase'), runSelect = $('#run');
+    const status = $('#status'), gallery = $('#gallery'), reviewDialog = $('#review-dialog');
+    const reviewImage = $('#review-image'), reviewPanel = $('#review-panel');
+    let context = {characters: [], phases_by_character: {}};
+    let run = null, runs = [], reviewCandidates = [], reviewIndex = -1;
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const imageUrl = (candidate) => `/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/images/${encodeURIComponent(candidate.candidate_id)}`;
+    function setStatus(message, error = false) { status.textContent = message || ''; status.classList.toggle('fail', error); }
+    async function request(url, options = {}) {
+      const response = await fetch(url, options); let data = {};
+      try { data = await response.json(); } catch (_) { data = {}; }
+      if (!response.ok) throw new Error(data.detail || 'Request failed');
+      return data;
+    }
+    function fill(select, values, selected = '') {
+      select.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join('');
+      if (values.includes(selected)) select.value = selected;
+    }
+    function reviewResult(label, result, job, lunaError = '') {
+      if (result) {
+        const passed = result.pass === true && !result.uncertain;
+        const uncertain = Boolean(result.uncertain);
+        const reason = result.failure_reason || (result.failure_categories || []).join(', ') || result.evidence || 'No reason supplied.';
+        return `<p class="${passed ? 'pass' : uncertain ? 'muted' : 'fail'}"><strong>${label}:</strong> ${passed ? 'Pass' : `${uncertain ? 'Uncertain' : 'Fail'} — ${esc(reason)}`}</p>`;
+      }
+      if (job?.status === 'INTERRUPTED') return `<p class="fail"><strong>${label}:</strong> Interrupted — restart available</p>`;
+      const failure = job?.status === 'FAILED' ? job.error : lunaError;
+      if (failure) return `<p class="fail"><strong>${label}:</strong> Failed to run — ${esc(failure)}</p>`;
+      return `<p class="muted"><strong>${label}:</strong> ${esc(job?.status || 'Pending')}</p>`;
+    }
+    function humanSummary(candidate) {
+      const decision = candidate.human_review?.decision || 'undecided';
+      const normalized = decision === 'keep' || decision === 'pass' ? 'pass' : decision === 'reject' || decision === 'fail' ? 'fail' : 'undecided';
+      const label = normalized === 'pass' ? 'Pass' : normalized === 'fail' ? 'Fail' : 'Undecided';
+      const notes = String(candidate.human_review?.notes || '').trim();
+      return `<p class="${normalized === 'pass' ? 'pass' : normalized === 'fail' ? 'fail' : 'muted'}"><strong>Human:</strong> ${label}${notes ? ` — ${esc(notes)}` : ''}</p>`;
+    }
+    function candidateSummary(candidate) {
+      const ai = candidate.analyses || {};
+      return `${reviewResult('Local', ai.local, candidate.local_job)}${reviewResult('Luna', ai.luna, {status: candidate.luna_status}, candidate.luna_error || '')}${humanSummary(candidate)}`;
+    }
+    function renderRun(value) {
+      const collapsedViews = new Set([...gallery.querySelectorAll('details[data-view]')].filter((item) => !item.open).map((item) => item.dataset.view));
+      run = value;
+      $('#rerun').disabled = !run; $('#reevaluate').disabled = !run || !run.candidates?.some((item) => item.status === 'COMPLETE') || ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING'].includes(run.status); $('#delete').disabled = !run;
+      if (!run) { gallery.innerHTML = ''; setStatus('Select a character and phase, then create or select a batch.'); return; }
+      const counts = (run.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
+      setStatus(`${run.status} · ${counts.COMPLETE || 0}/${run.candidate_count || run.candidates.length} complete · front anchor: ${run.front_anchor || 'not selected'}${run.error ? ` · ${run.error}` : ''}`);
+      const byView = (run.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
+      const promptUrl = (view) => `/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/review-prompt/${encodeURIComponent(view)}`;
+      const busy = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING'].includes(run.status);
+      gallery.innerHTML = (run.views || []).map((view) => {
+        const viewCandidates = byView[view] || [];
+        const completeCount = viewCandidates.filter((item) => item.status === 'COMPLETE').length;
+        const viewCanRun = view === 'FRONT' || Boolean(run.front_anchor);
+        const viewCanReevaluate = completeCount > 0 && viewCanRun && !busy;
+        const viewCanRerun = viewCandidates.length > 0 && viewCanRun && !busy;
+        const open = collapsedViews.has(view) ? '' : ' open';
+        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${completeCount}/${viewCandidates.length} images complete</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-run</button><button data-reevaluate-view="${esc(view)}" type="button" ${viewCanReevaluate ? '' : 'disabled'}>Re-evaluate</button></span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View Local + Codex review prompt for ${esc(view)}</a></p><div class="cards">${viewCandidates.map((candidate) => {
+          const complete = candidate.status === 'COMPLETE';
+          const anchor = run.front_anchor === candidate.candidate_id;
+          const image = complete ? `<button class="card-image" data-review="${esc(candidate.candidate_id)}" type="button"><img src="${imageUrl(candidate)}" alt="${esc(view)} candidate ${esc(candidate.candidate_id)}"></button>` : `<div class="muted">${esc(candidate.status)}</div>`;
+          const failed = candidate.status === 'FAILED' || candidate.local_job?.status === 'FAILED' || candidate.luna_status === 'FAILED';
+          return `<article class="card${anchor ? ' card-anchor' : ''}">${image}<p><strong>${esc(candidate.candidate_id)}</strong> · ${esc(candidate.method)}</p><p class="muted">${esc(candidate.status)}${anchor ? ' · FRONT ANCHOR' : ''}</p><div class="ai-summary">${complete ? candidateSummary(candidate) : ''}</div><div class="card-actions">${complete ? `<button data-review="${esc(candidate.candidate_id)}" type="button">Review</button>` : ''}${failed ? `<button data-retry="${esc(candidate.candidate_id)}" type="button">Retry</button>` : ''}</div></article>`;
+        }).join('')}</div></div></details>`;
+      }).join('');
+      gallery.querySelectorAll('details[data-view]').forEach((detail) => detail.addEventListener('toggle', () => { if (detail.open) collapsedViews.delete(detail.dataset.view); else collapsedViews.add(detail.dataset.view); }));
+      gallery.querySelectorAll('[data-rerun-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void rerunView(button.dataset.rerunView); }));
+      gallery.querySelectorAll('[data-reevaluate-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void reevaluateView(button.dataset.reevaluateView); }));
+      gallery.querySelectorAll('[data-review]').forEach((button) => button.addEventListener('click', () => openReview(button.dataset.review)));
+      gallery.querySelectorAll('[data-retry]').forEach((button) => button.addEventListener('click', () => retryCandidate(button.dataset.retry)));
+    }
+    async function loadRuns(preferred = '') {
+      if (!characterSelect.value || !phaseSelect.value) { runs = []; runSelect.innerHTML = ''; renderRun(null); return; }
+      try {
+        const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
+        runs = (await request(`/api/character-experiments/body-reference/runs?${params}`)).runs || [];
+        runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
+        const chosen = preferred || runs[0]?.run_id || '';
+        if (chosen) { runSelect.value = chosen; await loadRun(chosen); } else renderRun(null);
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function loadRun(runId = runSelect.value) {
+      if (!runId) { renderRun(null); return; }
+      try { renderRun(await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(runId)}`)); }
+      catch (error) { setStatus(error.message, true); }
+    }
+    function openReview(candidateId) {
+      reviewCandidates = (run?.candidates || []).filter((item) => item.status === 'COMPLETE');
+      reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
+      if (reviewIndex < 0) return;
+      renderReview(); reviewDialog.showModal(); $('#review-close').focus();
+    }
+    function renderReview() {
+      const candidate = reviewCandidates[reviewIndex]; if (!candidate) return;
+      reviewImage.src = imageUrl(candidate); reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
+      const ai = candidate.analyses || {}, canReview = Boolean(ai.local && ai.luna);
+      const human = candidate.human_review || {};
+      const anchorReady = candidate.view === 'FRONT' && canReview && human.decision === 'keep' && run.front_anchor !== candidate.candidate_id;
+      reviewPanel.innerHTML = `<p class="muted">Candidate ${reviewIndex + 1} of ${reviewCandidates.length}</p><h2>${esc(candidate.candidate_id)}</h2><p><strong>View:</strong> ${esc(candidate.view)}<br><strong>Method:</strong> ${esc(candidate.method)}<br><strong>Seed:</strong> ${esc(candidate.seed)}<br><strong>Status:</strong> ${esc(candidate.status)}</p><section class="review-section"><h3>Automated reviews</h3>${candidateSummary(candidate)}${!canReview ? '<p class="hint">Human review is enabled after both Local and Luna reviews finish.</p>' : ''}</section><section class="review-section"><h3>Human review</h3><fieldset class="decision-options" ${canReview ? '' : 'disabled'}><legend>Decision</legend><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="undecided"> Undecided</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="keep"> Pass</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="reject"> Fail</label></fieldset><label style="margin-top:.75rem">Notes<textarea data-field="notes" ${canReview ? '' : 'disabled'}>${esc(human.notes || '')}</textarea></label><div class="button-row" style="margin-top:.75rem"><button data-save type="button" class="primary" ${canReview ? '' : 'disabled'}>Save human review</button></div></section><section class="review-section"><h3>Front anchor</h3><p class="hint">Choose one reviewed, human-passed FRONT image as the shared identity and proportion reference for all other views.</p><button data-anchor type="button" ${anchorReady ? '' : 'disabled'}>${run.front_anchor === candidate.candidate_id ? 'Current front anchor' : 'Use as front anchor'}</button>${run.front_anchor === candidate.candidate_id ? '<p class="pass">This candidate is the front anchor.</p>' : ''}</section>`;
+      const savedDecision = human.decision === 'pass' ? 'keep' : human.decision === 'fail' ? 'reject' : (human.decision || 'undecided');
+      reviewPanel.querySelector(`[data-field="decision"][value="${savedDecision}"]`).checked = true;
+      reviewPanel.querySelector('[data-save]')?.addEventListener('click', saveReview);
+      reviewPanel.querySelector('[data-anchor]')?.addEventListener('click', selectAnchor);
+      $('#review-prev').disabled = reviewIndex <= 0; $('#review-next').disabled = reviewIndex >= reviewCandidates.length - 1;
+    }
+    async function saveReview() {
+      const candidate = reviewCandidates[reviewIndex];
+      try {
+        await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
+        run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.candidates.filter((item) => item.status === 'COMPLETE'); renderReview();
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function selectAnchor() {
+      const candidate = reviewCandidates[reviewIndex];
+      try { run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/front-anchor`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidate.candidate_id})}); renderRun(run); renderReview(); }
+      catch (error) { setStatus(error.message, true); }
+    }
+    async function rerunView(view) {
+      if (!run || !window.confirm(`Re-run the images for ${view}? Existing images and human reviews for this view will be replaced.`)) return;
+      try {
+        const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?view=${encodeURIComponent(view)}`, {method:'POST'});
+        renderRun(updated);
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function reevaluateView(view) {
+      if (!run) return;
+      try {
+        const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate?view=${encodeURIComponent(view)}`, {method:'POST'});
+        renderRun(updated);
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function retryCandidate(candidateId) {
+      try { run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidateId)}/retry`, {method:'POST'}); renderRun(run); }
+      catch (error) { setStatus(error.message, true); }
+    }
+    async function navigateReview(offset) { const next = reviewIndex + offset; if (next < 0 || next >= reviewCandidates.length) return; reviewIndex = next; renderReview(); }
+    characterSelect.addEventListener('change', () => { fill(phaseSelect, context.phases_by_character[characterSelect.value] || []); void loadRuns(); });
+    phaseSelect.addEventListener('change', () => void loadRuns());
+    runSelect.addEventListener('change', () => void loadRun());
+    $('#refresh-runs').addEventListener('click', () => void loadRuns(runSelect.value));
+    $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = Object.fromEntries(new FormData(event.currentTarget)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); const created = await request('/api/character-experiments/body-reference/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
+    $('#rerun').addEventListener('click', async () => { if (!run || !window.confirm(`Create a new batch from ${run.run_id}?`)) return; try { const created = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun`, {method:'POST'}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
+    $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
+    $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
+    $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));
+    reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });
+    async function init() { try { context = await request('/api/context'); fill(characterSelect, context.characters || []); if (context.default_character) characterSelect.value = context.default_character; fill(phaseSelect, context.phases_by_character[characterSelect.value] || [], context.default_phase || ''); await loadRuns(); } catch (error) { setStatus(error.message, true); } }
+    void init();
+    setInterval(() => { if (run?.run_id && !reviewDialog.open) void loadRun(run.run_id); }, 5000);
+  </script>
+</body>
+</html>

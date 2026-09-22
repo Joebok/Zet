@@ -253,7 +253,7 @@ Reviewed At:
     )
 
 
-def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
+def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
     """Compile a standalone expression prompt from an Identity Key and definition file."""
     character = require_job_field(job, "Character", "character")
     phase = require_job_field(job, "Phase", "phase")
@@ -270,6 +270,8 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
     definition_text = expression_definition_text(definition_path)
     prompt_inserts = prompt_inserts_by_section(definition_source_text)
     bundle = load_bundle(project_root, "expression")
+    if prompt_variant == "analysis":
+        bundle = {**bundle, "legacy_static_prompt_template": ""}
     references = reference_files_for_job(job)
     identity_key = reference_by_role(references, "identity_key")
     validate_reference(identity_key, "identity_key")
@@ -285,7 +287,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         if "COSTUME_IDENTITY_RULES" in costume_sections:
             sections["COSTUME_IDENTITY_RULES"] = costume_sections["COSTUME_IDENTITY_RULES"]
             section_sources["COSTUME_IDENTITY_RULES"] = costume_sources["COSTUME_IDENTITY_RULES"]
-    selection = select_prompt_sections(project_root, bundle, sections, section_sources, "EXPRESSION")
+    selection = select_prompt_sections(project_root, bundle, sections, section_sources, "EXPRESSION", prompt_variant=prompt_variant)
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )
@@ -361,8 +363,10 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         required_section_names=[],
         view_token="EXPRESSION",
         ensure_ascii_source_map=True,
+        prompt_variant=prompt_variant,
     )
-    finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
+    if prompt_variant == "generation":
+        finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
     write_dependency_manifest(manifest_path, metadata, references, contract_manifest)
     write_prompt_review(prompt_review_path, metadata, prompt_path)
     write_image_review(image_review_path, metadata, expected_output)
@@ -373,7 +377,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict
         "prompt_review": str(prompt_review_path),
         "image_review": str(image_review_path),
         "source_map": str(source_map_path),
-        "diagnostics": str(paths["diagnostics"]),
+        "diagnostics": str(paths["diagnostics"]) if prompt_variant == "generation" else "",
         "expected_output": expected_output,
         "status": str(bundle.get("next_status", "READY_FOR_RENDER")),
         "next_actor": str(bundle.get("next_actor", "AI_AGENT")),

@@ -31,7 +31,12 @@ Pay particular attention to:
 
 # Final Verification
 
+<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 Before producing the final image, verify that:
+<!-- ZET:END IMAGE_PROMPT_ONLY -->
+<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->
+Check the candidate image for these visible requirements:
+<!-- ZET:END ANALYSIS_PROMPT_ONLY -->
 
 - Character count and identities exactly match the scene description.
 - Every character is in the correct left/right position and depth.

@@ -158,7 +158,9 @@ Reviewed At:
     )
 
 
-def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> dict:
+def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
+    if prompt_variant not in {"generation", "analysis"}:
+        raise ValueError(f"Unsupported body-reference prompt variant: {prompt_variant}")
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -169,6 +171,8 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for body-reference runner: {task}")
 
     bundle = load_bundle(project_root, "body-reference")
+    if prompt_variant == "analysis":
+        bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
     view_data = load_view_data(project_root, view_token)
     template_path = template_path_for_job(project_root, job, character, phase)
@@ -176,7 +180,9 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
     expected_output = expected_output_for_job(job, view_data)
 
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, view_token)
+    selection = select_prompt_sections(
+        project_root, bundle, all_sections, section_sources, view_token, prompt_variant=prompt_variant
+    )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -237,24 +243,25 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT) -> 
         selection=selection,
         required_section_names=[],
         view_token=view_token,
+        prompt_variant=prompt_variant,
     )
-    finalize_chatgpt_prompt(diagnostics_path, prompt_text, image_inputs, "generate")
-    write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle, contract_manifest)
-
-    checklist = load_checklist(project_root, str(bundle.get("review_checklist", "")))
-    findings = review_prompt_text(prompt_text, checklist)
-    write_prompt_review(prompt_review_path, metadata, final_prompt_path, findings)
-    write_image_review(image_review_path, metadata, expected_output)
+    if prompt_variant == "generation":
+        finalize_chatgpt_prompt(diagnostics_path, prompt_text, image_inputs, "generate")
+        write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle, contract_manifest)
+        checklist = load_checklist(project_root, str(bundle.get("review_checklist", "")))
+        findings = review_prompt_text(prompt_text, checklist)
+        write_prompt_review(prompt_review_path, metadata, final_prompt_path, findings)
+        write_image_review(image_review_path, metadata, expected_output)
 
     return {
         "status": str(bundle.get("next_status", "READY_FOR_RENDER")),
         "next_actor": str(bundle.get("next_actor", "AI_AGENT")),
         "final_prompt": str(final_prompt_path),
         "compiled_sections": str(compiled_sections_path),
-        "dependency_manifest": str(manifest_path),
-        "prompt_review": str(prompt_review_path),
-        "image_review": str(image_review_path),
-        "diagnostics": str(diagnostics_path),
+        "dependency_manifest": str(manifest_path) if prompt_variant == "generation" else "",
+        "prompt_review": str(prompt_review_path) if prompt_variant == "generation" else "",
+        "image_review": str(image_review_path) if prompt_variant == "generation" else "",
+        "diagnostics": str(diagnostics_path) if prompt_variant == "generation" else "",
         "expected_output": str(output_dir / expected_output),
         "output_dir": str(output_dir),
         "view_token": view_token,

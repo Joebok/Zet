@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 import markdown
 from starlette.background import BackgroundTask
@@ -30,6 +30,7 @@ from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.prompt_evolution_service import PromptEvolutionError
 from zet.services.single_character_lab_service import SingleCharacterLabService
+from zet.services.body_reference_experiment_service import BodyReferenceExperimentService
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -697,6 +698,7 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
         "queue": _jsonable(queue_snapshot),
         "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
         "manual_render_asks": _jsonable(manual_render_asks),
+        "codex_jobs": zet_app.codex_jobs(),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
     }
 
@@ -794,6 +796,7 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ai_asset_workflow_model=str(
             payload.get("ai_asset_workflow_model", defaults.ai_asset_workflow_model)
         ),
+        codex_default_model=str(payload.get("codex_default_model", defaults.codex_default_model)),
         prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
         ai_prompt_analysis_model=str(payload.get("ai_prompt_analysis_model", defaults.ai_prompt_analysis_model)),
         ai_prompt_analysis_auto_queue_on_render=bool(
@@ -962,6 +965,10 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/character-experiments/body-reference", response_class=HTMLResponse)
+    def body_reference_experiment_page() -> str:
+        return (PACKAGE_ROOT / "templates" / "body_reference_experiment.html").read_text(encoding="utf-8")
 
     @app.get("/api/context")
     def context() -> dict[str, Any]:
@@ -2408,6 +2415,208 @@ def create_app(
             return service._public(service.detail(run_id))
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/preview")
+    def preview_body_reference_experiment(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).preview(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs")
+    def create_body_reference_experiment(
+        background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.create_run(payload)
+            background_tasks.add_task(service.execute_run, run["run_id"])
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/character-experiments/body-reference/runs")
+    def list_body_reference_experiments(
+        character: str = Query(""), phase: str = Query("")
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            return {"runs": service.list_runs(character, phase)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    @app.get("/api/character-experiments/body-reference/runs/{run_id}")
+    def body_reference_experiment_detail(run_id: str) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).detail(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/character-experiments/body-reference/runs/{run_id}/review-prompt/{view}", response_class=PlainTextResponse)
+    def body_reference_experiment_review_prompt(run_id: str, view: str) -> PlainTextResponse:
+        try:
+            prompt = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).review_prompt(run_id, view)
+            return PlainTextResponse(prompt, media_type="text/markdown")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/rerun")
+    def rerun_body_reference_experiment(
+        run_id: str, background_tasks: BackgroundTasks, view: str = Query("")
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.rerun_view(run_id, view) if view.strip() else service.rerun(run_id)
+            background_tasks.add_task(service.execute_run, run["run_id"])
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/reevaluate")
+    def reevaluate_body_reference_experiment(
+        run_id: str, background_tasks: BackgroundTasks, view: str = Query("")
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.reevaluate(run_id, view=view.strip() or None)
+            background_tasks.add_task(service.execute_run, run_id)
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    @app.delete("/api/character-experiments/body-reference/runs/{run_id}")
+    def delete_body_reference_experiment(run_id: str) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).delete_run(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    @app.get("/api/character-experiments/body-reference/runs/{run_id}/images/{candidate_id}")
+    def body_reference_experiment_image(run_id: str, candidate_id: str) -> FileResponse:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.detail(run_id)
+            candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
+            requested = Path(str(candidate.get("image_path") or "")).resolve()
+            root = Path(run["root"]).resolve()
+            if not requested.is_file() or not requested.is_relative_to(root):
+                raise HTTPException(status_code=404, detail="Experiment image not found")
+            return FileResponse(requested)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/front-anchor")
+    def select_body_reference_front_anchor(
+        run_id: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.select_front_anchor(run_id, str(payload.get("candidate_id") or ""))
+            background_tasks.add_task(service.execute_run, run_id)
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/character-experiments/body-reference/runs/{run_id}/candidates/{candidate_id}")
+    def update_body_reference_candidate(run_id: str, candidate_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).update_candidate(
+                run_id, candidate_id, payload
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/candidates/{candidate_id}/analysis")
+    def record_body_reference_analysis(
+        run_id: str, candidate_id: str, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            return service.record_analysis(
+                run_id,
+                candidate_id,
+                str(payload.get("provider") or ""),
+                payload.get("result") if isinstance(payload.get("result"), dict) else {},
+                payload.get("input_hashes") if isinstance(payload.get("input_hashes"), dict) else {},
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/candidates/{candidate_id}/local-analysis")
+    def queue_body_reference_local_analysis(
+        run_id: str, candidate_id: str, payload: dict[str, Any] = Body(default={})
+    ) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).queue_local_analysis(
+                run_id, candidate_id, str(payload.get("model") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/candidates/{candidate_id}/render")
+    def queue_body_reference_render(run_id: str, candidate_id: str) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).queue_render_candidate(
+                run_id, candidate_id
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/next-render")
+    def queue_next_body_reference_render(run_id: str) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).queue_next_render(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/stop")
+    def stop_body_reference_experiment(run_id: str) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).request_stop(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/resume")
+    def resume_body_reference_experiment(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.resume(run_id)
+            background_tasks.add_task(service.execute_run, run_id)
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/candidates/{candidate_id}/retry")
+    def retry_body_reference_candidate(
+        run_id: str, candidate_id: str, background_tasks: BackgroundTasks
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.retry_candidate(run_id, candidate_id)
+            background_tasks.add_task(service.execute_run, run_id)
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/candidates/{candidate_id}/luna-analysis")
+    def run_body_reference_luna_analysis(run_id: str, candidate_id: str) -> dict[str, Any]:
+        try:
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).run_luna_analysis(
+                run_id, candidate_id
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/character-experiments/body-reference/runs/{run_id}/lineups/{method}")
+    def set_body_reference_lineup(
+        run_id: str, method: str, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            selections = payload.get("selections") if isinstance(payload.get("selections"), dict) else {}
+            return BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT).set_lineup(
+                run_id, method, {str(key): str(value) for key, value in selections.items()}
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/single-character-lab/preview")
     def preview_single_character_lab_run(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:

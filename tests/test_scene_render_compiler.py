@@ -28,6 +28,24 @@ class SceneRenderCompilerTests(unittest.TestCase):
     def _prompt(self, scene):
         return final_image_prompt_text(self._ir(scene))
 
+    def test_scene_analysis_prompt_preserves_scene_facts_and_filters_generation_text(self):
+        ir = self._ir({"scene": {"story_beat": "A raven lands beside the traveler."}})
+        generation = final_image_prompt_text(ir)
+        analysis = final_image_prompt_text(ir, prompt_variant="analysis")
+        self.assertIn("# Render Task", generation)
+        self.assertIn("# Review Specification", analysis)
+        self.assertIn("A raven lands beside the traveler.", analysis)
+        self.assertNotIn("# Render Task", analysis)
+        self.assertNotIn("# Change Contract", analysis)
+
+        ir["prompt_schema_version"] = 1
+        legacy_generation = final_image_prompt_text(ir)
+        legacy_analysis = final_image_prompt_text(ir, prompt_variant="analysis")
+        self.assertIn("Before producing the final image, verify that:", legacy_generation)
+        self.assertIn("Check the candidate image for these visible requirements:", legacy_analysis)
+        self.assertNotIn("Before producing the final image, verify that:", legacy_analysis)
+        self.assertNotIn("<!-- ZET:", legacy_analysis)
+
     def test_v2_uses_conditional_constraints_instead_of_unconditional_tail(self):
         prompt = self._prompt({})
 
