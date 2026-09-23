@@ -101,9 +101,9 @@ Backend = "local_image"
                     "Config\\AI_Prompt_Analysis_Instructions.md"
                 )
             )
-            self.assertEqual(len(roles), 10)
-            self.assertIn("shared by bootstrap", roles["prompt_evolution_vision"]["description"])
-            self.assertIn("shared by cross-seed synthesis", roles["prompt_evolution_text"]["description"])
+            self.assertEqual(len(roles), 5)
+            self.assertNotIn("prompt_evolution_vision", roles)
+            self.assertNotIn("prompt_evolution_text", roles)
 
             app.save_automation_settings(
                 AutomationSettings(
@@ -121,11 +121,7 @@ Backend = "local_image"
                     ai_prompt_analysis_auto_queue_on_render=True,
                     ai_image_description_model="catalog-model",
                     ai_scene_builder_model="scene-builder-model",
-                    ai_prompt_evolution_critic_model_a="critic-a-model",
-                    ai_prompt_evolution_critic_model_b="critic-b-model",
-                    ai_prompt_evolution_vision_model="evolution-vision-model",
-                    ai_prompt_evolution_text_model="evolution-text-model",
-                    ai_prompt_evolution_check_model="check-model",
+                    local_body_reference_face_gate_model="face-gate-model",
                     zine_print_scale=0.965,
                     zine_page_margin=8,
                     zine_width=3344,
@@ -146,11 +142,7 @@ Backend = "local_image"
             self.assertTrue(reloaded.ai_prompt_analysis_auto_queue_on_render)
             self.assertEqual(reloaded.ai_image_description_model, "catalog-model")
             self.assertEqual(reloaded.ai_scene_builder_model, "scene-builder-model")
-            self.assertEqual(reloaded.ai_prompt_evolution_critic_model_a, "critic-a-model")
-            self.assertEqual(reloaded.ai_prompt_evolution_critic_model_b, "critic-b-model")
-            self.assertEqual(reloaded.ai_prompt_evolution_vision_model, "evolution-vision-model")
-            self.assertEqual(reloaded.ai_prompt_evolution_text_model, "evolution-text-model")
-            self.assertEqual(reloaded.ai_prompt_evolution_check_model, "check-model")
+            self.assertEqual(reloaded.local_body_reference_face_gate_model, "face-gate-model")
             self.assertEqual(reloaded.zine_print_scale, 0.965)
             self.assertEqual(reloaded.zine_page_margin, 8)
             self.assertEqual(reloaded.zine_width, 3344)

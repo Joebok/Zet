@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Body-Reference Qwen Experiment</title>
+  <title>Local Body-Reference</title>
   <style>
     :root { color-scheme: light; --ink:#202124; --muted:#667085; --line:#d8dee8; --panel:#fff; --surface:#f5f7fb; --accent:#2457a6; --danger:#b42318; }
     * { box-sizing: border-box; }
@@ -72,7 +72,7 @@
   </style>
 </head>
 <body>
-  <header><div><h1>Body-Reference Qwen Experiment</h1><p class="muted">Experimental batches stay outside canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
+  <header><div><h1>Local Body-Reference</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
   <main>
     <section class="panel">
       <div class="controls">
@@ -89,7 +89,7 @@
       <details><summary>How to choose the front anchor</summary><p class="hint">Review a completed FRONT candidate after both Local and Luna reviews finish. Set its human decision to Pass, save it, then choose <strong>Use as front anchor</strong>. The anchor becomes the accepted front-view identity and proportion reference for the other views; it does not change canonical assets.</p></details>
       <form id="new-batch" class="batch-form">
         <label>Front candidates<input name="front_count" type="number" value="16" min="1"></label>
-        <label>Other candidates per method<input name="other_count" type="number" value="4" min="1"></label>
+        <label>Other candidates per view<input name="other_count" type="number" value="4" min="1"></label>
         <button class="primary" type="submit">Create new batch</button>
       </form>
       <p id="status" class="status"></p>
@@ -112,7 +112,7 @@
     let context = {characters: [], phases_by_character: {}};
     let run = null, runs = [], reviewCandidates = [], reviewIndex = -1;
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const imageUrl = (candidate) => `/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/images/${encodeURIComponent(candidate.candidate_id)}`;
+    const imageUrl = (candidate) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/images/${encodeURIComponent(candidate.candidate_id)}`;
     function setStatus(message, error = false) { status.textContent = message || ''; status.classList.toggle('fail', error); }
     async function request(url, options = {}) {
       const response = await fetch(url, options); let data = {};
@@ -162,7 +162,7 @@
       const counts = (run.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
       setStatus(`${run.status} · ${counts.COMPLETE || 0}/${run.candidate_count || run.candidates.length} complete · front anchor: ${run.front_anchor || 'not selected'}${run.error ? ` · ${run.error}` : ''}`);
       const byView = (run.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
-      const promptUrl = (view) => `/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/review-prompt/${encodeURIComponent(view)}`;
+      const promptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/review-prompt/${encodeURIComponent(view)}`;
       gallery.innerHTML = (run.views || []).map((view) => {
         const viewCandidates = byView[view] || [];
         const completeCount = viewCandidates.filter((item) => item.status === 'COMPLETE').length;
@@ -192,7 +192,7 @@
       if (!characterSelect.value || !phaseSelect.value) { runs = []; runSelect.innerHTML = ''; renderRun(null); return; }
       try {
         const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
-        runs = (await request(`/api/character-experiments/body-reference/runs?${params}`)).runs || [];
+        runs = (await request(`/api/local/body-reference/runs?${params}`)).runs || [];
         runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
         const chosen = preferred || runs[0]?.run_id || '';
         if (chosen) { runSelect.value = chosen; await loadRun(chosen); } else renderRun(null);
@@ -200,7 +200,7 @@
     }
     async function loadRun(runId = runSelect.value) {
       if (!runId) { renderRun(null); return; }
-      try { renderRun(await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(runId)}`)); }
+      try { renderRun(await request(`/api/local/body-reference/runs/${encodeURIComponent(runId)}`)); }
       catch (error) { setStatus(error.message, true); }
     }
     function openReview(candidateId) {
@@ -231,9 +231,9 @@
       const candidate = reviewCandidates[reviewIndex];
       if (reviewPanel.querySelector('[data-field="decision"]').disabled) return true;
       try {
-        await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
+        await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
         const candidateId = candidate.candidate_id;
-        run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.candidates.filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
+        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.candidates.filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
         reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
         if (render) renderReview();
         return true;
@@ -241,37 +241,37 @@
     }
     async function selectAnchor() {
       const candidate = reviewCandidates[reviewIndex];
-      try { run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/front-anchor`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidate.candidate_id})}); renderRun(run); renderReview(); }
+      try { run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/front-anchor`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidate.candidate_id})}); renderRun(run); renderReview(); }
       catch (error) { setStatus(error.message, true); }
     }
     async function proceed() {
       if (!run?.front_anchor) return;
-      try { renderRun(await request('/api/character-experiments/body-reference/runs/' + encodeURIComponent(run.run_id) + '/proceed', {method:'POST'})); }
+      try { renderRun(await request('/api/local/body-reference/runs/' + encodeURIComponent(run.run_id) + '/proceed', {method:'POST'})); }
       catch (error) { setStatus(error.message, true); }
     }
     async function rerunView(view) {
       if (!run || !window.confirm(`Re-run the images for ${view}? Existing images and human reviews for this view will be replaced.`)) return;
       try {
-        const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?view=${encodeURIComponent(view)}`, {method:'POST'});
+        const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { setStatus(error.message, true); }
     }
     async function rerunFailedView(view) {
       if (!run || !window.confirm(`Re-Run failed images for ${view}? Matching images and their human reviews will be replaced.`)) return;
       try {
-        const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun-failed?view=${encodeURIComponent(view)}`, {method:'POST'});
+        const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun-failed?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { setStatus(error.message, true); }
     }
     async function reevaluateView(view) {
       if (!run) return;
       try {
-        const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate?view=${encodeURIComponent(view)}`, {method:'POST'});
+        const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { setStatus(error.message, true); }
     }
     async function retryCandidate(candidateId) {
-      try { run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidateId)}/retry`, {method:'POST'}); renderRun(run); }
+      try { run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidateId)}/retry`, {method:'POST'}); renderRun(run); }
       catch (error) { setStatus(error.message, true); }
     }
     async function navigateReview(offset) { const next = reviewIndex + offset; if (next < 0 || next >= reviewCandidates.length) return; if (!await saveReview({render:false})) return; reviewIndex = next; renderReview(); }
@@ -279,7 +279,7 @@
     phaseSelect.addEventListener('change', () => void loadRuns());
     runSelect.addEventListener('change', () => void loadRun());
     $('#refresh-runs').addEventListener('click', () => void loadRuns(runSelect.value));
-    $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = Object.fromEntries(new FormData(event.currentTarget)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); const created = await request('/api/character-experiments/body-reference/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
+    $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = Object.fromEntries(new FormData(event.currentTarget)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); const created = await request('/api/local/body-reference/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
     $('#rerun').addEventListener('click', async () => {
       if (!run) return;
       let keepFrontAnchor = false;
@@ -288,7 +288,7 @@
         if (!keepFrontAnchor && !window.confirm(`Create a new batch and rerun FRONT? c001 will use the previous anchor's seed.`)) return;
       } else if (!window.confirm(`Create a new batch from ${run.run_id}?`)) return;
       try {
-        const created = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?keep_front_anchor=${keepFrontAnchor}`, {method:'POST'});
+        const created = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?keep_front_anchor=${keepFrontAnchor}`, {method:'POST'});
         await loadRuns(created.run_id);
       } catch (error) { setStatus(error.message, true); }
     });
@@ -296,12 +296,12 @@
       if (!run || $('#stop').disabled) return;
       $('#stop').disabled = true;
       try {
-        const cancelled = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/stop`, {method:'POST'});
+        const cancelled = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/stop`, {method:'POST'});
         renderRun(cancelled);
       } catch (error) { setStatus(error.message, true); }
     });
-    $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
-    $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
+    $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
+    $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
     $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));
     reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });
     async function init() { try { context = await request('/api/context'); fill(characterSelect, context.characters || []); if (context.default_character) characterSelect.value = context.default_character; fill(phaseSelect, context.phases_by_character[characterSelect.value] || [], context.default_phase || ''); await loadRuns(); } catch (error) { setStatus(error.message, true); } }

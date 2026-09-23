@@ -44,12 +44,8 @@ class AutomationSettings:
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
     ai_scene_builder_model: str = "general:latest"
-    ai_prompt_evolution_critic_model_a: str = "image-analysis:latest"
-    ai_prompt_evolution_critic_model_b: str = "image-analysis-alt:latest"
-    ai_prompt_evolution_vision_model: str = "image-analysis:latest"
-    body_reference_face_gate_model: str = "image-analysis:latest"
-    ai_prompt_evolution_text_model: str = "image-analysis:latest"
-    ai_prompt_evolution_check_model: str = "image-analysis-alt:latest"
+    local_body_reference_face_gate_model: str = "image-analysis:latest"
+    local_body_reference_review_model: str = "image-analysis:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
     zine_print_scale: float = 0.978
@@ -132,7 +128,6 @@ class PipelineControlService:
 
     def managed_llm_roles(self) -> list[dict]:
         """Describe configured LLM tasks and their editable Markdown templates."""
-        prompt_evolution_root = "Config/Prompt_Evolution"
         return [
             {
                 "key": "asset_workflow",
@@ -162,42 +157,9 @@ class PipelineControlService:
                 "templates": [],
             },
             {
-                "key": "prompt_evolution_critic_a",
-                "description": "First independent visual comparison critic.",
-                "templates": [self._llm_template("Visual critic", f"{prompt_evolution_root}/visual_critic.md")],
-            },
-            {
-                "key": "prompt_evolution_critic_b",
-                "description": "Second independent visual comparison critic.",
-                "templates": [self._llm_template("Visual critic", f"{prompt_evolution_root}/visual_critic.md")],
-            },
-            {
-                "key": "prompt_evolution_vision",
-                "description": "Vision role shared by bootstrap, image-grounded diagnosis, and directed refinement.",
-                "templates": [
-                    self._llm_template(name.replace("_", " ").title(), f"{prompt_evolution_root}/{name}.md")
-                    for name in (
-                        "bootstrap",
-                        "prompt_diagnosis",
-                        "directed_refinement",
-                    )
-                ],
-            },
-            {
-                "key": "prompt_evolution_text",
-                "description": "Text role shared by cross-seed synthesis, minimal prompt editing, and JSON repair.",
-                "templates": [
-                    self._llm_template(name.replace("_", " ").title(), f"{prompt_evolution_root}/{name}.md")
-                    for name in ("batch_synthesis", "prompt_edit", "repair")
-                ],
-            },
-            {
-                "key": "prompt_evolution_check",
-                "description": "Checks evolved images for character and costume regressions.",
-                "templates": [
-                    self._llm_template("Regression check", f"{prompt_evolution_root}/regression_check.md"),
-                    self._llm_template("Response repair", f"{prompt_evolution_root}/repair.md"),
-                ],
+                "key": "local_body_reference_review",
+                "description": "Reviews Local Body-Reference images against the requested view and character facts.",
+                "templates": [],
             },
         ]
 
@@ -237,12 +199,8 @@ class PipelineControlService:
             ai_prompt_analysis_auto_queue_on_render=bool(self.config.ai_prompt_analysis_auto_queue_on_render),
             ai_image_description_model=str(self.config.ai_image_description_model),
             ai_scene_builder_model=str(self.config.ai_scene_builder_model),
-            ai_prompt_evolution_critic_model_a=str(self.config.ai_prompt_evolution_critic_model_a),
-            ai_prompt_evolution_critic_model_b=str(self.config.ai_prompt_evolution_critic_model_b),
-            ai_prompt_evolution_vision_model=str(self.config.ai_prompt_evolution_vision_model),
-            body_reference_face_gate_model=str(self.config.body_reference_face_gate_model),
-            ai_prompt_evolution_text_model=str(self.config.ai_prompt_evolution_text_model),
-            ai_prompt_evolution_check_model=str(self.config.ai_prompt_evolution_check_model),
+            local_body_reference_face_gate_model=str(self.config.local_body_reference_face_gate_model),
+            local_body_reference_review_model=str(self.config.local_body_reference_review_model),
             ai_prompt_analysis_instructions_file=str(self.config.ai_prompt_analysis_instructions_file),
             zine_print_scale=float(self.config.zine_print_scale),
             zine_page_margin=int(self.config.zine_page_margin),
@@ -296,12 +254,8 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.AutoQueueOnRender", "Value": self.config.ai_prompt_analysis_auto_queue_on_render},
             {"Scope": "Project config", "Setting": "AIModels.ImageDescription", "Value": self.config.ai_image_description_model},
             {"Scope": "Project config", "Setting": "AIModels.SceneBuilder", "Value": self.config.ai_scene_builder_model},
-            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticA", "Value": self.config.ai_prompt_evolution_critic_model_a},
-            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCriticB", "Value": self.config.ai_prompt_evolution_critic_model_b},
-            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionVision", "Value": self.config.ai_prompt_evolution_vision_model},
-            {"Scope": "Project config", "Setting": "AIModels.BodyReferenceFaceGate", "Value": self.config.body_reference_face_gate_model},
-            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionText", "Value": self.config.ai_prompt_evolution_text_model},
-            {"Scope": "Project config", "Setting": "AIModels.PromptEvolutionCheck", "Value": self.config.ai_prompt_evolution_check_model},
+            {"Scope": "Project config", "Setting": "AIModels.LocalBodyReferenceFaceGate", "Value": self.config.local_body_reference_face_gate_model},
+            {"Scope": "Project config", "Setting": "AIModels.LocalBodyReferenceReview", "Value": self.config.local_body_reference_review_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.InstructionsFile", "Value": self.config.ai_prompt_analysis_instructions_file},
         ]
 
@@ -345,12 +299,8 @@ class PipelineControlService:
             ("AIPromptAnalysis", "AutoQueueOnRender"): settings.ai_prompt_analysis_auto_queue_on_render,
             ("AIModels", "ImageDescription"): settings.ai_image_description_model,
             ("AIModels", "SceneBuilder"): settings.ai_scene_builder_model,
-            ("AIModels", "PromptEvolutionCriticA"): settings.ai_prompt_evolution_critic_model_a,
-            ("AIModels", "PromptEvolutionCriticB"): settings.ai_prompt_evolution_critic_model_b,
-            ("AIModels", "PromptEvolutionVision"): settings.ai_prompt_evolution_vision_model,
-            ("AIModels", "BodyReferenceFaceGate"): settings.body_reference_face_gate_model,
-            ("AIModels", "PromptEvolutionText"): settings.ai_prompt_evolution_text_model,
-            ("AIModels", "PromptEvolutionCheck"): settings.ai_prompt_evolution_check_model,
+            ("AIModels", "LocalBodyReferenceFaceGate"): settings.local_body_reference_face_gate_model,
+            ("AIModels", "LocalBodyReferenceReview"): settings.local_body_reference_review_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
         self._update_config_values(updates)
@@ -395,12 +345,8 @@ class PipelineControlService:
             ("AI prompt analysis", settings.ai_prompt_analysis_model),
             ("Image description", settings.ai_image_description_model),
             ("Scene Builder", settings.ai_scene_builder_model),
-            ("Prompt Evolution critic A", settings.ai_prompt_evolution_critic_model_a),
-            ("Prompt Evolution critic B", settings.ai_prompt_evolution_critic_model_b),
-            ("Prompt Evolution vision", settings.ai_prompt_evolution_vision_model),
-            ("Body-reference Face Gate", settings.body_reference_face_gate_model),
-            ("Prompt Evolution text", settings.ai_prompt_evolution_text_model),
-            ("Prompt Evolution regression check", settings.ai_prompt_evolution_check_model),
+            ("Local Body-Reference face gate", settings.local_body_reference_face_gate_model),
+            ("Local Body-Reference review", settings.local_body_reference_review_model),
         )
         for label, model in model_settings:
             if not model.strip():

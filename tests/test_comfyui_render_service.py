@@ -137,8 +137,8 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 "one character", "blurry", profile,
                 checkpoint="model.safetensors", seed=9,
                 reference_files=[
-                    {"role": "prompt_evolution_init", "path": str(init)},
-                    {"role": "prompt_evolution_pose", "path": str(pose)},
+                    {"role": "init_image", "path": str(init)},
+                    {"role": "pose_reference", "path": str(pose)},
                 ],
                 available_node_types={
                     "LoadImage", "DWPreprocessor", "ControlNetLoader", "ControlNetApplyAdvanced",
@@ -175,8 +175,8 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 "one character", "blurry", profile,
                 checkpoint="model.safetensors", seed=9,
                 reference_files=[
-                    {"role": "prompt_evolution_appearance", "path": str(reference)},
-                    {"role": "prompt_evolution_pose", "path": str(pose)},
+                    {"role": "appearance_reference", "path": str(reference)},
+                    {"role": "pose_reference", "path": str(pose)},
                 ],
                 available_node_types={
                     "LoadImage", "CLIPVisionLoader", "IPAdapterModelLoader", "IPAdapterAdvanced",
@@ -208,7 +208,7 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                         "controlnet_model": "openpose.safetensors",
                     },
                     checkpoint="model.safetensors",
-                    reference_files=[{"role": "prompt_evolution_pose", "path": str(pose)}],
+                    reference_files=[{"role": "pose_reference", "path": str(pose)}],
                     available_node_types={"LoadImage", "ControlNetLoader", "ControlNetApplyAdvanced"},
                 )
 
@@ -631,8 +631,8 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                     job_output_dir=root / "job",
                     profile_name="lab",
                     reference_files=[
-                        {"role": "prompt_evolution_appearance", "path": str(appearance)},
-                        {"role": "prompt_evolution_pose", "path": str(pose)},
+                        {"role": "appearance_reference", "path": str(appearance)},
+                        {"role": "pose_reference", "path": str(pose)},
                     ],
                     render_overrides={"width": 900, "height": 1300, "character_reference_weight": 0.45},
                 )
@@ -662,8 +662,8 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
             appearance.write_bytes(b"appearance")
             pose.write_bytes(b"pose")
             references = [
-                {"role": "prompt_evolution_appearance", "path": str(appearance)},
-                {"role": "prompt_evolution_pose", "path": str(pose)},
+                {"role": "appearance_reference", "path": str(appearance)},
+                {"role": "pose_reference", "path": str(pose)},
             ]
             common_nodes = {
                 "UNETLoader", "CLIPLoader", "VAELoader", "LoadImage", "KSampler", "VAEDecode", "SaveImage",

@@ -492,7 +492,7 @@ def _controlled_prompt_compiler(
     model: list[Any] = ["1", 0]
     ipadapter_debug: dict[str, Any] = {}
     if use_ipadapter:
-        appearance = _prompt_reference(reference_files, "prompt_evolution_appearance")
+        appearance = _prompt_reference(reference_files, "appearance_reference")
         references_used.append(appearance)
         ipadapter_model = str(profile.get("ipadapter_model") or "").strip()
         clip_vision_model = str(profile.get("clip_vision_model") or "").strip()
@@ -535,7 +535,7 @@ def _controlled_prompt_compiler(
         ipadapter_debug = {"reference": appearance, **settings}
         next_id += 4
     if use_img2img:
-        init = _prompt_reference(reference_files, "prompt_evolution_init")
+        init = _prompt_reference(reference_files, "init_image")
         references_used.append(init)
         workflow[str(next_id)] = {"class_type": "LoadImage", "inputs": {"image": init["comfyui_input_name"]}}
         workflow[str(next_id + 1)] = {
@@ -554,7 +554,7 @@ def _controlled_prompt_compiler(
     negative_conditioning: list[Any] = ["3", 0]
     control_debug: dict[str, Any] = {}
     if use_control:
-        pose = _prompt_reference(reference_files, "prompt_evolution_pose")
+        pose = _prompt_reference(reference_files, "pose_reference")
         references_used.append(pose)
         control_model = str(profile.get("controlnet_model") or "").strip()
         if not control_model:
@@ -682,8 +682,8 @@ def _modern_reference_prompt_compiler(
     vae_name = str(profile.get("vae") or "").strip()
     if not checkpoint or not text_encoder or not vae_name:
         raise LocalRenderError("Modern reference workflow requires diffusion model, text encoder, and VAE filenames.")
-    appearance = _prompt_reference(reference_files, "prompt_evolution_appearance")
-    pose = _prompt_reference(reference_files, "prompt_evolution_pose")
+    appearance = _prompt_reference(reference_files, "appearance_reference")
+    pose = _prompt_reference(reference_files, "pose_reference")
     workflow: dict[str, Any] = {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": checkpoint, "weight_dtype": "default"}},
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": text_encoder, "type": "qwen_image" if qwen else "flux2"}},

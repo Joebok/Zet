@@ -24,13 +24,8 @@ PromptCondense = "image-analysis:latest"
 PromptAnalysis = "image-analysis:latest"
 ImageDescription = "image-analysis:latest"
 SceneBuilder = "general:latest"
-PromptEvolutionCriticA = "image-analysis-alt:latest"
-PromptEvolutionCriticB = "image-analysis-alt:latest"
-PromptEvolutionVision = "image-analysis:latest"
-PromptEvolutionText = "image-analysis:latest"
-PromptEvolutionCheck = "image-analysis:latest"
 
-BodyReferenceFaceGate = "image-analysis-alt:latest"
+LocalBodyReferenceFaceGate = "image-analysis-alt:latest"
 [LocalRender]
 AutoQueueAfterCondense = false
 Backend = "comfyui"

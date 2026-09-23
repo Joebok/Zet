@@ -402,11 +402,11 @@ class CheckpointLabService:
                     candidate_dir = root / condition
                     profile = {**base_profile, "character_reference_weight": weight}
                     references = [{
-                        "role": "prompt_evolution_appearance",
+                        "role": "appearance_reference",
                         "path": str(reference_path),
                     }]
                     if pose_path is not None:
-                        references.append({"role": "prompt_evolution_pose", "path": str(pose_path)})
+                        references.append({"role": "pose_reference", "path": str(pose_path)})
                     compilation = compile_prompt_to_comfyui_workflow(
                         positive_prompt,
                         negative_prompt,

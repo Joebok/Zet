@@ -58,23 +58,6 @@ const state = {
   localImageReviewDetail: null,
   localImageReviewHarvestTimer: null,
   localImageReviewHarvestRunsRemaining: 0,
-  promptEvolutionAssets: [],
-  promptEvolutionRuns: [],
-  promptEvolutionRun: null,
-  promptEvolutionTemplates: {},
-  promptEvolutionProfilesByBackend: {},
-  promptEvolutionConditioningImages: [],
-  promptEvolutionComfyNodeTypes: [],
-  promptEvolutionComfyMissing: [],
-  promptEvolutionRefreshTimer: null,
-  singleCharacterLabOptions: null,
-  singleCharacterLabRuns: [],
-  singleCharacterLabRun: null,
-  singleCharacterLabCandidatePage: null,
-  singleCharacterLabPage: 1,
-  singleCharacterLabBlind: false,
-  singleCharacterLabSort: "candidate",
-  singleCharacterLabRefreshTimer: null,
   turnaroundRows: [],
   selectedTurnaroundId: null,
   selectedAuxiliaryTurnaroundId: null,
@@ -183,7 +166,6 @@ const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "scene-appearances", "expressions", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
-const GLOBAL_PAGES = new Set(["auxiliary-resources", "template-editor", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-inspection", "pipeline-controls", "help"]);
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
@@ -210,7 +192,7 @@ const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
-const toolbarBodyReferenceExperiment = document.querySelector("#toolbar-body-reference-experiment");
+const toolbarLocalBodyReference = document.querySelector("#toolbar-local-body-reference");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const helpMenuButton = document.querySelector("#help-menu-button");
 const helpMenu = document.querySelector("#help-menu");
@@ -219,92 +201,6 @@ const templateManualSelect = document.querySelector("#template-manual-select");
 const templateManualCopy = document.querySelector("#template-manual-copy");
 const templateManualDownload = document.querySelector("#template-manual-download");
 const templateManualContent = document.querySelector("#template-manual-content");
-const singleCharacterLabStatus = document.querySelector("#single-character-lab-status");
-const singleCharacterLabAppearance = document.querySelector("#single-character-lab-appearance");
-const singleCharacterLabPose = document.querySelector("#single-character-lab-pose");
-const singleCharacterLabAppearancePreview = document.querySelector("#single-character-lab-appearance-preview");
-const singleCharacterLabPosePreview = document.querySelector("#single-character-lab-pose-preview");
-const singleCharacterLabCheckpoint = document.querySelector("#single-character-lab-checkpoint");
-const singleCharacterLabAdapter = document.querySelector("#single-character-lab-adapter");
-const singleCharacterLabWorkflow = document.querySelector("#single-character-lab-workflow");
-const singleCharacterLabMode = document.querySelector("#single-character-lab-mode");
-const singleCharacterLabCount = document.querySelector("#single-character-lab-count");
-const singleCharacterLabWeight = document.querySelector("#single-character-lab-weight");
-const singleCharacterLabPoseWeight = document.querySelector("#single-character-lab-pose-weight");
-const singleCharacterLabSeedControls = document.querySelector("#single-character-lab-seed-controls");
-const singleCharacterLabRecipeControls = document.querySelector("#single-character-lab-recipe-controls");
-const singleCharacterLabConditioningRecipeControls = document.querySelector("#single-character-lab-conditioning-recipe-controls");
-const singleCharacterLabModernRecipeControls = document.querySelector("#single-character-lab-modern-recipe-controls");
-const singleCharacterLabAppearanceStrengths = document.querySelector("#single-character-lab-appearance-strengths");
-const singleCharacterLabPoseStrengths = document.querySelector("#single-character-lab-pose-strengths");
-const singleCharacterLabStepValues = document.querySelector("#single-character-lab-step-values");
-const singleCharacterLabGuidanceValues = document.querySelector("#single-character-lab-guidance-values");
-const singleCharacterLabDenoiseValues = document.querySelector("#single-character-lab-denoise-values");
-const singleCharacterLabSeedCount = document.querySelector("#single-character-lab-seed-count");
-const singleCharacterLabPlan = document.querySelector("#single-character-lab-plan");
-const singleCharacterLabSteps = document.querySelector("#single-character-lab-steps");
-const singleCharacterLabGuidance = document.querySelector("#single-character-lab-guidance");
-const singleCharacterLabSampler = document.querySelector("#single-character-lab-sampler");
-const singleCharacterLabScheduler = document.querySelector("#single-character-lab-scheduler");
-const singleCharacterLabWidth = document.querySelector("#single-character-lab-width");
-const singleCharacterLabHeight = document.querySelector("#single-character-lab-height");
-const singleCharacterLabDenoise = document.querySelector("#single-character-lab-denoise");
-const singleCharacterLabPositive = document.querySelector("#single-character-lab-positive");
-const singleCharacterLabNegative = document.querySelector("#single-character-lab-negative");
-const singleCharacterLabGenerate = document.querySelector("#single-character-lab-generate");
-const singleCharacterLabMessage = document.querySelector("#single-character-lab-message");
-const singleCharacterLabRefresh = document.querySelector("#single-character-lab-refresh");
-const singleCharacterLabRuns = document.querySelector("#single-character-lab-runs");
-const singleCharacterLabDetail = document.querySelector("#single-character-lab-detail");
-const promptEvolutionStatus = document.querySelector("#prompt-evolution-status");
-const promptEvolutionMessage = document.querySelector("#prompt-evolution-message");
-const promptEvolutionShowSetup = document.querySelector("#prompt-evolution-show-setup");
-const promptEvolutionShowReview = document.querySelector("#prompt-evolution-show-review");
-const promptEvolutionSetupPane = document.querySelector("#prompt-evolution-setup-pane");
-const promptEvolutionReviewPane = document.querySelector("#prompt-evolution-review-pane");
-const promptEvolutionAsset = document.querySelector("#prompt-evolution-asset");
-const promptEvolutionSourcePreview = document.querySelector("#prompt-evolution-source-preview");
-const promptEvolutionDerivativePreview = document.querySelector("#prompt-evolution-derivative-preview");
-const promptEvolutionBackend = document.querySelector("#prompt-evolution-backend");
-const promptEvolutionCheckpoint = document.querySelector("#prompt-evolution-checkpoint");
-const promptEvolutionProfile = document.querySelector("#prompt-evolution-profile");
-const promptEvolutionComfyControls = document.querySelector("#prompt-evolution-comfy-controls");
-const promptEvolutionComfyStatus = document.querySelector("#prompt-evolution-comfy-status");
-const promptEvolutionSampler = document.querySelector("#prompt-evolution-sampler");
-const promptEvolutionScheduler = document.querySelector("#prompt-evolution-scheduler");
-const promptEvolutionDenoise = document.querySelector("#prompt-evolution-denoise");
-const promptEvolutionInitSource = document.querySelector("#prompt-evolution-init-source");
-const promptEvolutionInitUpload = document.querySelector("#prompt-evolution-init-upload");
-const promptEvolutionInitPreview = document.querySelector("#prompt-evolution-init-preview");
-const promptEvolutionPoseSource = document.querySelector("#prompt-evolution-pose-source");
-const promptEvolutionPoseUpload = document.querySelector("#prompt-evolution-pose-upload");
-const promptEvolutionPosePreview = document.querySelector("#prompt-evolution-pose-preview");
-const promptEvolutionImg2imgControls = document.querySelector("#prompt-evolution-img2img-controls");
-const promptEvolutionPoseControls = document.querySelector("#prompt-evolution-pose-controls");
-const promptEvolutionPreprocessor = document.querySelector("#prompt-evolution-preprocessor");
-const promptEvolutionControlnetModel = document.querySelector("#prompt-evolution-controlnet-model");
-const promptEvolutionControlStrength = document.querySelector("#prompt-evolution-control-strength");
-const promptEvolutionControlStart = document.querySelector("#prompt-evolution-control-start");
-const promptEvolutionControlEnd = document.querySelector("#prompt-evolution-control-end");
-const promptEvolutionCfg = document.querySelector("#prompt-evolution-cfg");
-const promptEvolutionSteps = document.querySelector("#prompt-evolution-steps");
-const promptEvolutionBatchSize = document.querySelector("#prompt-evolution-batch-size");
-const promptEvolutionFixedSeedCount = document.querySelector("#prompt-evolution-fixed-seed-count");
-const promptEvolutionTotalBatches = document.querySelector("#prompt-evolution-total-batches");
-const promptEvolutionPositive = document.querySelector("#prompt-evolution-positive");
-const promptEvolutionNegative = document.querySelector("#prompt-evolution-negative");
-const promptEvolutionCharacterChecklist = document.querySelector("#prompt-evolution-character-checklist");
-const promptEvolutionCostumeChecklist = document.querySelector("#prompt-evolution-costume-checklist");
-const promptEvolutionCharacterChecklistSave = document.querySelector("#prompt-evolution-character-checklist-save");
-const promptEvolutionCostumeChecklistSave = document.querySelector("#prompt-evolution-costume-checklist-save");
-const promptEvolutionChecklistPaths = document.querySelector("#prompt-evolution-checklist-paths");
-const promptEvolutionStart = document.querySelector("#prompt-evolution-start");
-const promptEvolutionRefresh = document.querySelector("#prompt-evolution-refresh");
-const promptEvolutionRuns = document.querySelector("#prompt-evolution-runs");
-const promptEvolutionDetail = document.querySelector("#prompt-evolution-detail");
-const promptEvolutionTemplateName = document.querySelector("#prompt-evolution-template-name");
-const promptEvolutionTemplateText = document.querySelector("#prompt-evolution-template-text");
-const promptEvolutionTemplateSave = document.querySelector("#prompt-evolution-template-save");
 const onboardingStatus = document.querySelector("#onboarding-status");
 const onboardingMessage = document.querySelector("#onboarding-message");
 const onboardingCharacter = document.querySelector("#onboarding-character");
@@ -461,12 +357,8 @@ const settingPromptCondenseModel = document.querySelector("#setting-prompt-conde
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
-const settingAiPromptEvolutionCriticAModel = document.querySelector("#setting-ai-prompt-evolution-critic-a-model");
-const settingAiPromptEvolutionCriticBModel = document.querySelector("#setting-ai-prompt-evolution-critic-b-model");
-const settingAiPromptEvolutionVisionModel = document.querySelector("#setting-ai-prompt-evolution-vision-model");
-const settingBodyReferenceFaceGateModel = document.querySelector("#setting-body-reference-face-gate-model");
-const settingAiPromptEvolutionTextModel = document.querySelector("#setting-ai-prompt-evolution-text-model");
-const settingAiPromptEvolutionCheckModel = document.querySelector("#setting-ai-prompt-evolution-check-model");
+const settingLocalBodyReferenceFaceGateModel = document.querySelector("#setting-local-body-reference-face-gate-model");
+const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
 const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
@@ -816,23 +708,6 @@ fullscreenImageOverlay.append(
   fullscreenCropBox,
 );
 document.body.append(fullscreenImageOverlay);
-const singleCharacterReviewDialog = document.createElement("dialog");
-singleCharacterReviewDialog.className = "single-character-review-dialog";
-singleCharacterReviewDialog.setAttribute("aria-label", "Single Character Lab candidate review");
-singleCharacterReviewDialog.innerHTML = `
-  <button type="button" class="single-character-review-close" aria-label="Close candidate review">Close</button>
-  <button type="button" class="single-character-review-navigation single-character-review-previous" aria-label="Previous candidate">‹</button>
-  <main class="single-character-review-dialog-layout">
-    <section class="single-character-review-image-pane"><img alt=""></section>
-    <aside class="single-character-review-panel"></aside>
-  </main>
-  <button type="button" class="single-character-review-navigation single-character-review-next" aria-label="Next candidate">›</button>`;
-document.body.append(singleCharacterReviewDialog);
-const singleCharacterReviewDialogImage = singleCharacterReviewDialog.querySelector("img");
-const singleCharacterReviewDialogPanel = singleCharacterReviewDialog.querySelector(".single-character-review-panel");
-const singleCharacterReviewPrevious = singleCharacterReviewDialog.querySelector(".single-character-review-previous");
-const singleCharacterReviewNext = singleCharacterReviewDialog.querySelector(".single-character-review-next");
-const singleCharacterReviewClose = singleCharacterReviewDialog.querySelector(".single-character-review-close");
 const auxResourceMessage = document.querySelector("#aux-resource-message");
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
@@ -1086,10 +961,6 @@ function showAiControlsMessage(message, kind = "info") {
 
 function showLocalImageConfigMessage(message, kind = "info") {
   showMessageElement(localImageConfigMessage, message, kind);
-}
-
-function showPromptEvolutionMessage(message, kind = "info") {
-  showMessageElement(promptEvolutionMessage, message, kind);
 }
 
 function showPipelineControlsMessage(message, kind = "info") {
@@ -1872,7 +1743,6 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 
 const RESPONSIVE_TOOL_PAGES = [
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
-  ["local-image-config", "Config"], ["single-character-lab", "Single Character Lab"], ["prompt-evolution", "Prompt Evolution"], ["pipeline-inspection", "Pipeline Inspection"],
   ["pipeline-controls", "Pipeline Controls"],
   ["help", "Template Instruction Manuals"],
 ];
@@ -3252,8 +3122,6 @@ async function activatePage(page, options = {}) {
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
-  document.querySelector("#single-character-lab-page").classList.toggle("active", page === "single-character-lab");
-  document.querySelector("#prompt-evolution-page").classList.toggle("active", page === "prompt-evolution");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
   document.querySelector("#render-console-page").classList.toggle("active", page === "render-console");
@@ -3264,7 +3132,6 @@ async function activatePage(page, options = {}) {
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
-      !["onboarding", "assets", "manifest", "prompt-review", "render-review", "turnarounds", "identity-keys", "auxiliary-resources", "phase-comparison", "costumes", "scene-appearances", "expressions", "stories", "scenes", "scene-candidates", "zine", "scene-builder", "render-console", "local-image-review", "ai-controls", "local-image-config", "single-character-lab", "prompt-evolution", "pipeline-controls", "pipeline-inspection", "template-editor", "help"].includes(page),
     );
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
@@ -3337,12 +3204,6 @@ async function activatePage(page, options = {}) {
     await loadAiControls();
     await loadPipelineControls();
     await refreshOllamaModelOptions();
-  }
-  if (page === "single-character-lab") {
-    await loadSingleCharacterLab();
-  }
-  if (page === "prompt-evolution") {
-    await loadPromptEvolution();
   }
   if (page === "render-console") {
     await loadRenderConsoleTasks(options.preferredAskId || null);
@@ -10125,12 +9986,8 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
-  setOllamaModelValue(settingAiPromptEvolutionCriticAModel, automation.ai_prompt_evolution_critic_model_a || "");
-  setOllamaModelValue(settingAiPromptEvolutionCriticBModel, automation.ai_prompt_evolution_critic_model_b || "");
-  setOllamaModelValue(settingAiPromptEvolutionVisionModel, automation.ai_prompt_evolution_vision_model || "");
-  setOllamaModelValue(settingBodyReferenceFaceGateModel, automation.body_reference_face_gate_model || "");
-  setOllamaModelValue(settingAiPromptEvolutionTextModel, automation.ai_prompt_evolution_text_model || "");
-  setOllamaModelValue(settingAiPromptEvolutionCheckModel, automation.ai_prompt_evolution_check_model || "");
+  setOllamaModelValue(settingLocalBodyReferenceFaceGateModel, automation.local_body_reference_face_gate_model || "");
+  setOllamaModelValue(settingLocalBodyReferenceReviewModel, automation.local_body_reference_review_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   renderManagedLlmRoles(payload.managed_llm_roles || []);
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
@@ -10161,12 +10018,8 @@ const ollamaModelControls = () => [
   settingAiPromptAnalysisModel,
   settingAiImageDescriptionModel,
   settingAiSceneBuilderModel,
-  settingAiPromptEvolutionCriticAModel,
-  settingAiPromptEvolutionCriticBModel,
-  settingAiPromptEvolutionVisionModel,
-  settingBodyReferenceFaceGateModel,
-  settingAiPromptEvolutionTextModel,
-  settingAiPromptEvolutionCheckModel,
+  settingLocalBodyReferenceFaceGateModel,
+  settingLocalBodyReferenceReviewModel,
 ];
 
 function renderManagedLlmRoles(roles = []) {
@@ -10344,12 +10197,8 @@ function automationPayloadFromForm() {
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_image_description_model: settingAiImageDescriptionModel.value,
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
-    ai_prompt_evolution_critic_model_a: settingAiPromptEvolutionCriticAModel.value,
-    ai_prompt_evolution_critic_model_b: settingAiPromptEvolutionCriticBModel.value,
-    ai_prompt_evolution_vision_model: settingAiPromptEvolutionVisionModel.value,
-    body_reference_face_gate_model: settingBodyReferenceFaceGateModel.value,
-    ai_prompt_evolution_text_model: settingAiPromptEvolutionTextModel.value,
-    ai_prompt_evolution_check_model: settingAiPromptEvolutionCheckModel.value,
+    local_body_reference_face_gate_model: settingLocalBodyReferenceFaceGateModel.value,
+    local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
   };
@@ -11113,882 +10962,6 @@ function closeHelpMenu(returnFocus = false) {
   if (returnFocus && wasOpen) helpMenuButton.focus();
 }
 
-function promptEvolutionFileUrl(path) { return path ? `/api/file?path=${encodeURIComponent(path)}` : ""; }
-function selectedPromptEvolutionAsset() { return state.promptEvolutionAssets.find((item) => String(item.asset_id) === promptEvolutionAsset.value) || null; }
-const PROMPT_EVOLUTION_SETTINGS_KEY = "zet:prompt-evolution-settings";
-const PROMPT_EVOLUTION_PANE_KEY = "zet:prompt-evolution-pane";
-function selectedSingleCharacterAppearance() {
-  return state.singleCharacterLabOptions?.appearances?.find(
-    (item) => String(item.asset_id) === singleCharacterLabAppearance.value,
-  ) || null;
-}
-
-function selectedSingleCharacterPose() {
-  return state.singleCharacterLabOptions?.poses?.find(
-    (item) => item.tag === singleCharacterLabPose.value,
-  ) || null;
-}
-
-function renderSingleCharacterReferences() {
-  const appearance = selectedSingleCharacterAppearance();
-  const pose = selectedSingleCharacterPose();
-  singleCharacterLabAppearancePreview.src = appearance ? fileUrl(appearance.image_path) : "";
-  singleCharacterLabPosePreview.src = pose ? fileUrl(pose.image_path) : "";
-}
-
-async function loadSingleCharacterPrompt() {
-  const appearance = selectedSingleCharacterAppearance();
-  if (!appearance) {
-    singleCharacterLabPositive.value = "";
-    singleCharacterLabNegative.value = "";
-    return;
-  }
-  const params = new URLSearchParams({
-    character: state.character,
-    phase: state.phase,
-    asset_id: String(appearance.asset_id),
-  });
-  const payload = await fetchJson(`/api/single-character-lab/prompt?${params.toString()}`);
-  singleCharacterLabPositive.value = payload.positive_prompt || "";
-  singleCharacterLabNegative.value = payload.negative_prompt || "";
-}
-
-async function syncSingleCharacterAppearance({ matchPose = false } = {}) {
-  const appearance = selectedSingleCharacterAppearance();
-  if (matchPose && appearance) {
-    const pose = state.singleCharacterLabOptions?.poses?.find(
-      (item) => item.view.toLocaleLowerCase() === appearance.view.toLocaleLowerCase(),
-    );
-    if (pose) singleCharacterLabPose.value = pose.tag;
-  }
-  renderSingleCharacterReferences();
-  await loadSingleCharacterPrompt();
-}
-
-function stopSingleCharacterLabPolling() {
-  if (state.singleCharacterLabRefreshTimer) window.clearInterval(state.singleCharacterLabRefreshTimer);
-  state.singleCharacterLabRefreshTimer = null;
-}
-
-const singleCharacterScoreDimensions = [
-  ["identity_fidelity", "Identity"],
-  ["costume_fidelity", "Costume"],
-  ["pose_orientation", "Pose / orientation"],
-  ["composition_framing", "Composition / framing"],
-  ["technical_quality", "Technical quality"],
-  ["style_fit", "Style fit"],
-];
-
-function singleCharacterReviewHtml(item, { expanded = false } = {}) {
-  const review = item.review || {};
-  const machine = item.automatic_review || {};
-  const machineScores = machine.scores || {};
-  const overrides = review.score_overrides || review.scores || {};
-  const scores = singleCharacterScoreDimensions.map(([key, label]) => {
-    const overridden = Object.hasOwn(overrides, key);
-    const value = overridden ? overrides[key] : machineScores[key];
-    const machineLabel = machineScores[key] == null ? "not scored" : `auto ${machineScores[key]}`;
-    return `<label class="single-character-score-field${overridden ? " human-override" : ""}">${escapeHtml(label)} <small>${escapeHtml(machineLabel)}</small><input data-score="${key}" data-machine-score="${machineScores[key] ?? ""}" type="number" min="0" max="4" value="${value ?? ""}"></label>`;
-  }).join("");
-  const hardGates = Object.entries(machine.hard_gates || {}).map(([key, value]) =>
-    `<li class="${value ? "pass" : "fail"}">${escapeHtml(key.replaceAll("_", " "))}: ${value ? "pass" : "fail"}</li>`
-  ).join("");
-  const machineDetails = machine.scores ? `<details class="single-character-machine-review" ${expanded ? "open" : ""}>
-    <summary>Automated review details</summary>
-    ${hardGates ? `<strong>Hard gates</strong><ul>${hardGates}</ul>` : ""}
-    ${machine.failure_reasons?.length ? `<p><strong>Automatic failure tags:</strong> ${escapeHtml(machine.failure_reasons.join(", "))}</p>` : ""}
-    ${machine.evidence ? `<p><strong>Evidence:</strong> ${escapeHtml(machine.evidence)}</p>` : ""}
-    ${machine.uncertainty ? `<p><strong>Uncertainty:</strong> ${escapeHtml(machine.uncertainty)}</p>` : ""}
-  </details>` : '<p class="status-text">Automated category scores have not been run for this candidate.</p>';
-  const decision = review.decision || "undecided";
-  const decisionName = `decision-${item.candidate_id}-${expanded ? "dialog" : "card"}`;
-  return `<div class="single-character-review-controls${expanded ? " expanded" : ""}" data-candidate-id="${escapeHtml(item.candidate_id)}">
-    ${expanded ? `<header><strong>${escapeHtml(item.candidate_id)}</strong><span>${escapeHtml(item.recipe_id || "")} · seed ${escapeHtml(item.seed || "")}</span></header>` : ""}
-    ${machineDetails}
-    <fieldset class="single-character-decision"><legend>Decision</legend><div class="single-character-decision-options">
-      <label><input type="radio" name="${escapeHtml(decisionName)}" data-review-field="decision" value="undecided" ${decision === "undecided" ? "checked" : ""}> Undecided</label>
-      <label><input type="radio" name="${escapeHtml(decisionName)}" data-review-field="decision" value="keep" ${decision === "keep" ? "checked" : ""}> Keep</label>
-      <label><input type="radio" name="${escapeHtml(decisionName)}" data-review-field="decision" value="reject" ${decision === "reject" ? "checked" : ""}> Reject</label>
-    </div></fieldset>
-    <label class="single-character-shortlist"><input type="checkbox" data-review-field="shortlisted" ${review.shortlisted ? "checked" : ""}> Add to shortlist</label>
-    <label>Human failure tags<input data-review-field="failure_reasons" value="${escapeHtml((review.failure_reasons || []).join(", "))}" placeholder="Comma-separated tags"></label>
-    <div class="form-grid compact single-character-component-scores">${scores}</div>
-    <p class="status-text single-character-score-help">Automatic scores are prefilled. Change only categories you disagree with; Zet stores those differences as human overrides.</p>
-    <label>Estimated manual cleanup time (minutes)<input data-review-field="cleanup_minutes" type="number" min="0" step="0.5" value="${review.cleanup_minutes ?? ""}" placeholder="Minutes needed before use"></label>
-    <small class="status-text">Estimate hands-on repair time needed before you would use the image. Leave blank when unknown.</small>
-    <label>Human review notes<input data-review-field="notes" value="${escapeHtml(review.notes || "")}" placeholder="What differs from the automated review?"></label>
-    <div class="button-row"><button type="button" data-save-review>Save human review</button>
-    ${item.recipe_id && item.recipe_id !== "legacy" ? `<button type="button" data-save-recipe="${escapeHtml(item.recipe_id)}">Save recipe</button>` : ""}</div>
-  </div>`;
-}
-
-function singleCharacterReviewCandidates() {
-  const candidates = (state.singleCharacterLabRun?.candidates || []).filter((item) => item.status === "COMPLETE" && item.image_path);
-  if (!state.singleCharacterLabBlind) return candidates;
-  const stableBlindKey = (item) => {
-    const source = `${state.singleCharacterLabRun.run_id}:${item.candidate_id}`;
-    let value = 0;
-    for (const character of source) value = Math.imul(value ^ character.charCodeAt(0), 16777619) >>> 0;
-    return value;
-  };
-  return candidates
-    .map(({ recipe_id: _recipeId, seed: _seed, automatic_review: _automaticReview, ...item }) => item)
-    .sort((left, right) => stableBlindKey(left) - stableBlindKey(right));
-}
-
-let singleCharacterReviewIndex = -1;
-
-function renderSingleCharacterReviewDialog() {
-  const candidates = singleCharacterReviewCandidates();
-  const item = candidates[singleCharacterReviewIndex];
-  if (!item) {
-    singleCharacterReviewDialog.close();
-    return;
-  }
-  singleCharacterReviewDialogImage.src = fileUrl(item.image_path, item.completed_at || "");
-  singleCharacterReviewDialogImage.alt = `${state.singleCharacterLabRun.costume || "Character"} candidate ${item.candidate_id}`;
-  singleCharacterReviewDialogPanel.innerHTML = `<p class="single-character-review-position">Candidate ${singleCharacterReviewIndex + 1} of ${candidates.length}</p>${singleCharacterReviewHtml(item, { expanded: true })}`;
-  singleCharacterReviewPrevious.disabled = singleCharacterReviewIndex <= 0;
-  singleCharacterReviewNext.disabled = singleCharacterReviewIndex >= candidates.length - 1;
-  singleCharacterReviewDialogPanel.querySelector("[data-save-review]")?.addEventListener("click", saveSingleCharacterCandidateReview);
-  singleCharacterReviewDialogPanel.querySelector("[data-save-recipe]")?.addEventListener("click", saveSingleCharacterRecipe);
-}
-
-function openSingleCharacterReview(candidateId) {
-  const candidates = singleCharacterReviewCandidates();
-  singleCharacterReviewIndex = candidates.findIndex((item) => item.candidate_id === candidateId);
-  if (singleCharacterReviewIndex < 0) return;
-  renderSingleCharacterReviewDialog();
-  if (!singleCharacterReviewDialog.open) singleCharacterReviewDialog.showModal();
-  singleCharacterReviewClose.focus();
-}
-
-async function navigateSingleCharacterReview(offset) {
-  const next = singleCharacterReviewIndex + offset;
-  if (next < 0 || next >= singleCharacterReviewCandidates().length) return;
-  const saveButton = singleCharacterReviewDialogPanel.querySelector("[data-save-review]");
-  if (saveButton) {
-    saveButton.disabled = true;
-    try {
-      await saveSingleCharacterCandidateReview({ currentTarget: saveButton });
-    } catch (error) {
-      singleCharacterLabMessage.textContent = `Review was not saved: ${error.message}`;
-      saveButton.disabled = false;
-      return;
-    }
-  }
-  singleCharacterReviewIndex = next;
-  renderSingleCharacterReviewDialog();
-}
-
-function enableSingleCharacterReviewImage(image) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "fullscreen-image-button single-character-review-image-button";
-  button.setAttribute("aria-label", `Open candidate review: ${image.alt || "image"}`);
-  image.replaceWith(button);
-  button.append(image);
-  button.addEventListener("click", () => openSingleCharacterReview(image.dataset.labReviewImage));
-}
-
-function renderSingleCharacterLabRun(run) {
-  state.singleCharacterLabRun = run;
-  if (!run) {
-    singleCharacterLabDetail.innerHTML = '<p class="status-text">No runs yet.</p>';
-    stopSingleCharacterLabPolling();
-    return;
-  }
-  const candidatePage = state.singleCharacterLabCandidatePage?.run_id === run.run_id
-    ? state.singleCharacterLabCandidatePage
-    : { candidates: (run.candidates || []).slice(0, 24), page: 1, pages: Math.max(1, Math.ceil((run.candidates || []).length / 24)), total: (run.candidates || []).length };
-  const candidates = (candidatePage.candidates || []).map((item) => {
-    const machine = item.automatic_review;
-    return `
-    <article class="prompt-evolution-candidate">
-      ${item.image_path && item.status === "COMPLETE" ? `<img data-lab-review-image="${escapeHtml(item.candidate_id)}" src="${fileUrl(item.image_path)}" alt="${escapeHtml(run.costume)} candidate ${escapeHtml(item.candidate_id)}">` : `<div class="single-character-candidate-placeholder">${escapeHtml(item.status || "PENDING")}</div>`}
-      <strong>${escapeHtml(item.candidate_id)}</strong>
-      ${item.seed ? `<small>Seed ${escapeHtml(item.seed)} · ${escapeHtml(item.recipe_id || "")}</small>` : ""}
-      ${item.render_seconds != null ? `<small>${escapeHtml(item.render_seconds)} seconds</small>` : ""}
-      ${item.error ? `<small class="error">${escapeHtml(item.error)}</small>` : ""}
-      ${machine ? `<small>Machine: ${escapeHtml(machine.weighted_mean ?? "unscored")} ${escapeHtml(machine.uncertainty || "")}</small>` : ""}
-      ${item.status === "COMPLETE" ? singleCharacterReviewHtml(item) : ""}
-    </article>`;
-  }).join("");
-  const contactSheets = run.contact_sheets || (run.contact_sheet ? [run.contact_sheet] : []);
-  const contactSheet = contactSheets.map((path, index) => `<figure class="single-character-contact-sheet"><figcaption>Contact sheet ${index + 1}</figcaption><img src="${fileUrl(path)}" alt="Single Character Lab contact sheet ${index + 1}"></figure>`).join("");
-  const summary = run.summary || {};
-  const running = ["QUEUED", "RUNNING", "STOPPING"].includes(run.status);
-  const reviewing = ["QUEUED", "RUNNING"].includes(run.automatic_review?.status);
-  const polling = running || reviewing;
-  singleCharacterLabDetail.innerHTML = `
-    <div class="summary-bar">${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
-    <p><strong>Mode:</strong> ${escapeHtml(run.mode || "legacy")} · <strong>Adapter:</strong> ${escapeHtml(run.model_adapter?.label || "SDXL")} · <strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint)}</p>
-    <p><strong>Progress:</strong> ${escapeHtml(run.completed_count || 0)}/${escapeHtml(run.candidate_count || (run.candidates || []).length)} complete · ${escapeHtml(run.failed_count || 0)} failed · <strong>Reviewed:</strong> ${escapeHtml(summary.reviewed_count || 0)} · <strong>Acceptance:</strong> ${summary.acceptance_rate == null ? "—" : `${Math.round(summary.acceptance_rate * 100)}%`} · <strong>ETA:</strong> ${summary.estimated_remaining_seconds == null ? "unavailable" : `${Math.round(summary.estimated_remaining_seconds)}s`}</p>
-    ${(summary.recipes || []).length > 1 ? `<details><summary>Recipe yields</summary><div class="single-character-recipe-summary">${summary.recipes.map((item) => `<span>${escapeHtml(item.recipe_id)}: ${item.acceptance_rate == null ? "unreviewed" : `${Math.round(item.acceptance_rate * 100)}% (${item.kept_count}/${item.reviewed_count})`}</span>`).join("")}</div></details>` : ""}
-    <div class="button-row">
-      ${running ? '<button type="button" data-lab-action="stop">Stop after current</button>' : ""}
-      ${["STOPPED", "COMPLETE_WITH_ERRORS", "FAILED"].includes(run.status) ? '<button type="button" data-lab-action="resume">Resume</button>' : ""}
-      ${Number(run.failed_count || 0) ? '<button type="button" data-lab-action="retry">Retry failed</button>' : ""}
-      ${running || reviewing ? "" : '<button type="button" data-lab-action="machine-review">Score completed through AI Proxy</button>'}
-      ${running || reviewing ? "" : '<button type="button" class="danger-action" data-lab-action="delete">Delete run</button>'}
-      <label><input type="checkbox" data-lab-blind ${state.singleCharacterLabBlind ? "checked" : ""}> Blind review</label>
-      <label>Sort <select data-lab-sort><option value="candidate">Candidate</option><option value="decision">Human decision</option><option value="identity_fidelity">Identity score</option><option value="costume_fidelity">Costume score</option><option value="pose_orientation">Pose score</option><option value="technical_quality">Technical score</option></select></label>
-    </div>
-    ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
-    ${run.automatic_review ? `<p class="status-text">AI Proxy review: ${escapeHtml(run.automatic_review.status)} · ${escapeHtml(run.automatic_review.model || "")}${run.automatic_review.jobs ? ` · ${escapeHtml(run.automatic_review.completed_count || 0)} complete · ${escapeHtml(run.automatic_review.pending_count || 0)} pending · ${escapeHtml(run.automatic_review.failed_count || 0)} failed` : " · legacy direct scoring"}${run.automatic_review.error ? ` · ${escapeHtml(run.automatic_review.error)}` : ""}</p>` : ""}
-    ${running ? '<p class="status-text">Rendering locally in ComfyUI…</p>' : ""}
-    <div class="prompt-evolution-reference-grid single-character-review-references">
-      <figure><figcaption>Appearance reference</figcaption><img src="${fileUrl(run.reference_image)}" alt="Frozen appearance reference"></figure>
-      <figure><figcaption>Requested pose</figcaption><img src="${fileUrl(run.pose_image)}" alt="Frozen pose reference"></figure>
-    </div>
-    ${candidates ? `<div class="prompt-evolution-gallery">${candidates}</div>` : ""}
-    <div class="single-character-pagination"><button type="button" data-lab-page="prev" ${candidatePage.page <= 1 ? "disabled" : ""}>Previous</button><span>Page ${escapeHtml(candidatePage.page)} of ${escapeHtml(candidatePage.pages)} · ${escapeHtml(candidatePage.total)} candidates</span><button type="button" data-lab-page="next" ${candidatePage.page >= candidatePage.pages ? "disabled" : ""}>Next</button></div>
-    ${contactSheet}
-    <details><summary>Effective prompts</summary><div class="prompt-evolution-prompts"><strong>Positive</strong>\n${escapeHtml(run.positive_prompt || "")}\n\n<strong>Negative</strong>\n${escapeHtml(run.negative_prompt || "")}</div></details>`;
-  singleCharacterLabDetail.querySelectorAll("[data-lab-review-image]").forEach(enableSingleCharacterReviewImage);
-  singleCharacterLabDetail.querySelectorAll("img:not([data-lab-review-image])").forEach((image) => enableFullscreenImage(image));
-  singleCharacterLabDetail.querySelectorAll("[data-save-review]").forEach((button) => button.addEventListener("click", saveSingleCharacterCandidateReview));
-  singleCharacterLabDetail.querySelectorAll("[data-save-recipe]").forEach((button) => button.addEventListener("click", saveSingleCharacterRecipe));
-  singleCharacterLabDetail.querySelectorAll("[data-lab-action]").forEach((button) => button.addEventListener("click", handleSingleCharacterLabAction));
-  singleCharacterLabDetail.querySelectorAll("[data-lab-page]").forEach((button) => button.addEventListener("click", changeSingleCharacterLabPage));
-  singleCharacterLabDetail.querySelector("[data-lab-blind]")?.addEventListener("change", async (event) => {
-    state.singleCharacterLabBlind = event.currentTarget.checked;
-    state.singleCharacterLabPage = 1;
-    await loadSingleCharacterCandidatePage();
-  });
-  const sortControl = singleCharacterLabDetail.querySelector("[data-lab-sort]");
-  if (sortControl) {
-    sortControl.value = state.singleCharacterLabSort;
-    sortControl.addEventListener("change", async (event) => {
-      state.singleCharacterLabSort = event.currentTarget.value;
-      state.singleCharacterLabPage = 1;
-      await loadSingleCharacterCandidatePage();
-    });
-  }
-  singleCharacterLabRuns.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("selected", button.dataset.runId === run.run_id);
-  });
-  if (polling && !state.singleCharacterLabRefreshTimer) {
-    state.singleCharacterLabRefreshTimer = window.setInterval(refreshSingleCharacterLabRun, 3000);
-  } else if (!polling) {
-    stopSingleCharacterLabPolling();
-    singleCharacterLabGenerate.disabled = false;
-  }
-}
-
-async function loadSingleCharacterCandidatePage() {
-  const run = state.singleCharacterLabRun;
-  if (!run?.run_id) return;
-  const params = new URLSearchParams({ page: String(state.singleCharacterLabPage), page_size: "24", blind: String(state.singleCharacterLabBlind), sort: state.singleCharacterLabSort });
-  state.singleCharacterLabCandidatePage = await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(run.run_id)}/candidates?${params.toString()}`);
-  renderSingleCharacterLabRun(run);
-}
-
-async function changeSingleCharacterLabPage(event) {
-  state.singleCharacterLabPage += event.currentTarget.dataset.labPage === "next" ? 1 : -1;
-  await loadSingleCharacterCandidatePage();
-}
-
-async function saveSingleCharacterCandidateReview(event) {
-  const controls = event.currentTarget.closest("[data-candidate-id]");
-  const field = (name) => controls.querySelector(`[data-review-field="${name}"]`);
-  const selectedDecision = controls.querySelector('[data-review-field="decision"]:checked');
-  const candidateId = controls.dataset.candidateId;
-  const dialogWasOpen = singleCharacterReviewDialog.open;
-  await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}/candidates/${encodeURIComponent(candidateId)}/review`, {
-    method: "PUT", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision: selectedDecision?.value || "undecided", shortlisted: field("shortlisted").checked,
-      failure_reasons: field("failure_reasons").value.split(",").map((item) => item.trim()).filter(Boolean),
-      scores: Object.fromEntries([...controls.querySelectorAll("[data-score]")].filter((item) => item.value !== "").map((item) => [item.dataset.score, Number(item.value)])),
-      cleanup_minutes: field("cleanup_minutes").value || null, notes: field("notes").value }),
-  });
-  await refreshSingleCharacterLabRun();
-  if (dialogWasOpen) {
-    const candidates = singleCharacterReviewCandidates();
-    singleCharacterReviewIndex = candidates.findIndex((item) => item.candidate_id === candidateId);
-    if (singleCharacterReviewIndex >= 0) renderSingleCharacterReviewDialog();
-  }
-}
-
-async function saveSingleCharacterRecipe(event) {
-  const recipeId = event.currentTarget.dataset.saveRecipe;
-  await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}/recipes/${encodeURIComponent(recipeId)}/save`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-  });
-  singleCharacterLabMessage.textContent = `Saved recipe ${recipeId}.`;
-}
-
-async function handleSingleCharacterLabAction(event) {
-  const action = event.currentTarget.dataset.labAction;
-  const runId = encodeURIComponent(state.singleCharacterLabRun.run_id);
-  if (action === "delete") {
-    const runLabel = `${state.singleCharacterLabRun.costume || "Character"} · ${state.singleCharacterLabRun.view || "Unknown view"}`;
-    if (!await confirmAction(
-      "Delete Character Lab run",
-      `Delete ${runLabel}? This removes its candidates, reviews, contact sheets, and saved run data.`,
-      "Delete run",
-    )) return;
-    await fetchJson(`/api/single-character-lab/runs/${runId}`, { method: "DELETE" });
-    if (singleCharacterReviewDialog.open) singleCharacterReviewDialog.close();
-    stopSingleCharacterLabPolling();
-    state.singleCharacterLabRun = null;
-    state.singleCharacterLabCandidatePage = null;
-    await loadSingleCharacterLabRuns();
-    singleCharacterLabMessage.textContent = "Character Lab run deleted.";
-    return;
-  }
-  if (action === "stop") await fetchJson(`/api/single-character-lab/runs/${runId}/stop`, { method: "POST" });
-  if (action === "resume" || action === "retry") await fetchJson(`/api/single-character-lab/runs/${runId}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retry_failed: action === "retry" }) });
-  if (action === "machine-review") await fetchJson(`/api/single-character-lab/runs/${runId}/automatic-review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-  await refreshSingleCharacterLabRun();
-}
-
-singleCharacterReviewClose.addEventListener("click", () => singleCharacterReviewDialog.close());
-singleCharacterReviewPrevious.addEventListener("click", () => { void navigateSingleCharacterReview(-1); });
-singleCharacterReviewNext.addEventListener("click", () => { void navigateSingleCharacterReview(1); });
-singleCharacterReviewDialog.addEventListener("keydown", (event) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
-  if (event.key === "ArrowLeft") { event.preventDefault(); void navigateSingleCharacterReview(-1); }
-  if (event.key === "ArrowRight") { event.preventDefault(); void navigateSingleCharacterReview(1); }
-});
-singleCharacterReviewDialog.addEventListener("close", () => { singleCharacterReviewIndex = -1; });
-
-function renderSingleCharacterLabRuns() {
-  singleCharacterLabRuns.innerHTML = state.singleCharacterLabRuns.map((run) =>
-    `<button type="button" data-run-id="${escapeHtml(run.run_id)}">${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</button>`,
-  ).join("") || "No runs yet.";
-}
-
-async function selectSingleCharacterLabRun(runId) {
-  state.singleCharacterLabPage = 1;
-  state.singleCharacterLabCandidatePage = null;
-  renderSingleCharacterLabRun(await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(runId)}`));
-  await loadSingleCharacterCandidatePage();
-}
-
-async function refreshSingleCharacterLabRun() {
-  if (!state.singleCharacterLabRun?.run_id) return;
-  try {
-    const run = await fetchJson(`/api/single-character-lab/runs/${encodeURIComponent(state.singleCharacterLabRun.run_id)}`);
-    renderSingleCharacterLabRun(run);
-    await loadSingleCharacterCandidatePage();
-    singleCharacterLabStatus.textContent = `${run.costume} · ${run.status}`;
-    if (!["QUEUED", "RUNNING"].includes(run.status)) await loadSingleCharacterLabRuns(run.run_id);
-  } catch (error) {
-    stopSingleCharacterLabPolling();
-    singleCharacterLabMessage.textContent = error.message;
-    singleCharacterLabGenerate.disabled = false;
-  }
-}
-
-async function loadSingleCharacterLabRuns(preferredRunId = "") {
-  const params = new URLSearchParams({ character: state.character, phase: state.phase });
-  const payload = await fetchJson(`/api/single-character-lab/runs?${params.toString()}`);
-  state.singleCharacterLabRuns = payload.runs || [];
-  renderSingleCharacterLabRuns();
-  const runId = preferredRunId || state.singleCharacterLabRun?.run_id || state.singleCharacterLabRuns[0]?.run_id;
-  if (runId && state.singleCharacterLabRuns.some((run) => run.run_id === runId)) {
-    await selectSingleCharacterLabRun(runId);
-  } else {
-    renderSingleCharacterLabRun(null);
-  }
-}
-
-async function loadSingleCharacterLab() {
-  stopSingleCharacterLabPolling();
-  singleCharacterLabStatus.textContent = "Loading local options…";
-  const params = new URLSearchParams({ character: state.character, phase: state.phase });
-  state.singleCharacterLabOptions = await fetchJson(`/api/single-character-lab/options?${params.toString()}`);
-  setSelectOptionsWithLabels(singleCharacterLabAppearance, state.singleCharacterLabOptions.appearances.map(
-    (item) => ({ value: String(item.asset_id), label: item.label }),
-  ));
-  setSelectOptionsWithLabels(singleCharacterLabPose, state.singleCharacterLabOptions.poses.map(
-    (item) => ({ value: item.tag, label: item.label }),
-  ));
-  setSelectOptions(singleCharacterLabCheckpoint, state.singleCharacterLabOptions.checkpoints || []);
-  setSelectOptionsWithLabels(singleCharacterLabAdapter, (state.singleCharacterLabOptions.adapters || []).map((item) => ({
-    value: item.id,
-    label: `${item.label}${item.available ? "" : ` — unavailable: ${(item.missing || []).join(", ")}`}`,
-    disabled: !item.available,
-  })));
-  singleCharacterLabAdapter.querySelectorAll("option").forEach((option) => {
-    const adapter = (state.singleCharacterLabOptions.adapters || []).find((item) => item.id === option.value);
-    option.disabled = adapter && !adapter.available;
-  });
-  singleCharacterLabAdapter.value = (state.singleCharacterLabOptions.adapters || []).find((item) => item.available)?.id || "";
-  setSelectOptionsWithLabels(singleCharacterLabWorkflow, (state.singleCharacterLabOptions.workflows || []).map((item) => ({ value: item.id, label: item.label })));
-  setSelectOptions(singleCharacterLabSampler, state.singleCharacterLabOptions.samplers || ["dpmpp_2m"]);
-  setSelectOptions(singleCharacterLabScheduler, state.singleCharacterLabOptions.schedulers || ["karras"]);
-  if ((state.singleCharacterLabOptions.samplers || []).includes("dpmpp_2m")) singleCharacterLabSampler.value = "dpmpp_2m";
-  if ((state.singleCharacterLabOptions.schedulers || []).includes("karras")) singleCharacterLabScheduler.value = "karras";
-  setSelectOptions(singleCharacterLabCount, (state.singleCharacterLabOptions.candidate_counts || [1, 2, 3, 4, 5, 6]).map(String));
-  singleCharacterLabCount.value = "3";
-  singleCharacterLabCheckpoint.value = state.singleCharacterLabOptions.default_checkpoint || "";
-  singleCharacterLabWeight.value = String(state.singleCharacterLabOptions.default_reference_weight ?? 0.45);
-  singleCharacterLabPoseWeight.value = String(state.singleCharacterLabOptions.default_pose_weight ?? 0.75);
-  singleCharacterLabGenerate.disabled = !singleCharacterLabAppearance.value || !singleCharacterLabPose.value || !singleCharacterLabCheckpoint.value || !singleCharacterLabAdapter.value;
-  await syncSingleCharacterAppearance({ matchPose: true });
-  await previewSingleCharacterLabPlan();
-  await loadSingleCharacterLabRuns();
-  singleCharacterLabStatus.textContent = state.singleCharacterLabOptions.checkpoint_error
-    ? `Configured checkpoint only · ${state.singleCharacterLabOptions.checkpoint_error}`
-    : `${state.singleCharacterLabOptions.appearances.length} locked costume view(s)`;
-}
-
-function singleCharacterLabSearchPayload() {
-  const mode = singleCharacterLabMode.value;
-  const numberList = (control) => control.value.split(",").map((item) => Number(item.trim())).filter(Number.isFinite);
-  const payload = { mode, adapter_id: singleCharacterLabAdapter.value || "sdxl", workflow: singleCharacterLabWorkflow.value || "combined", count: Number(singleCharacterLabCount.value || 1),
-    reference_weight: Number(singleCharacterLabWeight.value || 0.45), pose_weight: Number(singleCharacterLabPoseWeight.value || 0.75),
-    steps: Number(singleCharacterLabSteps.value || 28), guidance: Number(singleCharacterLabGuidance.value || 6),
-    sampler: singleCharacterLabSampler.value, scheduler: singleCharacterLabScheduler.value,
-    width: Number(singleCharacterLabWidth.value || 832), height: Number(singleCharacterLabHeight.value || 1216),
-    denoise: Number(singleCharacterLabDenoise.value || 1) };
-  if (mode === "recipe_search") {
-    if (payload.adapter_id === "sdxl") {
-      payload.appearance_strengths = numberList(singleCharacterLabAppearanceStrengths);
-      payload.pose_strengths = numberList(singleCharacterLabPoseStrengths);
-    } else {
-      payload.step_values = numberList(singleCharacterLabStepValues);
-      payload.guidance_values = numberList(singleCharacterLabGuidanceValues);
-      payload.denoise_values = numberList(singleCharacterLabDenoiseValues);
-    }
-    payload.seed_count = Number(singleCharacterLabSeedCount.value || 8);
-  }
-  return payload;
-}
-
-async function previewSingleCharacterLabPlan() {
-  const recipeSearch = singleCharacterLabMode.value === "recipe_search";
-  const modern = singleCharacterLabAdapter.value !== "sdxl";
-  singleCharacterLabSeedControls.hidden = recipeSearch;
-  singleCharacterLabRecipeControls.hidden = !recipeSearch;
-  singleCharacterLabConditioningRecipeControls.hidden = modern;
-  singleCharacterLabModernRecipeControls.hidden = !modern;
-  try {
-    const preview = await fetchJson("/api/single-character-lab/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(singleCharacterLabSearchPayload()) });
-    singleCharacterLabPlan.textContent = `${preview.candidate_count} candidates · ${preview.recipe_count} recipe(s) · ${preview.seed_count} shared seed(s)`;
-    singleCharacterLabGenerate.disabled = !singleCharacterLabAppearance.value || !singleCharacterLabPose.value || !singleCharacterLabCheckpoint.value || !singleCharacterLabAdapter.value;
-  } catch (error) {
-    singleCharacterLabPlan.textContent = error.message;
-    singleCharacterLabGenerate.disabled = true;
-  }
-}
-
-async function syncSingleCharacterModelAdapter() {
-  const modern = singleCharacterLabAdapter.value !== "sdxl";
-  singleCharacterLabWorkflow.disabled = modern;
-  if (singleCharacterLabAdapter.value === "flux2-klein-4b") {
-    singleCharacterLabSteps.value = "4";
-    singleCharacterLabGuidance.value = "3.5";
-    singleCharacterLabStepValues.value = "4";
-    singleCharacterLabGuidanceValues.value = "2.5, 3.5, 4.5";
-    singleCharacterLabDenoiseValues.value = "1.0";
-    if ([...singleCharacterLabSampler.options].some((item) => item.value === "euler")) singleCharacterLabSampler.value = "euler";
-    if ([...singleCharacterLabScheduler.options].some((item) => item.value === "simple")) singleCharacterLabScheduler.value = "simple";
-  } else if (singleCharacterLabAdapter.value === "qwen-image-edit-2511") {
-    singleCharacterLabSteps.value = "20";
-    singleCharacterLabGuidance.value = "1";
-    singleCharacterLabStepValues.value = "16, 20, 24";
-    singleCharacterLabGuidanceValues.value = "1.0";
-    singleCharacterLabDenoiseValues.value = "1.0";
-    if ([...singleCharacterLabSampler.options].some((item) => item.value === "euler")) singleCharacterLabSampler.value = "euler";
-    if ([...singleCharacterLabScheduler.options].some((item) => item.value === "simple")) singleCharacterLabScheduler.value = "simple";
-  }
-  await previewSingleCharacterLabPlan();
-}
-
-async function generateSingleCharacterLabRun() {
-  const appearance = selectedSingleCharacterAppearance();
-  if (!appearance) return;
-  singleCharacterLabGenerate.disabled = true;
-  singleCharacterLabMessage.textContent = "Creating local render run…";
-  try {
-    const run = await fetchJson("/api/single-character-lab/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        character: state.character,
-        phase: state.phase,
-        asset_id: appearance.asset_id,
-        pose_tag: singleCharacterLabPose.value,
-        checkpoint: singleCharacterLabCheckpoint.value,
-        adapter_id: singleCharacterLabAdapter.value,
-        ...singleCharacterLabSearchPayload(),
-        positive_prompt: singleCharacterLabPositive.value,
-        negative_prompt: singleCharacterLabNegative.value,
-      }),
-    });
-    state.singleCharacterLabRuns.unshift(run);
-    renderSingleCharacterLabRuns();
-    renderSingleCharacterLabRun(run);
-    singleCharacterLabMessage.textContent = "Queued in local ComfyUI.";
-  } catch (error) {
-    singleCharacterLabMessage.textContent = error.message;
-    singleCharacterLabGenerate.disabled = false;
-  }
-}
-
-const promptEvolutionSettingControls = () => [promptEvolutionAsset, promptEvolutionBackend, promptEvolutionCheckpoint, promptEvolutionProfile, promptEvolutionSampler, promptEvolutionScheduler, promptEvolutionDenoise, promptEvolutionInitSource, promptEvolutionPoseSource, promptEvolutionPreprocessor, promptEvolutionControlnetModel, promptEvolutionControlStrength, promptEvolutionControlStart, promptEvolutionControlEnd, promptEvolutionCfg, promptEvolutionSteps, promptEvolutionBatchSize, promptEvolutionFixedSeedCount, promptEvolutionTotalBatches, promptEvolutionPositive, promptEvolutionNegative];
-function setPromptEvolutionPane(name) {
-  const review = name === "review";
-  promptEvolutionSetupPane.hidden = review;
-  promptEvolutionReviewPane.hidden = !review;
-  promptEvolutionShowSetup.setAttribute("aria-selected", review ? "false" : "true");
-  promptEvolutionShowReview.setAttribute("aria-selected", review ? "true" : "false");
-  promptEvolutionShowSetup.classList.toggle("selected", !review);
-  promptEvolutionShowReview.classList.toggle("selected", review);
-  localStorage.setItem(PROMPT_EVOLUTION_PANE_KEY, review ? "review" : "setup");
-}
-function savePromptEvolutionSettings() {
-  localStorage.setItem(PROMPT_EVOLUTION_SETTINGS_KEY, JSON.stringify(Object.fromEntries(promptEvolutionSettingControls().map((control) => [control.id, control.value]))));
-}
-function storedPromptEvolutionSettings() {
-  try { return JSON.parse(localStorage.getItem(PROMPT_EVOLUTION_SETTINGS_KEY) || "{}"); } catch { return {}; }
-}
-function restorePromptEvolutionSettings(settings) {
-  for (const control of promptEvolutionSettingControls()) {
-    const value = settings[control.id];
-    if (value == null) continue;
-    if (control.tagName === "SELECT" && !Array.from(control.options).some((option) => option.value === String(value))) continue;
-    const numeric = Number(value);
-    control.value = control.type === "number" && Number.isFinite(numeric)
-      ? String(Math.max(Number(control.min || numeric), Math.min(Number(control.max || numeric), numeric)))
-      : String(value);
-  }
-}
-function promptEvolutionPromptDiff(current, previous) {
-  if (!previous) return escapeHtml(current || "");
-  const currentTerms = String(current || "").split(",").map((term) => term.trim()).filter(Boolean);
-  const previousTerms = String(previous || "").split(",").map((term) => term.trim()).filter(Boolean);
-  const normalize = (term) => term.toLocaleLowerCase().replace(/\s+/g, " ");
-  const currentKeys = new Set(currentTerms.map(normalize));
-  const previousKeys = new Set(previousTerms.map(normalize));
-  const visible = currentTerms.map((term) => `<span class="${previousKeys.has(normalize(term)) ? "" : "prompt-diff-added"}">${escapeHtml(term)}</span>`);
-  visible.push(...previousTerms.filter((term) => !currentKeys.has(normalize(term))).map((term) => `<span class="prompt-diff-deleted">${escapeHtml(term)}</span>`));
-  return visible.join(", ");
-}
-function renderPromptEvolutionAsset() {
-  const asset = selectedPromptEvolutionAsset();
-  promptEvolutionSourcePreview.src = asset ? promptEvolutionFileUrl(asset.image_path) : "";
-  promptEvolutionDerivativePreview.src = asset ? `/api/prompt-evolution/reference-preview?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}&costume=${encodeURIComponent(asset.costume)}&view=${encodeURIComponent(asset.view)}` : "";
-  renderPromptEvolutionConditioningPreviews();
-}
-
-function renderPromptEvolutionConditioningPreviews() {
-  const preview = (select, upload, image) => {
-    const file = upload.files?.[0];
-    if (file) {
-      image.src = URL.createObjectURL(file);
-      return;
-    }
-    const selected = state.promptEvolutionConditioningImages.find((item) => item.tag === select.value);
-    image.src = selected ? promptEvolutionFileUrl(selected.thumbnail_path || selected.image_path) : promptEvolutionDerivativePreview.src;
-  };
-  preview(promptEvolutionInitSource, promptEvolutionInitUpload, promptEvolutionInitPreview);
-  preview(promptEvolutionPoseSource, promptEvolutionPoseUpload, promptEvolutionPosePreview);
-}
-
-function promptEvolutionWorkflowFlags() {
-  const profile = promptEvolutionProfile.value || "";
-  return {
-    img2img: profile.includes("img2img"),
-    pose: profile.includes("controlnet"),
-  };
-}
-
-function syncPromptEvolutionControlnetModel() {
-  const markers = {
-    dwpose: ["openpose", "dwpose"],
-    depth: ["depth"],
-    canny: ["canny"],
-  }[promptEvolutionPreprocessor.value] || [];
-  const matching = Array.from(promptEvolutionControlnetModel.options).find((option) =>
-    markers.some((marker) => option.value.toLocaleLowerCase().includes(marker))
-  );
-  if (matching) promptEvolutionControlnetModel.value = matching.value;
-}
-
-function syncPromptEvolutionBackendControls() {
-  const backend = promptEvolutionBackend.value || "stable_matrix";
-  const previous = promptEvolutionProfile.value;
-  setSelectOptions(promptEvolutionProfile, state.promptEvolutionProfilesByBackend[backend] || []);
-  if (Array.from(promptEvolutionProfile.options).some((option) => option.value === previous)) promptEvolutionProfile.value = previous;
-  promptEvolutionComfyControls.hidden = backend !== "comfyui";
-  const flags = promptEvolutionWorkflowFlags();
-  promptEvolutionImg2imgControls.hidden = !flags.img2img;
-  promptEvolutionPoseControls.hidden = !flags.pose;
-  promptEvolutionDenoise.disabled = !flags.img2img;
-  if (backend === "comfyui" && state.promptEvolutionComfyNodeTypes.length) {
-    const required = new Set();
-    if (flags.img2img || flags.pose) required.add("LoadImage");
-    if (flags.pose) {
-      required.add("ControlNetLoader"); required.add("ControlNetApplyAdvanced");
-      required.add({ dwpose: "DWPreprocessor", depth: "MiDaS-DepthMapPreprocessor", canny: "CannyEdgePreprocessor" }[promptEvolutionPreprocessor.value]);
-    }
-    state.promptEvolutionComfyMissing = [...required].filter((name) => !state.promptEvolutionComfyNodeTypes.includes(name));
-    promptEvolutionComfyStatus.textContent = state.promptEvolutionComfyMissing.length
-      ? `Missing required ComfyUI nodes: ${state.promptEvolutionComfyMissing.join(", ")}`
-      : `${state.promptEvolutionComfyNodeTypes.length} ComfyUI node types available.`;
-  }
-}
-
-async function loadPromptEvolutionComfyOptions() {
-  if (promptEvolutionBackend.value !== "comfyui") return;
-  promptEvolutionComfyStatus.textContent = "Checking ComfyUI capabilities...";
-  try {
-    const payload = await fetchJson("/api/prompt-evolution/comfyui-options");
-    const previousCheckpoint = promptEvolutionCheckpoint.value || storedPromptEvolutionSettings()[promptEvolutionCheckpoint.id];
-    const previousControlnet = promptEvolutionControlnetModel.value || storedPromptEvolutionSettings()[promptEvolutionControlnetModel.id];
-    setSelectOptions(promptEvolutionCheckpoint, payload.checkpoints || []);
-    setSelectOptions(promptEvolutionControlnetModel, payload.controlnet_models || []);
-    setSelectOptions(promptEvolutionSampler, payload.samplers || []);
-    setSelectOptions(promptEvolutionScheduler, payload.schedulers || []);
-    state.promptEvolutionComfyNodeTypes = payload.node_types || [];
-    if (Array.from(promptEvolutionCheckpoint.options).some((option) => option.value === previousCheckpoint)) promptEvolutionCheckpoint.value = previousCheckpoint;
-    if (Array.from(promptEvolutionControlnetModel.options).some((option) => option.value === previousControlnet)) promptEvolutionControlnetModel.value = previousControlnet;
-    syncPromptEvolutionControlnetModel();
-    syncPromptEvolutionBackendControls();
-  } catch (error) {
-    promptEvolutionComfyStatus.textContent = error.message;
-    throw error;
-  }
-}
-
-async function loadPromptEvolutionChecklists() {
-  const asset = selectedPromptEvolutionAsset();
-  if (!asset) {
-    promptEvolutionCharacterChecklist.value = "[]";
-    promptEvolutionCostumeChecklist.value = "[]";
-    promptEvolutionChecklistPaths.textContent = "";
-    return;
-  }
-  const payload = await fetchJson(`/api/prompt-evolution/checklists?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}&costume=${encodeURIComponent(asset.costume)}`);
-  promptEvolutionCharacterChecklist.value = JSON.stringify(payload.character?.items || [], null, 2);
-  promptEvolutionCostumeChecklist.value = JSON.stringify(payload.costume?.items || [], null, 2);
-  promptEvolutionChecklistPaths.textContent = `Character: ${payload.paths?.character || ""}\nCostume: ${payload.paths?.costume || ""}`;
-}
-
-async function savePromptEvolutionChecklist(scope) {
-  const asset = selectedPromptEvolutionAsset();
-  if (!asset) return;
-  const editor = scope === "character" ? promptEvolutionCharacterChecklist : promptEvolutionCostumeChecklist;
-  let items;
-  try { items = JSON.parse(editor.value || "[]"); } catch (error) { throw new Error(`Invalid checklist JSON: ${error.message}`); }
-  if (!Array.isArray(items)) throw new Error("Checklist editor must contain a JSON array.");
-  const payload = await fetchJson(`/api/prompt-evolution/checklists/${encodeURIComponent(scope)}`, {
-    method: "PUT", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ character: state.character, phase: state.phase, costume: asset.costume, items }),
-  });
-  promptEvolutionCharacterChecklist.value = JSON.stringify(payload.character?.items || [], null, 2);
-  promptEvolutionCostumeChecklist.value = JSON.stringify(payload.costume?.items || [], null, 2);
-  showPromptEvolutionMessage(`${scope === "character" ? "Character / phase" : "Costume"} checklist saved.`, "success");
-}
-
-function renderPromptEvolutionDifferenceList(title, items) {
-  if (!(items || []).length) return "";
-  return `<section class="prompt-evolution-findings"><h5>${escapeHtml(title)}</h5><ul>${items.map((item) => `<li><strong>Reference:</strong> ${escapeHtml(item.reference || "—")}<br><strong>Rendered:</strong> ${escapeHtml(item.candidate || "—")}</li>`).join("")}</ul></section>`;
-}
-
-function renderPromptEvolutionCritic(label, report) {
-  if (!report) return `<section class="prompt-evolution-critic"><h5>${escapeHtml(label)}</h5><p class="status-text">Pending</p></section>`;
-  const matches = (report.stable_matches || []).length
-    ? `<section class="prompt-evolution-findings"><h5>Stable matches</h5><ul>${report.stable_matches.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></section>` : "";
-  return `<section class="prompt-evolution-critic"><h4>${escapeHtml(label)}</h4>${renderPromptEvolutionDifferenceList("Major differences", report.major_differences)}${renderPromptEvolutionDifferenceList("Secondary differences", report.secondary_differences)}${matches || '<p class="status-text">No findings returned.</p>'}</section>`;
-}
-
-function renderPromptEvolutionChecks(check) {
-  const checks = Array.isArray(check) ? check : check?.checks;
-  if (!(checks || []).length) return "";
-  return `<section class="prompt-evolution-checks"><h4>Regression checks</h4>${checks.map((item) => `<article class="prompt-evolution-check ${item.pass ? "pass" : "fail"}"><strong>${item.pass ? "Pass" : "Needs correction"}: ${escapeHtml(item.id || "check")}</strong><p>${escapeHtml(item.evidence || "No evidence returned.")}</p></article>`).join("")}</section>`;
-}
-
-function renderPromptEvolutionObservations(items, open = false) {
-  if (!(items || []).length) return "";
-  return `<details class="prompt-evolution-observations" ${open ? "open" : ""}><summary>Critic findings and regression checks</summary>${items.map((item) => `<article class="prompt-evolution-observation"><h4>${escapeHtml(item.seed_role || "seed")} ${escapeHtml(item.seed)}</h4><div class="prompt-evolution-observation-grid"><div class="prompt-evolution-observation-image"><img class="fullscreen-image-trigger" src="${promptEvolutionFileUrl(item.file)}" alt="Critic candidate seed ${escapeHtml(item.seed)}"></div><div>${renderPromptEvolutionCritic("Critic A", item.critics?.a)}${renderPromptEvolutionCritic("Critic B", item.critics?.b)}${renderPromptEvolutionChecks(item.check || item.checks)}${(item.pending || []).length ? `<p class="status-text">Pending: ${escapeHtml(item.pending.join(", "))}</p>` : ""}</div></div></article>`).join("")}</details>`;
-}
-
-function renderPromptEvolutionPriorities(items) {
-  return (items || []).length ? `<div class="prompt-evolution-reason-list">${items.map((item) => `<article><strong>${escapeHtml(item.problem || item.finding || "Priority")}</strong><p>${escapeHtml(item.evidence || "")}</p>${(item.seeds || []).length ? `<small>Seeds: ${escapeHtml(item.seeds.join(", "))}</small>` : ""}</article>`).join("")}</div>` : '<p class="status-text">No priorities returned.</p>';
-}
-
-function renderPromptEvolutionInterventions(items) {
-  return (items || []).length ? `<div class="prompt-evolution-reason-list">${items.map((item) => `<article><strong>${escapeHtml(item.observed_pattern || item.diagnosis || "Intervention")}</strong><p><b>${escapeHtml(item.action || "change")} ${escapeHtml(item.prompt || "prompt")}:</b> ${escapeHtml(item.relevant_wording || "—")} → ${escapeHtml(item.proposed_wording || "—")}</p><p>${escapeHtml(item.rationale || item.diagnosis || "")}</p>${item.regression_risk ? `<small>Regression risk: ${escapeHtml(item.regression_risk)}</small>` : ""}</article>`).join("")}</div>` : '<p class="status-text">No interventions returned.</p>';
-}
-
-function renderPromptEvolutionChanges(items) {
-  return (items || []).length ? `<div class="prompt-evolution-change-list">${items.map((item) => `<article><div class="prompt-evolution-change-diff"><del>${escapeHtml(item.old || "∅")}</del><span aria-hidden="true">→</span><ins>${escapeHtml(item.new || "∅")}</ins></div><p>${escapeHtml(item.reason || "No reason returned.")}</p></article>`).join("")}</div>` : '<p class="status-text">No editor changes returned.</p>';
-}
-
-function renderPromptEvolutionDetail(run) {
-  state.promptEvolutionRun = run;
-  if (!run) { promptEvolutionDetail.replaceChildren(); syncPromptEvolutionRefresh(null); return; }
-  promptEvolutionDerivativePreview.src = promptEvolutionFileUrl(run.reference_image);
-  const imageGrid = (items) => `<div class="prompt-evolution-gallery">${(items || []).map((item) => `<article class="prompt-evolution-candidate"><img class="fullscreen-image-trigger" src="${promptEvolutionFileUrl(item.file)}" alt="Seed ${escapeHtml(item.seed)}"><strong>${escapeHtml(item.seed_role || "seed")} ${escapeHtml(item.seed)}</strong></article>`).join("")}</div>`;
-  const finalReview = run.status === "AWAITING_FINAL_REVIEW" ? `<section class="prompt-evolution-summary"><h2>Choose the best prompt version</h2><p>Choices are randomized. Prompt history and diffs remain available below.</p>${(run.prompt_versions || []).map((version, index) => `<article class="prompt-evolution-batch"><h3>Choice ${String.fromCharCode(65 + index)}</h3>${imageGrid(version.fixed_renders)}<details><summary>Fresh-seed evidence</summary>${imageGrid(version.fresh_renders)}</details><button type="button" data-prompt-evolution-final-version="${escapeHtml(version.prompt_version_id)}">Choose this prompt version</button></article>`).join("")}<label>Optional selection reason<textarea data-prompt-evolution-selection-reason></textarea></label></section>` : "";
-  const promptDetails = (batch, previous) => {
-    const positive = batch.positive_prompt || batch.positive_core || "";
-    const negative = batch.negative_prompt || batch.negative_core || "";
-    const previousPositive = previous?.positive_prompt || previous?.positive_core || "";
-    const previousNegative = previous?.negative_prompt || previous?.negative_core || "";
-    const diff = previous ? `<h4>Diff from previous version</h4><div class="prompt-evolution-prompts"><strong>Positive</strong> ${promptEvolutionPromptDiff(positive, previousPositive)}\n\n<strong>Negative</strong> ${promptEvolutionPromptDiff(negative, previousNegative)}</div>` : "";
-    return `<details class="prompt-evolution-prompt-history"><summary>Effective prompts${previous ? " and diff" : ""}</summary><div class="prompt-evolution-summary-prompts"><strong>Positive prompt</strong><p>${escapeHtml(positive)}</p><strong>Negative prompt</strong><p>${escapeHtml(negative)}</p></div>${diff}</details>`;
-  };
-  const promptHistory = run.status === "AWAITING_FINAL_REVIEW" ? `<section class="prompt-evolution-prompt-versions"><h2>Prompt history</h2>${(run.batches || []).map((batch, index, all) => `<article><h3>Prompt version ${Number(batch.index) + 1}</h3>${promptDetails(batch, all[index - 1])}</article>`).join("")}</section>` : "";
-  const reviewBatch = run.status === "AWAITING_PROMPT_REVIEW" ? (run.batches || []).find((batch) => Number(batch.index) === Number(run.current_batch)) : null;
-  const promptReview = reviewBatch ? `<section class="prompt-evolution-summary prompt-evolution-manual-review"><h2>Review the proposed prompt for the next round</h2><p>Edit either prompt below, then approve it to start the next batch.</p><details open><summary>Reasoning for this change</summary><h4>Cross-seed priorities</h4>${renderPromptEvolutionPriorities(reviewBatch.synthesis?.next_round_priorities)}<h4>Diagnosis and rationale</h4>${renderPromptEvolutionInterventions(reviewBatch.diagnosis?.interventions)}<h4>Proposed changes</h4>${renderPromptEvolutionChanges(reviewBatch.edit?.changes)}</details><div class="prompt-evolution-summary-diff"><h4>Proposed prompt diff</h4><div class="prompt-evolution-prompts"><strong>Positive</strong> ${promptEvolutionPromptDiff(reviewBatch.edit?.positive_core || reviewBatch.positive_core || "", reviewBatch.positive_core || "")}\n\n<strong>Negative</strong> ${promptEvolutionPromptDiff(reviewBatch.edit?.negative_core || reviewBatch.negative_core || "", reviewBatch.negative_core || "")}</div></div><label>Positive prompt core<textarea data-prompt-evolution-review-positive>${escapeHtml(reviewBatch.edit?.positive_core || reviewBatch.positive_core || "")}</textarea></label><label>Negative prompt core<textarea data-prompt-evolution-review-negative>${escapeHtml(reviewBatch.edit?.negative_core || reviewBatch.negative_core || "")}</textarea></label><button type="button" class="primary-action" data-prompt-evolution-review-accept>Approve and render next batch</button></section>` : "";
-  const batches = run.status === "AWAITING_FINAL_REVIEW" ? "" : (run.batches || []).map((batch, index, all) => {
-    const previous = all[index - 1];
-    const observations = renderPromptEvolutionObservations(batch.observation_results || batch.candidates || [], Number(batch.index) === Number(run.current_batch));
-    return `<section class="prompt-evolution-batch"><h3>Prompt version ${Number(batch.index) + 1} · ${escapeHtml(batch.status || "Pending")}</h3>${imageGrid(batch.renders)}${observations}${promptDetails(batch, previous)}${run.status === "COMPLETE" ? `<details><summary>Automatic decision audit</summary><h4>Cross-seed priorities</h4>${renderPromptEvolutionPriorities(batch.synthesis?.next_round_priorities)}<h4>Prompt diagnosis</h4>${renderPromptEvolutionInterventions(batch.diagnosis?.interventions)}<h4>Editor changes</h4>${renderPromptEvolutionChanges(batch.edit?.changes)}</details>` : ""}<button type="button" data-prompt-evolution-clone="${escapeHtml(batch.index)}">Clone from this version</button></section>`;
-  }).join("");
-  const selectedBatch = (run.batches || []).find((batch) => batch.prompt_version_id === run.selected_prompt_version);
-  const summary = run.status === "COMPLETE" && selectedBatch ? `<section class="prompt-evolution-summary"><h2>Selected prompt version</h2><div class="prompt-evolution-summary-prompts"><strong>Reusable positive core</strong><p>${escapeHtml(selectedBatch.positive_core)}</p><strong>Reusable negative core</strong><p>${escapeHtml(selectedBatch.negative_core)}</p></div><label>Directed prompt refinement<textarea data-prompt-evolution-directed></textarea></label><button type="button" data-prompt-evolution-directed-start>Refine and start a new run</button></section>` : "";
-  const activityLog = `<section class="prompt-evolution-log" aria-label="Run activity log"><h2>Run activity</h2><ol>${(run.activity_log || []).map((event) => `<li class="${escapeHtml(event.level || "info")}"><time>${escapeHtml(String(event.at || "").replace("T", " "))}</time><span>${escapeHtml(event.message || "")}</span></li>`).join("") || "<li>No activity recorded for this run.</li>"}</ol></section>`;
-  promptEvolutionDetail.innerHTML = `<div class="summary-bar">${escapeHtml(run.character)} · ${escapeHtml(run.phase)} · ${escapeHtml(run.costume)} · ${escapeHtml(run.view)} · ${escapeHtml(run.status)}</div>
-    ${run.error ? `<div class="action-message error">${escapeHtml(run.error)}</div>` : ""}
-    ${run.stop_reason ? `<div class="action-message">${escapeHtml(run.stop_reason)}</div>` : ""}
-    <div class="button-row compact prompt-evolution-run-actions"><span><strong>Backend:</strong> ${escapeHtml(run.backend === "comfyui" ? "ComfyUI" : "Stable Matrix")}</span><span><strong>Workflow:</strong> ${escapeHtml(run.render_recipe?.workflow_kind || run.profile || "—")}</span><span><strong>Checkpoint:</strong> ${escapeHtml(run.checkpoint || "—")}</span><a class="button-link" href="/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/audit-bundle" download>Download audit bundle</a>${["COMPLETE", "ABORTED", "FAILED", "AWAITING_FINAL_REVIEW"].includes(run.status) ? '<button type="button" data-prompt-evolution-action="restart">Restart</button>' : ""}${run.status === "FAILED" ? '<button type="button" data-prompt-evolution-action="retry">Resume failed stage</button>' : ""}${!["COMPLETE", "ABORTED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="abort">Abort</button>' : ""}${["COMPLETE", "ABORTED", "FAILED"].includes(run.status) ? '<button type="button" class="danger-action" data-prompt-evolution-action="delete">Delete run</button>' : ""}</div>${activityLog}${summary}${promptReview}${finalReview}${promptHistory}${batches || (run.status === "AWAITING_FINAL_REVIEW" ? "" : "No batches yet.")}`;
-  const activityList = promptEvolutionDetail.querySelector(".prompt-evolution-log ol");
-  if (activityList) activityList.scrollTop = activityList.scrollHeight;
-  promptEvolutionDetail.querySelectorAll("img").forEach((image) => enableFullscreenImage(image));
-  promptEvolutionRuns.querySelectorAll("[data-prompt-evolution-run]").forEach((button) => {
-    const selected = button.dataset.promptEvolutionRun === run.run_id;
-    button.classList.toggle("selected", selected);
-    button.setAttribute("aria-pressed", selected ? "true" : "false");
-  });
-  syncPromptEvolutionRefresh(run);
-}
-
-const PROMPT_EVOLUTION_ACTIVE_STATUSES = new Set(["BOOTSTRAPPING", "RENDERING", "OBSERVING", "SYNTHESIZING", "DIAGNOSING", "EDITING", "DIRECTED_REFINING"]);
-function syncPromptEvolutionRefresh(run) {
-  const shouldRefresh = Boolean(run && PROMPT_EVOLUTION_ACTIVE_STATUSES.has(run.status));
-  if (!shouldRefresh && state.promptEvolutionRefreshTimer) {
-    window.clearInterval(state.promptEvolutionRefreshTimer);
-    state.promptEvolutionRefreshTimer = null;
-  } else if (shouldRefresh && !state.promptEvolutionRefreshTimer) {
-    state.promptEvolutionRefreshTimer = window.setInterval(() => {
-      if (activePageName() === "prompt-evolution") refreshPromptEvolutionRuns().catch((error) => showPromptEvolutionMessage(error.message, "error"));
-    }, 30000);
-  }
-}
-
-async function selectPromptEvolutionRun(runId) {
-  const run = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(runId)}`);
-  renderPromptEvolutionDetail(run);
-  promptEvolutionStatus.textContent = `${run.status} · batch ${Math.min(Number(run.current_batch) + 1, Number(run.total_batches))}/${run.total_batches}`;
-}
-
-async function refreshPromptEvolutionRuns() {
-  const runs = await fetchJson("/api/prompt-evolution/runs");
-  state.promptEvolutionRuns = runs.runs || [];
-  const selected = state.promptEvolutionRun && state.promptEvolutionRuns.some((run) => run.run_id === state.promptEvolutionRun.run_id) ? state.promptEvolutionRun.run_id : state.promptEvolutionRuns[0]?.run_id;
-  promptEvolutionRuns.innerHTML = state.promptEvolutionRuns.map((run) => `<button type="button" class="${run.run_id === selected ? "selected" : ""}" aria-pressed="${run.run_id === selected ? "true" : "false"}" data-prompt-evolution-run="${escapeHtml(run.run_id)}">${escapeHtml(run.display_name || `${run.created_at} · ${run.costume}`)} · ${escapeHtml(run.status)}</button>`).join("") || "No runs yet.";
-  if (selected) await selectPromptEvolutionRun(selected); else renderPromptEvolutionDetail(null);
-}
-
-async function loadPromptEvolution() {
-  if (!state.character || !state.phase) return;
-  const stickySettings = storedPromptEvolutionSettings();
-  const [options, runs, templates] = await Promise.all([
-    fetchJson(`/api/prompt-evolution/options?character=${encodeURIComponent(state.character)}&phase=${encodeURIComponent(state.phase)}`), fetchJson("/api/prompt-evolution/runs"),
-    fetchJson("/api/prompt-evolution/templates"),
-  ]);
-  state.promptEvolutionAssets = options.assets || []; state.promptEvolutionRuns = runs.runs || []; state.promptEvolutionTemplates = templates.templates || {};
-  state.promptEvolutionProfilesByBackend = options.profiles_by_backend || { stable_matrix: options.profiles || [], comfyui: [] };
-  state.promptEvolutionConditioningImages = options.conditioning_images || [];
-  setSelectOptionsWithLabels(promptEvolutionAsset, state.promptEvolutionAssets.map((item) => ({ value: String(item.asset_id), label: `${item.costume} · ${item.view}` })));
-  const sourceOptions = [{ value: "", label: "Canonical locked reference" }, ...state.promptEvolutionConditioningImages.map((item) => ({ value: item.tag, label: `${item.label} · ${item.kind}` }))];
-  [promptEvolutionInitSource, promptEvolutionPoseSource].forEach((control) => setSelectOptionsWithLabels(control, sourceOptions));
-  if (stickySettings[promptEvolutionBackend.id]) promptEvolutionBackend.value = stickySettings[promptEvolutionBackend.id];
-  syncPromptEvolutionBackendControls();
-  restorePromptEvolutionSettings(stickySettings);
-  syncPromptEvolutionBackendControls();
-  try {
-    await refreshPromptEvolutionCheckpoints();
-  } catch (error) {
-    if (isRequestCancellation(error)) return;
-    promptEvolutionStatus.textContent = error.message;
-  }
-  restorePromptEvolutionSettings(stickySettings);
-  if (!stickySettings[promptEvolutionCheckpoint.id]) {
-    const preferredCheckpoint = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("tastyrice"));
-    if (preferredCheckpoint) promptEvolutionCheckpoint.value = preferredCheckpoint.value;
-  }
-  promptEvolutionTemplateText.value = state.promptEvolutionTemplates[promptEvolutionTemplateName.value] || ""; renderPromptEvolutionAsset();
-  document.querySelectorAll("#prompt-evolution-page img").forEach((image) => enableFullscreenImage(image));
-  await loadPromptEvolutionChecklists();
-  await refreshPromptEvolutionRuns();
-  setPromptEvolutionPane(localStorage.getItem(PROMPT_EVOLUTION_PANE_KEY) || (state.promptEvolutionRuns.length ? "review" : "setup"));
-  savePromptEvolutionSettings();
-}
-
-async function startPromptEvolutionRun() {
-  const asset = selectedPromptEvolutionAsset(); if (!asset) return;
-  promptEvolutionStart.disabled = true; showPromptEvolutionMessage("Creating run…");
-  try {
-    const workflowFlags = promptEvolutionWorkflowFlags();
-    if (promptEvolutionBackend.value === "comfyui" && state.promptEvolutionComfyMissing.length) {
-      throw new Error(`Missing required ComfyUI nodes: ${state.promptEvolutionComfyMissing.join(", ")}`);
-    }
-    if (promptEvolutionBackend.value === "comfyui" && workflowFlags.pose && !promptEvolutionControlnetModel.value) {
-      throw new Error("Select a ControlNet model for the pose workflow.");
-    }
-    const settings = {
-      character: state.character, phase: state.phase, costume: asset.costume, view: asset.view,
-      backend: promptEvolutionBackend.value,
-      checkpoint: promptEvolutionCheckpoint.value, profile: promptEvolutionProfile.value,
-      sampler_name: promptEvolutionSampler.value, scheduler: promptEvolutionScheduler.value,
-      denoise: Number(promptEvolutionDenoise.value),
-      init_source_tag: promptEvolutionInitSource.value, pose_source_tag: promptEvolutionPoseSource.value,
-      control_preprocessor: promptEvolutionPreprocessor.value,
-      controlnet_model: promptEvolutionControlnetModel.value,
-      control_strength: Number(promptEvolutionControlStrength.value),
-      control_start: Number(promptEvolutionControlStart.value), control_end: Number(promptEvolutionControlEnd.value),
-      cfg_scale: Number(promptEvolutionCfg.value), steps: Number(promptEvolutionSteps.value), batch_size: Number(promptEvolutionBatchSize.value), fixed_seed_count: Number(promptEvolutionFixedSeedCount.value), total_batches: Number(promptEvolutionTotalBatches.value),
-      positive_prompt: promptEvolutionPositive.value, negative_prompt: promptEvolutionNegative.value,
-    };
-    const initFile = promptEvolutionInitUpload.files?.[0];
-    const poseFile = promptEvolutionPoseUpload.files?.[0];
-    let request;
-    if (initFile || poseFile) {
-      const form = new FormData();
-      form.append("settings", JSON.stringify(settings));
-      if (initFile) form.append("init_image", initFile);
-      if (poseFile) form.append("pose_image", poseFile);
-      request = { method: "POST", body: form };
-    } else {
-      request = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) };
-    }
-    const run = await fetchJson("/api/prompt-evolution/runs", request);
-    state.promptEvolutionRun = run; setPromptEvolutionPane("review"); showPromptEvolutionMessage(`Created ${run.run_id}.`, "success"); await loadPromptEvolution();
-  } catch (error) { showPromptEvolutionMessage(error.message, "error"); } finally { promptEvolutionStart.disabled = false; }
-}
-
-async function refreshPromptEvolutionCheckpoints() {
-  const previous = promptEvolutionCheckpoint.value || storedPromptEvolutionSettings()[promptEvolutionCheckpoint.id];
-  syncPromptEvolutionBackendControls();
-  if (promptEvolutionBackend.value === "comfyui") {
-    await loadPromptEvolutionComfyOptions();
-    restorePromptEvolutionSettings(storedPromptEvolutionSettings());
-    syncPromptEvolutionBackendControls();
-    savePromptEvolutionSettings();
-    return;
-  }
-  const payload = await fetchJson(`/api/local-image/checkpoints?preset=${encodeURIComponent(promptEvolutionProfile.value || "body-reference-preview")}&backend=${encodeURIComponent(promptEvolutionBackend.value || "stable_matrix")}`);
-  setSelectOptionsWithLabels(promptEvolutionCheckpoint, (payload.checkpoints || []).map((item) => ({ value: item.title, label: item.title })));
-  const preferred = Array.from(promptEvolutionCheckpoint.options).find((option) => option.value === previous)
-    || Array.from(promptEvolutionCheckpoint.options).find((option) => option.value.toLocaleLowerCase().includes("tastyrice"));
-  if (preferred) promptEvolutionCheckpoint.value = preferred.value;
-  savePromptEvolutionSettings();
-}
-
-async function savePromptEvolutionTemplate() {
-  const name = promptEvolutionTemplateName.value;
-  await fetchJson(`/api/prompt-evolution/templates/${encodeURIComponent(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: promptEvolutionTemplateText.value }) });
-  state.promptEvolutionTemplates[name] = promptEvolutionTemplateText.value; showPromptEvolutionMessage(`Saved ${name} template.`, "success");
-}
-
 async function copyRenderConsoleLocalApiParams() {
   if (!state.selectedRenderConsoleAskId) {
     return;
@@ -12397,9 +11370,6 @@ characterSelect.addEventListener("change", async () => {
   if (document.querySelector("#local-image-review-page").classList.contains("active")) {
     await loadLocalImageReviewTasks();
   }
-  if (document.querySelector("#single-character-lab-page").classList.contains("active")) {
-    await loadSingleCharacterLab();
-  }
   await loadWorkspaceSummary();
 });
 
@@ -12473,9 +11443,6 @@ phaseSelect.addEventListener("change", async () => {
   if (document.querySelector("#local-image-review-page").classList.contains("active")) {
     await loadLocalImageReviewTasks();
   }
-  if (document.querySelector("#single-character-lab-page").classList.contains("active")) {
-    await loadSingleCharacterLab();
-  }
   await loadWorkspaceSummary();
 });
 
@@ -12547,8 +11514,8 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
 }));
 toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
-toolbarBodyReferenceExperiment.addEventListener("click", () => {
-  window.location.assign("/character-experiments/body-reference");
+toolbarLocalBodyReference.addEventListener("click", () => {
+  window.location.assign("/local-body-reference");
   closeToolbarSettingsMenu();
 });
 
@@ -12708,8 +11675,6 @@ zineSpread3.addEventListener("change", () => setZineSpread(3, zineSpread3.checke
 zineSpread5.addEventListener("change", () => setZineSpread(5, zineSpread5.checked));
 enableFullscreenImage(zinePreview);
 enableFullscreenImage(imageCatalogPreview);
-enableFullscreenImage(promptEvolutionSourcePreview);
-enableFullscreenImage(promptEvolutionDerivativePreview);
 fullscreenImageClose.addEventListener("click", closeFullscreenImage);
 fullscreenImagePrevious.addEventListener("click", () => navigateFullscreenScene(-1));
 fullscreenImageNext.addEventListener("click", () => navigateFullscreenScene(1));
@@ -13025,11 +11990,6 @@ localImageReviewRefresh.addEventListener("click", () => loadLocalImageReviewTask
 localImageReviewClear.addEventListener("click", clearLocalImageReviewImages);
 localImageReviewGenerate.addEventListener("click", generateLocalImageReviewImages);
 localImageReviewGenerateAllModels.addEventListener("click", generateLocalImageReviewImagesForAllModels);
-singleCharacterLabAppearance.addEventListener("change", () => {
-  syncSingleCharacterAppearance({ matchPose: true }).catch((error) => {
-    singleCharacterLabMessage.textContent = error.message;
-  });
-});
 for (const control of [imageCatalogSource, imageCatalogCategory, imageCatalogStatus, imageCatalogCollection, imageCatalogKeyword, imageCatalogIncludeBase]) {
   control.addEventListener("change", markImageCatalogFiltersDirty);
 }
@@ -13061,114 +12021,6 @@ imageCatalogBulkApply.addEventListener("click", bulkUpdateImageCatalog);
 imageCatalogBulkClear.addEventListener("click", () => {
   state.selectedImageCatalogIds = [];
   renderImageCatalog();
-});
-singleCharacterLabPose.addEventListener("change", renderSingleCharacterReferences);
-singleCharacterLabMode.addEventListener("change", previewSingleCharacterLabPlan);
-singleCharacterLabAdapter.addEventListener("change", syncSingleCharacterModelAdapter);
-[
-  singleCharacterLabWorkflow, singleCharacterLabCount, singleCharacterLabWeight, singleCharacterLabPoseWeight,
-  singleCharacterLabAppearanceStrengths, singleCharacterLabPoseStrengths, singleCharacterLabSeedCount,
-  singleCharacterLabStepValues, singleCharacterLabGuidanceValues, singleCharacterLabDenoiseValues,
-  singleCharacterLabSteps, singleCharacterLabGuidance, singleCharacterLabSampler, singleCharacterLabScheduler,
-  singleCharacterLabWidth, singleCharacterLabHeight, singleCharacterLabDenoise,
-].forEach((control) => control.addEventListener("change", previewSingleCharacterLabPlan));
-singleCharacterLabGenerate.addEventListener("click", generateSingleCharacterLabRun);
-singleCharacterLabRefresh.addEventListener("click", () => loadSingleCharacterLabRuns());
-singleCharacterLabRuns.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-run-id]");
-  if (button) selectSingleCharacterLabRun(button.dataset.runId).catch((error) => {
-    singleCharacterLabMessage.textContent = error.message;
-  });
-});
-promptEvolutionAsset.addEventListener("change", () => {
-  renderPromptEvolutionAsset();
-  loadPromptEvolutionChecklists().catch((error) => showPromptEvolutionMessage(error.message, "error"));
-});
-promptEvolutionShowSetup.addEventListener("click", () => setPromptEvolutionPane("setup"));
-promptEvolutionShowReview.addEventListener("click", () => setPromptEvolutionPane("review"));
-promptEvolutionSettingControls().forEach((control) => control.addEventListener(control.tagName === "TEXTAREA" || control.tagName === "INPUT" ? "input" : "change", savePromptEvolutionSettings));
-promptEvolutionBackend.addEventListener("change", () => {
-  syncPromptEvolutionBackendControls();
-  refreshPromptEvolutionCheckpoints().catch((error) => showPromptEvolutionMessage(error.message, "error"));
-});
-promptEvolutionProfile.addEventListener("change", () => {
-  syncPromptEvolutionBackendControls();
-  refreshPromptEvolutionCheckpoints().catch((error) => showPromptEvolutionMessage(error.message, "error"));
-});
-promptEvolutionPreprocessor.addEventListener("change", () => {
-  syncPromptEvolutionControlnetModel();
-  syncPromptEvolutionBackendControls();
-});
-promptEvolutionInitSource.addEventListener("change", renderPromptEvolutionConditioningPreviews);
-promptEvolutionPoseSource.addEventListener("change", renderPromptEvolutionConditioningPreviews);
-promptEvolutionInitUpload.addEventListener("change", renderPromptEvolutionConditioningPreviews);
-promptEvolutionPoseUpload.addEventListener("change", renderPromptEvolutionConditioningPreviews);
-promptEvolutionStart.addEventListener("click", startPromptEvolutionRun);
-promptEvolutionRefresh.addEventListener("click", loadPromptEvolution);
-promptEvolutionTemplateName.addEventListener("change", () => { promptEvolutionTemplateText.value = state.promptEvolutionTemplates[promptEvolutionTemplateName.value] || ""; });
-promptEvolutionTemplateSave.addEventListener("click", () => savePromptEvolutionTemplate().catch((error) => showPromptEvolutionMessage(error.message, "error")));
-promptEvolutionCharacterChecklistSave.addEventListener("click", () => savePromptEvolutionChecklist("character").catch((error) => showPromptEvolutionMessage(error.message, "error")));
-promptEvolutionCostumeChecklistSave.addEventListener("click", () => savePromptEvolutionChecklist("costume").catch((error) => showPromptEvolutionMessage(error.message, "error")));
-promptEvolutionRuns.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-prompt-evolution-run]");
-  if (button) selectPromptEvolutionRun(button.dataset.promptEvolutionRun).catch((error) => showPromptEvolutionMessage(error.message, "error"));
-});
-promptEvolutionDetail.addEventListener("click", async (event) => {
-  const run = state.promptEvolutionRun; if (!run) return;
-  const finalVersion = event.target.closest("[data-prompt-evolution-final-version]");
-  const action = event.target.closest("[data-prompt-evolution-action]");
-  const clone = event.target.closest("[data-prompt-evolution-clone]");
-  const saveName = event.target.closest("[data-prompt-evolution-save-name]");
-  const directed = event.target.closest("[data-prompt-evolution-directed-start]");
-  const promptReview = event.target.closest("[data-prompt-evolution-review-accept]");
-  const runLink = event.target.closest("[data-prompt-evolution-run-link]");
-  const summaryDiff = event.target.closest("[data-prompt-evolution-summary-diff]");
-  try {
-    if (summaryDiff) {
-      const panel = promptEvolutionDetail.querySelector("[data-prompt-evolution-summary-diff-panel]");
-      panel.hidden = !panel.hidden;
-      summaryDiff.textContent = panel.hidden ? "Show initial-to-final prompt diff" : "Hide initial-to-final prompt diff";
-      return;
-    }
-    if (runLink) { await selectPromptEvolutionRun(runLink.dataset.promptEvolutionRunLink); return; }
-    if (saveName) {
-      const name = promptEvolutionDetail.querySelector("[data-prompt-evolution-run-name]")?.value || "";
-      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/name`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }));
-      await refreshPromptEvolutionRuns();
-      return;
-    }
-    if (directed) {
-      const instructions = promptEvolutionDetail.querySelector("[data-prompt-evolution-directed]")?.value || "";
-      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/directed-refinement`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions }) }));
-      return;
-    }
-    if (promptReview) {
-      const positiveCore = promptEvolutionDetail.querySelector("[data-prompt-evolution-review-positive]")?.value || "";
-      const negativeCore = promptEvolutionDetail.querySelector("[data-prompt-evolution-review-negative]")?.value || "";
-      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/prompt-review`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positive_core: positiveCore, negative_core: negativeCore }),
-      }));
-      return;
-    }
-    if (finalVersion) {
-      const selectionReason = promptEvolutionDetail.querySelector("[data-prompt-evolution-selection-reason]")?.value || "";
-      renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/final-selection/${encodeURIComponent(finalVersion.dataset.promptEvolutionFinalVersion)}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ selection_reason: selectionReason }),
-      }));
-    }
-    if (action?.dataset.promptEvolutionAction === "delete") {
-      if (!window.confirm(`Delete prompt evolution run ${run.run_id} and all of its generated images and data?`)) return;
-      await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}`, { method: "DELETE" });
-      state.promptEvolutionRun = null;
-      renderPromptEvolutionDetail(null);
-      await refreshPromptEvolutionRuns();
-      showPromptEvolutionMessage(`Deleted run ${run.run_id}.`, "success");
-    } else if (action?.dataset.promptEvolutionAction === "restart") {
-      state.promptEvolutionRun = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/restart`, { method: "POST" });
-      await loadPromptEvolution();
-    } else if (action) renderPromptEvolutionDetail(await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/${action.dataset.promptEvolutionAction}`, { method: "POST" }));
-    if (clone) { state.promptEvolutionRun = await fetchJson(`/api/prompt-evolution/runs/${encodeURIComponent(run.run_id)}/clone/${encodeURIComponent(clone.dataset.promptEvolutionClone)}`, { method: "POST" }); await loadPromptEvolution(); }
-  } catch (error) { showPromptEvolutionMessage(error.message, "error"); }
 });
 localImageReviewPrev.addEventListener("click", () => {
   selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, -1, selectLocalImageReviewTask);

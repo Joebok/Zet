@@ -17,12 +17,13 @@ from typing import Any
 from PIL import Image
 
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
+from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
-class BodyReferenceExperimentError(ValueError):
-    """Raised when a Body-Reference experiment cannot be planned safely."""
+class LocalBodyReferenceError(ValueError):
+    """Raised when a Local Body-Reference cannot be planned safely."""
 
 
 DEFAULT_VIEWS = (
@@ -46,10 +47,10 @@ PILOT_FRONT_COUNT = 16
 PILOT_OTHER_COUNT = 4
 
 
-class BodyReferenceExperimentService:
-    """Plan and persist a non-canonical Qwen Body-Reference experiment.
+class LocalBodyReferenceService:
+    """Plan and persist a non-canonical Qwen Local Body-Reference.
 
-    The experiment owns its prompt snapshots, candidate slots, and decisions. It
+    Each run owns its prompt snapshots, candidate slots, and decisions. It
     deliberately does not mutate canonical Assets or pipeline state.
     """
 
@@ -63,7 +64,71 @@ class BodyReferenceExperimentService:
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
-        self.experiments_root = self.library_root / "Experiments" / "Character-Pipeline"
+        self.runs_root = self.library_root / "Experiments" / "Character-Pipeline"
+        self._migrate_legacy_runs()
+
+    def _migrate_legacy_runs(self) -> None:
+        """Upgrade stored run and queued-job identifiers to Local Body-Reference."""
+        marker = self.runs_root / ".local_body_reference_migration_v1"
+        if marker.exists():
+            return
+        identifier_replacements = {
+            "BodyReferenceExperiment_": "LocalBodyReference_",
+            "Character-Pipeline-Experiment": "Local-Body-Reference",
+        }
+        exact_replacements = {
+            "body_reference_qwen_experiment": "local_body_reference",
+            "body_reference_analysis": "local_body_reference_analysis",
+            "body_reference_face_gate": "local_body_reference_face_gate",
+        }
+        key_replacements = {
+            "body_reference_experiment_run_id": "local_body_reference_run_id",
+            "body_reference_run_id": "local_body_reference_run_id",
+        }
+
+        def upgrade(value: Any) -> Any:
+            if isinstance(value, dict):
+                result = {}
+                for key, item in value.items():
+                    new_key = key_replacements.get(key, key) if isinstance(key, str) else key
+                    if isinstance(new_key, str):
+                        for old, new in identifier_replacements.items():
+                            new_key = new_key.replace(old, new)
+                    result[new_key] = upgrade(item)
+                return result
+            if isinstance(value, list):
+                return [upgrade(item) for item in value]
+            if isinstance(value, str):
+                value = exact_replacements.get(value, value)
+                for old, new in identifier_replacements.items():
+                    value = value.replace(old, new)
+            return value
+
+        queue_root = Path(getattr(self.app.config, "base_ai_queue_path", self.library_root / "AI_Queue")).resolve()
+        roots = [(self.runs_root, False), (queue_root, True)]
+        for root, is_queue_root in roots:
+            if not root.exists():
+                continue
+            for path in root.rglob("*.json"):
+                if path == marker or path.name.endswith(".tmp"):
+                    continue
+                try:
+                    original = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                upgraded = upgrade(original)
+                if upgraded != original:
+                    try:
+                        self._write(path, upgraded)
+                    except OSError:
+                        # Queue bundles may be read-only or temporarily locked by
+                        # Dropbox while answers are syncing. A legacy queue
+                        # manifest should not prevent Zet from starting or
+                        # rendering scenes; leave that queue file untouched.
+                        if not is_queue_root:
+                            raise
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(self._now() + "\n", encoding="utf-8")
 
     @staticmethod
     def _now() -> str:
@@ -75,10 +140,7 @@ class BodyReferenceExperimentService:
 
     @staticmethod
     def _write(path: Path, value: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        temp.replace(path)
+        write_json_atomic(path, value)
 
     @staticmethod
     def _safe(value: str) -> str:
@@ -110,17 +172,17 @@ class BodyReferenceExperimentService:
         character = str(payload.get("character") or "").strip()
         phase = str(payload.get("phase") or "").strip()
         if not character or not phase:
-            raise BodyReferenceExperimentError("Character and phase are required.")
+            raise LocalBodyReferenceError("Character and phase are required.")
         views = self._views()
         if len(views) != 8:
-            raise BodyReferenceExperimentError(f"Expected eight configured Body-Reference views; found {len(views)}.")
+            raise LocalBodyReferenceError(f"Expected eight configured Body-Reference views; found {len(views)}.")
         front_count = int(payload.get("front_count") or PILOT_FRONT_COUNT)
         other_count = int(payload.get("other_count") or PILOT_OTHER_COUNT)
         if front_count < 1 or other_count < 1:
-            raise BodyReferenceExperimentError("Candidate counts must be positive.")
-        candidate_count = front_count + (len(views) - 1) * other_count * 2
+            raise LocalBodyReferenceError("Candidate counts must be positive.")
+        candidate_count = front_count + (len(views) - 1) * other_count
         if candidate_count > 256:
-            raise BodyReferenceExperimentError("Body-Reference experiment cannot exceed 256 candidates.")
+            raise LocalBodyReferenceError("Local Body-Reference cannot exceed 256 candidates.")
         return {
             "character": character,
             "phase": phase,
@@ -128,14 +190,14 @@ class BodyReferenceExperimentService:
             "front_count": front_count,
             "other_count": other_count,
             "candidate_count": candidate_count,
-            "methods": [METHOD_TEXT_FIRST, METHOD_FRONT_CONDITIONED],
+            "methods": [METHOD_FRONT_CONDITIONED],
             "front_anchor_required": True,
         }
 
     def _compile_view(self, root: Path, character: str, phase: str, view: str, index: int) -> dict[str, Any]:
         output = root / "prompts" / view
         job = {
-            "Job": f"BodyReferenceExperiment_{root.name}_{view}",
+            "Job": f"LocalBodyReference_{root.name}_{view}",
             "Task": "body-reference",
             "Character": character,
             "Phase": phase,
@@ -146,10 +208,10 @@ class BodyReferenceExperimentService:
             result = compile_body_reference_job(job, self.project_root)
             analysis = self._compile_analysis_view(root, character, phase, view)
         except Exception as exc:
-            raise BodyReferenceExperimentError(f"Could not compile Body-Reference prompt for {view}: {exc}") from exc
+            raise LocalBodyReferenceError(f"Could not compile Body-Reference prompt for {view}: {exc}") from exc
         final_prompt = Path(str(result["final_prompt"]))
         if not final_prompt.is_file():
-            raise BodyReferenceExperimentError(f"Compiled prompt is missing for {view}: {final_prompt}")
+            raise LocalBodyReferenceError(f"Compiled prompt is missing for {view}: {final_prompt}")
         text = final_prompt.read_text(encoding="utf-8")
         qwen_prompt = self._qwen_prompt(text, view)
         return {
@@ -167,7 +229,7 @@ class BodyReferenceExperimentService:
     def _compile_analysis_view(self, root: Path, character: str, phase: str, view: str) -> dict[str, str]:
         output = root / "prompts" / view / "analysis"
         job = {
-            "Job": f"BodyReferenceExperiment_{root.name}_{view}",
+            "Job": f"LocalBodyReference_{root.name}_{view}",
             "Task": "body-reference",
             "Character": character,
             "Phase": phase,
@@ -177,7 +239,7 @@ class BodyReferenceExperimentService:
         result = compile_body_reference_job(job, self.project_root, prompt_variant="analysis")
         prompt_path = Path(str(result["final_prompt"]))
         if not prompt_path.is_file():
-            raise BodyReferenceExperimentError(f"Compiled analysis prompt is missing for {view}: {prompt_path}")
+            raise LocalBodyReferenceError(f"Compiled analysis prompt is missing for {view}: {prompt_path}")
         template_path = self.project_root / "Config" / "Prompt_Templates" / "body_reference_v2.md"
         return {
             "analysis_specification": prompt_path.read_text(encoding="utf-8"),
@@ -222,7 +284,7 @@ class BodyReferenceExperimentService:
         anchor_path: str = "",
     ) -> dict[str, Any]:
         if not prompt.strip() or not checkpoint.strip() or not text_encoder.strip() or not vae.strip():
-            raise BodyReferenceExperimentError("Qwen workflow requires prompt, diffusion model, text encoder, and VAE.")
+            raise LocalBodyReferenceError("Qwen workflow requires prompt, diffusion model, text encoder, and VAE.")
         workflow: dict[str, Any] = {
             "1": {"class_type": "UNETLoader", "inputs": {"unet_name": checkpoint, "weight_dtype": "default"}},
             "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": text_encoder, "type": "qwen_image"}},
@@ -249,7 +311,7 @@ class BodyReferenceExperimentService:
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan = self.preview(payload)
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        root = self.experiments_root / self._safe(plan["character"]) / self._safe(plan["phase"]) / run_id
+        root = self.runs_root / self._safe(plan["character"]) / self._safe(plan["phase"]) / run_id
         root.mkdir(parents=True, exist_ok=False)
         prompts = [self._compile_view(root, plan["character"], plan["phase"], view, index)
                    for index, view in enumerate(plan["views"], start=1)]
@@ -258,15 +320,15 @@ class BodyReferenceExperimentService:
             generator = random.SystemRandom()
             seeds = [generator.randrange(0, 2**63 - 1) for _ in range(plan["candidate_count"])]
         if len(seeds) != plan["candidate_count"]:
-            raise BodyReferenceExperimentError("Explicit seed count must match the candidate plan.")
+            raise LocalBodyReferenceError("Explicit seed count must match the candidate plan.")
         try:
             seeds = [str(int(seed)) for seed in seeds]
         except (TypeError, ValueError) as exc:
-            raise BodyReferenceExperimentError("Every seed must be an integer.") from exc
+            raise LocalBodyReferenceError("Every seed must be an integer.") from exc
         candidates: list[dict[str, Any]] = []
         seed_index = 0
         for view_index, prompt in enumerate(prompts):
-            count_methods = ["shared_front"] if prompt["view"] == FRONT_VIEW else [METHOD_TEXT_FIRST, METHOD_FRONT_CONDITIONED]
+            count_methods = ["shared_front"] if prompt["view"] == FRONT_VIEW else [METHOD_FRONT_CONDITIONED]
             count = plan["front_count"] if prompt["view"] == FRONT_VIEW else plan["other_count"]
             for method in count_methods:
                 for ordinal in range(count):
@@ -283,7 +345,7 @@ class BodyReferenceExperimentService:
                     })
                     seed_index += 1
         spec = {
-            "schema_version": 1, "kind": "body_reference_qwen_experiment", "run_id": run_id,
+            "schema_version": 1, "kind": "local_body_reference", "run_id": run_id,
             "created_at": self._now(), "status": "AWAITING_FRONT_ANCHOR", "character": plan["character"],
             "phase": plan["phase"], "views": plan["views"], "front_view": FRONT_VIEW,
             "front_count": plan["front_count"], "other_count": plan["other_count"],
@@ -299,14 +361,14 @@ class BodyReferenceExperimentService:
 
     def _root(self, run_id: str) -> Path:
         if not re.fullmatch(r"\d{8}_\d{6}_\d{6}", str(run_id or "")):
-            raise BodyReferenceExperimentError("Invalid Body-Reference experiment id.")
-        matches = list(self.experiments_root.glob(f"*/ */{run_id}".replace(" ", "")))
+            raise LocalBodyReferenceError("Invalid Local Body-Reference id.")
+        matches = list(self.runs_root.glob(f"*/ */{run_id}".replace(" ", "")))
         if matches:
             return matches[0]
-        for path in self.experiments_root.glob(f"*/*/{run_id}"):
+        for path in self.runs_root.glob(f"*/*/{run_id}"):
             if (path / "spec.json").is_file():
                 return path
-        raise BodyReferenceExperimentError(f"Body-Reference experiment not found: {run_id}")
+        raise LocalBodyReferenceError(f"Local Body-Reference not found: {run_id}")
 
     def detail(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id)
@@ -323,7 +385,7 @@ class BodyReferenceExperimentService:
         value["stop_requested"] = bool(state.get("stop_requested", False))
         value["review_only"] = bool(state.get("review_only", False))
         value["post_review_status"] = state.get("post_review_status") or ""
-        value["error"] = state.get("error") or ("The experiment runner stopped before this batch finished." if interrupted else "")
+        value["error"] = state.get("error") or ("The Local Body-Reference runner stopped before this batch finished." if interrupted else "")
         value["front_anchor"] = state.get("front_anchor") or value.get("front_anchor")
         value["lineups"] = state.get("lineups") or value.get("lineups") or {}
         value["set_report"] = state.get("set_report") or {}
@@ -350,11 +412,11 @@ class BodyReferenceExperimentService:
         return value
 
     def list_runs(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
-        """Return selectable experiment batches, newest first."""
+        """Return selectable Local Body-Reference batches, newest first."""
         wanted_character = str(character or "").strip()
         wanted_phase = str(phase or "").strip()
         runs: list[dict[str, Any]] = []
-        for spec_path in self.experiments_root.glob("*/*/*/spec.json"):
+        for spec_path in self.runs_root.glob("*/*/*/spec.json"):
             try:
                 spec = json.loads(spec_path.read_text(encoding="utf-8"))
                 if wanted_character and spec.get("character") != wanted_character:
@@ -362,7 +424,7 @@ class BodyReferenceExperimentService:
                 if wanted_phase and spec.get("phase") != wanted_phase:
                     continue
                 run = self.detail(str(spec.get("run_id") or spec_path.parent.name))
-            except (OSError, ValueError, json.JSONDecodeError, BodyReferenceExperimentError):
+            except (OSError, ValueError, json.JSONDecodeError, LocalBodyReferenceError):
                 continue
             counts: dict[str, int] = {}
             for candidate in run.get("candidates") or []:
@@ -378,7 +440,7 @@ class BodyReferenceExperimentService:
         return sorted(runs, key=lambda item: str(item.get("created_at") or item["run_id"]), reverse=True)
 
     def list_codex_jobs(self) -> list[dict[str, Any]]:
-        """Summarize Codex/Luna reviews across experiment batches."""
+        """Summarize Codex/Luna reviews across Local Body-Reference batches."""
         jobs = []
         for summary in self.list_runs():
             run = self.detail(summary["run_id"])
@@ -411,7 +473,7 @@ class BodyReferenceExperimentService:
             or anchor.get("status") != "COMPLETE"
             or not Path(str(anchor.get("image_path") or "")).is_file()
         ):
-            raise BodyReferenceExperimentError("The selected front anchor image is unavailable to keep.")
+            raise LocalBodyReferenceError("The selected front anchor image is unavailable to keep.")
 
         fresh = self.create_run({
             "character": source["character"], "phase": source["phase"],
@@ -492,14 +554,14 @@ class BodyReferenceExperimentService:
         run = self.detail(run_id)
         view = str(view or "").upper()
         if view not in run.get("views", []):
-            raise BodyReferenceExperimentError(f"Unknown experiment view: {view}")
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
-            raise BodyReferenceExperimentError("Stop the active batch before re-running a view.")
+            raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_lock.locked():
-            raise BodyReferenceExperimentError("Another experiment batch is running; try again when it finishes.")
+            raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
         candidates = [item for item in run["candidates"] if item.get("view") == view]
         if not candidates:
-            raise BodyReferenceExperimentError(f"This batch has no candidates for view {view}.")
+            raise LocalBodyReferenceError(f"This batch has no candidates for view {view}.")
 
         root = self._root(run_id).resolve()
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
@@ -549,11 +611,11 @@ class BodyReferenceExperimentService:
         run = self.detail(run_id)
         view = str(view or "").upper()
         if view not in run.get("views", []):
-            raise BodyReferenceExperimentError(f"Unknown experiment view: {view}")
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
-            raise BodyReferenceExperimentError("Stop the active batch before re-running a view.")
+            raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_lock.locked():
-            raise BodyReferenceExperimentError("Another experiment batch is running; try again when it finishes.")
+            raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
 
         def is_failed_candidate(candidate: dict[str, Any]) -> bool:
             if candidate.get("view") != view or candidate.get("status") != "COMPLETE":
@@ -573,7 +635,7 @@ class BodyReferenceExperimentService:
 
         candidates = [item for item in run["candidates"] if is_failed_candidate(item)]
         if not candidates:
-            raise BodyReferenceExperimentError(f"This batch has no failed images to re-run for view {view}.")
+            raise LocalBodyReferenceError(f"This batch has no failed images to re-run for view {view}.")
 
         root = self._root(run_id).resolve()
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
@@ -626,12 +688,12 @@ class BodyReferenceExperimentService:
         if view is not None:
             normalized_view = str(view or "").upper()
             if normalized_view not in target_views:
-                raise BodyReferenceExperimentError(f"Unknown experiment view: {normalized_view}")
+                raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {normalized_view}")
             target_views = [normalized_view]
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
-            raise BodyReferenceExperimentError("Stop the active batch before re-evaluating it.")
+            raise LocalBodyReferenceError("Stop the active batch before re-evaluating it.")
         if self._runner_lock.locked():
-            raise BodyReferenceExperimentError("Another experiment batch is running; try again when it finishes.")
+            raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
         completed = [item for item in run["candidates"]
                      if (item.get("status") == "COMPLETE" or
                          (run.get("interrupted") and item.get("status") == "WAITING_FOR_ANALYSIS"))
@@ -639,7 +701,7 @@ class BodyReferenceExperimentService:
                      and Path(str(item.get("image_path") or "")).is_file()]
         if not completed:
             scope = f" for view {target_views[0]}" if view is not None else ""
-            raise BodyReferenceExperimentError(f"This batch has no completed images to re-evaluate{scope}.")
+            raise LocalBodyReferenceError(f"This batch has no completed images to re-evaluate{scope}.")
         for target_view in target_views:
             if view is None or any(item.get("view") == target_view for item in completed):
                 self._review_facts(run, target_view)
@@ -666,10 +728,10 @@ class BodyReferenceExperimentService:
         return result
     def delete_run(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id).resolve()
-        experiments_root = self.experiments_root.resolve()
-        if (root.parent.parent.parent != experiments_root or root.name != run_id
-                or not root.is_relative_to(experiments_root)):
-            raise BodyReferenceExperimentError("Invalid experiment batch location.")
+        runs_root = self.runs_root.resolve()
+        if (root.parent.parent.parent != runs_root or root.name != run_id
+                or not root.is_relative_to(runs_root)):
+            raise LocalBodyReferenceError("Invalid Local Body-Reference batch location.")
         state_path = root / "state.json"
         if state_path.is_file():
             try:
@@ -677,7 +739,7 @@ class BodyReferenceExperimentService:
             except (OSError, ValueError, json.JSONDecodeError):
                 state = {}
             if state.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
-                raise BodyReferenceExperimentError("Stop the batch and wait for it to finish before deleting it.")
+                raise LocalBodyReferenceError("Stop the batch and wait for it to finish before deleting it.")
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}
 
@@ -690,26 +752,26 @@ class BodyReferenceExperimentService:
     def _withdraw_queued_asks(self, run_id: str) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         queue_root = Path(self.app.config.base_ai_queue_path)
-        prefixes = (f"BodyReference_{run_id}_", f"Ask_BodyReference_{run_id}_")
+        prefixes = (f"BodyReference_{run_id}_", f"Ask_LocalBodyReference_{run_id}_")
         for task in paths.task_paths("ask"):
             if task.name.startswith(prefixes):
-                supersede_task(queue_root, task, "Body-Reference Qwen experiment was cancelled.")
+                supersede_task(queue_root, task, "Local Body-Reference run was cancelled.")
 
     def select_front_anchor(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate or candidate["view"] != FRONT_VIEW:
-            raise BodyReferenceExperimentError("Only a front-view candidate can become the anchor.")
+            raise LocalBodyReferenceError("Only a front-view candidate can become the anchor.")
         if candidate.get("status") != "COMPLETE":
-            raise BodyReferenceExperimentError("The front anchor must have a completed render.")
+            raise LocalBodyReferenceError("The front anchor must have a completed render.")
         if candidate.get("human_review", {}).get("decision") != "keep":
-            raise BodyReferenceExperimentError("A human must keep the front anchor after both analyses.")
+            raise LocalBodyReferenceError("A human must keep the front anchor after both analyses.")
         if not all(candidate.get("analyses", {}).get(provider) for provider in ("local", "luna")):
-            raise BodyReferenceExperimentError("Both image analyses must finish before selecting the front anchor.")
+            raise LocalBodyReferenceError("Both image analyses must finish before selecting the front anchor.")
         image_hash = self._hash(Path(candidate["image_path"]))
         if any(candidate["analyses"][provider].get("input_hashes", {}).get("candidate") != image_hash
                for provider in ("local", "luna")):
-            raise BodyReferenceExperimentError("Front-anchor analysis is stale; rerun both analyses.")
+            raise LocalBodyReferenceError("Front-anchor analysis is stale; rerun both analyses.")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         state.update({"status": "READY_FOR_VIEWS", "updated_at": self._now(),
                       "front_anchor": candidate_id, "stop_requested": False,
@@ -721,15 +783,15 @@ class BodyReferenceExperimentService:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
-            raise BodyReferenceExperimentError(f"Unknown candidate: {candidate_id}")
+            raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         update = {"human_review": {"decision": str(payload.get("decision") or "undecided"),
                                    "notes": str(payload.get("notes") or "")}}
         if update["human_review"]["decision"] not in {"keep", "reject", "undecided"}:
-            raise BodyReferenceExperimentError("Human decision must be keep, reject, or undecided.")
+            raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
         if candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not all(
             candidate.get("analyses", {}).get(provider) for provider in ("local", "luna")
         ):
-            raise BodyReferenceExperimentError("Both image analyses must finish before human review.")
+            raise LocalBodyReferenceError("Both image analyses must finish before human review.")
         decision = update["human_review"]["decision"]
         if decision == "keep":
             update.update(disposition="human_keep", status="COMPLETE", completed_at=self._now())
@@ -756,31 +818,31 @@ class BodyReferenceExperimentService:
         input_hashes: dict[str, str],
     ) -> dict[str, Any]:
         if provider not in {"local", "luna"}:
-            raise BodyReferenceExperimentError("Analysis provider must be local or luna.")
+            raise LocalBodyReferenceError("Analysis provider must be local or luna.")
         if not isinstance(result, dict) or not isinstance(input_hashes, dict):
-            raise BodyReferenceExperimentError("Analysis result and input hashes must be objects.")
+            raise LocalBodyReferenceError("Analysis result and input hashes must be objects.")
         if "pass" not in result or not isinstance(result.get("pass"), bool):
-            raise BodyReferenceExperimentError("Analysis result must include a boolean pass field.")
+            raise LocalBodyReferenceError("Analysis result must include a boolean pass field.")
         if (not isinstance(result.get("uncertain"), bool)
                 or not isinstance(result.get("criteria"), dict)
                 or not isinstance(result.get("failure_categories"), list)
                 or not isinstance(result.get("evidence"), str)
                 or not isinstance(result.get("failure_reason"), str)):
-            raise BodyReferenceExperimentError("Analysis result is missing structured rubric fields.")
+            raise LocalBodyReferenceError("Analysis result is missing structured rubric fields.")
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
-            raise BodyReferenceExperimentError(f"Unknown candidate: {candidate_id}")
+            raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         image = Path(str(candidate.get("image_path") or ""))
         if candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not image.is_file():
-            raise BodyReferenceExperimentError("Analysis requires an image that passed the face gate.")
+            raise LocalBodyReferenceError("Analysis requires an image that passed the face gate.")
         if input_hashes.get("candidate") != self._hash(image):
-            raise BodyReferenceExperimentError("Analysis input hash does not match the candidate image.")
+            raise LocalBodyReferenceError("Analysis input hash does not match the candidate image.")
         if candidate["view"] != FRONT_VIEW:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
             if anchor_image is None or not anchor_image.is_file() or input_hashes.get("front_anchor") != self._hash(anchor_image):
-                raise BodyReferenceExperimentError("Analysis front-anchor hash is missing or stale.")
+                raise LocalBodyReferenceError("Analysis front-anchor hash is missing or stale.")
         analysis = {**result, "provider": provider, "input_hashes": dict(input_hashes), "recorded_at": self._now()}
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         updates = state.setdefault("candidates", {}).setdefault(candidate_id, {})
@@ -892,12 +954,12 @@ class BodyReferenceExperimentService:
             spec = json.loads(spec_path.read_text(encoding="utf-8"))
             snapshot = next((item for item in spec.get("prompt_snapshots", []) if item.get("view") == view), None)
             if snapshot is None:
-                raise BodyReferenceExperimentError(f"No saved prompt for view {view}.")
+                raise LocalBodyReferenceError(f"No saved prompt for view {view}.")
             if snapshot.get("analysis_template_sha256") != template_hash or not snapshot.get("analysis_specification"):
                 try:
                     snapshot.update(self._compile_analysis_view(root, spec["character"], spec["phase"], view))
                 except Exception as exc:
-                    raise BodyReferenceExperimentError(f"Could not refresh analysis prompt for {view}: {exc}") from exc
+                    raise LocalBodyReferenceError(f"Could not refresh analysis prompt for {view}: {exc}") from exc
                 spec["source_snapshot_sha256"] = hashlib.sha256(
                     json.dumps(spec["prompt_snapshots"], sort_keys=True).encode()
                 ).hexdigest()
@@ -905,10 +967,10 @@ class BodyReferenceExperimentService:
             return str(snapshot["analysis_specification"])
 
     def review_prompt(self, run_id: str, view: str) -> str:
-        """Return the shared local/Codex review prompt for one experiment view."""
+        """Return the shared local/Codex review prompt for one Local Body-Reference view."""
         run = self.detail(run_id)
         if view not in run.get("views", []):
-            raise BodyReferenceExperimentError(f"Unknown experiment view: {view}")
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         candidate = {"view": view}
         return self.analysis_prompt(
             candidate,
@@ -921,16 +983,16 @@ class BodyReferenceExperimentService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if (not candidate or candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
                 or not Path(str(candidate.get("image_path") or "")).is_file()):
-            raise BodyReferenceExperimentError("A face-gate-approved candidate image is required for local analysis.")
+            raise LocalBodyReferenceError("A face-gate-approved candidate image is required for local analysis.")
         image = Path(candidate["image_path"])
         anchor_id = run.get("front_anchor")
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == anchor_id), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
         if candidate["view"] != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
-            raise BodyReferenceExperimentError("Select a completed front anchor before reviewing other views.")
+            raise LocalBodyReferenceError("Select a completed front anchor before reviewing other views.")
         proxy = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        ask_id = f"Ask_BodyReference_{run_id}_{candidate_id}_LOCAL_{stamp}"
+        ask_id = f"Ask_LocalBodyReference_{run_id}_{candidate_id}_LOCAL_{stamp}"
         staging = proxy.create_staging(ask_id)
         files = [("candidate.png", image)]
         if anchor_image and candidate["view"] != FRONT_VIEW:
@@ -943,12 +1005,15 @@ class BodyReferenceExperimentService:
         output = self._root(run_id) / "analyses" / candidate_id / f"local_{stamp}.json"
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-            "pipeline": "Character-Pipeline-Experiment", "pipeline_stage": "BODY_REFERENCE_ANALYSIS",
-            "worker_type": "ollama_generate", "ollama_model": model or getattr(self.app.config, "ai_prompt_evolution_vision_model", "image-analysis:latest"),
+            "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_ANALYSIS",
+            "worker_type": "ollama_generate", "ollama_model": model or str(
+                getattr(self.app.config, "local_body_reference_review_model", "image-analysis:latest")
+                or "image-analysis:latest"
+            ),
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in files], "json_output": True,
-            "response_schema": self.analysis_schema(), "expected_output": "response.json", "task_type": "body_reference_analysis",
+            "response_schema": self.analysis_schema(), "expected_output": "response.json", "task_type": "local_body_reference_analysis",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
-            "body_reference_run_id": run_id, "candidate_id": candidate_id,
+            "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
             "input_hashes": {"candidate": self._hash(image), "front_anchor": self._hash(anchor_image) if anchor_image and anchor_image.is_file() else ""},
         }
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -994,7 +1059,7 @@ class BodyReferenceExperimentService:
             return "HARVESTED", answer
         return "UNKNOWN", {}
 
-    def _harvest_experiment_answer(self, run_id: str, candidate_id: str, ask_id: str, target: Path) -> None:
+    def _harvest_local_body_reference_answer(self, run_id: str, candidate_id: str, ask_id: str, target: Path) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         answer_path = paths.answer_root() / ask_id
         if not answer_path.is_dir():
@@ -1005,40 +1070,40 @@ class BodyReferenceExperimentService:
             ask = json.loads((answer_path / "ask_manifest.json").read_text(encoding="utf-8"))
             answer = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise BodyReferenceExperimentError(f"Invalid AI Proxy answer {ask_id}: {exc}") from exc
+            raise LocalBodyReferenceError(f"Invalid AI Proxy answer {ask_id}: {exc}") from exc
         if ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id:
-            raise BodyReferenceExperimentError("AI Proxy answer ID does not match the queued job.")
+            raise LocalBodyReferenceError("AI Proxy answer ID does not match the queued job.")
         source_id = str(ask.get("source_ask_id") or "")
-        render_source = re.fullmatch(rf"BodyReference_{re.escape(run_id)}_{re.escape(candidate_id)}_\d+", source_id)
-        if (ask.get("body_reference_run_id") != run_id or ask.get("candidate_id") != candidate_id) and not render_source:
-            raise BodyReferenceExperimentError("AI Proxy answer does not belong to this experiment candidate.")
+        render_source = re.fullmatch(rf"(?:Local)?BodyReference_{re.escape(run_id)}_{re.escape(candidate_id)}_\d+", source_id)
+        if (ask.get("local_body_reference_run_id") != run_id or ask.get("candidate_id") != candidate_id) and not render_source:
+            raise LocalBodyReferenceError("AI Proxy answer does not belong to this Local Body-Reference candidate.")
         status = str(answer.get("status") or "").upper()
         if status in {"ERROR", "RETRY_LATER"}:
-            raise BodyReferenceExperimentError(str(answer.get("error_message") or "AI Proxy job failed."))
+            raise LocalBodyReferenceError(str(answer.get("error_message") or "AI Proxy job failed."))
         if status != "SUCCESS":
             return
         expected = str(ask.get("expected_output") or "")
         if not expected or Path(expected).name != expected or answer.get("expected_output") != expected:
-            raise BodyReferenceExperimentError("AI Proxy answer output filename is invalid.")
-        if ask.get("task_type") in {"body_reference_analysis", "body_reference_face_gate"}:
+            raise LocalBodyReferenceError("AI Proxy answer output filename is invalid.")
+        if ask.get("task_type") in {"local_body_reference_analysis", "local_body_reference_face_gate", "body_reference_analysis", "body_reference_face_gate"}:
             filename = str(ask.get("target_output_file") or "")
-            if ask.get("task_type") == "body_reference_analysis":
+            if ask.get("task_type") in {"local_body_reference_analysis", "body_reference_analysis"}:
                 if not re.fullmatch(r"local(?:_\d{8}_\d{6}_\d{6})?\.json", filename):
-                    raise BodyReferenceExperimentError("AI Proxy analysis output filename is invalid.")
+                    raise LocalBodyReferenceError("AI Proxy analysis output filename is invalid.")
             elif not re.fullmatch(r"face_gate_\d{8}_\d{6}_\d{6}\.txt", filename):
-                raise BodyReferenceExperimentError("AI Proxy face-gate output filename is invalid.")
+                raise LocalBodyReferenceError("AI Proxy face-gate output filename is invalid.")
             expected_target = self._root(run_id) / "analyses" / candidate_id / filename
             if ask.get("target_output_file") != target.name:
-                raise BodyReferenceExperimentError("AI Proxy analysis output filename is invalid.")
+                raise LocalBodyReferenceError("AI Proxy analysis output filename is invalid.")
         else:
             expected_target = self._root(run_id) / "renders" / candidate_id / "Local_Test_Renders" / expected
             if ask.get("task_type") != "local_test_render" or ask.get("target_output_file") != expected:
-                raise BodyReferenceExperimentError("AI Proxy render output filename is invalid.")
+                raise LocalBodyReferenceError("AI Proxy render output filename is invalid.")
         if expected_target.resolve() != target.resolve() or not target.resolve().is_relative_to(self._root(run_id).resolve()):
-            raise BodyReferenceExperimentError("AI Proxy answer target does not match the experiment slot.")
+            raise LocalBodyReferenceError("AI Proxy answer target does not match the Local Body-Reference slot.")
         source = answer_path / expected
         if not source.is_file() or source.stat().st_size == 0:
-            raise BodyReferenceExperimentError("AI Proxy answer is missing its output file.")
+            raise LocalBodyReferenceError("AI Proxy answer is missing its output file.")
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
         shutil.copy2(source, temporary)
@@ -1050,19 +1115,19 @@ class BodyReferenceExperimentService:
         for name in ("comfyui-qwen-body-reference-text", "comfyui-qwen-body-reference-edit"):
             profile = backend.preset(name)
             if not profile:
-                raise BodyReferenceExperimentError(f"Missing render preset: {name}")
+                raise LocalBodyReferenceError(f"Missing render preset: {name}")
             for key, available, label in (
                 ("diffusion_model", inventory["diffusion_models"], "diffusion model"),
                 ("text_encoder", inventory["text_encoders"], "text encoder"),
                 ("vae", inventory["vaes"], "VAE"),
             ):
                 if profile.get(key) not in available:
-                    raise BodyReferenceExperimentError(f"ComfyUI is missing the {label}: {profile.get(key)}")
+                    raise LocalBodyReferenceError(f"ComfyUI is missing the {label}: {profile.get(key)}")
         required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage"}
         missing = required - set(inventory["node_types"])
         if missing:
-            raise BodyReferenceExperimentError("ComfyUI is missing nodes: " + ", ".join(sorted(missing)))
+            raise LocalBodyReferenceError("ComfyUI is missing nodes: " + ", ".join(sorted(missing)))
 
     def _render_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Render candidates and queue face gates without blocking on AI Proxy."""
@@ -1116,28 +1181,28 @@ class BodyReferenceExperimentService:
         candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
-            raise BodyReferenceExperimentError("A completed candidate image is required for the face gate.")
+            raise LocalBodyReferenceError("A completed candidate image is required for the face gate.")
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         root = self._root(run_id) / "analyses" / candidate_id
         root.mkdir(parents=True, exist_ok=True)
         crop = root / f"face_gate_{stamp}.png"
         self._crop_head(image, crop)
         output = root / f"face_gate_{stamp}.txt"
-        ask_id = f"Ask_BodyReference_{run_id}_{candidate_id}_FACE_{stamp}"
+        ask_id = f"Ask_LocalBodyReference_{run_id}_{candidate_id}_FACE_{stamp}"
         proxy = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
         staging = proxy.create_staging(ask_id)
         shutil.copy2(crop, staging / "head_crop.png")
         (staging / "OLLAMA_PROMPT.md").write_text(self.FACE_GATE_PROMPT, encoding="utf-8")
-        model = str(getattr(self.app.config, "body_reference_face_gate_model", "image-analysis:latest") or "image-analysis:latest")
+        model = str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis:latest") or "image-analysis:latest")
         run = self.detail(run_id)
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-            "pipeline": "Character-Pipeline-Experiment", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
+            "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
             "worker_type": "ollama_generate", "ollama_model": model,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": ["head_crop.png"],
-            "json_output": False, "expected_output": output.name, "task_type": "body_reference_face_gate",
+            "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_face_gate",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
-            "body_reference_run_id": run_id, "candidate_id": candidate_id,
+            "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
             "input_hashes": {"candidate": self._hash(image), "head_crop": self._hash(crop)},
         }
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -1163,7 +1228,7 @@ class BodyReferenceExperimentService:
                 if not output.is_file():
                     proxy_status, answer = self._proxy_answer(str(gate["ask_id"]))
                     if str(answer.get("status") or "").upper() == "SUCCESS":
-                        self._harvest_experiment_answer(
+                        self._harvest_local_body_reference_answer(
                             run_id, candidate["candidate_id"], str(gate["ask_id"]), output
                         )
                 if output.is_file():
@@ -1295,15 +1360,15 @@ class BodyReferenceExperimentService:
         while not image.is_file():
             if self.detail(run_id)["stop_requested"]:
                 return False
-            self._harvest_experiment_answer(run_id, candidate_id, str(candidate.get("ask_id") or ""), image)
+            self._harvest_local_body_reference_answer(run_id, candidate_id, str(candidate.get("ask_id") or ""), image)
             proxy_status, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
             if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
-                raise BodyReferenceExperimentError(str(answer.get("error_message") or "AI Proxy render failed"))
+                raise LocalBodyReferenceError(str(answer.get("error_message") or "AI Proxy render failed"))
             if proxy_status == "RUNNING" and candidate.get("status") != "RUNNING":
                 self._candidate_update(run_id, candidate_id, {"status": "RUNNING"})
                 candidate["status"] = "RUNNING"
             if time.monotonic() >= deadline:
-                raise BodyReferenceExperimentError("Timed out waiting for the render; use Retry after checking AI Proxy.")
+                raise LocalBodyReferenceError("Timed out waiting for the render; use Retry after checking AI Proxy.")
             time.sleep(max(0.5, float(self.app.config.comfyui_poll_seconds)))
         self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "completed_at": "",
                                                     "image_sha256": self._hash(image), "render_error": ""})
@@ -1317,21 +1382,21 @@ class BodyReferenceExperimentService:
         while not output.is_file():
             if self.detail(run_id)["stop_requested"]:
                 return False
-            self._harvest_experiment_answer(run_id, candidate_id, job["ask_id"], output)
+            self._harvest_local_body_reference_answer(run_id, candidate_id, job["ask_id"], output)
             proxy_status, answer = self._proxy_answer(job["ask_id"])
             if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
-                raise BodyReferenceExperimentError(str(answer.get("error_message") or "Local image analysis failed"))
+                raise LocalBodyReferenceError(str(answer.get("error_message") or "Local image analysis failed"))
             if proxy_status == "RUNNING" and job["status"] != "RUNNING":
                 job["status"] = "RUNNING"
                 self._candidate_update(run_id, candidate_id, {"local_job": job})
             if time.monotonic() >= deadline:
-                raise BodyReferenceExperimentError("Timed out waiting for local image analysis.")
+                raise LocalBodyReferenceError("Timed out waiting for local image analysis.")
             time.sleep(2)
         try:
             result = json.loads(output.read_text(encoding="utf-8"))
             self.record_analysis(run_id, candidate_id, "local", result, job["input_hashes"])
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            raise BodyReferenceExperimentError(f"Invalid local image analysis: {exc}") from exc
+            raise LocalBodyReferenceError(f"Invalid local image analysis: {exc}") from exc
         job["status"] = "COMPLETE"
         self._candidate_update(run_id, candidate_id, {"local_job": job})
         return True
@@ -1430,11 +1495,11 @@ class BodyReferenceExperimentService:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
-            raise BodyReferenceExperimentError(f"Unknown candidate: {candidate_id}")
+            raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         if candidate.get("status") in {"QUEUED", "RUNNING", "COMPLETE"}:
             return candidate
         if candidate.get("view") != FRONT_VIEW and not run.get("front_anchor"):
-            raise BodyReferenceExperimentError("Complete front analysis and select an anchor before rendering other views.")
+            raise LocalBodyReferenceError("Complete front analysis and select an anchor before rendering other views.")
         method = candidate.get("method")
         if method == "shared_front":
             preset_name = "comfyui-qwen-body-reference-text"
@@ -1447,7 +1512,7 @@ class BodyReferenceExperimentService:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_path = Path(str(anchor.get("image_path") or "")) if anchor else None
             if anchor_path is None or not anchor_path.is_file():
-                raise BodyReferenceExperimentError("Front-conditioned rendering requires a completed front anchor image.")
+                raise LocalBodyReferenceError("Front-conditioned rendering requires a completed front anchor image.")
             references = [{"role": "body_reference_front_anchor", "path": str(anchor_path)}]
         root = self._root(run_id)
         candidate_dir = root / "renders" / candidate_id
@@ -1456,8 +1521,8 @@ class BodyReferenceExperimentService:
         prompt_path.write_text(f"Positive Prompt:\n{candidate['prompt']}\n\nNegative Prompt:\n", encoding="utf-8")
         profile = LocalRenderBackendService(self.project_root / "Config" / "Local_Render_Presets.json").preset(preset_name)
         checkpoint = str(profile.get("diffusion_model") or "").strip()
-        manifest = {"ask_id": f"BodyReference_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}", "character": run["character"],
-                    "phase": run["phase"], "pipeline": "Character-Pipeline-Experiment", "pipeline_stage": "BODY_REFERENCE_RENDER"}
+        manifest = {"ask_id": f"LocalBodyReference_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}", "character": run["character"],
+                    "phase": run["phase"], "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_RENDER"}
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_path, candidate_dir, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=checkpoint, render_preset=preset_name, image_generation="comfyui",
@@ -1497,7 +1562,7 @@ class BodyReferenceExperimentService:
         if state.get("status") not in active:
             run = self.detail(run_id)
             if not run.get("interrupted"):
-                raise BodyReferenceExperimentError("This batch is not running.")
+                raise LocalBodyReferenceError("This batch is not running.")
         stamp = self._now()
         self._write(root / "cancelled.json", {"run_id": run_id, "cancelled_at": stamp})
         state["stop_requested"] = True
@@ -1512,7 +1577,7 @@ class BodyReferenceExperimentService:
     def resume(self, run_id: str) -> dict[str, Any]:
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         if state.get("status") == "CANCELLED":
-            raise BodyReferenceExperimentError("This batch was cancelled. Start a new batch or explicitly re-run a view.")
+            raise LocalBodyReferenceError("This batch was cancelled. Start a new batch or explicitly re-run a view.")
         state["stop_requested"] = False
         state["status"] = "READY_FOR_VIEWS" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
         state["updated_at"] = self._now()
@@ -1523,7 +1588,7 @@ class BodyReferenceExperimentService:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
-            raise BodyReferenceExperimentError(f"Unknown candidate: {candidate_id}")
+            raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         if candidate["status"] == "FAILED":
             ask_id = str(candidate.get("ask_id") or "")
             proxy_status, answer = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})
@@ -1537,14 +1602,14 @@ class BodyReferenceExperimentService:
         elif candidate["status"] in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "WAITING_FOR_ANALYSIS"}:
             if not (candidate.get("luna_status") == "FAILED" or
                     (candidate.get("local_job") or {}).get("status") == "FAILED"):
-                raise BodyReferenceExperimentError("This candidate has no failed analysis to retry.")
+                raise LocalBodyReferenceError("This candidate has no failed analysis to retry.")
             self._candidate_update(run_id, candidate_id, {
                 "status": "WAITING_FOR_ANALYSIS",
                 "luna_status": "PENDING" if candidate.get("luna_status") == "FAILED" else candidate.get("luna_status"),
                 "local_job": {} if (candidate.get("local_job") or {}).get("status") == "FAILED" else candidate.get("local_job"),
             })
         else:
-            raise BodyReferenceExperimentError("Only a failed render or analysis can be retried.")
+            raise LocalBodyReferenceError("Only a failed render or analysis can be retried.")
         return self.resume(run_id)
 
     def recover_failed_batch(self, run_id: str) -> dict[str, Any]:
@@ -1591,16 +1656,16 @@ class BodyReferenceExperimentService:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
-            raise BodyReferenceExperimentError(f"Unknown candidate: {candidate_id}")
+            raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
-            raise BodyReferenceExperimentError("A completed candidate image is required for Luna analysis.")
+            raise LocalBodyReferenceError("A completed candidate image is required for Luna analysis.")
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         images = [image]
         if candidate["view"] != FRONT_VIEW:
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
             if anchor_image is None or not anchor_image.is_file():
-                raise BodyReferenceExperimentError("Select a completed front anchor before reviewing other views.")
+                raise LocalBodyReferenceError("Select a completed front anchor before reviewing other views.")
             images = [anchor_image, image]
         schema_fd, schema_name = tempfile.mkstemp(prefix="zet_body_reference_schema_", suffix=".json")
         output_fd, output_name = tempfile.mkstemp(prefix="zet_body_reference_luna_", suffix=".json")
@@ -1616,7 +1681,7 @@ class BodyReferenceExperimentService:
                 codex_executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
         codex_executable = codex_executable or shutil.which("codex")
         if not codex_executable:
-            raise BodyReferenceExperimentError("Codex CLI is unavailable for Luna analysis.")
+            raise LocalBodyReferenceError("Codex CLI is unavailable for Luna analysis.")
         command = [codex_executable, "-a", "never", "-s", "read-only", "-m", self.app.config.codex_default_model,
                    "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
                    "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema_file),
@@ -1630,35 +1695,35 @@ class BodyReferenceExperimentService:
             completed = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=1800,
                                        check=False, env=self._luna_environment())
             if completed.returncode != 0:
-                raise BodyReferenceExperimentError((completed.stderr or completed.stdout or "Luna analysis failed")[-2000:])
+                raise LocalBodyReferenceError((completed.stderr or completed.stdout or "Luna analysis failed")[-2000:])
             result = json.loads(output_file.read_text(encoding="utf-8"))
             if not isinstance(result, dict):
-                raise BodyReferenceExperimentError("Luna analysis output must be a JSON object.")
+                raise LocalBodyReferenceError("Luna analysis output must be a JSON object.")
             hashes = {"candidate": self._hash(image), "front_anchor": self._hash(images[0]) if len(images) == 2 else ""}
             self.record_analysis(run_id, candidate_id, "luna", result, hashes)
             return {"provider": "luna", "status": "COMPLETE", "elapsed_seconds": round(time.perf_counter() - started, 3), "result": result}
         except (OSError, json.JSONDecodeError) as exc:
-            raise BodyReferenceExperimentError(f"Luna analysis output was invalid: {exc}") from exc
+            raise LocalBodyReferenceError(f"Luna analysis output was invalid: {exc}") from exc
         finally:
             schema_file.unlink(missing_ok=True)
             output_file.unlink(missing_ok=True)
 
     def set_lineup(self, run_id: str, method: str, selections: dict[str, str]) -> dict[str, Any]:
-        if method not in {METHOD_TEXT_FIRST, METHOD_FRONT_CONDITIONED}:
-            raise BodyReferenceExperimentError("Unknown Body-Reference experiment method.")
+        if method != METHOD_FRONT_CONDITIONED:
+            raise LocalBodyReferenceError("Unknown Local Body-Reference method.")
         run = self.detail(run_id)
         allowed_views = set(run.get("views") or [])
         if set(selections) - allowed_views:
-            raise BodyReferenceExperimentError("Lineup contains an unknown view.")
+            raise LocalBodyReferenceError("Lineup contains an unknown view.")
         by_id = {item["candidate_id"]: item for item in run.get("candidates") or []}
         for view, candidate_id in selections.items():
             candidate = by_id.get(str(candidate_id))
             if not candidate or candidate.get("view") != view:
-                raise BodyReferenceExperimentError(f"Candidate {candidate_id} does not belong to view {view}.")
+                raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
             if view != FRONT_VIEW and candidate.get("method") != method:
-                raise BodyReferenceExperimentError("Lineup candidate uses the wrong generation method.")
+                raise LocalBodyReferenceError("Lineup candidate uses the wrong generation method.")
             if candidate.get("disposition") not in {"joint_pass", "human_keep"}:
-                raise BodyReferenceExperimentError("Only jointly passed or human-kept candidates can enter a lineup.")
+                raise LocalBodyReferenceError("Only jointly passed or human-kept candidates can enter a lineup.")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         state.setdefault("lineups", {})[method] = dict(selections)
         state["set_report"] = self.compare_lineups(run, state["lineups"])

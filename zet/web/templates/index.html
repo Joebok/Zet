@@ -122,9 +122,7 @@
           <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
-          <button class="tab workflow-tab" data-page="single-character-lab">Single Character Lab</button>
-          <button id="toolbar-body-reference-experiment" type="button">Body-Reference Qwen Experiment</button>
-          <button class="tab workflow-tab" data-page="prompt-evolution">Prompt Evolution</button>
+          <button id="toolbar-local-body-reference" type="button">Local Body-Reference</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
           <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
           <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
@@ -1642,32 +1640,12 @@
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
             </article>
-            <article class="managed-llm-role" data-llm-role="prompt_evolution_critic_a">
-              <label>Prompt Evolution critic A<select id="setting-ai-prompt-evolution-critic-a-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="prompt_evolution_critic_b">
-              <label>Prompt Evolution critic B<select id="setting-ai-prompt-evolution-critic-b-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="prompt_evolution_vision">
-              <label>Prompt Evolution vision analysis<select id="setting-ai-prompt-evolution-vision-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
             <article class="managed-llm-role">
-              <label>Body-reference Face Gate<select id="setting-body-reference-face-gate-model" form="automation-form"></select></label>
+              <label>Local Body-Reference face gate<select id="setting-local-body-reference-face-gate-model" form="automation-form"></select></label>
               <p class="managed-llm-description">Model used to reject renders with visibly rendered facial features.</p>
             </article>
-            <article class="managed-llm-role" data-llm-role="prompt_evolution_text">
-              <label>Prompt Evolution text editing<select id="setting-ai-prompt-evolution-text-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="prompt_evolution_check">
-              <label>Prompt Evolution regression check<select id="setting-ai-prompt-evolution-check-model" form="automation-form"></select></label>
+            <article class="managed-llm-role" data-llm-role="local_body_reference_review">
+              <label>Local Body-Reference image review<select id="setting-local-body-reference-review-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
             </article>
@@ -1747,153 +1725,6 @@
               <input id="setting-turnaround-width" type="number" min="44" step="44" value="3960" form="automation-form">
             </label>
           </div>
-        </section>
-      </div>
-    </section>
-
-    <section id="single-character-lab-page" class="page">
-      <div class="page-title-row">
-        <h1>Single Character Lab</h1>
-        <div id="single-character-lab-status" class="status-text"></div>
-      </div>
-      <div class="single-character-lab-layout">
-        <section class="control-panel settings-form single-character-lab-setup">
-          <h2>New Search</h2>
-          <label>Locked costume / view<select id="single-character-lab-appearance"></select></label>
-          <label>Body-reference pose<select id="single-character-lab-pose"></select></label>
-          <div class="prompt-evolution-reference-grid">
-            <figure><figcaption>Appearance reference</figcaption><img id="single-character-lab-appearance-preview" alt="Selected locked costume reference"></figure>
-            <figure><figcaption>Pose reference</figcaption><img id="single-character-lab-pose-preview" alt="Selected body-reference pose"></figure>
-          </div>
-          <label>Checkpoint<select id="single-character-lab-checkpoint"></select></label>
-          <label>Model adapter<select id="single-character-lab-adapter"></select></label>
-          <label>Workflow<select id="single-character-lab-workflow"></select></label>
-          <label>Search mode<select id="single-character-lab-mode"><option value="seed_search">Seed search</option><option value="recipe_search">Recipe search (72-image default)</option></select></label>
-          <div id="single-character-lab-seed-controls" class="form-grid compact">
-            <label>Images in seed search<select id="single-character-lab-count"></select></label>
-            <label>Reference weight<input id="single-character-lab-weight" type="number" min="0" max="2" step="0.05" value="0.45"></label>
-            <label>Pose weight<input id="single-character-lab-pose-weight" type="number" min="0" max="2" step="0.05" value="0.75"></label>
-          </div>
-          <div id="single-character-lab-recipe-controls" hidden>
-            <div id="single-character-lab-conditioning-recipe-controls">
-              <label>Appearance strengths<input id="single-character-lab-appearance-strengths" value="0.35, 0.45, 0.65"></label>
-              <label>Pose strengths<input id="single-character-lab-pose-strengths" value="0.5, 0.75, 1.0"></label>
-            </div>
-            <div id="single-character-lab-modern-recipe-controls" hidden>
-              <p class="status-text">These reference-editing nodes do not expose independent appearance or pose weights. Compare supported generation settings instead.</p>
-              <label>Step values<input id="single-character-lab-step-values" value="4"></label>
-              <label>Guidance values<input id="single-character-lab-guidance-values" value="3.5"></label>
-              <label>Denoise values<input id="single-character-lab-denoise-values" value="1.0"></label>
-            </div>
-            <label>Seeds per recipe<input id="single-character-lab-seed-count" type="number" min="1" max="256" value="8"></label>
-          </div>
-          <p id="single-character-lab-plan" class="status-text"></p>
-          <details>
-            <summary>Generation settings</summary>
-            <div class="form-grid compact">
-              <label>Steps<input id="single-character-lab-steps" type="number" min="1" value="28"></label>
-              <label>Guidance<input id="single-character-lab-guidance" type="number" min="0" step="0.1" value="6"></label>
-              <label>Sampler<select id="single-character-lab-sampler"></select></label>
-              <label>Scheduler<select id="single-character-lab-scheduler"></select></label>
-              <label>Width<input id="single-character-lab-width" type="number" min="64" step="8" value="832"></label>
-              <label>Height<input id="single-character-lab-height" type="number" min="64" step="8" value="1216"></label>
-              <label>Denoise<input id="single-character-lab-denoise" type="number" min="0" max="1" step="0.05" value="1"></label>
-            </div>
-          </details>
-          <details>
-            <summary>Generated prompts</summary>
-            <label>Positive prompt<textarea id="single-character-lab-positive"></textarea></label>
-            <label>Negative prompt<textarea id="single-character-lab-negative"></textarea></label>
-          </details>
-          <button id="single-character-lab-generate" class="primary-action" type="button" disabled>Start Search</button>
-          <p id="single-character-lab-message" class="status-text"></p>
-        </section>
-        <section class="review-main">
-          <div class="review-header"><h2>Searches</h2><button id="single-character-lab-refresh" type="button">Refresh</button></div>
-          <div id="single-character-lab-runs" class="prompt-evolution-runs"></div>
-          <div id="single-character-lab-detail"></div>
-        </section>
-      </div>
-    </section>
-
-    <section id="prompt-evolution-page" class="page">
-      <div class="page-title-row">
-        <h1>Prompt Evolution Lab</h1>
-        <div id="prompt-evolution-status" class="status-text"></div>
-      </div>
-      <div id="prompt-evolution-message" class="action-message" hidden></div>
-      <div class="button-row prompt-evolution-pane-switch" role="tablist" aria-label="Prompt Evolution view">
-        <button id="prompt-evolution-show-setup" type="button" role="tab" aria-controls="prompt-evolution-setup-pane">Setup</button>
-        <button id="prompt-evolution-show-review" type="button" role="tab" aria-controls="prompt-evolution-review-pane">Running &amp; Review</button>
-      </div>
-      <div class="prompt-evolution-layout">
-        <section id="prompt-evolution-setup-pane" class="control-panel prompt-evolution-pane prompt-evolution-setup" role="tabpanel">
-          <h2>New Run</h2>
-          <div class="settings-form">
-            <label>Costume / view<select id="prompt-evolution-asset"></select></label>
-            <div class="prompt-evolution-reference-grid">
-              <figure><figcaption>Locked source</figcaption><img id="prompt-evolution-source-preview" alt="Selected locked costume reference"></figure>
-              <figure><figcaption>768 × 1024 derivative</figcaption><img id="prompt-evolution-derivative-preview" alt="Processed prompt evolution reference"></figure>
-            </div>
-            <label>Image backend<select id="prompt-evolution-backend"><option value="stable_matrix">Stable Matrix</option><option value="comfyui">ComfyUI</option></select></label>
-            <label>Workflow<select id="prompt-evolution-profile"></select></label>
-            <label>Checkpoint<select id="prompt-evolution-checkpoint"></select></label>
-            <div id="prompt-evolution-comfy-controls" class="settings-form" hidden>
-              <div id="prompt-evolution-comfy-status" class="status-text"></div>
-              <div class="form-grid compact">
-                <label>Sampler<select id="prompt-evolution-sampler"></select></label>
-                <label>Scheduler<select id="prompt-evolution-scheduler"></select></label>
-                <label>Img2img denoise<input id="prompt-evolution-denoise" type="number" min="0" max="1" step="0.05" value="0.55"></label>
-              </div>
-              <div id="prompt-evolution-img2img-controls">
-                <label>Img2img source<select id="prompt-evolution-init-source"></select></label>
-                <label>Or upload img2img source<input id="prompt-evolution-init-upload" type="file" accept="image/png,image/jpeg,image/webp"></label>
-                <figure><figcaption>Img2img conditioning</figcaption><img id="prompt-evolution-init-preview" alt="Selected img2img conditioning source"></figure>
-              </div>
-              <div id="prompt-evolution-pose-controls">
-                <label>Pose source<select id="prompt-evolution-pose-source"></select></label>
-                <label>Or upload pose source<input id="prompt-evolution-pose-upload" type="file" accept="image/png,image/jpeg,image/webp"></label>
-                <figure><figcaption>Pose conditioning</figcaption><img id="prompt-evolution-pose-preview" alt="Selected pose conditioning source"></figure>
-                <div class="form-grid compact">
-                  <label>Pose preprocessing<select id="prompt-evolution-preprocessor"><option value="dwpose">DWPose / OpenPose</option><option value="depth">MiDaS depth</option><option value="canny">Canny</option></select></label>
-                  <label>ControlNet model<select id="prompt-evolution-controlnet-model"></select></label>
-                  <label>Strength<input id="prompt-evolution-control-strength" type="number" min="0" step="0.05" value="0.8"></label>
-                  <label>Start<input id="prompt-evolution-control-start" type="number" min="0" max="1" step="0.05" value="0"></label>
-                  <label>End<input id="prompt-evolution-control-end" type="number" min="0" max="1" step="0.05" value="0.85"></label>
-                </div>
-              </div>
-            </div>
-            <div class="form-grid compact">
-              <label>CFG<input id="prompt-evolution-cfg" type="number" min="0" max="30" step="0.5" value="7"></label>
-              <label>Steps<input id="prompt-evolution-steps" type="number" min="1" max="150" value="32"></label>
-              <label>Images<input id="prompt-evolution-batch-size" type="number" min="2" max="10" value="6"></label>
-              <label>Fixed seeds<input id="prompt-evolution-fixed-seed-count" type="number" min="1" max="9" value="3"></label>
-              <label>Batches<input id="prompt-evolution-total-batches" type="number" min="2" max="20" value="5"></label>
-            </div>
-            <label>Optional starting positive prompt<textarea id="prompt-evolution-positive"></textarea></label>
-            <label>Optional starting negative prompt<textarea id="prompt-evolution-negative"></textarea></label>
-            <details class="prompt-evolution-checklist-editor">
-              <summary>Character and costume checklists</summary>
-              <p class="status-text">Desired-condition regression checks stored beside the selected Character.md and Costume_*.md.</p>
-              <label>Character / phase items (JSON array)<textarea id="prompt-evolution-character-checklist" spellcheck="false"></textarea></label>
-              <button id="prompt-evolution-character-checklist-save" type="button">Save character / phase checklist</button>
-              <label>Selected costume items (JSON array)<textarea id="prompt-evolution-costume-checklist" spellcheck="false"></textarea></label>
-              <button id="prompt-evolution-costume-checklist-save" type="button">Save costume checklist</button>
-              <div id="prompt-evolution-checklist-paths" class="status-text"></div>
-            </details>
-            <button id="prompt-evolution-start" class="primary-action" type="button">Start Run</button>
-          </div>
-          <details>
-            <summary>LLM instruction templates</summary>
-            <label>Template<select id="prompt-evolution-template-name"><option>bootstrap</option><option>visual_critic</option><option>regression_check</option><option>batch_synthesis</option><option>prompt_diagnosis</option><option>prompt_edit</option><option>repair</option><option>directed_refinement</option></select></label>
-            <textarea id="prompt-evolution-template-text" class="prompt-evolution-template"></textarea>
-            <button id="prompt-evolution-template-save" type="button">Save Template</button>
-          </details>
-        </section>
-        <section id="prompt-evolution-review-pane" class="review-main prompt-evolution-pane" role="tabpanel" hidden>
-          <div class="review-header"><h2>Runs</h2><button id="prompt-evolution-refresh" type="button">Refresh</button></div>
-          <div id="prompt-evolution-runs" class="prompt-evolution-runs"></div>
-          <div id="prompt-evolution-detail" class="prompt-evolution-detail"></div>
         </section>
       </div>
     </section>

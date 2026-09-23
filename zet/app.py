@@ -35,7 +35,6 @@ from zet.services.pipeline_control_service import AutomationSettings, PipelineCo
 from zet.services.pipeline_inspection_service import PipelineInspectionService
 from zet.services.prompt_review_service import PromptReviewContext, PromptReviewService
 from zet.services.prompt_artifact_service import PromptArtifactService
-from zet.services.prompt_evolution_service import PromptEvolutionService
 from zet.services.production_work_summary_service import ProductionWorkSummaryService
 from zet.services.discovery_context import DiscoveryContext
 from zet.services.reference_service import ReferenceService
@@ -209,10 +208,6 @@ class ZetApp:
             path_service,
             costume_service,
             story_service,
-            Path(__file__).resolve().parents[1],
-        )
-        self.prompt_evolution_service = PromptEvolutionService(
-            self,
             Path(__file__).resolve().parents[1],
         )
         self.zine_service = ZineService(path_service, story_service)
@@ -1186,28 +1181,17 @@ class ZetApp:
 
     def harvest_ai_answers(self):
         results = self.asset_service.harvest_ai_answers()
-        from zet.services.body_reference_experiment_service import BodyReferenceExperimentService
-        BodyReferenceExperimentService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()
-        self.prompt_evolution_service.advance_active_runs()
+        from zet.services.local_body_reference_service import LocalBodyReferenceService
+        LocalBodyReferenceService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
         self.refresh_library_index()
         return results
 
-    def prompt_evolution_options(self, character: str, phase: str):
-        return self.prompt_evolution_service.options(character, phase)
 
-    def create_prompt_evolution_run(self, payload: dict, uploads: dict | None = None):
-        return self.prompt_evolution_service.create_run(payload, uploads)
 
-    def list_prompt_evolution_runs(self):
-        return self.prompt_evolution_service.list_runs()
 
-    def prompt_evolution_run(self, run_id: str):
-        return self.prompt_evolution_service.detail(run_id)
 
-    def accept_prompt_evolution_review(self, run_id: str, positive_core: str, negative_core: str):
-        return self.prompt_evolution_service.accept_prompt_review(run_id, positive_core, negative_core)
 
     def run_available_workers(self, character: str, phase: str):
         return self.asset_service.run_available_workers(character, phase)
@@ -1294,9 +1278,9 @@ class ZetApp:
         return self.ai_proxy_service.queue_snapshot()
 
     def codex_jobs(self):
-        from zet.services.body_reference_experiment_service import BodyReferenceExperimentService
+        from zet.services.local_body_reference_service import LocalBodyReferenceService
 
-        return BodyReferenceExperimentService(self, Path(__file__).resolve().parents[1]).list_codex_jobs()
+        return LocalBodyReferenceService(self, Path(__file__).resolve().parents[1]).list_codex_jobs()
 
     def inspect_manual_render_publications(self) -> list[dict]:
         """Inspect manual-render publication journals and staging bundles."""

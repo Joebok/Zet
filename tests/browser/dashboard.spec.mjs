@@ -516,258 +516,6 @@ test("Image Inventory reports queued AI descriptions and harvests drafts without
   await expect(page.locator("#image-catalog-ai-status")).toBeHidden();
 });
 
-test("Image Inventory manages imported images and optional reference sets", async ({ page }) => {
-  await openPage(page, "auxiliary-resources");
-  await page.locator("#image-catalog-set-label").fill("Browser Props");
-  const setCreated = page.waitForResponse((response) => response.url().endsWith("/api/image-catalog/reference-sets") && response.request().method() === "POST" && response.ok());
-  await page.locator("#image-catalog-set-save").click();
-  await setCreated;
-
-  await page.locator("#image-catalog-import-file").setInputFiles({
-    name: "lantern.png",
-    mimeType: "image/png",
-    buffer: Buffer.from("browser image"),
-  });
-  await page.locator("#image-catalog-import-label").fill("Browser Lantern");
-  const referenceSetValue = await page.locator("#image-catalog-import-set option").filter({ hasText: "Browser Props" }).first().getAttribute("value");
-  await page.locator("#image-catalog-import-set").selectOption(referenceSetValue);
-  const imported = page.waitForResponse((response) => response.url().includes("/api/image-catalog/imports?") && response.ok());
-  await page.locator("#image-catalog-import-save").click();
-  await imported;
-
-  await expect(page.locator("#image-catalog-managed-actions")).toBeVisible();
-  await expect(page.locator("#image-catalog-managed-label")).toHaveValue("Browser Lantern");
-  await expect(page.locator("#image-catalog-add-upload")).toBeHidden();
-  await expect(page.locator("#image-catalog-replace-upload")).toBeHidden();
-  await page.locator("#image-catalog-add").click();
-  await expect(page.locator("#image-catalog-add-upload")).toBeVisible();
-  await page.locator("#image-catalog-add-label").fill("Browser Lantern Alternate");
-  await page.locator("#image-catalog-add-file").setInputFiles({
-    name: "lantern-alternate.png",
-    mimeType: "image/png",
-    buffer: Buffer.from("alternate image"),
-  });
-  const added = page.waitForResponse((response) => response.url().includes("/api/image-catalog/imports?") && response.ok());
-  await page.locator("#image-catalog-add-submit").click();
-  await added;
-  await expect(page.locator("#image-catalog-editor-title")).toContainText("Browser Lantern Alternate");
-  await page.getByRole("button", { name: "Edit Browser Props - Browser Lantern", exact: true }).click();
-  await page.locator("#image-catalog-managed-label").fill("Renamed Lantern");
-  await page.locator("#image-catalog-managed-set").selectOption("");
-  const saved = page.waitForResponse((response) => response.url().includes("/api/image-catalog/img_") && response.request().method() === "PATCH" && response.ok());
-  await page.locator("#image-catalog-save").click();
-  await saved;
-  await expect(page.locator("#image-catalog-editor-title")).toHaveText("Renamed Lantern");
-  await expect(page.locator("#aux-resource-message")).toContainText("Image metadata saved.");
-  await expect(page.locator("#image-catalog-managed-label")).toHaveValue("Renamed Lantern");
-
-  await expect(page.locator("#image-catalog-replace-upload")).toBeHidden();
-  await page.locator("#image-catalog-replace").click();
-  await expect(page.locator("#image-catalog-replace-upload")).toBeVisible();
-  await page.locator("#image-catalog-replace-file").setInputFiles({
-    name: "lantern.jpg",
-    mimeType: "image/jpeg",
-    buffer: Buffer.from("replacement image"),
-  });
-  const replaced = page.waitForResponse((response) => response.url().endsWith("/content") && response.ok());
-  await page.locator("#image-catalog-replace-submit").click();
-  await replaced;
-
-  page.once("dialog", (dialog) => dialog.accept());
-  const deleted = page.waitForResponse((response) => response.url().includes("/api/image-catalog/img_") && response.request().method() === "DELETE" && response.ok());
-  await page.locator("#image-catalog-delete").click();
-  await deleted;
-  await expect(page.locator("#image-catalog-grid").getByText("Renamed Lantern", { exact: true })).toHaveCount(0);
-});
-
-
-test("Single Character Lab previews recipe search and persists candidate review", async ({ page }) => {
-  const automaticScores = {
-    identity_fidelity: 4, costume_fidelity: 3, pose_orientation: 2,
-    composition_framing: 3, technical_quality: 4, style_fit: 3,
-  };
-  const run = {
-    schema_version: 2, run_id: "20260917_010101_000001", status: "COMPLETE", mode: "recipe_search",
-    costume: "Adventure Gear", view: "Front", checkpoint: "tastyrice.safetensors", candidate_count: 2,
-    completed_count: 2, failed_count: 0, reference_image: "C:/fixture/appearance.png", pose_image: "C:/fixture/pose.png",
-    model_adapter: { label: "SDXL IP-Adapter + pose ControlNet" }, positive_prompt: "portrait", negative_prompt: "bad",
-    candidates: [{ candidate_id: "c001", recipe_id: "r001", seed: "9007199254740993", status: "COMPLETE",
-      image_path: "C:/fixture/candidate.png", render_seconds: 12.5,
-      automatic_review: { scores: automaticScores, hard_gates: { identity: true, costume: true, anatomy: true, composition: true }, evidence: "Visible details match.", uncertainty: "low" },
-      review: { decision: "undecided", shortlisted: false, failure_reasons: [], notes: "", cleanup_minutes: null } },
-    { candidate_id: "c002", recipe_id: "r001", seed: "9007199254740995", status: "COMPLETE",
-      image_path: "C:/fixture/candidate-2.png", render_seconds: 13,
-      automatic_review: { scores: { ...automaticScores, pose_orientation: 4 }, hard_gates: { identity: true, costume: true, anatomy: true, composition: true }, evidence: "Pose matches.", uncertainty: "" },
-      review: { decision: "undecided", shortlisted: false, failure_reasons: [], notes: "", cleanup_minutes: null } }],
-    summary: { reviewed_count: 0, acceptance_rate: null, estimated_remaining_seconds: null },
-  };
-  let deleted = false;
-  await page.route(/\/api\/single-character-lab\/options\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
-    appearances: [{ asset_id: 1, label: "Adventure Gear · Front", view: "Front", image_path: "C:/fixture/appearance.png" }],
-    poses: [{ tag: "pose-front", label: "Front", view: "Front", image_path: "C:/fixture/pose.png" }],
-    checkpoints: ["tastyrice.safetensors"], default_checkpoint: "tastyrice.safetensors",
-    default_reference_weight: 0.45, default_pose_weight: 0.75, candidate_counts: [1, 16, 64, 128],
-    adapters: [
-      { id: "sdxl", label: "SDXL IP-Adapter + pose ControlNet", available: true, missing: [] },
-      { id: "qwen-image-edit-2511", label: "Qwen Image Edit 2511", available: true, missing: [] },
-    ],
-    samplers: ["dpmpp_2m", "euler"], schedulers: ["karras", "simple"],
-  }) }));
-  await page.route(/\/api\/single-character-lab\/prompt\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ positive_prompt: "portrait", negative_prompt: "bad" }) }));
-  await page.route(/\/api\/single-character-lab\/runs\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ runs: deleted ? [] : [run] }) }));
-  await page.route(/\/api\/single-character-lab\/runs\/[^/?]+$/, (route) => {
-    if (route.request().method() === "DELETE") {
-      deleted = true;
-      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ deleted: true, run_id: run.run_id }) });
-    }
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(run) });
-  });
-  await page.route(/\/api\/single-character-lab\/runs\/[^/]+\/candidates\?/, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ run_id: run.run_id, page: 1, pages: 1, total: 2, candidates: run.candidates }) }));
-  await page.route("**/api/single-character-lab/preview", async (route) => {
-    const payload = route.request().postDataJSON();
-    const recipeCount = payload.mode !== "recipe_search" ? 1 : payload.adapter_id === "sdxl"
-      ? payload.appearance_strengths.length * payload.pose_strengths.length
-      : payload.step_values.length * payload.guidance_values.length * payload.denoise_values.length;
-    const candidateCount = payload.mode === "recipe_search" ? recipeCount * payload.seed_count : payload.count;
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ candidate_count: candidateCount, recipe_count: recipeCount, seed_count: payload.seed_count || payload.count }) });
-  });
-  const savedReviews = [];
-  await page.route(/\/candidates\/[^/]+\/review$/, async (route) => {
-    savedReviews.push(route.request().postDataJSON());
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ candidate: run.candidates[0], summary: {} }) });
-  });
-
-  await openPage(page, "single-character-lab");
-  await page.locator("#single-character-lab-mode").selectOption("recipe_search");
-  await expect(page.locator("#single-character-lab-plan")).toContainText("72 candidates");
-  await expect(page.locator("#single-character-lab-seed-controls")).toBeHidden();
-  await page.locator("#single-character-lab-adapter").selectOption("qwen-image-edit-2511");
-  await expect(page.locator("#single-character-lab-modern-recipe-controls")).toBeVisible();
-  await expect(page.locator("#single-character-lab-conditioning-recipe-controls")).toBeHidden();
-  await expect(page.locator("#single-character-lab-plan")).toContainText("24 candidates · 3 recipe(s)");
-  await expect(page.locator("#single-character-lab-sampler")).toHaveValue("euler");
-  await expect(page.locator("#single-character-lab-scheduler")).toHaveValue("simple");
-  await expect(page.locator("#single-character-lab-detail")).toContainText("c001");
-  await expect(page.locator('[data-candidate-id="c001"] [data-score="identity_fidelity"]')).toHaveValue("4");
-  await expect(page.locator('[data-candidate-id="c001"]')).toContainText("Add to shortlist");
-  await page.locator(".single-character-review-image-button").first().click();
-  const reviewDialog = page.locator(".single-character-review-dialog");
-  await expect(reviewDialog).toBeVisible();
-  await expect(reviewDialog.locator(".single-character-review-image-pane img")).toHaveAttribute("src", /candidate\.png/);
-  await expect(reviewDialog.locator('[data-score="identity_fidelity"]')).toHaveValue("4");
-  const firstScoreBox = await reviewDialog.locator('[data-score="identity_fidelity"]').boundingBox();
-  const secondScoreBox = await reviewDialog.locator('[data-score="costume_fidelity"]').boundingBox();
-  expect(firstScoreBox.width).toBeLessThan(70);
-  expect(Math.abs(firstScoreBox.y - secondScoreBox.y)).toBeLessThan(5);
-  await expect(reviewDialog.locator('[data-review-field="decision"]')).toHaveCount(3);
-  await expect(reviewDialog).toContainText("Estimated manual cleanup time (minutes)");
-  await reviewDialog.locator('[data-review-field="decision"][value="keep"]').check();
-  await reviewDialog.locator('[data-review-field="shortlisted"]').check();
-  await reviewDialog.locator('[data-score="costume_fidelity"]').fill("2");
-  await reviewDialog.locator(".single-character-review-next").click();
-  await expect.poll(() => savedReviews.at(-1)?.decision).toBe("keep");
-  expect(savedReviews.at(-1).shortlisted).toBe(true);
-  expect(savedReviews.at(-1).scores.costume_fidelity).toBe(2);
-  await expect(reviewDialog).toContainText("Candidate 2 of 2");
-  await expect(reviewDialog.locator(".single-character-review-image-pane img")).toHaveAttribute("src", /candidate-2\.png/);
-  await reviewDialog.locator('[data-review-field="decision"][value="reject"]').check();
-  await reviewDialog.locator(".single-character-review-previous").click();
-  await expect.poll(() => savedReviews.at(-1)?.decision).toBe("reject");
-  await expect(reviewDialog).toContainText("Candidate 1 of 2");
-  await reviewDialog.locator(".single-character-review-close").click();
-
-  await page.locator('[data-lab-action="delete"]').click();
-  await expect(page.locator("#confirmation-dialog")).toBeVisible();
-  await page.locator("#confirmation-confirm").click();
-  await expect.poll(() => deleted).toBe(true);
-  await expect(page.locator("#single-character-lab-detail")).toContainText("No runs yet");
-});
-
-
-test("Prompt Evolution v3 uses global role models, blinded prompt grids, and post-selection audits", async ({ page }) => {
-  await openPage(page, "prompt-evolution");
-  await page.locator("#prompt-evolution-show-setup").click();
-  await expect(page.locator("#prompt-evolution-setup-pane")).toBeVisible();
-  await page.locator("#prompt-evolution-show-review").click();
-  await expect(page.locator("#prompt-evolution-review-pane")).toBeVisible();
-  await expect(page.locator("#prompt-evolution-setup-pane")).toBeHidden();
-  await page.locator("#prompt-evolution-show-setup").click();
-  await expect(page.locator("#prompt-evolution-critic-model-a, #prompt-evolution-critic-model-b, #prompt-evolution-analysis-model, #prompt-evolution-check-model")).toHaveCount(0);
-  await expect(page.locator("#prompt-evolution-backend")).toBeVisible();
-  await expect(page.locator("#prompt-evolution-backend")).toHaveValue("stable_matrix");
-  await expect(page.locator("#prompt-evolution-comfy-controls")).toBeHidden();
-  await expect(page.locator("#prompt-evolution-fixed-seed-count")).toHaveValue("3");
-  await expect(page.locator("#prompt-evolution-mode, #prompt-evolution-metadata")).toHaveCount(0);
-  await page.locator("#prompt-evolution-show-review").click();
-
-  const batch = {
-    index: 0, prompt_version_id: "prompt-000", status: "REVIEWED",
-    positive_prompt: "hidden black bob, gray background", negative_prompt: "hidden blonde hair, cropped",
-    positive_core: "hidden black bob", negative_core: "hidden blonde hair",
-    renders: [{ seed: 11, seed_role: "fixed", file: "fixed.png" }, { seed: 22, seed_role: "fresh", file: "fresh.png" }],
-    candidates: [{ seed: 11, seed_role: "fixed", file: "fixed.png", critics: { a: { major_differences: [{ reference: "teal coat", candidate: "blue coat" }], stable_matches: ["black bob"] }, b: { stable_matches: ["black bob"] } }, checks: [{ id: "hair", pass: true, evidence: "Hair is black." }] }],
-    synthesis: { recurrent_deviations: [], stable_successes: ["black bob"] },
-    diagnosis: { interventions: [] }, edit: {},
-  };
-  const nextBatch = {
-    ...batch, index: 1, prompt_version_id: "prompt-001", status: "RENDERING", renders: [],
-    positive_prompt: "hidden black bob, teal coat, gray background", positive_core: "hidden black bob, teal coat",
-  };
-  await page.evaluate((value) => renderPromptEvolutionDetail(value), {
-    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
-    reference_image: "reference.png", checkpoint: "checkpoint", status: "RENDERING", batches: [batch, nextBatch],
-  });
-  const activePromptHistory = page.locator(".prompt-evolution-prompt-history").nth(1);
-  await activePromptHistory.click();
-  await expect(activePromptHistory).toContainText("hidden black bob, teal coat");
-  await expect(activePromptHistory.locator(".prompt-diff-added")).toContainText("teal coat");
-
-  await page.evaluate(({ run, sourceBatch }) => renderPromptEvolutionDetail({
-    ...run,
-    batches: [{ ...sourceBatch, status: "AWAITING_PROMPT_REVIEW", synthesis: { next_round_priorities: [{ problem: "coat color" }] }, diagnosis: { interventions: [{ rationale: "color drift" }] }, edit: { positive_core: "black bob, red coat", negative_core: "blue coat", changes: [{ reason: "correct drift" }] } }],
-  }), { run: {
-    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
-    reference_image: "reference.png", checkpoint: "checkpoint", status: "AWAITING_PROMPT_REVIEW", current_batch: 0,
-  }, sourceBatch: batch });
-  await expect(page.locator(".prompt-evolution-manual-review")).toContainText("Reasoning for this change");
-  await expect(page.locator(".prompt-evolution-change-list")).toContainText("correct drift");
-  await expect(page.locator(".prompt-evolution-summary-diff")).toContainText("red coat");
-  await expect(page.locator("[data-prompt-evolution-review-positive]")).toHaveValue("black bob, red coat");
-  await expect(page.locator("[data-prompt-evolution-review-negative]")).toHaveValue("blue coat");
-  await expect(page.locator("[data-prompt-evolution-review-accept]")).toBeVisible();
-
-  await page.evaluate((value) => renderPromptEvolutionDetail(value), {
-    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
-    reference_image: "reference.png", checkpoint: "checkpoint", status: "AWAITING_FINAL_REVIEW",
-    prompt_versions: [{ prompt_version_id: "prompt-000", fixed_renders: [batch.renders[0]], fresh_renders: [batch.renders[1]] }], batches: [batch, nextBatch],
-  });
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("Choice A");
-  await expect(page.locator(".prompt-evolution-prompt-versions")).toContainText("Prompt version 2");
-  await expect(page.locator("[data-prompt-evolution-final-version='prompt-000']")).toBeVisible();
-
-  await page.evaluate((value) => renderPromptEvolutionDetail(value), {
-    version: 3, run_id: "run-1", character: "Character", phase: "Adult", costume: "Costume", view: "Front",
-    reference_image: "reference.png", checkpoint: "checkpoint", status: "COMPLETE",
-    selected_prompt_version: "prompt-000", prompt_versions: [], batches: [batch],
-    activity_log: [{ at: "2026-08-10T14:00:00", level: "info", message: "Batch 1 — queued seed 11 for Critic A visual comparison." }],
-  });
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("Selected prompt version");
-  await expect(page.locator(".prompt-evolution-log")).toContainText("queued seed 11 for Critic A");
-  await page.locator("#prompt-evolution-detail details").filter({ hasText: "Automatic decision audit" }).click();
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("Cross-seed priorities");
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("black bob");
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("teal coat");
-  await expect(page.locator("#prompt-evolution-detail")).toContainText("Hair is black.");
-
-  const refreshed = page.waitForResponse((response) => response.url().endsWith("/api/prompt-evolution/runs") && response.ok());
-  await page.locator("#prompt-evolution-refresh").click();
-  await refreshed;
-});
-
-
-
-
-
 test("@desktop-smoke workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
   await openPage(page, "assets");
   await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
@@ -1152,6 +900,8 @@ test("@desktop-smoke Scene Builder manages a background render target", async ({
   await expect(page.getByRole("button", { name: "Background", exact: true })).toHaveClass(/selected/);
   await expect(page.locator(".scene-builder-active-target")).toHaveText("Editing Subscene: Background");
   await expect(page.locator(".scene-builder-element-list")).toContainText("Hall");
+  await expect(page.locator(".scene-builder-element-row").filter({ hasText: "Hero" })).toHaveClass(/context-only/);
+  await page.locator(".builder-context-toggle input").uncheck();
   await expect(page.locator(".scene-builder-element-list")).not.toContainText("Hero");
 
   const stagedForConsole = page.waitForResponse((response) => response.url().includes("/render-targets/background/stage-render") && response.ok());
@@ -1425,7 +1175,7 @@ test("AI Queue stacks queue lists and Config manages Zet processes", async ({ pa
   await expect(recentHarvests.first()).toContainText("SUCCESS");
   await expect(recentHarvests.first()).toContainText("Recent browser-test job completed.");
   expect(await page.locator(".recent-harvests-panel").evaluate((panel) => panel.getBoundingClientRect().top)).toBeGreaterThan(
-    await page.locator(".ai-render-console-panel").evaluate((panel) => panel.getBoundingClientRect().top),
+    await page.locator(".ai-render-console-panel:has(#manual-render-table)").evaluate((panel) => panel.getBoundingClientRect().top),
   );
 
   await openPage(page, "local-image-config");
@@ -1434,10 +1184,6 @@ test("AI Queue stacks queue lists and Config manages Zet processes", async ({ pa
   await expect(page.locator("#setting-prompt-condense-model")).toBeVisible();
   await expect(page.locator("#setting-ai-prompt-analysis-model")).toBeVisible();
   await expect(page.locator("#setting-ai-scene-builder-model")).toBeVisible();
-  await expect(page.locator("#setting-ai-prompt-evolution-critic-a-model")).toBeVisible();
-  await expect(page.locator("#setting-ai-prompt-evolution-critic-b-model")).toBeVisible();
-  await expect(page.locator("#setting-ai-prompt-evolution-analysis-model")).toBeVisible();
-  await expect(page.locator("#setting-ai-prompt-evolution-check-model")).toBeVisible();
   await expect(page.locator('[data-llm-role="image_description"]')).toContainText("Image Inventory catalog metadata");
   await expect(page.locator('[data-llm-role="image_description"]')).toContainText("Creates Image Inventory catalog identity and costume metadata.");
   await page.getByRole("button", { name: "Edit Analysis instructions" }).click();
