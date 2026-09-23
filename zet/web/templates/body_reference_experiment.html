@@ -20,6 +20,7 @@
     button:disabled { cursor: not-allowed; opacity: .55; }
     .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .danger { color: var(--danger); }
+    .danger-action { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
     .muted, .hint { color: var(--muted); }
     .hint { line-height: 1.45; margin: .5rem 0 0; }
     #status { min-height: 1.5rem; }
@@ -45,8 +46,10 @@
     dialog { border: 0; border-radius: 10px; height: min(94vh, 1000px); max-height: 94vh; max-width: 96vw; overflow: hidden; padding: 0; position: relative; width: min(1500px, 96vw); }
     dialog::backdrop { background: rgb(0 0 0 / 82%); }
     .review-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(340px, .8fr); height: 100%; }
-    .review-image { align-items: center; background: #111; display: flex; justify-content: center; min-height: 0; overflow: hidden; padding: 2.5rem 3rem; }
-    .review-image img { height: 100%; max-height: 100%; max-width: 100%; object-fit: contain; width: 100%; }
+    .review-images { background: #111; display: grid; gap: .75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; overflow: hidden; padding: 2.5rem 3rem; }
+    .review-image { align-items: center; color: #ddd; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; }
+    .review-image h3 { color: #ddd; flex: 0 0 auto; font-size: .95rem; margin: 0 0 .5rem; }
+    .review-image img { flex: 1 1 auto; height: 0; max-height: 100%; max-width: 100%; min-height: 0; object-fit: contain; width: 100%; }
     .review-panel { background: var(--panel); overflow-y: auto; padding: 1.5rem; }
     .review-close { position: absolute; right: 1rem; top: .75rem; z-index: 2; }
     .review-nav { border-radius: 999px; font-size: 2rem; height: 48px; line-height: 1; padding: 0; position: absolute; top: 50%; transform: translateY(-50%); width: 48px; z-index: 2; }
@@ -63,7 +66,7 @@
     .pass { color: #217a3c; }
     @media (max-width: 900px) {
       .review-layout { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 52%) minmax(0, 48%); }
-      .review-image { padding: 3rem 3.5rem 1rem; }
+      .review-images { padding: 3rem 1rem 1rem; }
       .review-panel { padding: 1rem; }
     }
   </style>
@@ -79,6 +82,7 @@
         <button id="refresh-runs" type="button">Refresh runs</button>
         <button id="rerun" type="button" disabled>Re-run batch</button>
         <button id="reevaluate" type="button" disabled>Re-evaluate batch</button>
+        <button id="stop" class="danger-action" type="button" hidden>Stop</button>
         <button id="delete" class="danger" type="button" disabled>Delete batch</button>
       </div>
       <p class="hint">There can be many batches for one character and phase. Choose a Run ID above to load it. Use the controls on a view to regenerate or re-evaluate only that view; the batch controls apply to the whole batch.</p>
@@ -96,7 +100,7 @@
   <dialog id="review-dialog" aria-label="Body-Reference candidate review">
     <button id="review-close" class="review-close" type="button">Close</button>
     <button id="review-prev" class="review-nav review-prev" type="button" aria-label="Previous candidate">‹</button>
-    <div class="review-layout"><section class="review-image"><img id="review-image" alt=""></section><aside id="review-panel" class="review-panel"></aside></div>
+    <div class="review-layout"><section class="review-images"><div class="review-image"><h3>Front anchor</h3><img id="review-anchor-image" alt=""><p id="review-anchor-message" class="hint"></p></div><div class="review-image"><h3>Image to review</h3><img id="review-image" alt=""></div></section><aside id="review-panel" class="review-panel"></aside></div>
     <button id="review-next" class="review-nav review-next" type="button" aria-label="Next candidate">›</button>
   </dialog>
 
@@ -104,7 +108,7 @@
     const $ = (selector) => document.querySelector(selector);
     const characterSelect = $('#character'), phaseSelect = $('#phase'), runSelect = $('#run');
     const status = $('#status'), gallery = $('#gallery'), reviewDialog = $('#review-dialog');
-    const reviewImage = $('#review-image'), reviewPanel = $('#review-panel');
+    const reviewImage = $('#review-image'), reviewAnchorImage = $('#review-anchor-image'), reviewAnchorMessage = $('#review-anchor-message'), reviewPanel = $('#review-panel');
     let context = {characters: [], phases_by_character: {}};
     let run = null, runs = [], reviewCandidates = [], reviewIndex = -1;
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -146,13 +150,19 @@
     function renderRun(value) {
       const collapsedViews = new Set([...gallery.querySelectorAll('details[data-view]')].filter((item) => !item.open).map((item) => item.dataset.view));
       run = value;
-      $('#rerun').disabled = !run; $('#reevaluate').disabled = !run || !run.candidates?.some((item) => item.status === 'COMPLETE') || ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING'].includes(run.status); $('#delete').disabled = !run;
+      const activeStatuses = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','INTERRUPTED','WAITING_FOR_FACE_GATE','WAITING_FOR_ANALYSIS'];
+      const statusLabel = (status) => ({WAITING_FOR_FACE_GATE:'Waiting for Face Gate', WAITING_FOR_ANALYSIS:'Waiting for Analysis', WAITING_FOR_HUMAN_REVIEW:'Waiting for Human Review'}[status] || String(status || '').replaceAll('_', ' '));
+      const busy = Boolean(run && activeStatuses.includes(run.status));
+      const stoppable = Boolean(run && busy);
+      $('#stop').hidden = !stoppable; $('#stop').disabled = !stoppable;
+      $('#rerun').disabled = !run || busy;
+      $('#reevaluate').disabled = !run || !run.candidates?.some((item) => item.status === 'COMPLETE') || busy;
+      $('#delete').disabled = !run || busy; $('#new-batch button[type="submit"]').disabled = busy;
       if (!run) { gallery.innerHTML = ''; setStatus('Select a character and phase, then create or select a batch.'); return; }
       const counts = (run.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
       setStatus(`${run.status} · ${counts.COMPLETE || 0}/${run.candidate_count || run.candidates.length} complete · front anchor: ${run.front_anchor || 'not selected'}${run.error ? ` · ${run.error}` : ''}`);
       const byView = (run.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
       const promptUrl = (view) => `/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/review-prompt/${encodeURIComponent(view)}`;
-      const busy = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING'].includes(run.status);
       gallery.innerHTML = (run.views || []).map((view) => {
         const viewCandidates = byView[view] || [];
         const completeCount = viewCandidates.filter((item) => item.status === 'COMPLETE').length;
@@ -160,17 +170,21 @@
         const viewCanReevaluate = completeCount > 0 && viewCanRun && !busy;
         const viewCanRerun = viewCandidates.length > 0 && viewCanRun && !busy;
         const open = collapsedViews.has(view) ? '' : ' open';
-        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${completeCount}/${viewCandidates.length} images complete</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-run</button><button data-reevaluate-view="${esc(view)}" type="button" ${viewCanReevaluate ? '' : 'disabled'}>Re-evaluate</button></span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View Local + Codex review prompt for ${esc(view)}</a></p><div class="cards">${viewCandidates.map((candidate) => {
+        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${completeCount}/${viewCandidates.length} images complete</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${viewCanReevaluate ? '' : 'disabled'}>Re-evaluate</button>${view === 'FRONT' ? '<button data-proceed type="button" ' + (run.front_anchor && !busy ? '' : 'disabled') + '>Proceed</button>' : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View Local + Codex review prompt for ${esc(view)}</a></p><div class="cards">${viewCandidates.map((candidate) => {
           const complete = candidate.status === 'COMPLETE';
+          const reviewable = complete || candidate.status === 'WAITING_FOR_HUMAN_REVIEW';
           const anchor = run.front_anchor === candidate.candidate_id;
-          const image = complete ? `<button class="card-image" data-review="${esc(candidate.candidate_id)}" type="button"><img src="${imageUrl(candidate)}" alt="${esc(view)} candidate ${esc(candidate.candidate_id)}"></button>` : `<div class="muted">${esc(candidate.status)}</div>`;
+          const cardImage = `<img src="${imageUrl(candidate)}" alt="${esc(view)} candidate ${esc(candidate.candidate_id)}">`;
+          const image = reviewable ? `<button class="card-image" data-review="${esc(candidate.candidate_id)}" type="button">${cardImage}</button>` : candidate.image_path ? `<div class="card-image">${cardImage}</div>` : `<div class="muted">${esc(statusLabel(candidate.status))}</div>`;
           const failed = candidate.status === 'FAILED' || candidate.local_job?.status === 'FAILED' || candidate.luna_status === 'FAILED';
-          return `<article class="card${anchor ? ' card-anchor' : ''}">${image}<p><strong>${esc(candidate.candidate_id)}</strong> · ${esc(candidate.method)}</p><p class="muted">${esc(candidate.status)}${anchor ? ' · FRONT ANCHOR' : ''}</p><div class="ai-summary">${complete ? candidateSummary(candidate) : ''}</div><div class="card-actions">${complete ? `<button data-review="${esc(candidate.candidate_id)}" type="button">Review</button>` : ''}${failed ? `<button data-retry="${esc(candidate.candidate_id)}" type="button">Retry</button>` : ''}</div></article>`;
+          return `<article class="card${anchor ? ' card-anchor' : ''}">${image}<p><strong>${esc(candidate.candidate_id)}</strong> · ${esc(candidate.method)}</p><p class="muted">${esc(statusLabel(candidate.status))}${anchor ? ' · FRONT ANCHOR' : ''}</p><div class="ai-summary">${reviewable ? candidateSummary(candidate) : ''}</div><div class="card-actions">${reviewable ? `<button data-review="${esc(candidate.candidate_id)}" type="button">${complete ? 'Review' : 'Human Review'}</button>` : ''}${failed ? `<button data-retry="${esc(candidate.candidate_id)}" type="button">Retry</button>` : ''}</div></article>`;
         }).join('')}</div></div></details>`;
       }).join('');
       gallery.querySelectorAll('details[data-view]').forEach((detail) => detail.addEventListener('toggle', () => { if (detail.open) collapsedViews.delete(detail.dataset.view); else collapsedViews.add(detail.dataset.view); }));
       gallery.querySelectorAll('[data-rerun-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void rerunView(button.dataset.rerunView); }));
+      gallery.querySelectorAll('[data-rerun-failed-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void rerunFailedView(button.dataset.rerunFailedView); }));
       gallery.querySelectorAll('[data-reevaluate-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void reevaluateView(button.dataset.reevaluateView); }));
+      gallery.querySelectorAll('[data-proceed]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void proceed(); }));
       gallery.querySelectorAll('[data-review]').forEach((button) => button.addEventListener('click', () => openReview(button.dataset.review)));
       gallery.querySelectorAll('[data-retry]').forEach((button) => button.addEventListener('click', () => retryCandidate(button.dataset.retry)));
     }
@@ -190,14 +204,19 @@
       catch (error) { setStatus(error.message, true); }
     }
     function openReview(candidateId) {
-      reviewCandidates = (run?.candidates || []).filter((item) => item.status === 'COMPLETE');
+      reviewCandidates = (run?.candidates || []).filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
       reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
       if (reviewIndex < 0) return;
       renderReview(); reviewDialog.showModal(); $('#review-close').focus();
     }
     function renderReview() {
       const candidate = reviewCandidates[reviewIndex]; if (!candidate) return;
-      reviewImage.src = imageUrl(candidate); reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
+      reviewImage.src = imageUrl(candidate);
+      const anchor = (run?.candidates || []).find((item) => item.candidate_id === run.front_anchor && item.status === 'COMPLETE');
+      reviewAnchorImage.hidden = !anchor; reviewAnchorMessage.hidden = Boolean(anchor);
+      if (anchor) { reviewAnchorImage.src = imageUrl(anchor); reviewAnchorImage.alt = 'Front anchor ' + anchor.candidate_id; }
+      else { reviewAnchorImage.removeAttribute('src'); reviewAnchorMessage.textContent = 'Front anchor is not shown because no anchor has been selected.'; }
+      reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
       const ai = candidate.analyses || {}, canReview = Boolean(ai.local && ai.luna);
       const human = candidate.human_review || {};
       const anchorReady = candidate.view === 'FRONT' && canReview && human.decision === 'keep' && run.front_anchor !== candidate.candidate_id;
@@ -208,22 +227,39 @@
       reviewPanel.querySelector('[data-anchor]')?.addEventListener('click', selectAnchor);
       $('#review-prev').disabled = reviewIndex <= 0; $('#review-next').disabled = reviewIndex >= reviewCandidates.length - 1;
     }
-    async function saveReview() {
+    async function saveReview({render = true} = {}) {
       const candidate = reviewCandidates[reviewIndex];
+      if (reviewPanel.querySelector('[data-field="decision"]').disabled) return true;
       try {
         await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
-        run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.candidates.filter((item) => item.status === 'COMPLETE'); renderReview();
-      } catch (error) { setStatus(error.message, true); }
+        const candidateId = candidate.candidate_id;
+        run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.candidates.filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
+        reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
+        if (render) renderReview();
+        return true;
+      } catch (error) { setStatus(error.message, true); return false; }
     }
     async function selectAnchor() {
       const candidate = reviewCandidates[reviewIndex];
       try { run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/front-anchor`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidate.candidate_id})}); renderRun(run); renderReview(); }
       catch (error) { setStatus(error.message, true); }
     }
+    async function proceed() {
+      if (!run?.front_anchor) return;
+      try { renderRun(await request('/api/character-experiments/body-reference/runs/' + encodeURIComponent(run.run_id) + '/proceed', {method:'POST'})); }
+      catch (error) { setStatus(error.message, true); }
+    }
     async function rerunView(view) {
       if (!run || !window.confirm(`Re-run the images for ${view}? Existing images and human reviews for this view will be replaced.`)) return;
       try {
         const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?view=${encodeURIComponent(view)}`, {method:'POST'});
+        renderRun(updated);
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function rerunFailedView(view) {
+      if (!run || !window.confirm(`Re-Run failed images for ${view}? Matching images and their human reviews will be replaced.`)) return;
+      try {
+        const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun-failed?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { setStatus(error.message, true); }
     }
@@ -238,13 +274,32 @@
       try { run = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidateId)}/retry`, {method:'POST'}); renderRun(run); }
       catch (error) { setStatus(error.message, true); }
     }
-    async function navigateReview(offset) { const next = reviewIndex + offset; if (next < 0 || next >= reviewCandidates.length) return; reviewIndex = next; renderReview(); }
+    async function navigateReview(offset) { const next = reviewIndex + offset; if (next < 0 || next >= reviewCandidates.length) return; if (!await saveReview({render:false})) return; reviewIndex = next; renderReview(); }
     characterSelect.addEventListener('change', () => { fill(phaseSelect, context.phases_by_character[characterSelect.value] || []); void loadRuns(); });
     phaseSelect.addEventListener('change', () => void loadRuns());
     runSelect.addEventListener('change', () => void loadRun());
     $('#refresh-runs').addEventListener('click', () => void loadRuns(runSelect.value));
     $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = Object.fromEntries(new FormData(event.currentTarget)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); const created = await request('/api/character-experiments/body-reference/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
-    $('#rerun').addEventListener('click', async () => { if (!run || !window.confirm(`Create a new batch from ${run.run_id}?`)) return; try { const created = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun`, {method:'POST'}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
+    $('#rerun').addEventListener('click', async () => {
+      if (!run) return;
+      let keepFrontAnchor = false;
+      if (run.front_anchor) {
+        keepFrontAnchor = window.confirm(`Keep front anchor ${run.front_anchor} and skip FRONT? Click OK to keep it; Cancel to rerun FRONT with c001 using this anchor's seed.`);
+        if (!keepFrontAnchor && !window.confirm(`Create a new batch and rerun FRONT? c001 will use the previous anchor's seed.`)) return;
+      } else if (!window.confirm(`Create a new batch from ${run.run_id}?`)) return;
+      try {
+        const created = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?keep_front_anchor=${keepFrontAnchor}`, {method:'POST'});
+        await loadRuns(created.run_id);
+      } catch (error) { setStatus(error.message, true); }
+    });
+    $('#stop').addEventListener('click', async () => {
+      if (!run || $('#stop').disabled) return;
+      $('#stop').disabled = true;
+      try {
+        const cancelled = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/stop`, {method:'POST'});
+        renderRun(cancelled);
+      } catch (error) { setStatus(error.message, true); }
+    });
     $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
     $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/character-experiments/body-reference/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
     $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));

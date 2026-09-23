@@ -62,6 +62,103 @@ def test_codex_jobs_report_pending_running_done_and_failed(tmp_path):
     assert jobs[3]["details"] == "CLI unavailable"
 
 
+def test_render_completion_waits_for_face_gate(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(72))})
+    image = Path(run["root"]) / "candidate.png"
+    image.write_bytes(b"rendered image")
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "RUNNING", "image_path": str(image), "ask_id": "render-ask",
+    })
+
+    assert service._wait_for_render(run["run_id"], "c001") is True
+    candidate = service.detail(run["run_id"])["candidates"][0]
+    assert candidate["status"] == "WAITING_FOR_FACE_GATE"
+    assert candidate["completed_at"] == ""
+
+
+def test_harvest_face_gate_advances_or_requeues_without_completing(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(72))})
+    root = Path(run["root"])
+    image = root / "candidate.png"
+    image.write_bytes(b"rendered image")
+    output = root / "analyses" / "c001" / "face_gate_result.txt"
+    output.parent.mkdir(parents=True)
+    output.write_text("FALSE", encoding="utf-8")
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_FACE_GATE", "image_path": str(image),
+        "face_gate": {"ask_id": "face-ask", "status": "QUEUED", "output_path": str(output)},
+    })
+    launched = []
+    class CapturedThread:
+        def __init__(self, target, args, daemon):
+            self.target, self.args = target, args
+        def start(self):
+            launched.append(self.args[0])
+    monkeypatch.setattr("zet.services.body_reference_experiment_service.threading.Thread", CapturedThread)
+
+    assert service.harvest_face_gate_jobs() == [run["run_id"]]
+    candidate = service.detail(run["run_id"])["candidates"][0]
+    assert candidate["status"] == "WAITING_FOR_ANALYSIS"
+    assert candidate["face_gate"]["verdict"] == "FALSE"
+    assert launched == [run["run_id"]]
+
+    output.write_text("TRUE", encoding="utf-8")
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_FACE_GATE",
+        "face_gate": {"ask_id": "face-ask-2", "status": "QUEUED", "output_path": str(output)},
+    })
+    service.harvest_face_gate_jobs()
+    candidate = service.detail(run["run_id"])["candidates"][0]
+    assert candidate["status"] == "PENDING"
+    assert candidate["face_gate"] == {}
+    assert len(candidate["face_gate_history"]) == 1
+
+
+def test_preexisting_gate_passed_candidates_wait_for_human_review(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(72))})
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "COMPLETE", "face_gate": {"status": "COMPLETE", "verdict": "FALSE"},
+        "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
+    })
+
+    candidate = service.detail(run["run_id"])["candidates"][0]
+    assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW"
+
+
+def test_human_review_is_required_for_complete_status(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(72))})
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_HUMAN_REVIEW",
+        "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
+    })
+
+    pending = service.update_candidate(run["run_id"], "c001", {"decision": "undecided"})
+    assert pending["candidates"][0]["status"] == "WAITING_FOR_HUMAN_REVIEW"
+    reviewed = service.update_candidate(run["run_id"], "c001", {"decision": "keep"})
+    assert reviewed["candidates"][0]["status"] == "COMPLETE"
+    assert reviewed["candidates"][0]["completed_at"]
+
+
 def test_workflow_reference_binding_is_only_present_for_conditioned_method():
     text = BodyReferenceExperimentService.compile_qwen_workflow(
         "front", checkpoint="diffusion.safetensors", text_encoder="encoder.safetensors",
@@ -444,13 +541,14 @@ def test_reevaluation_runner_only_reviews_existing_images(tmp_path, monkeypatch)
         service._candidate_update(run_id, candidate_id, {"analyses": {"local": {"pass": True}}})
     def luna(run_id, candidate_id):
         service._candidate_update(run_id, candidate_id, {
+            "status": "WAITING_FOR_HUMAN_REVIEW",
             "analyses": {"local": {"pass": True}, "luna": {"pass": True}}
         })
     monkeypatch.setattr(service, "queue_local_analysis", local)
     monkeypatch.setattr(service, "run_luna_analysis", luna)
     service.execute_run(run["run_id"])
     completed = service.detail(run["run_id"])
-    assert completed["status"] == "AWAITING_FRONT_ANCHOR"
+    assert completed["status"] == "WAITING_FOR_HUMAN_REVIEW"
     assert completed["review_only"] is False
     assert image.read_bytes() == b"front image"
 

@@ -819,6 +819,9 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
                 "ai_prompt_evolution_vision_model", defaults.ai_prompt_evolution_vision_model
             )
         ),
+        body_reference_face_gate_model=str(
+            payload.get("body_reference_face_gate_model", defaults.body_reference_face_gate_model)
+        ),
         ai_prompt_evolution_text_model=str(
             payload.get("ai_prompt_evolution_text_model", defaults.ai_prompt_evolution_text_model)
         ),
@@ -2461,12 +2464,29 @@ def create_app(
 
     @app.post("/api/character-experiments/body-reference/runs/{run_id}/rerun")
     def rerun_body_reference_experiment(
+        run_id: str, background_tasks: BackgroundTasks,
+        view: str = Query(""), keep_front_anchor: bool = Query(False),
+    ) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.rerun_view(run_id, view) if view.strip() else service.rerun(
+                run_id, keep_front_anchor=keep_front_anchor
+            )
+            background_tasks.add_task(service.execute_run, run["run_id"])
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/rerun-failed")
+    def rerun_failed_body_reference_view(
         run_id: str, background_tasks: BackgroundTasks, view: str = Query("")
     ) -> dict[str, Any]:
         try:
             service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
-            run = service.rerun_view(run_id, view) if view.strip() else service.rerun(run_id)
-            background_tasks.add_task(service.execute_run, run["run_id"])
+            if not view.strip():
+                raise BodyReferenceExperimentError("Select a view to re-run failed images.")
+            run = service.rerun_failed_view(run_id, view)
+            background_tasks.add_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2506,11 +2526,21 @@ def create_app(
 
     @app.post("/api/character-experiments/body-reference/runs/{run_id}/front-anchor")
     def select_body_reference_front_anchor(
-        run_id: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(...)
+        run_id: str, payload: dict[str, Any] = Body(...)
     ) -> dict[str, Any]:
         try:
             service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
-            run = service.select_front_anchor(run_id, str(payload.get("candidate_id") or ""))
+            return service.select_front_anchor(run_id, str(payload.get("candidate_id") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/character-experiments/body-reference/runs/{run_id}/proceed")
+    def proceed_body_reference_experiment(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = BodyReferenceExperimentService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.resume(run_id)
+            if not run.get("front_anchor"):
+                raise ValueError("Select a front anchor before proceeding.")
             background_tasks.add_task(service.execute_run, run_id)
             return run
         except Exception as exc:

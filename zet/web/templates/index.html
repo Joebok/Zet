@@ -1607,8 +1607,14 @@
           </div>
           <div class="managed-llm-grid">
             <article class="managed-llm-role">
-              <label>Codex default model<input id="setting-codex-default-model" type="text" form="automation-form" autocomplete="off"></label>
-              <p class="managed-llm-description">Model ID used by Codex CLI calls.</p>
+              <label>Codex default model<select id="setting-codex-default-model" form="automation-form">
+                <option value="gpt-6-luna">GPT-6 Luna (High)</option>
+                <option value="gpt-6-sol">GPT-6 Sol (High)</option>
+                <option value="gpt-6-astra">GPT-6 Astra (High)</option>
+                <option value="gpt-5.6-sol">GPT-5.6 Sol (High)</option>
+                <option value="gpt-5.6-terra">GPT-5.6 Terra (High)</option>
+              </select></label>
+              <p class="managed-llm-description">Codex CLI runs this model with high reasoning effort.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="asset_workflow">
               <label>Asset workflow<select id="setting-ai-asset-workflow-model" form="automation-form"></select></label>
@@ -1650,6 +1656,10 @@
               <label>Prompt Evolution vision analysis<select id="setting-ai-prompt-evolution-vision-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role">
+              <label>Body-reference Face Gate<select id="setting-body-reference-face-gate-model" form="automation-form"></select></label>
+              <p class="managed-llm-description">Model used to reject renders with visibly rendered facial features.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="prompt_evolution_text">
               <label>Prompt Evolution text editing<select id="setting-ai-prompt-evolution-text-model" form="automation-form"></select></label>
@@ -2081,6 +2091,6 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260922-body-reference-experiment"></script>
+  <script src="/static/zet.js?v=20260922-body-reference-face-gate"></script>
 </body>
 </html>

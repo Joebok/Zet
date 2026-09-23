@@ -464,6 +464,7 @@ const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-bui
 const settingAiPromptEvolutionCriticAModel = document.querySelector("#setting-ai-prompt-evolution-critic-a-model");
 const settingAiPromptEvolutionCriticBModel = document.querySelector("#setting-ai-prompt-evolution-critic-b-model");
 const settingAiPromptEvolutionVisionModel = document.querySelector("#setting-ai-prompt-evolution-vision-model");
+const settingBodyReferenceFaceGateModel = document.querySelector("#setting-body-reference-face-gate-model");
 const settingAiPromptEvolutionTextModel = document.querySelector("#setting-ai-prompt-evolution-text-model");
 const settingAiPromptEvolutionCheckModel = document.querySelector("#setting-ai-prompt-evolution-check-model");
 const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
@@ -10119,7 +10120,7 @@ function renderPipelineControls(payload) {
   settingAiHarvestInterval.value = automation.ai_harvest_interval_seconds ?? 300;
   settingAiPromptAnalysisAutoQueueOnRender.checked = Boolean(automation.ai_prompt_analysis_auto_queue_on_render);
   setOllamaModelValue(settingAiAssetWorkflowModel, automation.ai_asset_workflow_model || "");
-  settingCodexDefaultModel.value = automation.codex_default_model || "gpt-6-luna";
+  setCodexDefaultModelValue(settingCodexDefaultModel, automation.codex_default_model || "gpt-6-luna");
   setOllamaModelValue(settingPromptCondenseModel, automation.prompt_condense_model || "");
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
@@ -10127,6 +10128,7 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingAiPromptEvolutionCriticAModel, automation.ai_prompt_evolution_critic_model_a || "");
   setOllamaModelValue(settingAiPromptEvolutionCriticBModel, automation.ai_prompt_evolution_critic_model_b || "");
   setOllamaModelValue(settingAiPromptEvolutionVisionModel, automation.ai_prompt_evolution_vision_model || "");
+  setOllamaModelValue(settingBodyReferenceFaceGateModel, automation.body_reference_face_gate_model || "");
   setOllamaModelValue(settingAiPromptEvolutionTextModel, automation.ai_prompt_evolution_text_model || "");
   setOllamaModelValue(settingAiPromptEvolutionCheckModel, automation.ai_prompt_evolution_check_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
@@ -10162,6 +10164,7 @@ const ollamaModelControls = () => [
   settingAiPromptEvolutionCriticAModel,
   settingAiPromptEvolutionCriticBModel,
   settingAiPromptEvolutionVisionModel,
+  settingBodyReferenceFaceGateModel,
   settingAiPromptEvolutionTextModel,
   settingAiPromptEvolutionCheckModel,
 ];
@@ -10203,6 +10206,14 @@ function renderManagedLlmRoles(roles = []) {
       templates.append(button, path);
     }
   }
+}
+
+function setCodexDefaultModelValue(control, value) {
+  const model = value || "gpt-6-luna";
+  if (model && !Array.from(control.options).some((option) => option.value === model)) {
+    control.add(new Option(`${model} (saved configuration)`, model));
+  }
+  control.value = model;
 }
 
 function setOllamaModelValue(control, value) {
@@ -10336,6 +10347,7 @@ function automationPayloadFromForm() {
     ai_prompt_evolution_critic_model_a: settingAiPromptEvolutionCriticAModel.value,
     ai_prompt_evolution_critic_model_b: settingAiPromptEvolutionCriticBModel.value,
     ai_prompt_evolution_vision_model: settingAiPromptEvolutionVisionModel.value,
+    body_reference_face_gate_model: settingBodyReferenceFaceGateModel.value,
     ai_prompt_evolution_text_model: settingAiPromptEvolutionTextModel.value,
     ai_prompt_evolution_check_model: settingAiPromptEvolutionCheckModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,

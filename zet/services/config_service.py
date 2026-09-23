@@ -36,6 +36,7 @@ class Config:
     ai_prompt_evolution_critic_model_a: str = "image-analysis:latest"
     ai_prompt_evolution_critic_model_b: str = "image-analysis-alt:latest"
     ai_prompt_evolution_vision_model: str = "image-analysis:latest"
+    body_reference_face_gate_model: str = "image-analysis:latest"
     ai_prompt_evolution_text_model: str = "image-analysis:latest"
     ai_prompt_evolution_check_model: str = "image-analysis-alt:latest"
     local_render_auto_queue_after_condense: bool = False
@@ -284,6 +285,9 @@ class ConfigService:
                 ),
                 ai_prompt_evolution_vision_model=str(
                     ai_models.get("PromptEvolutionVision", "image-analysis:latest")
+                ),
+                body_reference_face_gate_model=str(
+                    ai_models.get("BodyReferenceFaceGate", ai_models.get("PromptEvolutionVision", "image-analysis:latest"))
                 ),
                 ai_prompt_evolution_text_model=str(
                     ai_models.get("PromptEvolutionText", "image-analysis:latest")

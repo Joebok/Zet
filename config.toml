@@ -28,8 +28,9 @@ PromptEvolutionCriticA = "image-analysis-alt:latest"
 PromptEvolutionCriticB = "image-analysis-alt:latest"
 PromptEvolutionVision = "image-analysis:latest"
 PromptEvolutionText = "image-analysis:latest"
-PromptEvolutionCheck = "image-analysis-alt:latest"
+PromptEvolutionCheck = "image-analysis:latest"
 
+BodyReferenceFaceGate = "image-analysis-alt:latest"
 [LocalRender]
 AutoQueueAfterCondense = false
 Backend = "comfyui"

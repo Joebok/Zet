@@ -14,9 +14,11 @@ import threading
 import time
 from typing import Any
 
+from PIL import Image
+
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 from zet.services.local_render_backend_service import LocalRenderBackendService
-from zet.services.workflow_storage import file_lock
+from zet.services.workflow_storage import file_lock, supersede_task
 
 
 class BodyReferenceExperimentError(ValueError):
@@ -27,6 +29,16 @@ DEFAULT_VIEWS = (
     "FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE",
     "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK",
 )
+CANONICAL_VIEW_DEFINITIONS = {
+    "FRONT": "Direct frontal view. Subject faces the camera squarely; left/right sides are approximately symmetrical.",
+    "FRONT_LEFT_3_4": "Frontal three-quarter view showing more of the subject's anatomical LEFT side. Subject's left side is nearer the camera. Nose/face points toward IMAGE_LEFT.",
+    "FRONT_RIGHT_3_4": "Frontal three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Nose/face points toward IMAGE_RIGHT.",
+    "LEFT_PROFILE": "Exact profile showing the subject's anatomical LEFT side. Nose/face points toward IMAGE_LEFT.",
+    "RIGHT_PROFILE": "Exact profile showing the subject's anatomical RIGHT side. Nose/face points toward IMAGE_RIGHT.",
+    "BACK_LEFT_3_4": "Rear three-quarter view showing more of the subject's anatomical LEFT side. Subject's left side is nearer the camera. Head/body point away and toward IMAGE_LEFT.",
+    "BACK_RIGHT_3_4": "Rear three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Head/body point away and toward IMAGE_RIGHT.",
+    "BACK": "Direct rear view. Subject faces directly away from the camera; left/right sides are approximately symmetrical.",
+}
 FRONT_VIEW = "FRONT"
 METHOD_TEXT_FIRST = "text_first"
 METHOD_FRONT_CONDITIONED = "front_conditioned"
@@ -40,6 +52,8 @@ class BodyReferenceExperimentService:
     The experiment owns its prompt snapshots, candidate slots, and decisions. It
     deliberately does not mutate canonical Assets or pipeline state.
     """
+
+    FACE_GATE_PROMPT = """Inspect the head in the image.\n\nDoes the head contain clearly recognizable or rendered facial features, such as visible eyes, eyebrows, nose details, lips/mouth, or a human/elf-like facial expression?\n\nAnswer TRUE only if obvious facial features are visibly rendered.\nAnswer FALSE if the head is essentially a smooth mannequin head, even if it has basic face-plane geometry, ears, shallow construction marks, or minimal indications of feature placement.\n\nReturn only TRUE or FALSE."""
 
     _runner_lock = threading.Lock()
     _active_runs: set[str] = set()
@@ -321,6 +335,16 @@ class BodyReferenceExperimentService:
                     candidate["local_job"] = job
                 if candidate.get("luna_status") in {"QUEUED", "RUNNING"}:
                     candidate["luna_status"] = "INTERRUPTED"
+        for candidate in candidates.values():
+            if candidate.get("status") != "COMPLETE":
+                continue
+            decision = (candidate.get("human_review") or {}).get("decision", "undecided")
+            gate = candidate.get("face_gate") or {}
+            analyses = candidate.get("analyses") or {}
+            if decision not in {"keep", "reject"} and gate.get("verdict") == "FALSE":
+                candidate["status"] = ("WAITING_FOR_HUMAN_REVIEW" if all(analyses.get(provider)
+                                    for provider in ("local", "luna")) else "WAITING_FOR_ANALYSIS")
+                candidate["completed_at"] = ""
         value["candidates"] = list(candidates.values())
         value["root"] = str(root)
         return value
@@ -369,23 +393,97 @@ class BodyReferenceExperimentService:
                     "character": run.get("character", ""), "phase": run.get("phase", ""),
                     "view": candidate.get("view", ""), "status": status,
                     "details": (candidate.get("luna_error") or "") if status == "FAILED" else
-                               ("Waiting for candidate image" if candidate.get("status") != "COMPLETE"
+                               ("Waiting for candidate image" if not Path(str(candidate.get("image_path") or "")).is_file()
                                 and status == "PENDING" else ""),
                 })
         return jobs
 
-    def rerun(self, run_id: str) -> dict[str, Any]:
-        """Create a fresh batch using the selected run's character and counts."""
+    def rerun(self, run_id: str, *, keep_front_anchor: bool = False) -> dict[str, Any]:
+        """Create a fresh batch, optionally carrying forward its front view."""
         source = self.detail(run_id)
+        anchor_id = source.get("front_anchor")
+        anchor = next(
+            (item for item in source.get("candidates", []) if item.get("candidate_id") == anchor_id),
+            None,
+        )
+        if keep_front_anchor and (
+            not anchor or anchor.get("view") != FRONT_VIEW
+            or anchor.get("status") != "COMPLETE"
+            or not Path(str(anchor.get("image_path") or "")).is_file()
+        ):
+            raise BodyReferenceExperimentError("The selected front anchor image is unavailable to keep.")
+
         fresh = self.create_run({
             "character": source["character"], "phase": source["phase"],
             "front_count": source.get("front_count", PILOT_FRONT_COUNT),
             "other_count": source.get("other_count", PILOT_OTHER_COUNT),
         })
-        root = self._root(fresh["run_id"])
-        spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
+        root = self._root(fresh["run_id"]).resolve()
+        spec_path = root / "spec.json"
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
         spec["source_run_id"] = run_id
-        self._write(root / "spec.json", spec)
+        state_path = root / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+
+        if keep_front_anchor:
+            source_root = self._root(run_id).resolve()
+            for candidate in source.get("candidates", []):
+                if candidate.get("view") != FRONT_VIEW:
+                    continue
+                preserved = dict(candidate)
+                image_text = str(preserved.get("image_path") or "")
+                if image_text:
+                    image = Path(image_text).resolve()
+                    if image.is_file():
+                        try:
+                            relative = image.relative_to(source_root)
+                        except ValueError:
+                            relative = Path("renders") / candidate["candidate_id"] / "Local_Test_Renders" / image.name
+                        copied_image = root / relative
+                        copied_image.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(image, copied_image)
+                        preserved["image_path"] = str(copied_image)
+                    else:
+                        preserved["image_path"] = ""
+                local_job = dict(preserved.get("local_job") or {})
+                output_text = str(local_job.get("output_path") or "")
+                if output_text:
+                    output = Path(output_text).resolve()
+                    if output.is_file():
+                        try:
+                            relative = output.relative_to(source_root)
+                        except ValueError:
+                            relative = Path("reviews") / candidate["candidate_id"] / output.name
+                        copied_output = root / relative
+                        copied_output.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(output, copied_output)
+                        local_job["output_path"] = str(copied_output)
+                    else:
+                        local_job["output_path"] = ""
+                    preserved["local_job"] = local_job
+                state.setdefault("candidates", {})[candidate["candidate_id"]] = preserved
+
+            remaining_views = [view for view in source.get("views", []) if view != FRONT_VIEW]
+            state.update(
+                status="RUNNING", front_anchor=anchor_id, target_views=remaining_views,
+                target_candidate_ids=[], review_only=False, stop_requested=False,
+                error="", updated_at=self._now(),
+            )
+            state["lineups"] = {}
+            state["set_report"] = {}
+            fresh["front_anchor"] = anchor_id
+            fresh["status"] = "RUNNING"
+        elif anchor:
+            first_front = next(
+                (item for item in fresh.get("candidates", [])
+                 if item.get("view") == FRONT_VIEW and item.get("candidate_id") == "c001"),
+                None,
+            )
+            if first_front is not None:
+                state.setdefault("candidates", {}).setdefault("c001", {})["seed"] = str(anchor["seed"])
+
+        self._write(spec_path, spec)
+        self._save_state(fresh["run_id"], state)
         fresh["source_run_id"] = run_id
         return fresh
 
@@ -395,7 +493,7 @@ class BodyReferenceExperimentService:
         view = str(view or "").upper()
         if view not in run.get("views", []):
             raise BodyReferenceExperimentError(f"Unknown experiment view: {view}")
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
             raise BodyReferenceExperimentError("Stop the active batch before re-running a view.")
         if self._runner_lock.locked():
             raise BodyReferenceExperimentError("Another experiment batch is running; try again when it finishes.")
@@ -425,7 +523,7 @@ class BodyReferenceExperimentService:
                 status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="",
                 completed_at="", render_error="", analyses={}, local_job={}, luna_status="",
-                luna_error="", disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided", "notes": ""},
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
 
@@ -437,14 +535,90 @@ class BodyReferenceExperimentService:
             for selections in (state.get("lineups") or {}).values():
                 selections.pop(view, None)
             state["set_report"] = {}
+        (root / "cancelled.json").unlink(missing_ok=True)
         state.update(
-            status="RUNNING", review_only=False, target_views=[view], stop_requested=False,
+            status="RUNNING", review_only=False, target_views=[view], target_candidate_ids=[], stop_requested=False,
             error="", updated_at=stamp,
         )
         self._save_state(run_id, state)
         result = self.detail(run_id)
         result.update(status="RUNNING", interrupted=False, error="")
         return result
+    def rerun_failed_view(self, run_id: str, view: str) -> dict[str, Any]:
+        """Regenerate failed candidates in one view and clear their reviews."""
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        if view not in run.get("views", []):
+            raise BodyReferenceExperimentError(f"Unknown experiment view: {view}")
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
+            raise BodyReferenceExperimentError("Stop the active batch before re-running a view.")
+        if self._runner_lock.locked():
+            raise BodyReferenceExperimentError("Another experiment batch is running; try again when it finishes.")
+
+        def is_failed_candidate(candidate: dict[str, Any]) -> bool:
+            if candidate.get("view") != view or candidate.get("status") != "COMPLETE":
+                return False
+            if not Path(str(candidate.get("image_path") or "")).is_file():
+                return False
+            human_decision = (candidate.get("human_review") or {}).get("decision", "undecided")
+            if human_decision == "reject":
+                return True
+            analyses = candidate.get("analyses") or {}
+            local, luna = analyses.get("local") or {}, analyses.get("luna") or {}
+            return (
+                human_decision == "undecided"
+                and local.get("pass") is False and not local.get("uncertain", False)
+                and luna.get("pass") is False and not luna.get("uncertain", False)
+            )
+
+        candidates = [item for item in run["candidates"] if is_failed_candidate(item)]
+        if not candidates:
+            raise BodyReferenceExperimentError(f"This batch has no failed images to re-run for view {view}.")
+
+        root = self._root(run_id).resolve()
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        stamp = self._now()
+        candidate_ids = [item["candidate_id"] for item in candidates]
+        for candidate in candidates:
+            old_analyses = candidate.get("analyses") or {}
+            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+            if old_analyses:
+                history = list(candidate.get("analysis_history") or [])
+                history.append({"archived_at": stamp, "analyses": old_analyses})
+                update["analysis_history"] = history
+            image_text = str(candidate.get("image_path") or "")
+            try:
+                image_path = Path(image_text).resolve()
+                if image_path.is_relative_to(root):
+                    image_path.unlink(missing_ok=True)
+            except (OSError, RuntimeError):
+                pass
+            update.update(
+                status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                image_path="", image_sha256="", ask_id="", queued_at="",
+                completed_at="", render_error="", analyses={}, local_job={}, luna_status="",
+                luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                retry_count=int(candidate.get("retry_count") or 0) + 1,
+            )
+
+        if view == FRONT_VIEW and state.get("front_anchor") in candidate_ids:
+            state["front_anchor"] = None
+            state["lineups"] = {}
+            state["set_report"] = {}
+        else:
+            for selections in (state.get("lineups") or {}).values():
+                selections.pop(view, None)
+            state["set_report"] = {}
+        (root / "cancelled.json").unlink(missing_ok=True)
+        state.update(
+            status="RUNNING", review_only=False, target_views=[view],
+            target_candidate_ids=candidate_ids, stop_requested=False, error="", updated_at=stamp,
+        )
+        self._save_state(run_id, state)
+        result = self.detail(run_id)
+        result.update(status="RUNNING", interrupted=False, error="")
+        return result
+
     def reevaluate(self, run_id: str, view: str | None = None) -> dict[str, Any]:
         """Re-run visual reviewers on completed images in the existing batch."""
         run = self.detail(run_id)
@@ -454,11 +628,13 @@ class BodyReferenceExperimentService:
             if normalized_view not in target_views:
                 raise BodyReferenceExperimentError(f"Unknown experiment view: {normalized_view}")
             target_views = [normalized_view]
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
             raise BodyReferenceExperimentError("Stop the active batch before re-evaluating it.")
         if self._runner_lock.locked():
             raise BodyReferenceExperimentError("Another experiment batch is running; try again when it finishes.")
-        completed = [item for item in run["candidates"] if item.get("status") == "COMPLETE"
+        completed = [item for item in run["candidates"]
+                     if (item.get("status") == "COMPLETE" or
+                         (run.get("interrupted") and item.get("status") == "WAITING_FOR_ANALYSIS"))
                      and item.get("view") in target_views
                      and Path(str(item.get("image_path") or "")).is_file()]
         if not completed:
@@ -477,10 +653,12 @@ class BodyReferenceExperimentService:
                 history.append({"archived_at": stamp, "analyses": old})
                 update["analysis_history"] = history
             decision = (candidate.get("human_review") or {}).get("decision")
-            update.update(analyses={}, local_job={}, luna_status="PENDING", luna_error="",
+            update.update(status="WAITING_FOR_ANALYSIS", completed_at="", analyses={}, local_job={}, luna_status="PENDING", luna_error="",
                           disposition="human_keep" if decision == "keep" else
                           "human_reject" if decision == "reject" else "pending")
+        (self._root(run_id) / "cancelled.json").unlink(missing_ok=True)
         state.update(status="REEVALUATING", review_only=True, target_views=target_views,
+                     target_candidate_ids=[item["candidate_id"] for item in completed],
                      stop_requested=False, post_review_status=run["status"], error="", updated_at=stamp)
         self._save_state(run_id, state)
         result = self.detail(run_id)
@@ -498,13 +676,24 @@ class BodyReferenceExperimentService:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
             except (OSError, ValueError, json.JSONDecodeError):
                 state = {}
-            if state.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+            if state.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
                 raise BodyReferenceExperimentError("Stop the batch and wait for it to finish before deleting it.")
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}
 
     def _save_state(self, run_id: str, state: dict[str, Any]) -> None:
-        self._write(self._root(run_id) / "state.json", state)
+        root = self._root(run_id)
+        if (root / "cancelled.json").is_file():
+            state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
+        self._write(root / "state.json", state)
+
+    def _withdraw_queued_asks(self, run_id: str) -> None:
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        queue_root = Path(self.app.config.base_ai_queue_path)
+        prefixes = (f"BodyReference_{run_id}_", f"Ask_BodyReference_{run_id}_")
+        for task in paths.task_paths("ask"):
+            if task.name.startswith(prefixes):
+                supersede_task(queue_root, task, "Body-Reference Qwen experiment was cancelled.")
 
     def select_front_anchor(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
@@ -523,7 +712,8 @@ class BodyReferenceExperimentService:
             raise BodyReferenceExperimentError("Front-anchor analysis is stale; rerun both analyses.")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         state.update({"status": "READY_FOR_VIEWS", "updated_at": self._now(),
-                      "front_anchor": candidate_id, "stop_requested": False})
+                      "front_anchor": candidate_id, "stop_requested": False,
+                      "target_views": [], "target_candidate_ids": []})
         self._save_state(run_id, state)
         return self.detail(run_id)
 
@@ -536,15 +726,23 @@ class BodyReferenceExperimentService:
                                    "notes": str(payload.get("notes") or "")}}
         if update["human_review"]["decision"] not in {"keep", "reject", "undecided"}:
             raise BodyReferenceExperimentError("Human decision must be keep, reject, or undecided.")
-        if candidate.get("status") != "COMPLETE" or not all(candidate.get("analyses", {}).get(provider)
-                                                            for provider in ("local", "luna")):
+        if candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not all(
+            candidate.get("analyses", {}).get(provider) for provider in ("local", "luna")
+        ):
             raise BodyReferenceExperimentError("Both image analyses must finish before human review.")
-        if update["human_review"]["decision"] == "keep":
-            update["disposition"] = "human_keep"
-        elif update["human_review"]["decision"] == "reject":
-            update["disposition"] = "human_reject"
+        decision = update["human_review"]["decision"]
+        if decision == "keep":
+            update.update(disposition="human_keep", status="COMPLETE", completed_at=self._now())
+        elif decision == "reject":
+            update.update(disposition="human_reject", status="COMPLETE", completed_at=self._now())
+        else:
+            update.update(status="WAITING_FOR_HUMAN_REVIEW", completed_at="")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
+        merged_statuses = {item["candidate_id"]: item.get("status") for item in run.get("candidates") or []}
+        merged_statuses[candidate_id] = update.get("status", candidate.get("status"))
+        if state.get("front_anchor") and merged_statuses and all(status == "COMPLETE" for status in merged_statuses.values()):
+            state.update(status="COMPLETE", target_views=[], target_candidate_ids=[], review_only=False)
         state["updated_at"] = self._now()
         self._save_state(run_id, state)
         return self.detail(run_id)
@@ -574,8 +772,8 @@ class BodyReferenceExperimentService:
         if candidate is None:
             raise BodyReferenceExperimentError(f"Unknown candidate: {candidate_id}")
         image = Path(str(candidate.get("image_path") or ""))
-        if candidate.get("status") != "COMPLETE" or not image.is_file():
-            raise BodyReferenceExperimentError("Analysis requires a completed candidate image.")
+        if candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not image.is_file():
+            raise BodyReferenceExperimentError("Analysis requires an image that passed the face gate.")
         if input_hashes.get("candidate") != self._hash(image):
             raise BodyReferenceExperimentError("Analysis input hash does not match the candidate image.")
         if candidate["view"] != FRONT_VIEW:
@@ -590,6 +788,7 @@ class BodyReferenceExperimentService:
         analyses[provider] = analysis
         updates["analyses"] = analyses
         if "local" in analyses and "luna" in analyses:
+            updates["status"] = "WAITING_FOR_HUMAN_REVIEW"
             decision = (candidate.get("human_review") or {}).get("decision")
             updates["disposition"] = ("human_keep" if decision == "keep" else
                                       "human_reject" if decision == "reject" else
@@ -632,6 +831,8 @@ class BodyReferenceExperimentService:
         }
     @staticmethod
     def analysis_prompt(candidate: dict[str, Any], *, anchor: bool = False, facts: str = "") -> str:
+        view = str(candidate.get("view") or "")
+        view_definition = CANONICAL_VIEW_DEFINITIONS.get(view, "")
         reference_directive = (
             "Image 1 is the accepted front anchor; Image 2 is the candidate. "
             "Compare the candidate with the front anchor for consistent body proportions, species morphology, "
@@ -670,7 +871,9 @@ class BodyReferenceExperimentService:
             "violation or a SECONDARY defect severe enough to materially compromise the body reference. When "
             "failing, identify the single most consequential material defect in failure_reason and cite its visible "
             "evidence. Do not fail solely because a minor deviation can be detected. Return only the requested JSON object."
-            "\n\nRequested view: " + str(candidate.get("view") or "")
+            "\n\nRequested view: " + view
+            + "\n\nView labels refer to the SUBJECT'S ANATOMICAL side. IMAGE_LEFT and IMAGE_RIGHT refer to directions on the rendered image. These definitions override any alternate naming convention."
+            + "\n\nCanonical " + view + " Definition: " + view_definition
             + "\n\nAuthoritative Body-Reference specification:\n" + facts
         )
 
@@ -716,8 +919,9 @@ class BodyReferenceExperimentService:
     def queue_local_analysis(self, run_id: str, candidate_id: str, model: str = "") -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        if not candidate or not Path(str(candidate.get("image_path") or "")).is_file():
-            raise BodyReferenceExperimentError("A completed candidate image is required for local analysis.")
+        if (not candidate or candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                or not Path(str(candidate.get("image_path") or "")).is_file()):
+            raise BodyReferenceExperimentError("A face-gate-approved candidate image is required for local analysis.")
         image = Path(candidate["image_path"])
         anchor_id = run.get("front_anchor")
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == anchor_id), None)
@@ -764,6 +968,9 @@ class BodyReferenceExperimentService:
 
     def _run_update(self, run_id: str, **update: Any) -> None:
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        if state.get("status") == "CANCELLED" and update.get("status") != "CANCELLED":
+            update.pop("status", None)
+            update.pop("error", None)
         state.update(update, updated_at=self._now())
         self._save_state(run_id, state)
 
@@ -813,10 +1020,13 @@ class BodyReferenceExperimentService:
         expected = str(ask.get("expected_output") or "")
         if not expected or Path(expected).name != expected or answer.get("expected_output") != expected:
             raise BodyReferenceExperimentError("AI Proxy answer output filename is invalid.")
-        if ask.get("task_type") == "body_reference_analysis":
+        if ask.get("task_type") in {"body_reference_analysis", "body_reference_face_gate"}:
             filename = str(ask.get("target_output_file") or "")
-            if not re.fullmatch(r"local(?:_\d{8}_\d{6}_\d{6})?\.json", filename):
-                raise BodyReferenceExperimentError("AI Proxy analysis output filename is invalid.")
+            if ask.get("task_type") == "body_reference_analysis":
+                if not re.fullmatch(r"local(?:_\d{8}_\d{6}_\d{6})?\.json", filename):
+                    raise BodyReferenceExperimentError("AI Proxy analysis output filename is invalid.")
+            elif not re.fullmatch(r"face_gate_\d{8}_\d{6}_\d{6}\.txt", filename):
+                raise BodyReferenceExperimentError("AI Proxy face-gate output filename is invalid.")
             expected_target = self._root(run_id) / "analyses" / candidate_id / filename
             if ask.get("target_output_file") != target.name:
                 raise BodyReferenceExperimentError("AI Proxy analysis output filename is invalid.")
@@ -854,12 +1064,11 @@ class BodyReferenceExperimentService:
         if missing:
             raise BodyReferenceExperimentError("ComfyUI is missing nodes: " + ", ".join(sorted(missing)))
 
-    def _render_view_candidates(self, run_id: str, view: str) -> bool:
-        """Queue and finish every candidate image for one view before review work."""
+    def _render_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
+        """Render candidates and queue face gates without blocking on AI Proxy."""
         run = self.detail(run_id)
-        candidates = [item for item in run["candidates"] if item.get("view") == view]
+        candidates = [item for item in run["candidates"] if item.get("view") == view and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
 
-        # Publish the whole view's render batch before waiting on any one image.
         for candidate in candidates:
             if self.detail(run_id)["stop_requested"]:
                 return False
@@ -873,24 +1082,166 @@ class BodyReferenceExperimentService:
                 })
 
         for candidate in candidates:
-            current = next(
-                item for item in self.detail(run_id)["candidates"]
-                if item["candidate_id"] == candidate["candidate_id"]
-            )
-            if current.get("status") not in {"QUEUED", "RUNNING"}:
-                continue
-            try:
-                if not self._wait_for_render(run_id, current["candidate_id"]):
-                    return False
-            except Exception as exc:
-                self._candidate_update(run_id, current["candidate_id"], {
-                    "status": "FAILED", "render_error": str(exc),
-                })
+            current = next(item for item in self.detail(run_id)["candidates"]
+                           if item["candidate_id"] == candidate["candidate_id"])
+            candidate_id = current["candidate_id"]
+            if current.get("status") in {"QUEUED", "RUNNING"}:
+                try:
+                    if not self._wait_for_render(run_id, candidate_id):
+                        return False
+                    current = next(item for item in self.detail(run_id)["candidates"]
+                                   if item["candidate_id"] == candidate_id)
+                except Exception as exc:
+                    self._candidate_update(run_id, candidate_id, {"status": "FAILED", "render_error": str(exc)})
+                    continue
+            if current.get("status") == "WAITING_FOR_FACE_GATE" and not (current.get("face_gate") or {}).get("ask_id"):
+                try:
+                    self._run_face_gate(run_id, candidate_id)
+                except Exception as exc:
+                    self._candidate_update(run_id, candidate_id, {
+                        "status": "FAILED", "render_error": str(exc),
+                        "face_gate": {**(current.get("face_gate") or {}), "status": "FAILED", "error": str(exc)},
+                    })
         return True
 
-    def _review_view_candidates(self, run_id: str, view: str) -> bool:
+    @staticmethod
+    def _crop_head(image_path: Path, crop_path: Path) -> None:
+        """Crop the centered head area from the full-body reference render."""
+        with Image.open(image_path) as source:
+            image = source.convert("RGB")
+            width, height = image.size
+            image.crop((int(width * 0.25), 0, int(width * 0.75), int(height * 0.32))).save(crop_path, format="PNG")
+
+    def _run_face_gate(self, run_id: str, candidate_id: str) -> str:
+        candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file():
+            raise BodyReferenceExperimentError("A completed candidate image is required for the face gate.")
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        root = self._root(run_id) / "analyses" / candidate_id
+        root.mkdir(parents=True, exist_ok=True)
+        crop = root / f"face_gate_{stamp}.png"
+        self._crop_head(image, crop)
+        output = root / f"face_gate_{stamp}.txt"
+        ask_id = f"Ask_BodyReference_{run_id}_{candidate_id}_FACE_{stamp}"
+        proxy = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
+        staging = proxy.create_staging(ask_id)
+        shutil.copy2(crop, staging / "head_crop.png")
+        (staging / "OLLAMA_PROMPT.md").write_text(self.FACE_GATE_PROMPT, encoding="utf-8")
+        model = str(getattr(self.app.config, "body_reference_face_gate_model", "image-analysis:latest") or "image-analysis:latest")
+        run = self.detail(run_id)
+        manifest = {
+            "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "pipeline": "Character-Pipeline-Experiment", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
+            "worker_type": "ollama_generate", "ollama_model": model,
+            "prompt_file": "OLLAMA_PROMPT.md", "image_files": ["head_crop.png"],
+            "json_output": False, "expected_output": output.name, "task_type": "body_reference_face_gate",
+            "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
+            "body_reference_run_id": run_id, "candidate_id": candidate_id,
+            "input_hashes": {"candidate": self._hash(image), "head_crop": self._hash(crop)},
+        }
+        (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        proxy.publish(staging, ask_id, "ollama_generate")
+        gate = {"ask_id": ask_id, "status": "QUEUED", "output_path": str(output),
+                "crop_path": str(crop), "image_path": str(image), "model": model,
+                "input_hashes": manifest["input_hashes"]}
+        self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "face_gate": gate})
+        return "QUEUED"
+
+    def harvest_face_gate_jobs(self) -> list[str]:
+        """Apply harvested face-gate verdicts and resume the affected candidates."""
+        pending: dict[str, list[str]] = {}
+        failed_runs: set[str] = set()
+        for summary in self.list_runs():
+            run_id = summary["run_id"]
+            for candidate in self.detail(run_id).get("candidates") or []:
+                gate = candidate.get("face_gate") or {}
+                if candidate.get("status") != "WAITING_FOR_FACE_GATE" or not gate.get("ask_id"):
+                    continue
+                output = Path(str(gate.get("output_path") or ""))
+                proxy_status, answer = ("UNKNOWN", {})
+                if not output.is_file():
+                    proxy_status, answer = self._proxy_answer(str(gate["ask_id"]))
+                    if str(answer.get("status") or "").upper() == "SUCCESS":
+                        self._harvest_experiment_answer(
+                            run_id, candidate["candidate_id"], str(gate["ask_id"]), output
+                        )
+                if output.is_file():
+                    verdict = output.read_text(encoding="utf-8").strip().upper()
+                    if verdict not in {"TRUE", "FALSE"}:
+                        failed_runs.add(run_id)
+                        self._candidate_update(run_id, candidate["candidate_id"], {
+                            "status": "FAILED", "render_error": f"Invalid face-gate response: {verdict[:80]!r}",
+                            "face_gate": {**gate, "status": "FAILED", "error": "Invalid face-gate response."},
+                        })
+                        continue
+                    gate.update(status="COMPLETE", verdict=verdict)
+                    if verdict == "TRUE":
+                        history = list(candidate.get("face_gate_history") or [])
+                        history.append(gate)
+                        self._candidate_update(run_id, candidate["candidate_id"], {
+                            "status": "PENDING", "seed": str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                            "image_path": "", "image_sha256": "", "ask_id": "", "queued_at": "",
+                            "completed_at": "", "face_gate": {}, "face_gate_history": history,
+                            "render_error": "", "retry_count": int(candidate.get("retry_count") or 0) + 1,
+                        })
+                    else:
+                        self._candidate_update(run_id, candidate["candidate_id"], {
+                            "status": "WAITING_FOR_ANALYSIS", "face_gate": gate,
+                        })
+                    pending.setdefault(run_id, []).append(candidate["candidate_id"])
+                    continue
+                answer_status = str(answer.get("status") or "").upper()
+                if answer_status in {"ERROR", "RETRY_LATER"}:
+                    failed_runs.add(run_id)
+                    message = str(answer.get("error_message") or "Face-gate analysis failed.")
+                    self._candidate_update(run_id, candidate["candidate_id"], {
+                        "status": "FAILED", "render_error": message,
+                        "face_gate": {**gate, "status": "FAILED", "error": message},
+                    })
+                elif proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
+                    gate["status"] = "RUNNING"
+                    self._candidate_update(run_id, candidate["candidate_id"], {"face_gate": gate})
+
+        for run_id in failed_runs - pending.keys():
+            run = self.detail(run_id)
+            waiting = [item for item in run["candidates"] if item.get("status") in {
+                "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
+            }]
+            if waiting:
+                waiting_status = next(status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                                      if any(item.get("status") == status for item in waiting))
+                self._run_update(run_id, status=waiting_status)
+            else:
+                self._run_update(run_id, status="ERROR", error="One or more face-gate jobs failed.",
+                                 target_views=[], target_candidate_ids=[])
+
+        for run_id, candidate_ids in pending.items():
+            run = self.detail(run_id)
+            state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            current_by_id = {item["candidate_id"]: item for item in run["candidates"]}
+            candidate_ids = list(dict.fromkeys(
+                list(state.get("target_candidate_ids") or []) + candidate_ids
+            ))
+            candidate_ids = [candidate_id for candidate_id in candidate_ids if candidate_id in current_by_id]
+            views = sorted(set(state.get("target_views") or []) | {
+                current_by_id[candidate_id]["view"] for candidate_id in candidate_ids
+            })
+            state.update(status="RUNNING", stop_requested=False, target_views=views,
+                         target_candidate_ids=candidate_ids, review_only=False, updated_at=self._now())
+            self._save_state(run_id, state)
+            threading.Thread(target=self._execute_after_current_run, args=(run_id,), daemon=True).start()
+        return list(pending)
+
+    def _execute_after_current_run(self, run_id: str) -> None:
+        """Resume after another serialized batch operation releases the runner lock."""
+        while self._runner_lock.locked() or self._runner_is_active(run_id):
+            time.sleep(1)
+        self.execute_run(run_id)
+
+    def _review_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Run all pending analyses for one view after its images are available."""
-        candidates = [item for item in self.detail(run_id)["candidates"] if item.get("view") == view]
+        candidates = [item for item in self.detail(run_id)["candidates"] if item.get("view") == view and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
         for candidate in candidates:
             if self.detail(run_id)["stop_requested"]:
                 return False
@@ -898,7 +1249,7 @@ class BodyReferenceExperimentService:
                 item for item in self.detail(run_id)["candidates"]
                 if item["candidate_id"] == candidate["candidate_id"]
             )
-            if current.get("status") != "COMPLETE":
+            if current.get("status") not in {"WAITING_FOR_ANALYSIS", "COMPLETE"}:
                 continue
             candidate_id = current["candidate_id"]
             try:
@@ -954,7 +1305,7 @@ class BodyReferenceExperimentService:
             if time.monotonic() >= deadline:
                 raise BodyReferenceExperimentError("Timed out waiting for the render; use Retry after checking AI Proxy.")
             time.sleep(max(0.5, float(self.app.config.comfyui_poll_seconds)))
-        self._candidate_update(run_id, candidate_id, {"status": "COMPLETE", "completed_at": self._now(),
+        self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "completed_at": "",
                                                     "image_sha256": self._hash(image), "render_error": ""})
         return True
 
@@ -994,13 +1345,19 @@ class BodyReferenceExperimentService:
 
     def _execute_run_locked(self, run_id: str) -> None:
         if not self._runner_lock.acquire(blocking=False):
+            threading.Thread(target=self._execute_after_current_run, args=(run_id,), daemon=True).start()
             return
         with self._active_runs_lock:
             self._active_runs.add(run_id)
         try:
             initial_state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            if initial_state.get("status") == "CANCELLED" or initial_state.get("stop_requested"):
+                self._withdraw_queued_asks(run_id)
+                self._run_update(run_id, status="CANCELLED", stop_requested=True)
+                return
             review_only = bool(initial_state.get("review_only"))
             target_views = list(initial_state.get("target_views") or [])
+            target_candidate_ids = set(initial_state["target_candidate_ids"]) if initial_state.get("target_candidate_ids") else None
             if not review_only:
                 self._run_update(run_id, status="PREFLIGHT", error="")
                 self._preflight()
@@ -1012,21 +1369,56 @@ class BodyReferenceExperimentService:
             ))
             for view in views:
                 if self.detail(run_id)["stop_requested"]:
-                    self._run_update(run_id, status="STOPPED")
+                    self._withdraw_queued_asks(run_id)
+                    self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
-                if not review_only and not self._render_view_candidates(run_id, view):
-                    self._run_update(run_id, status="STOPPED")
+                if not review_only and not self._render_view_candidates(run_id, view, target_candidate_ids):
+                    self._withdraw_queued_asks(run_id)
+                    self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
-                if not self._review_view_candidates(run_id, view):
-                    self._run_update(run_id, status="STOPPED")
+                if not self._review_view_candidates(run_id, view, target_candidate_ids):
+                    self._withdraw_queued_asks(run_id)
+                    self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
-                if not self.detail(run_id).get("front_anchor"):
+                latest = self.detail(run_id)
+                if latest.get("stop_requested"):
+                    self._withdraw_queued_asks(run_id)
+                    self._run_update(run_id, status="CANCELLED", stop_requested=True)
+                    return
+                view_candidates = [item for item in latest["candidates"] if item.get("view") == view
+                                   and (target_candidate_ids is None or item["candidate_id"] in target_candidate_ids)]
+                waiting_status = next((status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                                       if any(item.get("status") == status for item in view_candidates)), None)
+                if waiting_status and not latest.get("front_anchor"):
+                    waiting_candidates = [item for item in view_candidates
+                                          if item.get("status") in {"WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}]
+                    self._run_update(run_id, status=waiting_status, review_only=False,
+                                     target_views=[view], target_candidate_ids=[item["candidate_id"] for item in waiting_candidates])
+                    return
+                if not latest.get("front_anchor"):
                     self._run_update(run_id, status="AWAITING_FRONT_ANCHOR", review_only=False, target_views=[])
                     return
+            latest = self.detail(run_id)
+            if latest.get("stop_requested"):
+                self._withdraw_queued_asks(run_id)
+                self._run_update(run_id, status="CANCELLED", stop_requested=True)
+                return
+            scoped_candidates = [item for item in latest.get("candidates") or []
+                                 if target_candidate_ids is None or item["candidate_id"] in target_candidate_ids]
+            waiting_candidates = [item for item in scoped_candidates if item.get("status") in {
+                "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
+            }]
+            if waiting_candidates:
+                waiting_status = next(status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                                      if any(item.get("status") == status for item in waiting_candidates))
+                self._run_update(run_id, status=waiting_status, review_only=False,
+                                 target_views=sorted({item["view"] for item in waiting_candidates}),
+                                 target_candidate_ids=[item["candidate_id"] for item in waiting_candidates])
+                return
             status = (run.get("post_review_status") or "AWAITING_FRONT_ANCHOR") if review_only else (
-                "AWAITING_FRONT_ANCHOR" if not self.detail(run_id).get("front_anchor") else "COMPLETE"
+                "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "COMPLETE"
             )
-            self._run_update(run_id, status=status, review_only=False, target_views=[])
+            self._run_update(run_id, status=status, review_only=False, target_views=[], target_candidate_ids=[])
             return
         except Exception as exc:
             self._run_update(run_id, status="ERROR", review_only=False, error=str(exc))
@@ -1095,15 +1487,32 @@ class BodyReferenceExperimentService:
         return {"status": "QUEUED", "run_id": run_id, "candidate_id": candidate["candidate_id"]}
 
     def request_stop(self, run_id: str) -> dict[str, Any]:
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        root = self._root(run_id)
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        if state.get("status") == "CANCELLED":
+            self._withdraw_queued_asks(run_id)
+            return self.detail(run_id)
+        active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE",
+                  "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}
+        if state.get("status") not in active:
+            run = self.detail(run_id)
+            if not run.get("interrupted"):
+                raise BodyReferenceExperimentError("This batch is not running.")
+        stamp = self._now()
+        self._write(root / "cancelled.json", {"run_id": run_id, "cancelled_at": stamp})
         state["stop_requested"] = True
-        state["status"] = "STOPPING"
-        state["updated_at"] = self._now()
+        state["status"] = "CANCELLED"
+        state["cancelled_at"] = stamp
+        state["error"] = "Cancelled by user."
+        state["updated_at"] = stamp
         self._save_state(run_id, state)
+        self._withdraw_queued_asks(run_id)
         return self.detail(run_id)
 
     def resume(self, run_id: str) -> dict[str, Any]:
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        if state.get("status") == "CANCELLED":
+            raise BodyReferenceExperimentError("This batch was cancelled. Start a new batch or explicitly re-run a view.")
         state["stop_requested"] = False
         state["status"] = "READY_FOR_VIEWS" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
         state["updated_at"] = self._now()
@@ -1119,17 +1528,18 @@ class BodyReferenceExperimentService:
             ask_id = str(candidate.get("ask_id") or "")
             proxy_status, answer = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})
             if ask_id and (proxy_status in {"QUEUED", "RUNNING"} or str(answer.get("status") or "").upper() == "SUCCESS"):
-                self._candidate_update(run_id, candidate_id, {"status": "QUEUED", "render_error": ""})
+                self._candidate_update(run_id, candidate_id, {"status": "QUEUED", "render_error": "", "face_gate": {}})
             else:
                 self._candidate_update(run_id, candidate_id, {
-                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "",
+                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "", "face_gate": {},
                     "retry_count": int(candidate.get("retry_count") or 0) + 1,
                 })
-        elif candidate["status"] == "COMPLETE":
+        elif candidate["status"] in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "WAITING_FOR_ANALYSIS"}:
             if not (candidate.get("luna_status") == "FAILED" or
                     (candidate.get("local_job") or {}).get("status") == "FAILED"):
                 raise BodyReferenceExperimentError("This candidate has no failed analysis to retry.")
             self._candidate_update(run_id, candidate_id, {
+                "status": "WAITING_FOR_ANALYSIS",
                 "luna_status": "PENDING" if candidate.get("luna_status") == "FAILED" else candidate.get("luna_status"),
                 "local_job": {} if (candidate.get("local_job") or {}).get("status") == "FAILED" else candidate.get("local_job"),
             })
@@ -1146,10 +1556,10 @@ class BodyReferenceExperimentService:
             proxy_status, answer = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})
             if ask_id and (proxy_status in {"QUEUED", "RUNNING"} or str(answer.get("status") or "").upper() == "SUCCESS"):
                 self._candidate_update(run_id, candidate["candidate_id"],
-                                       {"status": "QUEUED", "render_error": ""})
+                                       {"status": "QUEUED", "render_error": "", "face_gate": {}})
             else:
                 self._candidate_update(run_id, candidate["candidate_id"], {
-                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "",
+                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "", "face_gate": {},
                     "retry_count": int(candidate.get("retry_count") or 0) + 1,
                 })
         return self.resume(run_id)
@@ -1157,7 +1567,7 @@ class BodyReferenceExperimentService:
     def retry_failed_analyses(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         for candidate in run["candidates"]:
-            if candidate["status"] != "COMPLETE":
+            if candidate["status"] not in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "WAITING_FOR_ANALYSIS"}:
                 continue
             update: dict[str, Any] = {}
             job = candidate.get("local_job") or {}
@@ -1168,6 +1578,7 @@ class BodyReferenceExperimentService:
             if candidate.get("luna_status") == "FAILED":
                 update.update(luna_status="PENDING", luna_error="")
             if update:
+                update["status"] = "WAITING_FOR_ANALYSIS"
                 self._candidate_update(run_id, candidate["candidate_id"], update)
         return self.resume(run_id)
     @staticmethod

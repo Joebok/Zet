@@ -1186,6 +1186,8 @@ class ZetApp:
 
     def harvest_ai_answers(self):
         results = self.asset_service.harvest_ai_answers()
+        from zet.services.body_reference_experiment_service import BodyReferenceExperimentService
+        BodyReferenceExperimentService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()
         self.prompt_evolution_service.advance_active_runs()
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
