@@ -10,6 +10,7 @@ from zet.services.local_body_reference_service import (
     METHOD_FRONT_CONDITIONED,
     METHOD_TEXT_FIRST,
 )
+from zet.services.candidate_review_contract import parse_rejection_verdict, validate_ranking
 from zet.services.prompt_template_service import filter_prompt_variant_blocks
 from zet.services.comfyui_workflow_registry import (
     QWEN_BODY_REFERENCE_EDIT_WORKFLOW,
@@ -32,6 +33,19 @@ def make_service(tmp_path: Path) -> LocalBodyReferenceService:
     return LocalBodyReferenceService(app, project)
 
 
+def create_legacy_run(service: LocalBodyReferenceService, payload: dict) -> dict:
+    """Create a version 1 fixture for tests that exercise the retained legacy path."""
+    run = service.create_run(payload)
+    root = Path(run["root"])
+    spec_path = root / "spec.json"
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    spec.update(schema_version=1, review_version=1)
+    spec.pop("selected_views", None)
+    spec.pop("rankings", None)
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    return service.detail(run["run_id"])
+
+
 def test_preview_has_eight_views_and_seventy_two_candidates(tmp_path):
     service = make_service(tmp_path)
     plan = service.preview({"character": "Tsaeytte", "phase": "Adult"})
@@ -39,6 +53,222 @@ def test_preview_has_eight_views_and_seventy_two_candidates(tmp_path):
     assert len(plan["views"]) == 8
     assert plan["candidate_count"] == 44
     assert plan["methods"] == [METHOD_FRONT_CONDITIONED]
+
+
+def test_new_run_uses_version_two_review_contract(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 2,
+                              "other_count": 1, "seeds": list(range(9))})
+    assert run["schema_version"] == run["review_version"] == 2
+    assert run["selected_views"] == {}
+    assert run["rankings"] == {}
+    assert all(candidate["gates"] == {} for candidate in run["candidates"])
+    assert "Requested view: FRONT_LEFT_3_4" in service.gate_prompt(run["run_id"], "FRONT_LEFT_3_4", "orientation")
+
+
+def test_gate_contracts_are_narrow_and_verdicts_are_exact():
+    front = LocalBodyReferenceService.review_gates("FRONT")
+    other = LocalBodyReferenceService.review_gates("LEFT_PROFILE")
+    assert [gate.key for gate in front] == ["face", "proportion", "framing", "orientation"]
+    assert [gate.key for gate in other] == ["face", "proportion", "framing", "orientation", "body_identity"]
+    assert front[0].crop_head and other[-1].uses_anchor
+    assert "LEFT_PROFILE" in other[3].prompt
+    assert parse_rejection_verdict(" false \n") == "FALSE"
+    with pytest.raises(ValueError):
+        parse_rejection_verdict("FALSE because it looks fine")
+    with pytest.raises(ValueError):
+        validate_ranking({"ranking": [{"candidate_id": "c001", "reason": "best"}]}, ["c001", "c002"])
+
+
+def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    image = Path(run["root"]) / "render.png"
+    image.write_bytes(b"render")
+    service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_GATES", "image_path": str(image)})
+    queued = []
+    verdicts = iter(["FALSE", "FALSE", "TRUE"])
+
+    def queue(_run_id, _candidate_id, gate):
+        queued.append(gate.key)
+        record = {"status": "QUEUED", "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+        service._candidate_update(run["run_id"], "c001", {"gates": {**(service.detail(run["run_id"])["candidates"][0].get("gates") or {}), gate.key: record}})
+        return record
+
+    monkeypatch.setattr(service, "_queue_review_gate", queue)
+    monkeypatch.setattr(service, "_wait_for_review_gate", lambda *_args: next(verdicts))
+    assert service._run_candidate_gates(run["run_id"], "c001") is True
+    rejected = service.detail(run["run_id"])["candidates"][0]
+    assert queued == ["face", "proportion", "framing"]
+    assert rejected["status"] == "GATE_REJECTED"
+    assert rejected["rejection_gate"] == "framing"
+    assert rejected["image_path"] == str(image)
+    assert image.is_file()
+
+
+def test_empty_ranking_and_rerun_failed_archive_gate_review(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    image = Path(run["root"]) / "rejected.png"
+    image.write_bytes(b"rejected")
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "GATE_REJECTED", "image_path": str(image), "rejection_gate": "face",
+        "gates": {"face": {"status": "COMPLETE", "verdict": "TRUE"}},
+    })
+    empty = service.rank_view(run["run_id"], "FRONT")
+    assert empty["rankings"]["FRONT"]["status"] == "EMPTY"
+    rerun = service.rerun_failed_view(run["run_id"], "FRONT")
+    candidate = next(item for item in rerun["candidates"] if item["candidate_id"] == "c001")
+    assert candidate["status"] == "PENDING"
+    assert candidate["image_path"] == ""
+    assert candidate["review_history"][-1]["gates"]["face"]["verdict"] == "TRUE"
+    assert image.is_file()
+
+
+def test_single_survivor_is_ranked_without_luna_and_can_be_selected(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    image = Path(run["root"]) / "front.png"
+    image.write_bytes(b"front image")
+    image_hash = service._hash(image)
+    gates = {gate.key: {"status": "COMPLETE", "verdict": "FALSE",
+                        "input_hashes": {"candidate": image_hash, "front_anchor": ""}}
+             for gate in service.review_gates("FRONT")}
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image), "gates": gates,
+    })
+    ranked = service.rank_view(run["run_id"], "FRONT")
+    assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c001"]
+    assert ranked["rankings"]["FRONT"]["model"] == "deterministic-single-survivor"
+    selected = service.select_view(run["run_id"], "FRONT", "c001")
+    assert selected["front_anchor"] == "c001"
+    assert selected["selected_views"] == {"FRONT": "c001"}
+
+
+def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_views(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 2,
+                              "other_count": 1, "seeds": list(range(9))})
+    image_paths = {}
+    for candidate_id in ("c001", "c002"):
+        image = Path(run["root"]) / f"{candidate_id}.png"
+        image.write_bytes(candidate_id.encode())
+        image_paths[candidate_id] = image
+        image_hash = service._hash(image)
+        gates = {gate.key: {"status": "COMPLETE", "verdict": "FALSE",
+                            "input_hashes": {"candidate": image_hash, "front_anchor": ""}}
+                 for gate in service.review_gates("FRONT")}
+        service._candidate_update(run["run_id"], candidate_id, {
+            "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image), "gates": gates,
+        })
+
+    def fake_luna(command, **kwargs):
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(json.dumps({"ranking": [
+            {"candidate_id": "c001", "reason": "Sharper orientation."},
+            {"candidate_id": "c002", "reason": "Better silhouette."},
+        ]}), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("zet.services.local_body_reference_service.subprocess.run", fake_luna)
+    ranked = service.rank_view(run["run_id"], "FRONT")
+    assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c001", "c002"]
+    moved = service.move_candidate_rank(run["run_id"], "FRONT", "c002", "up")
+    assert moved["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c002", "c001"]
+    assert moved["rankings"]["FRONT"]["luna_ordered_candidate_ids"] == ["c001", "c002"]
+    service.update_candidate(run["run_id"], "c001", {"decision": "reject", "notes": ""})
+    assert service.detail(run["run_id"])["rankings"]["FRONT"]["status"] == "COMPLETE"
+    selected = service.select_view(run["run_id"], "FRONT", "c002")
+    assert selected["front_anchor"] == "c002"
+
+    other_image = Path(run["root"]) / "other.png"
+    other_image.write_bytes(b"old anchor generation")
+    service._candidate_update(run["run_id"], "c003", {
+        "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(other_image),
+    })
+    root = Path(run["root"])
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    state.setdefault("selected_views", {})["FRONT_LEFT_3_4"] = "c003"
+    (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    service.update_candidate(run["run_id"], "c001", {"decision": "undecided", "notes": ""})
+    switched = service.select_view(run["run_id"], "FRONT", "c001")
+    assert "FRONT_LEFT_3_4" not in switched["selected_views"]
+    assert next(item for item in switched["candidates"] if item["candidate_id"] == "c003")["status"] == "PENDING"
+
+
+def test_later_view_requires_current_front_anchor_hash(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    anchor_image = Path(run["root"]) / "anchor.png"
+    anchor_image.write_bytes(b"accepted anchor")
+    anchor_hash = service._hash(anchor_image)
+    front_gates = {gate.key: {"status": "COMPLETE", "verdict": "FALSE",
+                              "input_hashes": {"candidate": anchor_hash, "front_anchor": ""}}
+                   for gate in service.review_gates("FRONT")}
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(anchor_image), "gates": front_gates,
+    })
+    service.rank_view(run["run_id"], "FRONT")
+    service.select_view(run["run_id"], "FRONT", "c001")
+
+    other_view = "FRONT_LEFT_3_4"
+    candidate_image = Path(run["root"]) / "left.png"
+    candidate_image.write_bytes(b"left view")
+    candidate_hash = service._hash(candidate_image)
+    gates = {gate.key: {"status": "COMPLETE", "verdict": "FALSE",
+                        "input_hashes": {"candidate": candidate_hash,
+                                         "front_anchor": anchor_hash if gate.uses_anchor else ""}}
+             for gate in service.review_gates(other_view)}
+    service._candidate_update(run["run_id"], "c002", {
+        "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(candidate_image), "gates": gates,
+    })
+    candidate = next(item for item in service.detail(run["run_id"])["candidates"] if item["candidate_id"] == "c002")
+    assert candidate["view"] == other_view, candidate
+    assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW", candidate
+    assert not candidate.get("rejection_gate"), candidate
+    assert candidate.get("human_review", {}).get("decision") == "undecided", candidate
+    assert service.detail(run["run_id"])["front_anchor"] == "c001"
+    assert candidate["gates"]["body_identity"]["input_hashes"]["front_anchor"] == anchor_hash
+    assert candidate["gates"]["body_identity"]["input_hashes"]["candidate"] == candidate_hash
+    assert all(candidate["gates"][gate.key]["verdict"] == "FALSE"
+               and candidate["gates"][gate.key]["input_hashes"]["candidate"] == service._hash(candidate_image)
+               and (not gate.uses_anchor or candidate["gates"][gate.key]["input_hashes"]["front_anchor"] == service._hash(anchor_image))
+               for gate in service.review_gates(other_view))
+    ranked = service.rank_view(run["run_id"], other_view)
+    assert ranked["rankings"][other_view]["ordered_candidate_ids"] == ["c002"], {
+        "candidate": candidate, "ranking": ranked["rankings"][other_view],
+    }
+    anchor_image.write_bytes(b"changed anchor")
+    with pytest.raises(LocalBodyReferenceError, match="anchor changed"):
+        service.select_view(run["run_id"], other_view, "c002")
 
 
 def test_codex_jobs_report_pending_running_done_and_failed(tmp_path):
@@ -81,7 +311,7 @@ def test_render_completion_waits_for_face_gate(tmp_path, monkeypatch):
 
     assert service._wait_for_render(run["run_id"], "c001") is True
     candidate = service.detail(run["run_id"])["candidates"][0]
-    assert candidate["status"] == "WAITING_FOR_FACE_GATE"
+    assert candidate["status"] == "WAITING_FOR_GATES"
     assert candidate["completed_at"] == ""
 
 
@@ -91,7 +321,7 @@ def test_harvest_face_gate_advances_or_requeues_without_completing(tmp_path, mon
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     root = Path(run["root"])
     image = root / "candidate.png"
     image.write_bytes(b"rendered image")
@@ -134,7 +364,7 @@ def test_preexisting_gate_passed_candidates_wait_for_human_review(tmp_path, monk
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     service._candidate_update(run["run_id"], "c001", {
         "status": "COMPLETE", "face_gate": {"status": "COMPLETE", "verdict": "FALSE"},
         "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
@@ -150,7 +380,7 @@ def test_human_review_is_required_for_complete_status(tmp_path, monkeypatch):
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     service._candidate_update(run["run_id"], "c001", {
         "status": "WAITING_FOR_HUMAN_REVIEW",
         "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
@@ -216,7 +446,7 @@ def test_front_anchor_requires_completed_reviewed_front_candidate(tmp_path, monk
                 "source_map": "", "dependency_manifest": ""}
 
     monkeypatch.setattr(service, "_compile_view", compile_view)
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     assert prompts == run["views"]
     with pytest.raises(LocalBodyReferenceError):
         service.select_front_anchor(run["run_id"], "c001")
@@ -340,7 +570,7 @@ def test_existing_run_refreshes_analysis_when_template_changes(tmp_path, monkeyp
                          "analysis_specification": "old analysis with no cast shadow, contact shadow",
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     template = service.project_root / "Config" / "Prompt_Templates" / "body_reference_v2.md"
     template.parent.mkdir(parents=True)
     template.write_text(
@@ -392,7 +622,7 @@ def test_reevaluate_preserves_render_and_human_review(tmp_path, monkeypatch):
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     root = Path(run["root"])
     image = root / "front.png"
     image.write_bytes(b"original image")
@@ -426,7 +656,7 @@ def test_view_actions_scope_rerun_and_reevaluation(tmp_path, monkeypatch):
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     root = Path(run["root"])
     front_image = root / "front.png"
     other_image = root / "other.png"
@@ -488,7 +718,7 @@ def test_interrupted_run_is_recoverable(tmp_path, monkeypatch):
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     root = Path(run["root"])
     image = root / "front.png"
     image.write_bytes(b"front image")
@@ -528,7 +758,7 @@ def test_reevaluation_runner_only_reviews_existing_images(tmp_path, monkeypatch)
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
     root = Path(run["root"])
     image = root / "front.png"
     image.write_bytes(b"front image")
@@ -563,7 +793,7 @@ def test_runner_batches_images_before_reviews_for_each_view(tmp_path, monkeypatc
                         {"view": view, "view_index": index, "manual_prompt": view,
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
-    run = service.create_run({
+    run = create_legacy_run(service, {
         "character": "Tsaeytte", "phase": "Adult",
         "front_count": 2, "other_count": 1, "seeds": list(range(9)),
     })

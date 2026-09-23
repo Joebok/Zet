@@ -1161,6 +1161,68 @@ test("running prompt analysis harvests and opens without changing the selected p
   expect(queuedAgain).toBe(0);
 });
 
+test("Local Body-Reference shows gate rejects, Luna order, selection, and repair controls", async ({ page }) => {
+  let selectedRequest;
+  let run = {
+    run_id: "20260922_120000_000001", review_version: 2, status: "AWAITING_FRONT_ANCHOR",
+    candidate_count: 2, views: ["FRONT"], front_anchor: null, selected_views: {},
+    rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c001"], entries: [
+      { candidate_id: "c001", reason: "Clear silhouette and strong proportions." },
+    ] } },
+    candidates: [
+      { candidate_id: "c001", view: "FRONT", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "front.png",
+        gates: { face: { status: "COMPLETE", verdict: "FALSE" }, proportion: { status: "COMPLETE", verdict: "FALSE" } },
+        human_review: { decision: "undecided", notes: "" } },
+      { candidate_id: "c002", view: "FRONT", status: "GATE_REJECTED", rejection_gate: "face", image_path: "reject.png",
+        gates: { face: { status: "COMPLETE", verdict: "TRUE" } }, human_review: { decision: "undecided", notes: "" } },
+    ],
+  };
+  await page.route("**/api/context", (route) => route.fulfill({ json: {
+    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
+  } }));
+  await page.route(/\/api\/local\/body-reference\/runs\?/, (route) => route.fulfill({ json: { runs: [
+    { run_id: run.run_id, status: run.status, candidate_count: 2, complete_count: 0 },
+  ] } }));
+  await page.route(new RegExp(`/api/local/body-reference/runs/${run.run_id}$`), (route) => route.fulfill({ json: run }));
+  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/images\//, (route) => route.fulfill({
+    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
+  }));
+  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/gates\/face\/prompt$/, (route) => route.fulfill({ body: "Inspect the head in the image." }));
+  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/selection$/, async (route) => {
+    selectedRequest = route.request().postDataJSON();
+    run = { ...run, status: "AWAITING_HUMAN_SELECTION", front_anchor: selectedRequest.candidate_id,
+      selected_views: { FRONT: selectedRequest.candidate_id }, candidates: run.candidates.map((item) => ({
+        ...item, status: item.candidate_id === selectedRequest.candidate_id ? "COMPLETE" : item.status,
+      })) };
+    await route.fulfill({ json: run });
+  });
+  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/rerun-failed\?view=FRONT$/, async (route) => {
+    run = { ...run, status: "RUNNING" };
+    await route.fulfill({ json: run });
+  });
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.goto("/local-body-reference");
+  await expect(page.locator("h1")).toHaveText("Local Body-Reference");
+  await expect(page.locator("#gallery")).toContainText("Face gate: Rejected");
+  await expect(page.locator("#gallery")).toContainText("Proportion gate: N/A");
+  await page.getByRole("button", { name: "Show Face gate prompt" }).click();
+  await expect(page.locator("#gate-prompt-text")).toHaveText("Inspect the head in the image.");
+  await page.locator("#gate-prompt-close").click();
+  await expect(page.locator("#gallery")).toContainText("Clear silhouette and strong proportions.");
+  await expect(page.getByRole("button", { name: "Select", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  expect(selectedRequest).toEqual({ candidate_id: "c001" });
+  await expect(page.locator("#status")).toContainText("FRONT anchor: c001");
+
+  await expect(page.locator('[data-rerun-view="FRONT"]')).toBeEnabled();
+  await expect(page.locator('[data-rerun-failed-view="FRONT"]')).toBeEnabled();
+  await expect(page.locator('[data-reevaluate-view="FRONT"]')).toBeEnabled();
+  const rerunFailed = page.waitForRequest((request) => request.url().includes("/rerun-failed?view=FRONT") && request.method() === "POST");
+  await page.locator('[data-rerun-failed-view="FRONT"]').click();
+  await rerunFailed;
+});
+
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {
   await openPage(page, "ai-controls");
   await expect(page.locator("#ai-controls-page h1")).toHaveText("AI Queue");

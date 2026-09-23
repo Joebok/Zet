@@ -31,7 +31,7 @@ class Config:
     ai_asset_workflow_model: str = "general:latest"
     codex_default_model: str = "gpt-6-luna"
     ai_scene_builder_model: str = "general:latest"
-    local_body_reference_face_gate_model: str = "image-analysis:latest"
+    local_body_reference_face_gate_model: str = "image-analysis-alt:latest"
     local_body_reference_review_model: str = "image-analysis:latest"
     local_render_auto_queue_after_condense: bool = False
     local_render_backend: str = "stable_matrix"
@@ -210,7 +210,7 @@ class ConfigService:
                 codex_default_model=str(ai_models.get("CodexDefault", "gpt-6-luna")),
                 ai_scene_builder_model=str(ai_models.get("SceneBuilder", "general:latest")),
                 local_body_reference_face_gate_model=str(
-                    ai_models.get("LocalBodyReferenceFaceGate", "image-analysis:latest")
+                    ai_models.get("LocalBodyReferenceFaceGate", "image-analysis-alt:latest")
                 ),
                 local_body_reference_review_model=str(
                     ai_models.get("LocalBodyReferenceReview", "image-analysis:latest")

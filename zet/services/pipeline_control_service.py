@@ -44,7 +44,7 @@ class AutomationSettings:
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
     ai_scene_builder_model: str = "general:latest"
-    local_body_reference_face_gate_model: str = "image-analysis:latest"
+    local_body_reference_face_gate_model: str = "image-analysis-alt:latest"
     local_body_reference_review_model: str = "image-analysis:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
@@ -154,11 +154,6 @@ class PipelineControlService:
             {
                 "key": "scene_builder",
                 "description": "Turns narrative prose into structured Scene Builder data.",
-                "templates": [],
-            },
-            {
-                "key": "local_body_reference_review",
-                "description": "Reviews Local Body-Reference images against the requested view and character facts.",
                 "templates": [],
             },
         ]

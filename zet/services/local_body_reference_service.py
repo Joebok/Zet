@@ -18,6 +18,7 @@ from PIL import Image
 
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -55,6 +56,19 @@ class LocalBodyReferenceService:
     """
 
     FACE_GATE_PROMPT = """Inspect the head in the image.\n\nDoes the head contain clearly recognizable or rendered facial features, such as visible eyes, eyebrows, nose details, lips/mouth, or a human/elf-like facial expression?\n\nAnswer TRUE only if obvious facial features are visibly rendered.\nAnswer FALSE if the head is essentially a smooth mannequin head, even if it has basic face-plane geometry, ears, shallow construction marks, or minimal indications of feature placement.\n\nReturn only TRUE or FALSE."""
+    PROPORTION_GATE_PROMPT = """Inspect the figure's head-to-body proportions.\n\nIs the head clearly and materially too large or too small for the body, outside the plausible range for the depicted adult humanoid physique?\n\nAnswer TRUE only for an obvious head-to-body proportion error.\nAnswer FALSE if the proportions are plausible, borderline, or merely a matter of aesthetic preference.\n\nReturn only TRUE or FALSE."""
+    FRAMING_GATE_PROMPT = """Inspect the full-body framing of the figure.\n\nIs any essential part of the figure clearly cropped, cut off, or missing in a way that prevents this image from serving as a complete full-body reference?\n\nConsider the full head, torso, arms, hands, legs, and feet.\n\nAnswer TRUE only when meaningful body anatomy is visibly cut off or missing.\nAnswer FALSE if the entire figure is substantially present, even if margins or centering are imperfect.\n\nReturn only TRUE or FALSE."""
+    ORIENTATION_GATE_PROMPT = """Evaluate only the requested body orientation.\n\nRequested view: {VIEW}\nDefinition: {VIEW_DEFINITION}\n\nDoes the figure clearly show a substantially different body orientation from the requested view?\n\nAnswer TRUE only if the body is obviously in the wrong canonical view.\nAnswer FALSE if the orientation reasonably matches the requested view, including normal small variation in rotation.\n\nReturn only TRUE or FALSE."""
+    BODY_IDENTITY_GATE_PROMPT = """Compare the body proportions and physique of the two figures.\n\nImage 1 is the accepted body-reference anchor. Image 2 is the candidate.\n\nIgnoring viewpoint, perspective, pose, foreshortening, clothing deformation, and small rendering differences, is there an obvious incompatibility that would prevent these from plausibly representing the same underlying body?\n\nConsider head-to-body scale, shoulder width, torso length, waist and hip structure, limb proportions, overall body mass, and general physique.\n\nAnswer TRUE only if the physiques are clearly incompatible.\nAnswer FALSE if they could plausibly be the same body viewed from different angles.\n\nReturn only TRUE or FALSE."""
+    RANKING_SCHEMA = {
+        "type": "object",
+        "properties": {"ranking": {"type": "array", "items": {
+            "type": "object", "properties": {
+                "candidate_id": {"type": "string"}, "reason": {"type": "string"},
+            }, "required": ["candidate_id", "reason"], "additionalProperties": False,
+        }}},
+        "required": ["ranking"], "additionalProperties": False,
+    }
 
     _runner_lock = threading.Lock()
     _active_runs: set[str] = set()
@@ -342,21 +356,23 @@ class LocalBodyReferenceService:
                         "prompt": candidate_prompt, "prompt_sha256": hashlib.sha256(candidate_prompt.encode()).hexdigest(),
                         "status": "PENDING", "image_path": "", "render_error": "",
                         "analyses": {}, "disposition": "pending", "human_review": {"decision": "undecided", "notes": ""},
+                        "gates": {},
                     })
                     seed_index += 1
         spec = {
-            "schema_version": 1, "kind": "local_body_reference", "run_id": run_id,
+            "schema_version": 2, "review_version": 2, "kind": "local_body_reference", "run_id": run_id,
             "created_at": self._now(), "status": "AWAITING_FRONT_ANCHOR", "character": plan["character"],
             "phase": plan["phase"], "views": plan["views"], "front_view": FRONT_VIEW,
             "front_count": plan["front_count"], "other_count": plan["other_count"],
             "candidate_count": len(candidates), "methods": plan["methods"], "seeds": [str(seed) for seed in seeds],
             "prompt_snapshots": prompts, "candidates": candidates,
             "source_snapshot_sha256": hashlib.sha256(json.dumps(prompts, sort_keys=True).encode()).hexdigest(),
-            "front_anchor": None, "lineups": {}, "created_by": "zet",
+            "front_anchor": None, "lineups": {}, "selected_views": {}, "rankings": {}, "created_by": "zet",
         }
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": spec["status"], "updated_at": self._now(),
-                                            "stop_requested": False, "candidates": {}})
+                                            "stop_requested": False, "candidates": {}, "rankings": {},
+                                            "selected_views": {}})
         return {**spec, "root": str(root)}
 
     def _root(self, run_id: str) -> Path:
@@ -381,6 +397,7 @@ class LocalBodyReferenceService:
         stored_status = state.get("status") or value.get("status")
         interrupted = stored_status in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"} and not self._runner_is_active(run_id)
         value["status"] = "INTERRUPTED" if interrupted else stored_status
+        value["review_version"] = int(value.get("review_version") or 1)
         value["interrupted"] = interrupted
         value["stop_requested"] = bool(state.get("stop_requested", False))
         value["review_only"] = bool(state.get("review_only", False))
@@ -388,6 +405,8 @@ class LocalBodyReferenceService:
         value["error"] = state.get("error") or ("The Local Body-Reference runner stopped before this batch finished." if interrupted else "")
         value["front_anchor"] = state.get("front_anchor") or value.get("front_anchor")
         value["lineups"] = state.get("lineups") or value.get("lineups") or {}
+        value["selected_views"] = state.get("selected_views") or value.get("selected_views") or {}
+        value["rankings"] = state.get("rankings") or value.get("rankings") or {}
         value["set_report"] = state.get("set_report") or {}
         if interrupted:
             for candidate in candidates.values():
@@ -398,6 +417,8 @@ class LocalBodyReferenceService:
                 if candidate.get("luna_status") in {"QUEUED", "RUNNING"}:
                     candidate["luna_status"] = "INTERRUPTED"
         for candidate in candidates.values():
+            if value["review_version"] >= 2:
+                continue
             if candidate.get("status") != "COMPLETE":
                 continue
             decision = (candidate.get("human_review") or {}).get("decision", "undecided")
@@ -408,6 +429,55 @@ class LocalBodyReferenceService:
                                     for provider in ("local", "luna")) else "WAITING_FOR_ANALYSIS")
                 candidate["completed_at"] = ""
         value["candidates"] = list(candidates.values())
+        if value["review_version"] >= 2:
+            by_id = value["candidates_by_id"] = dict(candidates)
+            stale_selections: list[str] = []
+            for view, ranking in value["rankings"].items():
+                if view not in value.get("views", []):
+                    continue
+                anchor = next((item for item in by_id.values()
+                               if item.get("candidate_id") == value.get("front_anchor")), None)
+                anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+                anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image and anchor_image.is_file() else ""
+                survivors = []
+                for candidate in by_id.values():
+                    if (candidate.get("view") != view
+                            or candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                            or candidate.get("rejection_gate")
+                            ):
+                        continue
+                    image = Path(str(candidate.get("image_path") or ""))
+                    if not image.is_file():
+                        continue
+                    gates = candidate.get("gates") or {}
+                    current = True
+                    for gate in self.review_gates(view):
+                        record = gates.get(gate.key) or {}
+                        hashes = record.get("input_hashes") or {}
+                        if (record.get("status") != "COMPLETE" or record.get("verdict") != "FALSE"
+                                or hashes.get("candidate") != self._hash(image)
+                                or (gate.uses_anchor and hashes.get("front_anchor") != anchor_hash)):
+                            current = False
+                            break
+                    if current:
+                        survivors.append(candidate)
+                survivor_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+                                   for item in survivors}
+                is_stale = (ranking.get("status") == "COMPLETE" and (
+                    ranking.get("input_hashes") != survivor_hashes
+                    or ranking.get("anchor_hash", "") != anchor_hash
+                )) or (ranking.get("status") == "EMPTY" and bool(survivors))
+                if is_stale:
+                    ranking["status"] = "STALE"
+                    ranking["stale_reason"] = "Candidate image, survivor set, or FRONT anchor changed after ranking."
+                selected_id = (value.get("selected_views") or {}).get(view)
+                if selected_id and (ranking.get("status") != "COMPLETE"
+                                    or selected_id not in (ranking.get("ordered_candidate_ids") or [])):
+                    stale_selections.append(view)
+            value["stale_selections"] = stale_selections
+            value.pop("candidates_by_id", None)
+            if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
+                value["status"] = "REVIEW_REQUIRED"
         value["root"] = str(root)
         return value
 
@@ -430,11 +500,13 @@ class LocalBodyReferenceService:
             for candidate in run.get("candidates") or []:
                 status = str(candidate.get("status") or "UNKNOWN")
                 counts[status] = counts.get(status, 0) + 1
+            complete_count = (len(run.get("selected_views") or {}) if run.get("review_version", 1) >= 2
+                              else counts.get("COMPLETE", 0))
             runs.append({
                 "run_id": run["run_id"], "character": run.get("character", ""),
                 "phase": run.get("phase", ""), "created_at": run.get("created_at", ""),
                 "status": run.get("status", ""), "candidate_count": len(run.get("candidates") or []),
-                "complete_count": counts.get("COMPLETE", 0), "front_anchor": run.get("front_anchor"),
+                "complete_count": complete_count, "front_anchor": run.get("front_anchor"),
                 "source_run_id": run.get("source_run_id", ""),
             })
         return sorted(runs, key=lambda item: str(item.get("created_at") or item["run_id"]), reverse=True)
@@ -444,6 +516,19 @@ class LocalBodyReferenceService:
         jobs = []
         for summary in self.list_runs():
             run = self.detail(summary["run_id"])
+            if run.get("review_version", 1) >= 2:
+                for view in run.get("views") or []:
+                    ranking = (run.get("rankings") or {}).get(view) or {}
+                    status = str(ranking.get("status") or "PENDING").upper()
+                    jobs.append({
+                        "run_id": run["run_id"], "candidate_id": "", "view": view,
+                        "character": run.get("character", ""), "phase": run.get("phase", ""),
+                        "status": status,
+                        "details": str(ranking.get("error") or (
+                            "Waiting for gate-surviving candidates" if status == "PENDING" else ""
+                        )),
+                    })
+                continue
             for candidate in run.get("candidates") or []:
                 status = str(candidate.get("luna_status") or "").upper()
                 if "luna" in (candidate.get("analyses") or {}):
@@ -535,6 +620,20 @@ class LocalBodyReferenceService:
             state["set_report"] = {}
             fresh["front_anchor"] = anchor_id
             fresh["status"] = "RUNNING"
+            if int(fresh.get("review_version") or 1) >= 2:
+                anchor_copy = next((item for item in source.get("candidates", [])
+                                    if item.get("candidate_id") == anchor_id), {})
+                state.setdefault("selected_views", {})[FRONT_VIEW] = anchor_id
+                anchor_hash = self._hash(Path(str(anchor_copy.get("image_path") or ""))) if Path(
+                    str(anchor_copy.get("image_path") or "")
+                ).is_file() else ""
+                state.setdefault("rankings", {})[FRONT_VIEW] = {
+                    "status": "COMPLETE", "ordered_candidate_ids": [anchor_id],
+                    "entries": [{"candidate_id": anchor_id, "reason": "Carried forward as the accepted FRONT anchor."}],
+                    "input_hashes": {anchor_id: anchor_hash}, "anchor_hash": "",
+                    "model": "carried-forward-anchor", "recorded_at": self._now(),
+                }
+                state.setdefault("candidates", {}).setdefault(anchor_id, {}).update(status="COMPLETE")
         elif anchor:
             first_front = next(
                 (item for item in fresh.get("candidates", [])
@@ -555,7 +654,7 @@ class LocalBodyReferenceService:
         view = str(view or "").upper()
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_lock.locked():
             raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
@@ -569,6 +668,21 @@ class LocalBodyReferenceService:
         for candidate in candidates:
             old_analyses = candidate.get("analyses") or {}
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+            if int(run.get("review_version") or 1) >= 2:
+                history = list(candidate.get("review_history") or [])
+                history.append({
+                    "archived_at": stamp, "image_path": candidate.get("image_path", ""),
+                    "gates": candidate.get("gates") or {}, "human_review": candidate.get("human_review") or {},
+                })
+                update["review_history"] = history
+                update.update(
+                    status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                    image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
+                    render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
+                    disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                    retry_count=int(candidate.get("retry_count") or 0) + 1,
+                )
+                continue
             if old_analyses:
                 history = list(candidate.get("analysis_history") or [])
                 history.append({"archived_at": stamp, "analyses": old_analyses})
@@ -593,7 +707,22 @@ class LocalBodyReferenceService:
             state["front_anchor"] = None
             state["lineups"] = {}
             state["set_report"] = {}
+            if int(run.get("review_version") or 1) >= 2:
+                state.setdefault("selected_views", {}).pop(FRONT_VIEW, None)
+                old_rank = state.setdefault("rankings", {}).pop(FRONT_VIEW, None)
+                if old_rank:
+                    state.setdefault("ranking_history", {}).setdefault(FRONT_VIEW, []).append(
+                        {"archived_at": stamp, "ranking": old_rank}
+                    )
+                self._invalidate_views_after_anchor_change(run_id, state)
         else:
+            if int(run.get("review_version") or 1) >= 2:
+                state.setdefault("selected_views", {}).pop(view, None)
+                old_rank = state.setdefault("rankings", {}).pop(view, None)
+                if old_rank:
+                    state.setdefault("ranking_history", {}).setdefault(view, []).append(
+                        {"archived_at": stamp, "ranking": old_rank}
+                    )
             for selections in (state.get("lineups") or {}).values():
                 selections.pop(view, None)
             state["set_report"] = {}
@@ -618,9 +747,14 @@ class LocalBodyReferenceService:
             raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
 
         def is_failed_candidate(candidate: dict[str, Any]) -> bool:
-            if candidate.get("view") != view or candidate.get("status") != "COMPLETE":
+            if candidate.get("view") != view:
                 return False
+            if int(run.get("review_version") or 1) >= 2:
+                return (candidate.get("status") in {"GATE_REJECTED", "FAILED"}
+                        or candidate.get("human_review", {}).get("decision") == "reject")
             if not Path(str(candidate.get("image_path") or "")).is_file():
+                return False
+            if candidate.get("status") != "COMPLETE":
                 return False
             human_decision = (candidate.get("human_review") or {}).get("decision", "undecided")
             if human_decision == "reject":
@@ -644,6 +778,23 @@ class LocalBodyReferenceService:
         for candidate in candidates:
             old_analyses = candidate.get("analyses") or {}
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+            if int(run.get("review_version") or 1) >= 2:
+                if candidate.get("status") not in {"GATE_REJECTED", "FAILED"} and candidate.get("human_review", {}).get("decision") != "reject":
+                    continue
+                history = list(candidate.get("review_history") or [])
+                history.append({
+                    "archived_at": stamp, "image_path": candidate.get("image_path", ""),
+                    "gates": candidate.get("gates") or {}, "human_review": candidate.get("human_review") or {},
+                })
+                update["review_history"] = history
+                update.update(
+                    status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                    image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
+                    render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
+                    disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                    retry_count=int(candidate.get("retry_count") or 0) + 1,
+                )
+                continue
             if old_analyses:
                 history = list(candidate.get("analysis_history") or [])
                 history.append({"archived_at": stamp, "analyses": old_analyses})
@@ -667,7 +818,22 @@ class LocalBodyReferenceService:
             state["front_anchor"] = None
             state["lineups"] = {}
             state["set_report"] = {}
+            if int(run.get("review_version") or 1) >= 2:
+                state.setdefault("selected_views", {}).pop(FRONT_VIEW, None)
+                old_rank = state.setdefault("rankings", {}).pop(FRONT_VIEW, None)
+                if old_rank:
+                    state.setdefault("ranking_history", {}).setdefault(FRONT_VIEW, []).append(
+                        {"archived_at": stamp, "ranking": old_rank}
+                    )
+                self._invalidate_views_after_anchor_change(run_id, state)
         else:
+            if int(run.get("review_version") or 1) >= 2:
+                state.setdefault("selected_views", {}).pop(view, None)
+                old_rank = state.setdefault("rankings", {}).pop(view, None)
+                if old_rank:
+                    state.setdefault("ranking_history", {}).setdefault(view, []).append(
+                        {"archived_at": stamp, "ranking": old_rank}
+                    )
             for selections in (state.get("lineups") or {}).values():
                 selections.pop(view, None)
             state["set_report"] = {}
@@ -690,18 +856,47 @@ class LocalBodyReferenceService:
             if normalized_view not in target_views:
                 raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {normalized_view}")
             target_views = [normalized_view]
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-evaluating it.")
         if self._runner_lock.locked():
             raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
-        completed = [item for item in run["candidates"]
-                     if (item.get("status") == "COMPLETE" or
-                         (run.get("interrupted") and item.get("status") == "WAITING_FOR_ANALYSIS"))
-                     and item.get("view") in target_views
-                     and Path(str(item.get("image_path") or "")).is_file()]
+        if int(run.get("review_version") or 1) >= 2:
+            completed = [item for item in run["candidates"] if item.get("view") in target_views
+                         and item.get("status") in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "GATE_REJECTED", "FAILED"}
+                         and Path(str(item.get("image_path") or "")).is_file()]
+        else:
+            completed = [item for item in run["candidates"]
+                         if (item.get("status") == "COMPLETE" or
+                             (run.get("interrupted") and item.get("status") == "WAITING_FOR_ANALYSIS"))
+                         and item.get("view") in target_views
+                         and Path(str(item.get("image_path") or "")).is_file()]
         if not completed:
             scope = f" for view {target_views[0]}" if view is not None else ""
             raise LocalBodyReferenceError(f"This batch has no completed images to re-evaluate{scope}.")
+        if int(run.get("review_version") or 1) >= 2:
+            state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            stamp = self._now()
+            for target_view in target_views:
+                old_ranking = state.setdefault("rankings", {}).pop(target_view, None)
+                if old_ranking:
+                    state.setdefault("ranking_history", {}).setdefault(target_view, []).append(
+                        {"archived_at": stamp, "ranking": old_ranking}
+                    )
+            for candidate in completed:
+                update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+                old_gates = candidate.get("gates") or {}
+                if old_gates:
+                    update.setdefault("gate_history", []).append({"archived_at": stamp, "gates": old_gates})
+                update.update(status="WAITING_FOR_GATES", gates={}, failed_gate="", rejection_gate="",
+                              render_error="", completed_at="")
+            (self._root(run_id) / "cancelled.json").unlink(missing_ok=True)
+            state.update(status="REEVALUATING", review_only=True, target_views=target_views,
+                         target_candidate_ids=[item["candidate_id"] for item in completed],
+                         stop_requested=False, post_review_status=run["status"], error="", updated_at=stamp)
+            self._save_state(run_id, state)
+            result = self.detail(run_id)
+            result.update(status="REEVALUATING", interrupted=False, error="")
+            return result
         for target_view in target_views:
             if view is None or any(item.get("view") == target_view for item in completed):
                 self._review_facts(run, target_view)
@@ -759,6 +954,8 @@ class LocalBodyReferenceService:
 
     def select_front_anchor(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
+        if run.get("review_version", 1) >= 2:
+            return self.select_view(run_id, FRONT_VIEW, candidate_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate or candidate["view"] != FRONT_VIEW:
             raise LocalBodyReferenceError("Only a front-view candidate can become the anchor.")
@@ -784,6 +981,35 @@ class LocalBodyReferenceService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
+        if run.get("review_version", 1) >= 2:
+            if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+                raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before reviewing.")
+            decision = str(payload.get("decision") or "undecided")
+            notes = str(payload.get("notes") or "")
+            if decision not in {"keep", "reject", "undecided"}:
+                raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
+            if candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate"):
+                raise LocalBodyReferenceError("Human review is available only for gate-surviving candidates.")
+            ranking = (run.get("rankings") or {}).get(candidate["view"]) or {}
+            if candidate_id not in (ranking.get("ordered_candidate_ids") or []):
+                raise LocalBodyReferenceError("The candidate must pass current gates and ranking before human review.")
+            root = self._root(run_id)
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update({
+                "human_review": {"decision": decision, "notes": notes},
+            })
+            if decision == "reject" and state.get("selected_views", {}).get(candidate["view"]) == candidate_id:
+                state["selected_views"].pop(candidate["view"], None)
+                state["candidates"][candidate_id]["status"] = "WAITING_FOR_HUMAN_REVIEW"
+                if candidate["view"] == FRONT_VIEW:
+                    state["front_anchor"] = None
+                    self._invalidate_views_after_anchor_change(run_id, state)
+                    state.update(status="AWAITING_FRONT_ANCHOR", target_views=[], target_candidate_ids=[])
+                else:
+                    state["status"] = "AWAITING_HUMAN_SELECTION"
+            state["updated_at"] = self._now()
+            self._save_state(run_id, state)
+            return self.detail(run_id)
         update = {"human_review": {"decision": str(payload.get("decision") or "undecided"),
                                    "notes": str(payload.get("notes") or "")}}
         if update["human_review"]["decision"] not in {"keep", "reject", "undecided"}:
@@ -1085,11 +1311,14 @@ class LocalBodyReferenceService:
         expected = str(ask.get("expected_output") or "")
         if not expected or Path(expected).name != expected or answer.get("expected_output") != expected:
             raise LocalBodyReferenceError("AI Proxy answer output filename is invalid.")
-        if ask.get("task_type") in {"local_body_reference_analysis", "local_body_reference_face_gate", "body_reference_analysis", "body_reference_face_gate"}:
+        if ask.get("task_type") in {"local_body_reference_analysis", "local_body_reference_face_gate", "body_reference_analysis", "body_reference_face_gate", "local_body_reference_gate"}:
             filename = str(ask.get("target_output_file") or "")
             if ask.get("task_type") in {"local_body_reference_analysis", "body_reference_analysis"}:
                 if not re.fullmatch(r"local(?:_\d{8}_\d{6}_\d{6})?\.json", filename):
                     raise LocalBodyReferenceError("AI Proxy analysis output filename is invalid.")
+            elif ask.get("task_type") == "local_body_reference_gate":
+                if not re.fullmatch(r"gate_(?:face|proportion|framing|orientation|body_identity)_\d{8}_\d{6}_\d{6}\.txt", filename):
+                    raise LocalBodyReferenceError("AI Proxy gate output filename is invalid.")
             elif not re.fullmatch(r"face_gate_\d{8}_\d{6}_\d{6}\.txt", filename):
                 raise LocalBodyReferenceError("AI Proxy face-gate output filename is invalid.")
             expected_target = self._root(run_id) / "analyses" / candidate_id / filename
@@ -1213,6 +1442,199 @@ class LocalBodyReferenceService:
         self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "face_gate": gate})
         return "QUEUED"
 
+    @classmethod
+    def review_gates(cls, view: str) -> list[ReviewGate]:
+        """Return the Local Body-Reference gate policy for a requested view."""
+        gates = [
+            ReviewGate("face", cls.FACE_GATE_PROMPT, crop_head=True),
+            ReviewGate("proportion", cls.PROPORTION_GATE_PROMPT),
+            ReviewGate("framing", cls.FRAMING_GATE_PROMPT),
+            ReviewGate("orientation", cls.ORIENTATION_GATE_PROMPT.format(
+                VIEW=view,
+                VIEW_DEFINITION=CANONICAL_VIEW_DEFINITIONS.get(view, ""),
+            )),
+        ]
+        if view != FRONT_VIEW:
+            gates.append(ReviewGate("body_identity", cls.BODY_IDENTITY_GATE_PROMPT, uses_anchor=True))
+        return gates
+
+    def gate_prompt(self, run_id: str, view: str, gate: str) -> str:
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        if view not in run.get("views", []):
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        definition = next((item for item in self.review_gates(view) if item.key == gate), None)
+        if definition is None:
+            raise LocalBodyReferenceError(f"Unknown review gate: {gate}")
+        return definition.prompt
+
+    def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str) -> dict[str, Any]:
+        """Move one reviewed candidate one place in the saved ranking."""
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        if run.get("review_version", 1) < 2 or view not in run.get("views", []):
+            raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
+        if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+            raise LocalBodyReferenceError("Wait for the current operation to finish before changing rank.")
+        ranking = (run.get("rankings") or {}).get(view) or {}
+        order = list(ranking.get("ordered_candidate_ids") or [])
+        if ranking.get("status") != "COMPLETE" or candidate_id not in order:
+            raise LocalBodyReferenceError("The candidate needs a current ranking before its rank can change.")
+        if direction not in {"up", "down"}:
+            raise LocalBodyReferenceError("Rank direction must be up or down.")
+        index = order.index(candidate_id)
+        neighbor = index + (-1 if direction == "up" else 1)
+        if neighbor < 0 or neighbor >= len(order):
+            return run
+        order[index], order[neighbor] = order[neighbor], order[index]
+        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        saved = state["rankings"][view]
+        saved.setdefault("luna_ordered_candidate_ids", list(saved["ordered_candidate_ids"]))
+        saved["ordered_candidate_ids"] = order
+        entries = {entry["candidate_id"]: entry for entry in saved.get("entries") or []}
+        saved["entries"] = [entries[item] for item in order]
+        saved["adjusted_at"] = self._now()
+        state["updated_at"] = self._now()
+        self._save_state(run_id, state)
+        return self.detail(run_id)
+
+    def _queue_review_gate(self, run_id: str, candidate_id: str, definition: ReviewGate) -> dict[str, Any]:
+        run = self.detail(run_id)
+        candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file():
+            raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
+        anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
+        anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+        if definition.uses_anchor and (anchor_image is None or not anchor_image.is_file()):
+            raise LocalBodyReferenceError("Select a completed front anchor before the body identity gate.")
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        root = self._root(run_id) / "analyses" / candidate_id
+        root.mkdir(parents=True, exist_ok=True)
+        image_hash = self._hash(image)
+        anchor_hash = self._hash(anchor_image) if definition.uses_anchor and anchor_image else ""
+        images: list[tuple[str, Path]] = []
+        if definition.crop_head:
+            crop = root / f"gate_face_{stamp}.png"
+            self._crop_head(image, crop)
+            images.append(("candidate_head.png", crop))
+        else:
+            images.append(("candidate.png", image))
+        if definition.uses_anchor and anchor_image:
+            images.insert(0, ("front_anchor.png", anchor_image))
+
+        output = root / f"gate_{definition.key}_{stamp}.txt"
+        ask_id = f"Ask_LocalBodyReference_{run_id}_{candidate_id}_{definition.key.upper()}_{stamp}"
+        staging = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.create_staging(ask_id)
+        for name, source in images:
+            shutil.copy2(source, staging / name)
+        (staging / "OLLAMA_PROMPT.md").write_text(definition.prompt, encoding="utf-8")
+        model = str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis-alt:latest")
+                    or "image-analysis-alt:latest")
+        manifest = {
+            "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "pipeline": "Local-Body-Reference", "pipeline_stage": f"BODY_REFERENCE_{definition.key.upper()}_GATE",
+            "worker_type": "ollama_generate", "ollama_model": model,
+            "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in images],
+            "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_gate",
+            "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
+            "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
+            "gate": definition.key,
+            "input_hashes": {"candidate": image_hash, "front_anchor": anchor_hash},
+            "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest(),
+        }
+        (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.publish(staging, ask_id, "ollama_generate")
+        record = {
+            "status": "QUEUED", "ask_id": ask_id, "output_path": str(output), "model": model,
+            "prompt_sha256": manifest["prompt_sha256"], "input_hashes": manifest["input_hashes"],
+            "queued_at": self._now(),
+        }
+        self._candidate_update(run_id, candidate_id, {
+            "status": "WAITING_FOR_GATES", "gates": {**(candidate.get("gates") or {}), definition.key: record},
+        })
+        return record
+
+    def _wait_for_review_gate(self, run_id: str, candidate_id: str, gate_key: str) -> str | None:
+        candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
+        gate = dict((candidate.get("gates") or {}).get(gate_key) or {})
+        if not gate:
+            raise LocalBodyReferenceError(f"Gate {gate_key} was not queued.")
+        output = Path(str(gate.get("output_path") or ""))
+        deadline = time.monotonic() + 1800
+        while not output.is_file():
+            if self.detail(run_id)["stop_requested"]:
+                return None
+            self._harvest_local_body_reference_answer(run_id, candidate_id, str(gate.get("ask_id") or ""), output)
+            proxy_status, answer = self._proxy_answer(str(gate.get("ask_id") or ""))
+            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
+                raise LocalBodyReferenceError(str(answer.get("error_message") or f"{gate_key} gate failed."))
+            if proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
+                gate["status"] = "RUNNING"
+                self._candidate_update(run_id, candidate_id, {"gates": {**(candidate.get("gates") or {}), gate_key: gate}})
+            if time.monotonic() >= deadline:
+                raise LocalBodyReferenceError(f"Timed out waiting for the {gate_key} gate.")
+            time.sleep(max(0.5, float(getattr(self.app.config, "comfyui_poll_seconds", 1.0))))
+        verdict = parse_rejection_verdict(output.read_text(encoding="utf-8"))
+        return verdict
+
+    def _run_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
+        run = self.detail(run_id)
+        candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
+        if candidate.get("status") == "GATE_REJECTED":
+            return True
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file():
+            raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
+        gates = dict(candidate.get("gates") or {})
+        for definition in self.review_gates(str(candidate.get("view") or "")):
+            if self.detail(run_id)["stop_requested"]:
+                return False
+            record = dict(gates.get(definition.key) or {})
+            anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
+            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+            expected_hashes = {
+                "candidate": self._hash(image),
+                "front_anchor": self._hash(anchor_image) if definition.uses_anchor and anchor_image and anchor_image.is_file() else "",
+            }
+            if record.get("status") == "COMPLETE" and record.get("input_hashes") == expected_hashes:
+                verdict = record.get("verdict")
+            else:
+                try:
+                    if not record.get("ask_id") or record.get("status") in {"FAILED", "STALE"}:
+                        record = self._queue_review_gate(run_id, candidate_id, definition)
+                        gates[definition.key] = record
+                    self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_GATES", "gates": gates})
+                    verdict = self._wait_for_review_gate(run_id, candidate_id, definition.key)
+                    if verdict is None:
+                        return False
+                    record = {**record, "status": "COMPLETE", "verdict": verdict, "completed_at": self._now()}
+                    gates[definition.key] = record
+                    self._candidate_update(run_id, candidate_id, {"gates": gates})
+                except Exception as exc:
+                    record = {**record, "status": "FAILED", "error": str(exc), "failed_at": self._now()}
+                    gates[definition.key] = record
+                    self._candidate_update(run_id, candidate_id, {
+                        "status": "FAILED", "failed_gate": definition.key, "render_error": str(exc), "gates": gates,
+                    })
+                    return True
+            if verdict == "TRUE":
+                record = {**record, "status": "COMPLETE", "verdict": verdict}
+                gates[definition.key] = record
+                history = list(candidate.get("gate_rejection_history") or [])
+                history.append({"gate": definition.key, "record": record})
+                self._candidate_update(run_id, candidate_id, {
+                    "status": "GATE_REJECTED", "rejection_gate": definition.key,
+                    "render_error": "", "gates": gates, "gate_rejection_history": history,
+                })
+                return True
+            candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
+        self._candidate_update(run_id, candidate_id, {
+            "status": "WAITING_FOR_HUMAN_REVIEW", "failed_gate": "", "render_error": "", "gates": gates,
+        })
+        return True
+
     def harvest_face_gate_jobs(self) -> list[str]:
         """Apply harvested face-gate verdicts and resume the affected candidates."""
         pending: dict[str, list[str]] = {}
@@ -1304,6 +1726,273 @@ class LocalBodyReferenceService:
             time.sleep(1)
         self.execute_run(run_id)
 
+    def _review_view_candidates_v2(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
+        run = self.detail(run_id)
+        candidates = [item for item in run["candidates"] if item.get("view") == view
+                      and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
+        for candidate in candidates:
+            if self.detail(run_id)["stop_requested"]:
+                return False
+            current = next(item for item in self.detail(run_id)["candidates"]
+                           if item["candidate_id"] == candidate["candidate_id"])
+            if current.get("status") == "GATE_REJECTED":
+                continue
+            if not Path(str(current.get("image_path") or "")).is_file():
+                continue
+            if current.get("status") in {"PENDING", "QUEUED", "RUNNING"}:
+                continue
+            if current.get("status") in {"WAITING_FOR_GATES", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE", "FAILED"}:
+                self._run_candidate_gates(run_id, current["candidate_id"])
+        if self.detail(run_id)["stop_requested"]:
+            return False
+        try:
+            self.rank_view(run_id, view)
+        except Exception:
+            # rank_view persists a visible failed ranking; allow other views to finish.
+            return True
+        return True
+
+    def queue_view_ranking(self, run_id: str, view: str) -> dict[str, Any]:
+        """Queue a current gate-survivor set for comparative Luna ranking."""
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        if run.get("review_version", 1) < 2 or view not in run.get("views", []):
+            raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
+        if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+            raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before ranking.")
+        survivors = [item for item in run["candidates"] if item.get("view") == view
+                     and item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                     and not item.get("rejection_gate")
+                     and item.get("human_review", {}).get("decision") != "reject"]
+        if not survivors and not any(item.get("view") == view and item.get("status") == "GATE_REJECTED"
+                                     for item in run["candidates"]):
+            raise LocalBodyReferenceError("No gate-reviewed candidates are available to rank.")
+        root = self._root(run_id)
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        rankings = state.setdefault("rankings", {})
+        previous = rankings.get(view)
+        if previous:
+            state.setdefault("ranking_history", {}).setdefault(view, []).append(
+                {"archived_at": self._now(), "ranking": previous}
+            )
+        rankings[view] = {"status": "QUEUED", "ordered_candidate_ids": [],
+                          "entries": [], "queued_at": self._now()}
+        state["updated_at"] = self._now()
+        self._save_state(run_id, state)
+        return self.detail(run_id)
+
+    def rank_view(self, run_id: str, view: str) -> dict[str, Any]:
+        """Rank gate-surviving version 2 candidates for one canonical view."""
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        if run.get("review_version", 1) < 2:
+            raise LocalBodyReferenceError("Per-view ranking is available for version 2 runs.")
+        if view not in run.get("views", []):
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
+        anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+        if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
+            raise LocalBodyReferenceError("Select a completed front anchor before ranking other views.")
+        survivors = [item for item in run["candidates"] if item.get("view") == view
+                     and item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                     and not item.get("rejection_gate")
+                     and item.get("human_review", {}).get("decision") != "reject"
+                     and Path(str(item.get("image_path") or "")).is_file()]
+        survivors = [item for item in survivors if all(
+            (item.get("gates") or {}).get(gate.key, {}).get("verdict") == "FALSE"
+            and (item.get("gates") or {}).get(gate.key, {}).get("input_hashes", {}).get("candidate")
+            == self._hash(Path(str(item.get("image_path") or "")))
+            and (not gate.uses_anchor or (anchor_image is not None and (item.get("gates") or {}).get(gate.key, {})
+                 .get("input_hashes", {}).get("front_anchor") == self._hash(anchor_image)))
+            for gate in self.review_gates(view)
+        )]
+        root = self._root(run_id)
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        rankings = state.setdefault("rankings", {})
+        ranking_history = state.setdefault("ranking_history", {})
+        previous = dict(rankings.get(view) or {})
+        if previous.get("status") == "COMPLETE":
+            current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
+            current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
+            if previous.get("input_hashes") == current_hashes and previous.get("anchor_hash", "") == current_anchor_hash:
+                return run
+            ranking_history.setdefault(view, []).append({"archived_at": self._now(), "ranking": previous})
+        current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
+        current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
+        if not survivors:
+            ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "entries": [],
+                       "input_hashes": {}, "anchor_hash": current_anchor_hash,
+                       "model": "", "recorded_at": self._now()}
+        elif len(survivors) == 1:
+            only = survivors[0]
+            ranking = {"status": "COMPLETE", "ordered_candidate_ids": [only["candidate_id"]],
+                       "entries": [{"candidate_id": only["candidate_id"], "reason": "Only candidate survived the rejection gates."}],
+                       "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
+                       "model": "deterministic-single-survivor", "recorded_at": self._now()}
+        else:
+            schema_fd, schema_name = tempfile.mkstemp(prefix="zet_body_reference_ranking_schema_", suffix=".json")
+            output_fd, output_name = tempfile.mkstemp(prefix="zet_body_reference_ranking_", suffix=".json")
+            os.close(schema_fd)
+            os.close(output_fd)
+            schema_file, output_file = Path(schema_name), Path(output_name)
+            schema_file.write_text(json.dumps(self.RANKING_SCHEMA), encoding="utf-8")
+            try:
+                codex_executable = shutil.which("codex")
+                if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+                    installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
+                    if installs:
+                        codex_executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
+                if not codex_executable:
+                    raise LocalBodyReferenceError("Codex CLI is unavailable for Luna ranking.")
+                command = [codex_executable, "-a", "never", "-s", "read-only", "-m",
+                           str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
+                           "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
+                           "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema_file),
+                           "--output-last-message", str(output_file)]
+                image_labels: list[str] = []
+                if view != FRONT_VIEW and anchor_image:
+                    command.extend(["--image", str(anchor_image)])
+                    image_labels.append("Image 1: accepted FRONT anchor")
+                for index, candidate in enumerate(survivors, start=1):
+                    command.extend(["--image", str(candidate["image_path"])])
+                    image_labels.append(f"Candidate {candidate['candidate_id']}: image {index + (1 if view != FRONT_VIEW else 0)}")
+                prompt = (
+                    "Rank the supplied body-reference candidates from best to worst. All candidates passed "
+                    "conservative, narrow rejection gates. Compare them against one another; do not turn minor "
+                    "imperfections into automatic failures. Favor the requested canonical view, complete readable "
+                    "silhouette, believable anatomy, proportions, mannequin head, and technical reference usefulness. "
+                    + ("Use the FRONT anchor to judge body consistency. " if view != FRONT_VIEW else "")
+                    + "Return every candidate exactly once with a concise comparative reason.\n\n"
+                    + "Requested view: " + view + "\n"
+                    + "View definition: " + CANONICAL_VIEW_DEFINITIONS.get(view, "") + "\n"
+                    + "Image mapping:\n" + "\n".join(image_labels) + "\n\n"
+                    + "Body-Reference specification:\n" + self._review_facts(run, view)
+                )
+                completed = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=1800,
+                                           check=False, env=self._luna_environment())
+                if completed.returncode != 0:
+                    raise LocalBodyReferenceError((completed.stderr or completed.stdout or "Luna ranking failed")[-2000:])
+                result = json.loads(output_file.read_text(encoding="utf-8"))
+                entries = validate_ranking(result, [item["candidate_id"] for item in survivors])
+                ranking = {"status": "COMPLETE", "ordered_candidate_ids": [item["candidate_id"] for item in entries],
+                           "entries": entries, "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
+                           "model": str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
+                           "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "recorded_at": self._now()}
+            except Exception as exc:
+                ranking = {"status": "FAILED", "ordered_candidate_ids": [], "entries": [],
+                           "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
+                           "error": str(exc), "recorded_at": self._now()}
+                rankings[view] = ranking
+                state["updated_at"] = self._now()
+                self._save_state(run_id, state)
+                raise LocalBodyReferenceError(f"Luna ranking failed for {view}: {exc}") from exc
+            finally:
+                schema_file.unlink(missing_ok=True)
+                output_file.unlink(missing_ok=True)
+        rankings[view] = ranking
+        selected_views = state.setdefault("selected_views", {})
+        selected_id = selected_views.get(view)
+        surviving_ids = set(ranking.get("ordered_candidate_ids") or [])
+        if selected_id and selected_id in surviving_ids:
+            state.setdefault("candidates", {}).setdefault(selected_id, {}).update(status="COMPLETE")
+        elif selected_id:
+            selected_views.pop(view, None)
+            if view == FRONT_VIEW:
+                self._invalidate_views_after_anchor_change(run_id, state)
+                state["front_anchor"] = None
+        state["ranking_history"] = ranking_history
+        state["updated_at"] = self._now()
+        self._save_state(run_id, state)
+        return self.detail(run_id)
+
+    def _invalidate_views_after_anchor_change(self, run_id: str, state: dict[str, Any]) -> None:
+        """Clear downstream selections and review state when FRONT identity changes."""
+        run = self.detail(run_id)
+        selected = state.setdefault("selected_views", {})
+        rankings = state.setdefault("rankings", {})
+        for view in (run.get("views") or []):
+            if view == FRONT_VIEW:
+                continue
+            selected.pop(view, None)
+            old_ranking = rankings.pop(view, None)
+            if old_ranking:
+                state.setdefault("ranking_history", {}).setdefault(view, []).append(
+                    {"archived_at": self._now(), "ranking": old_ranking}
+                )
+        for candidate in run.get("candidates") or []:
+            if candidate.get("view") == FRONT_VIEW:
+                continue
+            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+            image_path = str(candidate.get("image_path") or "")
+            if image_path:
+                update.setdefault("review_history", []).append({
+                    "archived_at": self._now(), "image_path": image_path,
+                    "gates": candidate.get("gates") or {},
+                    "human_review": candidate.get("human_review") or {},
+                    "invalidated_by_anchor_change": True,
+                })
+            update.update({
+                "status": "PENDING", "image_path": "", "image_sha256": "", "ask_id": "",
+                "gates": {}, "failed_gate": "", "rejection_gate": "", "render_error": "",
+                "human_review": {"decision": "undecided", "notes": ""},
+                "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
+            })
+
+    def select_view(self, run_id: str, view: str, candidate_id: str) -> dict[str, Any]:
+        """Select the human-approved candidate for one version 2 view."""
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        if run.get("review_version", 1) < 2:
+            raise LocalBodyReferenceError("View selection is available for version 2 runs.")
+        if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+            raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before selecting.")
+        if view not in run.get("views", []):
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
+        if not candidate or candidate.get("view") != view:
+            raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
+        if candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate"):
+            raise LocalBodyReferenceError("A candidate rejected by a review gate cannot be selected.")
+        if candidate.get("human_review", {}).get("decision") == "reject":
+            raise LocalBodyReferenceError("A human-rejected candidate cannot be selected.")
+        ranking = (run.get("rankings") or {}).get(view) or {}
+        if view != FRONT_VIEW:
+            anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
+            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+            if anchor_image is None or not anchor_image.is_file() or ranking.get("anchor_hash") != self._hash(anchor_image):
+                raise LocalBodyReferenceError("The FRONT anchor changed after ranking; rerun this view.")
+        if ranking.get("status") != "COMPLETE" or candidate_id not in (ranking.get("ordered_candidate_ids") or []):
+            raise LocalBodyReferenceError("The candidate must survive current gates and have a current view ranking.")
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
+            raise LocalBodyReferenceError("The candidate image changed after ranking; rerun its review.")
+        root = self._root(run_id)
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        selected = state.setdefault("selected_views", {})
+        previous_id = selected.get(view)
+        old_anchor_id = state.get("front_anchor")
+        if previous_id and previous_id != candidate_id:
+            state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
+        selected[view] = candidate_id
+        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(status="COMPLETE", selected_at=self._now())
+        if view == FRONT_VIEW:
+            state["front_anchor"] = candidate_id
+            if old_anchor_id != candidate_id:
+                self._invalidate_views_after_anchor_change(run_id, state)
+                state.update(status="READY_FOR_VIEWS", target_views=[], target_candidate_ids=[])
+        all_selected = all(view_name in selected for view_name in run.get("views") or [])
+        if all_selected and state.get("front_anchor") == selected.get(FRONT_VIEW):
+            state.update(status="COMPLETE", target_views=[], target_candidate_ids=[], review_only=False)
+        elif state.get("front_anchor"):
+            state.setdefault("status", "AWAITING_HUMAN_SELECTION")
+            if state.get("status") not in {"READY_FOR_VIEWS", "RUNNING", "PREFLIGHT"}:
+                state["status"] = "AWAITING_HUMAN_SELECTION"
+        else:
+            state["status"] = "AWAITING_FRONT_ANCHOR"
+        state["updated_at"] = self._now()
+        self._save_state(run_id, state)
+        return self.detail(run_id)
+
     def _review_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Run all pending analyses for one view after its images are available."""
         candidates = [item for item in self.detail(run_id)["candidates"] if item.get("view") == view and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
@@ -1370,7 +2059,8 @@ class LocalBodyReferenceService:
             if time.monotonic() >= deadline:
                 raise LocalBodyReferenceError("Timed out waiting for the render; use Retry after checking AI Proxy.")
             time.sleep(max(0.5, float(self.app.config.comfyui_poll_seconds)))
-        self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "completed_at": "",
+        next_status = "WAITING_FOR_GATES" if self.detail(run_id).get("review_version", 1) >= 2 else "WAITING_FOR_FACE_GATE"
+        self._candidate_update(run_id, candidate_id, {"status": next_status, "completed_at": "",
                                                     "image_sha256": self._hash(image), "render_error": ""})
         return True
 
@@ -1441,7 +2131,9 @@ class LocalBodyReferenceService:
                     self._withdraw_queued_asks(run_id)
                     self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
-                if not self._review_view_candidates(run_id, view, target_candidate_ids):
+                review_method = (self._review_view_candidates_v2
+                                 if run.get("review_version", 1) >= 2 else self._review_view_candidates)
+                if not review_method(run_id, view, target_candidate_ids):
                     self._withdraw_queued_asks(run_id)
                     self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
@@ -1452,12 +2144,12 @@ class LocalBodyReferenceService:
                     return
                 view_candidates = [item for item in latest["candidates"] if item.get("view") == view
                                    and (target_candidate_ids is None or item["candidate_id"] in target_candidate_ids)]
-                waiting_status = next((status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                waiting_status = next((status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
                                        if any(item.get("status") == status for item in view_candidates)), None)
                 if waiting_status and not latest.get("front_anchor"):
                     waiting_candidates = [item for item in view_candidates
                                           if item.get("status") in {"WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}]
-                    self._run_update(run_id, status=waiting_status, review_only=False,
+                    self._run_update(run_id, status=("AWAITING_FRONT_ANCHOR" if latest.get("review_version", 1) >= 2 else waiting_status), review_only=False,
                                      target_views=[view], target_candidate_ids=[item["candidate_id"] for item in waiting_candidates])
                     return
                 if not latest.get("front_anchor"):
@@ -1471,12 +2163,13 @@ class LocalBodyReferenceService:
             scoped_candidates = [item for item in latest.get("candidates") or []
                                  if target_candidate_ids is None or item["candidate_id"] in target_candidate_ids]
             waiting_candidates = [item for item in scoped_candidates if item.get("status") in {
-                "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
+                "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
             }]
             if waiting_candidates:
-                waiting_status = next(status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                waiting_status = next(status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
                                       if any(item.get("status") == status for item in waiting_candidates))
-                self._run_update(run_id, status=waiting_status, review_only=False,
+                run_status = "AWAITING_HUMAN_SELECTION" if latest.get("review_version", 1) >= 2 else waiting_status
+                self._run_update(run_id, status=run_status, review_only=False,
                                  target_views=sorted({item["view"] for item in waiting_candidates}),
                                  target_candidate_ids=[item["candidate_id"] for item in waiting_candidates])
                 return
@@ -1589,6 +2282,21 @@ class LocalBodyReferenceService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
+        if int(run.get("review_version") or 1) >= 2 and candidate.get("status") == "FAILED" and candidate.get("failed_gate"):
+            failed_gate = str(candidate["failed_gate"])
+            gates = dict(candidate.get("gates") or {})
+            if failed_gate in gates:
+                gates[failed_gate] = {**gates[failed_gate], "status": "FAILED"}
+            self._candidate_update(run_id, candidate_id, {
+                "status": "WAITING_FOR_GATES", "gates": gates, "failed_gate": "", "render_error": "",
+            })
+            state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            state.update(status="RUNNING", review_only=True, target_views=[candidate["view"]],
+                         target_candidate_ids=[candidate_id], stop_requested=False,
+                         post_review_status=("AWAITING_HUMAN_SELECTION" if run.get("front_anchor")
+                                             else "AWAITING_FRONT_ANCHOR"), updated_at=self._now())
+            self._save_state(run_id, state)
+            return self.detail(run_id)
         if candidate["status"] == "FAILED":
             ask_id = str(candidate.get("ask_id") or "")
             proxy_status, answer = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})

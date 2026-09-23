@@ -2400,6 +2400,14 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/local/body-reference/runs/{run_id}/views/{view}/gates/{gate}/prompt", response_class=PlainTextResponse)
+    def local_body_reference_gate_prompt(run_id: str, view: str, gate: str) -> PlainTextResponse:
+        try:
+            prompt = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).gate_prompt(run_id, view, gate)
+            return PlainTextResponse(prompt)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.post("/api/local/body-reference/runs/{run_id}/rerun")
     def rerun_local_body_reference(
         run_id: str, background_tasks: BackgroundTasks,
@@ -2469,6 +2477,39 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             return service.select_front_anchor(run_id, str(payload.get("candidate_id") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/body-reference/runs/{run_id}/views/{view}/selection")
+    def select_local_body_reference_view(
+        run_id: str, view: str, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
+            return service.select_view(run_id, view, str(payload.get("candidate_id") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/body-reference/runs/{run_id}/views/{view}/ranking")
+    def rank_local_body_reference_view(
+        run_id: str, view: str, background_tasks: BackgroundTasks
+    ) -> dict[str, Any]:
+        try:
+            service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
+            queued = service.queue_view_ranking(run_id, view)
+            background_tasks.add_task(service.rank_view, run_id, view)
+            return queued
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/body-reference/runs/{run_id}/views/{view}/ranking/move")
+    def move_local_body_reference_rank(
+        run_id: str, view: str, payload: dict[str, Any] = Body(...)
+    ) -> dict[str, Any]:
+        try:
+            return LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).move_candidate_rank(
+                run_id, view, str(payload.get("candidate_id") or ""), str(payload.get("direction") or "")
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
