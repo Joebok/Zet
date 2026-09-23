@@ -1165,7 +1165,7 @@ test("Local Body-Reference shows gate rejects, Luna order, selection, and repair
   let selectedRequest;
   let run = {
     run_id: "20260922_120000_000001", review_version: 2, status: "AWAITING_FRONT_ANCHOR",
-    candidate_count: 2, views: ["FRONT"], front_anchor: null, selected_views: {},
+    candidate_count: 3, views: ["FRONT"], front_anchor: null, selected_views: {},
     rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c001"], entries: [
       { candidate_id: "c001", reason: "Clear silhouette and strong proportions." },
     ] } },
@@ -1175,19 +1175,23 @@ test("Local Body-Reference shows gate rejects, Luna order, selection, and repair
         human_review: { decision: "undecided", notes: "" } },
       { candidate_id: "c002", view: "FRONT", status: "GATE_REJECTED", rejection_gate: "face", image_path: "reject.png",
         gates: { face: { status: "COMPLETE", verdict: "TRUE" } }, human_review: { decision: "undecided", notes: "" } },
+      { candidate_id: "c009", view: "FRONT", status: "FAILED", failed_gate: "orientation", image_path: "failed.png",
+        gates: { orientation: { status: "FAILED", error: "Ollama returned no answer (done_reason=length)." } },
+        human_review: { decision: "undecided", notes: "" } },
     ],
   };
   await page.route("**/api/context", (route) => route.fulfill({ json: {
     characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
   } }));
   await page.route(/\/api\/local\/body-reference\/runs\?/, (route) => route.fulfill({ json: { runs: [
-    { run_id: run.run_id, status: run.status, candidate_count: 2, complete_count: 0 },
+    { run_id: run.run_id, status: run.status, candidate_count: 3, complete_count: 0 },
   ] } }));
   await page.route(new RegExp(`/api/local/body-reference/runs/${run.run_id}$`), (route) => route.fulfill({ json: run }));
   await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/images\//, (route) => route.fulfill({
     contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
   }));
   await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/gates\/face\/prompt$/, (route) => route.fulfill({ body: "Inspect the head in the image." }));
+  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/gates\/orientation\/prompt$/, (route) => route.fulfill({ body: "Judge the orientation." }));
   await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/selection$/, async (route) => {
     selectedRequest = route.request().postDataJSON();
     run = { ...run, status: "AWAITING_HUMAN_SELECTION", front_anchor: selectedRequest.candidate_id,
@@ -1209,6 +1213,10 @@ test("Local Body-Reference shows gate rejects, Luna order, selection, and repair
   await page.getByRole("button", { name: "Show Face gate prompt" }).click();
   await expect(page.locator("#gate-prompt-text")).toHaveText("Inspect the head in the image.");
   await page.locator("#gate-prompt-close").click();
+  await expect(page.locator("#gallery")).toContainText("Orientation gate: Disabled");
+  await expect(page.locator("#gallery .ai-summary p:has-text('Orientation gate: Disabled')")).toHaveCount(3);
+  await expect(page.locator("#gallery .ai-summary p:has-text('Orientation gate: Disabled')").first()).toHaveClass(/muted/);
+  await expect(page.locator("#gallery")).toContainText("Re-evaluate this view to clear the previous result.");
   await expect(page.locator("#gallery")).toContainText("Clear silhouette and strong proportions.");
   await expect(page.getByRole("button", { name: "Select", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Select", exact: true }).click();

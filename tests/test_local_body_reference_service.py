@@ -3,12 +3,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
+from zet.services.file_proxy_client import FileProxyClient
 from zet.services.local_body_reference_service import (
     LocalBodyReferenceError,
     LocalBodyReferenceService,
     METHOD_FRONT_CONDITIONED,
     METHOD_TEXT_FIRST,
+    ORIENTATION_VIEW_DEFINITIONS,
+    _parse_orientation_gate_verdict,
+    _parse_passing_gate_verdict,
 )
 from zet.services.candidate_review_contract import parse_rejection_verdict, validate_ranking
 from zet.services.prompt_template_service import filter_prompt_variant_blocks
@@ -67,7 +72,9 @@ def test_new_run_uses_version_two_review_contract(tmp_path, monkeypatch):
     assert run["selected_views"] == {}
     assert run["rankings"] == {}
     assert all(candidate["gates"] == {} for candidate in run["candidates"])
-    assert "Requested view: FRONT_LEFT_3_4" in service.gate_prompt(run["run_id"], "FRONT_LEFT_3_4", "orientation")
+    assert service.gate_prompt(run["run_id"], "FRONT_LEFT_3_4", "orientation").startswith(
+        "TARGET: FRONT_LEFT_3_4\n\nAuthoritative visual definition:\n\n"
+    )
 
 
 def test_gate_contracts_are_narrow_and_verdicts_are_exact():
@@ -84,6 +91,99 @@ def test_gate_contracts_are_narrow_and_verdicts_are_exact():
         validate_ranking({"ranking": [{"candidate_id": "c001", "reason": "best"}]}, ["c001", "c002"])
 
 
+def test_body_reference_gates_use_their_ollama_settings(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+    candidate = next(item for item in run["candidates"] if item["view"] == "FRONT_LEFT_3_4")
+    image = Path(run["root"]) / "candidate.png"
+    Image.new("RGB", (64, 64)).save(image)
+    for item in (front, candidate):
+        service._candidate_update(run["run_id"], item["candidate_id"], {"image_path": str(image)})
+    state_path = Path(run["root"]) / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["front_anchor"] = front["candidate_id"]
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    client = FileProxyClient(tmp_path / "queue")
+    service.app.ai_proxy_service = SimpleNamespace(
+        ai_proxy_path_service=SimpleNamespace(file_proxy_client=client))
+
+    for gate in service.review_gates(candidate["view"]):
+        record = service._queue_review_gate(run["run_id"], candidate["candidate_id"], gate)
+        manifest = json.loads((client.ready_path(record["ask_id"]) / "ask_manifest.json").read_text())
+        if gate.key == "orientation":
+            assert manifest["ollama_chat"] is True
+            assert manifest["ollama_think"] is False
+            assert manifest["ollama_temperature"] == 1.0
+        else:
+            assert manifest["ollama_think"] is True
+            assert "ollama_chat" not in manifest
+    service._run_face_gate(run["run_id"], front["candidate_id"])
+    legacy_ask = service.detail(run["run_id"])["candidates"][0]["face_gate"]["ask_id"]
+    manifest = json.loads((client.ready_path(legacy_ask) / "ask_manifest.json").read_text())
+    assert manifest["ollama_think"] is True
+
+
+def test_orientation_prompts_and_verdicts():
+    assert len(ORIENTATION_VIEW_DEFINITIONS) == 8
+    for view in ORIENTATION_VIEW_DEFINITIONS:
+        prompt = next(gate.prompt for gate in LocalBodyReferenceService.review_gates(view)
+                      if gate.key == "orientation")
+        assert prompt.startswith(f"TARGET: {view}\n\nAuthoritative visual definition:\n\n- ")
+        assert "Do not derive or reinterpret the view name." in prompt
+        assert "Return TRUE when it matches. Return FALSE when it does not match." in prompt
+        assert prompt.endswith("TRUE\nor\nFALSE: <brief visible reason>\n\nDo not explain your reasoning.")
+    assert "- The near side of the body appears on IMAGE_RIGHT.\n" in ORIENTATION_VIEW_DEFINITIONS["FRONT_LEFT_3_4"]
+    assert _parse_orientation_gate_verdict("TRUE\n") == ("FALSE", "")
+    assert _parse_orientation_gate_verdict("FALSE: torso faces front\n") == ("TRUE", "torso faces front")
+    assert _parse_orientation_gate_verdict("FALSE") == ("TRUE", "")
+    with pytest.raises(ValueError):
+        _parse_orientation_gate_verdict("TRUE: torso faces front")
+    with pytest.raises(ValueError):
+        _parse_orientation_gate_verdict("FALSE: torso faces front\nextra explanation")
+
+
+def test_gate_prompts_use_true_for_positive_checks():
+    gates = {gate.key: gate.prompt for gate in LocalBodyReferenceService.review_gates("LEFT_PROFILE")}
+    assert "Answer TRUE only if obvious facial features are visibly rendered." in gates["face"]
+    assert "Are the head-to-body proportions plausible" in gates["proportion"]
+    assert "Answer TRUE if the proportions are plausible" in gates["proportion"]
+    assert "Is the figure substantially complete" in gates["framing"]
+    assert "Answer TRUE if the entire figure is substantially present" in gates["framing"]
+    assert "could these plausibly represent the same underlying body?" in gates["body_identity"]
+    assert "Answer TRUE if the physiques could plausibly be the same body" in gates["body_identity"]
+    assert _parse_passing_gate_verdict(" TRUE\n") == ("FALSE", "")
+    assert _parse_passing_gate_verdict("FALSE") == ("TRUE", "")
+
+
+def test_gate_answer_polarity_at_review_boundary(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    output = Path(run["root"]) / "gate_answer.txt"
+    for key, answer, expected in [
+        ("face", "TRUE", ("TRUE", "")),
+        ("proportion", "TRUE", ("FALSE", "")),
+        ("framing", "FALSE", ("TRUE", "")),
+        ("orientation", "FALSE: facing front", ("TRUE", "facing front")),
+        ("body_identity", "TRUE", ("FALSE", "")),
+    ]:
+        output.write_text(answer, encoding="utf-8")
+        service._candidate_update(run["run_id"], "c001", {
+            "gates": {key: {"status": "QUEUED", "output_path": str(output)}}
+        })
+        assert service._wait_for_review_gate(run["run_id"], "c001", key) == expected
+
+
 def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
@@ -96,7 +196,7 @@ def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, m
     image.write_bytes(b"render")
     service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_GATES", "image_path": str(image)})
     queued = []
-    verdicts = iter(["FALSE", "FALSE", "TRUE"])
+    verdicts = iter([("FALSE", ""), ("FALSE", ""), ("TRUE", "")])
 
     def queue(_run_id, _candidate_id, gate):
         queued.append(gate.key)
@@ -113,6 +213,85 @@ def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, m
     assert rejected["rejection_gate"] == "framing"
     assert rejected["image_path"] == str(image)
     assert image.is_file()
+
+
+def test_orientation_gate_is_disabled_without_queuing_and_archives_old_failure(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    image = Path(run["root"]) / "render.png"
+    image.write_bytes(b"render")
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_GATES", "image_path": str(image),
+        "gates": {"orientation": {"status": "FAILED", "error": "Ollama returned no answer",
+                                "ask_id": "old-ask", "prompt_sha256": "old-prompt",
+                                "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}},
+    })
+    queued = []
+
+    def queue(_run_id, _candidate_id, gate):
+        queued.append(gate.key)
+        return {"status": "QUEUED", "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+
+    monkeypatch.setattr(service, "_queue_review_gate", queue)
+    monkeypatch.setattr(service, "_wait_for_review_gate", lambda _run_id, _candidate_id, key:
+                        ("FALSE", ""))
+    assert service._run_candidate_gates(run["run_id"], "c001") is True
+    assert queued == ["face", "proportion", "framing"]
+    candidate = service.detail(run["run_id"])["candidates"][0]
+    assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW"
+    assert candidate["gates"]["orientation"]["status"] == "DISABLED"
+    assert candidate["gates"]["orientation"]["verdict"] == "FALSE"
+    assert "ask_id" not in candidate["gates"]["orientation"]
+    assert candidate["gate_history"][-1]["gates"]["orientation"]["ask_id"] == "old-ask"
+
+
+def test_old_orientation_rejection_is_reviewed_and_ranked(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    front = Path(run["root"]) / "front.png"
+    image = Path(run["root"]) / "candidate.png"
+    front.write_bytes(b"front")
+    image.write_bytes(b"candidate")
+    candidate = next(item for item in run["candidates"] if item["view"] == "FRONT_LEFT_3_4")
+    candidate_id = candidate["candidate_id"]
+    service._run_update(run["run_id"], front_anchor="c001")
+    service._candidate_update(run["run_id"], "c001", {"image_path": str(front)})
+    hashes = {"candidate": service._hash(image), "front_anchor": ""}
+    gates = {key: {"status": "COMPLETE", "verdict": "FALSE", "input_hashes": hashes}
+             for key in ("face", "proportion", "framing")}
+    gates["orientation"] = {"status": "COMPLETE", "verdict": "TRUE", "reason": "IMAGE_RIGHT",
+                            "ask_id": "old-orientation-ask", "input_hashes": hashes}
+    service._candidate_update(run["run_id"], candidate_id, {
+        "status": "GATE_REJECTED", "rejection_gate": "orientation",
+        "image_path": str(image), "gates": gates,
+    })
+    queued = []
+
+    def queue(_run_id, _candidate_id, gate):
+        queued.append(gate.key)
+        return {"status": "QUEUED", "input_hashes": {
+            "candidate": service._hash(image), "front_anchor": service._hash(front)}}
+
+    monkeypatch.setattr(service, "_queue_review_gate", queue)
+    monkeypatch.setattr(service, "_wait_for_review_gate", lambda *_args: ("FALSE", ""))
+    ranked = service.rank_view(run["run_id"], "FRONT_LEFT_3_4")
+    reviewed = next(item for item in ranked["candidates"] if item["candidate_id"] == candidate_id)
+    assert reviewed["status"] == "WAITING_FOR_HUMAN_REVIEW"
+    assert reviewed["rejection_gate"] == ""
+    assert reviewed["gates"]["orientation"]["status"] == "DISABLED"
+    assert reviewed["gate_history"][-1]["gates"]["orientation"]["ask_id"] == "old-orientation-ask"
+    assert queued == ["body_identity"]
+    assert ranked["rankings"]["FRONT_LEFT_3_4"]["ordered_candidate_ids"] == [candidate_id]
 
 
 def test_empty_ranking_and_rerun_failed_archive_gate_review(tmp_path, monkeypatch):

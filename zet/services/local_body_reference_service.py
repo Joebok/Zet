@@ -41,6 +41,87 @@ CANONICAL_VIEW_DEFINITIONS = {
     "BACK_RIGHT_3_4": "Rear three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Head/body point away and toward IMAGE_RIGHT.",
     "BACK": "Direct rear view. Subject faces directly away from the camera; left/right sides are approximately symmetrical.",
 }
+ORIENTATION_VIEW_DEFINITIONS = {
+    "FRONT": (
+        "- This is a direct frontal view.\n"
+        "- The face and torso point straight toward the camera.\n"
+        "- The subject's anatomical LEFT side appears on IMAGE_RIGHT, and the anatomical RIGHT side appears on IMAGE_LEFT.\n"
+        "- Both sides of the front of the torso are visible and approximately symmetrical.\n"
+        "- It must not be essentially a three-quarter view, profile, or rear view."
+    ),
+    "FRONT_LEFT_3_4": (
+        "- This is a frontal three-quarter view.\n"
+        "- The face and torso point diagonally toward IMAGE_LEFT.\n"
+        "- The near side of the body appears on IMAGE_RIGHT.\n"
+        "- That near side is the subject's anatomical LEFT side.\n"
+        "- Both the front and side of the torso are clearly visible.\n"
+        "- It must not be essentially FRONT or LEFT PROFILE."
+    ),
+    "FRONT_RIGHT_3_4": (
+        "- This is a frontal three-quarter view.\n"
+        "- The face and torso point diagonally toward IMAGE_RIGHT.\n"
+        "- The near side of the body appears on IMAGE_LEFT.\n"
+        "- That near side is the subject's anatomical RIGHT side.\n"
+        "- Both the front and side of the torso are clearly visible.\n"
+        "- It must not be essentially FRONT or RIGHT PROFILE."
+    ),
+    "LEFT_PROFILE": (
+        "- This is an exact side profile.\n"
+        "- The face and torso point toward IMAGE_LEFT.\n"
+        "- The visible side is the subject's anatomical LEFT side.\n"
+        "- The front and back of the torso are not clearly visible.\n"
+        "- It must not be essentially FRONT_LEFT_3_4 or BACK_LEFT_3_4."
+    ),
+    "RIGHT_PROFILE": (
+        "- This is an exact side profile.\n"
+        "- The face and torso point toward IMAGE_RIGHT.\n"
+        "- The visible side is the subject's anatomical RIGHT side.\n"
+        "- The front and back of the torso are not clearly visible.\n"
+        "- It must not be essentially FRONT_RIGHT_3_4 or BACK_RIGHT_3_4."
+    ),
+    "BACK_LEFT_3_4": (
+        "- This is a rear three-quarter view.\n"
+        "- The head and torso point away from the camera and diagonally toward IMAGE_LEFT.\n"
+        "- The near side of the body appears on IMAGE_LEFT.\n"
+        "- That near side is the subject's anatomical LEFT side.\n"
+        "- Both the back and side of the torso are clearly visible.\n"
+        "- It must not be essentially BACK or LEFT PROFILE."
+    ),
+    "BACK_RIGHT_3_4": (
+        "- This is a rear three-quarter view.\n"
+        "- The head and torso point away from the camera and diagonally toward IMAGE_RIGHT.\n"
+        "- The near side of the body appears on IMAGE_RIGHT.\n"
+        "- That near side is the subject's anatomical RIGHT side.\n"
+        "- Both the back and side of the torso are clearly visible.\n"
+        "- It must not be essentially BACK or RIGHT PROFILE."
+    ),
+    "BACK": (
+        "- This is a direct rear view.\n"
+        "- The head and torso point straight away from the camera.\n"
+        "- The subject's anatomical LEFT side appears on IMAGE_LEFT, and the anatomical RIGHT side appears on IMAGE_RIGHT.\n"
+        "- Both sides of the back of the torso are visible and approximately symmetrical.\n"
+        "- It must not be essentially a three-quarter view, profile, or frontal view."
+    ),
+}
+
+
+def _parse_orientation_gate_verdict(value: str) -> tuple[str, str]:
+    """Convert TRUE for a match and FALSE for a mismatch to rejection verdicts."""
+    response = str(value or "").strip()
+    if response.upper() == "TRUE":
+        return "FALSE", ""
+    match = re.fullmatch(r"FALSE(?::[ \t]*([^\r\n]*))?", response, re.IGNORECASE)
+    if match:
+        return "TRUE", (match.group(1) or "").strip()
+    raise ValueError(f"Expected TRUE or FALSE: <brief visible reason>, received {response[:80]!r}.")
+
+
+def _parse_passing_gate_verdict(value: str) -> tuple[str, str]:
+    """Convert a positive gate answer to the shared rejection verdict."""
+    answer = parse_rejection_verdict(value)
+    return ("FALSE" if answer == "TRUE" else "TRUE"), ""
+
+
 FRONT_VIEW = "FRONT"
 METHOD_TEXT_FIRST = "text_first"
 METHOD_FRONT_CONDITIONED = "front_conditioned"
@@ -56,10 +137,26 @@ class LocalBodyReferenceService:
     """
 
     FACE_GATE_PROMPT = """Inspect the head in the image.\n\nDoes the head contain clearly recognizable or rendered facial features, such as visible eyes, eyebrows, nose details, lips/mouth, or a human/elf-like facial expression?\n\nAnswer TRUE only if obvious facial features are visibly rendered.\nAnswer FALSE if the head is essentially a smooth mannequin head, even if it has basic face-plane geometry, ears, shallow construction marks, or minimal indications of feature placement.\n\nReturn only TRUE or FALSE."""
-    PROPORTION_GATE_PROMPT = """Inspect the figure's head-to-body proportions.\n\nIs the head clearly and materially too large or too small for the body, outside the plausible range for the depicted adult humanoid physique?\n\nAnswer TRUE only for an obvious head-to-body proportion error.\nAnswer FALSE if the proportions are plausible, borderline, or merely a matter of aesthetic preference.\n\nReturn only TRUE or FALSE."""
-    FRAMING_GATE_PROMPT = """Inspect the full-body framing of the figure.\n\nIs any essential part of the figure clearly cropped, cut off, or missing in a way that prevents this image from serving as a complete full-body reference?\n\nConsider the full head, torso, arms, hands, legs, and feet.\n\nAnswer TRUE only when meaningful body anatomy is visibly cut off or missing.\nAnswer FALSE if the entire figure is substantially present, even if margins or centering are imperfect.\n\nReturn only TRUE or FALSE."""
-    ORIENTATION_GATE_PROMPT = """Evaluate only the requested body orientation.\n\nRequested view: {VIEW}\nDefinition: {VIEW_DEFINITION}\n\nDoes the figure clearly show a substantially different body orientation from the requested view?\n\nAnswer TRUE only if the body is obviously in the wrong canonical view.\nAnswer FALSE if the orientation reasonably matches the requested view, including normal small variation in rotation.\n\nReturn only TRUE or FALSE."""
-    BODY_IDENTITY_GATE_PROMPT = """Compare the body proportions and physique of the two figures.\n\nImage 1 is the accepted body-reference anchor. Image 2 is the candidate.\n\nIgnoring viewpoint, perspective, pose, foreshortening, clothing deformation, and small rendering differences, is there an obvious incompatibility that would prevent these from plausibly representing the same underlying body?\n\nConsider head-to-body scale, shoulder width, torso length, waist and hip structure, limb proportions, overall body mass, and general physique.\n\nAnswer TRUE only if the physiques are clearly incompatible.\nAnswer FALSE if they could plausibly be the same body viewed from different angles.\n\nReturn only TRUE or FALSE."""
+    PROPORTION_GATE_PROMPT = """Inspect the figure's head-to-body proportions.\n\nAre the head-to-body proportions plausible for the depicted adult humanoid physique?\n\nAnswer TRUE if the proportions are plausible, borderline, or merely a matter of aesthetic preference.\nAnswer FALSE only if the head is clearly and materially too large or too small for the body.\n\nReturn only TRUE or FALSE."""
+    FRAMING_GATE_PROMPT = """Inspect the full-body framing of the figure.\n\nIs the figure substantially complete and usable as a full-body reference?\n\nConsider the full head, torso, arms, hands, legs, and feet.\n\nAnswer TRUE if the entire figure is substantially present, even if margins or centering are imperfect.\nAnswer FALSE only if meaningful body anatomy is visibly cropped, cut off, or missing.\n\nReturn only TRUE or FALSE."""
+    ORIENTATION_GATE_PROMPT = """TARGET: {VIEW}
+
+Authoritative visual definition:
+
+{VIEW_DEFINITION}
+
+Do not derive or reinterpret the view name.
+Judge only whether the visible image matches the definition above.
+Return TRUE when it matches. Return FALSE when it does not match.
+
+Return exactly one line:
+
+TRUE
+or
+FALSE: <brief visible reason>
+
+Do not explain your reasoning."""
+    BODY_IDENTITY_GATE_PROMPT = """Compare the body proportions and physique of the two figures.\n\nImage 1 is the accepted body-reference anchor. Image 2 is the candidate.\n\nIgnoring viewpoint, perspective, pose, foreshortening, clothing deformation, and small rendering differences, could these plausibly represent the same underlying body?\n\nConsider head-to-body scale, shoulder width, torso length, waist and hip structure, limb proportions, overall body mass, and general physique.\n\nAnswer TRUE if the physiques could plausibly be the same body viewed from different angles.\nAnswer FALSE only if they are clearly incompatible.\n\nReturn only TRUE or FALSE."""
     RANKING_SCHEMA = {
         "type": "object",
         "properties": {"ranking": {"type": "array", "items": {
@@ -454,7 +551,7 @@ class LocalBodyReferenceService:
                     for gate in self.review_gates(view):
                         record = gates.get(gate.key) or {}
                         hashes = record.get("input_hashes") or {}
-                        if (record.get("status") != "COMPLETE" or record.get("verdict") != "FALSE"
+                        if (record.get("status") not in {"COMPLETE", "DISABLED"} or record.get("verdict") != "FALSE"
                                 or hashes.get("candidate") != self._hash(image)
                                 or (gate.uses_anchor and hashes.get("front_anchor") != anchor_hash)):
                             current = False
@@ -990,9 +1087,28 @@ class LocalBodyReferenceService:
                 raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
             if candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate"):
                 raise LocalBodyReferenceError("Human review is available only for gate-surviving candidates.")
-            ranking = (run.get("rankings") or {}).get(candidate["view"]) or {}
-            if candidate_id not in (ranking.get("ordered_candidate_ids") or []):
-                raise LocalBodyReferenceError("The candidate must pass current gates and ranking before human review.")
+            image = Path(str(candidate.get("image_path") or ""))
+            if (candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                    or not image.is_file()):
+                raise LocalBodyReferenceError("The candidate must have a completed image and pass current gates before human review.")
+            image_hash = self._hash(image)
+            anchor = next((item for item in run["candidates"]
+                           if item.get("candidate_id") == run.get("front_anchor")), None)
+            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+            anchor_hash = self._hash(anchor_image) if anchor_image and anchor_image.is_file() else ""
+            gates = candidate.get("gates") or {}
+            gates_current = True
+            for gate in self.review_gates(candidate["view"]):
+                record = gates.get(gate.key) or {}
+                hashes = record.get("input_hashes") or {}
+                if (record.get("status") not in {"COMPLETE", "DISABLED"}
+                        or record.get("verdict") != "FALSE"
+                        or hashes.get("candidate") != image_hash
+                        or (gate.uses_anchor and (not anchor_hash or hashes.get("front_anchor") != anchor_hash))):
+                    gates_current = False
+                    break
+            if not gates_current:
+                raise LocalBodyReferenceError("The candidate must pass current gates before human review.")
             root = self._root(run_id)
             state = json.loads((root / "state.json").read_text(encoding="utf-8"))
             state.setdefault("candidates", {}).setdefault(candidate_id, {}).update({
@@ -1427,7 +1543,7 @@ class LocalBodyReferenceService:
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
             "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
-            "worker_type": "ollama_generate", "ollama_model": model,
+            "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": ["head_crop.png"],
             "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_face_gate",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
@@ -1451,7 +1567,7 @@ class LocalBodyReferenceService:
             ReviewGate("framing", cls.FRAMING_GATE_PROMPT),
             ReviewGate("orientation", cls.ORIENTATION_GATE_PROMPT.format(
                 VIEW=view,
-                VIEW_DEFINITION=CANONICAL_VIEW_DEFINITIONS.get(view, ""),
+                VIEW_DEFINITION=ORIENTATION_VIEW_DEFINITIONS.get(view, ""),
             )),
         ]
         if view != FRONT_VIEW:
@@ -1535,7 +1651,7 @@ class LocalBodyReferenceService:
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
             "pipeline": "Local-Body-Reference", "pipeline_stage": f"BODY_REFERENCE_{definition.key.upper()}_GATE",
-            "worker_type": "ollama_generate", "ollama_model": model,
+            "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in images],
             "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_gate",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
@@ -1544,6 +1660,8 @@ class LocalBodyReferenceService:
             "input_hashes": {"candidate": image_hash, "front_anchor": anchor_hash},
             "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest(),
         }
+        if definition.key == "orientation":
+            manifest.update(ollama_chat=True, ollama_think=False, ollama_temperature=1.0)
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.publish(staging, ask_id, "ollama_generate")
         record = {
@@ -1556,7 +1674,7 @@ class LocalBodyReferenceService:
         })
         return record
 
-    def _wait_for_review_gate(self, run_id: str, candidate_id: str, gate_key: str) -> str | None:
+    def _wait_for_review_gate(self, run_id: str, candidate_id: str, gate_key: str) -> tuple[str, str] | None:
         candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
         gate = dict((candidate.get("gates") or {}).get(gate_key) or {})
         if not gate:
@@ -1576,14 +1694,24 @@ class LocalBodyReferenceService:
             if time.monotonic() >= deadline:
                 raise LocalBodyReferenceError(f"Timed out waiting for the {gate_key} gate.")
             time.sleep(max(0.5, float(getattr(self.app.config, "comfyui_poll_seconds", 1.0))))
-        verdict = parse_rejection_verdict(output.read_text(encoding="utf-8"))
-        return verdict
+        response = output.read_text(encoding="utf-8")
+        if gate_key == "orientation":
+            return _parse_orientation_gate_verdict(response)
+        if gate_key in {"proportion", "framing", "body_identity"}:
+            return _parse_passing_gate_verdict(response)
+        return parse_rejection_verdict(response), ""
 
     def _run_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
         run = self.detail(run_id)
         candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
         if candidate.get("status") == "GATE_REJECTED":
-            return True
+            if candidate.get("rejection_gate") != "orientation":
+                return True
+            self._candidate_update(run_id, candidate_id, {
+                "status": "WAITING_FOR_GATES", "rejection_gate": "",
+            })
+            candidate = next(item for item in self.detail(run_id)["candidates"]
+                             if item["candidate_id"] == candidate_id)
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
@@ -1598,18 +1726,36 @@ class LocalBodyReferenceService:
                 "candidate": self._hash(image),
                 "front_anchor": self._hash(anchor_image) if definition.uses_anchor and anchor_image and anchor_image.is_file() else "",
             }
-            if record.get("status") == "COMPLETE" and record.get("input_hashes") == expected_hashes:
+            if definition.key == "orientation":
+                if record and record.get("status") != "DISABLED":
+                    history = list(candidate.get("gate_history") or [])
+                    history.append({"archived_at": self._now(), "gates": {"orientation": record}})
+                    self._candidate_update(run_id, candidate_id, {"gate_history": history})
+                gates[definition.key] = {
+                    "status": "DISABLED", "verdict": "FALSE", "input_hashes": expected_hashes,
+                    "completed_at": self._now(),
+                }
+                self._candidate_update(run_id, candidate_id, {"gates": gates})
+                candidate = next(item for item in self.detail(run_id)["candidates"]
+                                 if item["candidate_id"] == candidate_id)
+                continue
+            prompt_stale = (bool(record.get("prompt_sha256"))
+                            and record["prompt_sha256"] != hashlib.sha256(definition.prompt.encode()).hexdigest())
+            if (record.get("status") == "COMPLETE" and record.get("input_hashes") == expected_hashes
+                    and not prompt_stale):
                 verdict = record.get("verdict")
             else:
                 try:
-                    if not record.get("ask_id") or record.get("status") in {"FAILED", "STALE"}:
+                    if prompt_stale or not record.get("ask_id") or record.get("status") in {"FAILED", "STALE"}:
                         record = self._queue_review_gate(run_id, candidate_id, definition)
                         gates[definition.key] = record
                     self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_GATES", "gates": gates})
-                    verdict = self._wait_for_review_gate(run_id, candidate_id, definition.key)
-                    if verdict is None:
+                    result = self._wait_for_review_gate(run_id, candidate_id, definition.key)
+                    if result is None:
                         return False
-                    record = {**record, "status": "COMPLETE", "verdict": verdict, "completed_at": self._now()}
+                    verdict, reason = result
+                    record = {**record, "status": "COMPLETE", "verdict": verdict,
+                              "reason": reason, "completed_at": self._now()}
                     gates[definition.key] = record
                     self._candidate_update(run_id, candidate_id, {"gates": gates})
                 except Exception as exc:
@@ -1735,13 +1881,14 @@ class LocalBodyReferenceService:
                 return False
             current = next(item for item in self.detail(run_id)["candidates"]
                            if item["candidate_id"] == candidate["candidate_id"])
-            if current.get("status") == "GATE_REJECTED":
+            if current.get("status") == "GATE_REJECTED" and current.get("rejection_gate") != "orientation":
                 continue
             if not Path(str(current.get("image_path") or "")).is_file():
                 continue
             if current.get("status") in {"PENDING", "QUEUED", "RUNNING"}:
                 continue
-            if current.get("status") in {"WAITING_FOR_GATES", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE", "FAILED"}:
+            if (current.get("status") in {"WAITING_FOR_GATES", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE", "FAILED"}
+                    or current.get("rejection_gate") == "orientation"):
                 self._run_candidate_gates(run_id, current["candidate_id"])
         if self.detail(run_id)["stop_requested"]:
             return False
@@ -1789,6 +1936,10 @@ class LocalBodyReferenceService:
             raise LocalBodyReferenceError("Per-view ranking is available for version 2 runs.")
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        for candidate in run["candidates"]:
+            if candidate.get("view") == view and candidate.get("rejection_gate") == "orientation":
+                self._run_candidate_gates(run_id, candidate["candidate_id"])
+        run = self.detail(run_id)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):

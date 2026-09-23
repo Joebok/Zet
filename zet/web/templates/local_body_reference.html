@@ -161,9 +161,11 @@
         const gate = gates[key] || {};
         const verdict = gate.verdict;
         const rejected = verdict === 'TRUE';
-        const text = verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
-        const details = rejected ? ' — visible defect' : gate.error ? ` — ${esc(gate.error)}` : '';
-        return `<p class="${rejected ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${rejected ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
+        const failed = gate.status === 'FAILED';
+        const disabled = key === 'orientation' || gate.status === 'DISABLED';
+        const text = disabled ? 'Disabled' : verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
+        const details = disabled ? (failed || rejected ? ' — Re-evaluate this view to clear the previous result.' : '') : rejected ? ` — ${esc(gate.reason || 'visible defect')}` : gate.error ? ` — ${esc(gate.error)}` : '';
+        return `<p class="${disabled ? 'muted' : rejected || failed ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${!disabled && (rejected || failed) ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
       }).join('');
     }
     function renderRunV2(value, collapsedViews, busy, statusLabel) {
@@ -297,8 +299,13 @@
       if (run.review_version >= 2) {
         const ranking = (run.rankings || {})[candidate.view] || {};
         const entry = (ranking.entries || []).find((item) => item.candidate_id === candidate.candidate_id);
-        const gateRejected = candidate.status === 'GATE_REJECTED';
-        const canReview = !gateRejected && ranking.status === 'COMPLETE' && Boolean(entry);
+        const gateRejected = candidate.status === 'GATE_REJECTED' || Boolean(candidate.rejection_gate);
+        const gates = candidate.gates || {};
+        const gatesPassed = (run.views || []).includes(candidate.view)
+          && ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(candidate.status)
+          && Object.keys(gates).length > 0
+          && Object.values(gates).every((gate) => ['COMPLETE', 'DISABLED'].includes(gate.status) && gate.verdict === 'FALSE');
+        const canReview = !gateRejected && gatesPassed;
         const human = candidate.human_review || {};
         reviewPanel.innerHTML = `<p class="muted">Candidate ${reviewIndex + 1} of ${reviewCandidates.length}</p><h2>${esc(candidate.candidate_id)}</h2><p><strong>View:</strong> ${esc(candidate.view)}<br><strong>Status:</strong> ${esc(candidate.status)}${candidate.rejection_gate ? `<br><strong>Rejected by:</strong> ${esc(candidate.rejection_gate)}` : ''}</p><section class="review-section"><h3>Narrow gates</h3>${gateSummary(candidate)}</section><section class="review-section"><h3>Luna ranking</h3><p>${entry ? `Ranked #${ranking.ordered_candidate_ids.indexOf(candidate.candidate_id) + 1}: ${esc(entry.reason)}` : 'Not ranked'}${ranking.status === 'STALE' ? ` · Stale: ${esc(ranking.stale_reason || 'Review inputs changed')}` : ''}</p></section><section class="review-section"><h3>Human review</h3>${gateRejected ? '<p class="hint">Gate-rejected candidates remain available for inspection and Re-Run Failed.</p>' : `<fieldset class="decision-options" ${canReview ? '' : 'disabled'}><legend>Decision</legend><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="undecided"> Undecided</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="keep"> Pass</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="reject"> Fail</label></fieldset><label style="margin-top:.75rem">Notes<textarea data-field="notes" ${canReview ? '' : 'disabled'}>${esc(human.notes || '')}</textarea></label><div class="button-row" style="margin-top:.75rem"><button data-save type="button" class="primary" ${canReview ? '' : 'disabled'}>Save human review</button>${entry && ranking.status === 'COMPLETE' && run.selected_views?.[candidate.view] !== candidate.candidate_id ? `<button data-select type="button" class="primary">Select for ${esc(candidate.view)}</button>` : ''}</div>`}</section>`;
         if (canReview) {

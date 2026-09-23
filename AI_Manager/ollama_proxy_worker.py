@@ -39,6 +39,9 @@ from AI_Manager.proxy_worker_output import log_job
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
 DEFAULT_KEEP_ALIVE = "5m"
+THINKING_OUTPUT_FILE = "OLLAMA_THINKING.txt"
+INITIAL_THINKING_OUTPUT_FILE = "OLLAMA_THINKING_ATTEMPT_1.txt"
+RETRY_PROMPT_FILE = "OLLAMA_RETRY_PROMPT.md"
 
 ANSI_RESET = "\033[0m"
 ANSI_YELLOW = "\033[33m"
@@ -56,6 +59,7 @@ class OllamaGenerationResult:
     response: str
     done_reason: str
     eval_count: int | None
+    thinking: str = ""
 
     def evidence(self) -> dict:
         return {
@@ -180,15 +184,17 @@ def call_ollama_once(
     json_output: bool = False,
     response_schema: dict | None = None,
     keep_alive: str | int = 0,
+    think: bool | None = False,
+    use_chat: bool = False,
 ) -> OllamaGenerationResult:
-    multimodal_chat = bool(images and len(images) > 1)
+    multimodal_chat = use_chat or bool(images and len(images) > 1)
     if multimodal_chat:
-        prompt = ensure_explicit_image_tags(prompt, len(images))
+        if images and len(images) > 1:
+            prompt = ensure_explicit_image_tags(prompt, len(images))
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": prompt, "images": images}],
             "stream": False,
-            "think": False,
             "keep_alive": keep_alive,
             "options": {"temperature": temperature},
         }
@@ -198,13 +204,14 @@ def call_ollama_once(
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "think": False,
             "keep_alive": keep_alive,
             "options": {"temperature": temperature},
         }
         if images:
             payload["images"] = images
         request_url = url
+    if think is not None:
+        payload["think"] = think
     if response_schema is not None:
         if not isinstance(response_schema, dict):
             raise ValueError("Ollama response_schema must be a JSON object")
@@ -231,16 +238,19 @@ def call_ollama_once(
         if not isinstance(message, dict) or "content" not in message:
             raise RuntimeError(f"Ollama chat response missing 'message.content': {body[:500]}")
         response_text = str(message["content"])
+        thinking_text = str(message.get("thinking") or "")
     else:
         if "response" not in parsed:
             raise RuntimeError(f"Ollama response missing 'response': {body[:500]}")
         response_text = str(parsed["response"])
+        thinking_text = str(parsed.get("thinking") or "")
     raw_eval_count = parsed.get("eval_count")
     eval_count = raw_eval_count if isinstance(raw_eval_count, int) and not isinstance(raw_eval_count, bool) else None
     return OllamaGenerationResult(
         response=response_text,
         done_reason=str(parsed.get("done_reason") or ""),
         eval_count=eval_count,
+        thinking=thinking_text,
     )
 
 
@@ -257,6 +267,8 @@ def call_ollama(
     json_output: bool = False,
     response_schema: dict | None = None,
     keep_alive: str | int = 0,
+    think: bool | None = False,
+    use_chat: bool = False,
 ) -> OllamaGenerationResult:
     if preflight_attempts > 0:
         wait_for_ollama(url, attempts=preflight_attempts, delay_seconds=retry_seconds, timeout=min(timeout, 10))
@@ -269,6 +281,8 @@ def call_ollama(
                 url, model, prompt, temperature=temperature,
                 timeout=timeout, images=images, json_output=json_output, response_schema=response_schema,
                 keep_alive=keep_alive,
+                think=think,
+                use_chat=use_chat,
             )
         except Exception as exc:
             if not is_transient_ollama_error(exc):
@@ -304,6 +318,13 @@ def ollama_generation_options(ask_manifest: dict) -> float:
             raise ValueError("ask_manifest ollama_temperature must be a number between 0 and 2")
 
     return temperature
+
+
+def ollama_think_option(ask_manifest: dict) -> bool | None:
+    think = ask_manifest.get("ollama_think", False)
+    if think is not None and not isinstance(think, bool):
+        raise ValueError("ask_manifest ollama_think must be a boolean or null")
+    return think
 
 
 def ollama_runtime_evidence(url: str, model: str, timeout: int) -> dict:
@@ -351,6 +372,10 @@ def process_claimed(
     log_job(ask_manifest, "START")
     try:
         temperature = ollama_generation_options(ask_manifest)
+        think = ollama_think_option(ask_manifest)
+        use_chat = ask_manifest.get("ollama_chat", False)
+        if not isinstance(use_chat, bool):
+            raise ValueError("ask_manifest ollama_chat must be a boolean")
         if not prompt_file or not (folder / prompt_file).exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_file}")
         if not expected_output:
@@ -367,22 +392,50 @@ def process_claimed(
                 raise FileNotFoundError(f"Ollama image missing: {name}")
             encoded_images.append(base64.b64encode(image_path.read_bytes()).decode("ascii"))
         answer_manifest["ollama_runtime"] = ollama_runtime_evidence(ollama_url, model, timeout)
-        generation = call_ollama(
-            ollama_url,
-            model,
-            prompt,
-            temperature=temperature,
-            timeout=timeout,
-            retries=ollama_retries,
-            retry_seconds=ollama_retry_seconds,
-            preflight_attempts=preflight_attempts,
-            images=encoded_images,
-            json_output=bool(ask_manifest.get("json_output")),
-            response_schema=ask_manifest.get("response_schema"),
-            keep_alive=scheduled_keep_alive(model),
-        )
-        write_text_atomic(folder / expected_output, generation.response)
+        def generate(current_prompt: str) -> OllamaGenerationResult:
+            return call_ollama(
+                ollama_url,
+                model,
+                current_prompt,
+                temperature=temperature,
+                timeout=timeout,
+                retries=ollama_retries,
+                retry_seconds=ollama_retry_seconds,
+                preflight_attempts=preflight_attempts,
+                images=encoded_images,
+                json_output=bool(ask_manifest.get("json_output")),
+                response_schema=ask_manifest.get("response_schema"),
+                keep_alive=scheduled_keep_alive(model),
+                think=think,
+                use_chat=use_chat,
+            )
+
+        generation = generate(prompt)
+        initial_attempt = None
+        if think is not False and not generation.response.strip() and generation.done_reason == "length":
+            initial_attempt = generation.evidence()
+            if generation.thinking:
+                write_text_atomic(folder / INITIAL_THINKING_OUTPUT_FILE, generation.thinking)
+                initial_attempt["thinking_file"] = INITIAL_THINKING_OUTPUT_FILE
+            retry_prompt = prompt + "\n\nLimit your private analysis to 200 tokens, then give the required answer."
+            write_text_atomic(folder / RETRY_PROMPT_FILE, retry_prompt)
+            answer_manifest["ollama_generation"] = {
+                "think_requested": think, "initial_attempt": initial_attempt,
+                "retry_prompt_file": RETRY_PROMPT_FILE,
+            }
+            generation = generate(retry_prompt)
+
         answer_manifest["ollama_generation"] = generation.evidence()
+        answer_manifest["ollama_generation"]["think_requested"] = think
+        if initial_attempt is not None:
+            answer_manifest["ollama_generation"]["initial_attempt"] = initial_attempt
+            answer_manifest["ollama_generation"]["retry_prompt_file"] = RETRY_PROMPT_FILE
+        if generation.thinking:
+            write_text_atomic(folder / THINKING_OUTPUT_FILE, generation.thinking)
+            answer_manifest["ollama_generation"]["thinking_file"] = THINKING_OUTPUT_FILE
+        if not generation.response.strip():
+            raise ValueError(f"Ollama returned no answer (done_reason={generation.done_reason or 'unknown'}).")
+        write_text_atomic(folder / expected_output, generation.response)
         answer_manifest["status"] = "SUCCESS"
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)

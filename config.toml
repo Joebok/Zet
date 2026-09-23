@@ -26,6 +26,7 @@ ImageDescription = "image-analysis:latest"
 SceneBuilder = "general:latest"
 
 LocalBodyReferenceFaceGate = "image-analysis-alt:latest"
+LocalBodyReferenceReview = "image-analysis:latest"
 [LocalRender]
 AutoQueueAfterCondense = false
 Backend = "comfyui"
