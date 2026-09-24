@@ -37,6 +37,12 @@ After a test run, have a "Save Test" button.
 
 Remove the saved configuration mechanism. This should all be captured under the save test functionality.
 
+### Prompt Overrides
+
+Have existing prompts available to see. Store overrides separately. Note that some prompts will be different depedning on the view, and the test data for a run can contain test cases from several views. So offer override options for each view (you don't have to check to see what views are covered by the test cases, always offer them all.) Since 8 prompt/prompt override sections will be cumbersome, build in an expand and collapse mechanism which indicates (expaned or collapsed) which ones have an override.
+
+When a test is loaded, the current prompt should be calculated and displayed. If a view has an override, retain that override - but if there isn't an override, do not accidentally keep the previous prompt as override the new gate prompt.
+
 ## Curated Test Data
 
 From any of the reviews of a local pipeline image, add a "Add to Gate Test Data" button. This button should then ask which gate (offering a selection of all available gates it was subject to - including warning and disabled) and it should ask what the correct answer is - to PASS the image or FAIL the image based on that gate. Then when saved, the image along with the associated view and correct answer should be stored in a folder dedicated to test cases for that gate. 

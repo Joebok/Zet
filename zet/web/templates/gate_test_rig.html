@@ -1,329 +1,76 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gate Test Rig</title>
   <style>
-    :root { color-scheme: light; --ink:#202124; --muted:#667085; --line:#d8dee8; --panel:#fff; --surface:#f5f7fb; --accent:#2457a6; --danger:#b42318; --green:#217a3c; }
-    * { box-sizing:border-box; }
-    body { background:var(--surface); color:var(--ink); font:15px system-ui,sans-serif; margin:0; }
-    header, main { margin:0 auto; max-width:1500px; padding:1rem 1.5rem; }
-    header { align-items:center; display:flex; gap:1rem; justify-content:space-between; }
-    h1,h2,h3,p { margin-top:0; }
-    .panel,.result { background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:1rem; padding:1rem; }
-    .grid { display:grid; gap:.8rem; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
-    label { display:grid; gap:.3rem; min-width:0; }
-    .model-picker { align-items:end; display:grid; gap:.45rem; grid-template-columns:minmax(0,1fr) auto; min-width:0; }
-    .model-picker label { min-width:0; }
-    .model-picker select { min-width:0; width:100%; }
-    .model-picker button { white-space:nowrap; }
-    .preview-grid { display:grid; gap:.7rem; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); margin:.8rem 0; }
-    .preview-grid figure { margin:0; min-width:0; }
-    .preview-grid img { background:#111; border-radius:6px; height:180px; object-fit:contain; width:100%; }
-    .preview-grid figcaption { color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; padding-top:.25rem; }
-    input,select,textarea,button { border:1px solid #b9c2d0; border-radius:5px; font:inherit; padding:.5rem .65rem; }
-    textarea { min-height:110px; resize:vertical; width:100%; }
-    button { background:#fff; cursor:pointer; }
-    button:disabled { cursor:not-allowed; opacity:.55; }
-    .primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-    .muted { color:var(--muted); }
-    .fail { color:var(--danger); }
-    .pass { color:var(--green); }
-    .row { align-items:end; display:flex; flex-wrap:wrap; gap:.7rem; }
-    .row > label { flex:1 1 210px; }
-    .result { display:grid; gap:1rem; grid-template-columns:minmax(120px,200px) minmax(0,1fr); }
-    .result img { background:#111; border-radius:6px; max-height:260px; object-fit:contain; width:100%; }
-    .result pre { background:#f7f8fa; border:1px solid var(--line); border-radius:5px; max-height:320px; overflow:auto; padding:.7rem; white-space:pre-wrap; overflow-wrap:anywhere; }
-    details { margin-top:.8rem; }
-    @media (max-width:650px) { .result { grid-template-columns:1fr; } header { align-items:flex-start; flex-direction:column; } }
+    :root { color-scheme:light; --ink:#202124; --muted:#667085; --line:#d8dee8; --panel:#fff; --surface:#f5f7fb; --accent:#2457a6; --danger:#b42318; --green:#217a3c; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--surface); color:var(--ink); font:15px system-ui,sans-serif; }
+    header,main { max-width:1500px; margin:auto; padding:1rem 1.5rem; } header { display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+    .panel,.case,.result { background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:1rem; padding:1rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:.8rem; } .row { display:flex; flex-wrap:wrap; gap:.7rem; align-items:end; }
+    label { display:grid; gap:.3rem; min-width:0; } input,select,textarea,button { font:inherit; padding:.5rem .65rem; border:1px solid #b9c2d0; border-radius:5px; }
+    textarea { min-height:100px; width:100%; resize:vertical; } button { background:white; cursor:pointer; } button:disabled { opacity:.55; cursor:not-allowed; }
+    .primary { background:var(--accent); color:white; border-color:var(--accent); } .danger { color:var(--danger); } .muted { color:var(--muted); }
+    .pass { color:var(--green); } .fail { color:var(--danger); } .prompt-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:.8rem; }
+    .prompt-box { border:1px solid var(--line); border-radius:7px; padding:.7rem; } .prompt-box textarea { min-height:130px; }
+    .case-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:.8rem; }
+    .case img { width:100%; height:190px; object-fit:contain; background:#111; border-radius:5px; }
+    .result { display:grid; grid-template-columns:minmax(120px,200px) minmax(0,1fr); gap:1rem; }
+    .result img { width:100%; max-height:260px; object-fit:contain; background:#111; } pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:360px; overflow:auto; background:#f7f8fa; padding:.7rem; }
+    #candidate-paste,#anchor-paste,#source-paste { border:1px dashed #8b95a5; min-height:2.7rem; padding:.6rem; border-radius:5px; }
+    @media(max-width:650px) { header { align-items:flex-start; flex-direction:column; } .result { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
-  <header><div><h1>Gate Test Rig</h1><p class="muted">Run isolated gate experiments on images from a local pipeline batch.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Local Body-Reference</a> · <a href="/local-head-image">Local Head-Image</a></nav></header>
+  <header><div><h1>Gate Test Rig</h1><p class="muted">Run repeatable tests against curated local pipeline images.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Body-Reference</a> · <a href="/local-head-image">Head-Image</a> · <a href="/gate-test-data">Review test data</a></nav></header>
   <main>
-    <section class="panel">
-      <h2>Saved tests</h2>
-      <div class="row">
-        <label>Previous test<select id="saved-test"><option value="">No saved tests</option></select></label>
-        <button id="open-test" type="button" disabled>Open test</button>
-        <button id="refresh-tests" type="button">Refresh list</button>
-      </div>
-      <p class="muted">Tests are stored in the Zet library. Open a running test to resume status updates.</p>
-    </section>
-
-    <section class="panel">
-      <div class="grid">
-        <label>Local pipeline<select id="pipeline"><option value="">Choose a pipeline</option></select></label>
-        <label>Batch<select id="run" disabled><option value="">Choose a batch</option></select></label>
-        <label>View<select id="view" disabled><option value="">Choose a view</option></select></label>
-        <label>Gate<select id="gate" disabled><option value="">Choose a gate</option></select></label>
-      </div>
-      <p id="selection-summary" class="muted"></p>
-      <div id="selected-images" class="preview-grid" aria-label="Selected source images"></div>
-      <label>Gate prompt<textarea id="prompt" spellcheck="false"></textarea></label>
-    </section>
-
-    <section class="panel">
-      <h2>Model request</h2>
-      <p id="model-help" class="muted">GPT-6 Luna runs through the local Codex CLI. API, temperature, keep-alive, and advanced options apply to Ollama models.</p>
-      <div class="grid">
-        <label>API endpoint<select id="api"><option value="generate">/api/generate</option><option value="chat">/api/chat</option></select></label>
-        <div class="model-picker"><label>Model or alias<select id="model"><option value="">Loading Ollama models…</option></select></label><button id="refresh-models" type="button" title="Refresh Ollama models">Refresh</button></div>
-        <label><span id="think-label">Thinking</span><select id="think"><option value="false">Off</option><option value="true">On</option><option value="null">Model default</option></select></label>
-        <label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.05" value="1"></label>
-        <label>Keep alive<input id="keep-alive" value="5m" placeholder="5m or 0"></label>
-      </div>
-      <details><summary>Advanced API and sampler options (JSON)</summary>
-        <p class="muted">Sampler/runtime fields go in <code>options</code>. Extra endpoint fields go in <code>request fields</code>; controlled fields such as model, prompt, images, thinking, and streaming cannot be overridden.</p>
-        <label>Options<textarea id="options" spellcheck="false">{}</textarea></label>
-        <label>Request fields<textarea id="request-options" spellcheck="false">{}</textarea></label>
-      </details>
-    </section>
-
-    <section class="panel">
-      <div class="row">
-        <label>Saved configuration<select id="saved-config"><option value="">Choose saved configuration</option></select></label>
-        <button id="load-config" type="button">Load</button>
-        <label>Configuration name<input id="config-name" placeholder="orientation chat baseline"></label>
-        <button id="save-config" type="button">Save configuration</button>
-        <button id="run-test" class="primary" type="button" disabled>Run gate on view images</button>
-      </div>
-      <p id="status" class="muted" role="status"></p>
-    </section>
-
+    <section class="panel"><h2>Saved tests</h2><div class="row"><label>Saved test<select id="saved-test"><option value="">Choose saved test</option></select></label><button id="open-test" type="button">Open</button><button id="rename-test" type="button">Rename</button><button id="delete-test" class="danger" type="button">Delete</button><button id="refresh-tests" type="button">Refresh</button></div><p class="muted">Tests appear here after Save Test. Saving a rerun replaces that test’s snapshot.</p></section>
+    <section class="panel"><div class="row"><button id="new-test" type="button">New Test</button><label>Local pipeline<select id="pipeline"><option value="">Choose pipeline</option></select></label><label>Gate<select id="gate" disabled><option value="">Choose gate</option></select></label></div><p id="case-summary" class="muted"></p><div id="cases" class="case-grid"></div></section>
+    <section class="panel"><h2>Prompts by view</h2><p class="muted">Current prompts are shown for every pipeline view. Expand a view to add an explicit test override.</p><div id="prompts" class="prompt-grid"></div></section>
+    <section class="panel"><h2>Model request</h2><div class="grid"><label>API endpoint<select id="api"><option value="generate">/api/generate</option><option value="chat">/api/chat</option></select></label><label>Model or alias<input id="model" list="model-options" placeholder="e.g. image-analysis-alt:latest"><datalist id="model-options"></datalist></label><button id="refresh-models" type="button">Refresh models</button><label><span id="think-label">Thinking</span><select id="think"><option value="false">Off</option><option value="true">On</option><option value="null">Model default</option></select></label></div><p id="model-help" class="muted">Choose an Ollama model or GPT-6 Luna.</p></section>
+    <section class="panel"><h2>Add curated case</h2><div class="grid"><label>View<select id="new-view"></select></label><label>Expected answer<select id="expected"><option>PASS</option><option>FAIL</option></select></label></div><div class="grid"><label>Candidate image<input id="candidate-file" type="file" accept="image/*"><div id="candidate-paste" contenteditable="true">Click here and paste a candidate image</div></label></div><div id="reference-inputs" class="grid"></div><button id="add-case" class="primary" type="button">Add test case</button></section>
+    <section class="panel"><div class="row"><button id="run-test" class="primary" type="button">Run all current cases</button><label>Test name<input id="test-name" placeholder="e.g. Orientation baseline"></label><button id="save-test" type="button" disabled>Save Test</button><button id="save-overwrite" type="button" hidden>Save over opened test</button><a id="packet-link" hidden>Download review packet</a></div><p id="status" class="muted" role="status"></p></section>
     <section id="results"></section>
   </main>
   <script>
-    const $ = (selector) => document.querySelector(selector);
-    const pipelineSelect = $('#pipeline'), runSelect = $('#run'), viewSelect = $('#view'), gateSelect = $('#gate');
-    const promptInput = $('#prompt'), statusNode = $('#status'), resultsNode = $('#results');
-    const selectedImagesNode = $('#selected-images');
-    let runs = [], selection = null, savedConfigs = [], savedTests = [], activeTestId = '', polling = false;
-    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    async function request(url, options = {}) {
-      const response = await fetch(url, options); let value = {};
-      try { value = await response.json(); } catch (_) { value = {}; }
-      if (!response.ok) throw new Error(value.detail || 'Request failed');
-      return value;
+    const $ = (selector) => document.querySelector(selector), esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const pipelineSelect=$('#pipeline'), gateSelect=$('#gate'), statusNode=$('#status'), resultsNode=$('#results');
+    let catalog=null, cases=[], tests=[], activeRunId='', openedTestId='', savedRecord=null, polling=false, imageData={candidate:'',front_anchor:'',front_source:''};
+    async function request(url, options={}) { const response=await fetch(url,options); let value={}; try { value=await response.json(); } catch(_) {} if(!response.ok) throw new Error(value.detail||'Request failed'); return value; }
+    function message(value,error=false) { statusNode.textContent=value||''; statusNode.classList.toggle('fail',error); }
+    function configValue() { const model=$('#model').value, codex=model.startsWith('codex:'); return {model,api:$('#api').value,think:codex?$('#think').value:($('#think').value==='null'?null:$('#think').value==='true')}; }
+    function promptValues() { const result={}; document.querySelectorAll('[data-prompt-view]').forEach((area)=>{ if(area.dataset.override==='true' && area.value.trim()) result[area.dataset.promptView]=area.value; }); return result; }
+    function currentPrompt(view) { return catalog?.gates_by_view?.[view]?.find((item)=>item.key===gateSelect.value)?.prompt||''; }
+    function requiredRoles(view) { const gate=catalog?.gates_by_view?.[view]?.find(item=>item.key===gateSelect.value);return (gate?.image_roles||['candidate']).filter(role=>!['candidate','candidate_head'].includes(role)); }
+    function renderReferenceInputs() { const roles=requiredRoles($('#new-view').value);$('#reference-inputs').innerHTML=roles.map(role=>`<label>${esc(role.replaceAll('_',' '))}<input type="file" accept="image/*" data-role-file="${esc(role)}"><div contenteditable="true" data-role-paste="${esc(role)}">Paste ${esc(role.replaceAll('_',' '))}</div></label>`).join('');roles.forEach(role=>bindRolePaste($(`[data-role-paste="${role}"]`),$(`[data-role-file="${role}"]`),role)); }
+    function renderPrompts(overrides={}) {
+      if(!catalog) return; $('#prompts').innerHTML=(catalog.views||[]).map((view)=>{ const override=Object.hasOwn(overrides,view); const value=override?overrides[view]:currentPrompt(view); return `<details class="prompt-box"><summary>${esc(view)}${override?' · override saved':''}</summary><p class="muted">Current gate prompt</p><pre>${esc(currentPrompt(view))}</pre><label><input type="checkbox" data-override-toggle="${esc(view)}" ${override?'checked':''}>Use an explicit override for this view</label><textarea data-prompt-view="${esc(view)}" data-override="${override?'true':'false'}" ${override?'':'disabled'}>${esc(value)}</textarea></details>`; }).join('');
+      document.querySelectorAll('[data-override-toggle]').forEach((toggle)=>toggle.addEventListener('change',()=>{ const area=$(`[data-prompt-view="${toggle.dataset.overrideToggle}"]`); if(toggle.checked){ if(area.dataset.override!=='true') area.value=currentPrompt(toggle.dataset.overrideToggle); area.dataset.override='true'; area.disabled=false; } else { area.dataset.override='false'; area.value=currentPrompt(toggle.dataset.overrideToggle); area.disabled=true; } toggle.closest('details').querySelector('summary').textContent=`${toggle.dataset.overrideToggle}${toggle.checked?' · override':''}`; }));
     }
-    function message(value, error = false) { statusNode.textContent = value || ''; statusNode.classList.toggle('fail', error); }
-    function configValue() {
-      let options, request_options;
-      try { options = JSON.parse($('#options').value || '{}'); } catch (_) { throw new Error('Options must be valid JSON.'); }
-      try { request_options = JSON.parse($('#request-options').value || '{}'); } catch (_) { throw new Error('Request fields must be valid JSON.'); }
-      if (!options || Array.isArray(options) || typeof options !== 'object') throw new Error('Options must be a JSON object.');
-      if (!request_options || Array.isArray(request_options) || typeof request_options !== 'object') throw new Error('Request fields must be a JSON object.');
-      const gate = gateSelect.value;
-      if (!gate) throw new Error('Choose a gate.');
-      const model = $('#model').value;
-      const codex = model.startsWith('codex:');
-      return {gate, prompt:promptInput.value, api:$('#api').value, model,
-        think:codex ? $('#think').value : ($('#think').value === 'null' ? null : $('#think').value === 'true'),
-        temperature:Number($('#temperature').value), keep_alive:$('#keep-alive').value.trim() || '5m', options, request_options};
-    }
-    function setConfig(config) {
-      $('#api').value = config.api || 'generate'; setModel(config.model || '');
-      $('#think').value = config.model?.startsWith('codex:')
-        ? (typeof config.think === 'string' ? config.think : 'high')
-        : (config.think === null ? 'null' : config.think ? 'true' : 'false');
-      $('#temperature').value = config.temperature ?? 1; $('#keep-alive').value = config.keep_alive ?? '5m';
-      $('#options').value = JSON.stringify(config.options || {}, null, 2);
-      $('#request-options').value = JSON.stringify(config.request_options || {}, null, 2);
-    }
-    function refreshRunTestButton() {
-      const definition = selection?.gates.find((item) => item.key === gateSelect.value);
-      $('#run-test').disabled = !selection || !selection.candidates.length || !definition ||
-        (definition.uses_anchor && !selection.front_anchor_available) || polling;
-    }
-    function renderSelectedImages() {
-      if (!selection) { selectedImagesNode.innerHTML = ''; return; }
-      const gate = selection.gates.find((item) => item.key === gateSelect.value);
-      const images = [];
-      if (gate?.uses_anchor && selection.front_anchor) images.push([selection.front_anchor, 'FRONT anchor']);
-      for (const item of selection.candidates) images.push([item.candidate_id, item.candidate_id]);
-      const pipelinePath = selection.pipeline === 'head-image' ? 'head-image' : 'body-reference';
-      selectedImagesNode.innerHTML = images.map(([id, label]) =>
-        `<figure><img src="/api/local/${pipelinePath}/runs/${encodeURIComponent(selection.run_id)}/images/${encodeURIComponent(id)}" alt="${esc(label)}"><figcaption>${esc(label)}</figcaption></figure>`
-      ).join('');
-    }
-    function setModel(value) {
-      const select = $('#model');
-      if (!value) { select.value = ''; updateModelControls(); return; }
-      const available = Array.from(select.options).some((option) => option.value === value);
-      if (!available) select.add(new Option(`${value} (saved configuration)`, value));
-      select.value = value;
-      updateModelControls();
-    }
-    function updateModelControls() {
-      const codex = $('#model').value.startsWith('codex:');
-      for (const id of ['api', 'temperature', 'keep-alive', 'options', 'request-options', 'refresh-models']) {
-        $(`#${id}`).disabled = codex;
-      }
-      $('#think').innerHTML = codex
-        ? '<option value="none">None</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Max</option>'
-        : '<option value="false">Off</option><option value="true">On</option><option value="null">Model default</option>';
-      $('#think').value = codex ? 'high' : 'false';
-      $('#think-label').textContent = codex ? 'Luna reasoning effort' : 'Thinking';
-      $('#model-help').textContent = codex
-        ? 'GPT-6 Luna runs through the local Codex CLI. Its reasoning effort is configurable below; Ollama request and sampler settings are disabled.'
-        : 'API, thinking, temperature, keep-alive, and advanced options apply to Ollama models.';
-    }
-    async function loadPipelines() {
-      const value = await request('/api/gate-test-rig/catalog');
-      pipelineSelect.innerHTML = '<option value="">Choose a pipeline</option>' + (value.pipelines || []).map((item) => `<option value="${esc(item.key)}">${esc(item.label)}</option>`).join('');
-    }
-    async function loadRuns() {
-      runs = []; runSelect.innerHTML = '<option value="">Choose a batch</option>';
-      viewSelect.innerHTML = '<option value="">Choose a view</option>';
-      gateSelect.innerHTML = '<option value="">Choose a gate</option>';
-      runSelect.disabled = true; viewSelect.disabled = true; gateSelect.disabled = true;
-      selection = null; selectedImagesNode.innerHTML = ''; $('#run-test').disabled = true;
-      if (!pipelineSelect.value) return;
-      const value = await request(`/api/gate-test-rig/catalog?pipeline=${encodeURIComponent(pipelineSelect.value)}`); runs = value.runs || [];
-      runSelect.innerHTML = '<option value="">Choose a batch</option>' + runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.character)} · ${esc(item.phase)} · ${esc(item.status)}</option>`).join('');
-      runSelect.disabled = false;
-    }
-    async function loadViews() {
-      selection = null; viewSelect.disabled = true; gateSelect.disabled = true; $('#run-test').disabled = true;
-      selectedImagesNode.innerHTML = '';
-      const runId = runSelect.value;
-      if (!runId) return;
-      const summary = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runId)}?pipeline=${encodeURIComponent(pipelineSelect.value)}`);
-      viewSelect.innerHTML = '<option value="">Choose a view</option>' + (summary.views || []).map((item) => `<option value="${esc(item)}">${esc(item)}</option>`).join('');
-      viewSelect.disabled = false;
-      if (summary.views?.length) { viewSelect.value = summary.views[0]; await loadSelection(); }
-    }
-    async function loadSelection() {
-      selection = null; gateSelect.disabled = true; $('#run-test').disabled = true;
-      selectedImagesNode.innerHTML = '';
-      if (!runSelect.value || !viewSelect.value) return;
-      const value = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runSelect.value)}/views/${encodeURIComponent(viewSelect.value)}?pipeline=${encodeURIComponent(pipelineSelect.value)}`);
-      selection = value;
-      gateSelect.innerHTML = '<option value="">Choose a gate</option>' + value.gates.map((item) => `<option value="${esc(item.key)}">${esc(item.key.replaceAll('_',' '))}${item.key === 'orientation' ? ' (currently disabled)' : ''}</option>`).join('');
-      gateSelect.disabled = false;
-      const usable = value.gates.find((item) => item.key === gateSelect.value) || value.gates[0];
-      if (usable) { gateSelect.value = usable.key; promptInput.value = usable.prompt; }
-      renderSelectedImages();
-      $('#selection-summary').textContent = `${value.character} · ${value.phase} · ${value.candidates.length} completed image${value.candidates.length === 1 ? '' : 's'} for ${value.view}${value.front_anchor ? ` · FRONT anchor ${value.front_anchor}` : ''}`;
-      refreshRunTestButton();
-    }
-    async function loadConfigs() {
-      const value = await request('/api/gate-test-rig/configs'); savedConfigs = value.configs || [];
-      $('#saved-config').innerHTML = '<option value="">Choose saved configuration</option>' + savedConfigs.map((item) => `<option value="${esc(item.config_id)}">${esc(item.name)}</option>`).join('');
-    }
-    async function loadTests() {
-      const value = await request('/api/gate-test-rig/tests'); savedTests = value.tests || [];
-      const select = $('#saved-test');
-      select.innerHTML = '<option value="">Choose a saved test</option>' + savedTests.map((item) => {
-        const progress = `${item.finished_count}/${item.attempt_count} finished`;
-        const pipeline = item.pipeline === 'head-image' ? 'Head-Image' : 'Body-Reference';
-        return `<option value="${esc(item.test_id)}">${esc(item.created_at)} · ${pipeline} · ${esc(item.gate)} · ${esc(item.run_id)} · ${esc(item.view)} · ${esc(item.status)} · ${progress}</option>`;
-      }).join('');
-      if (activeTestId && savedTests.some((item) => item.test_id === activeTestId)) select.value = activeTestId;
-      $('#open-test').disabled = !select.value;
-    }
-    async function loadModels(showStatus = false) {
-      try {
-        const value = await request('/api/ai-controls/ollama-models');
-        const current = $('#model').value;
-        $('#model').innerHTML = '<option value="">Choose a model</option>' + (value.models || []).map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('') + '<option value="codex:gpt-6-luna">GPT-6 Luna (Codex)</option>';
-        setModel(current || 'image-analysis-alt:latest');
-        if (showStatus) message(`Loaded ${(value.models || []).length} Ollama model(s).`);
-      } catch (error) {
-        $('#model').innerHTML = '<option value="">Ollama models unavailable</option><option value="codex:gpt-6-luna">GPT-6 Luna (Codex)</option>';
-        if (showStatus) message(error.message, true);
-        /* The refresh button can retry discovery when Ollama becomes available. */
-      }
-    }
-    function renderTest(test) {
-      const summary = `${esc(test.pipeline === 'head-image' ? 'Local Head-Image' : 'Local Body-Reference')} · ${esc(test.gate)} · ${esc(test.run_id)} · ${esc(test.view)} · ${esc(test.status)}`;
-      const modelName = test.config.model === 'codex:gpt-6-luna' ? 'GPT-6 Luna (Codex)' : test.config.model;
-      const requestMode = test.config.model.startsWith('codex:')
-        ? `Codex CLI · reasoning ${esc(test.config.think)}`
-        : `/api/${esc(test.config.api)} · ${esc(test.config.think === null ? 'model default thinking' : `think ${test.config.think}`)}`;
-      resultsNode.innerHTML = `<section class="panel"><h2>Test ${esc(test.test_id)}</h2><p>${summary}</p><p class="muted">Model ${esc(modelName)} · ${requestMode}</p></section>` + (test.attempts || []).map((attempt) => {
-        const pipelinePath = test.pipeline === 'head-image' ? 'head-image' : 'body-reference';
-        const image = `/api/local/${pipelinePath}/runs/${encodeURIComponent(test.run_id)}/images/${encodeURIComponent(attempt.candidate_id)}`;
-        const answer = attempt.answer_manifest || {};
-        const generation = answer.ollama_generation || {};
-        const runtime = answer.ollama_runtime || {};
-        const outcome = attempt.result ? `<strong class="${attempt.result === 'PASS' ? 'pass' : 'fail'}">${esc(attempt.result)}${attempt.reason ? ` · ${esc(attempt.reason)}` : ''}</strong>` : `<strong>${esc(attempt.status)}</strong>`;
-        const elapsedSeconds = Number(answer.elapsed_seconds);
-        const elapsedLabel = answer.elapsed_seconds !== null && answer.elapsed_seconds !== undefined && Number.isFinite(elapsedSeconds) ? ` - ${Math.round(elapsedSeconds)}s` : '';
-        const trace = `<p class="muted">${esc(attempt.ask_id)} · ${esc(answer.elapsed_seconds ?? '')} sec · ${esc(generation.done_reason || '')} · ${esc(generation.eval_count ?? '')} output tokens${runtime.digest ? ` · ${esc(runtime.digest)}` : ''}${answer.ollama_runtime_evidence_error ? ` · Runtime evidence: ${esc(answer.ollama_runtime_evidence_error)}` : ''}</p>`;
-        return `<article class="result"><img src="${image}" alt="${esc(attempt.candidate_id)}"><div><h3>${esc(attempt.candidate_id)} - ${outcome}${elapsedLabel}</h3>${attempt.error ? `<p class="fail">${esc(attempt.error)}</p>` : ''}${attempt.response ? `<pre>${esc(attempt.response)}</pre>` : ''}${answer.thinking_text ? `<details><summary>Returned thinking</summary><pre>${esc(answer.thinking_text)}</pre></details>` : ''}${trace}<details><summary>Attempt trace</summary><pre>${esc(JSON.stringify({input_hashes:attempt.input_hashes,source_image_hashes:attempt.source_image_hashes,prompt_sha256:attempt.prompt_sha256,request:test.config,answer},null,2))}</pre></details></div></article>`;
-      }).join('');
-    }
-    async function pollTest(testId) {
-      try {
-        const test = await request(`/api/gate-test-rig/tests/${encodeURIComponent(testId)}`);
-        if (activeTestId !== testId) return;
-        renderTest(test);
-        if (test.status === 'RUNNING') {
-          polling = true;
-          const complete = (test.attempts || []).filter((item) => item.status === 'COMPLETE').length;
-          message(`${test.config.model.startsWith('codex:') ? 'GPT-6 Luna is processing' : 'Test is running'} · ${complete}/${test.attempts.length} complete`);
-          window.setTimeout(() => void pollTest(testId), 2500);
-        } else {
-          polling = false; refreshRunTestButton();
-          const done = (test.attempts || []).filter((item) => item.status === 'COMPLETE').length;
-          message(`Test finished · ${done}/${test.attempts.length} valid responses`);
-          void loadTests();
-        }
-      } catch (error) { polling = false; refreshRunTestButton(); message(error.message, true); }
-    }
-    pipelineSelect.addEventListener('change', () => void loadRuns().catch((error) => message(error.message, true)));
-    runSelect.addEventListener('change', () => void loadViews().catch((error) => message(error.message, true)));
-    viewSelect.addEventListener('change', () => void loadSelection().catch((error) => message(error.message, true)));
-    gateSelect.addEventListener('change', () => {
-      const definition = selection?.gates.find((item) => item.key === gateSelect.value);
-      promptInput.value = definition?.prompt || ''; renderSelectedImages(); refreshRunTestButton();
-    });
-    $('#refresh-models').addEventListener('click', () => void loadModels(true));
-    $('#model').addEventListener('change', updateModelControls);
-    $('#saved-test').addEventListener('change', () => { $('#open-test').disabled = !$('#saved-test').value; });
-    $('#refresh-tests').addEventListener('click', () => void loadTests().catch((error) => message(error.message, true)));
-    $('#open-test').addEventListener('click', () => {
-      const testId = $('#saved-test').value;
-      if (!testId) return;
-      activeTestId = testId; polling = true; resultsNode.innerHTML = ''; refreshRunTestButton();
-      try { localStorage.setItem('gate-test-rig:last-test-id', testId); } catch (_) { /* Storage may be unavailable. */ }
-      void pollTest(testId);
-    });
-    $('#load-config').addEventListener('click', () => {
-      const saved = savedConfigs.find((item) => item.config_id === $('#saved-config').value);
-      if (!saved) return;
-      setConfig(saved.config);
-      const definition = selection?.gates.find((item) => item.key === saved.config.gate);
-      if (definition) { gateSelect.value = definition.key; promptInput.value = saved.config.prompt || definition.prompt; }
-      else message(`${saved.config.gate} does not apply to the current view. Change view and load this configuration again.`, true);
-      $('#config-name').value = saved.name;
-      refreshRunTestButton();
-    });
-    $('#save-config').addEventListener('click', async () => {
-      try {
-        const saved = await request('/api/gate-test-rig/configs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#config-name').value,config:configValue()})});
-        await loadConfigs(); $('#saved-config').value = saved.config_id; message(`Saved “${saved.name}”.`);
-      } catch (error) { message(error.message, true); }
-    });
-    $('#run-test').addEventListener('click', async () => {
-      try {
-        const config = configValue(); polling = true; refreshRunTestButton(); resultsNode.innerHTML = '';
-        const test = await request('/api/gate-test-rig/tests', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pipeline:pipelineSelect.value,run_id:runSelect.value,view:viewSelect.value,config})});
-        activeTestId = test.test_id;
-        try { localStorage.setItem('gate-test-rig:last-test-id', activeTestId); } catch (_) { /* Storage may be unavailable. */ }
-        await loadTests(); $('#saved-test').value = activeTestId;
-        message(`Queued ${test.attempts.length} image tests.`); void pollTest(activeTestId);
-      } catch (error) { polling = false; refreshRunTestButton(); message(error.message, true); }
-    });
-    Promise.all([loadPipelines(), loadConfigs(), loadModels(), loadTests()]).then(() => {
-      let previous = '';
-      try { previous = localStorage.getItem('gate-test-rig:last-test-id') || ''; } catch (_) { /* Storage may be unavailable. */ }
-      if (savedTests.some((item) => item.test_id === previous)) {
-        $('#saved-test').value = previous; $('#open-test').disabled = false; $('#open-test').click();
-      }
-    }).catch((error) => message(error.message, true));
+    async function loadCatalog() { const value=await request('/api/gate-test-rig/catalog'); $('#pipeline').innerHTML='<option value="">Choose pipeline</option>'+(value.pipelines||[]).map(p=>`<option value="${esc(p.key)}">${esc(p.label)}</option>`).join(''); }
+    async function loadPipeline() { catalog=null; cases=[]; gateSelect.innerHTML='<option value="">Choose gate</option>'; gateSelect.disabled=true; $('#new-view').innerHTML=''; $('#prompts').innerHTML=''; $('#cases').innerHTML=''; $('#reference-inputs').innerHTML=''; if(!pipelineSelect.value)return; catalog=await request(`/api/gate-test-rig/catalog?pipeline=${encodeURIComponent(pipelineSelect.value)}`); gateSelect.innerHTML='<option value="">Choose gate</option>'+Object.keys(catalog.gates||{}).map(key=>`<option value="${esc(key)}">${esc(key.replaceAll('_',' '))}</option>`).join(''); gateSelect.disabled=false; $('#new-view').innerHTML=(catalog.views||[]).map(v=>`<option>${esc(v)}</option>`).join(''); gateSelect.value=Object.keys(catalog.gates||{})[0]||''; renderPrompts();renderReferenceInputs(); await loadCases(); }
+    async function loadCases() { if(!catalog||!gateSelect.value)return; cases=(await request(`/api/gate-test-data?pipeline=${encodeURIComponent(pipelineSelect.value)}&gate=${encodeURIComponent(gateSelect.value)}`)).cases||[]; $('#case-summary').textContent=`${cases.length} curated case${cases.length===1?'':'s'} for ${gateSelect.value}. Runs use all current cases.`; $('#cases').innerHTML=cases.map(item=>`<article class="case"><img src="/api/gate-test-data/${encodeURIComponent(item.pipeline)}/${encodeURIComponent(item.gate)}/${encodeURIComponent(item.case_id)}/image/candidate" alt="${esc(item.view)} case"><p><strong>${esc(item.case_id.slice(0,8))}</strong> · ${esc(item.view)} · expected ${esc(item.expected)}</p><button data-delete-case="${esc(item.case_id)}" type="button">Delete</button></article>`).join(''); document.querySelectorAll('[data-delete-case]').forEach(button=>button.addEventListener('click',async()=>{try{await request(`/api/gate-test-data/${encodeURIComponent(pipelineSelect.value)}/${encodeURIComponent(gateSelect.value)}/${encodeURIComponent(button.dataset.deleteCase)}`,{method:'DELETE'});await loadCases();}catch(error){message(error.message,true);}})); $('#run-test').disabled=!cases.length||polling; }
+    async function loadModels() { const current=$('#model').value;try { const value=await request('/api/ai-controls/ollama-models'); $('#model-options').innerHTML=(value.models||[]).map(name=>`<option value="${esc(name)}"></option>`).join('')+'<option value="codex:gpt-6-luna"></option>'; $('#model').value=current||(value.models?.includes('image-analysis-alt:latest')?'image-analysis-alt:latest':''); } catch(_) { $('#model-options').innerHTML='<option value="codex:gpt-6-luna"></option>'; $('#model').value=current; } updateModelControls(); }
+    function updateModelControls() { const codex=$('#model').value.startsWith('codex:'); $('#api').disabled=codex; $('#think').innerHTML=codex?'<option>none</option><option>low</option><option>medium</option><option selected>high</option><option>xhigh</option><option>max</option>':'<option value="false">Off</option><option value="true">On</option><option value="null">Model default</option>'; $('#think-label').textContent=codex?'Luna reasoning effort':'Thinking'; $('#model-help').textContent=codex?'GPT-6 Luna runs through the local Codex CLI.':'Ollama API endpoint and thinking are sent with each case.'; }
+    function renderTest(record, saved=false) { resultsNode.innerHTML=(record.attempts||[]).map(item=>{const root=saved?`/api/gate-test-rig/tests/${encodeURIComponent(openedTestId)}`:`/api/gate-test-rig/runs/${encodeURIComponent(record.run_id)}`;const url=`${root}/cases/${encodeURIComponent(item.case_id)}/image/candidate`;return `<article class="result"><img src="${url}" alt="${esc(item.view)}"><div><h3>${esc(item.view)} · expected ${esc(item.expected)} · ${esc(item.actual||item.status)}</h3><p class="${item.result==='PASS'?'pass':item.result==='FAIL'?'fail':'muted'}">${esc(item.result||item.status)}${item.error?` · ${esc(item.error)}`:''}</p>${item.response?`<pre>${esc(item.response)}</pre>`:''}<details><summary>Diagnostics</summary><pre>${esc(JSON.stringify({case_id:item.case_id,ask_id:item.ask_id,input_hashes:item.input_hashes,prompt_sha256:item.prompt_sha256,request:record.config,answer_manifest:item.answer_manifest},null,2))}</pre></details></div></article>`}).join(''); }
+    async function pollRun(id) { try { const record=await request(`/api/gate-test-rig/runs/${encodeURIComponent(id)}`); if(activeRunId!==id)return; renderTest(record); if(record.status==='RUNNING'){polling=true;const done=(record.attempts||[]).filter(x=>['COMPLETE','FAILED','INVALID'].includes(x.status)).length;message(`Running ${record.gate}: ${done}/${record.attempts.length} cases finished.`);window.setTimeout(()=>void pollRun(id),2200);}else{polling=false;$('#save-test').disabled=false;$('#save-overwrite').hidden=!openedTestId;$('#run-test').disabled=!cases.length;message(`Run complete · ${(record.attempts||[]).filter(x=>x.result==='PASS').length}/${record.attempts.length} expected answers matched.`);savedRecord=record;}}catch(error){polling=false;message(error.message,true);} }
+    async function loadTests() { tests=(await request('/api/gate-test-rig/tests')).tests||[]; $('#saved-test').innerHTML='<option value="">Choose saved test</option>'+tests.map(t=>`<option value="${esc(t.test_id)}">${esc(t.name)} · ${esc(t.pipeline)} · ${esc(t.gate)} · ${esc(t.status)}</option>`).join(''); }
+    async function openTest() { const id=$('#saved-test').value;if(!id)return; const value=await request(`/api/gate-test-rig/tests/${encodeURIComponent(id)}`); openedTestId=id; savedRecord=value; activeRunId=''; $('#test-name').value=tests.find(x=>x.test_id===id)?.name||''; pipelineSelect.value=value.pipeline; await loadPipeline(); gateSelect.value=value.gate; await loadCases(); $('#api').value=value.config.api; $('#model').value=value.config.model; updateModelControls(); if(value.config.model.startsWith('codex:'))$('#think').value=value.config.think;else $('#think').value=value.config.think===null?'null':String(value.config.think); renderPrompts(value.prompt_overrides||{}); renderTest(value,true); $('#save-overwrite').hidden=false; $('#packet-link').href=`/api/gate-test-rig/tests/${encodeURIComponent(id)}/packet`; $('#packet-link').hidden=false; $('#run-test').disabled=!cases.length; }
+    async function asData(file) { if(!file)return ''; return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);}); }
+    function bindRolePaste(paste,file,role) { if(!paste||!file)return;paste.addEventListener('paste',async(event)=>{const image=Array.from(event.clipboardData.items).map(item=>item.getAsFile()).find(Boolean);if(image){event.preventDefault();imageData[role]=await asData(image);paste.textContent=`${image.name||'Pasted image'} ready`;}});file.addEventListener('change',async(event)=>{imageData[role]=await asData(event.target.files[0]);}); }
+    async function addCase() { if(!catalog||!gateSelect.value)throw new Error('Choose a pipeline and gate first.'); const view=$('#new-view').value; const gate=(catalog.gates_by_view?.[view]||[]).find(x=>x.key===gateSelect.value); if(!gate)throw new Error(`${gateSelect.value} does not apply to ${view}.`); const reference_data={};for(const role of requiredRoles(view))reference_data[role]=imageData[role]||'';const payload={pipeline:pipelineSelect.value,gate:gateSelect.value,view,expected:$('#expected').value,image_data:imageData.candidate,reference_data}; await request('/api/gate-test-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); imageData={candidate:''}; $('#candidate-file').value='';$('#candidate-paste').textContent='Click here and paste a candidate image';renderReferenceInputs();await loadCases();message('Curated case added.'); }
+    pipelineSelect.addEventListener('change',()=>void loadPipeline().catch(e=>message(e.message,true))); gateSelect.addEventListener('change',()=>{renderPrompts();renderReferenceInputs();void loadCases().catch(e=>message(e.message,true));}); $('#new-view').addEventListener('change',renderReferenceInputs);
+    $('#refresh-models').addEventListener('click',()=>void loadModels()); $('#model').addEventListener('change',updateModelControls); $('#refresh-tests').addEventListener('click',()=>void loadTests()); $('#open-test').addEventListener('click',()=>void openTest().catch(e=>message(e.message,true)));
+    $('#new-test').addEventListener('click',()=>{openedTestId='';activeRunId='';savedRecord=null;$('#saved-test').value='';$('#test-name').value='';$('#results').innerHTML='';$('#save-test').disabled=true;$('#save-overwrite').hidden=true;$('#packet-link').hidden=true;renderPrompts({});message('New test ready.');});
+    $('#add-case').addEventListener('click',()=>void addCase().catch(e=>message(e.message,true)));
+    $('#run-test').addEventListener('click',async()=>{try{const run=await request('/api/gate-test-rig/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pipeline:pipelineSelect.value,gate:gateSelect.value,config:configValue(),prompt_overrides:promptValues()})});activeRunId=run.run_id;polling=true;$('#save-test').disabled=true;$('#save-overwrite').hidden=true;$('#packet-link').hidden=true;void pollRun(run.run_id);}catch(e){polling=false;message(e.message,true);}});
+    async function saveCurrent(testId=openedTestId) {if(!savedRecord)throw new Error('Run the test before saving.');const value=await request('/api/gate-test-rig/tests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run_id:savedRecord.run_id,name:$('#test-name').value,test_id:testId})});openedTestId=value.test_id;message(`Saved “${value.name}”.`);await loadTests();$('#saved-test').value=openedTestId;$('#packet-link').href=`/api/gate-test-rig/tests/${encodeURIComponent(openedTestId)}/packet`;$('#packet-link').hidden=false;$('#save-overwrite').hidden=false;}
+    $('#save-test').addEventListener('click',()=>void saveCurrent().catch(e=>message(e.message,true)));$('#save-overwrite').addEventListener('click',()=>void saveCurrent(openedTestId).catch(e=>message(e.message,true)));
+    $('#rename-test').addEventListener('click',async()=>{try{const id=$('#saved-test').value;if(!id)throw new Error('Choose a saved test.');const name=window.prompt('Rename test',$('#test-name').value);if(name===null)return;await request(`/api/gate-test-rig/tests/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});await loadTests();$('#saved-test').value=id;message('Saved test renamed.');}catch(e){message(e.message,true);}});
+    $('#delete-test').addEventListener('click',async()=>{try{const id=$('#saved-test').value;if(!id)throw new Error('Choose a saved test.');if(!window.confirm('Delete this saved test and its snapshot?'))return;await request(`/api/gate-test-rig/tests/${encodeURIComponent(id)}`,{method:'DELETE'});if(openedTestId===id)$('#new-test').click();await loadTests();message('Saved test deleted.');}catch(e){message(e.message,true);}});
+    bindRolePaste($('#candidate-paste'),$('#candidate-file'),'candidate');
+    Promise.all([loadCatalog(),loadModels(),loadTests()]).catch(e=>message(e.message,true));
   </script>
 </body>
 </html>

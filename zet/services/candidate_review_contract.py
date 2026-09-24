@@ -11,6 +11,8 @@ class ReviewGate:
     prompt: str
     uses_anchor: bool = False
     crop_head: bool = False
+    uses_source: bool = False
+    input_roles: tuple[str, ...] = ()
 
 
 def parse_rejection_verdict(value: str) -> str:

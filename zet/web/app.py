@@ -32,6 +32,7 @@ from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.gate_test_rig_service import GateTestRigService
+from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -964,6 +965,69 @@ def create_app(
     def gate_test_rig_page() -> str:
         return (PACKAGE_ROOT / "templates" / "gate_test_rig.html").read_text(encoding="utf-8")
 
+    @app.get("/gate-test-data", response_class=HTMLResponse)
+    def gate_test_data_page() -> str:
+        return (PACKAGE_ROOT / "templates" / "gate_test_data.html").read_text(encoding="utf-8")
+
+    @app.get("/api/local-gates/{pipeline}")
+    def local_gate_catalog(pipeline: str) -> dict[str, Any]:
+        try:
+            return LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT).catalog(pipeline)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/local-gates/{pipeline}/{gate}")
+    def update_local_gate_status(pipeline: str, gate: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT).set_status(
+                pipeline, gate, str(payload.get("status") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-data")
+    def list_gate_test_data(pipeline: str = Query(""), gate: str = Query("")) -> dict[str, Any]:
+        try:
+            service = LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT)
+            return {"cases": service.list_cases(pipeline, gate)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/gate-test-data")
+    def create_gate_test_case(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            service = LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT)
+            return service.save_case(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/gate-test-data/{pipeline}/{gate}/{case_id}")
+    def update_gate_test_case(pipeline: str, gate: str, case_id: str,
+                              payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            payload = {**payload, "pipeline": pipeline, "gate": gate}
+            return LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT).save_case(payload, case_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-data/{pipeline}/{gate}/{case_id}/image/{role}")
+    def gate_test_case_image(pipeline: str, gate: str, case_id: str, role: str = "candidate") -> FileResponse:
+        try:
+            path = LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT).case_image_path(
+                pipeline, gate, case_id, role
+            )
+            return FileResponse(path, media_type="image/png")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.delete("/api/gate-test-data/{pipeline}/{gate}/{case_id}")
+    def delete_gate_test_case(pipeline: str, gate: str, case_id: str) -> dict[str, Any]:
+        try:
+            LocalGateRegistryService(_app(app.state.config_path), PROJECT_ROOT).delete_case(pipeline, gate, case_id)
+            return {"deleted": case_id}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/gate-test-rig/catalog")
     def gate_test_rig_catalog(pipeline: str = Query("")) -> dict[str, Any]:
         try:
@@ -971,35 +1035,35 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/gate-test-rig/runs/{run_id}")
-    def gate_test_rig_run(run_id: str, pipeline: str = Query("body-reference")) -> dict[str, Any]:
-        try:
-            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).run_summary(run_id, pipeline)
-        except Exception as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.get("/api/gate-test-rig/runs/{run_id}/views/{view}")
-    def gate_test_rig_selection(run_id: str, view: str, pipeline: str = Query("body-reference")) -> dict[str, Any]:
-        try:
-            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).selection(run_id, view, pipeline)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/gate-test-rig/configs")
-    def gate_test_rig_configs() -> dict[str, Any]:
-        return {"configs": GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).configs()}
-
-    @app.post("/api/gate-test-rig/configs")
-    def save_gate_test_rig_config(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        try:
-            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).save_config(payload)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/gate-test-rig/tests")
+    @app.post("/api/gate-test-rig/runs")
     def start_gate_test_rig(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
             return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).start_test(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/runs/{run_id}")
+    def gate_test_rig_run_status(run_id: str) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).status(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/runs/{run_id}/cases/{case_id}/image/{role}")
+    def gate_test_rig_run_image(run_id: str, case_id: str, role: str = "candidate") -> FileResponse:
+        try:
+            path = GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).run_case_image_path(run_id, case_id, role)
+            return FileResponse(path, media_type="image/png")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/gate-test-rig/tests")
+    def save_gate_test_rig_test(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).save_test(
+                str(payload.get("run_id") or ""), str(payload.get("name") or ""),
+                str(payload.get("test_id") or ""),
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1011,6 +1075,39 @@ def create_app(
     def gate_test_rig_test_status(test_id: str) -> dict[str, Any]:
         try:
             return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).status(test_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/tests/{test_id}/cases/{case_id}/image/{role}")
+    def gate_test_rig_saved_image(test_id: str, case_id: str, role: str = "candidate") -> FileResponse:
+        try:
+            path = GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).saved_case_image_path(test_id, case_id, role)
+            return FileResponse(path, media_type="image/png")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.put("/api/gate-test-rig/tests/{test_id}")
+    def rename_gate_test_rig_test(test_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).rename_test(
+                test_id, str(payload.get("name") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/gate-test-rig/tests/{test_id}")
+    def delete_gate_test_rig_test(test_id: str) -> dict[str, Any]:
+        try:
+            GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).delete_test(test_id)
+            return {"deleted": test_id}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/tests/{test_id}/packet")
+    def gate_test_rig_packet(test_id: str) -> FileResponse:
+        try:
+            packet = GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).review_packet(test_id)
+            return FileResponse(packet, media_type="application/zip", filename=packet.name)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

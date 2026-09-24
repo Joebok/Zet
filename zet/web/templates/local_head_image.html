@@ -102,6 +102,7 @@
 <body>
   <header><div><h1>Local Head-Image</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><nav><a href="/local-body-reference">Local Body-Reference</a> · <a href="/">Back to dashboard</a></nav></header>
   <main>
+    <details class="panel" id="gate-setup"><summary>Setup · gate status</summary><div id="gate-setup-content" class="grid"></div></details>
     <section class="panel">
       <div class="controls">
         <label>Character<select id="character"></select></label>
@@ -261,6 +262,26 @@
       const ai = candidate.analyses || {};
       return `${reviewResult('Local', ai.local, candidate.local_job)}${reviewResult('Luna', ai.luna, {status: candidate.luna_status}, candidate.luna_error || '')}${humanSummary(candidate)}`;
     }
+    function attachGateDataButton(candidate) {
+      const section=document.createElement('section'); section.className='review-section';
+      section.innerHTML='<h3>Gate regression data</h3><button type="button">Add to Gate Test Data</button>';
+      section.querySelector('button').addEventListener('click',()=>void addGateDataCase(candidate).catch(error=>setStatus(error.message,true)));
+      reviewPanel.appendChild(section);
+    }
+    async function imageDataUrl(url) { const blob=await (await fetch(url)).blob(); return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);}); }
+    async function addGateDataCase(candidate) {
+      const catalog=await request('/api/local-gates/head-image');
+      const gates=catalog.gates_by_view?.[candidate.view]||[];
+      if(!gates.length)throw new Error('No gates apply to this view.');
+      const gateKey=window.prompt(`Choose a gate key:\n${gates.map(item=>item.key).join(', ')}`,gates[0].key);
+      if(!gateKey)return; const gate=gates.find(item=>item.key===gateKey); if(!gate)throw new Error('Choose one of the listed gates.');
+      const expected=String(window.prompt('Correct answer for this image: PASS or FAIL','PASS')||'').toUpperCase();
+      if(!['PASS','FAIL'].includes(expected))throw new Error('Expected answer must be PASS or FAIL.');
+      const payload={pipeline:'head-image',gate:gateKey,view:candidate.view,expected,image_data:await imageDataUrl(imageUrl(candidate))};
+      if(gate.uses_anchor){const anchor=(run.candidates||[]).find(item=>item.candidate_id===run.front_anchor);if(!anchor?.image_path)throw new Error('This gate requires a FRONT anchor image.');payload.front_anchor_data=await imageDataUrl(imageUrl(anchor));}
+      if(gate.uses_source){if(!run.front_source)throw new Error('This gate requires a FRONT source image.');payload.front_source_data=await imageDataUrl(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/source`);}
+      await request('/api/gate-test-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});setStatus('Added image to Gate Test Data.');
+    }
     function gateSummary(candidate) {
       const gates = candidate.gates || {};
       const labels = {background:'Background', framing:'Framing', orientation:'View orientation', gaze:'Gaze direction', identity:'Front-anchor identity', source_identity:'Source-image identity'};
@@ -269,13 +290,14 @@
       return keys.map((key) => {
         const gate = gates[key] || {};
         const verdict = gate.verdict;
-        const rejected = verdict === 'TRUE';
+        const warning = gate.policy_status === 'Warning';
+        const rejected = verdict === 'TRUE' && !warning;
         const failed = gate.status === 'FAILED';
         const stale = gate.status === 'STALE';
         const disabled = gate.status === 'DISABLED';
-        const text = disabled ? 'Disabled' : stale ? 'Stale' : verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
+        const text = disabled ? 'Disabled' : stale ? 'Stale' : warning && (verdict === 'TRUE' || failed) ? 'Warning · gate failed' : verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
         const details = stale ? ' — re-evaluate after selecting the current FRONT anchor.' : disabled ? (failed || rejected ? ' — Re-evaluate this view to clear the previous result.' : '') : rejected ? ` — ${esc(gate.reason || 'visible defect')}` : gate.error ? ` — ${esc(gate.error)}` : '';
-        return `<p class="${disabled || stale ? 'muted' : rejected || failed ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${!disabled && (rejected || failed) ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
+        return `<p class="${disabled || stale ? 'muted' : rejected || failed || warning && verdict === 'TRUE' ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${!disabled && (rejected || failed || warning && verdict === 'TRUE') ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
       }).join('');
     }
     function addViewPromptLinks(container, runId, pipeline, specificationRoute) {
@@ -471,10 +493,11 @@
         const gatesPassed = (run.views || []).includes(candidate.view)
           && ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(candidate.status)
           && Object.keys(gates).length > 0
-          && Object.values(gates).every((gate) => ['COMPLETE', 'DISABLED'].includes(gate.status) && gate.verdict === 'FALSE');
+          && Object.values(gates).every((gate) => gate.status === 'DISABLED' || (['COMPLETE','FAILED'].includes(gate.status) && (gate.verdict === 'FALSE' || gate.policy_status === 'Warning')));
         const canReview = !gateRejected && gatesPassed;
         const human = candidate.human_review || {};
         reviewPanel.innerHTML = `<p class="muted">Candidate ${reviewIndex + 1} of ${reviewCandidates.length}</p><h2>${esc(candidate.candidate_id)}</h2><p><strong>View:</strong> ${esc(candidate.view)}<br><strong>Status:</strong> ${esc(candidate.status)}${candidate.rejection_gate ? `<br><strong>Rejected by:</strong> ${esc(candidate.rejection_gate)}` : ''}</p><section class="review-section"><h3>Narrow gates</h3>${gateSummary(candidate)}</section><section class="review-section"><h3>Luna ranking</h3><p>${entry ? `Ranked #${ranking.ordered_candidate_ids.indexOf(candidate.candidate_id) + 1}: ${esc(entry.reason)}` : 'Not ranked'}${ranking.status === 'STALE' ? ` · Stale: ${esc(ranking.stale_reason || 'Review inputs changed')}` : ''}</p></section><section class="review-section"><h3>Human review</h3>${gateRejected ? '<p class="hint">Gate-rejected candidates remain available for inspection and Re-Run Failed.</p>' : `<fieldset class="decision-options" ${canReview ? '' : 'disabled'}><legend>Decision</legend><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="undecided"> Undecided</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="keep"> Pass</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="reject"> Fail</label></fieldset><label style="margin-top:.75rem">Notes<textarea data-field="notes" ${canReview ? '' : 'disabled'}>${esc(human.notes || '')}</textarea></label><div class="button-row" style="margin-top:.75rem"><button data-save type="button" class="primary" ${canReview ? '' : 'disabled'}>Save human review</button>${entry && ranking.status === 'COMPLETE' && run.selected_views?.[candidate.view] !== candidate.candidate_id ? `<button data-select type="button" class="primary">Select for ${esc(candidate.view)}</button>` : ''}</div>`}</section>`;
+        attachGateDataButton(candidate);
         if (canReview) {
           const position = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
           const actions = reviewPanel.querySelector('.button-row');
@@ -492,6 +515,7 @@
       const human = candidate.human_review || {};
       const anchorReady = candidate.view === 'FRONT' && canReview && human.decision === 'keep' && run.front_anchor !== candidate.candidate_id;
       reviewPanel.innerHTML = `<p class="muted">Candidate ${reviewIndex + 1} of ${reviewCandidates.length}</p><h2>${esc(candidate.candidate_id)}</h2><p><strong>View:</strong> ${esc(candidate.view)}<br><strong>Method:</strong> ${esc(candidate.method)}<br><strong>Seed:</strong> ${esc(candidate.seed)}<br><strong>Status:</strong> ${esc(candidate.status)}</p><section class="review-section"><h3>Automated reviews</h3>${candidateSummary(candidate)}${!canReview ? '<p class="hint">Human review is enabled after both Local and Luna reviews finish.</p>' : ''}</section><section class="review-section"><h3>Human review</h3><fieldset class="decision-options" ${canReview ? '' : 'disabled'}><legend>Decision</legend><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="undecided"> Undecided</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="keep"> Pass</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="reject"> Fail</label></fieldset><label style="margin-top:.75rem">Notes<textarea data-field="notes" ${canReview ? '' : 'disabled'}>${esc(human.notes || '')}</textarea></label><div class="button-row" style="margin-top:.75rem"><button data-save type="button" class="primary" ${canReview ? '' : 'disabled'}>Save human review</button></div></section><section class="review-section"><h3>Front anchor</h3><p class="hint">Choose one reviewed, human-passed FRONT image as the shared identity and proportion reference for all other views.</p><button data-anchor type="button" ${anchorReady ? '' : 'disabled'}>${run.front_anchor === candidate.candidate_id ? 'Current front anchor' : 'Use as front anchor'}</button>${run.front_anchor === candidate.candidate_id ? '<p class="pass">This candidate is the front anchor.</p>' : ''}</section>`;
+      attachGateDataButton(candidate);
       const savedDecision = human.decision === 'pass' ? 'keep' : human.decision === 'fail' ? 'reject' : (human.decision || 'undecided');
       reviewPanel.querySelector(`[data-field="decision"][value="${savedDecision}"]`).checked = true;
       reviewPanel.querySelector('[data-save]')?.addEventListener('click', saveReview);
@@ -685,7 +709,19 @@
     $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));
     reflectionToggle.addEventListener('change', () => { compareReflection = reflectionToggle.checked; renderReview(); });
     reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });
-    async function init() { try { context = await request('/api/context'); fill(characterSelect, context.characters || []); if (context.default_character) characterSelect.value = context.default_character; fill(phaseSelect, context.phases_by_character[characterSelect.value] || [], context.default_phase || ''); await loadRuns(); } catch (error) { setStatus(error.message, true); } }
+    async function loadGateSetup() {
+      const value = await request('/api/local-gates/head-image');
+      $('#gate-setup-content').innerHTML = Object.entries(value.gates || {}).map(([key]) =>
+        `<label>${esc(key.replaceAll('_',' '))}<select data-gate-status="${esc(key)}"><option>Active</option><option>Warning</option><option>Disabled</option></select></label>`).join('');
+      for (const [key, status] of Object.entries(value.statuses || {})) $(`[data-gate-status="${key}"]`).value = status;
+      $('#gate-setup-content').querySelectorAll('[data-gate-status]').forEach((select) => select.addEventListener('change', async () => {
+        try { const catalog = await request(`/api/local-gates/head-image/${encodeURIComponent(select.dataset.gateStatus)}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:select.value})});
+          Object.entries(catalog.statuses || {}).forEach(([key, status]) => { const control = $(`[data-gate-status="${key}"]`); if (control) control.value = status; });
+          setStatus(`${select.dataset.gateStatus} gate set to ${select.value}. Re-evaluate a batch to apply it to existing images.`);
+        } catch (error) { setStatus(error.message, true); void loadGateSetup(); }
+      }));
+    }
+    async function init() { try { await loadGateSetup(); context = await request('/api/context'); fill(characterSelect, context.characters || []); if (context.default_character) characterSelect.value = context.default_character; fill(phaseSelect, context.phases_by_character[characterSelect.value] || [], context.default_phase || ''); await loadRuns(); } catch (error) { setStatus(error.message, true); } }
     void init();
     setInterval(() => { if (run?.run_id && !reviewDialog.open) void loadRun(run.run_id); }, 5000);
   </script>

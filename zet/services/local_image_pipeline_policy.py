@@ -23,14 +23,23 @@ ACTIVE_RUN_STATUSES = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}
 
 def gate_result_is_current(
     record: dict[str, Any], *, input_hashes: dict[str, str], prompt_sha256: str,
+    policy_status: str | None = None,
 ) -> bool:
-    """Return whether a gate result belongs to the current inputs and prompt."""
-    return (
-        record.get("status") in {"COMPLETE", "DISABLED"}
-        and record.get("verdict") == "FALSE"
-        and record.get("input_hashes") == input_hashes
-        and record.get("prompt_sha256") == prompt_sha256
-    )
+    """Return whether a gate result is current and acceptable under its policy."""
+    saved_policy = str(record.get("policy_status") or policy_status or "Active")
+    if policy_status and saved_policy != policy_status:
+        return False
+    if record.get("input_hashes") != input_hashes or record.get("prompt_sha256") != prompt_sha256:
+        return False
+    if saved_policy == "Disabled":
+        return record.get("status") == "DISABLED"
+    if saved_policy == "Warning" and record.get("status") == "FAILED":
+        return True
+    if record.get("status") != "COMPLETE":
+        return False
+    if saved_policy == "Warning":
+        return record.get("verdict") in {"TRUE", "FALSE"}
+    return record.get("verdict") == "FALSE"
 
 
 def clear_candidate_artifacts(run_root: Path, candidate_id: str, image_path: str | Path | None = None) -> None:

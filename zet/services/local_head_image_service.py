@@ -451,7 +451,7 @@ class LocalHeadImageService:
             gates.append(ReviewGate("gaze", cls.GATES["gaze"].format(
                 view=VIEW_LABELS[view], gaze_rule=GAZE_RULES[view]), uses_anchor=view != FRONT))
         if view == FRONT and has_front_source:
-            gates.append(ReviewGate("source_identity", cls.GATES["source_identity"]))
+            gates.append(ReviewGate("source_identity", cls.GATES["source_identity"], uses_source=True))
         elif view != FRONT:
             gates.append(ReviewGate("identity", cls.GATES["identity"], uses_anchor=True))
         return gates
@@ -462,6 +462,8 @@ class LocalHeadImageService:
             return False
         candidate_hash = self._hash(image)
         gates = candidate.get("gates") or {}
+        from zet.services.local_gate_registry_service import LocalGateRegistryService
+        registry = LocalGateRegistryService(self.app, self.project_root)
         for definition in self.review_gates(candidate["view"], has_front_source=bool(run.get("front_source"))):
             expected_hashes = {"candidate": candidate_hash, "front_anchor": ""}
             if definition.uses_anchor:
@@ -475,7 +477,8 @@ class LocalHeadImageService:
                 expected_hashes["front_source"] = run.get("front_source_sha256", "")
             record = gates.get(definition.key) or {}
             prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
-            if not gate_result_is_current(record, input_hashes=expected_hashes, prompt_sha256=prompt_hash):
+            if not gate_result_is_current(record, input_hashes=expected_hashes, prompt_sha256=prompt_hash,
+                                          policy_status=registry.status("head-image", definition.key)):
                 return False
         return True
 
@@ -576,6 +579,8 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Candidate image is missing.")
         gates = dict(candidate.get("gates") or {})
         definitions = self.review_gates(candidate["view"], has_front_source=bool(run.get("front_source")))
+        from zet.services.local_gate_registry_service import LocalGateRegistryService
+        registry = LocalGateRegistryService(self.app, self.project_root)
         for definition in definitions:
             current = dict(gates.get(definition.key) or {})
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
@@ -586,24 +591,38 @@ class LocalHeadImageService:
             if definition.key == "source_identity":
                 hashes["front_source"] = run.get("front_source_sha256", "")
             prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
-            if (current.get("status") == "COMPLETE" and current.get("input_hashes") == hashes
-                    and current.get("prompt_sha256") == prompt_hash):
+            policy = registry.status("head-image", definition.key)
+            if policy == "Disabled":
+                gates[definition.key] = {"status": "DISABLED", "policy_status": policy,
+                                         "input_hashes": hashes, "prompt_sha256": prompt_hash,
+                                         "completed_at": self._now()}
+                self._update(run_id, candidate_id, gates=gates)
+                continue
+            if (current.get("policy_status") == policy and current.get("status") == "COMPLETE"
+                    and current.get("input_hashes") == hashes and current.get("prompt_sha256") == prompt_hash
+                    and (current.get("verdict") == "FALSE" or policy == "Warning")):
                 verdict, reason = current["verdict"], current.get("reason", "")
             else:
                 try:
                     current = self._queue_gate(run_id, candidate, definition)
+                    current["policy_status"] = policy
                     gates[definition.key] = current
                     self._update(run_id, candidate_id, status="WAITING_FOR_GATES", gates=gates)
                     verdict, reason = self._wait_gate(run_id, candidate_id, definition.key)
-                    current.update(status="COMPLETE", verdict=verdict, reason=reason, completed_at=self._now())
+                    current.update(status="COMPLETE", verdict=verdict, reason=reason,
+                                   policy_status=policy, completed_at=self._now())
                     gates[definition.key] = current
                     self._update(run_id, candidate_id, gates=gates)
                 except Exception as exc:
-                    current.update(status="FAILED", error=str(exc))
+                    current.update(status="FAILED", policy_status=policy, input_hashes=hashes,
+                                   prompt_sha256=prompt_hash, error=str(exc))
                     gates[definition.key] = current
+                    if policy == "Warning":
+                        self._update(run_id, candidate_id, gates=gates)
+                        continue
                     self._update(run_id, candidate_id, status="FAILED", failed_gate=definition.key, gates=gates)
                     return False
-            if verdict == "TRUE":
+            if verdict == "TRUE" and policy == "Active":
                 self._update(run_id, candidate_id, status="GATE_REJECTED", rejection_gate=definition.key,
                              gates=gates, completed_at=self._now())
                 return True
@@ -819,6 +838,8 @@ class LocalHeadImageService:
             return self.detail(run_id)
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         anchor_hash = self._hash(anchor_path) if view != FRONT else ""
+        from zet.services.local_gate_registry_service import LocalGateRegistryService
+        registry = LocalGateRegistryService(self.app, self.project_root)
         for candidate in survivors:
             expected = {"candidate": hashes[candidate["candidate_id"]], "front_anchor": ""}
             definitions = self.review_gates(candidate["view"], has_front_source=bool(run.get("front_source")))
@@ -829,7 +850,10 @@ class LocalHeadImageService:
                     expected["front_source"] = run.get("front_source_sha256", "")
                 gate = (candidate.get("gates") or {}).get(definition.key) or {}
                 prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
-                if not gate_result_is_current(gate, input_hashes=expected, prompt_sha256=prompt_hash):
+                if not gate_result_is_current(
+                    gate, input_hashes=expected, prompt_sha256=prompt_hash,
+                    policy_status=registry.status("head-image", definition.key),
+                ):
                     raise LocalHeadImageError(f"{candidate['candidate_id']} has missing or stale {definition.key} gates; re-evaluate this view.")
         if len(survivors) == 1:
             entries = [{"candidate_id": survivors[0]["candidate_id"], "reason": "Only candidate survived the gates."}]

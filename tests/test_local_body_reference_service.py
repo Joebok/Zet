@@ -45,7 +45,9 @@ def current_gate_results(service: LocalBodyReferenceService, view: str, image: P
     anchor_hash = service._hash(anchor) if anchor and anchor.is_file() else ""
     return {
         gate.key: {
-            "status": "COMPLETE", "verdict": "FALSE",
+            "status": "DISABLED" if gate.key == "orientation" else "COMPLETE",
+            "policy_status": "Disabled" if gate.key == "orientation" else "Active",
+            "verdict": "FALSE",
             "input_hashes": {"candidate": image_hash,
                              "front_anchor": anchor_hash if gate.uses_anchor else ""},
             "prompt_sha256": hashlib.sha256(gate.prompt.encode()).hexdigest(),
@@ -232,6 +234,36 @@ def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, m
     assert rejected["rejection_gate"] == "framing"
     assert rejected["image_path"] == str(image)
     assert image.is_file()
+
+
+def test_warning_gate_failure_is_visible_without_rejecting_candidate(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    image = Path(run["root"]) / "render.png"
+    image.write_bytes(b"render")
+    service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_GATES", "image_path": str(image)})
+    from zet.services.local_gate_registry_service import LocalGateRegistryService
+    LocalGateRegistryService(service.app, service.project_root).set_status("body-reference", "framing", "Warning")
+    queued = []
+
+    def queue(_run_id, _candidate_id, gate):
+        queued.append(gate.key)
+        return {"status": "QUEUED", "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+
+    verdicts = iter([("FALSE", ""), ("FALSE", ""), ("TRUE", "")])
+    monkeypatch.setattr(service, "_queue_review_gate", queue)
+    monkeypatch.setattr(service, "_wait_for_review_gate", lambda *_args: next(verdicts))
+    assert service._run_candidate_gates(run["run_id"], "c001") is True
+    candidate = service.detail(run["run_id"])["candidates"][0]
+    assert queued == ["face", "proportion", "framing"]
+    assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW"
+    assert candidate["gates"]["framing"]["policy_status"] == "Warning"
+    assert candidate["gates"]["framing"]["verdict"] == "TRUE"
 
 
 def test_orientation_gate_is_disabled_without_queuing_and_archives_old_failure(tmp_path, monkeypatch):

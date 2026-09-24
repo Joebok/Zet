@@ -23,6 +23,18 @@ def test_gate_freshness_requires_image_anchor_and_prompt_hashes():
     )
 
 
+def test_gate_status_policy_allows_warning_failure_and_disabled_gate():
+    hashes = {"candidate": "image"}
+    warning = {"status": "COMPLETE", "policy_status": "Warning", "verdict": "TRUE",
+               "input_hashes": hashes, "prompt_sha256": "prompt"}
+    assert gate_result_is_current(warning, input_hashes=hashes, prompt_sha256="prompt", policy_status="Warning")
+    assert not gate_result_is_current(warning, input_hashes=hashes, prompt_sha256="prompt", policy_status="Active")
+    disabled = {"status": "DISABLED", "policy_status": "Disabled",
+                "input_hashes": hashes, "prompt_sha256": "prompt"}
+    assert gate_result_is_current(disabled, input_hashes=hashes, prompt_sha256="prompt", policy_status="Disabled")
+    assert not gate_result_is_current(disabled, input_hashes=hashes, prompt_sha256="prompt", policy_status="Warning")
+
+
 def test_artifact_cleanup_is_scoped_to_one_run_and_candidate(tmp_path: Path):
     run = tmp_path / "run-a"
     owned = run / "renders" / "c001" / "Local_Test_Renders" / "image.png"

@@ -1,4 +1,5 @@
 import json
+import base64
 from tests.support.image_fixture import png_bytes
 import tempfile
 import unittest
@@ -15,7 +16,7 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
-    def test_gate_test_rig_page_and_named_configuration_api(self):
+    def test_gate_test_rig_and_gate_setup_apis(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
@@ -30,16 +31,25 @@ class WebAppTests(unittest.TestCase):
             page = client.get("/gate-test-rig")
             self.assertEqual(200, page.status_code)
             self.assertIn("/api/chat", page.text)
-            self.assertIn("Previous test", page.text)
+            self.assertIn("Run all current cases", page.text)
+            self.assertIn("Add curated case", page.text)
             self.assertEqual([], client.get("/api/gate-test-rig/tests").json()["tests"])
-            saved = client.post("/api/gate-test-rig/configs", json={
-                "name": "Orientation Chat",
-                "config": {"gate": "orientation", "api": "chat", "model": "gemma4:12b",
-                           "think": False, "temperature": 1, "options": {}, "request_options": {}},
+            self.assertEqual(200, client.get("/gate-test-data").status_code)
+            catalog = client.get("/api/local-gates/body-reference")
+            self.assertEqual("Disabled", catalog.json()["statuses"]["orientation"])
+            updated = client.put("/api/local-gates/head-image/gaze", json={"status": "Warning"})
+            self.assertEqual(200, updated.status_code, updated.text)
+            self.assertEqual("Warning", updated.json()["statuses"]["gaze"])
+            case = client.post("/api/gate-test-data", json={
+                "pipeline": "body-reference", "gate": "proportion", "view": "FRONT",
+                "expected": "PASS", "image_data": base64.b64encode(png_bytes()).decode("ascii"),
             })
-            self.assertEqual(200, saved.status_code, saved.text)
-            listed = client.get("/api/gate-test-rig/configs")
-            self.assertEqual("Orientation Chat", listed.json()["configs"][0]["name"])
+            self.assertEqual(200, case.status_code, case.text)
+            case_id = case.json()["case_id"]
+            image = client.get(f"/api/gate-test-data/body-reference/proportion/{case_id}/image/candidate")
+            self.assertEqual(200, image.status_code)
+            self.assertEqual(1, len(client.get("/api/gate-test-data?pipeline=body-reference&gate=proportion").json()["cases"]))
+            self.assertEqual(200, client.delete(f"/api/gate-test-data/body-reference/proportion/{case_id}").status_code)
 
     def test_scene_appearance_api_creates_lists_updates_and_reports_errors(self):
         with tempfile.TemporaryDirectory() as temp_dir:

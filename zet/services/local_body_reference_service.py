@@ -558,6 +558,8 @@ Do not explain your reasoning."""
                         continue
                     gates = candidate.get("gates") or {}
                     current = True
+                    from zet.services.local_gate_registry_service import LocalGateRegistryService
+                    registry = LocalGateRegistryService(self.app, self.project_root)
                     for gate in self.review_gates(view):
                         record = gates.get(gate.key) or {}
                         expected_hashes = {"candidate": self._hash(image),
@@ -565,6 +567,7 @@ Do not explain your reasoning."""
                         if not gate_result_is_current(
                             record, input_hashes=expected_hashes,
                             prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
+                            policy_status=registry.status("body-reference", gate.key),
                         ):
                             current = False
                             break
@@ -1058,6 +1061,8 @@ Do not explain your reasoning."""
             anchor_hash = self._hash(anchor_image) if anchor_image and anchor_image.is_file() else ""
             gates = candidate.get("gates") or {}
             gates_current = True
+            from zet.services.local_gate_registry_service import LocalGateRegistryService
+            registry = LocalGateRegistryService(self.app, self.project_root)
             for gate in self.review_gates(candidate["view"]):
                 record = gates.get(gate.key) or {}
                 expected_hashes = {"candidate": image_hash,
@@ -1065,6 +1070,7 @@ Do not explain your reasoning."""
                 if not gate_result_is_current(
                     record, input_hashes=expected_hashes,
                     prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
+                    policy_status=registry.status("body-reference", gate.key),
                 ):
                     gates_current = False
                     break
@@ -1507,6 +1513,18 @@ Do not explain your reasoning."""
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalBodyReferenceError("A completed candidate image is required for the face gate.")
+        from zet.services.local_gate_registry_service import LocalGateRegistryService
+        policy = LocalGateRegistryService(self.app, self.project_root).status("body-reference", "face")
+        if policy == "Disabled":
+            crop_hash = ""
+            record = {"status": "DISABLED", "policy_status": policy, "verdict": "FALSE",
+                      "input_hashes": {"candidate": self._hash(image), "head_crop": crop_hash},
+                      "prompt_sha256": hashlib.sha256(self.FACE_GATE_PROMPT.encode()).hexdigest(),
+                      "completed_at": self._now()}
+            self._candidate_update(run_id, candidate_id, {
+                "status": "WAITING_FOR_ANALYSIS", "face_gate": record,
+            })
+            return "DISABLED"
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         root = self._root(run_id) / "analyses" / candidate_id
         root.mkdir(parents=True, exist_ok=True)
@@ -1532,7 +1550,7 @@ Do not explain your reasoning."""
         }
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         proxy.publish(staging, ask_id, "ollama_generate")
-        gate = {"ask_id": ask_id, "status": "QUEUED", "output_path": str(output),
+        gate = {"ask_id": ask_id, "status": "QUEUED", "policy_status": policy, "output_path": str(output),
                 "crop_path": str(crop), "image_path": str(image), "model": model,
                 "input_hashes": manifest["input_hashes"]}
         self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "face_gate": gate})
@@ -1697,6 +1715,8 @@ Do not explain your reasoning."""
         if not image.is_file():
             raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
         gates = dict(candidate.get("gates") or {})
+        from zet.services.local_gate_registry_service import LocalGateRegistryService
+        registry = LocalGateRegistryService(self.app, self.project_root)
         for definition in self.review_gates(str(candidate.get("view") or "")):
             if self.detail(run_id)["stop_requested"]:
                 return False
@@ -1707,28 +1727,34 @@ Do not explain your reasoning."""
                 "candidate": self._hash(image),
                 "front_anchor": self._hash(anchor_image) if definition.uses_anchor and anchor_image and anchor_image.is_file() else "",
             }
-            if definition.key == "orientation":
+            policy = registry.status("body-reference", definition.key)
+            prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
+            if policy == "Disabled":
                 if record and record.get("status") != "DISABLED":
                     history = list(candidate.get("gate_history") or [])
-                    history.append({"archived_at": self._now(), "gates": {"orientation": record}})
+                    history.append({"archived_at": self._now(), "gates": {definition.key: record}})
                     self._candidate_update(run_id, candidate_id, {"gate_history": history})
                 gates[definition.key] = {
-                    "status": "DISABLED", "verdict": "FALSE", "input_hashes": expected_hashes,
-                    "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest(),
+                    "status": "DISABLED", "policy_status": policy, "verdict": "FALSE",
+                    "input_hashes": expected_hashes,
+                    "prompt_sha256": prompt_hash,
                     "completed_at": self._now(),
                 }
                 self._candidate_update(run_id, candidate_id, {"gates": gates})
                 candidate = next(item for item in self.detail(run_id)["candidates"]
                                  if item["candidate_id"] == candidate_id)
                 continue
-            prompt_stale = record.get("prompt_sha256") != hashlib.sha256(definition.prompt.encode()).hexdigest()
-            if (record.get("status") == "COMPLETE" and record.get("input_hashes") == expected_hashes
-                    and not prompt_stale):
+            prompt_stale = record.get("prompt_sha256") != prompt_hash
+            if (record.get("policy_status") == policy and record.get("status") == "COMPLETE"
+                    and record.get("input_hashes") == expected_hashes and not prompt_stale
+                    and (record.get("verdict") == "FALSE" or policy == "Warning")):
                 verdict = record.get("verdict")
             else:
                 try:
-                    if prompt_stale or not record.get("ask_id") or record.get("status") in {"FAILED", "STALE"}:
+                    if (prompt_stale or record.get("policy_status") != policy or not record.get("ask_id")
+                            or record.get("status") in {"FAILED", "STALE"}):
                         record = self._queue_review_gate(run_id, candidate_id, definition)
+                        record["policy_status"] = policy
                         gates[definition.key] = record
                     self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_GATES", "gates": gates})
                     result = self._wait_for_review_gate(run_id, candidate_id, definition.key)
@@ -1736,17 +1762,24 @@ Do not explain your reasoning."""
                         return False
                     verdict, reason = result
                     record = {**record, "status": "COMPLETE", "verdict": verdict,
-                              "reason": reason, "completed_at": self._now()}
+                              "reason": reason, "policy_status": policy, "completed_at": self._now()}
                     gates[definition.key] = record
                     self._candidate_update(run_id, candidate_id, {"gates": gates})
                 except Exception as exc:
-                    record = {**record, "status": "FAILED", "error": str(exc), "failed_at": self._now()}
+                    record = {**record, "status": "FAILED", "policy_status": policy,
+                              "input_hashes": expected_hashes, "prompt_sha256": prompt_hash,
+                              "error": str(exc), "failed_at": self._now()}
                     gates[definition.key] = record
+                    if policy == "Warning":
+                        self._candidate_update(run_id, candidate_id, {
+                            "status": "WAITING_FOR_HUMAN_REVIEW", "failed_gate": "", "gates": gates,
+                        })
+                        continue
                     self._candidate_update(run_id, candidate_id, {
                         "status": "FAILED", "failed_gate": definition.key, "render_error": str(exc), "gates": gates,
                     })
                     return True
-            if verdict == "TRUE":
+            if verdict == "TRUE" and policy == "Active":
                 record = {**record, "status": "COMPLETE", "verdict": verdict}
                 gates[definition.key] = record
                 history = list(candidate.get("gate_rejection_history") or [])
@@ -1790,7 +1823,10 @@ Do not explain your reasoning."""
                         })
                         continue
                     gate.update(status="COMPLETE", verdict=verdict)
-                    if verdict == "TRUE":
+                    from zet.services.local_gate_registry_service import LocalGateRegistryService
+                    policy = LocalGateRegistryService(self.app, self.project_root).status("body-reference", "face")
+                    gate["policy_status"] = policy
+                    if verdict == "TRUE" and policy == "Active":
                         history = list(candidate.get("face_gate_history") or [])
                         history.append(gate)
                         self._candidate_update(run_id, candidate["candidate_id"], {
@@ -2202,9 +2238,12 @@ Do not explain your reasoning."""
                 anchor_hash = self._hash(anchor_path) if anchor_path.is_file() else ""
             expected_hashes = {"candidate": self._hash(image),
                                "front_anchor": anchor_hash if gate.uses_anchor else ""}
+            from zet.services.local_gate_registry_service import LocalGateRegistryService
+            registry = LocalGateRegistryService(self.app, self.project_root)
             if not gate_result_is_current(
                 record, input_hashes=expected_hashes,
                 prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
+                policy_status=registry.status("body-reference", gate.key),
             ):
                 raise LocalBodyReferenceError(f"The selected candidate has a missing or stale {gate.key} gate.")
         try:
