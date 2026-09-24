@@ -29,6 +29,7 @@ from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.local_body_reference_service import LocalBodyReferenceService
+from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -952,6 +953,60 @@ def create_app(
     @app.get("/local-body-reference", response_class=HTMLResponse)
     def local_body_reference_page() -> str:
         return (PACKAGE_ROOT / "templates" / "local_body_reference.html").read_text(encoding="utf-8")
+
+    @app.get("/gate-test-rig", response_class=HTMLResponse)
+    def gate_test_rig_page() -> str:
+        return (PACKAGE_ROOT / "templates" / "gate_test_rig.html").read_text(encoding="utf-8")
+
+    @app.get("/api/gate-test-rig/catalog")
+    def gate_test_rig_catalog() -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).catalog()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/runs/{run_id}")
+    def gate_test_rig_run(run_id: str) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).run_summary(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/runs/{run_id}/views/{view}")
+    def gate_test_rig_selection(run_id: str, view: str) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).selection(run_id, view)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/configs")
+    def gate_test_rig_configs() -> dict[str, Any]:
+        return {"configs": GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).configs()}
+
+    @app.post("/api/gate-test-rig/configs")
+    def save_gate_test_rig_config(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).save_config(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/gate-test-rig/tests")
+    def start_gate_test_rig(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).start_test(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/gate-test-rig/tests")
+    def list_gate_test_rig_tests() -> dict[str, Any]:
+        return {"tests": GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).list_tests()}
+
+    @app.get("/api/gate-test-rig/tests/{test_id}")
+    def gate_test_rig_test_status(test_id: str) -> dict[str, Any]:
+        try:
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).status(test_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/context")
     def context() -> dict[str, Any]:

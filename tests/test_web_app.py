@@ -15,6 +15,32 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
+    def test_gate_test_rig_page_and_named_configuration_api(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            client = TestClient(create_app(config_path))
+            page = client.get("/gate-test-rig")
+            self.assertEqual(200, page.status_code)
+            self.assertIn("/api/chat", page.text)
+            self.assertIn("Previous test", page.text)
+            self.assertEqual([], client.get("/api/gate-test-rig/tests").json()["tests"])
+            saved = client.post("/api/gate-test-rig/configs", json={
+                "name": "Orientation Chat",
+                "config": {"gate": "orientation", "api": "chat", "model": "gemma4:12b",
+                           "think": False, "temperature": 1, "options": {}, "request_options": {}},
+            })
+            self.assertEqual(200, saved.status_code, saved.text)
+            listed = client.get("/api/gate-test-rig/configs")
+            self.assertEqual("Orientation Chat", listed.json()["configs"][0]["name"])
+
     def test_scene_appearance_api_creates_lists_updates_and_reports_errors(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

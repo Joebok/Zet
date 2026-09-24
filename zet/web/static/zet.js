@@ -193,6 +193,7 @@ const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
 const toolbarLocalBodyReference = document.querySelector("#toolbar-local-body-reference");
+const toolbarGateTestRig = document.querySelector("#toolbar-gate-test-rig");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const helpMenuButton = document.querySelector("#help-menu-button");
 const helpMenu = document.querySelector("#help-menu");
@@ -11516,6 +11517,11 @@ toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
 toolbarLocalBodyReference.addEventListener("click", () => {
   window.location.assign("/local-body-reference");
+  closeToolbarSettingsMenu();
+});
+
+toolbarGateTestRig.addEventListener("click", () => {
+  window.location.assign("/gate-test-rig");
   closeToolbarSettingsMenu();
 });
 

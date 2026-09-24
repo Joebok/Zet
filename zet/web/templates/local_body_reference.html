@@ -28,6 +28,14 @@
     .batch-form { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
     .batch-form[hidden] { display: none; }
     .batch-form label { min-width: 145px; }
+    .selected-views { display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; }
+    .selected-view { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; padding: .4rem; }
+    .selected-view h2 { font-size: .82rem; margin: 0 0 .3rem; text-align: center; }
+    .selected-view-image { background: #111; border: 0; border-radius: 4px; display: block; padding: 0; width: 100%; }
+    .selected-view-image img { aspect-ratio: 2 / 3; display: block; object-fit: contain; width: 100%; }
+    .selected-view-empty { aspect-ratio: 2 / 3; }
+    .selected-view .card-actions { justify-content: center; margin-top: .35rem; }
+    .selected-view .card-actions button { font-size: .78rem; padding: .3rem .45rem; }
     .views { display: grid; gap: 1.2rem; }
     .view { border-top: 1px solid var(--line); padding-top: 1rem; }
     .view-summary { align-items: center; cursor: pointer; display: flex; gap: 1rem; justify-content: space-between; list-style: none; }
@@ -49,6 +57,11 @@
     .review-images { background: #111; display: grid; gap: .75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; overflow: hidden; padding: 2.5rem 3rem; }
     .review-image { align-items: center; color: #ddd; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; }
     .review-image h3 { color: #ddd; flex: 0 0 auto; font-size: .95rem; margin: 0 0 .5rem; }
+    .review-image-heading { align-items: center; display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: .25rem .75rem; justify-content: center; margin-bottom: .5rem; }
+    .review-image-heading h3 { margin: 0; }
+    .review-reflection-toggle { align-items: center; color: #ddd; display: flex; font-size: .8rem; gap: .3rem; min-width: 0; }
+    .review-reflection-toggle[hidden] { display: none; }
+    .review-reflection-toggle input { margin: 0; }
     .review-image img { flex: 1 1 auto; height: 0; max-height: 100%; max-width: 100%; min-height: 0; object-fit: contain; width: 100%; }
     .review-panel { background: var(--panel); overflow-y: auto; padding: 1.5rem; }
     .review-close { position: absolute; right: 1rem; top: .75rem; z-index: 2; }
@@ -99,13 +112,14 @@
       </form>
       <p id="status" class="status"></p>
     </section>
+    <section id="selected-views" class="selected-views" aria-label="Selected view images"></section>
     <section id="gallery" class="views"></section>
   </main>
 
   <dialog id="review-dialog" aria-label="Body-Reference candidate review">
     <button id="review-close" class="review-close" type="button">Close</button>
     <button id="review-prev" class="review-nav review-prev" type="button" aria-label="Previous candidate">‹</button>
-    <div class="review-layout"><section class="review-images"><div class="review-image"><h3>Front anchor</h3><img id="review-anchor-image" alt=""><p id="review-anchor-message" class="hint"></p></div><div class="review-image"><h3>Image to review</h3><img id="review-image" alt=""></div></section><aside id="review-panel" class="review-panel"></aside></div>
+    <div class="review-layout"><section class="review-images"><div class="review-image"><div class="review-image-heading"><h3 id="review-compare-title">Front anchor</h3><label id="review-reflection-toggle-label" class="review-reflection-toggle" hidden><input id="review-reflection-toggle" type="checkbox"> Compare opposite-side selection</label></div><img id="review-anchor-image" alt=""><p id="review-anchor-message" class="hint"></p></div><div class="review-image"><h3>Image to review</h3><img id="review-image" alt=""></div></section><aside id="review-panel" class="review-panel"></aside></div>
     <button id="review-next" class="review-nav review-next" type="button" aria-label="Next candidate">›</button>
   </dialog>
   <dialog id="gate-prompt-dialog" aria-label="Gate prompt"><div class="button-row" style="justify-content:space-between"><h2 id="gate-prompt-title">Gate prompt</h2><button id="gate-prompt-close" type="button">Close</button></div><pre id="gate-prompt-text"></pre></dialog>
@@ -113,10 +127,17 @@
   <script>
     const $ = (selector) => document.querySelector(selector);
     const characterSelect = $('#character'), phaseSelect = $('#phase'), runSelect = $('#run');
-    const status = $('#status'), gallery = $('#gallery'), reviewDialog = $('#review-dialog');
+    const status = $('#status'), gallery = $('#gallery'), selectedViewsTray = $('#selected-views'), reviewDialog = $('#review-dialog');
     const reviewImage = $('#review-image'), reviewAnchorImage = $('#review-anchor-image'), reviewAnchorMessage = $('#review-anchor-message'), reviewPanel = $('#review-panel');
+    const reviewCompareTitle = $('#review-compare-title'), reflectionToggleLabel = $('#review-reflection-toggle-label'), reflectionToggle = $('#review-reflection-toggle');
     let context = {characters: [], phases_by_character: {}};
     let run = null, runs = [], reviewCandidates = [], reviewIndex = -1;
+    let compareReflection = false;
+    const oppositeViews = {
+      LEFT_PROFILE: 'RIGHT_PROFILE', RIGHT_PROFILE: 'LEFT_PROFILE',
+      FRONT_LEFT_3_4: 'FRONT_RIGHT_3_4', FRONT_RIGHT_3_4: 'FRONT_LEFT_3_4',
+      BACK_LEFT_3_4: 'BACK_RIGHT_3_4', BACK_RIGHT_3_4: 'BACK_LEFT_3_4'
+    };
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const imageUrl = (candidate) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/images/${encodeURIComponent(candidate.candidate_id)}`;
     function setStatus(message, error = false) { status.textContent = message || ''; status.classList.toggle('fail', error); }
@@ -173,8 +194,19 @@
       const counts = (value.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
       setStatus(`${value.status} · ${Object.keys(selectedViews).length}/${(value.views || []).length} views selected · ${counts.GATE_REJECTED || 0} gate rejects · FRONT anchor: ${value.front_anchor || 'not selected'}${value.error ? ` · ${value.error}` : ''}`);
       const byView = (value.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
+      const selectedCandidates = (value.views || []).map((view) => {
+        const candidateId = selectedViews[view];
+        return candidateId ? (byView[view] || []).find((item) => item.candidate_id === candidateId && item.image_path) : null;
+      });
+      const visibleSelectedViews = new Set(selectedCandidates.filter(Boolean).map((candidate) => candidate.view));
+      selectedViewsTray.innerHTML = visibleSelectedViews.size ? (value.views || []).map((view, index) => {
+        const candidate = selectedCandidates[index];
+        return candidate
+          ? `<article class="selected-view"><h2>${esc(view)}</h2><button class="selected-view-image" data-review="${esc(candidate.candidate_id)}" type="button" aria-label="Review selected ${esc(view)} image"><img src="${imageUrl(candidate)}" alt="Selected ${esc(view)} image"></button><div class="card-actions"><button data-unselect-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unselect</button></div></article>`
+          : `<article class="selected-view"><h2>${esc(view)}</h2><div class="selected-view-empty" aria-label="No image selected for ${esc(view)}"></div></article>`;
+      }).join('') : '';
       const promptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(value.run_id)}/review-prompt/${encodeURIComponent(view)}`;
-      gallery.innerHTML = (value.views || []).map((view) => {
+      gallery.innerHTML = (value.views || []).filter((view) => !visibleSelectedViews.has(view)).map((view) => {
         const candidates = byView[view] || [];
         const ranking = (value.rankings || {})[view] || {};
         const selectedId = selectedViews[view];
@@ -208,6 +240,8 @@
       gallery.querySelectorAll('[data-reevaluate-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void reevaluateView(button.dataset.reevaluateView); }));
       gallery.querySelectorAll('[data-proceed]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void proceed(); }));
       gallery.querySelectorAll('[data-review]').forEach((button) => button.addEventListener('click', () => openReview(button.dataset.review)));
+      selectedViewsTray.querySelectorAll('[data-review]').forEach((button) => button.addEventListener('click', () => openReview(button.dataset.review)));
+      selectedViewsTray.querySelectorAll('[data-unselect-view]').forEach((button) => button.addEventListener('click', () => void unselectView(button.dataset.unselectView)));
       gallery.querySelectorAll('[data-retry]').forEach((button) => button.addEventListener('click', () => retryCandidate(button.dataset.retry)));
       gallery.querySelectorAll('[data-select-view]').forEach((button) => button.addEventListener('click', () => selectView(button.dataset.selectView, button.dataset.candidate)));
       gallery.querySelectorAll('[data-rank-view]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); void rankView(button.dataset.rankView); }));
@@ -225,10 +259,11 @@
       $('#reevaluate').disabled = !run || !run.candidates?.some((item) =>
         (run.review_version >= 2 ? Boolean(item.image_path) : item.status === 'COMPLETE')) || busy;
       $('#delete').disabled = !run || busy; $('#new-batch button[type="submit"]').disabled = busy;
-      if (!run) { gallery.innerHTML = ''; setStatus('Select a character and phase, then create or select a batch.'); return; }
+      if (!run) { gallery.innerHTML = ''; selectedViewsTray.innerHTML = ''; setStatus('Select a character and phase, then create or select a batch.'); return; }
       const counts = (run.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
       setStatus(`${run.status} · ${counts.COMPLETE || 0}/${run.candidate_count || run.candidates.length} complete · front anchor: ${run.front_anchor || 'not selected'}${run.error ? ` · ${run.error}` : ''}`);
       if (run.review_version >= 2) { renderRunV2(run, collapsedViews, busy, statusLabel); return; }
+      selectedViewsTray.innerHTML = '';
       const byView = (run.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
       const promptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/review-prompt/${encodeURIComponent(view)}`;
       gallery.innerHTML = (run.views || []).map((view) => {
@@ -292,8 +327,17 @@
       const candidate = reviewCandidates[reviewIndex]; if (!candidate) return;
       reviewImage.src = imageUrl(candidate);
       const anchor = (run?.candidates || []).find((item) => item.candidate_id === run.front_anchor && item.status === 'COMPLETE');
-      reviewAnchorImage.hidden = !anchor; reviewAnchorMessage.hidden = Boolean(anchor);
-      if (anchor) { reviewAnchorImage.src = imageUrl(anchor); reviewAnchorImage.alt = 'Front anchor ' + anchor.candidate_id; }
+      const oppositeView = oppositeViews[candidate.view];
+      const selectedOppositeId = oppositeView && run?.selected_views?.[oppositeView];
+      const selectedOpposite = selectedOppositeId && (run?.candidates || []).find((item) => item.candidate_id === selectedOppositeId && item.view === oppositeView && item.image_path);
+      if (!oppositeView || !selectedOpposite) compareReflection = false;
+      reflectionToggleLabel.hidden = !oppositeView;
+      reflectionToggle.disabled = !selectedOpposite;
+      reflectionToggle.checked = compareReflection && Boolean(selectedOpposite);
+      const comparison = reflectionToggle.checked ? selectedOpposite : anchor;
+      reviewCompareTitle.textContent = reflectionToggle.checked ? `Selected ${oppositeView}` : 'Front anchor';
+      reviewAnchorImage.hidden = !comparison; reviewAnchorMessage.hidden = Boolean(comparison);
+      if (comparison) { reviewAnchorImage.src = imageUrl(comparison); reviewAnchorImage.alt = (reflectionToggle.checked ? `Selected opposite-side view ${oppositeView} ` : 'Front anchor ') + comparison.candidate_id; }
       else { reviewAnchorImage.removeAttribute('src'); reviewAnchorMessage.textContent = 'Front anchor is not shown because no anchor has been selected.'; }
       reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
       if (run.review_version >= 2) {
@@ -359,6 +403,14 @@
           reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
           renderReview();
         }
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function unselectView(view) {
+      try {
+        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/selection`, {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:''})
+        });
+        renderRun(run);
       } catch (error) { setStatus(error.message, true); }
     }
     async function rankView(view) {
@@ -460,6 +512,7 @@
     $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
     $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
     $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));
+    reflectionToggle.addEventListener('change', () => { compareReflection = reflectionToggle.checked; renderReview(); });
     reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });
     async function init() { try { context = await request('/api/context'); fill(characterSelect, context.characters || []); if (context.default_character) characterSelect.value = context.default_character; fill(phaseSelect, context.phases_by_character[characterSelect.value] || [], context.default_phase || ''); await loadRuns(); } catch (error) { setStatus(error.message, true); } }
     void init();

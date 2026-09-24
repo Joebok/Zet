@@ -129,6 +129,58 @@ class OllamaProxyWorkerTests(unittest.TestCase):
         self.assertNotIn("prompt", captured["payload"])
         self.assertEqual("TRUE", result.response)
 
+    def test_call_ollama_once_forwards_advanced_options_and_keeps_requested_api(self):
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, exc_type, exc, tb): return False
+            def read(self): return b'{"response":"TRUE"}'
+
+        captured = {}
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return FakeResponse()
+
+        with patch("AI_Manager.ollama_proxy_worker.urllib.request.urlopen", fake_urlopen):
+            call_ollama_once(
+                "http://localhost:11434/api/generate", "gemma4:12b", "Judge this image.",
+                images=["anchor", "candidate"], force_generate=True,
+                sampler_options={"num_ctx": 32768, "top_p": 0.8},
+                request_options={"system": "Be concise.", "raw": True},
+            )
+
+        self.assertEqual("http://localhost:11434/api/generate", captured["url"])
+        self.assertEqual(["anchor", "candidate"], captured["payload"]["images"])
+        self.assertEqual({"temperature": 0.1, "num_ctx": 32768, "top_p": 0.8},
+                         captured["payload"]["options"])
+        self.assertEqual("Be concise.", captured["payload"]["system"])
+        self.assertTrue(captured["payload"]["raw"])
+
+    def test_gate_rig_can_capture_best_effort_evidence_for_direct_models(self):
+        with TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir) / "Ask_gate_rig"
+            folder.mkdir()
+            (folder / "OLLAMA_PROMPT.md").write_text("Judge orientation.", encoding="utf-8")
+            (folder / "ask_manifest.json").write_text(json.dumps({
+                "version": 1, "ask_id": folder.name, "worker_type": "ollama_generate",
+                "prompt_file": "OLLAMA_PROMPT.md", "expected_output": "verdict.txt",
+                "ollama_allow_unmanaged_model": True, "ollama_model": "gemma4:12b",
+                "ollama_options": {"num_predict": 64},
+                "ollama_request_options": {"raw": True},
+            }), encoding="utf-8")
+            generation = OllamaGenerationResult(response="TRUE", done_reason="stop", eval_count=2)
+            with patch("AI_Manager.ollama_proxy_worker.call_ollama", return_value=generation) as call, patch(
+                "AI_Manager.ollama_proxy_worker.ollama_runtime_evidence",
+                side_effect=RuntimeError("no managed alias evidence"),
+            ):
+                result = process_claimed(folder, "worker-1", "http://localhost:11434/api/generate",
+                                         30, 0, 0, 0)
+            self.assertEqual("SUCCESS", result)
+            self.assertEqual({"num_predict": 64}, call.call_args.kwargs["sampler_options"])
+            self.assertEqual({"raw": True}, call.call_args.kwargs["request_options"])
+            answer = json.loads((folder / "answer_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("no managed alias evidence", answer["ollama_runtime_evidence_error"])
+
     def test_explicit_image_tags_preserve_matching_prompt_and_reject_mismatch(self):
         tagged = "Reference: [img]\nCandidate: [img]\nCompare them."
         self.assertEqual(tagged, ensure_explicit_image_tags(tagged, 2))

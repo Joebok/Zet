@@ -186,14 +186,21 @@ def call_ollama_once(
     keep_alive: str | int = 0,
     think: bool | None = False,
     use_chat: bool = False,
+    sampler_options: dict | None = None,
+    request_options: dict | None = None,
+    force_generate: bool = False,
 ) -> OllamaGenerationResult:
-    multimodal_chat = use_chat or bool(images and len(images) > 1)
+    multimodal_chat = use_chat or (bool(images and len(images) > 1) and not force_generate)
     if multimodal_chat:
         if images and len(images) > 1:
             prompt = ensure_explicit_image_tags(prompt, len(images))
+        messages = [{"role": "user", "content": prompt, "images": images}]
+        system = (request_options or {}).get("system")
+        if isinstance(system, str) and system:
+            messages.insert(0, {"role": "system", "content": system})
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt, "images": images}],
+            "messages": messages,
             "stream": False,
             "keep_alive": keep_alive,
             "options": {"temperature": temperature},
@@ -212,6 +219,19 @@ def call_ollama_once(
         request_url = url
     if think is not None:
         payload["think"] = think
+    if sampler_options is not None:
+        if not isinstance(sampler_options, dict):
+            raise ValueError("Ollama sampler_options must be a JSON object")
+        payload["options"].update(sampler_options)
+    if request_options is not None:
+        if not isinstance(request_options, dict):
+            raise ValueError("Ollama request_options must be a JSON object")
+        reserved = {"model", "prompt", "images", "messages", "stream", "think", "keep_alive", "options"}
+        if reserved.intersection(request_options):
+            raise ValueError("Ollama request_options cannot override controlled request fields")
+        for key, value in request_options.items():
+            if key != "system" or not multimodal_chat:
+                payload[key] = value
     if response_schema is not None:
         if not isinstance(response_schema, dict):
             raise ValueError("Ollama response_schema must be a JSON object")
@@ -269,6 +289,9 @@ def call_ollama(
     keep_alive: str | int = 0,
     think: bool | None = False,
     use_chat: bool = False,
+    sampler_options: dict | None = None,
+    request_options: dict | None = None,
+    force_generate: bool = False,
 ) -> OllamaGenerationResult:
     if preflight_attempts > 0:
         wait_for_ollama(url, attempts=preflight_attempts, delay_seconds=retry_seconds, timeout=min(timeout, 10))
@@ -283,6 +306,9 @@ def call_ollama(
                 keep_alive=keep_alive,
                 think=think,
                 use_chat=use_chat,
+                sampler_options=sampler_options,
+                request_options=request_options,
+                force_generate=force_generate,
             )
         except Exception as exc:
             if not is_transient_ollama_error(exc):
@@ -391,7 +417,13 @@ def process_claimed(
             if not image_path.is_file():
                 raise FileNotFoundError(f"Ollama image missing: {name}")
             encoded_images.append(base64.b64encode(image_path.read_bytes()).decode("ascii"))
-        answer_manifest["ollama_runtime"] = ollama_runtime_evidence(ollama_url, model, timeout)
+        allow_unmanaged_model = bool(ask_manifest.get("ollama_allow_unmanaged_model"))
+        try:
+            answer_manifest["ollama_runtime"] = ollama_runtime_evidence(ollama_url, model, timeout)
+        except Exception as exc:
+            if not allow_unmanaged_model:
+                raise
+            answer_manifest["ollama_runtime_evidence_error"] = str(exc)
         def generate(current_prompt: str) -> OllamaGenerationResult:
             return call_ollama(
                 ollama_url,
@@ -405,9 +437,12 @@ def process_claimed(
                 images=encoded_images,
                 json_output=bool(ask_manifest.get("json_output")),
                 response_schema=ask_manifest.get("response_schema"),
-                keep_alive=scheduled_keep_alive(model),
+                keep_alive=ask_manifest.get("ollama_keep_alive", scheduled_keep_alive(model)),
                 think=think,
                 use_chat=use_chat,
+                sampler_options=ask_manifest.get("ollama_options") or {},
+                request_options=ask_manifest.get("ollama_request_options") or {},
+                force_generate=bool(ask_manifest.get("ollama_force_generate")),
             )
 
         generation = generate(prompt)

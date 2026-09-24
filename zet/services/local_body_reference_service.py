@@ -2099,6 +2099,28 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before selecting.")
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        root = self._root(run_id)
+        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        selected = state.setdefault("selected_views", {})
+        if not candidate_id:
+            removed_id = selected.pop(view, None)
+            if not removed_id:
+                return self.detail(run_id)
+            state.setdefault("candidates", {}).setdefault(removed_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
+            if view == FRONT_VIEW:
+                if state.get("front_anchor") == removed_id:
+                    state["front_anchor"] = None
+                for downstream_view, downstream_id in list(selected.items()):
+                    if downstream_view == FRONT_VIEW:
+                        continue
+                    selected.pop(downstream_view, None)
+                    state.setdefault("candidates", {}).setdefault(downstream_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
+                state["status"] = "AWAITING_FRONT_ANCHOR"
+            else:
+                state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
+            state["updated_at"] = self._now()
+            self._save_state(run_id, state)
+            return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate or candidate.get("view") != view:
             raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
@@ -2117,9 +2139,6 @@ Do not explain your reasoning."""
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
             raise LocalBodyReferenceError("The candidate image changed after ranking; rerun its review.")
-        root = self._root(run_id)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-        selected = state.setdefault("selected_views", {})
         previous_id = selected.get(view)
         old_anchor_id = state.get("front_anchor")
         if previous_id and previous_id != candidate_id:

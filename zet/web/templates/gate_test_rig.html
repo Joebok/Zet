@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gate Test Rig</title>
+  <style>
+    :root { color-scheme: light; --ink:#202124; --muted:#667085; --line:#d8dee8; --panel:#fff; --surface:#f5f7fb; --accent:#2457a6; --danger:#b42318; --green:#217a3c; }
+    * { box-sizing:border-box; }
+    body { background:var(--surface); color:var(--ink); font:15px system-ui,sans-serif; margin:0; }
+    header, main { margin:0 auto; max-width:1500px; padding:1rem 1.5rem; }
+    header { align-items:center; display:flex; gap:1rem; justify-content:space-between; }
+    h1,h2,h3,p { margin-top:0; }
+    .panel,.result { background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:1rem; padding:1rem; }
+    .grid { display:grid; gap:.8rem; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
+    label { display:grid; gap:.3rem; min-width:0; }
+    .model-picker { align-items:end; display:grid; gap:.45rem; grid-template-columns:minmax(0,1fr) auto; min-width:0; }
+    .model-picker label { min-width:0; }
+    .model-picker select { min-width:0; width:100%; }
+    .model-picker button { white-space:nowrap; }
+    .preview-grid { display:grid; gap:.7rem; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); margin:.8rem 0; }
+    .preview-grid figure { margin:0; min-width:0; }
+    .preview-grid img { background:#111; border-radius:6px; height:180px; object-fit:contain; width:100%; }
+    .preview-grid figcaption { color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; padding-top:.25rem; }
+    input,select,textarea,button { border:1px solid #b9c2d0; border-radius:5px; font:inherit; padding:.5rem .65rem; }
+    textarea { min-height:110px; resize:vertical; width:100%; }
+    button { background:#fff; cursor:pointer; }
+    button:disabled { cursor:not-allowed; opacity:.55; }
+    .primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .muted { color:var(--muted); }
+    .fail { color:var(--danger); }
+    .pass { color:var(--green); }
+    .row { align-items:end; display:flex; flex-wrap:wrap; gap:.7rem; }
+    .row > label { flex:1 1 210px; }
+    .result { display:grid; gap:1rem; grid-template-columns:minmax(120px,200px) minmax(0,1fr); }
+    .result img { background:#111; border-radius:6px; max-height:260px; object-fit:contain; width:100%; }
+    .result pre { background:#f7f8fa; border:1px solid var(--line); border-radius:5px; max-height:320px; overflow:auto; padding:.7rem; white-space:pre-wrap; overflow-wrap:anywhere; }
+    details { margin-top:.8rem; }
+    @media (max-width:650px) { .result { grid-template-columns:1fr; } header { align-items:flex-start; flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <header><div><h1>Gate Test Rig</h1><p class="muted">Run isolated gate experiments on images from a Local Body-Reference batch.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Local Body-Reference</a></nav></header>
+  <main>
+    <section class="panel">
+      <h2>Saved tests</h2>
+      <div class="row">
+        <label>Previous test<select id="saved-test"><option value="">No saved tests</option></select></label>
+        <button id="open-test" type="button" disabled>Open test</button>
+        <button id="refresh-tests" type="button">Refresh list</button>
+      </div>
+      <p class="muted">Tests are stored in the Zet library. Open a running test to resume status updates.</p>
+    </section>
+
+    <section class="panel">
+      <div class="grid">
+        <label>Batch<select id="run"><option value="">Choose a batch</option></select></label>
+        <label>View<select id="view" disabled><option value="">Choose a view</option></select></label>
+        <label>Gate<select id="gate" disabled><option value="">Choose a gate</option></select></label>
+      </div>
+      <p id="selection-summary" class="muted"></p>
+      <div id="selected-images" class="preview-grid" aria-label="Selected source images"></div>
+      <label>Gate prompt<textarea id="prompt" spellcheck="false"></textarea></label>
+    </section>
+
+    <section class="panel">
+      <h2>Model request</h2>
+      <p id="model-help" class="muted">GPT-6 Luna runs through the local Codex CLI. API, temperature, keep-alive, and advanced options apply to Ollama models.</p>
+      <div class="grid">
+        <label>API endpoint<select id="api"><option value="generate">/api/generate</option><option value="chat">/api/chat</option></select></label>
+        <div class="model-picker"><label>Model or alias<select id="model"><option value="">Loading Ollama models…</option></select></label><button id="refresh-models" type="button" title="Refresh Ollama models">Refresh</button></div>
+        <label><span id="think-label">Thinking</span><select id="think"><option value="false">Off</option><option value="true">On</option><option value="null">Model default</option></select></label>
+        <label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.05" value="1"></label>
+        <label>Keep alive<input id="keep-alive" value="5m" placeholder="5m or 0"></label>
+      </div>
+      <details><summary>Advanced API and sampler options (JSON)</summary>
+        <p class="muted">Sampler/runtime fields go in <code>options</code>. Extra endpoint fields go in <code>request fields</code>; controlled fields such as model, prompt, images, thinking, and streaming cannot be overridden.</p>
+        <label>Options<textarea id="options" spellcheck="false">{}</textarea></label>
+        <label>Request fields<textarea id="request-options" spellcheck="false">{}</textarea></label>
+      </details>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <label>Saved configuration<select id="saved-config"><option value="">Choose saved configuration</option></select></label>
+        <button id="load-config" type="button">Load</button>
+        <label>Configuration name<input id="config-name" placeholder="orientation chat baseline"></label>
+        <button id="save-config" type="button">Save configuration</button>
+        <button id="run-test" class="primary" type="button" disabled>Run gate on view images</button>
+      </div>
+      <p id="status" class="muted" role="status"></p>
+    </section>
+
+    <section id="results"></section>
+  </main>
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    const runSelect = $('#run'), viewSelect = $('#view'), gateSelect = $('#gate');
+    const promptInput = $('#prompt'), statusNode = $('#status'), resultsNode = $('#results');
+    const selectedImagesNode = $('#selected-images');
+    let runs = [], selection = null, savedConfigs = [], savedTests = [], activeTestId = '', polling = false;
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function request(url, options = {}) {
+      const response = await fetch(url, options); let value = {};
+      try { value = await response.json(); } catch (_) { value = {}; }
+      if (!response.ok) throw new Error(value.detail || 'Request failed');
+      return value;
+    }
+    function message(value, error = false) { statusNode.textContent = value || ''; statusNode.classList.toggle('fail', error); }
+    function configValue() {
+      let options, request_options;
+      try { options = JSON.parse($('#options').value || '{}'); } catch (_) { throw new Error('Options must be valid JSON.'); }
+      try { request_options = JSON.parse($('#request-options').value || '{}'); } catch (_) { throw new Error('Request fields must be valid JSON.'); }
+      if (!options || Array.isArray(options) || typeof options !== 'object') throw new Error('Options must be a JSON object.');
+      if (!request_options || Array.isArray(request_options) || typeof request_options !== 'object') throw new Error('Request fields must be a JSON object.');
+      const gate = gateSelect.value;
+      if (!gate) throw new Error('Choose a gate.');
+      const model = $('#model').value;
+      const codex = model.startsWith('codex:');
+      return {gate, prompt:promptInput.value, api:$('#api').value, model,
+        think:codex ? $('#think').value : ($('#think').value === 'null' ? null : $('#think').value === 'true'),
+        temperature:Number($('#temperature').value), keep_alive:$('#keep-alive').value.trim() || '5m', options, request_options};
+    }
+    function setConfig(config) {
+      $('#api').value = config.api || 'generate'; setModel(config.model || '');
+      $('#think').value = config.model?.startsWith('codex:')
+        ? (typeof config.think === 'string' ? config.think : 'high')
+        : (config.think === null ? 'null' : config.think ? 'true' : 'false');
+      $('#temperature').value = config.temperature ?? 1; $('#keep-alive').value = config.keep_alive ?? '5m';
+      $('#options').value = JSON.stringify(config.options || {}, null, 2);
+      $('#request-options').value = JSON.stringify(config.request_options || {}, null, 2);
+    }
+    function refreshRunTestButton() {
+      const definition = selection?.gates.find((item) => item.key === gateSelect.value);
+      $('#run-test').disabled = !selection || !selection.candidates.length || !definition ||
+        (definition.uses_anchor && !selection.front_anchor_available) || polling;
+    }
+    function renderSelectedImages() {
+      if (!selection) { selectedImagesNode.innerHTML = ''; return; }
+      const gate = selection.gates.find((item) => item.key === gateSelect.value);
+      const images = [];
+      if (gate?.uses_anchor && selection.front_anchor) images.push([selection.front_anchor, 'FRONT anchor']);
+      for (const item of selection.candidates) images.push([item.candidate_id, item.candidate_id]);
+      selectedImagesNode.innerHTML = images.map(([id, label]) =>
+        `<figure><img src="/api/local/body-reference/runs/${encodeURIComponent(selection.run_id)}/images/${encodeURIComponent(id)}" alt="${esc(label)}"><figcaption>${esc(label)}</figcaption></figure>`
+      ).join('');
+    }
+    function setModel(value) {
+      const select = $('#model');
+      if (!value) { select.value = ''; updateModelControls(); return; }
+      const available = Array.from(select.options).some((option) => option.value === value);
+      if (!available) select.add(new Option(`${value} (saved configuration)`, value));
+      select.value = value;
+      updateModelControls();
+    }
+    function updateModelControls() {
+      const codex = $('#model').value.startsWith('codex:');
+      for (const id of ['api', 'temperature', 'keep-alive', 'options', 'request-options', 'refresh-models']) {
+        $(`#${id}`).disabled = codex;
+      }
+      $('#think').innerHTML = codex
+        ? '<option value="none">None</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Max</option>'
+        : '<option value="false">Off</option><option value="true">On</option><option value="null">Model default</option>';
+      $('#think').value = codex ? 'high' : 'false';
+      $('#think-label').textContent = codex ? 'Luna reasoning effort' : 'Thinking';
+      $('#model-help').textContent = codex
+        ? 'GPT-6 Luna runs through the local Codex CLI. Its reasoning effort is configurable below; Ollama request and sampler settings are disabled.'
+        : 'API, thinking, temperature, keep-alive, and advanced options apply to Ollama models.';
+    }
+    async function loadRuns() {
+      const value = await request('/api/gate-test-rig/catalog'); runs = value.runs || [];
+      runSelect.innerHTML = '<option value="">Choose a batch</option>' + runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.character)} · ${esc(item.phase)} · ${esc(item.status)}</option>`).join('');
+    }
+    async function loadViews() {
+      selection = null; viewSelect.disabled = true; gateSelect.disabled = true; $('#run-test').disabled = true;
+      selectedImagesNode.innerHTML = '';
+      const runId = runSelect.value;
+      if (!runId) return;
+      const summary = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runId)}`);
+      viewSelect.innerHTML = '<option value="">Choose a view</option>' + (summary.views || []).map((item) => `<option value="${esc(item)}">${esc(item)}</option>`).join('');
+      viewSelect.disabled = false;
+      if (summary.views?.length) { viewSelect.value = summary.views[0]; await loadSelection(); }
+    }
+    async function loadSelection() {
+      selection = null; gateSelect.disabled = true; $('#run-test').disabled = true;
+      selectedImagesNode.innerHTML = '';
+      if (!runSelect.value || !viewSelect.value) return;
+      const value = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runSelect.value)}/views/${encodeURIComponent(viewSelect.value)}`);
+      selection = value;
+      gateSelect.innerHTML = '<option value="">Choose a gate</option>' + value.gates.map((item) => `<option value="${esc(item.key)}">${esc(item.key.replaceAll('_',' '))}${item.key === 'orientation' ? ' (currently disabled)' : ''}</option>`).join('');
+      gateSelect.disabled = false;
+      const usable = value.gates.find((item) => item.key === gateSelect.value) || value.gates[0];
+      if (usable) { gateSelect.value = usable.key; promptInput.value = usable.prompt; }
+      renderSelectedImages();
+      $('#selection-summary').textContent = `${value.character} · ${value.phase} · ${value.candidates.length} completed image${value.candidates.length === 1 ? '' : 's'} for ${value.view}${value.front_anchor ? ` · FRONT anchor ${value.front_anchor}` : ''}`;
+      refreshRunTestButton();
+    }
+    async function loadConfigs() {
+      const value = await request('/api/gate-test-rig/configs'); savedConfigs = value.configs || [];
+      $('#saved-config').innerHTML = '<option value="">Choose saved configuration</option>' + savedConfigs.map((item) => `<option value="${esc(item.config_id)}">${esc(item.name)}</option>`).join('');
+    }
+    async function loadTests() {
+      const value = await request('/api/gate-test-rig/tests'); savedTests = value.tests || [];
+      const select = $('#saved-test');
+      select.innerHTML = '<option value="">Choose a saved test</option>' + savedTests.map((item) => {
+        const progress = `${item.finished_count}/${item.attempt_count} finished`;
+        return `<option value="${esc(item.test_id)}">${esc(item.created_at)} · ${esc(item.gate)} · ${esc(item.run_id)} · ${esc(item.view)} · ${esc(item.status)} · ${progress}</option>`;
+      }).join('');
+      if (activeTestId && savedTests.some((item) => item.test_id === activeTestId)) select.value = activeTestId;
+      $('#open-test').disabled = !select.value;
+    }
+    async function loadModels(showStatus = false) {
+      try {
+        const value = await request('/api/ai-controls/ollama-models');
+        const current = $('#model').value;
+        $('#model').innerHTML = '<option value="">Choose a model</option>' + (value.models || []).map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('') + '<option value="codex:gpt-6-luna">GPT-6 Luna (Codex)</option>';
+        setModel(current || 'image-analysis-alt:latest');
+        if (showStatus) message(`Loaded ${(value.models || []).length} Ollama model(s).`);
+      } catch (error) {
+        $('#model').innerHTML = '<option value="">Ollama models unavailable</option><option value="codex:gpt-6-luna">GPT-6 Luna (Codex)</option>';
+        if (showStatus) message(error.message, true);
+        /* The refresh button can retry discovery when Ollama becomes available. */
+      }
+    }
+    function renderTest(test) {
+      const summary = `${esc(test.gate)} · ${esc(test.run_id)} · ${esc(test.view)} · ${esc(test.status)}`;
+      const modelName = test.config.model === 'codex:gpt-6-luna' ? 'GPT-6 Luna (Codex)' : test.config.model;
+      const requestMode = test.config.model.startsWith('codex:')
+        ? `Codex CLI · reasoning ${esc(test.config.think)}`
+        : `/api/${esc(test.config.api)} · ${esc(test.config.think === null ? 'model default thinking' : `think ${test.config.think}`)}`;
+      resultsNode.innerHTML = `<section class="panel"><h2>Test ${esc(test.test_id)}</h2><p>${summary}</p><p class="muted">Model ${esc(modelName)} · ${requestMode}</p></section>` + (test.attempts || []).map((attempt) => {
+        const image = `/api/local/body-reference/runs/${encodeURIComponent(test.run_id)}/images/${encodeURIComponent(attempt.candidate_id)}`;
+        const answer = attempt.answer_manifest || {};
+        const generation = answer.ollama_generation || {};
+        const runtime = answer.ollama_runtime || {};
+        const outcome = attempt.result ? `<strong class="${attempt.result === 'PASS' ? 'pass' : 'fail'}">${esc(attempt.result)}${attempt.reason ? ` · ${esc(attempt.reason)}` : ''}</strong>` : `<strong>${esc(attempt.status)}</strong>`;
+        const elapsedSeconds = Number(answer.elapsed_seconds);
+        const elapsedLabel = answer.elapsed_seconds !== null && answer.elapsed_seconds !== undefined && Number.isFinite(elapsedSeconds) ? ` - ${Math.round(elapsedSeconds)}s` : '';
+        const trace = `<p class="muted">${esc(attempt.ask_id)} · ${esc(answer.elapsed_seconds ?? '')} sec · ${esc(generation.done_reason || '')} · ${esc(generation.eval_count ?? '')} output tokens${runtime.digest ? ` · ${esc(runtime.digest)}` : ''}${answer.ollama_runtime_evidence_error ? ` · Runtime evidence: ${esc(answer.ollama_runtime_evidence_error)}` : ''}</p>`;
+        return `<article class="result"><img src="${image}" alt="${esc(attempt.candidate_id)}"><div><h3>${esc(attempt.candidate_id)} - ${outcome}${elapsedLabel}</h3>${attempt.error ? `<p class="fail">${esc(attempt.error)}</p>` : ''}${attempt.response ? `<pre>${esc(attempt.response)}</pre>` : ''}${answer.thinking_text ? `<details><summary>Returned thinking</summary><pre>${esc(answer.thinking_text)}</pre></details>` : ''}${trace}<details><summary>Attempt trace</summary><pre>${esc(JSON.stringify({input_hashes:attempt.input_hashes,source_image_hashes:attempt.source_image_hashes,prompt_sha256:attempt.prompt_sha256,request:test.config,answer},null,2))}</pre></details></div></article>`;
+      }).join('');
+    }
+    async function pollTest(testId) {
+      try {
+        const test = await request(`/api/gate-test-rig/tests/${encodeURIComponent(testId)}`);
+        if (activeTestId !== testId) return;
+        renderTest(test);
+        if (test.status === 'RUNNING') {
+          polling = true;
+          const complete = (test.attempts || []).filter((item) => item.status === 'COMPLETE').length;
+          message(`${test.config.model.startsWith('codex:') ? 'GPT-6 Luna is processing' : 'Test is running'} · ${complete}/${test.attempts.length} complete`);
+          window.setTimeout(() => void pollTest(testId), 2500);
+        } else {
+          polling = false; refreshRunTestButton();
+          const done = (test.attempts || []).filter((item) => item.status === 'COMPLETE').length;
+          message(`Test finished · ${done}/${test.attempts.length} valid responses`);
+          void loadTests();
+        }
+      } catch (error) { polling = false; refreshRunTestButton(); message(error.message, true); }
+    }
+    runSelect.addEventListener('change', () => void loadViews().catch((error) => message(error.message, true)));
+    viewSelect.addEventListener('change', () => void loadSelection().catch((error) => message(error.message, true)));
+    gateSelect.addEventListener('change', () => {
+      const definition = selection?.gates.find((item) => item.key === gateSelect.value);
+      promptInput.value = definition?.prompt || ''; renderSelectedImages(); refreshRunTestButton();
+    });
+    $('#refresh-models').addEventListener('click', () => void loadModels(true));
+    $('#model').addEventListener('change', updateModelControls);
+    $('#saved-test').addEventListener('change', () => { $('#open-test').disabled = !$('#saved-test').value; });
+    $('#refresh-tests').addEventListener('click', () => void loadTests().catch((error) => message(error.message, true)));
+    $('#open-test').addEventListener('click', () => {
+      const testId = $('#saved-test').value;
+      if (!testId) return;
+      activeTestId = testId; polling = true; resultsNode.innerHTML = ''; refreshRunTestButton();
+      try { localStorage.setItem('gate-test-rig:last-test-id', testId); } catch (_) { /* Storage may be unavailable. */ }
+      void pollTest(testId);
+    });
+    $('#load-config').addEventListener('click', () => {
+      const saved = savedConfigs.find((item) => item.config_id === $('#saved-config').value);
+      if (!saved) return;
+      setConfig(saved.config);
+      const definition = selection?.gates.find((item) => item.key === saved.config.gate);
+      if (definition) { gateSelect.value = definition.key; promptInput.value = saved.config.prompt || definition.prompt; }
+      else message(`${saved.config.gate} does not apply to the current view. Change view and load this configuration again.`, true);
+      $('#config-name').value = saved.name;
+      refreshRunTestButton();
+    });
+    $('#save-config').addEventListener('click', async () => {
+      try {
+        const saved = await request('/api/gate-test-rig/configs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#config-name').value,config:configValue()})});
+        await loadConfigs(); $('#saved-config').value = saved.config_id; message(`Saved “${saved.name}”.`);
+      } catch (error) { message(error.message, true); }
+    });
+    $('#run-test').addEventListener('click', async () => {
+      try {
+        const config = configValue(); polling = true; refreshRunTestButton(); resultsNode.innerHTML = '';
+        const test = await request('/api/gate-test-rig/tests', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run_id:runSelect.value,view:viewSelect.value,config})});
+        activeTestId = test.test_id;
+        try { localStorage.setItem('gate-test-rig:last-test-id', activeTestId); } catch (_) { /* Storage may be unavailable. */ }
+        await loadTests(); $('#saved-test').value = activeTestId;
+        message(`Queued ${test.attempts.length} image tests.`); void pollTest(activeTestId);
+      } catch (error) { polling = false; refreshRunTestButton(); message(error.message, true); }
+    });
+    Promise.all([loadRuns(), loadConfigs(), loadModels(), loadTests()]).then(() => {
+      let previous = '';
+      try { previous = localStorage.getItem('gate-test-rig:last-test-id') || ''; } catch (_) { /* Storage may be unavailable. */ }
+      if (savedTests.some((item) => item.test_id === previous)) {
+        $('#saved-test').value = previous; $('#open-test').disabled = false; $('#open-test').click();
+      }
+    }).catch((error) => message(error.message, true));
+  </script>
+</body>
+</html>
