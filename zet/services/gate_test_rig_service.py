@@ -148,7 +148,7 @@ class GateTestRigService:
             raise GateTestRigError("Configuration must be an object.")
         gate = str(value.get("gate") or "").strip()
         if gate not in {"face", "proportion", "framing", "orientation", "body_identity",
-                        "background", "identity", "source_identity"}:
+                        "background", "identity", "source_identity", "gaze"}:
             raise GateTestRigError("Choose a known review gate.")
         model = str(value.get("model") or "").strip()
         if not model or model == "codex:":

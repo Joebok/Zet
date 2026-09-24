@@ -21,6 +21,7 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, clear_candidate_artifacts, gate_result_is_current
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
@@ -126,7 +127,7 @@ def _parse_passing_gate_verdict(value: str) -> tuple[str, str]:
 FRONT_VIEW = "FRONT"
 METHOD_TEXT_FIRST = "text_first"
 METHOD_FRONT_CONDITIONED = "front_conditioned"
-PILOT_FRONT_COUNT = 16
+PILOT_FRONT_COUNT = 8
 PILOT_OTHER_COUNT = 4
 
 
@@ -466,7 +467,8 @@ Do not explain your reasoning."""
                     seed_index += 1
         spec = {
             "schema_version": 2, "review_version": 2, "kind": "local_body_reference", "run_id": run_id,
-            "created_at": self._now(), "status": "AWAITING_FRONT_ANCHOR", "character": plan["character"],
+            "batch_name": "",
+            "created_at": self._now(), "status": "QUEUED", "character": plan["character"],
             "phase": plan["phase"], "views": plan["views"], "front_view": FRONT_VIEW,
             "front_count": plan["front_count"], "other_count": plan["other_count"],
             "candidate_count": len(candidates), "methods": plan["methods"], "seeds": [str(seed) for seed in seeds],
@@ -558,10 +560,12 @@ Do not explain your reasoning."""
                     current = True
                     for gate in self.review_gates(view):
                         record = gates.get(gate.key) or {}
-                        hashes = record.get("input_hashes") or {}
-                        if (record.get("status") not in {"COMPLETE", "DISABLED"} or record.get("verdict") != "FALSE"
-                                or hashes.get("candidate") != self._hash(image)
-                                or (gate.uses_anchor and hashes.get("front_anchor") != anchor_hash)):
+                        expected_hashes = {"candidate": self._hash(image),
+                                           "front_anchor": anchor_hash if gate.uses_anchor else ""}
+                        if not gate_result_is_current(
+                            record, input_hashes=expected_hashes,
+                            prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
+                        ):
                             current = False
                             break
                     if current:
@@ -617,6 +621,17 @@ Do not explain your reasoning."""
         ).get("assets", {})
         return value
 
+    def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
+        name = str(batch_name or "").strip()
+        if len(name) > 120:
+            raise LocalBodyReferenceError("Batch name cannot exceed 120 characters.")
+        root = self._root(run_id)
+        spec_path = root / "spec.json"
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec["batch_name"] = name
+        self._write(spec_path, spec)
+        return self.detail(run_id)
+
     def list_runs(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
         """Return selectable Local Body-Reference batches, newest first."""
         wanted_character = str(character or "").strip()
@@ -639,7 +654,8 @@ Do not explain your reasoning."""
             complete_count = (len(run.get("selected_views") or {}) if run.get("review_version", 1) >= 2
                               else counts.get("COMPLETE", 0))
             runs.append({
-                "run_id": run["run_id"], "character": run.get("character", ""),
+                "run_id": run["run_id"], "batch_name": run.get("batch_name", ""),
+                "character": run.get("character", ""),
                 "phase": run.get("phase", ""), "created_at": run.get("created_at", ""),
                 "status": run.get("status", ""), "candidate_count": len(run.get("candidates") or []),
                 "complete_count": complete_count, "front_anchor": run.get("front_anchor"),
@@ -681,114 +697,45 @@ Do not explain your reasoning."""
                 })
         return jobs
 
-    def rerun(self, run_id: str, *, keep_front_anchor: bool = False) -> dict[str, Any]:
-        """Create a fresh batch, optionally carrying forward its front view."""
-        source = self.detail(run_id)
-        anchor_id = source.get("front_anchor")
-        affected_views = [view for view in source.get("views", [])
-                          if not keep_front_anchor or view != FRONT_VIEW]
-        for affected_view in affected_views:
+    def rerun(self, run_id: str) -> dict[str, Any]:
+        """Clear the current batch's generated candidates and reviews, then restart FRONT."""
+        run = self.detail(run_id)
+        if run.get("status") in ACTIVE_RUN_STATUSES or run.get("interrupted"):
+            raise LocalBodyReferenceError("Wait for the current batch to finish or recover it before starting a fresh batch.")
+        if self._runner_lock.locked():
+            raise LocalBodyReferenceError("Wait for the local image runner to finish before starting a fresh batch.")
+        views = set(run.get("views", []))
+        for view in views:
             self.asset_store.assert_change_allowed(
-                source["character"], source["phase"], "Body-Reference", affected_view
+                run["character"], run["phase"], "Body-Reference", view
             )
-        anchor = next(
-            (item for item in source.get("candidates", []) if item.get("candidate_id") == anchor_id),
-            None,
-        )
-        if keep_front_anchor and (
-            not anchor or anchor.get("view") != FRONT_VIEW
-            or anchor.get("status") != "COMPLETE"
-            or not Path(str(anchor.get("image_path") or "")).is_file()
-        ):
-            raise LocalBodyReferenceError("The selected front anchor image is unavailable to keep.")
-
-        fresh = self.create_run({
-            "character": source["character"], "phase": source["phase"],
-            "front_count": source.get("front_count", PILOT_FRONT_COUNT),
-            "other_count": source.get("other_count", PILOT_OTHER_COUNT),
-        })
-        root = self._root(fresh["run_id"]).resolve()
-        spec_path = root / "spec.json"
-        spec = json.loads(spec_path.read_text(encoding="utf-8"))
-        spec["source_run_id"] = run_id
+        root = self._root(run_id).resolve()
+        self._withdraw_queued_asks(run_id)
+        for view in views:
+            self._clear_owned_selection(run, view)
         state_path = root / "state.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
-
-        if keep_front_anchor:
-            source_root = self._root(run_id).resolve()
-            for candidate in source.get("candidates", []):
-                if candidate.get("view") != FRONT_VIEW:
-                    continue
-                preserved = dict(candidate)
-                image_text = str(preserved.get("image_path") or "")
-                if image_text:
-                    image = Path(image_text).resolve()
-                    if image.is_file():
-                        try:
-                            relative = image.relative_to(source_root)
-                        except ValueError:
-                            relative = Path("renders") / candidate["candidate_id"] / "Local_Test_Renders" / image.name
-                        copied_image = root / relative
-                        copied_image.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(image, copied_image)
-                        preserved["image_path"] = str(copied_image)
-                    else:
-                        preserved["image_path"] = ""
-                local_job = dict(preserved.get("local_job") or {})
-                output_text = str(local_job.get("output_path") or "")
-                if output_text:
-                    output = Path(output_text).resolve()
-                    if output.is_file():
-                        try:
-                            relative = output.relative_to(source_root)
-                        except ValueError:
-                            relative = Path("reviews") / candidate["candidate_id"] / output.name
-                        copied_output = root / relative
-                        copied_output.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(output, copied_output)
-                        local_job["output_path"] = str(copied_output)
-                    else:
-                        local_job["output_path"] = ""
-                    preserved["local_job"] = local_job
-                state.setdefault("candidates", {})[candidate["candidate_id"]] = preserved
-
-            remaining_views = [view for view in source.get("views", []) if view != FRONT_VIEW]
-            state.update(
-                status="RUNNING", front_anchor=anchor_id, target_views=remaining_views,
-                target_candidate_ids=[], review_only=False, stop_requested=False,
-                error="", updated_at=self._now(),
+        for candidate in run.get("candidates", []):
+            clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
+            state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
+                status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
+                render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
+                face_gate={}, face_gate_error="", disposition="pending",
+                human_review={"decision": "undecided", "notes": ""}, local_job={},
+                luna_status="PENDING", luna_error="", review_history=[], analysis_history=[],
+                retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
-            state["lineups"] = {}
-            state["set_report"] = {}
-            fresh["front_anchor"] = anchor_id
-            fresh["status"] = "RUNNING"
-            if int(fresh.get("review_version") or 1) >= 2:
-                anchor_copy = next((item for item in source.get("candidates", [])
-                                    if item.get("candidate_id") == anchor_id), {})
-                state.setdefault("selected_views", {})[FRONT_VIEW] = anchor_id
-                anchor_hash = self._hash(Path(str(anchor_copy.get("image_path") or ""))) if Path(
-                    str(anchor_copy.get("image_path") or "")
-                ).is_file() else ""
-                state.setdefault("rankings", {})[FRONT_VIEW] = {
-                    "status": "COMPLETE", "ordered_candidate_ids": [anchor_id],
-                    "entries": [{"candidate_id": anchor_id, "reason": "Carried forward as the accepted FRONT anchor."}],
-                    "input_hashes": {anchor_id: anchor_hash}, "anchor_hash": "",
-                    "model": "carried-forward-anchor", "recorded_at": self._now(),
-                }
-                state.setdefault("candidates", {}).setdefault(anchor_id, {}).update(status="COMPLETE")
-        elif anchor:
-            first_front = next(
-                (item for item in fresh.get("candidates", [])
-                 if item.get("view") == FRONT_VIEW and item.get("candidate_id") == "c001"),
-                None,
-            )
-            if first_front is not None:
-                state.setdefault("candidates", {}).setdefault("c001", {})["seed"] = str(anchor["seed"])
-
-        self._write(spec_path, spec)
-        self._save_state(fresh["run_id"], state)
-        fresh["source_run_id"] = run_id
-        return fresh
+        state.update(
+            status="RUNNING", front_anchor=None, target_views=[], target_candidate_ids=[],
+            review_only=False, stop_requested=False, error="", lineups={}, set_report={},
+            selected_views={}, rankings={}, ranking_history={}, updated_at=self._now(),
+        )
+        (root / "cancelled.json").unlink(missing_ok=True)
+        self._save_state(run_id, state)
+        result = self.detail(run_id)
+        result.update(status="RUNNING", interrupted=False, error="")
+        return result
 
     def rerun_view(self, run_id: str, view: str) -> dict[str, Any]:
         """Replace the selected view's images and reviews in the existing batch."""
@@ -805,69 +752,38 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"This batch has no candidates for view {view}.")
 
         root = self._root(run_id).resolve()
+        affected_views = (set(run.get("views", []))
+                          if view == FRONT_VIEW and int(run.get("review_version") or 1) >= 2 else {view})
+        for affected_view in affected_views:
+            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", affected_view)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         stamp = self._now()
-        for candidate in candidates:
-            old_analyses = candidate.get("analyses") or {}
-            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
-            if int(run.get("review_version") or 1) >= 2:
-                history = list(candidate.get("review_history") or [])
-                history.append({
-                    "archived_at": stamp, "image_path": candidate.get("image_path", ""),
-                    "gates": candidate.get("gates") or {}, "human_review": candidate.get("human_review") or {},
-                })
-                update["review_history"] = history
-                update.update(
-                    status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
-                    image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
-                    render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
-                    disposition="pending", human_review={"decision": "undecided", "notes": ""},
-                    retry_count=int(candidate.get("retry_count") or 0) + 1,
-                )
-                continue
-            if old_analyses:
-                history = list(candidate.get("analysis_history") or [])
-                history.append({"archived_at": stamp, "analyses": old_analyses})
-                update["analysis_history"] = history
-            image_text = str(candidate.get("image_path") or "")
-            if image_text:
-                try:
-                    image_path = Path(image_text).resolve()
-                    if image_path.is_relative_to(root):
-                        image_path.unlink(missing_ok=True)
-                except (OSError, RuntimeError):
-                    pass
-            update.update(
+        self._withdraw_queued_asks(run_id, affected_views=affected_views)
+        for affected_view in affected_views:
+            self._clear_owned_selection(run, affected_view)
+        affected_candidates = [item for item in run["candidates"] if item.get("view") in affected_views]
+        for affected in affected_candidates:
+            clear_candidate_artifacts(root, affected["candidate_id"], affected.get("image_path"))
+            state.setdefault("candidates", {}).setdefault(affected["candidate_id"], {}).update(
                 status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
-                image_path="", image_sha256="", ask_id="", queued_at="",
-                completed_at="", render_error="", analyses={}, local_job={}, luna_status="",
-                luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided", "notes": ""},
-                retry_count=int(candidate.get("retry_count") or 0) + 1,
+                image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
+                render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
+                disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                retry_count=int(affected.get("retry_count") or 0) + 1,
             )
+        if int(run.get("review_version") or 1) >= 2:
+            for affected_view in affected_views:
+                state.setdefault("rankings", {}).pop(affected_view, None)
+                state.setdefault("selected_views", {}).pop(affected_view, None)
+        if view != FRONT_VIEW:
+            for selections in (state.get("lineups") or {}).values():
+                selections.pop(view, None)
+        state["lineups"] = {}
+        state["set_report"] = {}
 
         if view == FRONT_VIEW:
             state["front_anchor"] = None
-            state["lineups"] = {}
-            state["set_report"] = {}
-            if int(run.get("review_version") or 1) >= 2:
-                state.setdefault("selected_views", {}).pop(FRONT_VIEW, None)
-                old_rank = state.setdefault("rankings", {}).pop(FRONT_VIEW, None)
-                if old_rank:
-                    state.setdefault("ranking_history", {}).setdefault(FRONT_VIEW, []).append(
-                        {"archived_at": stamp, "ranking": old_rank}
-                    )
-                self._invalidate_views_after_anchor_change(run_id, state)
-        else:
-            if int(run.get("review_version") or 1) >= 2:
-                state.setdefault("selected_views", {}).pop(view, None)
-                old_rank = state.setdefault("rankings", {}).pop(view, None)
-                if old_rank:
-                    state.setdefault("ranking_history", {}).setdefault(view, []).append(
-                        {"archived_at": stamp, "ranking": old_rank}
-                    )
-            for selections in (state.get("lineups") or {}).values():
-                selections.pop(view, None)
-            state["set_report"] = {}
+            state["ranking_history"] = {}
         (root / "cancelled.json").unlink(missing_ok=True)
         state.update(
             status="RUNNING", review_only=False, target_views=[view], target_candidate_ids=[], stop_requested=False,
@@ -915,44 +831,23 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"This batch has no failed images to re-run for view {view}.")
 
         root = self._root(run_id).resolve()
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         stamp = self._now()
+        self._withdraw_queued_asks(run_id, candidate_ids={item["candidate_id"] for item in candidates})
+        self._clear_owned_selection(run, view)
         candidate_ids = [item["candidate_id"] for item in candidates]
+        if int(run.get("review_version") or 1) >= 2:
+            state.setdefault("selected_views", {}).pop(view, None)
+            state.setdefault("rankings", {}).pop(view, None)
         for candidate in candidates:
-            old_analyses = candidate.get("analyses") or {}
+            clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
-            if int(run.get("review_version") or 1) >= 2:
-                if candidate.get("status") not in {"GATE_REJECTED", "FAILED"} and candidate.get("human_review", {}).get("decision") != "reject":
-                    continue
-                history = list(candidate.get("review_history") or [])
-                history.append({
-                    "archived_at": stamp, "image_path": candidate.get("image_path", ""),
-                    "gates": candidate.get("gates") or {}, "human_review": candidate.get("human_review") or {},
-                })
-                update["review_history"] = history
-                update.update(
-                    status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
-                    image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
-                    render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
-                    disposition="pending", human_review={"decision": "undecided", "notes": ""},
-                    retry_count=int(candidate.get("retry_count") or 0) + 1,
-                )
-                continue
-            if old_analyses:
-                history = list(candidate.get("analysis_history") or [])
-                history.append({"archived_at": stamp, "analyses": old_analyses})
-                update["analysis_history"] = history
-            image_text = str(candidate.get("image_path") or "")
-            try:
-                image_path = Path(image_text).resolve()
-                if image_path.is_relative_to(root):
-                    image_path.unlink(missing_ok=True)
-            except (OSError, RuntimeError):
-                pass
             update.update(
                 status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="",
-                completed_at="", render_error="", analyses={}, local_job={}, luna_status="",
+                completed_at="", render_error="", analyses={}, analysis_history=[], review_history=[],
+                gate_history=[], gate_rejection_history=[], ranking_history=[], local_job={}, luna_status="",
                 luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided", "notes": ""},
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
@@ -1019,24 +914,20 @@ Do not explain your reasoning."""
             scope = f" for view {target_views[0]}" if view is not None else ""
             raise LocalBodyReferenceError(f"This batch has no completed images to re-evaluate{scope}.")
         for target_view in target_views:
-            if any(item.get("view") == target_view for item in completed):
-                self._review_facts(run, target_view)
+            self._review_facts(run, target_view)
         if int(run.get("review_version") or 1) >= 2:
+            for target_view in target_views:
+                self._clear_owned_selection(run, target_view)
             state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
             stamp = self._now()
             for target_view in target_views:
-                old_ranking = state.setdefault("rankings", {}).pop(target_view, None)
-                if old_ranking:
-                    state.setdefault("ranking_history", {}).setdefault(target_view, []).append(
-                        {"archived_at": stamp, "ranking": old_ranking}
-                    )
+                state.setdefault("rankings", {}).pop(target_view, None)
+                state.setdefault("selected_views", {}).pop(target_view, None)
             for candidate in completed:
                 update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
-                old_gates = candidate.get("gates") or {}
-                if old_gates:
-                    update.setdefault("gate_history", []).append({"archived_at": stamp, "gates": old_gates})
                 update.update(status="WAITING_FOR_GATES", gates={}, failed_gate="", rejection_gate="",
-                              render_error="", completed_at="")
+                              render_error="", completed_at="", human_review={"decision": "undecided", "notes": ""},
+                              review_history=[], gate_history=[], gate_rejection_history=[])
             (self._root(run_id) / "cancelled.json").unlink(missing_ok=True)
             state.update(status="REEVALUATING", review_only=True, target_views=target_views,
                          target_candidate_ids=[item["candidate_id"] for item in completed],
@@ -1094,13 +985,28 @@ Do not explain your reasoning."""
             state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
         self._write(root / "state.json", state)
 
-    def _withdraw_queued_asks(self, run_id: str) -> None:
-        paths = self.app.ai_proxy_service.ai_proxy_path_service
+    def _clear_owned_selection(self, run: dict[str, Any], view: str) -> None:
+        record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(
+            self.asset_store.key("Body-Reference", view), {}
+        )
+        if record.get("batch_id") == run["run_id"]:
+            self.asset_store.clear_selection(run["character"], run["phase"], "Body-Reference", view)
+
+    def _withdraw_queued_asks(self, run_id: str, *, affected_views: set[str] | None = None,
+                              candidate_ids: set[str] | None = None) -> None:
+        paths = getattr(getattr(self.app, "ai_proxy_service", None), "ai_proxy_path_service", None)
+        if paths is None:
+            return
         queue_root = Path(self.app.config.base_ai_queue_path)
         prefixes = (f"BodyReference_{run_id}_", f"Ask_LocalBodyReference_{run_id}_")
         for task in paths.task_paths("ask"):
-            if task.name.startswith(prefixes):
-                supersede_task(queue_root, task, "Local Body-Reference run was cancelled.")
+            if not task.name.startswith(prefixes):
+                continue
+            matched = next((item for item in self.detail(run_id)["candidates"]
+                            if f"_{item['candidate_id']}_" in task.name), None)
+            if matched and (affected_views is None or matched["view"] in affected_views) and \
+                    (candidate_ids is None or matched["candidate_id"] in candidate_ids):
+                supersede_task(queue_root, task, "Local Body-Reference candidate is being replaced.")
 
     def select_front_anchor(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
@@ -1154,11 +1060,12 @@ Do not explain your reasoning."""
             gates_current = True
             for gate in self.review_gates(candidate["view"]):
                 record = gates.get(gate.key) or {}
-                hashes = record.get("input_hashes") or {}
-                if (record.get("status") not in {"COMPLETE", "DISABLED"}
-                        or record.get("verdict") != "FALSE"
-                        or hashes.get("candidate") != image_hash
-                        or (gate.uses_anchor and (not anchor_hash or hashes.get("front_anchor") != anchor_hash))):
+                expected_hashes = {"candidate": image_hash,
+                                   "front_anchor": anchor_hash if gate.uses_anchor else ""}
+                if not gate_result_is_current(
+                    record, input_hashes=expected_hashes,
+                    prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
+                ):
                     gates_current = False
                     break
             if not gates_current:
@@ -1169,6 +1076,11 @@ Do not explain your reasoning."""
                 "human_review": {"decision": decision, "notes": notes},
             })
             if decision == "reject" and state.get("selected_views", {}).get(candidate["view"]) == candidate_id:
+                if candidate["view"] == FRONT_VIEW:
+                    for downstream_view in run.get("views", []):
+                        if downstream_view != FRONT_VIEW:
+                            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
+                self._clear_owned_selection(run, candidate["view"])
                 state["selected_views"].pop(candidate["view"], None)
                 state["candidates"][candidate_id]["status"] = "WAITING_FOR_HUMAN_REVIEW"
                 if candidate["view"] == FRONT_VIEW:
@@ -1802,14 +1714,14 @@ Do not explain your reasoning."""
                     self._candidate_update(run_id, candidate_id, {"gate_history": history})
                 gates[definition.key] = {
                     "status": "DISABLED", "verdict": "FALSE", "input_hashes": expected_hashes,
+                    "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest(),
                     "completed_at": self._now(),
                 }
                 self._candidate_update(run_id, candidate_id, {"gates": gates})
                 candidate = next(item for item in self.detail(run_id)["candidates"]
                                  if item["candidate_id"] == candidate_id)
                 continue
-            prompt_stale = (bool(record.get("prompt_sha256"))
-                            and record["prompt_sha256"] != hashlib.sha256(definition.prompt.encode()).hexdigest())
+            prompt_stale = record.get("prompt_sha256") != hashlib.sha256(definition.prompt.encode()).hexdigest()
             if (record.get("status") == "COMPLETE" and record.get("input_hashes") == expected_hashes
                     and not prompt_stale):
                 verdict = record.get("verdict")
@@ -2130,32 +2042,32 @@ Do not explain your reasoning."""
     def _invalidate_views_after_anchor_change(self, run_id: str, state: dict[str, Any]) -> None:
         """Clear downstream selections and review state when FRONT identity changes."""
         run = self.detail(run_id)
+        for view in (run.get("views") or []):
+            if view != FRONT_VIEW:
+                self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+        root = self._root(run_id).resolve()
+        downstream_views = {view for view in (run.get("views") or []) if view != FRONT_VIEW}
+        self._withdraw_queued_asks(run_id, affected_views=downstream_views)
         selected = state.setdefault("selected_views", {})
         rankings = state.setdefault("rankings", {})
         for view in (run.get("views") or []):
             if view == FRONT_VIEW:
                 continue
-            selected.pop(view, None)
-            old_ranking = rankings.pop(view, None)
-            if old_ranking:
-                state.setdefault("ranking_history", {}).setdefault(view, []).append(
-                    {"archived_at": self._now(), "ranking": old_ranking}
-                )
+            selected_id = selected.pop(view, None)
+            rankings.pop(view, None)
+            if selected_id:
+                self._clear_owned_selection(run, view)
         for candidate in run.get("candidates") or []:
             if candidate.get("view") == FRONT_VIEW:
                 continue
-            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             image_path = str(candidate.get("image_path") or "")
-            if image_path:
-                update.setdefault("review_history", []).append({
-                    "archived_at": self._now(), "image_path": image_path,
-                    "gates": candidate.get("gates") or {},
-                    "human_review": candidate.get("human_review") or {},
-                    "invalidated_by_anchor_change": True,
-                })
+            clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
+            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             update.update({
                 "status": "PENDING", "image_path": "", "image_sha256": "", "ask_id": "",
                 "gates": {}, "failed_gate": "", "rejection_gate": "", "render_error": "",
+                "analyses": {}, "analysis_history": [], "review_history": [], "gate_history": [],
+                "gate_rejection_history": [],
                 "human_review": {"decision": "undecided", "notes": ""},
                 "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
             })
@@ -2174,6 +2086,10 @@ Do not explain your reasoning."""
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         selected = state.setdefault("selected_views", {})
         if not candidate_id:
+            if view == FRONT_VIEW:
+                for downstream_view in run.get("views", []):
+                    if downstream_view != FRONT_VIEW:
+                        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
             removed_id = selected.pop(view, None)
             if not removed_id:
                 return self.detail(run_id)
@@ -2185,11 +2101,7 @@ Do not explain your reasoning."""
             if view == FRONT_VIEW:
                 if state.get("front_anchor") == removed_id:
                     state["front_anchor"] = None
-                for downstream_view, downstream_id in list(selected.items()):
-                    if downstream_view == FRONT_VIEW:
-                        continue
-                    selected.pop(downstream_view, None)
-                    state.setdefault("candidates", {}).setdefault(downstream_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
+                self._invalidate_views_after_anchor_change(run_id, state)
                 state["status"] = "AWAITING_FRONT_ANCHOR"
             else:
                 state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
@@ -2218,6 +2130,10 @@ Do not explain your reasoning."""
         if previous_id != candidate_id:
             self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         old_anchor_id = state.get("front_anchor")
+        if view == FRONT_VIEW and old_anchor_id != candidate_id:
+            for downstream_view in run.get("views", []):
+                if downstream_view != FRONT_VIEW:
+                    self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
         if previous_id and previous_id != candidate_id:
             state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
         selected[view] = candidate_id
@@ -2245,7 +2161,7 @@ Do not explain your reasoning."""
         )
 
         all_selected = all(view_name in selected for view_name in run.get("views") or [])
-        if all_selected and state.get("front_anchor") == selected.get(FRONT_VIEW):
+        if all_selected and state.get("front_anchor") == selected.get(FRONT_VIEW) and not self.detail(run_id).get("stale_selections"):
             state.update(status="COMPLETE", target_views=[], target_candidate_ids=[], review_only=False)
         elif state.get("front_anchor"):
             state.setdefault("status", "AWAITING_HUMAN_SELECTION")
@@ -2284,9 +2200,12 @@ Do not explain your reasoning."""
                                if item.get("candidate_id") == run.get("front_anchor")), None)
                 anchor_path = Path(str((anchor or {}).get("image_path") or ""))
                 anchor_hash = self._hash(anchor_path) if anchor_path.is_file() else ""
-            if (record.get("status") not in {"COMPLETE", "DISABLED"} or record.get("verdict") != "FALSE"
-                    or (record.get("input_hashes") or {}).get("candidate") != self._hash(image)
-                    or (gate.uses_anchor and (record.get("input_hashes") or {}).get("front_anchor") != anchor_hash)):
+            expected_hashes = {"candidate": self._hash(image),
+                               "front_anchor": anchor_hash if gate.uses_anchor else ""}
+            if not gate_result_is_current(
+                record, input_hashes=expected_hashes,
+                prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
+            ):
                 raise LocalBodyReferenceError(f"The selected candidate has a missing or stale {gate.key} gate.")
         try:
             return self.asset_store.lock(run["character"], run["phase"], "Body-Reference", view)
@@ -2479,9 +2398,18 @@ Do not explain your reasoning."""
                                  target_views=sorted({item["view"] for item in waiting_candidates}),
                                  target_candidate_ids=[item["candidate_id"] for item in waiting_candidates])
                 return
-            status = (run.get("post_review_status") or "AWAITING_FRONT_ANCHOR") if review_only else (
-                "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "COMPLETE"
-            )
+            selected = latest.get("selected_views") or {}
+            complete = all(selected.get(view) and any(
+                item["candidate_id"] == selected[view] and item["view"] == view
+                and item.get("status") == "COMPLETE" for item in latest["candidates"]
+            ) for view in latest.get("views", []))
+            if review_only:
+                status = run.get("post_review_status") or "AWAITING_FRONT_ANCHOR"
+            elif int(latest.get("review_version") or 1) < 2:
+                status = "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "COMPLETE"
+            else:
+                status = ("AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else
+                          "COMPLETE" if complete else "AWAITING_HUMAN_SELECTION")
             self._run_update(run_id, status=status, review_only=False, target_views=[], target_candidate_ids=[])
             return
         except Exception as exc:
@@ -2574,12 +2502,24 @@ Do not explain your reasoning."""
         return self.detail(run_id)
 
     def resume(self, run_id: str) -> dict[str, Any]:
+        run = self.detail(run_id)
+        if run.get("status") != "INTERRUPTED":
+            raise LocalBodyReferenceError("Only an interrupted batch can be resumed; cancelled batches are terminal.")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
-        if state.get("status") == "CANCELLED":
-            raise LocalBodyReferenceError("This batch was cancelled. Start a new batch or explicitly re-run a view.")
         state["stop_requested"] = False
-        state["status"] = "READY_FOR_VIEWS" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
+        state["status"] = "QUEUED"
         state["updated_at"] = self._now()
+        self._save_state(run_id, state)
+        return self.detail(run_id)
+
+    def proceed(self, run_id: str) -> dict[str, Any]:
+        run = self.detail(run_id)
+        if not run.get("front_anchor"):
+            raise LocalBodyReferenceError("Select a FRONT anchor before generating other views.")
+        if run.get("status") in ACTIVE_RUN_STATUSES:
+            raise LocalBodyReferenceError("Wait for the current batch operation to finish before proceeding.")
+        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state.update(status="READY_FOR_VIEWS", stop_requested=False, updated_at=self._now())
         self._save_state(run_id, state)
         return self.detail(run_id)
 

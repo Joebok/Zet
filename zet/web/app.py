@@ -2437,12 +2437,25 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/local/head-image/runs")
-    def create_local_head_image(background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def create_local_head_image(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.create_run(payload)
-            background_tasks.add_task(service.execute_run, run["run_id"], views={"FRONT"})
             return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/start")
+    def start_local_head_image(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.detail(run_id)
+            if run.get("status") != "QUEUED":
+                raise HTTPException(status_code=409, detail="Only a queued Head-Image batch can be started.")
+            background_tasks.add_task(service.execute_run, run_id, views={"FRONT"})
+            return {"started": True, "run_id": run_id}
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2508,12 +2521,26 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/local/head-image/runs/{run_id}/rerun")
-    def rerun_local_head_image(run_id: str, background_tasks: BackgroundTasks, view: str = Query("")) -> dict[str, Any]:
+    def rerun_local_head_image(run_id: str, background_tasks: BackgroundTasks,
+                               view: str = Query("")) -> dict[str, Any]:
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
-            result = service.rerun_view(run_id, view) if view else service.rerun_view(run_id, "FRONT")
-            background_tasks.add_task(service.execute_run, run_id, views={view.upper() if view else "FRONT"})
+            if view:
+                result = service.rerun_view(run_id, view)
+                background_tasks.add_task(service.execute_run, run_id, views={view.upper()})
+            else:
+                result = service.rerun(run_id)
+                background_tasks.add_task(service.execute_run, run_id, views={"FRONT"})
             return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/local/head-image/runs/{run_id}/source")
+    def update_local_head_image_source(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).update_front_source(
+                run_id, str(payload.get("source_path") or "")
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2541,6 +2568,15 @@ def create_app(
     def delete_local_head_image(run_id: str) -> dict[str, Any]:
         try:
             return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).delete_run(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/local/head-image/runs/{run_id}/name")
+    def rename_local_head_image(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).rename_run(
+                run_id, str(payload.get("batch_name") or "")
+            )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2713,13 +2749,11 @@ def create_app(
     @app.post("/api/local/body-reference/runs/{run_id}/rerun")
     def rerun_local_body_reference(
         run_id: str, background_tasks: BackgroundTasks,
-        view: str = Query(""), keep_front_anchor: bool = Query(False),
+        view: str = Query(""),
     ) -> dict[str, Any]:
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
-            run = service.rerun_view(run_id, view) if view.strip() else service.rerun(
-                run_id, keep_front_anchor=keep_front_anchor
-            )
+            run = service.rerun_view(run_id, view) if view.strip() else service.rerun(run_id)
             background_tasks.add_task(service.execute_run, run["run_id"])
             return run
         except Exception as exc:
@@ -2782,6 +2816,15 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/local/body-reference/runs/{run_id}/name")
+    def rename_local_body_reference(run_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).rename_run(
+                run_id, str(payload.get("batch_name") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/local/body-reference/runs/{run_id}/views/{view}/selection")
     def select_local_body_reference_view(
         run_id: str, view: str, payload: dict[str, Any] = Body(...)
@@ -2833,9 +2876,7 @@ def create_app(
     def proceed_local_body_reference(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
-            run = service.resume(run_id)
-            if not run.get("front_anchor"):
-                raise ValueError("Select a front anchor before proceeding.")
+            run = service.proceed(run_id)
             background_tasks.add_task(service.execute_run, run_id)
             return run
         except Exception as exc:

@@ -37,6 +37,29 @@ class FakeBodyReferenceService:
         return self.run
 
 
+class FakeHeadImageService:
+    def __init__(self, image: Path):
+        self.run = {
+            "run_id": "20260924_062129_472332", "character": "Tsaeytte", "phase": "Adult",
+            "views": ["FRONT", "FRONT_LEFT_3_4"], "front_anchor": "c001", "front_source": "",
+            "candidates": [
+                {"candidate_id": "c001", "view": "FRONT", "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image)},
+                {"candidate_id": "c009", "view": "FRONT_LEFT_3_4", "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image)},
+            ],
+        }
+
+    @staticmethod
+    def review_gates(view, *, has_front_source=False):
+        return [ReviewGate("gaze", f"TARGET: {view}; gaze follows the nose. Reply exactly TRUE or FALSE.",
+                           uses_anchor=view != "FRONT")]
+
+    def list_runs(self):
+        return [{"run_id": self.run["run_id"]}]
+
+    def detail(self, run_id):
+        assert run_id == self.run["run_id"]
+        return self.run
+
 def make_service(tmp_path, monkeypatch):
     library = tmp_path / "library"
     queue = tmp_path / "queue"
@@ -65,6 +88,24 @@ def test_selection_exposes_disabled_orientation_and_only_existing_images(tmp_pat
     assert [gate["key"] for gate in value["gates"]] == ["orientation", "body_identity"]
     assert [candidate["candidate_id"] for candidate in value["candidates"]] == ["c009"]
     assert value["front_anchor"] == "c001"
+
+
+def test_gaze_gate_can_be_selected_and_queued_in_test_rig(tmp_path, monkeypatch):
+    service, _, client = make_service(tmp_path, monkeypatch)
+    image = tmp_path / "candidate.png"
+    Image.new("RGB", (64, 96), "white").save(image)
+    head = FakeHeadImageService(image)
+    monkeypatch.setattr(GateTestRigService, "_head", lambda self: head)
+
+    selection = service.selection(head.run["run_id"], "FRONT_LEFT_3_4", "head-image")
+    assert [gate["key"] for gate in selection["gates"]] == ["gaze"]
+    test = service.start_test({"pipeline": "head-image", "run_id": head.run["run_id"], "view": "FRONT_LEFT_3_4",
+                              "config": {"gate": "gaze", "api": "generate", "model": "gemma4:12b",
+                                         "think": False, "temperature": 0.1, "request_options": {}}})
+    assert test["status"] == "RUNNING"
+    manifest = json.loads((client.ready_path(test["attempts"][0]["ask_id"]) / "ask_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["gate"] == "gaze"
+    assert manifest["image_files"] == ["front_anchor.png", "candidate.png"]
 
 
 def test_named_configuration_round_trips_call_setup(tmp_path, monkeypatch):

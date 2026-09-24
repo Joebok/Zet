@@ -41,7 +41,20 @@ class HeadImageCompilerTests(unittest.TestCase):
                 gates = LocalHeadImageService.review_gates(view)
                 self.assertEqual("background", gates[0].key)
                 self.assertIn("transparent background passes", gates[0].prompt)
-                self.assertIn("Return TRUE only when the subject visibly blends", gates[0].prompt)
+                self.assertIn("Return TRUE when the background similar in color or tone", gates[0].prompt)
+
+    def test_local_gaze_gate_applies_only_to_views_with_visible_eyes(self) -> None:
+        for view in ("FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"):
+            with self.subTest(view=view):
+                gates = LocalHeadImageService.review_gates(view)
+                keys = [gate.key for gate in gates]
+                self.assertEqual("gaze", keys[keys.index("orientation") + 1])
+                self.assertIn("exactly TRUE or FALSE", gates[keys.index("gaze")].prompt)
+                self.assertIn("ambiguous", gates[keys.index("gaze")].prompt)
+                self.assertEqual(view != "FRONT", gates[keys.index("gaze")].uses_anchor)
+        for view in ("BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"):
+            with self.subTest(view=view):
+                self.assertNotIn("gaze", [gate.key for gate in LocalHeadImageService.review_gates(view)])
 
     def test_local_front_compiles_with_optional_source_and_keeps_traditional_rule(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -53,7 +66,10 @@ class HeadImageCompilerTests(unittest.TestCase):
                                                pipeline_mode="local")
             prompt = Path(generated["final_prompt"]).read_text(encoding="utf-8")
             manifest = json.loads(Path(generated["dependency_manifest"]).read_text(encoding="utf-8"))
-            self.assertIn("No reference image is supplied", prompt)
+            self.assertNotIn("source image", prompt.lower())
+            self.assertNotIn("source-image", prompt.lower())
+            self.assertNotIn("reference image", prompt.lower())
+            self.assertNotIn("camera-facing gaze", prompt)
             self.assertNotIn("# Render Task", prompt)
             self.assertEqual("generate", manifest["render_mode"])
             self.assertEqual([], manifest["resources"])
@@ -66,9 +82,74 @@ class HeadImageCompilerTests(unittest.TestCase):
                                             PROJECT_ROOT, pipeline_mode="local")
             edited_prompt = Path(edited["final_prompt"]).read_text(encoding="utf-8")
             edited_manifest = json.loads(Path(edited["dependency_manifest"]).read_text(encoding="utf-8"))
-            self.assertIn("optional supplied identity reference", edited_prompt)
+            self.assertIn("Use Image 1 as the identity reference", edited_prompt)
+            self.assertNotIn("optional identity reference", edited_prompt.lower())
+            self.assertIn("gaze is not authoritative", edited_prompt)
+            self.assertNotIn("camera-facing gaze", edited_prompt)
             self.assertEqual("edit", edited_manifest["render_mode"])
             self.assertEqual([str(source)], [item["path"] for item in edited_manifest["resources"]])
+
+            side = compile_head_image_job({**base, "Job": "local-side", "Head View": "Front Left 3/4",
+                                           "Output Directory": str(root / "side"),
+                                           "Reference Files": [{"role": "head_image_source", "path": str(source)}]},
+                                          PROJECT_ROOT, pipeline_mode="local")
+            side_prompt = Path(side["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("aim the eyes along the face and nose direction", side_prompt)
+            self.assertIn("toward image-left", side_prompt)
+            self.assertIn("do not make eye contact with the viewer", side_prompt)
+            self.assertIn("Do not preserve the source image's camera-facing gaze; the subject must not look toward the viewer.", side_prompt)
+            self.assertLess(side_prompt.index("Do not preserve the source image's camera-facing gaze"),
+                            side_prompt.index("# Subject Details"))
+
+    def test_local_source_contract_is_present_only_with_a_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shared = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            template = root / "Character.md"
+            template.write_text(shared.read_text(encoding="utf-8").replace(
+                "Source-image contract:", "Optional source-image contract:").replace(
+                "* Source identity authority: `[What likeness or design information should be taken from a supplied source image.]`",
+                "* When a source image is supplied, use it as the visual authority for identity.\n"
+                "* Without a source image, construct the character from authored facts."), encoding="utf-8")
+            base = {"Job": "local-contract", "Task": "head-image", "Character": "Test", "Phase": "Adult",
+                    "Head View": "Front", "Template Path": str(template)}
+            no_source = compile_head_image_job({**base, "Output Directory": str(root / "text"),
+                                                "Reference Files": []}, PROJECT_ROOT, pipeline_mode="local")
+            no_source_prompt = Path(no_source["final_prompt"]).read_text(encoding="utf-8")
+            self.assertNotIn("source image", no_source_prompt.lower())
+            self.assertNotIn("source-image", no_source_prompt.lower())
+
+            source = root / "source.png"
+            source.write_bytes(b"source")
+            with_source = compile_head_image_job({**base, "Output Directory": str(root / "guided"),
+                                                  "Reference Files": [{"role": "head_image_source", "path": str(source)}]},
+                                                 PROJECT_ROOT, pipeline_mode="local")
+            with_source_prompt = Path(with_source["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("Source-image contract:", with_source_prompt)
+            self.assertIn("Use the source image as the visual authority for identity.", with_source_prompt)
+            self.assertNotIn("Optional source-image contract", with_source_prompt)
+            self.assertNotIn("When a source image is supplied", with_source_prompt)
+            self.assertNotIn("Without a source image", with_source_prompt)
+
+    def test_local_non_front_gaze_rule_precedes_subject_details_for_every_view(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.png"
+            source.write_bytes(b"source")
+            template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            sentence = "Do not preserve the source image's camera-facing gaze; the subject must not look toward the viewer."
+            for view in VIEWS:
+                if view == "FRONT":
+                    continue
+                with self.subTest(view=view):
+                    result = compile_head_image_job({
+                        "Job": f"local-{view}", "Task": "head-image", "Character": "Test", "Phase": "Adult",
+                        "Head View": view, "Template Path": str(template), "Output Directory": str(root / view),
+                        "Reference Files": [{"role": "head_image_source", "path": str(source)}],
+                    }, PROJECT_ROOT, pipeline_mode="local")
+                    prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+                    self.assertEqual(1, prompt.count(sentence))
+                    self.assertLess(prompt.index(sentence), prompt.index("# Subject Details"))
 
     def test_local_non_front_requires_selected_front_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -99,8 +180,40 @@ class HeadImageCompilerTests(unittest.TestCase):
             self.assertEqual("QUEUED", run["status"])
             self.assertEqual("", run["front_source"])
             prompt = Path(run["front_prompt_path"]).read_text(encoding="utf-8")
-            self.assertIn("No reference image is supplied", prompt)
+            self.assertNotIn("source image", prompt.lower())
             self.assertEqual(1, len([item for item in run["candidates"] if item["view"] == "FRONT"]))
+
+    def test_old_ranking_is_stale_and_cannot_select_without_new_gaze_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+            candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+            image = root / "old-front.png"
+            image.write_bytes(b"old candidate image")
+            service._update(run["run_id"], candidate["candidate_id"], status="WAITING_FOR_HUMAN_REVIEW",
+                            image_path=str(image), human_review={"decision": "keep", "notes": "Keep these notes."})
+            state_path = Path(run["root"]) / "state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["rankings"] = {"FRONT": {"status": "COMPLETE", "ordered_candidate_ids": [candidate["candidate_id"]],
+                                             "entries": [], "input_hashes": {candidate["candidate_id"]: service._hash(image)}}}
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            current = service.detail(run["run_id"])
+            self.assertEqual("STALE", current["rankings"]["FRONT"]["status"])
+            self.assertIn("gaze", [gate.key for gate in service.review_gates("FRONT")])
+            self.assertEqual("Keep these notes.", next(item for item in current["candidates"]
+                                                         if item["candidate_id"] == candidate["candidate_id"])
+                             ["human_review"]["notes"])
+            with self.assertRaisesRegex(Exception, "current gate review"):
+                service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
 
     def test_local_head_renders_view_before_gates_then_ranks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -224,6 +337,18 @@ class HeadImageCompilerTests(unittest.TestCase):
                     self.assertNotIn("{{", prompt)
                     self.assertNotIn("young-adult Tsaeytte", prompt)
                     self.assertNotIn("* Wrong age phase.", prompt)
+                    image_review = Path(result["image_review"]).read_text(encoding="utf-8")
+                    normalized_view = str(view).upper().replace("-", "_")
+                    if normalized_view == "FRONT":
+                        self.assertIn("eyes look forward with the face", image_review)
+                    elif normalized_view == "BACK":
+                        self.assertNotIn("eyes follow", image_review)
+                    elif normalized_view.startswith("BACK_"):
+                        self.assertIn("gaze remains aligned", image_review)
+                    elif normalized_view.endswith("PROFILE"):
+                        self.assertIn("visible eye follows the nose direction", image_review)
+                    else:
+                        self.assertIn("follow the turned face and nose direction", image_review)
                     manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
                     self.assertEqual(4, manifest["head_image_prompt_contract"]["version"])
                     self.assertEqual("deferred", manifest["head_image_prompt_contract"]["geometry_regularization"])
@@ -305,6 +430,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             self.assertIn("Paste an image here", page.text)
             self.assertIn("Generate other views", page.text)
             self.assertIn("background:'Background'", page.text)
+            self.assertIn("gaze:'Gaze direction'", page.text)
             assets = client.get("/api/local/assets", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(200, assets.status_code)
             self.assertEqual([], assets.json()["assets"])

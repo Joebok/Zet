@@ -1161,6 +1161,36 @@ test("running prompt analysis harvests and opens without changing the selected p
   expect(queuedAgain).toBe(0);
 });
 
+test("Local Head-Image review shows the selected FRONT candidate as its anchor", async ({ page }) => {
+  const runId = "20260924_120000_000001";
+  const run = {
+    run_id: runId, review_version: 2, status: "AWAITING_HUMAN_SELECTION",
+    character: "Test", phase: "Adult", candidate_count: 2,
+    views: ["FRONT", "FRONT_LEFT_3_4"], front_anchor: "c001",
+    selected_views: { FRONT: "c001" }, rankings: {}, local_assets: {},
+    candidates: [
+      { candidate_id: "c001", view: "FRONT", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "front.png", gates: {}, human_review: {} },
+      { candidate_id: "c002", view: "FRONT_LEFT_3_4", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "left.png", gates: {}, human_review: {} },
+    ],
+  };
+  await page.route("**/api/context", (route) => route.fulfill({ json: {
+    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
+  } }));
+  await page.route(/\/api\/local\/head-image\/runs\?/, (route) => route.fulfill({ json: { runs: [
+    { run_id: runId, status: run.status, candidate_count: 2, complete_count: 0 },
+  ] } }));
+  await page.route(new RegExp(`/api/local/head-image/runs/${runId}$`), (route) => route.fulfill({ json: run }));
+  await page.route(/\/api\/local\/head-image\/runs\/[^/]+\/images\//, (route) => route.fulfill({
+    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
+  }));
+
+  await page.goto("/local-head-image");
+  await page.locator('#gallery [data-view="FRONT_LEFT_3_4"] [data-review="c002"]').first().click();
+  await expect(page.locator("#review-anchor-image")).toBeVisible();
+  await expect(page.locator("#review-anchor-image")).toHaveAttribute("src", `/api/local/head-image/runs/${runId}/images/c001`);
+  await expect(page.locator("#review-anchor-message")).toBeHidden();
+});
+
 test("Local Body-Reference shows gate rejects, Luna order, selection, and repair controls", async ({ page }) => {
   let selectedRequest;
   let run = {
@@ -1217,18 +1247,16 @@ test("Local Body-Reference shows gate rejects, Luna order, selection, and repair
   await expect(page.locator("#gallery .ai-summary p:has-text('Orientation gate: Disabled')")).toHaveCount(3);
   await expect(page.locator("#gallery .ai-summary p:has-text('Orientation gate: Disabled')").first()).toHaveClass(/muted/);
   await expect(page.locator("#gallery")).toContainText("Re-evaluate this view to clear the previous result.");
-  await expect(page.locator("#gallery")).toContainText("Clear silhouette and strong proportions.");
+  await expect(page.locator('[data-rerun-view="FRONT"]')).toBeEnabled();
+  await expect(page.locator('[data-rerun-failed-view="FRONT"]')).toBeEnabled();
+  await expect(page.locator('[data-reevaluate-view="FRONT"]')).toBeEnabled();
+  await page.locator('#gallery [data-review="c001"]').click();
+  await expect(page.locator("#review-panel")).toContainText("Clear silhouette and strong proportions.");
+  await page.locator("#review-close").click();
   await expect(page.getByRole("button", { name: "Select", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Select", exact: true }).click();
   expect(selectedRequest).toEqual({ candidate_id: "c001" });
   await expect(page.locator("#status")).toContainText("FRONT anchor: c001");
-
-  await expect(page.locator('[data-rerun-view="FRONT"]')).toBeEnabled();
-  await expect(page.locator('[data-rerun-failed-view="FRONT"]')).toBeEnabled();
-  await expect(page.locator('[data-reevaluate-view="FRONT"]')).toBeEnabled();
-  const rerunFailed = page.waitForRequest((request) => request.url().includes("/rerun-failed?view=FRONT") && request.method() === "POST");
-  await page.locator('[data-rerun-failed-view="FRONT"]').click();
-  await rerunFailed;
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

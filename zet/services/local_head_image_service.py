@@ -20,6 +20,7 @@ from PIL import Image
 from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, clear_candidate_artifacts, gate_result_is_current
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -29,6 +30,7 @@ class LocalHeadImageError(ValueError):
 
 
 FRONT = "FRONT"
+GAZE_VIEWS = {"FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"}
 VIEWS = ("FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK")
 VIEW_LABELS = {
     "FRONT": "direct front view", "FRONT_LEFT_3_4": "front-left three-quarter view",
@@ -46,6 +48,13 @@ VIEW_RULES = {
     "BACK_RIGHT_3_4": "Show the back of the skull and hair with the anatomical right rear side nearer the camera.",
     "BACK": "Show the back of the head squarely; do not reveal the face.",
 }
+GAZE_RULES = {
+    "FRONT": "The face points toward the viewer, so a forward gaze is correct.",
+    "FRONT_LEFT_3_4": "The face and nose turn toward the character's anatomical left. The eyes must turn with the face instead of maintaining eye contact with the camera.",
+    "FRONT_RIGHT_3_4": "The face and nose turn toward the character's anatomical right. The eyes must turn with the face instead of maintaining eye contact with the camera.",
+    "LEFT_PROFILE": "The nose points toward image-left. The visible eye must look along the nose direction, not back toward the camera.",
+    "RIGHT_PROFILE": "The nose points toward image-right. The visible eye must look along the nose direction, not back toward the camera.",
+}
 
 
 class LocalHeadImageService:
@@ -59,6 +68,7 @@ class LocalHeadImageService:
         "background": "Is the background similar in color or tone to the hair or skin of the subject? Return TRUE when the background similar in color or tone to the hair or skin of the subject. A genuinely transparent background passes. Return FALSE otherwise.",
         "framing": "Does the image show the complete head and hairstyle silhouette without material cropping, distortion, or extra subjects? Return TRUE only for a clear defect; otherwise return FALSE.",
         "orientation": "Does the visible head match the requested view: {view}. {view_rule} Return TRUE only for a clear wrong view or mirrored anatomy; otherwise return FALSE.",
+        "gaze": "Judge only whether the gaze clearly fails to follow the head's forward direction in this {view}: {gaze_rule} For an angled view, Image 1 is the direct-front gaze reference and Image 2 is the candidate. Compare the candidate's eye direction with its turned face and nose; eyes that keep looking into the camera while the face turns away are a defect. If only one image is supplied, judge whether the visible eyes look toward the camera instead of along the face and nose. Do not use centered pupils alone as evidence: pupils may be centered within eyes that have rotated with the head. Ignore hidden eyes. Return TRUE only for clear evidence of a gaze-direction defect. If ambiguous or partly hidden, return FALSE. Reply with exactly TRUE or FALSE.",
         "identity": "Compare Image 1, the selected FRONT anchor, with Image 2, the candidate. Could both images plausibly depict the same character's head, face, hair, and species traits from different angles? Return TRUE only for a clear identity mismatch; otherwise return FALSE.",
         "source_identity": "Compare the supplied reference image with the generated FRONT candidate. Is there a clear character identity mismatch? Return TRUE only for a clear mismatch; otherwise return FALSE.",
     }
@@ -186,7 +196,8 @@ class LocalHeadImageService:
         front_prompt = self._compile(root, plan["character"], plan["phase"], FRONT,
                                      ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []))
         spec = {"schema_version": 1, "review_version": 2, "kind": "local_head_image", "run_id": run_id,
-                "created_at": self._now(), "status": "RUNNING", "character": plan["character"], "phase": plan["phase"],
+                "batch_name": "",
+                "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "views": list(VIEWS), "front_count": plan["front_count"], "other_count": plan["other_count"],
                 "candidate_count": total, "front_source": source_snapshot,
                 "front_source_sha256": self._hash(Path(source_snapshot)) if source_snapshot else "",
@@ -214,7 +225,7 @@ class LocalHeadImageService:
                 candidates[candidate_id].update(update)
         value = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                  "stop_requested": bool(state.get("stop_requested"))}
-        active = state.get("status") in {"RUNNING", "STOPPING", "REEVALUATING"}
+        active = state.get("status") in ACTIVE_RUN_STATUSES
         if active:
             with self._active_lock:
                 value["interrupted"] = run_id not in self._active
@@ -226,6 +237,14 @@ class LocalHeadImageService:
         value["rankings"] = state.get("rankings") or {}
         value["front_anchor"] = state.get("front_anchor") or spec.get("front_anchor")
         value["local_assets"] = self.asset_store.detail(value["character"], value["phase"]).get("assets", {})
+        for view, ranking in value["rankings"].items():
+            if ranking.get("status") != "COMPLETE":
+                continue
+            candidates_by_id = {item["candidate_id"]: item for item in value["candidates"]}
+            ranked = [candidates_by_id.get(candidate_id) for candidate_id in ranking.get("ordered_candidate_ids", [])]
+            if any(not candidate or not self._candidate_gates_current(value, candidate) for candidate in ranked):
+                ranking["status"] = "STALE"
+                ranking["stale_reason"] = "One or more current gate results are missing or outdated. Re-evaluate this view and rank it again."
         stale = []
         anchor = next((c for c in value["candidates"] if c["candidate_id"] == value.get("front_anchor")), None)
         anchor_path = Path(str((anchor or {}).get("image_path") or ""))
@@ -247,7 +266,32 @@ class LocalHeadImageService:
                     stale.append(candidate["view"])
         value["stale_views"] = sorted(set(stale))
         value["stale_selections"] = stale
+        stale_selected = []
+        by_id = {item["candidate_id"]: item for item in value["candidates"]}
+        for view, candidate_id in value["selected_views"].items():
+            candidate = by_id.get(candidate_id)
+            ranking = (value.get("rankings") or {}).get(view) or {}
+            image = Path(str((candidate or {}).get("image_path") or ""))
+            if (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
+                    or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
+                    or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)
+                    or not self._candidate_gates_current(value, candidate)):
+                stale_selected.append(view)
+        value["stale_selections"] = sorted(set(value["stale_selections"]) | set(stale_selected))
+        if value["stale_selections"] and value["status"] not in ACTIVE_RUN_STATUSES | {"ERROR", "CANCELLED", "INTERRUPTED"}:
+            value["status"] = "REVIEW_REQUIRED"
         return value
+
+    def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
+        name = str(batch_name or "").strip()
+        if len(name) > 120:
+            raise LocalHeadImageError("Batch name cannot exceed 120 characters.")
+        root = self._run_root(run_id)
+        spec_path = root / "spec.json"
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec["batch_name"] = name
+        self._write(spec_path, spec)
+        return self.detail(run_id)
 
     def front_source_path(self, run_id: str) -> Path:
         root = self._run_root(run_id).resolve()
@@ -267,7 +311,8 @@ class LocalHeadImageService:
                 if character and spec.get("character") != character or phase and spec.get("phase") != phase:
                     continue
                 run = self.detail(str(spec["run_id"]))
-                result.append({"run_id": run["run_id"], "character": run["character"], "phase": run["phase"],
+                result.append({"run_id": run["run_id"], "batch_name": run.get("batch_name", ""),
+                               "character": run["character"], "phase": run["phase"],
                                "created_at": run["created_at"], "status": run["status"],
                                "candidate_count": run["candidate_count"],
                                "complete_count": sum(1 for item in run["candidates"] if item.get("image_path")),
@@ -402,11 +447,37 @@ class LocalHeadImageService:
         gates = [ReviewGate("background", cls.GATES["background"]),
                  ReviewGate("framing", cls.GATES["framing"]),
                  ReviewGate("orientation", cls.GATES["orientation"].format(view=VIEW_LABELS.get(view, view), view_rule=VIEW_RULES.get(view, "")))]
+        if view in GAZE_VIEWS:
+            gates.append(ReviewGate("gaze", cls.GATES["gaze"].format(
+                view=VIEW_LABELS[view], gaze_rule=GAZE_RULES[view]), uses_anchor=view != FRONT))
         if view == FRONT and has_front_source:
             gates.append(ReviewGate("source_identity", cls.GATES["source_identity"]))
         elif view != FRONT:
             gates.append(ReviewGate("identity", cls.GATES["identity"], uses_anchor=True))
         return gates
+
+    def _candidate_gates_current(self, run: dict[str, Any], candidate: dict[str, Any]) -> bool:
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file():
+            return False
+        candidate_hash = self._hash(image)
+        gates = candidate.get("gates") or {}
+        for definition in self.review_gates(candidate["view"], has_front_source=bool(run.get("front_source"))):
+            expected_hashes = {"candidate": candidate_hash, "front_anchor": ""}
+            if definition.uses_anchor:
+                anchor = next((item for item in run["candidates"]
+                               if item["candidate_id"] == run.get("front_anchor")), None)
+                anchor_path = Path(str((anchor or {}).get("image_path") or ""))
+                if not anchor_path.is_file():
+                    return False
+                expected_hashes["front_anchor"] = self._hash(anchor_path)
+            if definition.key == "source_identity":
+                expected_hashes["front_source"] = run.get("front_source_sha256", "")
+            record = gates.get(definition.key) or {}
+            prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
+            if not gate_result_is_current(record, input_hashes=expected_hashes, prompt_sha256=prompt_hash):
+                return False
+        return True
 
     def _queue_gate(self, run_id: str, candidate: dict[str, Any], definition: ReviewGate) -> dict[str, Any]:
         run = self.detail(run_id)
@@ -618,11 +689,15 @@ class LocalHeadImageService:
                     self.rank_view(run_id, view)
                 latest = self.detail(run_id)
                 waiting_anchor = not latest.get("front_anchor")
-                pending = any(item["status"] in {"PENDING", "FAILED", "QUEUED", "RUNNING", "WAITING_FOR_GATES"}
-                              for item in latest["candidates"])
-                self._run_update(run_id, status=("STOPPED" if latest.get("stop_requested") else
+                selected_views = latest.get("selected_views") or {}
+                complete = all(selected_views.get(view) and any(
+                    item["candidate_id"] == selected_views[view] and item["view"] == view
+                    and item.get("status") == "COMPLETE" and self._candidate_gates_current(latest, item)
+                    for item in latest["candidates"]
+                ) for view in VIEWS)
+                self._run_update(run_id, status=("CANCELLED" if latest.get("stop_requested") else
                                                   "AWAITING_FRONT_ANCHOR" if waiting_anchor else
-                                                  "AWAITING_HUMAN_SELECTION" if pending else "COMPLETE"))
+                                                  "COMPLETE" if complete else "AWAITING_HUMAN_SELECTION"))
         except TimeoutError:
             return
         except Exception as exc:
@@ -640,6 +715,10 @@ class LocalHeadImageService:
             return self.GATES[gate]
         if gate == "orientation":
             return self.GATES[gate].format(view=VIEW_LABELS[view], view_rule=VIEW_RULES[view])
+        if gate == "gaze":
+            if view not in GAZE_VIEWS:
+                raise LocalHeadImageError(f"The gaze gate does not apply to {view}.")
+            return self.GATES[gate].format(view=VIEW_LABELS[view], gaze_rule=GAZE_RULES[view])
         if gate == "identity":
             return self.GATES[gate]
         if gate == "source_identity":
@@ -682,6 +761,8 @@ class LocalHeadImageService:
             "Framing gate:\n" + self.gate_prompt(run_id, view, "framing"),
             "Orientation gate:\n" + self.gate_prompt(run_id, view, "orientation"),
         ]
+        if view in GAZE_VIEWS:
+            sections.append("Gaze gate:\n" + self.gate_prompt(run_id, view, "gaze"))
         if view == FRONT and run.get("front_source"):
             sections.append("Source identity gate:\n" + self.gate_prompt(run_id, view, "source_identity"))
         elif view != FRONT:
@@ -724,7 +805,18 @@ class LocalHeadImageService:
                      and not item.get("rejection_gate") and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         if not survivors:
-            raise LocalHeadImageError("No gate-surviving candidates are available to rank.")
+            root, state = self._state(run_id)
+            anchor_hash = self._hash(anchor_path) if view != FRONT and anchor_path.is_file() else ""
+            state.setdefault("rankings", {})[view] = {
+                "status": "EMPTY", "ordered_candidate_ids": [], "entries": [],
+                "input_hashes": {}, "anchor_hash": anchor_hash, "model": "", "recorded_at": self._now(),
+            }
+            selected_id = state.setdefault("selected_views", {}).pop(view, None)
+            if selected_id:
+                self._clear_owned_selection(run, view)
+                state["status"] = "REVIEW_REQUIRED"
+            self._write(root / "state.json", state)
+            return self.detail(run_id)
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         anchor_hash = self._hash(anchor_path) if view != FRONT else ""
         for candidate in survivors:
@@ -736,7 +828,8 @@ class LocalHeadImageService:
                 if definition.key == "source_identity":
                     expected["front_source"] = run.get("front_source_sha256", "")
                 gate = (candidate.get("gates") or {}).get(definition.key) or {}
-                if gate.get("status") != "COMPLETE" or gate.get("verdict") != "FALSE" or gate.get("input_hashes") != expected:
+                prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
+                if not gate_result_is_current(gate, input_hashes=expected, prompt_sha256=prompt_hash):
                     raise LocalHeadImageError(f"{candidate['candidate_id']} has missing or stale {definition.key} gates; re-evaluate this view.")
         if len(survivors) == 1:
             entries = [{"candidate_id": survivors[0]["candidate_id"], "reason": "Only candidate survived the gates."}]
@@ -763,7 +856,8 @@ class LocalHeadImageService:
             if not executable:
                 raise LocalHeadImageError("Codex CLI is unavailable for Luna ranking.")
             command = [executable, "-a", "never", "-s", "read-only", "-m",
-                       str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")), "-C", str(self.project_root),
+                       str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
+                       "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root),
                        "exec", "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema",
                        str(schema_file), "--output-last-message", str(output_file)]
             if view != FRONT:
@@ -791,6 +885,9 @@ class LocalHeadImageService:
         view = str(view or "").upper()
         selected = run.get("selected_views") or {}
         if not candidate_id:
+            if view == FRONT:
+                for downstream in VIEWS[1:]:
+                    self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", downstream)
             asset_key = self.asset_store.key("Head-Image", view)
             record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(asset_key) or {}
             if record.get("batch_id") == run_id and record.get("candidate_id") == selected.get(view):
@@ -799,15 +896,10 @@ class LocalHeadImageService:
             state.setdefault("selected_views", {}).pop(view, None)
             if view == FRONT:
                 state["front_anchor"] = None
-                for downstream in VIEWS:
-                    if downstream != FRONT:
-                        state.setdefault("selected_views", {}).pop(downstream, None)
-                        ranking = state.setdefault("rankings", {}).get(downstream)
-                        if ranking:
-                            ranking.update(status="STALE", stale_reason="The selected FRONT anchor was cleared.")
-                for other in VIEWS:
-                    if other != FRONT:
-                        state.setdefault("selected_views", {}).pop(other, None)
+                self._invalidate_downstream(run, state)
+                state["status"] = "AWAITING_FRONT_ANCHOR"
+            else:
+                state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
             self._write(root / "state.json", state)
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
@@ -818,6 +910,11 @@ class LocalHeadImageService:
         if (ranking.get("status") != "COMPLETE" or candidate_id not in ranking.get("ordered_candidate_ids", [])
                 or not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
             raise LocalHeadImageError("The candidate needs a current gate review and ranking before selection.")
+        if not self._candidate_gates_current(run, candidate):
+            raise LocalHeadImageError("The candidate has missing or stale gate results; re-evaluate and rank this view before selection.")
+        if view == FRONT and (run.get("front_anchor") != candidate_id):
+            for downstream_view in VIEWS[1:]:
+                self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
         if selected.get(view) != candidate_id:
             self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
         dependencies = []
@@ -828,19 +925,25 @@ class LocalHeadImageService:
                 raise LocalHeadImageError("The FRONT anchor changed after ranking; rerun review for this view.")
             dependencies = [{"key": self.asset_store.key("Head-Image", FRONT), "image_sha256": anchor_hash}]
         root, state = self._state(run_id)
+        previous_id = selected.get(view)
         state.setdefault("selected_views", {})[view] = candidate_id
         if view == FRONT:
+            old_anchor_id = state.get("front_anchor")
             state["front_anchor"] = candidate_id
-            for other_view in VIEWS:
-                if other_view != FRONT:
-                    state.setdefault("selected_views", {}).pop(other_view, None)
-            state.setdefault("rankings", {})
-            for other_view in VIEWS:
-                if other_view != FRONT:
-                    state["rankings"].pop(other_view, None)
+            if old_anchor_id != candidate_id:
+                self._invalidate_downstream(run, state)
+                state["status"] = "READY_FOR_VIEWS"
         self.asset_store.record_selection(run["character"], run["phase"], "Head-Image", view,
                                           candidate_id=candidate_id, image_path=image, batch_id=run_id,
                                           dependencies=dependencies)
+        if previous_id and previous_id != candidate_id:
+            state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
+        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(status="COMPLETE", selected_at=self._now())
+        all_selected = all((state.get("selected_views") or {}).get(target) for target in VIEWS)
+        if all_selected:
+            state["status"] = "COMPLETE"
+        elif state.get("front_anchor") and view != FRONT:
+            state["status"] = "AWAITING_HUMAN_SELECTION"
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
@@ -855,6 +958,27 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Gate-rejected candidates cannot be selected for human review.")
         if candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}:
             raise LocalHeadImageError("Candidate must pass current gates before human review.")
+        if not self._candidate_gates_current(run, candidate):
+            raise LocalHeadImageError("Candidate has missing or stale gate results; re-evaluate this view before human review.")
+        if decision == "reject" and (run.get("selected_views") or {}).get(candidate["view"]) == candidate_id:
+            root, state = self._state(run_id)
+            if candidate["view"] == FRONT:
+                for downstream_view in VIEWS:
+                    if downstream_view != FRONT:
+                        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
+            self._clear_owned_selection(run, candidate["view"])
+            state.setdefault("selected_views", {}).pop(candidate["view"], None)
+            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
+                human_review={"decision": decision, "notes": str(payload.get("notes") or "")})
+            if candidate["view"] == FRONT:
+                state["front_anchor"] = None
+                self._invalidate_downstream(run, state)
+                state["status"] = "AWAITING_FRONT_ANCHOR"
+            else:
+                state["status"] = "AWAITING_HUMAN_SELECTION"
+            state.setdefault("candidates", {}).setdefault(candidate_id, {})["status"] = "WAITING_FOR_HUMAN_REVIEW"
+            self._write(root / "state.json", state)
+            return self.detail(run_id)
         self._update(run_id, candidate_id, human_review={"decision": decision, "notes": str(payload.get("notes") or "")})
         return self.detail(run_id)
 
@@ -872,19 +996,8 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Select a candidate with current gates and ranking before locking it.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalHeadImageError("A human-rejected candidate cannot be locked.")
-        definitions = self.review_gates(view, has_front_source=bool(run.get("front_source")))
-        for gate in definitions:
-            record = (candidate.get("gates") or {}).get(gate.key) or {}
-            expected = {"candidate": self._hash(image), "front_anchor": ""}
-            if gate.uses_anchor:
-                anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
-                anchor_path = Path(str((anchor or {}).get("image_path") or ""))
-                expected["front_anchor"] = self._hash(anchor_path) if anchor_path.is_file() else ""
-            if gate.key == "source_identity":
-                expected["front_source"] = run.get("front_source_sha256", "")
-            if (record.get("status") != "COMPLETE" or record.get("verdict") != "FALSE"
-                    or record.get("input_hashes") != expected):
-                raise LocalHeadImageError(f"The selected candidate has a missing or stale {gate.key} gate.")
+        if not self._candidate_gates_current(run, candidate):
+            raise LocalHeadImageError("The selected candidate has missing or stale gate results; re-evaluate and rank this view before locking it.")
         return self.asset_store.lock(run["character"], run["phase"], "Head-Image", view)
 
     def unlock_view(self, character: str, phase: str, view: str) -> dict[str, Any]:
@@ -894,47 +1007,165 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         if not run.get("front_anchor"):
             raise LocalHeadImageError("Select a reviewed FRONT candidate before generating other views.")
+        anchor = next((item for item in run["candidates"]
+                       if item["candidate_id"] == run["front_anchor"]), None)
+        if (not anchor or anchor.get("rejection_gate") or not self._candidate_gates_current(run, anchor)):
+            raise LocalHeadImageError("The FRONT anchor has missing or stale gate results; re-evaluate and rank FRONT before proceeding.")
         pending_views = {view for view in VIEWS if view != FRONT and any(
             item["view"] == view and item["status"] in {"PENDING", "FAILED"} for item in run["candidates"])}
-        self._run_update(run_id, status="RUNNING", stop_requested=False)
+        self._run_update(run_id, status="READY_FOR_VIEWS", stop_requested=False)
         return {**self.detail(run_id), "target_views": sorted(pending_views)}
+
+    def _assert_rerun_allowed(self, run: dict[str, Any], views: set[str]) -> None:
+        if run.get("status") in ACTIVE_RUN_STATUSES or run.get("status") == "STOPPING":
+            raise LocalHeadImageError("Stop the active batch before re-running candidates.")
+        if self._runner_lock.locked() or run["run_id"] in self._active:
+            raise LocalHeadImageError("Wait for the local image runner to finish before re-running candidates.")
+        for view in views:
+            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+
+    def _clear_owned_selection(self, run: dict[str, Any], view: str) -> None:
+        record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(
+            self.asset_store.key("Head-Image", view), {}
+        )
+        if record.get("batch_id") == run["run_id"]:
+            self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
+
+    def _invalidate_downstream(self, run: dict[str, Any], state: dict[str, Any]) -> None:
+        downstream = set(VIEWS[1:])
+        self._withdraw_queued_asks(run["run_id"], affected_views=downstream)
+        root = Path(run["root"])
+        for view in downstream:
+            self._clear_owned_selection(run, view)
+            state.setdefault("selected_views", {}).pop(view, None)
+            state.setdefault("rankings", {}).pop(view, None)
+        for candidate in run["candidates"]:
+            if candidate["view"] not in downstream:
+                continue
+            clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
+            state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
+                status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                retry_count=int(candidate.get("retry_count") or 0) + (1 if candidate.get("image_path") else 0),
+            )
+
+    def rerun(self, run_id: str) -> dict[str, Any]:
+        """Clear the current batch's candidates and reviews, then restart FRONT."""
+        return self.rerun_view(run_id, FRONT)
+
+    def update_front_source(self, run_id: str, source_path: str) -> dict[str, Any]:
+        """Replace or remove this batch's FRONT reference and invalidate generated results."""
+        run = self.detail(run_id)
+        self._assert_rerun_allowed(run, set(VIEWS))
+        root = self._run_root(run_id)
+        source_text = str(source_path or "").strip()
+        destination = None
+        references = []
+        if source_text:
+            source = Path(source_text).resolve()
+            inputs_root = (self._workspace(run["character"], run["phase"]) / "inputs").resolve()
+            if not source.is_file() or not source.is_relative_to(inputs_root):
+                raise LocalHeadImageError("The uploaded front reference image could not be found.")
+            if source.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+                raise LocalHeadImageError("Supported image types are PNG, JPEG, and WebP.")
+            if source.stat().st_size > 32 * 1024 * 1024:
+                raise LocalHeadImageError("Choose an image under 32 MB.")
+            try:
+                with Image.open(source) as image:
+                    image.verify()
+            except Exception as exc:
+                raise LocalHeadImageError("The uploaded reference is not a readable image.") from exc
+
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            destination = root / "inputs" / f"{stamp}_front_source{source.suffix.lower()}"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            references = [{"role": "head_image_source", "path": str(destination)}]
+
+        prompt = self._compile(root, run["character"], run["phase"], FRONT, references)
+        spec_path = root / "spec.json"
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        old_source = Path(str(spec.get("front_source") or "")).resolve()
+        spec.update(front_source=str(destination) if destination else "",
+                    front_source_sha256=self._hash(destination) if destination else "",
+                    front_prompt_path=prompt["final_prompt"],
+                    front_prompt_sha256=self._hash(Path(prompt["final_prompt"])))
+        self._write(spec_path, spec)
+        if old_source.is_relative_to((root / "inputs").resolve()) and old_source.is_file():
+            old_source.unlink()
+
+        self._reset_batch(run, status="QUEUED")
+        return self.detail(run_id)
+
+    def _reset_batch(self, run: dict[str, Any], *, status: str) -> None:
+        run_id = run["run_id"]
+        self._withdraw_queued_asks(run_id)
+        root, state = self._state(run_id)
+        for view in VIEWS:
+            self._clear_owned_selection(run, view)
+        for candidate in run["candidates"]:
+            clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
+            state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
+                status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                retry_count=int(candidate.get("retry_count") or 0) + 1,
+                seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+            )
+        state.update(status=status, stop_requested=False, error="", front_anchor=None,
+                     selected_views={}, rankings={}, target_views=[], target_candidate_ids=[])
+        self._write(root / "state.json", state)
 
     def rerun_view(self, run_id: str, view: str) -> dict[str, Any]:
         run = self.detail(run_id)
         view = str(view or "").upper()
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        affected_views = set(VIEWS) if view == FRONT else {view}
+        self._assert_rerun_allowed(run, affected_views)
         root, state = self._state(run_id)
+        self._withdraw_queued_asks(run_id, affected_views=affected_views)
+        for affected in affected_views:
+            self._clear_owned_selection(run, affected)
         for item in run["candidates"]:
-            if item["view"] == view:
+            if item["view"] in affected_views:
+                clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
-                    status="PENDING", image_path="", ask_id="", gates={}, rejection_gate="", render_error="",
+                    status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                    failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
                     retry_count=int(item.get("retry_count") or 0) + 1,
                     seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
-        state.setdefault("rankings", {}).pop(view, None)
-        state.setdefault("selected_views", {}).pop(view, None)
+        for affected in affected_views:
+            state.setdefault("rankings", {}).pop(affected, None)
+            state.setdefault("selected_views", {}).pop(affected, None)
         if view == FRONT:
             state["front_anchor"] = None
-            for other_view in VIEWS:
-                if other_view != FRONT:
-                    state.setdefault("selected_views", {}).pop(other_view, None)
-                    ranking = state.setdefault("rankings", {}).get(other_view)
-                    if ranking:
-                        ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
         state.update(status="RUNNING", stop_requested=False, error="")
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
     def rerun_failed_view(self, run_id: str, view: str) -> dict[str, Any]:
         run = self.detail(run_id)
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        view = str(view or "").upper()
+        if view not in VIEWS:
+            raise LocalHeadImageError(f"Unknown view: {view}")
+        self._assert_rerun_allowed(run, {view})
         root, state = self._state(run_id)
-        for item in run["candidates"]:
-            if item["view"] == view and (item.get("status") in {"FAILED", "GATE_REJECTED"} or item.get("human_review", {}).get("decision") == "reject"):
-                state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
-                    status="PENDING", image_path="", ask_id="", gates={}, rejection_gate="", render_error="",
-                    human_review={"decision": "undecided", "notes": ""}, retry_count=int(item.get("retry_count") or 0) + 1)
+        candidates = [item for item in run["candidates"] if item["view"] == view and
+                      (item.get("status") in {"FAILED", "GATE_REJECTED"} or
+                       item.get("human_review", {}).get("decision") == "reject")]
+        if not candidates:
+            raise LocalHeadImageError(f"This batch has no failed images to re-run for view {view}.")
+        self._withdraw_queued_asks(run_id, candidate_ids={item["candidate_id"] for item in candidates})
+        self._clear_owned_selection(run, view)
+        state.setdefault("rankings", {}).pop(view, None)
+        state.setdefault("selected_views", {}).pop(view, None)
+        for item in candidates:
+            clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
+            state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
+                status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                retry_count=int(item.get("retry_count") or 0) + 1,
+                seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
@@ -946,21 +1177,44 @@ class LocalHeadImageService:
                 raise LocalHeadImageError(f"Unknown view: {target}")
             self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", target)
         root, state = self._state(run_id)
+        for target in targets:
+            self._clear_owned_selection(run, target)
+            state.setdefault("selected_views", {}).pop(target, None)
         for item in run["candidates"]:
             if item["view"] in targets and Path(str(item.get("image_path") or "")).is_file():
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
-                    status="WAITING_FOR_GATES", gates={}, rejection_gate="", render_error="")
+                    status="WAITING_FOR_GATES", gates={}, rejection_gate="", failed_gate="", render_error="",
+                    human_review={"decision": "undecided", "notes": ""})
+        rankings = state.setdefault("rankings", {})
+        for target in targets:
+            if rankings.get(target):
+                rankings[target].update(
+                    status="STALE",
+                    stale_reason="This view is being re-evaluated; rank it again after current gates finish.",
+                )
         state["status"] = "REEVALUATING"
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
     def retry_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
-        candidate = next((item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id), None)
+        run = self.detail(run_id)
+        candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
-        self.asset_store.assert_change_allowed(self.detail(run_id)["character"], self.detail(run_id)["phase"], "Head-Image", candidate["view"])
-        self._update(run_id, candidate_id, status="PENDING", image_path="", ask_id="", gates={}, rejection_gate="",
-                     render_error="", retry_count=int(candidate.get("retry_count") or 0) + 1)
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
+        image = Path(str(candidate.get("image_path") or ""))
+        if candidate.get("failed_gate") and image.is_file():
+            gates = dict(candidate.get("gates") or {})
+            failed_gate = candidate["failed_gate"]
+            if failed_gate in gates:
+                gates[failed_gate] = {**gates[failed_gate], "status": "FAILED"}
+            self._update(run_id, candidate_id, status="WAITING_FOR_GATES", gates=gates,
+                         failed_gate="", render_error="")
+        else:
+            clear_candidate_artifacts(Path(run["root"]), candidate_id, candidate.get("image_path"))
+            self._update(run_id, candidate_id, status="PENDING", image_path="", image_sha256="", ask_id="",
+                         gates={}, rejection_gate="", failed_gate="", render_error="",
+                         retry_count=int(candidate.get("retry_count") or 0) + 1)
         return self.detail(run_id)
 
     def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str) -> dict[str, Any]:
@@ -982,30 +1236,49 @@ class LocalHeadImageService:
         return self.detail(run_id)
 
     def request_stop(self, run_id: str) -> dict[str, Any]:
-        self._run_update(run_id, stop_requested=True, status="STOPPING")
+        self._run_update(run_id, stop_requested=True, status="CANCELLED")
         self._withdraw_queued_asks(run_id)
         return self.detail(run_id)
 
-    def _withdraw_queued_asks(self, run_id: str) -> None:
-        paths = self.app.ai_proxy_service.ai_proxy_path_service
+    def _withdraw_queued_asks(self, run_id: str, *, affected_views: set[str] | None = None,
+                              candidate_ids: set[str] | None = None) -> None:
+        paths = getattr(getattr(self.app, "ai_proxy_service", None), "ai_proxy_path_service", None)
+        if paths is None:
+            return
         queue_root = Path(self.app.config.base_ai_queue_path)
         prefixes = (f"LocalHeadImage_{run_id}_", f"Ask_LocalHeadImage_{run_id}_")
         for task in paths.task_paths("ask"):
-            if task.name.startswith(prefixes):
+            if not task.name.startswith(prefixes):
+                continue
+            run = self.detail(run_id)
+            matched = next((item for item in run["candidates"]
+                            if f"_{item['candidate_id']}_" in task.name and
+                            (affected_views is None or item["view"] in affected_views) and
+                            (candidate_ids is None or item["candidate_id"] in candidate_ids)), None)
+            if matched:
                 supersede_task(queue_root, task, "Local Head-Image run was cancelled.")
 
     def resume(self, run_id: str) -> dict[str, Any]:
-        self._run_update(run_id, stop_requested=False, status="RUNNING")
+        run = self.detail(run_id)
+        if run.get("status") != "INTERRUPTED":
+            raise LocalHeadImageError("Only an interrupted batch can be resumed; cancelled batches are terminal.")
+        self._run_update(run_id, stop_requested=False, status="QUEUED")
         return self.detail(run_id)
 
     def delete_run(self, run_id: str) -> dict[str, Any]:
         root = self._run_root(run_id)
         run = self.detail(run_id)
-        if any(record.get("selected") and record.get("batch_id") == run_id and not record.get("locked")
-               for record in run["local_assets"].values()):
-            raise LocalHeadImageError("Lock or unselect this batch's local assets before deleting it.")
         if run.get("status") in {"RUNNING", "STOPPING", "REEVALUATING"} and not run.get("interrupted"):
             raise LocalHeadImageError("Stop the batch and wait before deleting it.")
+        assets = run["local_assets"]
+        for view in VIEWS:
+            record = assets.get(self.asset_store.key("Head-Image", view), {})
+            if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
+                self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        for view in reversed(VIEWS):
+            record = assets.get(self.asset_store.key("Head-Image", view), {})
+            if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
+                self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
         self._withdraw_queued_asks(run_id)
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}

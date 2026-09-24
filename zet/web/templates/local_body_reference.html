@@ -28,6 +28,10 @@
     .batch-form { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
     .batch-form[hidden] { display: none; }
     .batch-form label { min-width: 145px; }
+    .batch-builder { border: 1px solid var(--line); border-radius: 8px; margin-top: 1rem; padding: 1rem; }
+    .batch-builder h2 { font-size: 1rem; margin-bottom: .35rem; }
+    .batch-options { align-items: end; border: 0; display: flex; flex-wrap: wrap; gap: .75rem; margin: 0; padding: 0; }
+    .batch-options legend { font-weight: 600; margin-bottom: .5rem; padding: 0; width: 100%; }
     .selected-views { display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; }
     .selected-view { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; padding: .4rem; }
     .selected-view h2 { font-size: .82rem; margin: 0 0 .3rem; text-align: center; }
@@ -90,7 +94,7 @@
   </style>
 </head>
 <body>
-  <header><div><h1>Local Body-Reference</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
+  <header><div><h1>Local Body-Reference</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><nav><a href="/local-head-image">Local Head-Image</a> · <a href="/">Back to dashboard</a></nav></header>
   <main>
     <section class="panel">
       <div class="controls">
@@ -101,15 +105,27 @@
         <button id="rerun" type="button" disabled>Re-run batch</button>
         <button id="reevaluate" type="button" disabled>Re-evaluate batch</button>
         <button id="stop" class="danger-action" type="button" hidden>Stop</button>
+        <button id="resume" type="button" hidden>Resume interrupted batch</button>
         <button id="delete" class="danger" type="button" disabled>Delete batch</button>
       </div>
       <p class="hint">One workspace is active for this character and phase; prior Run IDs remain available as candidate-batch history. Use the controls on a view to regenerate or re-evaluate only that view; the batch controls apply to the whole batch.</p>
       <details><summary>How candidate review works</summary><p class="hint">Narrow gates reject only obvious defects. Luna ranks the candidates that survive, and you select one image for each view. Your selected FRONT image anchors later views; selections stay in Local Body-Reference and do not change canonical assets.</p></details>
-      <form id="new-batch" class="batch-form">
-        <label>Front candidates<input name="front_count" type="number" value="16" min="1"></label>
-        <label>Other candidates per view<input name="other_count" type="number" value="4" min="1"></label>
-        <button class="primary" type="submit">Create new batch</button>
+      <form id="rename-batch" class="batch-form" hidden>
+        <label>Current batch name<input id="batch-name" type="text" maxlength="120" placeholder="Defaults to Run ID"></label>
+        <button class="primary" type="submit">Save batch name</button>
+        <span class="hint">Leave blank to use the Run ID.</span>
       </form>
+      <section class="batch-builder" aria-labelledby="new-batch-heading">
+        <h2 id="new-batch-heading">New batch</h2>
+        <form id="new-batch" class="batch-form">
+          <fieldset class="batch-options">
+            <legend>Candidate counts</legend>
+            <label>Front candidates<input name="front_count" type="number" value="8" min="1"></label>
+            <label>Other candidates per view<input name="other_count" type="number" value="4" min="1"></label>
+            <button class="primary" type="submit">Create new batch</button>
+          </fieldset>
+        </form>
+      </section>
       <p id="status" class="status"></p>
     </section>
     <section id="selected-views" class="selected-views" aria-label="Selected view images"></section>
@@ -274,11 +290,14 @@
     function renderRun(value) {
       const collapsedViews = new Set([...gallery.querySelectorAll('details[data-view]')].filter((item) => !item.open).map((item) => item.dataset.view));
       run = value;
-      const activeStatuses = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','INTERRUPTED','WAITING_FOR_FACE_GATE','WAITING_FOR_GATES','WAITING_FOR_ANALYSIS'];
+      const activeStatuses = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','WAITING_FOR_FACE_GATE','WAITING_FOR_GATES','WAITING_FOR_ANALYSIS'];
       const statusLabel = (status) => ({WAITING_FOR_FACE_GATE:'Waiting for Face Gate', WAITING_FOR_ANALYSIS:'Waiting for Analysis', WAITING_FOR_HUMAN_REVIEW:'Waiting for Human Review'}[status] || String(status || '').replaceAll('_', ' '));
       const busy = Boolean(run && activeStatuses.includes(run.status));
       const stoppable = Boolean(run && busy);
+      $('#rename-batch').hidden = !run;
+      if (document.activeElement !== $('#batch-name')) $('#batch-name').value = run?.batch_name || '';
       $('#stop').hidden = !stoppable; $('#stop').disabled = !stoppable;
+      $('#resume').hidden = !run || !(run.interrupted || run.status === 'INTERRUPTED'); $('#resume').disabled = busy;
       $('#rerun').disabled = !run || busy;
       $('#reevaluate').disabled = !run || !run.candidates?.some((item) =>
         (run.review_version >= 2 ? Boolean(item.image_path) : item.status === 'COMPLETE')) || busy;
@@ -321,7 +340,7 @@
       try {
         const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
         runs = (await request(`/api/local/body-reference/runs?${params}`)).runs || [];
-        runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
+        runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.batch_name || item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
         const chosen = preferred || runs[0]?.run_id || '';
         if (chosen) { runSelect.value = chosen; await loadRun(chosen); } else renderRun(null);
       } catch (error) { setStatus(error.message, true); }
@@ -531,19 +550,17 @@
     });
     $('#gate-prompt-close').addEventListener('click', () => $('#gate-prompt-dialog').close());
     $('#refresh-runs').addEventListener('click', () => void loadRuns(runSelect.value));
+    $('#rename-batch').addEventListener('submit', async (event) => { event.preventDefault(); if (!run) return; try { const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/name`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({batch_name:$('#batch-name').value})}); await loadRuns(updated.run_id); setStatus(`Saved batch name for Run ID ${updated.run_id}.`); } catch (error) { setStatus(error.message, true); } });
     $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = Object.fromEntries(new FormData(event.currentTarget)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); const created = await request('/api/local/body-reference/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
     $('#rerun').addEventListener('click', async () => {
       if (!run) return;
-      let keepFrontAnchor = false;
-      if (run.front_anchor) {
-        keepFrontAnchor = window.confirm(`Keep front anchor ${run.front_anchor} and skip FRONT? Click OK to keep it; Cancel to rerun FRONT with c001 using this anchor's seed.`);
-        if (!keepFrontAnchor && !window.confirm(`Create a new batch and rerun FRONT? c001 will use the previous anchor's seed.`)) return;
-      } else if (!window.confirm(`Create a new batch from ${run.run_id}?`)) return;
+      if (!window.confirm(`Re-run Run ID ${run.run_id}? This clears all generated images and reviews in this batch and starts FRONT over.`)) return;
       try {
-        const created = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?keep_front_anchor=${keepFrontAnchor}`, {method:'POST'});
-        await loadRuns(created.run_id);
+        await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun`, {method:'POST'});
+        await loadRuns(run.run_id);
       } catch (error) { setStatus(error.message, true); }
     });
+    $('#resume').addEventListener('click', async () => { if (!run) return; try { renderRun(await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/resume`, {method:'POST'})); } catch (error) { setStatus(error.message, true); } });
     $('#stop').addEventListener('click', async () => {
       if (!run || $('#stop').disabled) return;
       $('#stop').disabled = true;

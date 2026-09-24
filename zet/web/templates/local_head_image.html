@@ -28,6 +28,15 @@
     .batch-form { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
     .batch-form[hidden] { display: none; }
     .batch-form label { min-width: 145px; }
+    .reference-section, .batch-builder { border: 1px solid var(--line); border-radius: 8px; margin-top: 1rem; padding: 1rem; }
+    .reference-section h2, .batch-builder h2 { font-size: 1rem; margin-bottom: .35rem; }
+    .front-reference-layout { align-items: start; display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr) minmax(220px, 320px); }
+    .reference-inputs { display: grid; gap: .75rem; }
+    .front-reference-box { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; min-height: 190px; padding: .75rem; }
+    .front-reference-box h3 { font-size: .9rem; margin-bottom: .5rem; }
+    #front-source-preview img { display: block; height: 170px; max-width: 100%; object-fit: contain; width: 100%; }
+    .batch-options { align-items: end; border: 0; display: flex; flex-wrap: wrap; gap: .75rem; margin: 0; padding: 0; }
+    .batch-options legend { font-weight: 600; margin-bottom: .5rem; padding: 0; width: 100%; }
     .selected-views { display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; }
     .selected-view { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; padding: .4rem; }
     .selected-view h2 { font-size: .82rem; margin: 0 0 .3rem; text-align: center; }
@@ -83,6 +92,7 @@
     #gate-prompt-dialog { height: auto; max-height: 80vh; padding: 1.5rem; width: min(700px, 92vw); }
     #gate-prompt-text { white-space: pre-wrap; }
     @media (max-width: 900px) {
+      .front-reference-layout { grid-template-columns: 1fr; }
       .review-layout { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 52%) minmax(0, 48%); }
       .review-images { padding: 3rem 1rem 1rem; }
       .review-panel { padding: 1rem; }
@@ -90,7 +100,7 @@
   </style>
 </head>
 <body>
-  <header><div><h1>Local Head-Image</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
+  <header><div><h1>Local Head-Image</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><nav><a href="/local-body-reference">Local Body-Reference</a> · <a href="/">Back to dashboard</a></nav></header>
   <main>
     <section class="panel">
       <div class="controls">
@@ -98,6 +108,7 @@
         <label>Phase<select id="phase"></select></label>
         <label style="min-width:340px"><button id="copy-run-id" class="caption-link" type="button" title="Copy Run ID">Run ID</button><select id="run"></select></label>
         <button id="refresh-runs" type="button">Refresh runs</button>
+        <button id="start" class="primary" type="button" hidden>Start batch</button>
         <button id="rerun" type="button" disabled>Re-run batch</button>
         <button id="reevaluate" type="button" disabled>Re-evaluate batch</button>
         <button id="stop" class="danger-action" type="button" hidden>Stop</button>
@@ -106,14 +117,38 @@
       </div>
       <p class="hint">One workspace is active for this character and phase; prior Run IDs remain available as candidate-batch history. Use view controls to regenerate or re-evaluate one view, or batch controls for the current batch.</p>
       <details><summary>How candidate review works</summary><p class="hint">Narrow gates reject only clear background contrast, framing, orientation, and identity defects. Luna ranks survivors with reasons, and you select one image for each view. The selected FRONT image anchors later views; selections remain in the local asset store and do not change canonical assets.</p></details>
-      <form id="new-batch" class="batch-form">
-        <label>Front candidates<input name="front_count" type="number" value="16" min="1"></label>
-        <label>Other candidates per view<input name="other_count" type="number" value="4" min="1"></label>
-        <label>Front reference (load or paste to replace)<input id="front-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
-        <label style="min-width:250px">Paste an image here<div id="front-source-paste" contenteditable="true" role="textbox" aria-label="Paste front reference image here" style="border:1px dashed #8b95a5;border-radius:5px;padding:.55rem">Click here, then paste</div></label>
-        <span id="front-source-preview" class="muted">No front reference selected; FRONT will use text guidance.</span>
-        <button class="primary" type="submit">Create new batch</button>
+      <form id="rename-batch" class="batch-form" hidden>
+        <label>Current batch name<input id="batch-name" type="text" maxlength="120" placeholder="Defaults to Run ID"></label>
+        <button class="primary" type="submit">Save batch name</button>
+        <span class="hint">Leave blank to use the Run ID.</span>
       </form>
+      <section class="reference-section" aria-labelledby="reference-heading">
+        <h2 id="reference-heading">Front reference</h2>
+        <p class="hint">Choose or paste a reference before starting a batch. Replacing the reference on an existing batch clears its generated images and reviews.</p>
+        <div class="front-reference-layout">
+          <div class="reference-inputs">
+            <label>Choose reference image<input id="front-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+            <label>Paste an image here<div id="front-source-paste" contenteditable="true" role="textbox" aria-label="Paste front reference image here" style="border:1px dashed #8b95a5;border-radius:5px;padding:.55rem">Click here, then paste</div></label>
+          </div>
+          <section class="front-reference-box" aria-label="Reference image used for FRONT">
+            <h3>Reference used for FRONT</h3>
+            <div id="front-source-preview" class="muted">No reference image; FRONT will use text guidance.</div>
+            <button id="remove-front-source" class="danger" type="button" hidden>Remove reference</button>
+          </section>
+        </div>
+      </section>
+      <section class="batch-builder" aria-labelledby="new-batch-heading">
+        <h2 id="new-batch-heading">New batch</h2>
+        <p class="hint">Choose candidate counts and create the batch. Creation saves it as queued; it does not start image generation.</p>
+        <form id="new-batch" class="batch-form">
+          <fieldset class="batch-options">
+            <legend>Candidate counts</legend>
+            <label>Front candidates<input name="front_count" type="number" value="8" min="1"></label>
+            <label>Other candidates per view<input name="other_count" type="number" value="4" min="1"></label>
+            <button class="primary" type="submit">Create new batch</button>
+          </fieldset>
+        </form>
+      </section>
       <p id="status" class="status"></p>
     </section>
     <section id="selected-views" class="selected-views" aria-label="Selected view images"></section>
@@ -155,27 +190,46 @@
     }
     async function setFrontSource(file) {
       if (!file) return;
+      if (run && ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','WAITING_FOR_GATES'].includes(run.status)) {
+        setStatus('Stop the current batch before changing its reference image.', true);
+        $('#front-source-file').value = '';
+        return;
+      }
       try {
         const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
         const uploaded = await request(`/api/local/head-image/sources?${params}&filename=${encodeURIComponent(file.name || 'pasted-reference.png')}`, {method:'POST', headers:{'Content-Type':file.type || 'application/octet-stream'}, body:file});
         frontSourcePath = uploaded.path;
         frontSourcePreviewUrl = URL.createObjectURL(file);
         renderFrontSourcePreview();
-        setStatus('Replacement front reference ready for the next batch.');
-      } catch (error) { setStatus(error.message, true); }
+        if (run) {
+          const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/source`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({source_path:uploaded.path})});
+          frontSourcePath = '';
+          URL.revokeObjectURL(frontSourcePreviewUrl);
+          frontSourcePreviewUrl = '';
+          await loadRuns(updated.run_id);
+          setStatus('Reference saved to this batch. Generated images and reviews were cleared; start the batch to regenerate.');
+        } else {
+          setStatus('Reference saved for the next batch.');
+        }
+      } catch (error) { $('#front-source-file').value = ''; setStatus(error.message, true); }
     }
     function renderFrontSourcePreview() {
       const preview = $('#front-source-preview');
       const sourceUrl = frontSourcePreviewUrl || (run?.front_source ? `/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/source` : '');
+      const hasReference = Boolean(frontSourcePreviewUrl || frontSourcePath || run?.front_source);
+      $('#remove-front-source').hidden = !hasReference;
       if (!sourceUrl) {
-        preview.textContent = 'No front reference selected; FRONT will use text guidance.';
+        preview.textContent = 'No reference image; FRONT will use text guidance.';
         return;
       }
-      const label = frontSourcePreviewUrl ? 'Replacement reference ready' : 'Current batch front reference';
-      preview.innerHTML = `<img src="${esc(sourceUrl)}" alt="Front reference preview" style="height:90px;max-width:150px;object-fit:contain;vertical-align:middle"> ${label}`;
+      const label = frontSourcePreviewUrl
+        ? (run ? 'Selected reference; save will reset this batch.' : 'Saved for the next batch.')
+        : 'This image is saved with the selected batch.';
+      preview.innerHTML = `<img src="${esc(sourceUrl)}" alt="Front reference image"> <span>${label}</span>`;
     }
     function clearFrontSource() {
       frontSourcePath = '';
+      if (frontSourcePreviewUrl) URL.revokeObjectURL(frontSourcePreviewUrl);
       frontSourcePreviewUrl = '';
       $('#front-source-file').value = '';
       renderFrontSourcePreview();
@@ -209,8 +263,9 @@
     }
     function gateSummary(candidate) {
       const gates = candidate.gates || {};
-      const labels = {background:'Background', framing:'Framing', orientation:'View orientation', identity:'Front-anchor identity', source_identity:'Source-image identity'};
-      const keys = candidate.view === 'FRONT' ? ['background', 'framing', 'orientation', ...(run?.front_source ? ['source_identity'] : [])] : ['background', 'framing', 'orientation', 'identity'];
+      const labels = {background:'Background', framing:'Framing', orientation:'View orientation', gaze:'Gaze direction', identity:'Front-anchor identity', source_identity:'Source-image identity'};
+      const gazeViews = ['FRONT', 'FRONT_LEFT_3_4', 'FRONT_RIGHT_3_4', 'LEFT_PROFILE', 'RIGHT_PROFILE'];
+      const keys = ['background', 'framing', 'orientation', ...(gazeViews.includes(candidate.view) ? ['gaze'] : []), ...(candidate.view === 'FRONT' ? (run?.front_source ? ['source_identity'] : []) : ['identity'])];
       return keys.map((key) => {
         const gate = gates[key] || {};
         const verdict = gate.verdict;
@@ -315,12 +370,17 @@
       const statusLabel = (status) => ({WAITING_FOR_FACE_GATE:'Waiting for Face Gate', WAITING_FOR_ANALYSIS:'Waiting for Analysis', WAITING_FOR_HUMAN_REVIEW:'Waiting for Human Review'}[status] || String(status || '').replaceAll('_', ' '));
       const busy = Boolean(run && activeStatuses.includes(run.status));
       const stoppable = Boolean(run && busy);
+      $('#start').hidden = !run || run.status !== 'QUEUED';
+      $('#start').disabled = busy;
+      $('#rename-batch').hidden = !run;
+      if (document.activeElement !== $('#batch-name')) $('#batch-name').value = run?.batch_name || '';
       $('#stop').hidden = !stoppable; $('#stop').disabled = !stoppable;
       $('#resume').hidden = !run || !(run.interrupted || run.status === 'STOPPED'); $('#resume').disabled = busy;
       $('#rerun').disabled = !run || busy;
       $('#reevaluate').disabled = !run || !run.candidates?.some((item) =>
         (run.review_version >= 2 ? Boolean(item.image_path) : item.status === 'COMPLETE')) || busy;
       $('#delete').disabled = !run || busy; $('#new-batch button[type="submit"]').disabled = busy;
+      $('#remove-front-source').disabled = busy;
       if (!run) { gallery.innerHTML = ''; selectedViewsTray.innerHTML = ''; setStatus('Select a character and phase, then create or select a batch.'); return; }
       const counts = (run.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
       setStatus(`${run.status} · ${counts.COMPLETE || 0}/${run.candidate_count || run.candidates.length} complete · front anchor: ${run.front_anchor || 'not selected'}${run.error ? ` · ${run.error}` : ''}`);
@@ -359,7 +419,7 @@
       try {
         const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
         runs = (await request(`/api/local/head-image/runs?${params}`)).runs || [];
-        runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
+        runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.batch_name || item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
         const chosen = preferred || runs[0]?.run_id || '';
         if (chosen) { runSelect.value = chosen; await loadRun(chosen); } else renderRun(null);
       } catch (error) { setStatus(error.message, true); }
@@ -389,7 +449,7 @@
     function renderReview() {
       const candidate = reviewCandidates[reviewIndex]; if (!candidate) return;
       reviewImage.src = imageUrl(candidate);
-      const anchor = (run?.candidates || []).find((item) => item.candidate_id === run.front_anchor && item.status === 'COMPLETE');
+      const anchor = (run?.candidates || []).find((item) => item.candidate_id === run.front_anchor && item.view === 'FRONT' && item.image_path);
       const oppositeView = oppositeViews[candidate.view];
       const selectedOppositeId = oppositeView && run?.selected_views?.[oppositeView];
       const selectedOpposite = selectedOppositeId && (run?.candidates || []).find((item) => item.candidate_id === selectedOppositeId && item.view === oppositeView && item.image_path);
@@ -564,19 +624,35 @@
     });
     $('#gate-prompt-close').addEventListener('click', () => $('#gate-prompt-dialog').close());
     $('#refresh-runs').addEventListener('click', () => void loadRuns(runSelect.value));
+    $('#start').addEventListener('click', async () => { if (!run || run.status !== 'QUEUED') return; const runId = run.run_id; $('#start').disabled = true; try { await request(`/api/local/head-image/runs/${encodeURIComponent(runId)}/start`, {method:'POST'}); $('#start').hidden = true; setStatus(`Started FRONT generation for Run ID ${runId}.`); window.setTimeout(() => void loadRun(runId), 750); } catch (error) { $('#start').disabled = false; setStatus(error.message, true); } });
+    $('#rename-batch').addEventListener('submit', async (event) => { event.preventDefault(); if (!run) return; try { const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/name`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({batch_name:$('#batch-name').value})}); await loadRuns(updated.run_id); setStatus(`Saved batch name for Run ID ${updated.run_id}.`); } catch (error) { setStatus(error.message, true); } });
     $('#front-source-file').addEventListener('change', (event) => void setFrontSource(event.target.files?.[0]));
     $('#front-source-paste').addEventListener('paste', (event) => {
       const item = [...(event.clipboardData?.items || [])].find((entry) => entry.type.startsWith('image/'));
       const file = item?.getAsFile();
       if (file) { event.preventDefault(); void setFrontSource(new File([file], `pasted-reference.${file.type.split('/')[1] || 'png'}`, {type:file.type})); }
     });
+    $('#remove-front-source').addEventListener('click', async () => {
+      if (run?.front_source) {
+        if (!window.confirm(`Remove the FRONT reference from Run ID ${run.run_id}? This clears generated images and reviews in this batch.`)) return;
+        try {
+          const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/source`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({source_path:''})});
+          clearFrontSource();
+          await loadRuns(updated.run_id);
+          setStatus('Reference removed. Generated images and reviews were cleared; FRONT will use text guidance after you start the batch.');
+        } catch (error) { setStatus(error.message, true); }
+      } else {
+        clearFrontSource();
+        setStatus('Reference removed from the next batch.');
+      }
+    });
     $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { const data = Object.fromEntries(new FormData(form)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); data.front_source_path = frontSourcePath; const created = await request('/api/local/head-image/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); clearFrontSource(); form.reset(); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
     $('#rerun').addEventListener('click', async () => {
       if (!run) return;
+      if (!window.confirm(`Re-run Run ID ${run.run_id}? This clears all generated images and reviews in this batch and starts FRONT over. The current reference image is kept.`)) return;
       try {
-        const created = await request('/api/local/head-image/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({character:run.character, phase:run.phase, front_count:run.front_count, other_count:run.other_count, front_source_path:frontSourcePath || run.front_source || ''})});
-        clearFrontSource();
-        await loadRuns(created.run_id);
+        await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/rerun`, {method:'POST'});
+        await loadRuns(run.run_id);
       } catch (error) { setStatus(error.message, true); }
     });
     $('#stop').addEventListener('click', async () => {
@@ -589,7 +665,23 @@
     });
     $('#resume').addEventListener('click', async () => { if (!run) return; try { renderRun(await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/resume`, {method:'POST'})); } catch (error) { setStatus(error.message, true); } });
     $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
-    $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
+    $('#delete').addEventListener('click', async () => {
+      if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and unlocked local selections.`)) return;
+      const runId = run.run_id;
+      $('#delete').disabled = true;
+      setStatus(`Deleting batch ${runId}…`);
+      try {
+        await request(`/api/local/head-image/runs/${encodeURIComponent(runId)}`, {method:'DELETE'});
+        run = null;
+        await loadRuns();
+        setStatus(`Deleted batch ${runId}.`);
+      } catch (error) {
+        setStatus(error.message, true);
+        window.alert(`Could not delete batch ${runId}: ${error.message}`);
+      } finally {
+        $('#delete').disabled = !run || ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','WAITING_FOR_GATES'].includes(run.status);
+      }
+    });
     $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));
     reflectionToggle.addEventListener('change', () => { compareReflection = reflectionToggle.checked; renderReview(); });
     reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });

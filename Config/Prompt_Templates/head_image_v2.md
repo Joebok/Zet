@@ -45,6 +45,8 @@ Judge the candidate image against the visible requirements below and the supplie
 
 {{HEAD_IMAGE_SOURCE_INSTRUCTIONS}}
 
+{{HEAD_IMAGE_GAZE_RULE}}
+
 # Subject Details
 
 {{HEAD_DESCRIPTION_FACTS}}

@@ -59,6 +59,18 @@ def _source_reference(references: list[dict]) -> dict | None:
     return sources[0]
 
 
+def _local_source_rules(rules: str) -> str:
+    """Make legacy optional-source wording direct when a source is present."""
+    lines = []
+    for line in rules.splitlines():
+        if line.lstrip().startswith(("* Without a source image", "- Without a source image")):
+            continue
+        line = line.replace("Optional source-image contract:", "Source-image contract:")
+        line = line.replace("When a source image is supplied, use it as", "Use the source image as")
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def compile_head_image_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional",
@@ -98,6 +110,8 @@ def compile_head_image_job(
     if pipeline_mode == "local" and not source_references:
         for name in ("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_RULES"):
             sections[name] = ""
+    elif pipeline_mode == "local":
+        sections["HEAD_IMAGE_SOURCE_RULES"] = _local_source_rules(sections.get("HEAD_IMAGE_SOURCE_RULES", ""))
     if str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
         for name in (
             "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
@@ -123,16 +137,14 @@ def compile_head_image_job(
     contract_values["LOCAL_RENDER_MODE"] = render_mode
     if source_references and view_token != "FRONT":
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
-            "Use Image 1, the selected local FRONT render, as the identity and appearance anchor. Preserve recognizable traits while turning the head to the requested view."
+            "Use Image 1, the selected local FRONT render, as the identity and appearance anchor only. The source gaze is not authoritative. Turn the head to the requested view and aim the eyes along the face and nose direction specified below."
         )
     elif source_references:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
-            "Use Image 1 as an optional supplied identity reference. Preserve recognizable traits while following the requested target view and phase details."
+            "Use Image 1 as the identity reference; its gaze is not authoritative. Preserve recognizable traits while following the requested target view, eye direction, and phase details."
         )
     else:
-        contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
-            "No reference image is supplied. Generate the requested view from the authored character facts."
-        )
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = ""
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -155,6 +167,10 @@ def compile_head_image_job(
         "VIEW_TOKEN": view_token,
         "VIEW_LABEL": str(view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(view_data, "head", task, include_intro=True),
+        "HEAD_IMAGE_GAZE_RULE": (
+            "Do not preserve the source image's camera-facing gaze; the subject must not look toward the viewer."
+            if pipeline_mode == "local" and view_token != "FRONT" else ""
+        ),
         **contract_values,
         **template_metadata(template_path),
     }
@@ -164,6 +180,15 @@ def compile_head_image_job(
         "VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view label", "json_pointer": f"/views/{view_token}/label", "editable": True},
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
     }
+    gaze_review_items = {
+        "FRONT": "- [ ] The eyes look forward with the face.",
+        "FRONT_LEFT_3_4": "- [ ] Any visible eyes follow the turned face and nose direction without looking toward the viewer.",
+        "FRONT_RIGHT_3_4": "- [ ] Any visible eyes follow the turned face and nose direction without looking toward the viewer.",
+        "LEFT_PROFILE": "- [ ] The visible eye follows the nose direction instead of looking toward the viewer.",
+        "RIGHT_PROFILE": "- [ ] The visible eye follows the nose direction instead of looking toward the viewer.",
+        "BACK_LEFT_3_4": "- [ ] If an eye is visible, its gaze remains aligned with the away-facing head.",
+        "BACK_RIGHT_3_4": "- [ ] If an eye is visible, its gaze remains aligned with the away-facing head.",
+    }.get(view_token, "")
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,
         bundle=bundle,
@@ -212,6 +237,7 @@ Reviewed At:
 ## Checklist
 
 - [ ] The requested head view is exact and not mirrored.
+{gaze_review_items}
 - [ ] The result is recognizably the same character as the required supplied source.
 - [ ] Explicit target-phase changes are clearly visible rather than being suppressed by the source appearance.
 - [ ] If the target phase changes apparent age, the face itself communicates that age change without relying only on hair color.
