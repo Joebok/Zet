@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Local Body-Reference</title>
+  <title>Local Head-Image</title>
   <style>
     :root { color-scheme: light; --ink:#202124; --muted:#667085; --line:#d8dee8; --panel:#fff; --surface:#f5f7fb; --accent:#2457a6; --danger:#b42318; }
     * { box-sizing: border-box; }
@@ -90,7 +90,7 @@
   </style>
 </head>
 <body>
-  <header><div><h1>Local Body-Reference</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
+  <header><div><h1>Local Head-Image</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><a href="/">Back to dashboard</a></header>
   <main>
     <section class="panel">
       <div class="controls">
@@ -101,13 +101,17 @@
         <button id="rerun" type="button" disabled>Re-run batch</button>
         <button id="reevaluate" type="button" disabled>Re-evaluate batch</button>
         <button id="stop" class="danger-action" type="button" hidden>Stop</button>
+        <button id="resume" type="button" hidden>Resume</button>
         <button id="delete" class="danger" type="button" disabled>Delete batch</button>
       </div>
-      <p class="hint">One workspace is active for this character and phase; prior Run IDs remain available as candidate-batch history. Use the controls on a view to regenerate or re-evaluate only that view; the batch controls apply to the whole batch.</p>
-      <details><summary>How candidate review works</summary><p class="hint">Narrow gates reject only obvious defects. Luna ranks the candidates that survive, and you select one image for each view. Your selected FRONT image anchors later views; selections stay in Local Body-Reference and do not change canonical assets.</p></details>
+      <p class="hint">One workspace is active for this character and phase; prior Run IDs remain available as candidate-batch history. Use view controls to regenerate or re-evaluate one view, or batch controls for the current batch.</p>
+      <details><summary>How candidate review works</summary><p class="hint">Narrow gates reject only clear background contrast, framing, orientation, and identity defects. Luna ranks survivors with reasons, and you select one image for each view. The selected FRONT image anchors later views; selections remain in the local asset store and do not change canonical assets.</p></details>
       <form id="new-batch" class="batch-form">
         <label>Front candidates<input name="front_count" type="number" value="16" min="1"></label>
         <label>Other candidates per view<input name="other_count" type="number" value="4" min="1"></label>
+        <label>Front reference (load or paste to replace)<input id="front-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <label style="min-width:250px">Paste an image here<div id="front-source-paste" contenteditable="true" role="textbox" aria-label="Paste front reference image here" style="border:1px dashed #8b95a5;border-radius:5px;padding:.55rem">Click here, then paste</div></label>
+        <span id="front-source-preview" class="muted">No front reference selected; FRONT will use text guidance.</span>
         <button class="primary" type="submit">Create new batch</button>
       </form>
       <p id="status" class="status"></p>
@@ -116,7 +120,7 @@
     <section id="gallery" class="views"></section>
   </main>
 
-  <dialog id="review-dialog" aria-label="Body-Reference candidate review">
+  <dialog id="review-dialog" aria-label="Head-Image candidate review">
     <button id="review-close" class="review-close" type="button">Close</button>
     <button id="review-prev" class="review-nav review-prev" type="button" aria-label="Previous candidate">‹</button>
     <div class="review-layout"><section class="review-images"><div class="review-image"><div class="review-image-heading"><h3 id="review-compare-title">Front anchor</h3><label id="review-reflection-toggle-label" class="review-reflection-toggle" hidden><input id="review-reflection-toggle" type="checkbox"> Compare opposite-side selection</label></div><img id="review-anchor-image" alt=""><p id="review-anchor-message" class="hint"></p></div><div class="review-image"><h3>Image to review</h3><img id="review-image" alt=""></div></section><aside id="review-panel" class="review-panel"></aside></div>
@@ -130,6 +134,8 @@
     const status = $('#status'), gallery = $('#gallery'), selectedViewsTray = $('#selected-views'), reviewDialog = $('#review-dialog');
     const reviewImage = $('#review-image'), reviewAnchorImage = $('#review-anchor-image'), reviewAnchorMessage = $('#review-anchor-message'), reviewPanel = $('#review-panel');
     const reviewCompareTitle = $('#review-compare-title'), reflectionToggleLabel = $('#review-reflection-toggle-label'), reflectionToggle = $('#review-reflection-toggle');
+    let frontSourcePath = '';
+    let frontSourcePreviewUrl = '';
     let context = {characters: [], phases_by_character: {}};
     let run = null, runs = [], reviewCandidates = [], reviewIndex = -1;
     let compareReflection = false;
@@ -139,13 +145,40 @@
       BACK_LEFT_3_4: 'BACK_RIGHT_3_4', BACK_RIGHT_3_4: 'BACK_LEFT_3_4'
     };
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const imageUrl = (candidate) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/images/${encodeURIComponent(candidate.candidate_id)}`;
+    const imageUrl = (candidate) => `/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/images/${encodeURIComponent(candidate.candidate_id)}`;
     function setStatus(message, error = false) { status.textContent = message || ''; status.classList.toggle('fail', error); }
     async function request(url, options = {}) {
       const response = await fetch(url, options); let data = {};
       try { data = await response.json(); } catch (_) { data = {}; }
       if (!response.ok) throw new Error(data.detail || 'Request failed');
       return data;
+    }
+    async function setFrontSource(file) {
+      if (!file) return;
+      try {
+        const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
+        const uploaded = await request(`/api/local/head-image/sources?${params}&filename=${encodeURIComponent(file.name || 'pasted-reference.png')}`, {method:'POST', headers:{'Content-Type':file.type || 'application/octet-stream'}, body:file});
+        frontSourcePath = uploaded.path;
+        frontSourcePreviewUrl = URL.createObjectURL(file);
+        renderFrontSourcePreview();
+        setStatus('Replacement front reference ready for the next batch.');
+      } catch (error) { setStatus(error.message, true); }
+    }
+    function renderFrontSourcePreview() {
+      const preview = $('#front-source-preview');
+      const sourceUrl = frontSourcePreviewUrl || (run?.front_source ? `/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/source` : '');
+      if (!sourceUrl) {
+        preview.textContent = 'No front reference selected; FRONT will use text guidance.';
+        return;
+      }
+      const label = frontSourcePreviewUrl ? 'Replacement reference ready' : 'Current batch front reference';
+      preview.innerHTML = `<img src="${esc(sourceUrl)}" alt="Front reference preview" style="height:90px;max-width:150px;object-fit:contain;vertical-align:middle"> ${label}`;
+    }
+    function clearFrontSource() {
+      frontSourcePath = '';
+      frontSourcePreviewUrl = '';
+      $('#front-source-file').value = '';
+      renderFrontSourcePreview();
     }
     function fill(select, values, selected = '') {
       select.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join('');
@@ -176,17 +209,18 @@
     }
     function gateSummary(candidate) {
       const gates = candidate.gates || {};
-      const labels = {face:'Face', proportion:'Proportion', framing:'Framing', orientation:'Orientation', body_identity:'Body identity'};
-      const keys = candidate.view === 'FRONT' ? ['face', 'proportion', 'framing', 'orientation'] : [...Object.keys(labels)];
+      const labels = {background:'Background', framing:'Framing', orientation:'View orientation', identity:'Front-anchor identity', source_identity:'Source-image identity'};
+      const keys = candidate.view === 'FRONT' ? ['background', 'framing', 'orientation', ...(run?.front_source ? ['source_identity'] : [])] : ['background', 'framing', 'orientation', 'identity'];
       return keys.map((key) => {
         const gate = gates[key] || {};
         const verdict = gate.verdict;
         const rejected = verdict === 'TRUE';
         const failed = gate.status === 'FAILED';
-        const disabled = key === 'orientation' || gate.status === 'DISABLED';
-        const text = disabled ? 'Disabled' : verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
-        const details = disabled ? (failed || rejected ? ' — Re-evaluate this view to clear the previous result.' : '') : rejected ? ` — ${esc(gate.reason || 'visible defect')}` : gate.error ? ` — ${esc(gate.error)}` : '';
-        return `<p class="${disabled ? 'muted' : rejected || failed ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${!disabled && (rejected || failed) ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
+        const stale = gate.status === 'STALE';
+        const disabled = gate.status === 'DISABLED';
+        const text = disabled ? 'Disabled' : stale ? 'Stale' : verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
+        const details = stale ? ' — re-evaluate after selecting the current FRONT anchor.' : disabled ? (failed || rejected ? ' — Re-evaluate this view to clear the previous result.' : '') : rejected ? ` — ${esc(gate.reason || 'visible defect')}` : gate.error ? ` — ${esc(gate.error)}` : '';
+        return `<p class="${disabled || stale ? 'muted' : rejected || failed ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${!disabled && (rejected || failed) ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
       }).join('');
     }
     function addViewPromptLinks(container, runId, pipeline, specificationRoute) {
@@ -216,23 +250,23 @@
         return candidateId ? (byView[view] || []).find((item) => item.candidate_id === candidateId && item.image_path) : null;
       });
       const visibleSelectedViews = new Set(selectedCandidates.filter(Boolean).map((candidate) => candidate.view));
-      const hasLockedAssets = (value.views || []).some((view) => (value.local_assets || {})[`body-reference:${view}`]?.locked);
+      const hasLockedAssets = (value.views || []).some((view) => (value.local_assets || {})[`head-image:${view}`]?.locked);
       selectedViewsTray.innerHTML = visibleSelectedViews.size || hasLockedAssets ? (value.views || []).map((view, index) => {
         const candidate = selectedCandidates[index];
-        const localAsset = (value.local_assets || {})[`body-reference:${view}`] || {};
+        const localAsset = (value.local_assets || {})[`head-image:${view}`] || {};
         const assetMatches = Boolean(candidate && localAsset.candidate_id === candidate.candidate_id && localAsset.batch_id === value.run_id);
         const foreignLock = Boolean(localAsset.locked && !assetMatches);
         return candidate
-          ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="${localAsset.locked && assetMatches ? 'pass' : 'muted'}">${foreignLock ? `Another batch is locked (${esc(localAsset.batch_id || 'unknown')})` : localAsset.locked && assetMatches ? 'Locked local asset' : assetMatches ? 'Selected · not locked' : 'Selected in this batch · not current local asset'}</p><button class="selected-view-image" data-review="${esc(candidate.candidate_id)}" type="button" aria-label="Review selected ${esc(view)} image"><img src="${imageUrl(candidate)}" alt="Selected ${esc(view)} image"></button><div class="card-actions">${view === 'FRONT' && value.front_anchor ? `<button data-proceed type="button" ${busy ? 'disabled' : ''}>Proceed</button>` : ''}${foreignLock ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock earlier batch</button>` : localAsset.locked ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button>` : assetMatches ? `<button data-lock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Lock</button><button data-unselect-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unselect</button>` : `<button data-select-view="${esc(view)}" data-candidate="${esc(candidate.candidate_id)}" type="button" class="primary" ${busy ? 'disabled' : ''}>Use as local selection</button>`}</div></article>`
-          : localAsset.locked ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="pass">Locked local asset · from ${esc(localAsset.batch_id || 'earlier batch')}</p><img class="selected-view-image" src="/api/local/assets/${encodeURIComponent(`body-reference:${view}`)}/image?character=${encodeURIComponent(value.character)}&phase=${encodeURIComponent(value.phase)}" alt="Locked ${esc(view)} local body image"><div class="card-actions"><button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button></div></article>`
+          ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="${localAsset.locked && assetMatches ? 'pass' : 'muted'}">${foreignLock ? `Another batch is locked (${esc(localAsset.batch_id || 'unknown')})` : localAsset.locked && assetMatches ? 'Locked local asset' : assetMatches ? 'Selected · not locked' : 'Selected in this batch · not current local asset'}</p><button class="selected-view-image" data-review="${esc(candidate.candidate_id)}" type="button" aria-label="Review selected ${esc(view)} image"><img src="${imageUrl(candidate)}" alt="Selected ${esc(view)} image"></button><div class="card-actions">${view === 'FRONT' && value.front_anchor ? `<button data-proceed type="button" ${busy ? 'disabled' : ''}>Generate other views</button>` : ''}${foreignLock ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock earlier batch</button>` : localAsset.locked ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button>` : assetMatches ? `<button data-lock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Lock</button><button data-unselect-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unselect</button>` : `<button data-select-view="${esc(view)}" data-candidate="${esc(candidate.candidate_id)}" type="button" class="primary" ${busy ? 'disabled' : ''}>Use as local selection</button>`}</div></article>`
+          : localAsset.locked ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="pass">Locked local asset · from ${esc(localAsset.batch_id || 'earlier batch')}</p><img class="selected-view-image" src="/api/local/assets/${encodeURIComponent(`head-image:${view}`)}/image?character=${encodeURIComponent(value.character)}&phase=${encodeURIComponent(value.phase)}" alt="Locked ${esc(view)} local head image"><div class="card-actions"><button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button></div></article>`
           : `<article class="selected-view"><h2>${esc(view)}</h2><div class="selected-view-empty" aria-label="No image selected for ${esc(view)}"></div></article>`;
       }).join('') : '';
-      addViewPromptLinks(selectedViewsTray, value.run_id, 'body-reference', 'review-prompt');
-      const promptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(value.run_id)}/review-prompt/${encodeURIComponent(view)}`;
-      const imagePromptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(value.run_id)}/image-prompt/${encodeURIComponent(view)}`;
+      addViewPromptLinks(selectedViewsTray, value.run_id, 'head-image', 'review-spec');
+      const promptUrl = (view) => `/api/local/head-image/runs/${encodeURIComponent(value.run_id)}/review-spec/${encodeURIComponent(view)}`;
+      const imagePromptUrl = (view) => `/api/local/head-image/runs/${encodeURIComponent(value.run_id)}/image-prompt/${encodeURIComponent(view)}`;
       gallery.innerHTML = (value.views || []).filter((view) => !visibleSelectedViews.has(view)).map((view) => {
         const candidates = byView[view] || [];
-        const viewLocked = Boolean((value.local_assets || {})[`body-reference:${view}`]?.locked);
+        const viewLocked = Boolean((value.local_assets || {})[`head-image:${view}`]?.locked);
         const ranking = (value.rankings || {})[view] || {};
         const selectedId = selectedViews[view];
         const rankingById = Object.fromEntries((ranking.entries || []).map((entry, index) => [entry.candidate_id, { ...entry, position: index + 1 }]));
@@ -243,8 +277,10 @@
         const open = collapsedViews.has(view) ? '' : ' open';
         const positions = new Map(survivors.map((id, index) => [id, index]));
         candidates.sort((a, b) => (positions.get(a.candidate_id) ?? Infinity) - (positions.get(b.candidate_id) ?? Infinity));
-        const canRank = canReview && candidates.some((item) => ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(item.status));
-        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${selectedId ? `selected ${esc(selectedId)}` : 'no selection'}</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${canReview && candidates.length ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${canReview && eligibleFailed ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${canReview && hasImages ? '' : 'disabled'}>Re-evaluate</button><button data-rank-view="${esc(view)}" type="button" ${canRank ? '' : 'disabled'}>Rank survivors</button>${view === 'FRONT' ? `<button data-proceed type="button" ${value.front_anchor && !busy ? '' : 'disabled'}>Proceed</button>` : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View review specification for ${esc(view)}</a> · <a href="${imagePromptUrl(view)}" target="_blank" rel="noopener">View image prompt</a></p><div class="cards">${candidates.map((candidate) => {
+        const hasStaleGates = candidates.some((item) => Object.values(item.gates || {}).some((gate) => gate.status === 'STALE'));
+        const canRank = canReview && !hasStaleGates && !['QUEUED', 'RUNNING'].includes(ranking.status) && candidates.some((item) => ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(item.status));
+        const rankingLabel = ranking.status === 'FAILED' ? `Luna ranking failed: ${ranking.error || 'Unknown error'}` : ranking.status === 'QUEUED' || ranking.status === 'RUNNING' ? 'Luna ranking in progress' : ranking.status === 'COMPLETE' ? 'Luna ranked' : '';
+        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${selectedId ? `selected ${esc(selectedId)}` : 'no selection'}${rankingLabel ? ` · ${esc(rankingLabel)}` : ''}</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${canReview && candidates.length ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${canReview && eligibleFailed ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${canReview && hasImages ? '' : 'disabled'}>Re-evaluate</button><button data-rank-view="${esc(view)}" type="button" ${canRank ? '' : 'disabled'}>Rank survivors</button>${view === 'FRONT' ? `<button data-proceed type="button" ${value.front_anchor && !busy ? '' : 'disabled'}>Proceed</button>` : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View review specification for ${esc(view)}</a> · <a href="${imagePromptUrl(view)}" target="_blank" rel="noopener">View image prompt</a></p><div class="cards">${candidates.map((candidate) => {
           const selected = selectedId === candidate.candidate_id;
           const rank = rankingById[candidate.candidate_id];
           const rejected = candidate.status === 'GATE_REJECTED';
@@ -274,11 +310,13 @@
     function renderRun(value) {
       const collapsedViews = new Set([...gallery.querySelectorAll('details[data-view]')].filter((item) => !item.open).map((item) => item.dataset.view));
       run = value;
-      const activeStatuses = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','INTERRUPTED','WAITING_FOR_FACE_GATE','WAITING_FOR_GATES','WAITING_FOR_ANALYSIS'];
+      renderFrontSourcePreview();
+      const activeStatuses = ['PREFLIGHT','RUNNING','STOPPING','REEVALUATING','WAITING_FOR_GATES'];
       const statusLabel = (status) => ({WAITING_FOR_FACE_GATE:'Waiting for Face Gate', WAITING_FOR_ANALYSIS:'Waiting for Analysis', WAITING_FOR_HUMAN_REVIEW:'Waiting for Human Review'}[status] || String(status || '').replaceAll('_', ' '));
       const busy = Boolean(run && activeStatuses.includes(run.status));
       const stoppable = Boolean(run && busy);
       $('#stop').hidden = !stoppable; $('#stop').disabled = !stoppable;
+      $('#resume').hidden = !run || !(run.interrupted || run.status === 'STOPPED'); $('#resume').disabled = busy;
       $('#rerun').disabled = !run || busy;
       $('#reevaluate').disabled = !run || !run.candidates?.some((item) =>
         (run.review_version >= 2 ? Boolean(item.image_path) : item.status === 'COMPLETE')) || busy;
@@ -289,8 +327,8 @@
       if (run.review_version >= 2) { renderRunV2(run, collapsedViews, busy, statusLabel); return; }
       selectedViewsTray.innerHTML = '';
       const byView = (run.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
-      const promptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/review-prompt/${encodeURIComponent(view)}`;
-      const imagePromptUrl = (view) => `/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/image-prompt/${encodeURIComponent(view)}`;
+      const promptUrl = (view) => `/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/review-spec/${encodeURIComponent(view)}`;
+      const imagePromptUrl = (view) => `/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/image-prompt/${encodeURIComponent(view)}`;
       gallery.innerHTML = (run.views || []).map((view) => {
         const viewCandidates = byView[view] || [];
         const completeCount = viewCandidates.filter((item) => item.status === 'COMPLETE').length;
@@ -320,7 +358,7 @@
       if (!characterSelect.value || !phaseSelect.value) { runs = []; runSelect.innerHTML = ''; renderRun(null); return; }
       try {
         const params = new URLSearchParams({character: characterSelect.value, phase: phaseSelect.value});
-        runs = (await request(`/api/local/body-reference/runs?${params}`)).runs || [];
+        runs = (await request(`/api/local/head-image/runs?${params}`)).runs || [];
         runSelect.innerHTML = runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.status)} · ${item.complete_count}/${item.candidate_count}</option>`).join('');
         const chosen = preferred || runs[0]?.run_id || '';
         if (chosen) { runSelect.value = chosen; await loadRun(chosen); } else renderRun(null);
@@ -328,7 +366,7 @@
     }
     async function loadRun(runId = runSelect.value) {
       if (!runId) { renderRun(null); return; }
-      try { renderRun(await request(`/api/local/body-reference/runs/${encodeURIComponent(runId)}`)); }
+      try { renderRun(await request(`/api/local/head-image/runs/${encodeURIComponent(runId)}`)); }
       catch (error) { setStatus(error.message, true); }
     }
     function orderedReviewCandidates() {
@@ -380,7 +418,7 @@
         if (canReview) {
           const position = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
           const actions = reviewPanel.querySelector('.button-row');
-          actions?.insertAdjacentHTML('beforeend', `<button data-rank-direction="up" type="button" ${position <= 0 ? 'disabled' : ''}>Rank up</button><button data-rank-direction="down" type="button" ${position >= ranking.ordered_candidate_ids.length - 1 ? 'disabled' : ''}>Rank down</button>`);
+          actions?.insertAdjacentHTML('beforeend', `<button data-rank-direction="up" type="button" ${position <= 0 ? 'disabled' : ''}>Rank up</button><button data-rank-direction="down" type="button" ${position >= (ranking.ordered_candidate_ids || []).length - 1 ? 'disabled' : ''}>Rank down</button>`);
           reviewPanel.querySelectorAll('[data-rank-direction]').forEach((button) => button.addEventListener('click', () => void moveRank(candidate.view, candidate.candidate_id, button.dataset.rankDirection)));
           const savedDecision = human.decision || 'undecided';
           reviewPanel.querySelector(`[data-field="decision"][value="${savedDecision}"]`).checked = true;
@@ -404,22 +442,17 @@
       const candidate = reviewCandidates[reviewIndex];
       if (reviewPanel.querySelector('[data-field="decision"]').disabled) return true;
       try {
-        await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
+        await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
         const candidateId = candidate.candidate_id;
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.review_version >= 2 ? orderedReviewCandidates() : run.candidates.filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.review_version >= 2 ? orderedReviewCandidates() : run.candidates.filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
         reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
         if (render) renderReview();
         return true;
       } catch (error) { setStatus(error.message, true); return false; }
     }
-    async function selectAnchor() {
-      const candidate = reviewCandidates[reviewIndex];
-      try { run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/front-anchor`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidate.candidate_id})}); renderRun(run); renderReview(); }
-      catch (error) { setStatus(error.message, true); }
-    }
     async function selectView(view, candidateId) {
       try {
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/selection`, {
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/selection`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidateId})
         });
         renderRun(run);
@@ -432,7 +465,7 @@
     }
     async function unselectView(view) {
       try {
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/selection`, {
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/selection`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:''})
         });
         renderRun(run);
@@ -441,8 +474,8 @@
     async function lockView(view) {
       if (!run) return;
       try {
-        await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/lock`, {method:'POST'});
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`);
+        await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/lock`, {method:'POST'});
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`);
         renderRun(run);
         setStatus(`${view} locked as a local asset.`);
       } catch (error) { setStatus(error.message, true); }
@@ -450,21 +483,21 @@
     async function unlockView(view) {
       if (!run) return;
       try {
-        await request(`/api/local/body-reference/assets/${encodeURIComponent(view)}/unlock?character=${encodeURIComponent(run.character)}&phase=${encodeURIComponent(run.phase)}`, {method:'POST'});
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`);
+        await request(`/api/local/head-image/assets/${encodeURIComponent(view)}/unlock?character=${encodeURIComponent(run.character)}&phase=${encodeURIComponent(run.phase)}`, {method:'POST'});
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`);
         renderRun(run);
         setStatus(`${view} unlocked.`);
       } catch (error) { setStatus(error.message, true); }
     }
     async function rankView(view) {
       try {
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/ranking`, {method:'POST'});
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/ranking`, {method:'POST'});
         renderRun(run);
       } catch (error) { setStatus(error.message, true); }
     }
     async function moveRank(view, candidateId, direction) {
       try {
-        run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/ranking/move`, {
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/ranking/move`, {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({candidate_id:candidateId, direction})
         });
         renderRun(run);
@@ -475,7 +508,7 @@
     }
     async function proceed() {
       if (!run?.front_anchor) return;
-      try { renderRun(await request('/api/local/body-reference/runs/' + encodeURIComponent(run.run_id) + '/proceed', {method:'POST'})); }
+      try { renderRun(await request('/api/local/head-image/runs/' + encodeURIComponent(run.run_id) + '/proceed', {method:'POST'})); }
       catch (error) { setStatus(error.message, true); }
     }
     async function rerunView(view) {
@@ -483,7 +516,7 @@
       const previous = run;
       renderRun({...run, status:'RUNNING', candidates:run.candidates.map((item) => item.view === view ? {...item, image_path:'', status:'PENDING', gates:{}, rejection_gate:''} : item)});
       try {
-        const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?view=${encodeURIComponent(view)}`, {method:'POST'});
+        const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/rerun?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { renderRun(previous); setStatus(error.message, true); }
     }
@@ -492,24 +525,24 @@
       const previous = run;
       renderRun({...run, status:'RUNNING', candidates:run.candidates.map((item) => item.view === view && (['GATE_REJECTED', 'FAILED'].includes(item.status) || item.human_review?.decision === 'reject') ? {...item, image_path:'', status:'PENDING', gates:{}, rejection_gate:''} : item)});
       try {
-        const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun-failed?view=${encodeURIComponent(view)}`, {method:'POST'});
+        const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/rerun-failed?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { renderRun(previous); setStatus(error.message, true); }
     }
     async function reevaluateView(view) {
       if (!run) return;
       try {
-        const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate?view=${encodeURIComponent(view)}`, {method:'POST'});
+        const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/reevaluate?view=${encodeURIComponent(view)}`, {method:'POST'});
         renderRun(updated);
       } catch (error) { setStatus(error.message, true); }
     }
     async function retryCandidate(candidateId) {
-      try { run = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidateId)}/retry`, {method:'POST'}); renderRun(run); }
+      try { run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidateId)}/retry`, {method:'POST'}); renderRun(run); }
       catch (error) { setStatus(error.message, true); }
     }
     async function showGatePrompt(view, gate) {
       try {
-        const response = await fetch(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/gates/${encodeURIComponent(gate)}/prompt`);
+        const response = await fetch(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/gates/${encodeURIComponent(gate)}/prompt`);
         if (!response.ok) throw new Error('Could not load the gate prompt.');
         $('#gate-prompt-title').textContent = `${view} · ${gate.replaceAll('_', ' ')} gate`;
         $('#gate-prompt-text').textContent = await response.text();
@@ -517,9 +550,9 @@
       } catch (error) { setStatus(error.message, true); }
     }
     async function navigateReview(offset) { const next = reviewIndex + offset; if (next < 0 || next >= reviewCandidates.length) return; if (!await saveReview({render:false})) return; reviewIndex = next; renderReview(); }
-    characterSelect.addEventListener('change', () => { fill(phaseSelect, context.phases_by_character[characterSelect.value] || []); void loadRuns(); });
-    phaseSelect.addEventListener('change', () => void loadRuns());
-    runSelect.addEventListener('change', () => void loadRun());
+    characterSelect.addEventListener('change', () => { clearFrontSource(); fill(phaseSelect, context.phases_by_character[characterSelect.value] || []); void loadRuns(); });
+    phaseSelect.addEventListener('change', () => { clearFrontSource(); void loadRuns(); });
+    runSelect.addEventListener('change', () => { clearFrontSource(); void loadRun(); });
     $('#copy-run-id').addEventListener('click', async () => {
       if (!runSelect.value) return;
       try { await navigator.clipboard.writeText(runSelect.value); setStatus(`Copied Run ID ${runSelect.value}`); }
@@ -531,16 +564,18 @@
     });
     $('#gate-prompt-close').addEventListener('click', () => $('#gate-prompt-dialog').close());
     $('#refresh-runs').addEventListener('click', () => void loadRuns(runSelect.value));
-    $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); try { const data = Object.fromEntries(new FormData(event.currentTarget)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); const created = await request('/api/local/body-reference/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
+    $('#front-source-file').addEventListener('change', (event) => void setFrontSource(event.target.files?.[0]));
+    $('#front-source-paste').addEventListener('paste', (event) => {
+      const item = [...(event.clipboardData?.items || [])].find((entry) => entry.type.startsWith('image/'));
+      const file = item?.getAsFile();
+      if (file) { event.preventDefault(); void setFrontSource(new File([file], `pasted-reference.${file.type.split('/')[1] || 'png'}`, {type:file.type})); }
+    });
+    $('#new-batch').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { const data = Object.fromEntries(new FormData(form)); data.character = characterSelect.value; data.phase = phaseSelect.value; data.front_count = Number(data.front_count); data.other_count = Number(data.other_count); data.front_source_path = frontSourcePath; const created = await request('/api/local/head-image/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); clearFrontSource(); form.reset(); await loadRuns(created.run_id); } catch (error) { setStatus(error.message, true); } });
     $('#rerun').addEventListener('click', async () => {
       if (!run) return;
-      let keepFrontAnchor = false;
-      if (run.front_anchor) {
-        keepFrontAnchor = window.confirm(`Keep front anchor ${run.front_anchor} and skip FRONT? Click OK to keep it; Cancel to rerun FRONT with c001 using this anchor's seed.`);
-        if (!keepFrontAnchor && !window.confirm(`Create a new batch and rerun FRONT? c001 will use the previous anchor's seed.`)) return;
-      } else if (!window.confirm(`Create a new batch from ${run.run_id}?`)) return;
       try {
-        const created = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/rerun?keep_front_anchor=${keepFrontAnchor}`, {method:'POST'});
+        const created = await request('/api/local/head-image/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({character:run.character, phase:run.phase, front_count:run.front_count, other_count:run.other_count, front_source_path:frontSourcePath || run.front_source || ''})});
+        clearFrontSource();
         await loadRuns(created.run_id);
       } catch (error) { setStatus(error.message, true); }
     });
@@ -548,12 +583,13 @@
       if (!run || $('#stop').disabled) return;
       $('#stop').disabled = true;
       try {
-        const cancelled = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/stop`, {method:'POST'});
+        const cancelled = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/stop`, {method:'POST'});
         renderRun(cancelled);
       } catch (error) { setStatus(error.message, true); }
     });
-    $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
-    $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/local/body-reference/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
+    $('#resume').addEventListener('click', async () => { if (!run) return; try { renderRun(await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/resume`, {method:'POST'})); } catch (error) { setStatus(error.message, true); } });
+    $('#reevaluate').addEventListener('click', async () => { if (!run) return; try { const updated = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/reevaluate`, {method:'POST'}); renderRun(updated); } catch (error) { setStatus(error.message, true); } });
+    $('#delete').addEventListener('click', async () => { if (!run || !window.confirm(`Delete batch ${run.run_id}? This removes its images, reviews, and saved data.`)) return; try { await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`, {method:'DELETE'}); run = null; await loadRuns(); } catch (error) { setStatus(error.message, true); } });
     $('#review-close').addEventListener('click', () => reviewDialog.close()); $('#review-prev').addEventListener('click', () => void navigateReview(-1)); $('#review-next').addEventListener('click', () => void navigateReview(1));
     reflectionToggle.addEventListener('change', () => { compareReflection = reflectionToggle.checked; renderReview(); });
     reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });

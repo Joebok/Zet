@@ -59,7 +59,10 @@ def _source_reference(references: list[dict]) -> dict | None:
     return sources[0]
 
 
-def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
+def compile_head_image_job(
+    job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
+    pipeline_mode: str = "traditional",
+) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -77,10 +80,24 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT, *, prom
     output_dir = output_dir_for_job(project_root, job, character, phase, view_token)
     expected_output = job_get(job, "Expected Output", "expected_output") or f"Head-Image_{view_data['output_name_fragment']}.png"
 
+    if pipeline_mode not in {"traditional", "local"}:
+        raise TemplateCompileError("INVALID_PIPELINE_MODE", f"Unsupported Head-Image pipeline mode: {pipeline_mode}")
     references = reference_files_for_job(job)
-    source_reference = _source_reference(references)
-    validate_reference(source_reference, "head_image_source", project_root)
+    source_references = [item for item in references if item.get("role") == "head_image_source"]
+    if pipeline_mode == "traditional":
+        source_reference = _source_reference(references)
+        validate_reference(source_reference, "head_image_source", project_root)
+    else:
+        if len(source_references) > 1:
+            raise TemplateCompileError("INVALID_REFERENCE", "Local Head-Image accepts at most one source image.")
+        if view_token != "FRONT" and not source_references:
+            raise TemplateCompileError("MISSING_REFERENCE", "Local non-front Head-Image views require the selected FRONT anchor.")
+        for source_reference in source_references:
+            validate_reference(source_reference, "head_image_source", project_root)
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
+    if pipeline_mode == "local" and not source_references:
+        for name in ("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_RULES"):
+            sections[name] = ""
     if str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
         for name in (
             "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
@@ -92,13 +109,30 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT, *, prom
             "HEAD_IMAGE_CHARACTER_REQUIREMENTS",
         ):
             sections[name] = ""
-    selection = select_prompt_sections(project_root, bundle, sections, section_sources, view_token, prompt_variant=prompt_variant)
+    selection = select_prompt_sections(
+        project_root, bundle, sections, section_sources, view_token,
+        prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
+    )
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )
+    render_mode = "edit" if source_references else "generate"
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
-        references, render_mode="edit"
+        references, render_mode=render_mode
     )
+    contract_values["LOCAL_RENDER_MODE"] = render_mode
+    if source_references and view_token != "FRONT":
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
+            "Use Image 1, the selected local FRONT render, as the identity and appearance anchor. Preserve recognizable traits while turning the head to the requested view."
+        )
+    elif source_references:
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
+            "Use Image 1 as an optional supplied identity reference. Preserve recognizable traits while following the requested target view and phase details."
+        )
+    else:
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
+            "No reference image is supplied. Generate the requested view from the authored character facts."
+        )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -143,12 +177,14 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT, *, prom
         required_section_names=[],
         view_token=view_token,
         prompt_variant=prompt_variant,
+        pipeline_mode=pipeline_mode,
     )
     write_json_file(paths["dependency_manifest"], {
         **metadata,
         "resources_allowed": True,
         "resources": references,
-        "required_reference_roles": ["head_image_source"],
+        "required_reference_roles": (["head_image_source"] if pipeline_mode == "traditional" or view_token != "FRONT" else []),
+        "pipeline_mode": pipeline_mode,
         **contract_manifest,
         "head_image_prompt_contract": {
             "version": 4,
@@ -158,7 +194,7 @@ def compile_head_image_job(job: dict, project_root: Path = PROJECT_ROOT, *, prom
         },
     })
     if prompt_variant == "generation":
-        finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")
+        finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, render_mode)
     paths["image_review"].write_text(
         f"""# Image Review
 

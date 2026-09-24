@@ -29,6 +29,8 @@ from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.local_body_reference_service import LocalBodyReferenceService
+from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
+from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
@@ -954,28 +956,32 @@ def create_app(
     def local_body_reference_page() -> str:
         return (PACKAGE_ROOT / "templates" / "local_body_reference.html").read_text(encoding="utf-8")
 
+    @app.get("/local-head-image", response_class=HTMLResponse)
+    def local_head_image_page() -> str:
+        return (PACKAGE_ROOT / "templates" / "local_head_image.html").read_text(encoding="utf-8")
+
     @app.get("/gate-test-rig", response_class=HTMLResponse)
     def gate_test_rig_page() -> str:
         return (PACKAGE_ROOT / "templates" / "gate_test_rig.html").read_text(encoding="utf-8")
 
     @app.get("/api/gate-test-rig/catalog")
-    def gate_test_rig_catalog() -> dict[str, Any]:
+    def gate_test_rig_catalog(pipeline: str = Query("")) -> dict[str, Any]:
         try:
-            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).catalog()
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).catalog(pipeline)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/gate-test-rig/runs/{run_id}")
-    def gate_test_rig_run(run_id: str) -> dict[str, Any]:
+    def gate_test_rig_run(run_id: str, pipeline: str = Query("body-reference")) -> dict[str, Any]:
         try:
-            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).run_summary(run_id)
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).run_summary(run_id, pipeline)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/gate-test-rig/runs/{run_id}/views/{view}")
-    def gate_test_rig_selection(run_id: str, view: str) -> dict[str, Any]:
+    def gate_test_rig_selection(run_id: str, view: str, pipeline: str = Query("body-reference")) -> dict[str, Any]:
         try:
-            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).selection(run_id, view)
+            return GateTestRigService(_app(app.state.config_path), PROJECT_ROOT).selection(run_id, view, pipeline)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2412,6 +2418,239 @@ def create_app(
 
 
 
+    @app.post("/api/local/head-image/preview")
+    def preview_local_head_image(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).preview(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/sources")
+    async def upload_local_head_image_source(
+        request: Request, filename: str = Query(...), character: str = Query(...), phase: str = Query(...)
+    ) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).upload_source(
+                character, phase, filename, await request.body()
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs")
+    def create_local_head_image(background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.create_run(payload)
+            background_tasks.add_task(service.execute_run, run["run_id"], views={"FRONT"})
+            return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs")
+    def list_local_head_images(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
+        try:
+            return {"runs": LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).list_runs(character, phase)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}")
+    def local_head_image_detail(run_id: str) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).detail(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}/review-prompt/{view}", response_class=PlainTextResponse)
+    def local_head_image_review_prompt(run_id: str, view: str) -> PlainTextResponse:
+        try:
+            prompt = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).review_prompt(run_id, view)
+            return PlainTextResponse(prompt, media_type="text/markdown")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}/review-spec/{view}", response_class=PlainTextResponse)
+    def local_head_image_review_spec(run_id: str, view: str) -> PlainTextResponse:
+        try:
+            prompt = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).review_specification(run_id, view)
+            return PlainTextResponse(prompt, media_type="text/markdown")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}/image-prompt/{view}", response_class=PlainTextResponse)
+    def local_head_image_image_prompt(run_id: str, view: str) -> PlainTextResponse:
+        try:
+            prompt = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).image_prompt(run_id, view)
+            return PlainTextResponse(prompt, media_type="text/markdown")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}/images/{candidate_id}")
+    def local_head_image_candidate_image(run_id: str, candidate_id: str) -> FileResponse:
+        try:
+            path = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).image_path(run_id, candidate_id)
+            return FileResponse(path)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}/source")
+    def local_head_image_source_image(run_id: str) -> FileResponse:
+        try:
+            path = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).front_source_path(run_id)
+            return FileResponse(path)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/head-image/runs/{run_id}/views/{view}/gates/{gate}/prompt", response_class=PlainTextResponse)
+    def local_head_image_gate_prompt(run_id: str, view: str, gate: str) -> PlainTextResponse:
+        try:
+            return PlainTextResponse(LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).gate_prompt(run_id, view, gate))
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/rerun")
+    def rerun_local_head_image(run_id: str, background_tasks: BackgroundTasks, view: str = Query("")) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            result = service.rerun_view(run_id, view) if view else service.rerun_view(run_id, "FRONT")
+            background_tasks.add_task(service.execute_run, run_id, views={view.upper() if view else "FRONT"})
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/rerun-failed")
+    def rerun_failed_local_head_image(run_id: str, background_tasks: BackgroundTasks, view: str = Query(...)) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            result = service.rerun_failed_view(run_id, view)
+            background_tasks.add_task(service.execute_run, run_id, views={view.upper()})
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/reevaluate")
+    def reevaluate_local_head_image(run_id: str, background_tasks: BackgroundTasks, view: str = Query("")) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            result = service.reevaluate(run_id, view or None)
+            background_tasks.add_task(service.execute_run, run_id, views={view.upper()} if view else set(VIEWS))
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/local/head-image/runs/{run_id}")
+    def delete_local_head_image(run_id: str) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).delete_run(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/views/{view}/selection")
+    def select_local_head_image_view(run_id: str, view: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).select_view(
+                run_id, view, str(payload.get("candidate_id") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/views/{view}/ranking")
+    def rank_local_head_image_view(run_id: str, view: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            queued = service.queue_view_ranking(run_id, view)
+            background_tasks.add_task(service.rank_view, run_id, view)
+            return queued
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/views/{view}/ranking/move")
+    def move_local_head_image_rank(run_id: str, view: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).move_candidate_rank(
+                run_id, view, str(payload.get("candidate_id") or ""), str(payload.get("direction") or "")
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/proceed")
+    def proceed_local_head_image(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            result = service.proceed(run_id)
+            background_tasks.add_task(service.execute_run, run_id, views=set(result.get("target_views") or []))
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/local/head-image/runs/{run_id}/candidates/{candidate_id}")
+    def update_local_head_image_candidate(run_id: str, candidate_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).update_candidate(run_id, candidate_id, payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/candidates/{candidate_id}/retry")
+    def retry_local_head_image_candidate(run_id: str, candidate_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            result = service.retry_candidate(run_id, candidate_id)
+            candidate_view = next(item["view"] for item in result["candidates"]
+                                  if item["candidate_id"] == candidate_id)
+            background_tasks.add_task(service.execute_run, run_id, views={candidate_view}, candidate_ids={candidate_id})
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/stop")
+    def stop_local_head_image(run_id: str) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).request_stop(run_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/resume")
+    def resume_local_head_image(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
+            result = service.resume(run_id)
+            background_tasks.add_task(service.execute_run, run_id)
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/runs/{run_id}/views/{view}/lock")
+    def lock_local_head_image_view(run_id: str, view: str) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).lock_selected_view(run_id, view)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/head-image/assets/{view}/unlock")
+    def unlock_local_head_image_view(view: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        try:
+            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).unlock_view(character, phase, view)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local/assets")
+    def list_locked_local_assets(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        try:
+            library_root = Path(_app(app.state.config_path).config.base_library_path)
+            service = LocalAssetStoreService(library_root)
+            return {"character": character, "phase": phase, "assets": service.locked_assets(character, phase)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local/assets/{asset_key}/image")
+    def locked_local_asset_image(asset_key: str, character: str = Query(...), phase: str = Query(...)) -> FileResponse:
+        try:
+            library_root = Path(_app(app.state.config_path).config.base_library_path)
+            records = LocalAssetStoreService(library_root).locked_assets(character, phase)
+            record = next(item for item in records if item["key"] == asset_key)
+            return FileResponse(record["locked_image_path"])
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail="Locked local asset image not found.") from exc
+
     @app.post("/api/local/body-reference/preview")
     def preview_local_body_reference(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
@@ -2451,6 +2690,14 @@ def create_app(
     def local_body_reference_review_prompt(run_id: str, view: str) -> PlainTextResponse:
         try:
             prompt = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).review_prompt(run_id, view)
+            return PlainTextResponse(prompt, media_type="text/markdown")
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/local/body-reference/runs/{run_id}/image-prompt/{view}", response_class=PlainTextResponse)
+    def local_body_reference_image_prompt(run_id: str, view: str) -> PlainTextResponse:
+        try:
+            prompt = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).image_prompt(run_id, view)
             return PlainTextResponse(prompt, media_type="text/markdown")
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -2542,6 +2789,20 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             return service.select_view(run_id, view, str(payload.get("candidate_id") or ""))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/body-reference/runs/{run_id}/views/{view}/lock")
+    def lock_local_body_reference_view(run_id: str, view: str) -> dict[str, Any]:
+        try:
+            return LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).lock_selected_view(run_id, view)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/body-reference/assets/{view}/unlock")
+    def unlock_local_body_reference_view(view: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        try:
+            return LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).unlock_view(character, phase, view)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

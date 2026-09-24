@@ -1,6 +1,7 @@
 # HEAD-IMAGE {{CHARACTER_PHASE}} CHARACTER REFERENCE
 
 <!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
+<!-- ZET:BEGIN TRADITIONAL_PIPELINE_ONLY -->
 # Render Task
 
 Create one head-only reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, in {{VIEW_LABEL}}.
@@ -16,6 +17,16 @@ Create one head-only reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, in {{
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+<!-- ZET:END TRADITIONAL_PIPELINE_ONLY -->
+<!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
+# Local ComfyUI Render Task
+
+Generate one clean head-only reference for {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, in {{VIEW_LABEL}}.
+
+{{LOCAL_REFERENCE_GUIDANCE}}
+
+Follow the character facts, requested changes, preserve rules, and exact view instruction below. Keep the complete head and hairstyle silhouette in frame, use a simple transparent background, and do not add text, a collage, extra subjects, or a scene.
+<!-- ZET:END LOCAL_PIPELINE_ONLY -->
 <!-- ZET:END IMAGE_PROMPT_ONLY -->
 
 <!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->

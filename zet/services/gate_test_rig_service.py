@@ -19,6 +19,7 @@ from zet.services.local_body_reference_service import (
     _parse_orientation_gate_verdict,
     _parse_passing_gate_verdict,
 )
+from zet.services.local_head_image_service import LocalHeadImageService
 
 
 class GateTestRigError(ValueError):
@@ -26,7 +27,12 @@ class GateTestRigError(ValueError):
 
 
 class GateTestRigService:
-    """Run isolated gate experiments against saved Local Body-Reference images."""
+    """Run isolated gate experiments against saved local pipeline images."""
+
+    PIPELINES = {
+        "body-reference": "Local Body-Reference",
+        "head-image": "Local Head-Image",
+    }
 
     PROMPT_FILE = "OLLAMA_PROMPT.md"
     def __init__(self, app: Any, project_root: str | Path):
@@ -52,21 +58,40 @@ class GateTestRigService:
     def _body(self) -> LocalBodyReferenceService:
         return LocalBodyReferenceService(self.app, self.project_root)
 
-    def catalog(self) -> dict[str, Any]:
-        return {"runs": self._body().list_runs()}
+    def _head(self) -> LocalHeadImageService:
+        return LocalHeadImageService(self.app, self.project_root)
 
-    def run_summary(self, run_id: str) -> dict[str, Any]:
-        run = self._body().detail(run_id)
+    @classmethod
+    def _pipeline(cls, pipeline: str) -> str:
+        value = str(pipeline or "body-reference").strip()
+        if value not in cls.PIPELINES:
+            raise GateTestRigError(f"Unknown local pipeline: {value}")
+        return value
+
+    def _service(self, pipeline: str) -> Any:
+        return self._head() if self._pipeline(pipeline) == "head-image" else self._body()
+
+    def catalog(self, pipeline: str = "") -> dict[str, Any]:
+        if pipeline:
+            key = self._pipeline(pipeline)
+            return {"runs": self._service(key).list_runs()}
+        return {"pipelines": [{"key": key, "label": label} for key, label in self.PIPELINES.items()]}
+
+    def run_summary(self, run_id: str, pipeline: str = "body-reference") -> dict[str, Any]:
+        key = self._pipeline(pipeline)
+        run = self._service(key).detail(run_id)
         return {"run_id": run_id, "character": run.get("character", ""),
-                "phase": run.get("phase", ""), "views": run.get("views", [])}
+                "phase": run.get("phase", ""), "views": run.get("views", []), "pipeline": key}
 
-    def selection(self, run_id: str, view: str) -> dict[str, Any]:
-        body = self._body()
-        run = body.detail(run_id)
+    def selection(self, run_id: str, view: str, pipeline: str = "body-reference") -> dict[str, Any]:
+        key = self._pipeline(pipeline)
+        service = self._service(key)
+        run = service.detail(run_id)
         view = str(view or "").strip().upper()
         if view not in run.get("views", []):
-            raise GateTestRigError(f"Unknown Local Body-Reference view: {view}")
-        gates = body.review_gates(view)
+            raise GateTestRigError(f"Unknown {self.PIPELINES[key]} view: {view}")
+        gates = (service.review_gates(view, has_front_source=bool(run.get("front_source")))
+                 if key == "head-image" else service.review_gates(view))
         candidates = []
         for item in run.get("candidates") or []:
             if item.get("view") != view:
@@ -78,7 +103,9 @@ class GateTestRigService:
         anchor = next((item for item in run.get("candidates") or []
                        if item.get("candidate_id") == run.get("front_anchor")), None)
         anchor_path = Path(str(anchor.get("image_path") or "")) if anchor else None
+        source_path = Path(str(run.get("front_source") or "")) if key == "head-image" else None
         return {
+            "pipeline": key,
             "run_id": run_id,
             "character": run.get("character", ""),
             "phase": run.get("phase", ""),
@@ -88,6 +115,7 @@ class GateTestRigService:
             "candidates": candidates,
             "front_anchor": run.get("front_anchor") if anchor_path and anchor_path.is_file() else None,
             "front_anchor_available": bool(anchor_path and anchor_path.is_file()),
+            "front_source_available": bool(source_path and source_path.is_file()),
         }
 
     def configs(self) -> list[dict[str, Any]]:
@@ -119,7 +147,8 @@ class GateTestRigService:
         if not isinstance(value, dict):
             raise GateTestRigError("Configuration must be an object.")
         gate = str(value.get("gate") or "").strip()
-        if gate not in {"face", "proportion", "framing", "orientation", "body_identity"}:
+        if gate not in {"face", "proportion", "framing", "orientation", "body_identity",
+                        "background", "identity", "source_identity"}:
             raise GateTestRigError("Choose a known review gate.")
         model = str(value.get("model") or "").strip()
         if not model or model == "codex:":
@@ -205,10 +234,11 @@ class GateTestRigService:
             write_json_atomic(error_path, {"error": str(exc)})
 
     def start_test(self, payload: dict[str, Any]) -> dict[str, Any]:
+        pipeline = self._pipeline(str(payload.get("pipeline") or "body-reference"))
         run_id = str(payload.get("run_id") or "").strip()
         view = str(payload.get("view") or "").strip().upper()
         config = self._validate_config(payload.get("config"))
-        selected = self.selection(run_id, view)
+        selected = self.selection(run_id, view, pipeline)
         gate = next((item for item in selected["gates"] if item["key"] == config["gate"]), None)
         if gate is None:
             raise GateTestRigError(f"Gate {config['gate']} does not apply to {view}.")
@@ -217,11 +247,13 @@ class GateTestRigService:
             raise GateTestRigError("The gate prompt cannot be blank.")
         if gate["uses_anchor"] and not selected["front_anchor_available"]:
             raise GateTestRigError("This gate requires an available FRONT anchor image.")
+        if config["gate"] == "source_identity" and not selected["front_source_available"]:
+            raise GateTestRigError("This gate requires an available front source image.")
         if not selected["candidates"]:
             raise GateTestRigError(f"No completed candidate images are available for {view}.")
 
-        body = self._body()
-        run = body.detail(run_id)
+        service = self._service(pipeline)
+        run = service.detail(run_id)
         by_id = {item["candidate_id"]: item for item in run.get("candidates") or []}
         anchor = next((item for item in run.get("candidates") or []
                        if item.get("candidate_id") == selected["front_anchor"]), None)
@@ -232,6 +264,7 @@ class GateTestRigService:
         result_dir.mkdir()
         record = {
             "test_id": test_id,
+            "pipeline": pipeline,
             "run_id": run_id,
             "view": view,
             "gate": config["gate"],
@@ -253,11 +286,15 @@ class GateTestRigService:
                 anchor_image = Path(str(anchor.get("image_path") or ""))
                 images.append(("front_anchor.png", anchor_image))
             if gate["crop_head"]:
+                if pipeline != "body-reference":
+                    raise GateTestRigError("Head crops are only supported for Body-Reference gates.")
                 crop = candidate_dir / "candidate_head.png"
-                body._crop_head(image, crop)
+                service._crop_head(image, crop)
                 images.append(("candidate_head.png", crop))
             else:
                 images.append(("candidate.png", image))
+            if config["gate"] == "source_identity" and pipeline == "head-image":
+                images.insert(0, ("front_source.png", Path(str(run["front_source"]))))
 
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             ask_id = f"Ask_GateTestRig_{test_id}_{candidate_id}_{stamp}"
@@ -280,6 +317,8 @@ class GateTestRigService:
                                "candidate": self._hash(image),
                                "front_anchor": self._hash(Path(str(anchor.get("image_path") or "")))
                                if gate["uses_anchor"] and anchor else "",
+                               **({"front_source": self._hash(Path(str(run.get("front_source") or "")))}
+                                  if config["gate"] == "source_identity" and pipeline == "head-image" else {}),
                            },
                            "prompt_sha256": hashlib.sha256(codex_prompt.encode("utf-8")).hexdigest()}
                 record["attempts"].append(attempt)
@@ -324,6 +363,7 @@ class GateTestRigService:
                 "target_output_file": f"{candidate_id}.txt",
                 "gate_test_rig_id": test_id,
                 "source_run_id": run_id,
+                "source_pipeline": pipeline,
                 "candidate_id": candidate_id,
                 "gate": config["gate"],
                 "view": view,
@@ -332,6 +372,8 @@ class GateTestRigService:
                     "candidate": self._hash(image),
                     "front_anchor": self._hash(Path(str(anchor.get("image_path") or "")))
                     if gate["uses_anchor"] and anchor else "",
+                    **({"front_source": self._hash(Path(str(run.get("front_source") or "")))}
+                       if config["gate"] == "source_identity" and pipeline == "head-image" else {}),
                 },
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
                 "request_config": config,
@@ -379,7 +421,12 @@ class GateTestRigService:
         return answer
 
     @staticmethod
-    def _interpret(gate: str, response: str) -> dict[str, str]:
+    def _interpret(gate: str, response: str, pipeline: str = "body-reference") -> dict[str, str]:
+        if pipeline == "head-image":
+            answer = str(response or "").strip().upper()
+            if answer not in {"TRUE", "FALSE"}:
+                raise ValueError(f"Expected TRUE or FALSE, received {answer[:80]!r}.")
+            return {"result": "REJECT" if answer == "TRUE" else "PASS", "reason": ""}
         if gate == "orientation":
             rejection, reason = _parse_orientation_gate_verdict(response)
         elif gate in {"proportion", "framing", "body_identity"}:
@@ -414,7 +461,7 @@ class GateTestRigService:
                 if not codex_error:
                     attempt["answer_manifest"] = self._proxy_answer(str(attempt.get("ask_id") or ""))
                 try:
-                    attempt.update(self._interpret(record["gate"], response))
+                    attempt.update(self._interpret(record["gate"], response, record.get("pipeline", "body-reference")))
                     attempt["status"] = "COMPLETE"
                 except ValueError as exc:
                     attempt["status"] = "INVALID"
@@ -445,6 +492,7 @@ class GateTestRigService:
             attempts = record.get("attempts") or []
             tests.append({
                 "test_id": record["test_id"],
+                "pipeline": record.get("pipeline", "body-reference"),
                 "run_id": record.get("run_id", ""),
                 "view": record.get("view", ""),
                 "gate": record.get("gate", ""),

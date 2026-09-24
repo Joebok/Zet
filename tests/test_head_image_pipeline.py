@@ -3,6 +3,8 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -12,6 +14,7 @@ from zet.models.worker import WorkerContext
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.character_onboarding_service import CharacterOnboardingService, FOUNDATION_VIEWS
 from zet.services.config_service import Config
+from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
 from zet.services.path_service import PathService
 from zet.services.reference_service import ReferenceService
 from zet.workers import character_assembly_manifest_worker
@@ -32,6 +35,169 @@ def config_for(root: Path) -> Config:
 
 
 class HeadImageCompilerTests(unittest.TestCase):
+    def test_local_head_review_includes_background_gate_for_every_view(self) -> None:
+        for view in VIEWS:
+            with self.subTest(view=view):
+                gates = LocalHeadImageService.review_gates(view)
+                self.assertEqual("background", gates[0].key)
+                self.assertIn("transparent background passes", gates[0].prompt)
+                self.assertIn("Return TRUE only when the subject visibly blends", gates[0].prompt)
+
+    def test_local_front_compiles_with_optional_source_and_keeps_traditional_rule(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            base = {"Job": "local-front", "Task": "head-image", "Character": "Test", "Phase": "Adult",
+                    "Head View": "Front", "Template Path": str(template), "Reference Files": []}
+            generated = compile_head_image_job({**base, "Output Directory": str(root / "text")}, PROJECT_ROOT,
+                                               pipeline_mode="local")
+            prompt = Path(generated["final_prompt"]).read_text(encoding="utf-8")
+            manifest = json.loads(Path(generated["dependency_manifest"]).read_text(encoding="utf-8"))
+            self.assertIn("No reference image is supplied", prompt)
+            self.assertNotIn("# Render Task", prompt)
+            self.assertEqual("generate", manifest["render_mode"])
+            self.assertEqual([], manifest["resources"])
+            self.assertEqual([], manifest["required_reference_roles"])
+
+            source = root / "source.png"
+            source.write_bytes(b"source")
+            edited = compile_head_image_job({**base, "Output Directory": str(root / "guided"),
+                                             "Reference Files": [{"role": "head_image_source", "path": str(source)}]},
+                                            PROJECT_ROOT, pipeline_mode="local")
+            edited_prompt = Path(edited["final_prompt"]).read_text(encoding="utf-8")
+            edited_manifest = json.loads(Path(edited["dependency_manifest"]).read_text(encoding="utf-8"))
+            self.assertIn("optional supplied identity reference", edited_prompt)
+            self.assertEqual("edit", edited_manifest["render_mode"])
+            self.assertEqual([str(source)], [item["path"] for item in edited_manifest["resources"]])
+
+    def test_local_non_front_requires_selected_front_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with self.assertRaisesRegex(Exception, "require the selected FRONT anchor"):
+                compile_head_image_job({
+                    "Job": "local-profile", "Task": "head-image", "Character": "Test", "Phase": "Adult",
+                    "Head View": "Left Profile",
+                    "Template Path": str(PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"),
+                    "Output Directory": str(root / "output"), "Reference Files": [],
+                }, PROJECT_ROOT, pipeline_mode="local")
+
+    def test_local_head_workspace_starts_with_front_candidates_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+
+            self.assertEqual(8, len(run["views"]))
+            self.assertEqual(8, run["candidate_count"])
+            self.assertEqual("QUEUED", run["status"])
+            self.assertEqual("", run["front_source"])
+            prompt = Path(run["front_prompt_path"]).read_text(encoding="utf-8")
+            self.assertIn("No reference image is supplied", prompt)
+            self.assertEqual(1, len([item for item in run["candidates"] if item["view"] == "FRONT"]))
+
+    def test_local_head_renders_view_before_gates_then_ranks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2,
+                                      "other_count": 1, "seeds": list(range(9))})
+            candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
+            candidate_ids = {item["candidate_id"] for item in candidates}
+            events = []
+
+            def queue(_run_id, candidate_id):
+                events.append(("render", candidate_id))
+                image_path = root / "renders" / f"{candidate_id}.png"
+                service._update(run["run_id"], candidate_id, status="QUEUED", image_path=str(image_path))
+
+            def wait(_run_id, candidate_id):
+                events.append(("wait", candidate_id))
+                candidate = next(item for item in service.detail(run["run_id"])["candidates"]
+                                 if item["candidate_id"] == candidate_id)
+                image_path = Path(candidate["image_path"])
+                image_path.parent.mkdir(parents=True, exist_ok=True)
+                image_path.write_bytes(b"image")
+                service._update(run["run_id"], candidate_id, status="WAITING_FOR_GATES")
+                return True
+
+            def gates(_run_id, candidate_id):
+                events.append(("gate", candidate_id))
+                service._update(run["run_id"], candidate_id, status="WAITING_FOR_HUMAN_REVIEW")
+                return True
+
+            def rank(_run_id, view):
+                events.append(("rank", view))
+                return service.detail(run["run_id"])
+
+            with patch.object(service, "queue_render_candidate", side_effect=queue), \
+                    patch.object(service, "_wait_render", side_effect=wait), \
+                    patch.object(service, "run_candidate_gates", side_effect=gates), \
+                    patch.object(service, "rank_view", side_effect=rank):
+                service.execute_run(run["run_id"], views={"FRONT"}, candidate_ids=candidate_ids)
+
+            self.assertEqual([
+                ("render", candidates[0]["candidate_id"]),
+                ("render", candidates[1]["candidate_id"]),
+                ("wait", candidates[0]["candidate_id"]),
+                ("wait", candidates[1]["candidate_id"]),
+                ("gate", candidates[0]["candidate_id"]),
+                ("gate", candidates[1]["candidate_id"]),
+                ("rank", "FRONT"),
+            ], events)
+
+    def test_local_head_ranking_closes_temporary_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2,
+                                      "other_count": 1, "seeds": list(range(9))})
+            candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
+            for candidate in candidates:
+                image_path = root / f"{candidate['candidate_id']}.png"
+                image_path.write_bytes(candidate["candidate_id"].encode())
+                service._update(run["run_id"], candidate["candidate_id"],
+                                status="WAITING_FOR_HUMAN_REVIEW", image_path=str(image_path))
+
+            temporary_paths = []
+
+            def fake_codex(command, **_kwargs):
+                schema_path = Path(command[command.index("--output-schema") + 1])
+                output_path = Path(command[command.index("--output-last-message") + 1])
+                temporary_paths.extend((schema_path, output_path))
+                self.assertIn("ranking", json.loads(schema_path.read_text(encoding="utf-8"))["properties"])
+                output_path.write_text(json.dumps({"ranking": [
+                    {"candidate_id": item["candidate_id"], "reason": "Clear reference"} for item in candidates
+                ]}), encoding="utf-8")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(service, "review_gates", return_value=[]), \
+                    patch("zet.services.local_head_image_service.shutil.which", return_value="codex"), \
+                    patch("zet.services.local_head_image_service.subprocess.run", side_effect=fake_codex):
+                ranked = service.rank_view(run["run_id"], "FRONT")
+
+            self.assertEqual("COMPLETE", ranked["rankings"]["FRONT"]["status"])
+            self.assertTrue(temporary_paths)
+            self.assertTrue(all(not path.exists() for path in temporary_paths))
+
     def test_standard_source_path_compiles_all_views(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -127,6 +293,21 @@ BasePipelinePath = "{(root / 'Pipelines').as_posix()}"
 BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 """, encoding="utf-8")
         return path
+
+    def test_local_head_image_page_and_shared_asset_lookup_are_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._fixture(root)
+            client = TestClient(create_app(self._config_path(root)))
+
+            page = client.get("/local-head-image")
+            self.assertEqual(200, page.status_code)
+            self.assertIn("Paste an image here", page.text)
+            self.assertIn("Generate other views", page.text)
+            self.assertIn("background:'Background'", page.text)
+            assets = client.get("/api/local/assets", params={"character": "Test", "phase": "Adult"})
+            self.assertEqual(200, assets.status_code)
+            self.assertEqual([], assets.json()["assets"])
 
 
 

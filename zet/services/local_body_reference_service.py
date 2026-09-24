@@ -20,6 +20,7 @@ from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
 from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
@@ -176,6 +177,7 @@ Do not explain your reasoning."""
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
         self.runs_root = self.library_root / "Experiments" / "Character-Pipeline"
+        self.asset_store = LocalAssetStoreService(self.library_root)
         self._migrate_legacy_runs()
 
     def _migrate_legacy_runs(self) -> None:
@@ -356,7 +358,13 @@ Do not explain your reasoning."""
             "analysis_specification": prompt_path.read_text(encoding="utf-8"),
             "analysis_prompt_path": str(prompt_path),
             "analysis_template_sha256": self._hash(template_path),
+            "analysis_character_sha256": self._character_template_hash(character, phase),
         }
+
+    def _character_template_hash(self, character: str, phase: str) -> str:
+        base_path = getattr(self.app.config, "base_character_path", self.project_root / "Characters")
+        path = Path(base_path) / character / phase / "Character.md"
+        return self._hash(path) if path.is_file() else ""
 
     @staticmethod
     def _qwen_prompt(manual_prompt: str, view: str, anchor: bool = False) -> str:
@@ -576,6 +584,37 @@ Do not explain your reasoning."""
             if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
                 value["status"] = "REVIEW_REQUIRED"
         value["root"] = str(root)
+        value["local_assets"] = self.asset_store.detail(
+            str(value.get("character") or ""), str(value.get("phase") or "")
+        ).get("assets", {})
+        # Adopt legacy selected candidates into the local asset index without
+        # moving their images or changing their selection/review state.
+        for selected_view, selected_id in (value.get("selected_views") or {}).items():
+            asset_key = self.asset_store.key("Body-Reference", selected_view)
+            if asset_key in value["local_assets"]:
+                continue
+            selected_candidate = next((item for item in value.get("candidates", [])
+                                       if item.get("candidate_id") == selected_id), None)
+            selected_image = Path(str((selected_candidate or {}).get("image_path") or ""))
+            if selected_candidate and selected_image.is_file():
+                dependencies = []
+                if selected_view != FRONT_VIEW:
+                    anchor = next((item for item in value.get("candidates", [])
+                                   if item.get("candidate_id") == value.get("front_anchor")), None)
+                    anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+                    if anchor_image.is_file():
+                        dependencies.append({
+                            "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
+                            "image_sha256": self._hash(anchor_image),
+                        })
+                self.asset_store.record_selection(
+                    str(value["character"]), str(value["phase"]), "Body-Reference", selected_view,
+                    candidate_id=str(selected_id), image_path=selected_image, batch_id=run_id,
+                    dependencies=dependencies,
+                )
+        value["local_assets"] = self.asset_store.detail(
+            str(value.get("character") or ""), str(value.get("phase") or "")
+        ).get("assets", {})
         return value
 
     def list_runs(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
@@ -646,6 +685,12 @@ Do not explain your reasoning."""
         """Create a fresh batch, optionally carrying forward its front view."""
         source = self.detail(run_id)
         anchor_id = source.get("front_anchor")
+        affected_views = [view for view in source.get("views", [])
+                          if not keep_front_anchor or view != FRONT_VIEW]
+        for affected_view in affected_views:
+            self.asset_store.assert_change_allowed(
+                source["character"], source["phase"], "Body-Reference", affected_view
+            )
         anchor = next(
             (item for item in source.get("candidates", []) if item.get("candidate_id") == anchor_id),
             None,
@@ -838,6 +883,7 @@ Do not explain your reasoning."""
         view = str(view or "").upper()
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_lock.locked():
@@ -953,6 +999,8 @@ Do not explain your reasoning."""
             if normalized_view not in target_views:
                 raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {normalized_view}")
             target_views = [normalized_view]
+        for target_view in target_views:
+            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", target_view)
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-evaluating it.")
         if self._runner_lock.locked():
@@ -970,6 +1018,9 @@ Do not explain your reasoning."""
         if not completed:
             scope = f" for view {target_views[0]}" if view is not None else ""
             raise LocalBodyReferenceError(f"This batch has no completed images to re-evaluate{scope}.")
+        for target_view in target_views:
+            if any(item.get("view") == target_view for item in completed):
+                self._review_facts(run, target_view)
         if int(run.get("review_version") or 1) >= 2:
             state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
             stamp = self._now()
@@ -994,9 +1045,6 @@ Do not explain your reasoning."""
             result = self.detail(run_id)
             result.update(status="REEVALUATING", interrupted=False, error="")
             return result
-        for target_view in target_views:
-            if view is None or any(item.get("view") == target_view for item in completed):
-                self._review_facts(run, target_view)
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
         stamp = self._now()
         for candidate in completed:
@@ -1024,6 +1072,10 @@ Do not explain your reasoning."""
         if (root.parent.parent.parent != runs_root or root.name != run_id
                 or not root.is_relative_to(runs_root)):
             raise LocalBodyReferenceError("Invalid Local Body-Reference batch location.")
+        run = self.detail(run_id)
+        if any(record.get("selected") and record.get("batch_id") == run_id and not record.get("locked")
+               for record in run.get("local_assets", {}).values()):
+            raise LocalBodyReferenceError("Lock or unselect this batch's local assets before deleting it.")
         state_path = root / "state.json"
         if state_path.is_file():
             try:
@@ -1032,6 +1084,7 @@ Do not explain your reasoning."""
                 state = {}
             if state.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
                 raise LocalBodyReferenceError("Stop the batch and wait for it to finish before deleting it.")
+        self._withdraw_queued_asks(run_id)
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}
 
@@ -1078,6 +1131,7 @@ Do not explain your reasoning."""
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if run.get("review_version", 1) >= 2:
             if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
                 raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before reviewing.")
@@ -1287,7 +1341,10 @@ Do not explain your reasoning."""
         if not template_path.is_file():
             return str(prompt.get("analysis_specification") or prompt.get("manual_prompt") or "")
         template_hash = self._hash(template_path)
-        if prompt.get("analysis_template_sha256") == template_hash and prompt.get("analysis_specification"):
+        character_hash = self._character_template_hash(str(run["character"]), str(run["phase"]))
+        if (prompt.get("analysis_template_sha256") == template_hash
+                and prompt.get("analysis_character_sha256", "") == character_hash
+                and prompt.get("analysis_specification")):
             return str(prompt["analysis_specification"])
 
         root = Path(str(run["root"]))
@@ -1297,7 +1354,9 @@ Do not explain your reasoning."""
             snapshot = next((item for item in spec.get("prompt_snapshots", []) if item.get("view") == view), None)
             if snapshot is None:
                 raise LocalBodyReferenceError(f"No saved prompt for view {view}.")
-            if snapshot.get("analysis_template_sha256") != template_hash or not snapshot.get("analysis_specification"):
+            if (snapshot.get("analysis_template_sha256") != template_hash
+                    or snapshot.get("analysis_character_sha256", "") != character_hash
+                    or not snapshot.get("analysis_specification")):
                 try:
                     snapshot.update(self._compile_analysis_view(root, spec["character"], spec["phase"], view))
                 except Exception as exc:
@@ -1319,6 +1378,15 @@ Do not explain your reasoning."""
             anchor=view != FRONT_VIEW,
             facts=self._review_facts(run, view),
         )
+
+    def image_prompt(self, run_id: str, view: str) -> str:
+        run = self.detail(run_id)
+        if view not in run.get("views", []):
+            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
+        candidate = next((item for item in run["candidates"] if item.get("view") == view and item.get("prompt")), None)
+        if not candidate:
+            raise LocalBodyReferenceError(f"No image prompt is saved for view {view}.")
+        return str(candidate["prompt"])
 
     def queue_local_analysis(self, run_id: str, candidate_id: str, model: str = "") -> dict[str, Any]:
         run = self.detail(run_id)
@@ -1588,6 +1656,7 @@ Do not explain your reasoning."""
         """Move one reviewed candidate one place in the saved ranking."""
         run = self.detail(run_id)
         view = str(view or "").upper()
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run.get("review_version", 1) < 2 or view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
@@ -1903,6 +1972,7 @@ Do not explain your reasoning."""
         """Queue a current gate-survivor set for comparative Luna ranking."""
         run = self.detail(run_id)
         view = str(view or "").upper()
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run.get("review_version", 1) < 2 or view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
@@ -1932,6 +2002,7 @@ Do not explain your reasoning."""
         """Rank gate-surviving version 2 candidates for one canonical view."""
         run = self.detail(run_id)
         view = str(view or "").upper()
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run.get("review_version", 1) < 2:
             raise LocalBodyReferenceError("Per-view ranking is available for version 2 runs.")
         if view not in run.get("views", []):
@@ -2106,6 +2177,10 @@ Do not explain your reasoning."""
             removed_id = selected.pop(view, None)
             if not removed_id:
                 return self.detail(run_id)
+            asset_key = self.asset_store.key("Body-Reference", view)
+            record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(asset_key) or {}
+            if record.get("batch_id") == run_id and record.get("candidate_id") == removed_id:
+                self.asset_store.clear_selection(run["character"], run["phase"], "Body-Reference", view)
             state.setdefault("candidates", {}).setdefault(removed_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
             if view == FRONT_VIEW:
                 if state.get("front_anchor") == removed_id:
@@ -2140,6 +2215,8 @@ Do not explain your reasoning."""
         if not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
             raise LocalBodyReferenceError("The candidate image changed after ranking; rerun its review.")
         previous_id = selected.get(view)
+        if previous_id != candidate_id:
+            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         old_anchor_id = state.get("front_anchor")
         if previous_id and previous_id != candidate_id:
             state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
@@ -2150,6 +2227,23 @@ Do not explain your reasoning."""
             if old_anchor_id != candidate_id:
                 self._invalidate_views_after_anchor_change(run_id, state)
                 state.update(status="READY_FOR_VIEWS", target_views=[], target_candidate_ids=[])
+        image_hash = self._hash(image)
+        dependencies = []
+        if view != FRONT_VIEW:
+            anchor = next((item for item in run["candidates"]
+                           if item.get("candidate_id") == run.get("front_anchor")), None)
+            anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+            if anchor_image.is_file():
+                dependencies.append({
+                    "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
+                    "image_sha256": self._hash(anchor_image),
+                })
+        self.asset_store.record_selection(
+            run["character"], run["phase"], "Body-Reference", view,
+            candidate_id=candidate_id, image_path=image, batch_id=run_id,
+            dependencies=dependencies,
+        )
+
         all_selected = all(view_name in selected for view_name in run.get("views") or [])
         if all_selected and state.get("front_anchor") == selected.get(FRONT_VIEW):
             state.update(status="COMPLETE", target_views=[], target_candidate_ids=[], review_only=False)
@@ -2162,6 +2256,48 @@ Do not explain your reasoning."""
         state["updated_at"] = self._now()
         self._save_state(run_id, state)
         return self.detail(run_id)
+
+    def lock_selected_view(self, run_id: str, view: str) -> dict[str, Any]:
+        run = self.detail(run_id)
+        view = str(view or "").upper()
+        candidate_id = (run.get("selected_views") or {}).get(view)
+        if not candidate_id:
+            raise LocalBodyReferenceError(f"Select a reviewed {view} candidate before locking it.")
+        candidate = next((item for item in run.get("candidates", [])
+                          if item.get("candidate_id") == candidate_id), None)
+        ranking = (run.get("rankings") or {}).get(view) or {}
+        image = Path(str((candidate or {}).get("image_path") or ""))
+        local_asset = (run.get("local_assets") or {}).get(self.asset_store.key("Body-Reference", view)) or {}
+        if local_asset.get("candidate_id") != candidate_id or local_asset.get("batch_id") != run_id:
+            raise LocalBodyReferenceError("Select this candidate as the current local asset before locking it.")
+        if (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
+                or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
+                or (ranking.get("input_hashes") or {}).get(candidate_id) != self._hash(image)):
+            raise LocalBodyReferenceError("The selected candidate must have current gates and ranking before it can be locked.")
+        if candidate.get("human_review", {}).get("decision") == "reject":
+            raise LocalBodyReferenceError("A human-rejected candidate cannot be locked.")
+        for gate in self.review_gates(view):
+            record = (candidate.get("gates") or {}).get(gate.key) or {}
+            anchor_hash = ""
+            if gate.uses_anchor:
+                anchor = next((item for item in run.get("candidates", [])
+                               if item.get("candidate_id") == run.get("front_anchor")), None)
+                anchor_path = Path(str((anchor or {}).get("image_path") or ""))
+                anchor_hash = self._hash(anchor_path) if anchor_path.is_file() else ""
+            if (record.get("status") not in {"COMPLETE", "DISABLED"} or record.get("verdict") != "FALSE"
+                    or (record.get("input_hashes") or {}).get("candidate") != self._hash(image)
+                    or (gate.uses_anchor and (record.get("input_hashes") or {}).get("front_anchor") != anchor_hash)):
+                raise LocalBodyReferenceError(f"The selected candidate has a missing or stale {gate.key} gate.")
+        try:
+            return self.asset_store.lock(run["character"], run["phase"], "Body-Reference", view)
+        except Exception as exc:
+            raise LocalBodyReferenceError(str(exc)) from exc
+
+    def unlock_view(self, character: str, phase: str, view: str) -> dict[str, Any]:
+        try:
+            return self.asset_store.unlock(character, phase, "Body-Reference", view)
+        except Exception as exc:
+            raise LocalBodyReferenceError(str(exc)) from exc
 
     def _review_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Run all pending analyses for one view after its images are available."""
@@ -2452,6 +2588,7 @@ Do not explain your reasoning."""
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
+        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if int(run.get("review_version") or 1) >= 2 and candidate.get("status") == "FAILED" and candidate.get("failed_gate"):
             failed_gate = str(candidate["failed_gate"])
             gates = dict(candidate.get("gates") or {})

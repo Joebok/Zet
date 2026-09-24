@@ -40,7 +40,7 @@
   </style>
 </head>
 <body>
-  <header><div><h1>Gate Test Rig</h1><p class="muted">Run isolated gate experiments on images from a Local Body-Reference batch.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Local Body-Reference</a></nav></header>
+  <header><div><h1>Gate Test Rig</h1><p class="muted">Run isolated gate experiments on images from a local pipeline batch.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Local Body-Reference</a> · <a href="/local-head-image">Local Head-Image</a></nav></header>
   <main>
     <section class="panel">
       <h2>Saved tests</h2>
@@ -54,7 +54,8 @@
 
     <section class="panel">
       <div class="grid">
-        <label>Batch<select id="run"><option value="">Choose a batch</option></select></label>
+        <label>Local pipeline<select id="pipeline"><option value="">Choose a pipeline</option></select></label>
+        <label>Batch<select id="run" disabled><option value="">Choose a batch</option></select></label>
         <label>View<select id="view" disabled><option value="">Choose a view</option></select></label>
         <label>Gate<select id="gate" disabled><option value="">Choose a gate</option></select></label>
       </div>
@@ -95,7 +96,7 @@
   </main>
   <script>
     const $ = (selector) => document.querySelector(selector);
-    const runSelect = $('#run'), viewSelect = $('#view'), gateSelect = $('#gate');
+    const pipelineSelect = $('#pipeline'), runSelect = $('#run'), viewSelect = $('#view'), gateSelect = $('#gate');
     const promptInput = $('#prompt'), statusNode = $('#status'), resultsNode = $('#results');
     const selectedImagesNode = $('#selected-images');
     let runs = [], selection = null, savedConfigs = [], savedTests = [], activeTestId = '', polling = false;
@@ -141,8 +142,9 @@
       const images = [];
       if (gate?.uses_anchor && selection.front_anchor) images.push([selection.front_anchor, 'FRONT anchor']);
       for (const item of selection.candidates) images.push([item.candidate_id, item.candidate_id]);
+      const pipelinePath = selection.pipeline === 'head-image' ? 'head-image' : 'body-reference';
       selectedImagesNode.innerHTML = images.map(([id, label]) =>
-        `<figure><img src="/api/local/body-reference/runs/${encodeURIComponent(selection.run_id)}/images/${encodeURIComponent(id)}" alt="${esc(label)}"><figcaption>${esc(label)}</figcaption></figure>`
+        `<figure><img src="/api/local/${pipelinePath}/runs/${encodeURIComponent(selection.run_id)}/images/${encodeURIComponent(id)}" alt="${esc(label)}"><figcaption>${esc(label)}</figcaption></figure>`
       ).join('');
     }
     function setModel(value) {
@@ -167,16 +169,27 @@
         ? 'GPT-6 Luna runs through the local Codex CLI. Its reasoning effort is configurable below; Ollama request and sampler settings are disabled.'
         : 'API, thinking, temperature, keep-alive, and advanced options apply to Ollama models.';
     }
+    async function loadPipelines() {
+      const value = await request('/api/gate-test-rig/catalog');
+      pipelineSelect.innerHTML = '<option value="">Choose a pipeline</option>' + (value.pipelines || []).map((item) => `<option value="${esc(item.key)}">${esc(item.label)}</option>`).join('');
+    }
     async function loadRuns() {
-      const value = await request('/api/gate-test-rig/catalog'); runs = value.runs || [];
+      runs = []; runSelect.innerHTML = '<option value="">Choose a batch</option>';
+      viewSelect.innerHTML = '<option value="">Choose a view</option>';
+      gateSelect.innerHTML = '<option value="">Choose a gate</option>';
+      runSelect.disabled = true; viewSelect.disabled = true; gateSelect.disabled = true;
+      selection = null; selectedImagesNode.innerHTML = ''; $('#run-test').disabled = true;
+      if (!pipelineSelect.value) return;
+      const value = await request(`/api/gate-test-rig/catalog?pipeline=${encodeURIComponent(pipelineSelect.value)}`); runs = value.runs || [];
       runSelect.innerHTML = '<option value="">Choose a batch</option>' + runs.map((item) => `<option value="${esc(item.run_id)}">${esc(item.run_id)} · ${esc(item.character)} · ${esc(item.phase)} · ${esc(item.status)}</option>`).join('');
+      runSelect.disabled = false;
     }
     async function loadViews() {
       selection = null; viewSelect.disabled = true; gateSelect.disabled = true; $('#run-test').disabled = true;
       selectedImagesNode.innerHTML = '';
       const runId = runSelect.value;
       if (!runId) return;
-      const summary = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runId)}`);
+      const summary = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runId)}?pipeline=${encodeURIComponent(pipelineSelect.value)}`);
       viewSelect.innerHTML = '<option value="">Choose a view</option>' + (summary.views || []).map((item) => `<option value="${esc(item)}">${esc(item)}</option>`).join('');
       viewSelect.disabled = false;
       if (summary.views?.length) { viewSelect.value = summary.views[0]; await loadSelection(); }
@@ -185,7 +198,7 @@
       selection = null; gateSelect.disabled = true; $('#run-test').disabled = true;
       selectedImagesNode.innerHTML = '';
       if (!runSelect.value || !viewSelect.value) return;
-      const value = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runSelect.value)}/views/${encodeURIComponent(viewSelect.value)}`);
+      const value = await request(`/api/gate-test-rig/runs/${encodeURIComponent(runSelect.value)}/views/${encodeURIComponent(viewSelect.value)}?pipeline=${encodeURIComponent(pipelineSelect.value)}`);
       selection = value;
       gateSelect.innerHTML = '<option value="">Choose a gate</option>' + value.gates.map((item) => `<option value="${esc(item.key)}">${esc(item.key.replaceAll('_',' '))}${item.key === 'orientation' ? ' (currently disabled)' : ''}</option>`).join('');
       gateSelect.disabled = false;
@@ -204,7 +217,8 @@
       const select = $('#saved-test');
       select.innerHTML = '<option value="">Choose a saved test</option>' + savedTests.map((item) => {
         const progress = `${item.finished_count}/${item.attempt_count} finished`;
-        return `<option value="${esc(item.test_id)}">${esc(item.created_at)} · ${esc(item.gate)} · ${esc(item.run_id)} · ${esc(item.view)} · ${esc(item.status)} · ${progress}</option>`;
+        const pipeline = item.pipeline === 'head-image' ? 'Head-Image' : 'Body-Reference';
+        return `<option value="${esc(item.test_id)}">${esc(item.created_at)} · ${pipeline} · ${esc(item.gate)} · ${esc(item.run_id)} · ${esc(item.view)} · ${esc(item.status)} · ${progress}</option>`;
       }).join('');
       if (activeTestId && savedTests.some((item) => item.test_id === activeTestId)) select.value = activeTestId;
       $('#open-test').disabled = !select.value;
@@ -223,13 +237,14 @@
       }
     }
     function renderTest(test) {
-      const summary = `${esc(test.gate)} · ${esc(test.run_id)} · ${esc(test.view)} · ${esc(test.status)}`;
+      const summary = `${esc(test.pipeline === 'head-image' ? 'Local Head-Image' : 'Local Body-Reference')} · ${esc(test.gate)} · ${esc(test.run_id)} · ${esc(test.view)} · ${esc(test.status)}`;
       const modelName = test.config.model === 'codex:gpt-6-luna' ? 'GPT-6 Luna (Codex)' : test.config.model;
       const requestMode = test.config.model.startsWith('codex:')
         ? `Codex CLI · reasoning ${esc(test.config.think)}`
         : `/api/${esc(test.config.api)} · ${esc(test.config.think === null ? 'model default thinking' : `think ${test.config.think}`)}`;
       resultsNode.innerHTML = `<section class="panel"><h2>Test ${esc(test.test_id)}</h2><p>${summary}</p><p class="muted">Model ${esc(modelName)} · ${requestMode}</p></section>` + (test.attempts || []).map((attempt) => {
-        const image = `/api/local/body-reference/runs/${encodeURIComponent(test.run_id)}/images/${encodeURIComponent(attempt.candidate_id)}`;
+        const pipelinePath = test.pipeline === 'head-image' ? 'head-image' : 'body-reference';
+        const image = `/api/local/${pipelinePath}/runs/${encodeURIComponent(test.run_id)}/images/${encodeURIComponent(attempt.candidate_id)}`;
         const answer = attempt.answer_manifest || {};
         const generation = answer.ollama_generation || {};
         const runtime = answer.ollama_runtime || {};
@@ -258,6 +273,7 @@
         }
       } catch (error) { polling = false; refreshRunTestButton(); message(error.message, true); }
     }
+    pipelineSelect.addEventListener('change', () => void loadRuns().catch((error) => message(error.message, true)));
     runSelect.addEventListener('change', () => void loadViews().catch((error) => message(error.message, true)));
     viewSelect.addEventListener('change', () => void loadSelection().catch((error) => message(error.message, true)));
     gateSelect.addEventListener('change', () => {
@@ -294,14 +310,14 @@
     $('#run-test').addEventListener('click', async () => {
       try {
         const config = configValue(); polling = true; refreshRunTestButton(); resultsNode.innerHTML = '';
-        const test = await request('/api/gate-test-rig/tests', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run_id:runSelect.value,view:viewSelect.value,config})});
+        const test = await request('/api/gate-test-rig/tests', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pipeline:pipelineSelect.value,run_id:runSelect.value,view:viewSelect.value,config})});
         activeTestId = test.test_id;
         try { localStorage.setItem('gate-test-rig:last-test-id', activeTestId); } catch (_) { /* Storage may be unavailable. */ }
         await loadTests(); $('#saved-test').value = activeTestId;
         message(`Queued ${test.attempts.length} image tests.`); void pollTest(activeTestId);
       } catch (error) { polling = false; refreshRunTestButton(); message(error.message, true); }
     });
-    Promise.all([loadRuns(), loadConfigs(), loadModels(), loadTests()]).then(() => {
+    Promise.all([loadPipelines(), loadConfigs(), loadModels(), loadTests()]).then(() => {
       let previous = '';
       try { previous = localStorage.getItem('gate-test-rig:last-test-id') || ''; } catch (_) { /* Storage may be unavailable. */ }
       if (savedTests.some((item) => item.test_id === previous)) {

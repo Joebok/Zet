@@ -38,6 +38,33 @@ def filter_prompt_variant_blocks(template_text: str, prompt_variant: str) -> str
     return "".join(output)
 
 
+def filter_pipeline_mode_blocks(template_text: str, pipeline_mode: str) -> str:
+    """Keep shared text and blocks marked for the selected pipeline mode."""
+    if pipeline_mode not in {"traditional", "local"}:
+        raise ValueError(f"Unsupported pipeline mode: {pipeline_mode}")
+    selected = "LOCAL_PIPELINE_ONLY" if pipeline_mode == "local" else "TRADITIONAL_PIPELINE_ONLY"
+    active: str | None = None
+    output: list[str] = []
+    for line in template_text.splitlines(keepends=True):
+        marker = line.strip()
+        if marker in {"<!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->", "<!-- ZET:BEGIN TRADITIONAL_PIPELINE_ONLY -->"}:
+            if active is not None:
+                raise TemplateCompileError("INVALID_PIPELINE_MODE_BLOCK", "Pipeline mode blocks cannot be nested.")
+            active = marker.removeprefix("<!-- ZET:BEGIN ").removesuffix(" -->")
+            continue
+        if marker in {"<!-- ZET:END LOCAL_PIPELINE_ONLY -->", "<!-- ZET:END TRADITIONAL_PIPELINE_ONLY -->"}:
+            closing = marker.removeprefix("<!-- ZET:END ").removesuffix(" -->")
+            if active != closing:
+                raise TemplateCompileError("INVALID_PIPELINE_MODE_BLOCK", "Pipeline mode block has a mismatched end tag.")
+            active = None
+            continue
+        if active is None or active == selected:
+            output.append(line)
+    if active is not None:
+        raise TemplateCompileError("INVALID_PIPELINE_MODE_BLOCK", "Pipeline mode block has no end tag.")
+    return "".join(output)
+
+
 class PromptTemplateService:
     """Resolve direct prompt placeholders and write traceable prompt artifacts."""
 
@@ -70,11 +97,14 @@ class PromptTemplateService:
             for name in payload.get("sections", {})
         }
 
-    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, prompt_variant: str = "generation"):
+    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, prompt_variant: str = "generation", pipeline_mode: str = "traditional"):
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         return select_sections_for_prompt(
             all_sections,
-            filter_prompt_variant_blocks(template_file.read_text(encoding="utf-8"), prompt_variant),
+            filter_prompt_variant_blocks(
+                filter_pipeline_mode_blocks(template_file.read_text(encoding="utf-8"), pipeline_mode),
+                prompt_variant,
+            ),
             view_token,
             section_sources,
             self._known_section_names(view_token),
@@ -95,10 +125,14 @@ class PromptTemplateService:
         view_token: str,
         ensure_ascii_source_map: bool = False,
         prompt_variant: str = "generation",
+        pipeline_mode: str = "traditional",
     ) -> str:
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         prompt_text, source_map = render_static_prompt_with_source_map(
-            filter_prompt_variant_blocks(template_file.read_text(encoding="utf-8"), prompt_variant),
+            filter_prompt_variant_blocks(
+                filter_pipeline_mode_blocks(template_file.read_text(encoding="utf-8"), pipeline_mode),
+                prompt_variant,
+            ),
             template_path=template_file,
             metadata=metadata_values,
             metadata_sources=metadata_sources,
