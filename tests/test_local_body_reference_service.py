@@ -113,6 +113,34 @@ def test_new_run_uses_version_two_review_contract(tmp_path, monkeypatch):
     )
 
 
+def test_opening_review_v1_batch_preserves_original_and_marks_saved_results_stale(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+    root = Path(run["root"])
+    image = root / "saved.png"
+    image.write_bytes(b"keep the legacy render")
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    state["rankings"] = {"FRONT": {"status": "COMPLETE", "ordered_candidate_ids": ["c001"]}}
+    state["candidates"]["c001"] = {"status": "COMPLETE", "image_path": str(image),
+                                    "gates": {"face": {"status": "COMPLETE", "verdict": "FALSE"}}}
+    (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    original_spec = (root / "spec.json").read_bytes()
+
+    opened = service.detail(run["run_id"], upgrade_legacy=True)
+    opened_again = service.detail(run["run_id"], upgrade_legacy=True)
+
+    assert opened["review_version"] == opened_again["review_version"] == 2
+    assert opened["rankings"]["FRONT"]["status"] == "STALE"
+    assert next(item for item in opened["candidates"] if item["candidate_id"] == "c001")["legacy_review_stale"]
+    assert (root / "legacy_review_v1" / "spec.json").read_bytes() == original_spec
+    assert image.read_bytes() == b"keep the legacy render"
+
+
 def test_gate_contracts_are_narrow_and_verdicts_are_exact():
     front = LocalBodyReferenceService.review_gates("FRONT")
     other = LocalBodyReferenceService.review_gates("LEFT_PROFILE")
@@ -397,6 +425,7 @@ def test_single_survivor_is_ranked_without_luna_and_can_be_selected(tmp_path, mo
     gates = current_gate_results(service, "FRONT", image)
     service._candidate_update(run["run_id"], "c001", {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image), "gates": gates,
+        "human_review": {"decision": "keep", "notes": "passed"},
     })
     ranked = service.rank_view(run["run_id"], "FRONT")
     assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c001"]
@@ -423,6 +452,7 @@ def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_view
         gates = current_gate_results(service, "FRONT", image)
         service._candidate_update(run["run_id"], candidate_id, {
             "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image), "gates": gates,
+            "human_review": {"decision": "keep", "notes": "passed"},
         })
 
     def fake_luna(command, **kwargs):
@@ -453,7 +483,7 @@ def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_view
     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
     state.setdefault("selected_views", {})["FRONT_LEFT_3_4"] = "c003"
     (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
-    service.update_candidate(run["run_id"], "c001", {"decision": "undecided", "notes": ""})
+    service.update_candidate(run["run_id"], "c001", {"decision": "keep", "notes": "passed again"})
     switched = service.select_view(run["run_id"], "FRONT", "c001")
     assert "FRONT_LEFT_3_4" not in switched["selected_views"]
     assert next(item for item in switched["candidates"] if item["candidate_id"] == "c003")["status"] == "PENDING"
@@ -473,6 +503,7 @@ def test_later_view_requires_current_front_anchor_hash(tmp_path, monkeypatch):
     front_gates = current_gate_results(service, "FRONT", anchor_image)
     service._candidate_update(run["run_id"], "c001", {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(anchor_image), "gates": front_gates,
+        "human_review": {"decision": "keep", "notes": "passed"},
     })
     service.rank_view(run["run_id"], "FRONT")
     service.select_view(run["run_id"], "FRONT", "c001")

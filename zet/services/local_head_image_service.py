@@ -21,7 +21,9 @@ from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
-from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, clear_candidate_artifacts, gate_result_is_current
+from zet.services.local_image_pipeline_policy import (
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, gate_result_is_current,
+)
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -278,7 +280,7 @@ class LocalHeadImageService:
         value["stale_selections"] = sorted(set(value["stale_selections"]) | set(stale_selected))
         if value["stale_selections"] and value["status"] not in ACTIVE_RUN_STATUSES | {"ERROR", "CANCELLED", "INTERRUPTED"}:
             value["status"] = "REVIEW_REQUIRED"
-        return value
+        return decorate_local_pipeline_detail(value, "head-image")
 
     def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
         name = str(batch_name or "").strip()
@@ -720,7 +722,8 @@ class LocalHeadImageService:
                 ) for view in VIEWS)
                 self._run_update(run_id, status=("CANCELLED" if latest.get("stop_requested") else
                                                   "AWAITING_FRONT_ANCHOR" if waiting_anchor else
-                                                  "COMPLETE" if complete else "AWAITING_HUMAN_SELECTION"))
+                                                  "COMPLETE" if complete else "AWAITING_HUMAN_SELECTION"),
+                                 target_views=[])
         except TimeoutError:
             return
         except Exception as exc:
@@ -938,6 +941,8 @@ class LocalHeadImageService:
         human_pass = bool(candidate and candidate.get("human_review", {}).get("decision") == "keep")
         if not candidate or candidate["view"] != view or (candidate.get("rejection_gate") and not human_pass):
             raise LocalHeadImageError("Choose a gate-surviving or human-passed candidate from this view.")
+        if view == FRONT and not human_pass:
+            raise LocalHeadImageError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str(candidate.get("image_path") or ""))
         if (ranking.get("status") != "COMPLETE" or candidate_id not in ranking.get("ordered_candidate_ids", [])
@@ -1046,13 +1051,23 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Select a reviewed FRONT candidate before generating other views.")
         anchor = next((item for item in run["candidates"]
                        if item["candidate_id"] == run["front_anchor"]), None)
-        if (not anchor or (anchor.get("rejection_gate") and anchor.get("human_review", {}).get("decision") != "keep")
-                or (anchor.get("human_review", {}).get("decision") != "keep" and not self._candidate_gates_current(run, anchor))):
-            raise LocalHeadImageError("The FRONT anchor has missing or stale gate results; re-evaluate and rank FRONT before proceeding.")
-        pending_views = {view for view in VIEWS if view != FRONT and any(
-            item["view"] == view and item["status"] in {"PENDING", "FAILED"} for item in run["candidates"])}
-        self._run_update(run_id, status="READY_FOR_VIEWS", stop_requested=False)
-        return {**self.detail(run_id), "target_views": sorted(pending_views)}
+        anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+        front_ranking = (run.get("rankings") or {}).get(FRONT) or {}
+        if (not anchor or anchor.get("human_review", {}).get("decision") != "keep"
+                or not anchor_image.is_file() or front_ranking.get("status") != "COMPLETE"
+                or anchor["candidate_id"] not in (front_ranking.get("ordered_candidate_ids") or [])
+                or front_ranking.get("input_hashes", {}).get(anchor["candidate_id"]) != self._hash(anchor_image)
+                or not self._candidate_gates_current(run, anchor)):
+            raise LocalHeadImageError("Re-evaluate and rank the human-passed FRONT anchor before proceeding.")
+        if run.get("status") in ACTIVE_RUN_STATUSES:
+            raise LocalHeadImageError("Wait for active batch work to finish before generating other views.")
+        claimed = set(run.get("target_views") or [])
+        pending_views = [view for view in VIEWS if view != FRONT and view not in claimed and
+                         (candidates := [item for item in run["candidates"] if item["view"] == view]) and
+                         all(item.get("status") == "PENDING" and not item.get("image_path") for item in candidates)]
+        if pending_views:
+            self._run_update(run_id, status="READY_FOR_VIEWS", stop_requested=False, target_views=pending_views)
+        return {**self.detail(run_id), "target_views": pending_views}
 
     def _assert_rerun_allowed(self, run: dict[str, Any], views: set[str]) -> None:
         if run.get("status") in ACTIVE_RUN_STATUSES or run.get("status") == "STOPPING":

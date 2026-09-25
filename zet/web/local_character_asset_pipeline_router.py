@@ -6,7 +6,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService, VIEWS
+from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 
 
 def create_local_character_asset_pipeline_router(
@@ -15,8 +15,8 @@ def create_local_character_asset_pipeline_router(
     router = APIRouter()
     root = Path(project_root)
 
-    def service(pipeline: str) -> LocalCharacterAssetPipelineService:
-        return LocalCharacterAssetPipelineService(app_factory(), root, pipeline)
+    def service(pipeline: str) -> LocalImagePipelineWorkflowService:
+        return LocalImagePipelineWorkflowService(app_factory(), root, pipeline)
 
     def call(function, *, missing: int = 400):
         try:
@@ -47,7 +47,7 @@ def create_local_character_asset_pipeline_router(
 
         @router.get(f"{prefix}/runs/{{run_id}}")
         def detail(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: service(_pipeline).detail(run_id, costume), missing=404)
+            return call(lambda: service(_pipeline).detail(run_id, costume, upgrade_legacy=True), missing=404)
 
         @router.post(f"{prefix}/runs/{{run_id}}/start")
         def start(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
@@ -126,7 +126,9 @@ def create_local_character_asset_pipeline_router(
         def proceed(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.proceed(run_id, costume))
-            background_tasks.add_task(instance.execute_run, run_id, views=set(VIEWS[1:]), costume=costume)
+            target_views = set(result.get("target_views") or [])
+            if target_views:
+                background_tasks.add_task(instance.execute_run, run_id, views=target_views, costume=costume)
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/candidates/{{candidate_id}}/review")
@@ -143,20 +145,6 @@ def create_local_character_asset_pipeline_router(
         @router.post(f"{prefix}/runs/{{run_id}}/stop")
         def stop(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: service(_pipeline).request_stop(run_id, costume))
-
-        @router.post(f"{prefix}/runs/{{run_id}}/rerun")
-        def rerun(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
-            instance = service(_pipeline)
-            result = call(lambda: instance.rerun(run_id, costume))
-            background_tasks.add_task(instance.execute_run, run_id, costume=costume)
-            return result
-
-        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/rerun")
-        def rerun_view(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
-            instance = service(_pipeline)
-            result = call(lambda: instance.rerun_view(run_id, view, costume))
-            background_tasks.add_task(instance.execute_run, run_id, views={view.upper()}, costume=costume)
-            return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/rerun")
         def rerun_view(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):

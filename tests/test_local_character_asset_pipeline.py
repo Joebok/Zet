@@ -60,6 +60,7 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         image.write_bytes(b"selected assembly front")
         service._update(run["run_id"], candidate["candidate_id"], status="WAITING_FOR_GATES", image_path=str(image))
         service.run_candidate_gates(run["run_id"], candidate["candidate_id"])
+        service.update_candidate(run["run_id"], candidate["candidate_id"], {"decision": "keep", "notes": "passed"})
         service.rank_view(run["run_id"], "FRONT")
         selected = service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
         if lock:
@@ -109,6 +110,72 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual(front_candidate["candidate_id"], selected["front_anchor"])
         self.assertIn(service.asset_store.key("Character-Assembly", "FRONT"),
                       [item["key"] for item in locked["dependencies"]])
+
+    def test_other_views_are_claimed_once_and_require_a_passed_front_anchor(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1, "other_count": 1,
+                                  "seeds": list(range(8))})
+        front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "renders" / front["candidate_id"] / "front.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"front")
+        service._update(run["run_id"], front["candidate_id"], status="WAITING_FOR_GATES", image_path=str(image))
+        service.run_candidate_gates(run["run_id"], front["candidate_id"])
+        with self.assertRaisesRegex(ValueError, "pass a FRONT"):
+            service.select_view(run["run_id"], "FRONT", front["candidate_id"])
+        service.update_candidate(run["run_id"], front["candidate_id"], {"decision": "keep"})
+        service.rank_view(run["run_id"], "FRONT")
+        service.select_view(run["run_id"], "FRONT", front["candidate_id"])
+        first = service.proceed(run["run_id"])
+        second = service.proceed(run["run_id"])
+        self.assertEqual(list(VIEWS[1:]), first["target_views"])
+        self.assertEqual([], second["target_views"])
+        self.assertTrue(all(item["status"] == "QUEUED" for item in second["candidates"] if item["view"] != "FRONT"))
+
+    def test_human_review_preserves_ranking_unless_rejection_changes_survivors(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2, "other_count": 1,
+                                  "seeds": list(range(9))})
+        candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
+        for candidate in candidates:
+            image = Path(run["root"]) / "renders" / candidate["candidate_id"] / "front.png"
+            image.parent.mkdir(parents=True, exist_ok=True)
+            image.write_bytes(candidate["candidate_id"].encode())
+            service._update(run["run_id"], candidate["candidate_id"], status="WAITING_FOR_HUMAN_REVIEW",
+                           image_path=str(image))
+        candidates = [item for item in service.detail(run["run_id"])["candidates"] if item["view"] == "FRONT"]
+        root, state = service._state(run["run_id"])
+        state["rankings"] = {"FRONT": {
+            "status": "COMPLETE", "ordered_candidate_ids": ["c002", "c001"],
+            "entries": [{"candidate_id": "c002", "reason": "Best match."},
+                        {"candidate_id": "c001", "reason": "Second best."}],
+            "input_hashes": {item["candidate_id"]: service._hash(Path(item["image_path"])) for item in candidates},
+        }}
+        service._write(root / "state.json", state)
+
+        saved = service.update_candidate(run["run_id"], "c001", {"decision": "keep", "notes": "Looks good."})
+        self.assertEqual("COMPLETE", saved["rankings"]["FRONT"]["status"])
+        self.assertEqual(["c002", "c001"], saved["rankings"]["FRONT"]["ordered_candidate_ids"])
+        self.assertEqual("Second best.", saved["rankings"]["FRONT"]["entries"][1]["reason"])
+
+        rejected = service.update_candidate(run["run_id"], "c001", {"decision": "reject", "notes": "Changed my mind."})
+        self.assertEqual("STALE", rejected["rankings"]["FRONT"]["status"])
+        self.assertEqual(["c002", "c001"], rejected["rankings"]["FRONT"]["ordered_candidate_ids"])
+        self.assertIn("Re-rank", rejected["rankings"]["FRONT"]["stale_reason"])
+
+        service._update(run["run_id"], "c001", rejection_gate="framing", status="WAITING_FOR_HUMAN_REVIEW",
+                        human_review={"decision": "undecided", "notes": ""})
+        root, state = service._state(run["run_id"])
+        state["rankings"]["FRONT"] = {
+            "status": "COMPLETE", "ordered_candidate_ids": ["c002"],
+            "entries": [{"candidate_id": "c002", "reason": "Only current survivor."}],
+            "input_hashes": {"c002": service._hash(Path(next(item for item in candidates if item["candidate_id"] == "c002")["image_path"]))},
+        }
+        service._write(root / "state.json", state)
+        newly_eligible = service.update_candidate(run["run_id"], "c001", {"decision": "keep"})
+        self.assertEqual("STALE", newly_eligible["rankings"]["FRONT"]["status"])
 
     def test_assembly_batch_does_not_start_non_front_views_without_anchor(self) -> None:
         self._sources("character-assembly")

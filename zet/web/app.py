@@ -5,6 +5,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +29,8 @@ from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
-from zet.services.local_body_reference_service import LocalBodyReferenceService
-from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
+from zet.services.local_head_image_service import VIEWS
+from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
@@ -41,6 +42,9 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
 from zet.services.prompt_review_service import LocalRenderUnavailable
+
+LocalBodyReferenceService = partial(LocalImagePipelineWorkflowService, pipeline="body-reference")
+LocalHeadImageService = partial(LocalImagePipelineWorkflowService, pipeline="head-image")
 
 
 def _app(config_path: str | Path) -> ZetApp:
@@ -2722,7 +2726,9 @@ def create_app(
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             result = service.proceed(run_id)
-            background_tasks.add_task(service.execute_run, run_id, views=set(result.get("target_views") or []))
+            target_views = set(result.get("target_views") or [])
+            if target_views:
+                background_tasks.add_task(service.execute_run, run_id, views=target_views)
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2838,7 +2844,7 @@ def create_app(
     @app.get("/api/local/body-reference/runs/{run_id}")
     def local_body_reference_detail(run_id: str) -> dict[str, Any]:
         try:
-            return LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).detail(run_id)
+            return LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT).detail(run_id, upgrade_legacy=True)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -2997,7 +3003,9 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.proceed(run_id)
-            background_tasks.add_task(service.execute_run, run_id)
+            target_views = list(run.get("target_views") or [])
+            if target_views:
+                background_tasks.add_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

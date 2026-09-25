@@ -93,6 +93,7 @@
       .review-panel { padding: 1rem; }
     }
   </style>
+  <link rel="stylesheet" href="/static/local_image_pipeline_shared.css">
 </head>
 <body>
   <header><div><h1>Local Body-Reference</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><nav><a href="/local-body-reference">Body-Reference</a> · <a href="/local-head-image">Head-Image</a> · <a href="/local-character-assembly">Character-Assembly</a> · <a href="/local-costume-dressing">Costume-Dressing</a> · <a href="/">Dashboard</a></nav></header>
@@ -152,7 +153,7 @@
     const reviewImage = $('#review-image'), reviewAnchorImage = $('#review-anchor-image'), reviewAnchorMessage = $('#review-anchor-message'), reviewPanel = $('#review-panel');
     const reviewCompareTitle = $('#review-compare-title'), reflectionToggleLabel = $('#review-reflection-toggle-label'), reflectionToggle = $('#review-reflection-toggle');
     let context = {characters: [], phases_by_character: {}};
-    let run = null, runs = [], reviewCandidates = [], reviewIndex = -1;
+    let run = null, runs = [], reviewCandidates = [], reviewIndex = -1, gatePolicies = {};
     let compareReflection = false;
     const oppositeViews = {
       LEFT_PROFILE: 'RIGHT_PROFILE', RIGHT_PROFILE: 'LEFT_PROFILE',
@@ -236,7 +237,7 @@
         const warning = gate.policy_status === 'Warning';
         const rejected = verdict === 'TRUE' && !warning;
         const failed = gate.status === 'FAILED';
-        const disabled = gate.status === 'DISABLED';
+        const disabled = gate.status === 'DISABLED' || (gate.policy_status || gatePolicies[key]) === 'Disabled';
         const text = disabled ? 'Disabled' : warning && (verdict === 'TRUE' || failed) ? 'Warning · gate failed' : verdict === 'FALSE' ? 'Passed' : rejected ? 'Rejected' : gate.status || (candidate.rejection_gate ? 'N/A' : 'Pending');
         const details = disabled ? (failed || rejected ? ' — Re-evaluate this view to clear the previous result.' : '') : rejected ? ` — ${esc(gate.reason || 'visible defect')}` : gate.error ? ` — ${esc(gate.error)}` : '';
         return `<p class="${disabled ? 'muted' : rejected || failed || warning && verdict === 'TRUE' ? 'fail' : verdict === 'FALSE' ? 'pass' : 'muted'}"><strong>${esc(labels[key] || key)} gate:</strong> ${esc(text)}${details}${!disabled && (rejected || failed || warning && verdict === 'TRUE') ? ` <button class="gate-prompt" type="button" data-gate-prompt="${esc(key)}" data-gate-view="${esc(candidate.view)}" aria-label="Show ${esc(labels[key] || key)} gate prompt" title="Show gate prompt">ⓘ</button>` : ''}</p>`;
@@ -615,12 +616,15 @@
     reviewDialog.addEventListener('keydown', (event) => { if (event.target.matches('textarea, select, input')) return; if (event.key === 'ArrowLeft') void navigateReview(-1); if (event.key === 'ArrowRight') void navigateReview(1); });
     async function loadGateSetup() {
       const value = await request('/api/local-gates/body-reference');
+      gatePolicies = value.statuses || {};
       $('#gate-setup-content').innerHTML = Object.entries(value.gates || {}).map(([key, gate]) =>
         `<label>${esc(key.replaceAll('_',' '))}<select data-gate-status="${esc(key)}"><option>Active</option><option>Warning</option><option>Disabled</option></select></label>`).join('');
       for (const [key, status] of Object.entries(value.statuses || {})) $(`[data-gate-status="${key}"]`).value = status;
       $('#gate-setup-content').querySelectorAll('[data-gate-status]').forEach((select) => select.addEventListener('change', async () => {
         try { const catalog = await request(`/api/local-gates/body-reference/${encodeURIComponent(select.dataset.gateStatus)}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:select.value})});
+          gatePolicies = catalog.statuses || gatePolicies;
           Object.entries(catalog.statuses || {}).forEach(([key, status]) => { const control = $(`[data-gate-status="${key}"]`); if (control) control.value = status; });
+          if (run) renderRun(run);
           setStatus(`${select.dataset.gateStatus} gate set to ${select.value}. Re-evaluate a batch to apply it to existing images.`);
         } catch (error) { setStatus(error.message, true); void loadGateSetup(); }
       }));

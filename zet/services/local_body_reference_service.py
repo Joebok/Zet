@@ -21,7 +21,10 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
-from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, clear_candidate_artifacts, gate_result_is_current
+from zet.services.local_image_pipeline_policy import (
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail,
+    gate_result_is_current, upgrade_legacy_review_v1,
+)
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
@@ -493,10 +496,13 @@ Do not explain your reasoning."""
                 return path
         raise LocalBodyReferenceError(f"Local Body-Reference not found: {run_id}")
 
-    def detail(self, run_id: str) -> dict[str, Any]:
+    def detail(self, run_id: str, *, upgrade_legacy: bool = False) -> dict[str, Any]:
         root = self._root(run_id)
         value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
         state = json.loads((root / "state.json").read_text(encoding="utf-8")) if (root / "state.json").is_file() else {}
+        if upgrade_legacy and upgrade_legacy_review_v1(root, value, state, active=self._runner_is_active(run_id)):
+            value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         candidates = {item["candidate_id"]: dict(item) for item in value.get("candidates", [])}
         for candidate_id, update in (state.get("candidates") or {}).items():
             if candidate_id in candidates:
@@ -622,7 +628,7 @@ Do not explain your reasoning."""
         value["local_assets"] = self.asset_store.detail(
             str(value.get("character") or ""), str(value.get("phase") or "")
         ).get("assets", {})
-        return value
+        return decorate_local_pipeline_detail(value, "body-reference")
 
     def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
         name = str(batch_name or "").strip()
@@ -2148,6 +2154,8 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("A candidate must survive its gates or receive a human Pass before selection.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be selected.")
+        if view == FRONT_VIEW and not human_pass:
+            raise LocalBodyReferenceError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         if view != FRONT_VIEW:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
@@ -2543,9 +2551,26 @@ Do not explain your reasoning."""
         if run.get("status") in ACTIVE_RUN_STATUSES:
             raise LocalBodyReferenceError("Wait for the current batch operation to finish before proceeding.")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
-        state.update(status="READY_FOR_VIEWS", stop_requested=False, updated_at=self._now())
+        if run.get("review_version", 1) >= 2:
+            anchor = next((item for item in run["candidates"] if item.get("candidate_id") == run["front_anchor"]), None)
+            image = Path(str((anchor or {}).get("image_path") or ""))
+            ranking = (run.get("rankings") or {}).get(FRONT_VIEW) or {}
+            if (not anchor or anchor.get("human_review", {}).get("decision") != "keep"
+                    or not image.is_file() or ranking.get("status") != "COMPLETE"
+                    or anchor["candidate_id"] not in (ranking.get("ordered_candidate_ids") or [])
+                    or ranking.get("input_hashes", {}).get(anchor["candidate_id"]) != self._hash(image)):
+                raise LocalBodyReferenceError("Re-evaluate and rank the human-passed FRONT candidate before proceeding.")
+            claimed = set(state.get("target_views") or [])
+            target_views = [view for view in run.get("views", []) if view != FRONT_VIEW and view not in claimed and
+                            (candidates := [item for item in run["candidates"] if item.get("view") == view]) and
+                            all(item.get("status") == "PENDING" and not item.get("image_path") for item in candidates)]
+        else:
+            target_views = [view for view in run.get("views", []) if view != FRONT_VIEW]
+        if run.get("review_version", 1) >= 2 and not target_views:
+            return {**run, "target_views": []}
+        state.update(status="READY_FOR_VIEWS", stop_requested=False, updated_at=self._now(), target_views=target_views)
         self._save_state(run_id, state)
-        return self.detail(run_id)
+        return {**self.detail(run_id), "target_views": target_views}
 
     def retry_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)

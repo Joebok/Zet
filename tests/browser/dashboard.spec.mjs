@@ -1237,6 +1237,7 @@ test("Local Character-Assembly opens review and displays candidates in automatic
   await page.route("**/api/local/character-assembly/runs/assembly-ranked", (route) => route.fulfill({ json: run }));
   await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ json: { candidate_count: 2, views: ["FRONT"] } }));
   await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/local/character-assembly/runs/assembly-ranked/candidates/*/review", (route) => route.fulfill({ json: run }));
   await page.route(/\/api\/local\/character-assembly\/runs\/assembly-ranked\/images\//, (route) => route.fulfill({
     contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
   }));
@@ -1251,7 +1252,48 @@ test("Local Character-Assembly opens review and displays candidates in automatic
   await cards.first().locator(".candidate-image").click();
   await expect(page.locator("#candidate-review")).toBeVisible();
   await expect(page.locator("#review-panel")).toContainText("Ranked #1: Best source preservation and proportions.");
+  await page.locator("#review-next").click();
+  await expect(page.locator("#review-panel h2")).toContainText("c001");
+  await expect(page.locator("#review-panel")).toContainText("Ranked #2: Minor proportion drift.");
+  await page.locator("#review-close").click();
+  await expect(cards.first()).toHaveAttribute("data-candidate", "c002");
+  await expect(cards.first()).toContainText("Rank #1");
   expect(pageErrors).toEqual([]);
+});
+
+test("Local Character-Assembly selected strip exposes run-other-views and unselects through the shared action", async ({ page }) => {
+  let run = {
+    run_id: "assembly-selected", character: "Test", phase: "Adult", status: "AWAITING_HUMAN_SELECTION",
+    candidate_count: 1, views: ["FRONT"], front_anchor: "c001", views_started: false,
+    selected_views: { FRONT: "c001" }, local_assets: {},
+    rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c001"],
+      input_hashes: { c001: "fixture" }, entries: [{ candidate_id: "c001", reason: "Passed." }] } },
+    candidates: [{ candidate_id: "c001", view: "FRONT", status: "COMPLETE", image_path: "front.png",
+      gates: { framing: { status: "DISABLED", policy_status: "Disabled" } },
+      human_review: { decision: "keep", notes: "passed" } }],
+  };
+  await page.route("**/api/context", (route) => route.fulfill({ json: {
+    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
+  } }));
+  await page.route(/\/api\/local\/character-assembly\/runs\?/, (route) => route.fulfill({ json: { runs: [run] } }));
+  await page.route("**/api/local/character-assembly/runs/assembly-selected", (route) => route.fulfill({ json: run }));
+  await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ json: { candidate_count: 1, views: ["FRONT"] } }));
+  await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route(/\/api\/local\/character-assembly\/runs\/assembly-selected\/images\//, (route) => route.fulfill({
+    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
+  }));
+  await page.route("**/api/local/character-assembly/runs/assembly-selected/views/FRONT/select", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ candidate_id: "" });
+    run = { ...run, front_anchor: null, selected_views: {}, status: "AWAITING_FRONT_ANCHOR" };
+    await route.fulfill({ json: run });
+  });
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.goto("/local-character-assembly");
+  await expect(page.locator("#selected-views")).toBeVisible();
+  await expect(page.locator("#selected-views")).toContainText("Run other views");
+  await page.locator('#selected-views [data-action="unselect"]').click();
+  await expect(page.locator("#selected-views")).toBeHidden();
 });
 
 test("Local Body-Reference shows gate rejects, Luna order, selection, and repair controls", async ({ page }) => {

@@ -20,7 +20,9 @@ from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
 from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 from zet.services.candidate_review_contract import ReviewGate, validate_ranking
 from zet.services.local_asset_store_service import LocalAssetStoreService
-from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, gate_result_is_current
+from zet.services.local_image_pipeline_policy import (
+    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current, upgrade_legacy_review_v1,
+)
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -225,7 +227,7 @@ class LocalCharacterAssetPipelineService:
                 candidates.append({"candidate_id": f"c{index:03d}", "view": view, "ordinal": ordinal,
                                   "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
                                   "gates": {}, "human_review": {"decision": "undecided", "notes": ""}, "retry_count": 0})
-        spec = {"schema_version": 1, "review_version": 1, "kind": self.pipeline, "run_id": run_id,
+        spec = {"schema_version": 1, "review_version": 2, "kind": self.pipeline, "run_id": run_id,
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "costume": plan["costume"], "views": list(VIEWS), "front_count": plan["front_count"],
                 "other_count": plan["other_count"], "candidate_count": count, "sources": sources,
@@ -237,9 +239,13 @@ class LocalCharacterAssetPipelineService:
                                            "candidates": {}, "selected_views": {}, "rankings": {}})
         return self.detail(run_id, plan["costume"])
 
-    def detail(self, run_id: str, costume: str = "") -> dict[str, Any]:
+    def detail(self, run_id: str, costume: str = "", *, upgrade_legacy: bool = False) -> dict[str, Any]:
         root = self._run_root(run_id, costume)
         spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
+        with self._active_lock:
+            active = run_id in self._active
+        if upgrade_legacy and upgrade_legacy_review_v1(root, spec, state, active=active):
+            spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
         candidates = {item["candidate_id"]: dict(item) for item in spec.get("candidates", [])}
         for cid, update in (state.get("candidates") or {}).items():
             if cid in candidates:
@@ -253,7 +259,25 @@ class LocalCharacterAssetPipelineService:
                 if result["interrupted"]:
                     result["status"] = "INTERRUPTED"
         result["local_assets"] = self.asset_store.detail(result["character"], result["phase"])["assets"]
-        return result
+        by_id = {item["candidate_id"]: item for item in result["candidates"]}
+        result["stale_selections"] = []
+        for view, candidate_id in result["selected_views"].items():
+            candidate = by_id.get(candidate_id) or {}
+            image = Path(str(candidate.get("image_path") or ""))
+            ranking = (result.get("rankings", {}).get(view) or {})
+            key = self.asset_store.key(self.definition["asset_pipeline"], view, self._qualifier(str(result.get("costume") or "")))
+            local_asset = result["local_assets"].get(key) or {}
+            stale = (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
+                     or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
+                     or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)
+                     or not self._candidate_gates_current(result, candidate)
+                     or bool(candidate.get("legacy_review_stale"))
+                     or bool(local_asset.get("locked") and local_asset.get("candidate_id") != candidate_id))
+            if stale:
+                result["stale_selections"].append(view)
+        if result["stale_selections"] and result["status"] not in ACTIVE_RUN_STATUSES | {"ERROR", "CANCELLED", "INTERRUPTED"}:
+            result["status"] = "REVIEW_REQUIRED"
+        return decorate_local_pipeline_detail(result, self.pipeline)
 
     def list_runs(self, character: str = "", phase: str = "", costume: str = "") -> list[dict[str, Any]]:
         if costume and self.definition["qualifies"]:
@@ -774,6 +798,8 @@ class LocalCharacterAssetPipelineService:
         run, view = self.detail(run_id, costume), view.upper()
         if view not in VIEWS:
             raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
+        if not candidate_id:
+            return self.unselect_view(run_id, view, costume)
         if view != "FRONT" and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before selecting other views.")
         qualifier = self._qualifier(costume)
@@ -783,6 +809,8 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("Choose a gate surviving or human-passed candidate from this view.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalCharacterAssetPipelineError("A human-rejected candidate cannot be selected.")
+        if view == "FRONT" and candidate.get("human_review", {}).get("decision") != "keep":
+            raise LocalCharacterAssetPipelineError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str(candidate.get("image_path") or ""))
         if ranking.get("status") != "COMPLETE" or candidate_id not in ranking.get("ordered_candidate_ids", []) or not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
@@ -823,13 +851,39 @@ class LocalCharacterAssetPipelineService:
                     for item in run["candidates"]:
                         if item["view"] == other:
                             item_state = state.setdefault("candidates", {}).setdefault(item["candidate_id"], {})
-                            item_state.update(status="PENDING", gates={}, rejection_gate="")
-                            image_path = Path(str(item.get("image_path") or ""))
-                            if image_path.is_file() and image_path.resolve().is_relative_to(Path(run["root"]).resolve()):
-                                image_path.unlink()
-                            item_state["image_path"] = ""
+                            item_state.update(gates={key: {**value, "status": "STALE", "stale_reason": "FRONT anchor changed."}
+                                                     for key, value in (item.get("gates") or {}).items()},
+                                              rejection_gate="")
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(status="COMPLETE", selected_at=self._now())
         state["status"] = "COMPLETE" if all(state.get("selected_views", {}).get(target) for target in VIEWS) else "AWAITING_HUMAN_SELECTION"
+        self._write(root / "state.json", state)
+        return self.detail(run_id, costume)
+
+    def unselect_view(self, run_id: str, view: str, costume: str = "") -> dict[str, Any]:
+        run, view = self.detail(run_id, costume), str(view or "").upper()
+        if view not in VIEWS:
+            raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
+        selected = run.get("selected_views") or {}
+        candidate_id = selected.get(view)
+        if not candidate_id:
+            return run
+        targets = VIEWS[1:] if view == "FRONT" else (view,)
+        qualifier = self._qualifier(costume)
+        for target in targets:
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"],
+                                                         self.definition["asset_pipeline"], target, qualifier)
+        root, state = self._state(run_id, costume)
+        for target in targets:
+            old_id = state.setdefault("selected_views", {}).pop(target, None)
+            if old_id:
+                self.asset_store.clear_batch_selection(run["character"], run["phase"],
+                    self.definition["asset_pipeline"], target, run_id, qualifier)
+            if target != "FRONT":
+                state.setdefault("rankings", {}).pop(target, None)
+        if view == "FRONT":
+            state["front_anchor"] = None
+            state["views_started"] = False
+        state["status"] = "AWAITING_FRONT_ANCHOR" if view == "FRONT" else "AWAITING_HUMAN_SELECTION"
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
@@ -891,7 +945,16 @@ class LocalCharacterAssetPipelineService:
             if candidate["view"] == "FRONT":
                 state["front_anchor"] = None
                 state["views_started"] = False
-        state.setdefault("rankings", {}).pop(candidate["view"], None)
+        previous_decision = str((candidate.get("human_review") or {}).get("decision") or "undecided")
+        if previous_decision != decision and (
+            previous_decision == "reject" or decision == "reject" or candidate.get("rejection_gate")
+        ):
+            ranking = state.setdefault("rankings", {}).get(candidate["view"])
+            if ranking and ranking.get("status") == "COMPLETE":
+                ranking = dict(ranking)
+                ranking["status"] = "STALE"
+                ranking["stale_reason"] = "Human review changed the ranked survivor set. Re-rank this view."
+                state["rankings"][candidate["view"]] = ranking
         self._write(root / "state.json", state)
         self._update(run_id, candidate_id, costume,
                      human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
@@ -993,12 +1056,40 @@ class LocalCharacterAssetPipelineService:
         candidate_id = (run.get("selected_views") or {}).get("FRONT")
         if not candidate_id:
             raise LocalCharacterAssetPipelineError("Select the FRONT candidate before continuing.")
+        anchor = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
+        if not anchor or anchor.get("human_review", {}).get("decision") != "keep":
+            raise LocalCharacterAssetPipelineError("Review and pass the FRONT candidate before continuing.")
+        anchor_image = Path(str(anchor.get("image_path") or ""))
+        front_ranking = (run.get("rankings") or {}).get("FRONT") or {}
+        if (not anchor_image.is_file() or front_ranking.get("status") != "COMPLETE"
+                or candidate_id not in (front_ranking.get("ordered_candidate_ids") or [])
+                or front_ranking.get("input_hashes", {}).get(candidate_id) != self._hash(anchor_image)
+                or not self._candidate_gates_current(run, anchor)):
+            raise LocalCharacterAssetPipelineError("Re-evaluate and rank FRONT before continuing with other views.")
+        if run.get("front_anchor") != candidate_id:
+            raise LocalCharacterAssetPipelineError("The selected FRONT candidate is not the current anchor.")
+        if run.get("status") in ACTIVE_RUN_STATUSES:
+            raise LocalCharacterAssetPipelineError("Wait for active batch work to finish before starting other views.")
+        candidates_by_view = {
+            view: [item for item in run["candidates"] if item["view"] == view]
+            for view in VIEWS[1:]
+        }
+        target_views = {
+            view for view, candidates in candidates_by_view.items()
+            if candidates and all(item.get("status") == "PENDING" and not item.get("image_path") for item in candidates)
+        }
+        if not target_views:
+            return {**run, "target_views": []}
         state_root, state = self._state(run_id, costume)
         state["front_anchor"] = candidate_id
         state["status"] = "READY_FOR_VIEWS"
         state["views_started"] = True
+        # Claim these views before returning so a second request cannot queue them twice.
+        for candidate in run["candidates"]:
+            if candidate["view"] in target_views:
+                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})["status"] = "QUEUED"
         self._write(state_root / "state.json", state)
-        return self.detail(run_id, costume)
+        return {**self.detail(run_id, costume), "target_views": [view for view in VIEWS[1:] if view in target_views]}
 
     def image_path(self, run_id: str, candidate_id: str, costume: str = "") -> Path:
         run = self.detail(run_id, costume)
