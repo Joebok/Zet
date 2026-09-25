@@ -1,7 +1,7 @@
 # Orientation gate investigation and pause point
 
 **Date:** 2026-09-23  
-**Status:** Disabled while work continues on the other body-reference views.
+**Status:** Disabled by default in the shared gate registry; this is an investigation record, not an enabled-gate recommendation.
 
 ## What the gate should decide
 
@@ -9,7 +9,7 @@ For `FRONT_LEFT_3_4`, the saved prompt defines a frontal three-quarter view: fac
 
 The concrete reproduction is run `20260923_014156_870344`, candidate `c009`. Its staged `candidate.png` SHA-256 is `676357b58d928d36df793fefc800273c59a3152eb2a1f8e11b810ccad00b8729`, matching the source candidate image. The saved `OLLAMA_PROMPT.md` contains the intended `FRONT_LEFT_3_4` definition, and the ask manifest lists exactly that `candidate.png`. The AI Proxy reads the listed image file and base64-encodes its bytes into the Ollama request. This evidence did **not** show an incorrect, swapped, or mirrored image being sent. It does not prove that every earlier request had the correct image; capture hashes per request when work resumes.
 
-** NOTE: ** The referenced run above was deleted. A new batch should be created with the orientation gate re-enabled before doing any work on this issue.
+The referenced run was later deleted, so its saved artifacts are no longer a live regression fixture. Create a new batch and collect fresh cases in the gate test rig when work resumes. Enable the production gate only after validation.
 
 ## Request changes and observed results
 
@@ -27,7 +27,7 @@ The alias Modelfile is `C:\Users\Joe\Projects\ModelUpdater\Modelfiles\image-anal
 
 ## Current code behavior
 
-The orientation gate is still listed in the dashboard, rendered gray as **Disabled**. During candidate gate processing, Zet records orientation status `DISABLED`, with the passing-convention verdict `FALSE`, and does not queue an Ollama orientation request. Other gates continue. Previous orientation records are archived in gate history when replaced. A view already failed or rejected on an old orientation result may need **Re-evaluate view** to run through the new behavior using its existing candidate image.
+The orientation gate is still listed in the dashboard and defaults to **Disabled** in `local_gate_registry_service.py`. During candidate gate processing, Zet records orientation status `DISABLED`, with the stored passing verdict `FALSE`, and does not queue an Ollama orientation request. Other gates continue. A saved gate-policy override can change the effective status. Previous orientation records are archived in gate history when replaced. A view already failed or rejected on an old orientation result may need **Re-evaluate view** to run through the current policy using its existing candidate image. The orientation model prompt treats `TRUE` as a match and `FALSE: <reason>` as a mismatch; Zet converts that response to the shared stored rejection verdict.
 
 The dormant orientation request configuration remains `/api/chat`, `think:false`, and `temperature:1.0` in `zet/services/local_body_reference_service.py`. The AI Proxy request and thinking capture are in `AI_Manager/ollama_proxy_worker.py`; the dashboard label is in `zet/web/templates/local_body_reference.html`. Do not treat the dormant request settings as a validated fix.
 

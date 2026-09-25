@@ -1,6 +1,6 @@
 # Local Image Generation
 
-This document describes Zet's complete local image generation process: configuration, scene compilation, backend dispatch, ComfyUI and Stable Matrix execution, filesystem queue processing, artifact harvesting, direct CLI use, and troubleshooting.
+This document describes generic local scene and character-asset preview rendering: configuration, scene compilation, backend dispatch, ComfyUI and Stable Matrix execution, filesystem queue processing, artifact harvesting, direct CLI use, and troubleshooting. The candidate-based Local Body-Reference and Local Head-Image workflows use separate run and review services; see [Local Image Pipeline Guidance](Local_Image_Pipeline_Guidance.md).
 
 ## Purpose and boundaries
 
@@ -29,7 +29,7 @@ flowchart TD
     C --> E["Local_Render_Brief.json"]
     E --> F["Local_Render_Prompt.md"]
     E --> G["Local_Render_Forge_Couple_Prompt.md"]
-    H["Render Console: Gen Local Image"] --> I["local_image_render queue ask"]
+    H["Dashboard local image action"] --> I["local_image_render queue ask"]
     C --> I
     F --> I
     I --> J["local_image_proxy_worker"]
@@ -376,7 +376,7 @@ Render metadata records:
 
 ## Filesystem queue lifecycle
 
-The Render Console's **Gen Local Image** action uses the filesystem proxy.
+The dashboard's local image actions use the filesystem proxy.
 
 ### 1. Staging
 
@@ -398,7 +398,7 @@ Important manifest fields include:
 | `expected_output` | Queue answer image filename |
 | `target_output_dir` | Pipeline `Local_Test_Renders` folder |
 | `artifact_output_dir` | Pipeline folder for workflow/metadata |
-| `source_ask_id` | Render Console task that requested the preview |
+| `source_ask_id` | Task that requested the preview |
 
 Reference records are carried through every ask. The core profile preserves but does not consume them; the IP-Adapter profile consumes resolved assignments.
 
@@ -466,7 +466,7 @@ Chapter-03-Collision/
     └── test_<timestamp>.png
 ```
 
-The harvested ComfyUI metadata is copied to the pipeline folder for Render Console inspection. Direct CLI runs retain it under `Local_Test_Renders`.
+The harvested ComfyUI metadata is copied to the pipeline folder for dashboard inspection. Direct CLI runs retain it under `Local_Test_Renders`.
 
 ## Troubleshooting
 
