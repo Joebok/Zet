@@ -39,7 +39,11 @@ def add_case(service, *, view, expected="PASS", color="white"):
 def test_registry_catalog_lists_views_and_default_statuses(tmp_path):
     service, app, _ = make_service(tmp_path)
     catalog = LocalGateRegistryService(app, tmp_path).catalog()
-    assert {item["key"] for item in catalog["pipelines"]} == {"body-reference", "head-image"}
+    assert {item["key"] for item in catalog["pipelines"]} == {
+        "body-reference", "head-image", "local-character-assembly", "local-costume-dressing",
+    }
+    assert set(LocalGateRegistryService(app, tmp_path).catalog("local-character-assembly")["statuses"].values()) == {"Disabled"}
+    assert set(LocalGateRegistryService(app, tmp_path).catalog("local-costume-dressing")["statuses"].values()) == {"Disabled"}
     body = service.catalog("body-reference")
     assert body["statuses"]["orientation"] == "Disabled"
     assert body["statuses"]["face"] == "Active"

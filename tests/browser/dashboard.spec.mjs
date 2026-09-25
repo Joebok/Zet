@@ -1191,6 +1191,69 @@ test("Local Head-Image review shows the selected FRONT candidate as its anchor",
   await expect(page.locator("#review-anchor-message")).toBeHidden();
 });
 
+test("Local Character-Assembly restores dashboard character and phase and keeps both selectable", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("zet:last-character-phase", JSON.stringify({ character: "Tsaeytte", phase: "Adult" })));
+  await page.route("**/api/context", (route) => route.fulfill({ json: {
+    characters: ["Another", "Tsaeytte"],
+    phases_by_character: { Another: ["Child", "Adult"], Tsaeytte: ["Child", "Adult"] },
+    default_character: "Another", default_phase: "Child",
+  } }));
+  await page.route(/\/api\/local\/character-assembly\/runs\?/, (route) => route.fulfill({ json: { runs: [] } }));
+  await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ status: 400, json: { detail: "No locked inputs" } }));
+  await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+
+  await page.goto("/local-character-assembly");
+  await expect(page.locator("#character")).toHaveValue("Tsaeytte");
+  await expect(page.locator("#phase")).toHaveValue("Adult");
+  await expect(page.locator("#character option")).toHaveCount(2);
+  await expect(page.locator("#phase option")).toHaveCount(2);
+  await page.locator("#character").selectOption("Another");
+  await expect(page.locator("#phase")).toHaveValue("Child");
+  await page.locator("#phase").selectOption("Adult");
+  await expect(page.locator("#phase")).toHaveValue("Adult");
+});
+
+test("Local Character-Assembly opens review and displays candidates in automatic Luna order", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const run = {
+    run_id: "assembly-ranked", character: "Test", phase: "Adult", status: "AWAITING_FRONT_ANCHOR",
+    candidate_count: 2, views: ["FRONT"], front_anchor: null, selected_views: {}, local_assets: {},
+    rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c002", "c001"], entries: [
+      { candidate_id: "c002", reason: "Best source preservation and proportions." },
+      { candidate_id: "c001", reason: "Minor proportion drift." },
+    ] } },
+    candidates: [
+      { candidate_id: "c001", view: "FRONT", seed: "111", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "one.png",
+        gates: { identity: { status: "COMPLETE", verdict: "FALSE" } }, human_review: { decision: "undecided", notes: "" } },
+      { candidate_id: "c002", view: "FRONT", seed: "222", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "two.png",
+        gates: { identity: { status: "COMPLETE", verdict: "FALSE" } }, human_review: { decision: "undecided", notes: "" } },
+    ],
+  };
+  await page.route("**/api/context", (route) => route.fulfill({ json: {
+    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
+  } }));
+  await page.route(/\/api\/local\/character-assembly\/runs\?/, (route) => route.fulfill({ json: { runs: [run] } }));
+  await page.route("**/api/local/character-assembly/runs/assembly-ranked", (route) => route.fulfill({ json: run }));
+  await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ json: { candidate_count: 2, views: ["FRONT"] } }));
+  await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route(/\/api\/local\/character-assembly\/runs\/assembly-ranked\/images\//, (route) => route.fulfill({
+    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
+  }));
+
+  await page.goto("/local-character-assembly");
+  const cards = page.locator('#views [data-view="FRONT"] .card');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toHaveAttribute("data-candidate", "c002");
+  await expect(page.locator('#views [data-view="FRONT"] h2')).toContainText("Luna ranked");
+  await expect(cards.first()).toContainText("Rank #1");
+  await expect(cards.first()).not.toContainText("seed 222");
+  await cards.first().locator(".candidate-image").click();
+  await expect(page.locator("#candidate-review")).toBeVisible();
+  await expect(page.locator("#review-panel")).toContainText("Ranked #1: Best source preservation and proportions.");
+  expect(pageErrors).toEqual([]);
+});
+
 test("Local Body-Reference shows gate rejects, Luna order, selection, and repair controls", async ({ page }) => {
   let selectedRequest;
   let run = {
@@ -1257,6 +1320,24 @@ test("Local Body-Reference shows gate rejects, Luna order, selection, and repair
   await page.getByRole("button", { name: "Select", exact: true }).click();
   expect(selectedRequest).toEqual({ candidate_id: "c001" });
   await expect(page.locator("#status")).toContainText("FRONT anchor: c001");
+});
+
+test("Local Body-Reference keeps a new batch usable beside an earlier lock", async ({ page }) => {
+  const run = {
+    run_id: "new-run", character: "Test", phase: "Adult", review_version: 2,
+    status: "AWAITING_FRONT_ANCHOR", candidate_count: 1, views: ["FRONT"],
+    front_anchor: null, selected_views: {}, rankings: {}, candidates: [],
+    local_assets: { "body-reference:FRONT": { locked: true, batch_id: "earlier", candidate_id: "old" } },
+  };
+  await page.route("**/api/context", (route) => route.fulfill({ json: {
+    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
+  } }));
+  await page.route(/\/api\/local\/body-reference\/runs\?/, (route) => route.fulfill({ json: { runs: [run] } }));
+  await page.route(/\/api\/local\/body-reference\/runs\/new-run$/, (route) => route.fulfill({ json: run }));
+  await page.goto("/local-body-reference");
+  await expect(page.locator("#status")).toContainText("Existing locks: FRONT");
+  await expect(page.locator("#selected-views .selected-view")).toHaveCount(0);
+  await expect(page.locator("#gallery details[data-view=FRONT]")).toBeVisible();
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

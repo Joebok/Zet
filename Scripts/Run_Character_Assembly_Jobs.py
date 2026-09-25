@@ -85,10 +85,16 @@ def write_dependency_manifest(
         "assembly_style_mode": assembly_style_mode,
         "resources_allowed": True,
         "resources": reference_files,
-        "required_reference_roles": ["body_reference", "head_image"],
+        "required_reference_roles": [
+            "body_reference",
+            "head_image",
+            *(["front_assembly"] if any(item.get("role") == "front_assembly" for item in reference_files) else []),
+        ],
         **contract,
         "notes": [
             "Character-assembly uses locked Body-Reference and Head-Image assets selected by matching body/head view.",
+            *(["Non-front local views also use the selected FRONT Character-Assembly anchor for proportion and appearance consistency."]
+              if any(item.get("role") == "front_assembly" for item in reference_files) else []),
             "Prompt text describes reference usage; image file selection is stored in asset.reference_files and ask manifest.",
         ],
     }
@@ -131,7 +137,10 @@ Reviewed At:
     )
 
 
-def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
+def compile_character_assembly_job(
+    job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
+    pipeline_mode: str = "traditional",
+) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -142,8 +151,11 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT,
     if task != "character-assembly":
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for character-assembly runner: {task}")
 
+    if pipeline_mode not in {"traditional", "local"}:
+        raise TemplateCompileError("INVALID_PIPELINE_MODE", f"Unsupported Character-Assembly pipeline mode: {pipeline_mode}")
+
     bundle = load_bundle(project_root, "character-assembly")
-    if prompt_variant == "analysis":
+    if prompt_variant == "analysis" or pipeline_mode == "local":
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     body_view_token = normalize_view(project_root, raw_body_view)
     head_view_token = normalize_view(project_root, raw_head_view)
@@ -158,8 +170,34 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT,
     references = reference_files_for_job(job)
     body_reference = reference_by_role(references, "body_reference")
     head_image = reference_by_role(references, "head_image")
+    front_assembly = next((reference for reference in references if reference.get("role") == "front_assembly"), None)
     validate_reference(body_reference, "body_reference")
     validate_reference(head_image, "head_image")
+    if pipeline_mode == "local" and body_view_token != "FRONT" and not front_assembly:
+        raise TemplateCompileError(
+            "MISSING_REFERENCE",
+            "Local non-front Character-Assembly views require the selected FRONT assembly anchor.",
+        )
+    if front_assembly:
+        validate_reference(front_assembly, "front_assembly")
+        raw_anchor_view = str(front_assembly.get("view") or "").strip()
+        if not raw_anchor_view:
+            raise TemplateCompileError(
+                "MISSING_REFERENCE_VIEW",
+                "Reference slot front_assembly is missing required view metadata.",
+            )
+        if normalize_view(project_root, raw_anchor_view) != "FRONT":
+            raise TemplateCompileError(
+                "CHARACTER_ASSEMBLY_VIEW_MISMATCH",
+                "Reference slot front_assembly must use the FRONT view.",
+            )
+        for field, expected in (("character", character), ("phase", phase)):
+            value = str(front_assembly.get(field) or "").strip()
+            if value and value != expected:
+                raise TemplateCompileError(
+                    "CHARACTER_ASSEMBLY_REFERENCE_MISMATCH",
+                    f"Reference slot front_assembly {field} {value} does not match requested {field} {expected}.",
+                )
     validate_character_assembly_inputs(
         project_root,
         character=character,
@@ -172,7 +210,10 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT,
 
     template_path = template_path_for_job(project_root, job, character, phase)
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
-    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token, prompt_variant=prompt_variant)
+    selection = select_prompt_sections(
+        project_root, bundle, all_sections, section_sources, body_view_token,
+        prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
+    )
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )
@@ -217,6 +258,18 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT,
             "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
+            "LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE": (
+                "Image 1 is the locked Body-Reference image for the requested view. Image 2 is the locked "
+                "Head-Image for that same view. Image 3 is the selected FRONT Character-Assembly anchor. "
+                "Use Image 3 to preserve the established head-to-body scale, head and body proportions, silhouette, "
+                "and integrated character appearance across views. Use Images 1 and 2 as authoritative for the "
+                "requested view, pose, orientation, and view-specific details; do not copy Image 3's front orientation."
+                if pipeline_mode == "local" and front_assembly
+                else "Image 1 is the locked Body-Reference image for the requested view. Image 2 is the locked "
+                     "Head-Image for that same view. Use only these two images as visual sources."
+                if pipeline_mode == "local"
+                else ""
+            ),
             **contract_values,
             **template_metadata(template_path),
         }
@@ -228,6 +281,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT,
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "character-assembly body view instruction", "json_pointer": f"/views/{body_view_token}/body_instructions/{task}", "editable": True},
         "ASSEMBLY_STYLE_MODE": {"source_kind": "asset_metadata", "source_path": "", "source_label": "Assembly style mode", "editable": True},
         "ASSEMBLY_STYLE_INSTRUCTION": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Assembly style instruction", "editable": False},
+        "LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Local Character-Assembly reference guidance", "editable": False},
         "BODY_VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Body view token", "editable": False},
         "BODY_VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "Body view label", "json_pointer": f"/views/{body_view_token}/label", "editable": True},
         "BODY_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(project_root / "Config" / "Prompt_View_Text.json"), "source_label": "character-assembly body view instruction", "json_pointer": f"/views/{body_view_token}/body_instructions/{task}", "editable": True},
@@ -248,6 +302,7 @@ def compile_character_assembly_job(job: dict, project_root: Path = PROJECT_ROOT,
         required_section_names=[],
         view_token=body_view_token,
         prompt_variant=prompt_variant,
+        pipeline_mode=pipeline_mode,
     )
     if prompt_variant == "generation":
         finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "composite")

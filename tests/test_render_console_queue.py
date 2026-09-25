@@ -430,11 +430,10 @@ Checkpoint = "sdxl.safetensors"
                 "canvas": {"aspect_ratio": "4:5"}, "scene": {"story_beat": "Tsaeytte enters the arch"},
                 "image_inputs": [],
             }), encoding="utf-8")
-            inventory = {"diffusion_models": ["qwen.safetensors"], "text_encoders": ["encoder.safetensors"],
-                         "vaes": ["vae.safetensors"], "node_types": []}
             app = ZetApp.from_config(config_path)
             with patch("zet.services.ai_proxy_service.LocalRenderBackendService.comfyui_options",
-                       return_value=inventory), patch("zet.services.ai_proxy_service.compile_ir_to_comfyui_workflow"):
+                       side_effect=AssertionError("Queue staging contacted ComfyUI")), patch(
+                           "zet.services.ai_proxy_service.validate_scene_render_ir"):
                 ask_path = app.stage_scene_local_render_ask(
                     {"ask_id": "Ask_Qwen_Scene"}, workspace, qwen_prompt_override="Edited natural-language scene.",
                     render_profile="comfyui-qwen-image-2-1-scene")

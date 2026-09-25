@@ -15,6 +15,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.services.character_onboarding_service import CharacterOnboardingService, FOUNDATION_VIEWS
 from zet.services.config_service import Config
 from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
+from zet.services import atomic_file_service
 from zet.services.path_service import PathService
 from zet.services.reference_service import ReferenceService
 from zet.workers import character_assembly_manifest_worker
@@ -243,6 +244,48 @@ class HeadImageCompilerTests(unittest.TestCase):
             prompt = Path(run["front_prompt_path"]).read_text(encoding="utf-8")
             self.assertNotIn("source image", prompt.lower())
             self.assertEqual(1, len([item for item in run["candidates"] if item["view"] == "FRONT"]))
+
+    def test_saved_render_survives_transient_state_replace_access_denied(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters"),
+                                                         comfyui_poll_seconds=0.01))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+            candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+            target = root / "rendered.png"
+            service._update(run["run_id"], candidate["candidate_id"], status="RUNNING", image_path=str(target))
+
+            def harvest(_run_id, _candidate):
+                target.write_bytes(b"saved render")
+
+            real_replace = atomic_file_service.os.replace
+            attempts = 0
+
+            def fail_once(source, destination):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    error = OSError(5, "Access is denied")
+                    error.winerror = 5
+                    raise error
+                return real_replace(source, destination)
+
+            with patch.object(service, "_harvest", side_effect=harvest), \
+                    patch.object(atomic_file_service.os, "replace", side_effect=fail_once):
+                self.assertTrue(service._wait_render(run["run_id"], candidate["candidate_id"]))
+
+            current = next(item for item in service.detail(run["run_id"])["candidates"]
+                           if item["candidate_id"] == candidate["candidate_id"])
+            self.assertEqual("WAITING_FOR_GATES", current["status"])
+            self.assertTrue(target.is_file())
+            self.assertGreaterEqual(attempts, 2)
 
     def test_old_ranking_is_stale_and_cannot_select_without_new_gaze_result(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

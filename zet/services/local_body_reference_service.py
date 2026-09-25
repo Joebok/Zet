@@ -614,7 +614,7 @@ Do not explain your reasoning."""
                             "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
                             "image_sha256": self._hash(anchor_image),
                         })
-                self.asset_store.record_selection(
+                self.asset_store.record_batch_selection(
                     str(value["character"]), str(value["phase"]), "Body-Reference", selected_view,
                     candidate_id=str(selected_id), image_path=selected_image, batch_id=run_id,
                     dependencies=dependencies,
@@ -709,7 +709,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("Wait for the local image runner to finish before starting a fresh batch.")
         views = set(run.get("views", []))
         for view in views:
-            self.asset_store.assert_change_allowed(
+            self.asset_store.assert_batch_change_allowed(
                 run["character"], run["phase"], "Body-Reference", view
             )
         root = self._root(run_id).resolve()
@@ -758,7 +758,7 @@ Do not explain your reasoning."""
         affected_views = (set(run.get("views", []))
                           if view == FRONT_VIEW and int(run.get("review_version") or 1) >= 2 else {view})
         for affected_view in affected_views:
-            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", affected_view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", affected_view)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         stamp = self._now()
         self._withdraw_queued_asks(run_id, affected_views=affected_views)
@@ -802,7 +802,7 @@ Do not explain your reasoning."""
         view = str(view or "").upper()
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_lock.locked():
@@ -834,7 +834,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"This batch has no failed images to re-run for view {view}.")
 
         root = self._root(run_id).resolve()
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         stamp = self._now()
         self._withdraw_queued_asks(run_id, candidate_ids={item["candidate_id"] for item in candidates})
@@ -898,7 +898,7 @@ Do not explain your reasoning."""
                 raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {normalized_view}")
             target_views = [normalized_view]
         for target_view in target_views:
-            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", target_view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", target_view)
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-evaluating it.")
         if self._runner_lock.locked():
@@ -992,7 +992,7 @@ Do not explain your reasoning."""
         record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(
             self.asset_store.key("Body-Reference", view), {}
         )
-        if record.get("batch_id") == run["run_id"]:
+        if record.get("batch_id") == run["run_id"] and not record.get("locked"):
             self.asset_store.clear_selection(run["character"], run["phase"], "Body-Reference", view)
 
     def _withdraw_queued_asks(self, run_id: str, *, affected_views: set[str] | None = None,
@@ -1040,7 +1040,7 @@ Do not explain your reasoning."""
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if run.get("review_version", 1) >= 2:
             if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
                 raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before reviewing.")
@@ -1048,12 +1048,9 @@ Do not explain your reasoning."""
             notes = str(payload.get("notes") or "")
             if decision not in {"keep", "reject", "undecided"}:
                 raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
-            if candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate"):
-                raise LocalBodyReferenceError("Human review is available only for gate-surviving candidates.")
             image = Path(str(candidate.get("image_path") or ""))
-            if (candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                    or not image.is_file()):
-                raise LocalBodyReferenceError("The candidate must have a completed image and pass current gates before human review.")
+            if not image.is_file():
+                raise LocalBodyReferenceError("The candidate must have a completed image before human review.")
             image_hash = self._hash(image)
             anchor = next((item for item in run["candidates"]
                            if item.get("candidate_id") == run.get("front_anchor")), None)
@@ -1074,18 +1071,24 @@ Do not explain your reasoning."""
                 ):
                     gates_current = False
                     break
-            if not gates_current:
+            if not gates_current and decision == "undecided":
                 raise LocalBodyReferenceError("The candidate must pass current gates before human review.")
             root = self._root(run_id)
             state = json.loads((root / "state.json").read_text(encoding="utf-8"))
             state.setdefault("candidates", {}).setdefault(candidate_id, {}).update({
                 "human_review": {"decision": decision, "notes": notes},
             })
+            if decision == "keep":
+                state["candidates"][candidate_id].update(status="COMPLETE", disposition="human_keep", completed_at=self._now())
+            elif decision == "reject":
+                state["candidates"][candidate_id].update(status="COMPLETE", disposition="human_reject", completed_at=self._now())
+            else:
+                state["candidates"][candidate_id].update(status=candidate.get("status"), disposition="pending")
             if decision == "reject" and state.get("selected_views", {}).get(candidate["view"]) == candidate_id:
                 if candidate["view"] == FRONT_VIEW:
                     for downstream_view in run.get("views", []):
                         if downstream_view != FRONT_VIEW:
-                            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
+                            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
                 self._clear_owned_selection(run, candidate["view"])
                 state["selected_views"].pop(candidate["view"], None)
                 state["candidates"][candidate_id]["status"] = "WAITING_FOR_HUMAN_REVIEW"
@@ -1442,23 +1445,13 @@ Do not explain your reasoning."""
 
     def _preflight(self) -> None:
         backend = LocalRenderBackendService(self.project_root / "Config" / "Local_Render_Presets.json")
-        inventory = backend.comfyui_options(self.app.config.comfyui_server_url)
         for name in ("comfyui-qwen-body-reference-text", "comfyui-qwen-body-reference-edit"):
             profile = backend.preset(name)
             if not profile:
                 raise LocalBodyReferenceError(f"Missing render preset: {name}")
-            for key, available, label in (
-                ("diffusion_model", inventory["diffusion_models"], "diffusion model"),
-                ("text_encoder", inventory["text_encoders"], "text encoder"),
-                ("vae", inventory["vaes"], "VAE"),
-            ):
-                if profile.get(key) not in available:
-                    raise LocalBodyReferenceError(f"ComfyUI is missing the {label}: {profile.get(key)}")
-        required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
-                    "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage"}
-        missing = required - set(inventory["node_types"])
-        if missing:
-            raise LocalBodyReferenceError("ComfyUI is missing nodes: " + ", ".join(sorted(missing)))
+            for key in ("diffusion_model", "text_encoder", "vae"):
+                if not str(profile.get(key) or "").strip():
+                    raise LocalBodyReferenceError(f"Render preset {name} is missing {key}.")
 
     def _render_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Render candidates and queue face gates without blocking on AI Proxy."""
@@ -1586,7 +1579,7 @@ Do not explain your reasoning."""
         """Move one reviewed candidate one place in the saved ranking."""
         run = self.detail(run_id)
         view = str(view or "").upper()
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run.get("review_version", 1) < 2 or view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
@@ -1920,14 +1913,15 @@ Do not explain your reasoning."""
         """Queue a current gate-survivor set for comparative Luna ranking."""
         run = self.detail(run_id)
         view = str(view or "").upper()
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run.get("review_version", 1) < 2 or view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
             raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before ranking.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
-                     and item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                     and not item.get("rejection_gate")
+                     and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                          or item.get("human_review", {}).get("decision") == "keep")
+                     and (not item.get("rejection_gate") or item.get("human_review", {}).get("decision") == "keep")
                      and item.get("human_review", {}).get("decision") != "reject"]
         if not survivors and not any(item.get("view") == view and item.get("status") == "GATE_REJECTED"
                                      for item in run["candidates"]):
@@ -1950,13 +1944,14 @@ Do not explain your reasoning."""
         """Rank gate-surviving version 2 candidates for one canonical view."""
         run = self.detail(run_id)
         view = str(view or "").upper()
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run.get("review_version", 1) < 2:
             raise LocalBodyReferenceError("Per-view ranking is available for version 2 runs.")
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         for candidate in run["candidates"]:
-            if candidate.get("view") == view and candidate.get("rejection_gate") == "orientation":
+            if (candidate.get("view") == view and candidate.get("rejection_gate") == "orientation"
+                    and candidate.get("human_review", {}).get("decision") != "keep"):
                 self._run_candidate_gates(run_id, candidate["candidate_id"])
         run = self.detail(run_id)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
@@ -1964,11 +1959,12 @@ Do not explain your reasoning."""
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
             raise LocalBodyReferenceError("Select a completed front anchor before ranking other views.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
-                     and item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                     and not item.get("rejection_gate")
+                     and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                          or item.get("human_review", {}).get("decision") == "keep")
+                     and (not item.get("rejection_gate") or item.get("human_review", {}).get("decision") == "keep")
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
-        survivors = [item for item in survivors if all(
+        survivors = [item for item in survivors if item.get("human_review", {}).get("decision") == "keep" or all(
             (item.get("gates") or {}).get(gate.key, {}).get("verdict") == "FALSE"
             and (item.get("gates") or {}).get(gate.key, {}).get("input_hashes", {}).get("candidate")
             == self._hash(Path(str(item.get("image_path") or "")))
@@ -2080,7 +2076,7 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         for view in (run.get("views") or []):
             if view != FRONT_VIEW:
-                self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         root = self._root(run_id).resolve()
         downstream_views = {view for view in (run.get("views") or []) if view != FRONT_VIEW}
         self._withdraw_queued_asks(run_id, affected_views=downstream_views)
@@ -2125,13 +2121,13 @@ Do not explain your reasoning."""
             if view == FRONT_VIEW:
                 for downstream_view in run.get("views", []):
                     if downstream_view != FRONT_VIEW:
-                        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
+                        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
             removed_id = selected.pop(view, None)
             if not removed_id:
                 return self.detail(run_id)
             asset_key = self.asset_store.key("Body-Reference", view)
             record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(asset_key) or {}
-            if record.get("batch_id") == run_id and record.get("candidate_id") == removed_id:
+            if record.get("batch_id") == run_id and record.get("candidate_id") == removed_id and not record.get("locked"):
                 self.asset_store.clear_selection(run["character"], run["phase"], "Body-Reference", view)
             state.setdefault("candidates", {}).setdefault(removed_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
             if view == FRONT_VIEW:
@@ -2147,8 +2143,9 @@ Do not explain your reasoning."""
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate or candidate.get("view") != view:
             raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
-        if candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate"):
-            raise LocalBodyReferenceError("A candidate rejected by a review gate cannot be selected.")
+        human_pass = candidate.get("human_review", {}).get("decision") == "keep"
+        if (candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate")) and not human_pass:
+            raise LocalBodyReferenceError("A candidate must survive its gates or receive a human Pass before selection.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be selected.")
         ranking = (run.get("rankings") or {}).get(view) or {}
@@ -2158,18 +2155,18 @@ Do not explain your reasoning."""
             if anchor_image is None or not anchor_image.is_file() or ranking.get("anchor_hash") != self._hash(anchor_image):
                 raise LocalBodyReferenceError("The FRONT anchor changed after ranking; rerun this view.")
         if ranking.get("status") != "COMPLETE" or candidate_id not in (ranking.get("ordered_candidate_ids") or []):
-            raise LocalBodyReferenceError("The candidate must survive current gates and have a current view ranking.")
+            raise LocalBodyReferenceError("The candidate must have a current view ranking.")
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
             raise LocalBodyReferenceError("The candidate image changed after ranking; rerun its review.")
         previous_id = selected.get(view)
         if previous_id != candidate_id:
-            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         old_anchor_id = state.get("front_anchor")
         if view == FRONT_VIEW and old_anchor_id != candidate_id:
             for downstream_view in run.get("views", []):
                 if downstream_view != FRONT_VIEW:
-                    self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
+                    self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
         if previous_id and previous_id != candidate_id:
             state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
         selected[view] = candidate_id
@@ -2190,7 +2187,7 @@ Do not explain your reasoning."""
                     "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
                     "image_sha256": self._hash(anchor_image),
                 })
-        self.asset_store.record_selection(
+        self.asset_store.record_batch_selection(
             run["character"], run["phase"], "Body-Reference", view,
             candidate_id=candidate_id, image_path=image, batch_id=run_id,
             dependencies=dependencies,
@@ -2217,37 +2214,25 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"Select a reviewed {view} candidate before locking it.")
         candidate = next((item for item in run.get("candidates", [])
                           if item.get("candidate_id") == candidate_id), None)
-        ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str((candidate or {}).get("image_path") or ""))
-        local_asset = (run.get("local_assets") or {}).get(self.asset_store.key("Body-Reference", view)) or {}
-        if local_asset.get("candidate_id") != candidate_id or local_asset.get("batch_id") != run_id:
-            raise LocalBodyReferenceError("Select this candidate as the current local asset before locking it.")
-        if (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
-                or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
-                or (ranking.get("input_hashes") or {}).get(candidate_id) != self._hash(image)):
-            raise LocalBodyReferenceError("The selected candidate must have current gates and ranking before it can be locked.")
+        if not candidate or not image.is_file():
+            raise LocalBodyReferenceError("The selected candidate image is missing.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be locked.")
-        for gate in self.review_gates(view):
-            record = (candidate.get("gates") or {}).get(gate.key) or {}
-            anchor_hash = ""
-            if gate.uses_anchor:
-                anchor = next((item for item in run.get("candidates", [])
-                               if item.get("candidate_id") == run.get("front_anchor")), None)
-                anchor_path = Path(str((anchor or {}).get("image_path") or ""))
-                anchor_hash = self._hash(anchor_path) if anchor_path.is_file() else ""
-            expected_hashes = {"candidate": self._hash(image),
-                               "front_anchor": anchor_hash if gate.uses_anchor else ""}
-            from zet.services.local_gate_registry_service import LocalGateRegistryService
-            registry = LocalGateRegistryService(self.app, self.project_root)
-            if not gate_result_is_current(
-                record, input_hashes=expected_hashes,
-                prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
-                policy_status=registry.status("body-reference", gate.key),
-            ):
-                raise LocalBodyReferenceError(f"The selected candidate has a missing or stale {gate.key} gate.")
         try:
-            return self.asset_store.lock(run["character"], run["phase"], "Body-Reference", view)
+            dependencies = []
+            if view != FRONT_VIEW:
+                anchor = next((item for item in run["candidates"]
+                               if item["candidate_id"] == run.get("front_anchor")), None)
+                anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+                if anchor_image.is_file():
+                    dependencies.append({"key": self.asset_store.key("Body-Reference", FRONT_VIEW),
+                                         "image_sha256": self._hash(anchor_image)})
+            return self.asset_store.lock_batch_selection(
+                run["character"], run["phase"], "Body-Reference", view,
+                candidate_id=candidate_id, image_path=image, batch_id=run_id,
+                dependencies=dependencies,
+            )
         except Exception as exc:
             raise LocalBodyReferenceError(str(exc)) from exc
 
@@ -2567,7 +2552,7 @@ Do not explain your reasoning."""
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if candidate is None:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if int(run.get("review_version") or 1) >= 2 and candidate.get("status") == "FAILED" and candidate.get("failed_gate"):
             failed_gate = str(candidate["failed_gate"])
             gates = dict(candidate.get("gates") or {})

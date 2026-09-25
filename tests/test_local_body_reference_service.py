@@ -39,6 +39,21 @@ def make_service(tmp_path: Path) -> LocalBodyReferenceService:
     return LocalBodyReferenceService(app, project)
 
 
+def test_preflight_checks_presets_without_contacting_comfyui(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    (service.project_root / "Config" / "Local_Render_Presets.json").write_text(json.dumps({
+        name: {"diffusion_model": "qwen.safetensors", "text_encoder": "encoder.safetensors",
+               "vae": "vae.safetensors"}
+        for name in ("comfyui-qwen-body-reference-text", "comfyui-qwen-body-reference-edit")
+    }), encoding="utf-8")
+
+    def unavailable(*_args, **_kwargs):
+        pytest.fail("Preflight contacted ComfyUI")
+
+    monkeypatch.setattr("zet.services.local_render_backend_service.LocalRenderBackendService.comfyui_options", unavailable)
+    service._preflight()
+
+
 def current_gate_results(service: LocalBodyReferenceService, view: str, image: Path,
                          anchor: Path | None = None) -> dict:
     image_hash = service._hash(image)
@@ -1128,7 +1143,7 @@ def test_legacy_run_and_queue_metadata_migrates_once(tmp_path):
     assert already_local["task_type"] == "local_body_reference_analysis"
 
 
-def test_locked_asset_stops_front_rerun_before_candidate_cleanup(tmp_path, monkeypatch):
+def test_locked_asset_does_not_stop_front_rerun(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
                         {"view": view, "view_index": index, "manual_prompt": view,
@@ -1141,13 +1156,16 @@ def test_locked_asset_stops_front_rerun_before_candidate_cleanup(tmp_path, monke
     image.write_bytes(b"front image")
     service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image)})
 
-    def reject_locked_change(*_args):
-        raise LocalBodyReferenceError("The selected view is locked.")
+    locked_image = tmp_path / "locked.png"
+    locked_image.write_bytes(b"earlier front image")
+    service.asset_store.record_selection("Tsaeytte", "Adult", "Body-Reference", "FRONT",
+                                         candidate_id="old", image_path=locked_image, batch_id="earlier")
+    service.asset_store.lock("Tsaeytte", "Adult", "Body-Reference", "FRONT")
 
-    monkeypatch.setattr(service.asset_store, "assert_change_allowed", reject_locked_change)
-    with pytest.raises(LocalBodyReferenceError, match="locked"):
-        service.rerun_view(run["run_id"], "FRONT")
+    service.rerun_view(run["run_id"], "FRONT")
 
-    assert image.is_file()
+    assert not image.is_file()
     candidate = next(item for item in service.detail(run["run_id"])["candidates"] if item["candidate_id"] == "c001")
-    assert candidate["image_path"] == str(image)
+    assert candidate["image_path"] == ""
+    locked = service.asset_store.detail("Tsaeytte", "Adult")["assets"]["body-reference:FRONT"]
+    assert locked["locked"] and locked["batch_id"] == "earlier"

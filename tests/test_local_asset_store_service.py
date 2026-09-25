@@ -45,3 +45,25 @@ def test_locked_lookup_returns_verified_immutable_copy(tmp_path: Path) -> None:
     assert assets[0]["key"] == "body-reference:FRONT"
     assert Path(assets[0]["image_path"]) == Path(record["locked_image_path"])
     assert assets[0]["image_sha256"] == store._image_hash(Path(record["locked_image_path"]))
+
+
+def test_batch_selection_waits_for_existing_lock(tmp_path: Path) -> None:
+    store = LocalAssetStoreService(tmp_path)
+    old_image, new_image = tmp_path / "old.png", tmp_path / "new.png"
+    Image.new("RGB", (32, 32), "white").save(old_image)
+    Image.new("RGB", (32, 32), "black").save(new_image)
+    store.record_selection("Test", "Adult", "Body-Reference", "FRONT",
+                           candidate_id="old", image_path=old_image, batch_id="earlier")
+    store.lock("Test", "Adult", "Body-Reference", "FRONT")
+
+    assert store.record_batch_selection("Test", "Adult", "Body-Reference", "FRONT",
+                                        candidate_id="new", image_path=new_image, batch_id="new-run") is None
+    with pytest.raises(LocalAssetStoreError, match="Unlock it before changing its selection"):
+        store.lock_batch_selection("Test", "Adult", "Body-Reference", "FRONT",
+                                   candidate_id="new", image_path=new_image, batch_id="new-run")
+    assert store.detail("Test", "Adult")["assets"]["body-reference:FRONT"]["batch_id"] == "earlier"
+
+    store.unlock("Test", "Adult", "Body-Reference", "FRONT")
+    locked = store.lock_batch_selection("Test", "Adult", "Body-Reference", "FRONT",
+                                        candidate_id="new", image_path=new_image, batch_id="new-run")
+    assert locked["locked"] and locked["batch_id"] == "new-run"

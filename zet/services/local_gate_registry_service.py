@@ -51,6 +51,7 @@ class LocalGateRegistryService:
             _parse_passing_gate_verdict,
         )
         from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
+        from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 
         def body_factory(app: Any, root: str | Path) -> Any:
             return LocalBodyReferenceService(app, root)
@@ -79,6 +80,20 @@ class LocalGateRegistryService:
             rejected = parse_rejection_verdict(response)
             return {"result": "FAIL" if rejected == "TRUE" else "PASS", "reason": ""}
 
+        def local_asset_factory(pipeline: str):
+            return lambda app, root: LocalCharacterAssetPipelineService(app, root, pipeline)
+
+        def assembly_gates(_service: Any, view: str) -> list[ReviewGate]:
+            return LocalCharacterAssetPipelineService.review_gates("character-assembly", view)
+
+        def dressing_gates(_service: Any, view: str) -> list[ReviewGate]:
+            return LocalCharacterAssetPipelineService.review_gates("costume-dressing", view)
+
+        def local_asset_interpret(_gate: str, response: str) -> dict[str, str]:
+            from zet.services.candidate_review_contract import parse_rejection_verdict
+            rejected = parse_rejection_verdict(response)
+            return {"result": "FAIL" if rejected == "TRUE" else "PASS", "reason": ""}
+
         cls._registered_pipelines = {
             "body-reference": LocalGatePipeline(
                 "body-reference", "Local Body-Reference", tuple(DEFAULT_VIEWS), body_factory,
@@ -87,6 +102,16 @@ class LocalGateRegistryService:
             "head-image": LocalGatePipeline(
                 "head-image", "Local Head-Image", tuple(VIEWS), head_factory,
                 head_gates, head_interpret,
+            ),
+            "local-character-assembly": LocalGatePipeline(
+                "local-character-assembly", "Local Character-Assembly", tuple(VIEWS),
+                local_asset_factory("character-assembly"), assembly_gates, local_asset_interpret,
+                frozenset(gate.key for gate in LocalCharacterAssetPipelineService.GATES["character-assembly"]),
+            ),
+            "local-costume-dressing": LocalGatePipeline(
+                "local-costume-dressing", "Local Costume-Dressing", tuple(VIEWS),
+                local_asset_factory("costume-dressing"), dressing_gates, local_asset_interpret,
+                frozenset(gate.key for gate in LocalCharacterAssetPipelineService.GATES["costume-dressing"]),
             ),
         }
         return cls._registered_pipelines

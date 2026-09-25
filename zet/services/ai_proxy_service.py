@@ -23,7 +23,7 @@ from zet.services.chatgpt_prompt_contract import (
 )
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.local_render_backend_service import LocalRenderBackendService
-from zet.services.comfyui_render_service import compile_ir_to_comfyui_workflow
+from zet.services.scene_render_compiler import validate_scene_render_ir
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
@@ -806,24 +806,22 @@ class AIProxyService:
         selected_model = checkpoint
         if qwen_selected:
             ir = json.loads(ir_path.read_text(encoding="utf-8"))
+            validate_scene_render_ir(ir)
+            if len(ir.get("image_inputs") or []) > 10:
+                raise AIProxyServiceError("Qwen Image 2.1 supports at most ten scene reference images.")
             qwen_prompt = compile_qwen_scene_prompt(ir) if qwen_prompt_override is None else qwen_prompt_override.strip()
             if not qwen_prompt:
                 raise AIProxyServiceError("Qwen Image 2.1 scene prompt is empty. Enter a prompt before generating.")
             backend = LocalRenderBackendService(self.path_service.project_root / "Config" / "Local_Render_Presets.json")
             profile = backend.preset(profile_name)
-            inventory = backend.comfyui_options(self.path_service.config.comfyui_server_url)
             selected_model = str(checkpoint or profile.get("diffusion_model") or "").strip()
-            for name, available, label in (
-                (selected_model, inventory.get("diffusion_models") or [], "diffusion model"),
-                (str(profile.get("text_encoder") or ""), inventory.get("text_encoders") or [], "text encoder"),
-                (str(profile.get("vae") or ""), inventory.get("vaes") or [], "VAE"),
+            for name, label in (
+                (selected_model, "diffusion model"),
+                (str(profile.get("text_encoder") or ""), "text encoder"),
+                (str(profile.get("vae") or ""), "VAE"),
             ):
-                if name not in available:
-                    raise AIProxyServiceError(f"Qwen Image 2.1 {label} is unavailable in ComfyUI: {name or '(none selected)'}")
-            compile_ir_to_comfyui_workflow(
-                ir, profile, checkpoint=selected_model, reference_files=manifest.get("reference_files") or [],
-                available_node_types=set(inventory.get("node_types") or []), scene_prompt_override=qwen_prompt,
-            )
+                if not name.strip():
+                    raise AIProxyServiceError(f"Qwen Image 2.1 requires a {label} filename.")
         return self.stage_render_task_local_render_ask(
             staged_manifest,
             prompt_path,

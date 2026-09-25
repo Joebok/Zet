@@ -91,6 +91,7 @@
     .gate-prompt { font-size: .9rem; margin-left: .3rem; }
     #gate-prompt-dialog { height: auto; max-height: 80vh; padding: 1.5rem; width: min(700px, 92vw); }
     #gate-prompt-text { white-space: pre-wrap; }
+    #gate-setup-content label { align-items: center; grid-template-columns: minmax(0, 1fr) 115px; }
     @media (max-width: 900px) {
       .front-reference-layout { grid-template-columns: 1fr; }
       .review-layout { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 52%) minmax(0, 48%); }
@@ -100,9 +101,9 @@
   </style>
 </head>
 <body>
-  <header><div><h1>Local Head-Image</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><nav><a href="/local-body-reference">Local Body-Reference</a> · <a href="/">Back to dashboard</a></nav></header>
+  <header><div><h1>Local Head-Image</h1><p class="muted">Automated local image generation and review, separate from canonical Assets.</p></div><nav><a href="/local-body-reference">Body-Reference</a> · <a href="/local-head-image">Head-Image</a> · <a href="/local-character-assembly">Character-Assembly</a> · <a href="/local-costume-dressing">Costume-Dressing</a> · <a href="/">Dashboard</a></nav></header>
   <main>
-    <details class="panel" id="gate-setup"><summary>Setup · gate status</summary><div id="gate-setup-content" class="grid"></div></details>
+    <details class="panel" id="gate-setup"><summary>Gate settings</summary><div id="gate-setup-content" class="grid"></div></details>
     <section class="panel">
       <div class="controls">
         <label>Character<select id="character"></select></label>
@@ -163,7 +164,9 @@
     <button id="review-next" class="review-nav review-next" type="button" aria-label="Next candidate">›</button>
   </dialog>
   <dialog id="gate-prompt-dialog" aria-label="Gate prompt"><div class="button-row" style="justify-content:space-between"><h2 id="gate-prompt-title">Gate prompt</h2><button id="gate-prompt-close" type="button">Close</button></div><pre id="gate-prompt-text"></pre></dialog>
+  <dialog id="gate-data-dialog" aria-label="Choose gate for test data"><h2>Choose gate</h2><label>Gate<select id="gate-data-select"></select></label><div class="button-row" style="margin-top:.75rem"><button id="gate-data-cancel" type="button">Cancel</button><button id="gate-data-confirm" class="primary" type="button">Continue</button></div></dialog>
 
+  <script src="/static/local_pipeline_context.js"></script>
   <script>
     const $ = (selector) => document.querySelector(selector);
     const characterSelect = $('#character'), phaseSelect = $('#phase'), runSelect = $('#run');
@@ -269,11 +272,23 @@
       reviewPanel.appendChild(section);
     }
     async function imageDataUrl(url) { const blob=await (await fetch(url)).blob(); return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);}); }
+    function chooseGate(gates) {
+      const dialog = $('#gate-data-dialog'), select = $('#gate-data-select');
+      select.innerHTML = gates.map((item) => `<option value="${esc(item.key)}">${esc(item.key.replaceAll('_',' '))}</option>`).join('');
+      return new Promise((resolve) => {
+        const finish = (value) => { dialog.close(); dialog.removeEventListener('close', onClose); resolve(value); };
+        const onClose = () => resolve('');
+        $('#gate-data-confirm').onclick = () => finish(select.value);
+        $('#gate-data-cancel').onclick = () => finish('');
+        dialog.addEventListener('close', onClose, {once:true});
+        dialog.showModal();
+      });
+    }
     async function addGateDataCase(candidate) {
       const catalog=await request('/api/local-gates/head-image');
       const gates=catalog.gates_by_view?.[candidate.view]||[];
       if(!gates.length)throw new Error('No gates apply to this view.');
-      const gateKey=window.prompt(`Choose a gate key:\n${gates.map(item=>item.key).join(', ')}`,gates[0].key);
+      const gateKey=await chooseGate(gates);
       if(!gateKey)return; const gate=gates.find(item=>item.key===gateKey); if(!gate)throw new Error('Choose one of the listed gates.');
       const expected=String(window.prompt('Correct answer for this image: PASS or FAIL','PASS')||'').toUpperCase();
       if(!['PASS','FAIL'].includes(expected))throw new Error('Expected answer must be PASS or FAIL.');
@@ -320,22 +335,20 @@
     function renderRunV2(value, collapsedViews, busy, statusLabel) {
       const selectedViews = value.selected_views || {};
       const counts = (value.candidates || []).reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
-      setStatus(`${value.status} · ${Object.keys(selectedViews).length}/${(value.views || []).length} views selected · ${counts.GATE_REJECTED || 0} gate rejects · FRONT anchor: ${value.front_anchor || 'not selected'}${value.error ? ` · ${value.error}` : ''}`);
+      const lockedViews = (value.views || []).filter((view) => (value.local_assets || {})[`head-image:${view}`]?.locked);
+      setStatus(`${value.status} · ${Object.keys(selectedViews).length}/${(value.views || []).length} views selected · ${counts.GATE_REJECTED || 0} gate rejects · FRONT anchor: ${value.front_anchor || 'not selected'}${lockedViews.length ? ` · Existing locks: ${lockedViews.join(', ')}. Unlock each view before locking a new image.` : ''}${value.error ? ` · ${value.error}` : ''}`);
       const byView = (value.candidates || []).reduce((all, item) => ((all[item.view] ||= []).push(item), all), {});
       const selectedCandidates = (value.views || []).map((view) => {
         const candidateId = selectedViews[view];
         return candidateId ? (byView[view] || []).find((item) => item.candidate_id === candidateId && item.image_path) : null;
       });
       const visibleSelectedViews = new Set(selectedCandidates.filter(Boolean).map((candidate) => candidate.view));
-      const hasLockedAssets = (value.views || []).some((view) => (value.local_assets || {})[`head-image:${view}`]?.locked);
-      selectedViewsTray.innerHTML = visibleSelectedViews.size || hasLockedAssets ? (value.views || []).map((view, index) => {
+      selectedViewsTray.innerHTML = visibleSelectedViews.size ? (value.views || []).map((view, index) => {
         const candidate = selectedCandidates[index];
         const localAsset = (value.local_assets || {})[`head-image:${view}`] || {};
         const assetMatches = Boolean(candidate && localAsset.candidate_id === candidate.candidate_id && localAsset.batch_id === value.run_id);
-        const foreignLock = Boolean(localAsset.locked && !assetMatches);
         return candidate
-          ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="${localAsset.locked && assetMatches ? 'pass' : 'muted'}">${foreignLock ? `Another batch is locked (${esc(localAsset.batch_id || 'unknown')})` : localAsset.locked && assetMatches ? 'Locked local asset' : assetMatches ? 'Selected · not locked' : 'Selected in this batch · not current local asset'}</p><button class="selected-view-image" data-review="${esc(candidate.candidate_id)}" type="button" aria-label="Review selected ${esc(view)} image"><img src="${imageUrl(candidate)}" alt="Selected ${esc(view)} image"></button><div class="card-actions">${view === 'FRONT' && value.front_anchor ? `<button data-proceed type="button" ${busy ? 'disabled' : ''}>Generate other views</button>` : ''}${foreignLock ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock earlier batch</button>` : localAsset.locked ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button>` : assetMatches ? `<button data-lock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Lock</button><button data-unselect-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unselect</button>` : `<button data-select-view="${esc(view)}" data-candidate="${esc(candidate.candidate_id)}" type="button" class="primary" ${busy ? 'disabled' : ''}>Use as local selection</button>`}</div></article>`
-          : localAsset.locked ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="pass">Locked local asset · from ${esc(localAsset.batch_id || 'earlier batch')}</p><img class="selected-view-image" src="/api/local/assets/${encodeURIComponent(`head-image:${view}`)}/image?character=${encodeURIComponent(value.character)}&phase=${encodeURIComponent(value.phase)}" alt="Locked ${esc(view)} local head image"><div class="card-actions"><button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button></div></article>`
+          ? `<article class="selected-view"><h2>${esc(view)}</h2><p class="${localAsset.locked && assetMatches ? 'pass' : 'muted'}">${localAsset.locked && assetMatches ? 'Locked local asset' : 'Selected in this batch · not locked'}</p><button class="selected-view-image" data-review="${esc(candidate.candidate_id)}" type="button" aria-label="Review selected ${esc(view)} image"><img src="${imageUrl(candidate)}" alt="Selected ${esc(view)} image"></button><div class="card-actions">${view === 'FRONT' && value.front_anchor ? `<button data-proceed type="button" ${busy ? 'disabled' : ''}>Generate other views</button>` : ''}${localAsset.locked && assetMatches ? `<button data-unlock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unlock</button>` : `<button data-lock-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Lock</button><button data-unselect-view="${esc(view)}" type="button" ${busy ? 'disabled' : ''}>Unselect</button>`}</div></article>`
           : `<article class="selected-view"><h2>${esc(view)}</h2><div class="selected-view-empty" aria-label="No image selected for ${esc(view)}"></div></article>`;
       }).join('') : '';
       addViewPromptLinks(selectedViewsTray, value.run_id, 'head-image', 'review-spec');
@@ -343,26 +356,25 @@
       const imagePromptUrl = (view) => `/api/local/head-image/runs/${encodeURIComponent(value.run_id)}/image-prompt/${encodeURIComponent(view)}`;
       gallery.innerHTML = (value.views || []).filter((view) => !visibleSelectedViews.has(view)).map((view) => {
         const candidates = byView[view] || [];
-        const viewLocked = Boolean((value.local_assets || {})[`head-image:${view}`]?.locked);
         const ranking = (value.rankings || {})[view] || {};
         const selectedId = selectedViews[view];
         const rankingById = Object.fromEntries((ranking.entries || []).map((entry, index) => [entry.candidate_id, { ...entry, position: index + 1 }]));
         const survivors = ranking.ordered_candidate_ids || [];
         const eligibleFailed = candidates.some((item) => ['GATE_REJECTED', 'FAILED'].includes(item.status) || item.human_review?.decision === 'reject');
         const hasImages = candidates.some((item) => item.image_path);
-        const canReview = !busy && !viewLocked && (view === 'FRONT' || Boolean(value.front_anchor));
+        const canReview = !busy && (view === 'FRONT' || Boolean(value.front_anchor));
         const open = collapsedViews.has(view) ? '' : ' open';
         const positions = new Map(survivors.map((id, index) => [id, index]));
         candidates.sort((a, b) => (positions.get(a.candidate_id) ?? Infinity) - (positions.get(b.candidate_id) ?? Infinity));
-        const hasStaleGates = candidates.some((item) => Object.values(item.gates || {}).some((gate) => gate.status === 'STALE'));
-        const canRank = canReview && !hasStaleGates && !['QUEUED', 'RUNNING'].includes(ranking.status) && candidates.some((item) => ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(item.status));
+        const hasStaleGates = candidates.some((item) => item.human_review?.decision !== 'keep' && Object.values(item.gates || {}).some((gate) => gate.status === 'STALE'));
+        const canRank = canReview && !hasStaleGates && !['QUEUED', 'RUNNING'].includes(ranking.status) && candidates.some((item) => ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(item.status) || item.human_review?.decision === 'keep');
         const rankingLabel = ranking.status === 'FAILED' ? `Luna ranking failed: ${ranking.error || 'Unknown error'}` : ranking.status === 'QUEUED' || ranking.status === 'RUNNING' ? 'Luna ranking in progress' : ranking.status === 'COMPLETE' ? 'Luna ranked' : '';
-        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${selectedId ? `selected ${esc(selectedId)}` : 'no selection'}${rankingLabel ? ` · ${esc(rankingLabel)}` : ''}</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${canReview && candidates.length ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${canReview && eligibleFailed ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${canReview && hasImages ? '' : 'disabled'}>Re-evaluate</button><button data-rank-view="${esc(view)}" type="button" ${canRank ? '' : 'disabled'}>Rank survivors</button>${view === 'FRONT' ? `<button data-proceed type="button" ${value.front_anchor && !busy ? '' : 'disabled'}>Proceed</button>` : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View review specification for ${esc(view)}</a> · <a href="${imagePromptUrl(view)}" target="_blank" rel="noopener">View image prompt</a></p><div class="cards">${candidates.map((candidate) => {
+        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${selectedId ? `selected ${esc(selectedId)}` : 'no selection'}${rankingLabel ? ` · ${esc(rankingLabel)}` : ''}</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${canReview && candidates.length ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${canReview && eligibleFailed ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${canReview && hasImages ? '' : 'disabled'}>Re-evaluate</button><button data-rank-view="${esc(view)}" type="button" ${canRank ? '' : 'disabled'}>Rank survivors</button>${view === 'FRONT' ? `<button data-proceed type="button" ${value.front_anchor && !busy ? '' : 'disabled'}>Generate other views</button>` : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View review specification for ${esc(view)}</a> · <a href="${imagePromptUrl(view)}" target="_blank" rel="noopener">View image prompt</a></p><div class="cards">${candidates.map((candidate) => {
           const selected = selectedId === candidate.candidate_id;
           const rank = rankingById[candidate.candidate_id];
           const rejected = candidate.status === 'GATE_REJECTED';
           const image = candidate.image_path ? `<button class="card-image" data-review="${esc(candidate.candidate_id)}" type="button"><img src="${imageUrl(candidate)}" alt="${esc(view)} candidate ${esc(candidate.candidate_id)}"></button>` : `<div class="muted">${esc(candidate.status === 'WAITING_FOR_GATES' ? 'Waiting for image generation' : statusLabel(candidate.status))}</div>`;
-          const canSelect = !busy && ranking.status === 'COMPLETE' && Boolean(rank) && !rejected && candidate.human_review?.decision !== 'reject';
+        const canSelect = !busy && ranking.status === 'COMPLETE' && Boolean(rank) && (!rejected || candidate.human_review?.decision === 'keep') && candidate.human_review?.decision !== 'reject';
           const status = rejected ? `Rejected by ${candidate.rejection_gate || 'gate'}` : selected ? 'Selected' : !candidate.image_path && ['PENDING', 'QUEUED', 'RUNNING', 'WAITING_FOR_GATES'].includes(candidate.status) ? 'Waiting for image generation' : statusLabel(candidate.status);
           return `<article class="card${selected ? ' card-anchor' : ''}">${image}<p><strong>${esc(candidate.candidate_id)}</strong>${rank ? ` · Rank #${rank.position}` : ''}</p><p class="muted">${esc(status)}</p><div class="ai-summary">${gateSummary(candidate)}${candidate.human_review?.decision === 'reject' ? '<p class="fail"><strong>Human:</strong> Rejected</p>' : ''}</div><div class="card-actions">${canSelect ? `<button data-select-view="${esc(view)}" data-candidate="${esc(candidate.candidate_id)}" type="button" class="primary">Select</button>` : ''}${candidate.status === 'FAILED' ? `<button data-retry="${esc(candidate.candidate_id)}" type="button">Retry gate</button>` : ''}</div></article>`;
         }).join('')}</div></div></details>`;
@@ -418,7 +430,7 @@
         const viewCanReevaluate = completeCount > 0 && viewCanRun && !busy;
         const viewCanRerun = viewCandidates.length > 0 && viewCanRun && !busy;
         const open = collapsedViews.has(view) ? '' : ' open';
-        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${completeCount}/${viewCandidates.length} images complete</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${viewCanReevaluate ? '' : 'disabled'}>Re-evaluate</button>${view === 'FRONT' ? '<button data-proceed type="button" ' + (run.front_anchor && !busy ? '' : 'disabled') + '>Proceed</button>' : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View review specification for ${esc(view)}</a> · <a href="${imagePromptUrl(view)}" target="_blank" rel="noopener">View image prompt</a></p><div class="cards">${viewCandidates.map((candidate) => {
+        return `<details class="view" data-view="${esc(view)}"${open}><summary class="view-summary"><span><h2>${esc(view)}</h2><span class="muted">${completeCount}/${viewCandidates.length} images complete</span></span><span class="view-actions"><button data-rerun-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-run</button><button data-rerun-failed-view="${esc(view)}" type="button" ${viewCanRerun ? '' : 'disabled'}>Re-Run Failed</button><button data-reevaluate-view="${esc(view)}" type="button" ${viewCanReevaluate ? '' : 'disabled'}>Re-evaluate</button>${view === 'FRONT' ? '<button data-proceed type="button" ' + (run.front_anchor && !busy ? '' : 'disabled') + '>Generate other views</button>' : ''}</span></summary><div class="view-body"><p class="hint"><a href="${promptUrl(view)}" target="_blank" rel="noopener">View review specification for ${esc(view)}</a> · <a href="${imagePromptUrl(view)}" target="_blank" rel="noopener">View image prompt</a></p><div class="cards">${viewCandidates.map((candidate) => {
           const complete = candidate.status === 'COMPLETE';
           const reviewable = complete || candidate.status === 'WAITING_FOR_HUMAN_REVIEW';
           const anchor = run.front_anchor === candidate.candidate_id;
@@ -463,7 +475,7 @@
       });
     }
     function openReview(candidateId) {
-      reviewCandidates = run?.review_version >= 2 ? orderedReviewCandidates() : (run?.candidates || []).filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
+      reviewCandidates = orderedReviewCandidates();
       reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
       if (reviewIndex < 0) return;
       renderReview(); reviewDialog.showModal(); $('#review-close').focus();
@@ -494,9 +506,9 @@
           && ['WAITING_FOR_HUMAN_REVIEW', 'COMPLETE'].includes(candidate.status)
           && Object.keys(gates).length > 0
           && Object.values(gates).every((gate) => gate.status === 'DISABLED' || (['COMPLETE','FAILED'].includes(gate.status) && (gate.verdict === 'FALSE' || gate.policy_status === 'Warning')));
-        const canReview = !gateRejected && gatesPassed;
+        const canReview = Boolean(candidate.image_path);
         const human = candidate.human_review || {};
-        reviewPanel.innerHTML = `<p class="muted">Candidate ${reviewIndex + 1} of ${reviewCandidates.length}</p><h2>${esc(candidate.candidate_id)}</h2><p><strong>View:</strong> ${esc(candidate.view)}<br><strong>Status:</strong> ${esc(candidate.status)}${candidate.rejection_gate ? `<br><strong>Rejected by:</strong> ${esc(candidate.rejection_gate)}` : ''}</p><section class="review-section"><h3>Narrow gates</h3>${gateSummary(candidate)}</section><section class="review-section"><h3>Luna ranking</h3><p>${entry ? `Ranked #${ranking.ordered_candidate_ids.indexOf(candidate.candidate_id) + 1}: ${esc(entry.reason)}` : 'Not ranked'}${ranking.status === 'STALE' ? ` · Stale: ${esc(ranking.stale_reason || 'Review inputs changed')}` : ''}</p></section><section class="review-section"><h3>Human review</h3>${gateRejected ? '<p class="hint">Gate-rejected candidates remain available for inspection and Re-Run Failed.</p>' : `<fieldset class="decision-options" ${canReview ? '' : 'disabled'}><legend>Decision</legend><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="undecided"> Undecided</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="keep"> Pass</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="reject"> Fail</label></fieldset><label style="margin-top:.75rem">Notes<textarea data-field="notes" ${canReview ? '' : 'disabled'}>${esc(human.notes || '')}</textarea></label><div class="button-row" style="margin-top:.75rem"><button data-save type="button" class="primary" ${canReview ? '' : 'disabled'}>Save human review</button>${entry && ranking.status === 'COMPLETE' && run.selected_views?.[candidate.view] !== candidate.candidate_id ? `<button data-select type="button" class="primary">Select for ${esc(candidate.view)}</button>` : ''}</div>`}</section>`;
+        reviewPanel.innerHTML = `<p class="muted">Candidate ${reviewIndex + 1} of ${reviewCandidates.length}</p><h2>${esc(candidate.candidate_id)}</h2><p><strong>View:</strong> ${esc(candidate.view)}<br><strong>Status:</strong> ${esc(candidate.status)}${candidate.rejection_gate ? `<br><strong>Rejected by:</strong> ${esc(candidate.rejection_gate)}` : ''}</p><section class="review-section"><h3>Narrow gates</h3>${gateSummary(candidate)}</section><section class="review-section"><h3>Luna ranking</h3><p>${entry ? `Ranked #${ranking.ordered_candidate_ids.indexOf(candidate.candidate_id) + 1}: ${esc(entry.reason)}` : 'Not ranked'}${ranking.status === 'STALE' ? ` · Stale: ${esc(ranking.stale_reason || 'Review inputs changed')}` : ''}</p></section><section class="review-section"><h3>Human review</h3><fieldset class="decision-options" ${canReview ? '' : 'disabled'}><legend>Decision</legend><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="undecided"> Undecided</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="keep"> Pass</label><label class="decision-option"><input type="radio" name="human-decision" data-field="decision" value="reject"> Fail</label></fieldset><label style="margin-top:.75rem">Notes<textarea data-field="notes" ${canReview ? '' : 'disabled'}>${esc(human.notes || '')}</textarea></label><div class="button-row" style="margin-top:.75rem"><button data-save type="button" class="primary" ${canReview ? '' : 'disabled'}>Save human review</button>${entry && ranking.status === 'COMPLETE' && run.selected_views?.[candidate.view] !== candidate.candidate_id ? `<button data-select type="button" class="primary">Select for ${esc(candidate.view)}</button>` : ''}</div></section>`;
         attachGateDataButton(candidate);
         if (canReview) {
           const position = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
@@ -528,7 +540,7 @@
       try {
         await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}/candidates/${encodeURIComponent(candidate.candidate_id)}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:reviewPanel.querySelector('[data-field="decision"]:checked').value, notes:reviewPanel.querySelector('[data-field="notes"]').value})});
         const candidateId = candidate.candidate_id;
-        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = run.review_version >= 2 ? orderedReviewCandidates() : run.candidates.filter((item) => ['COMPLETE', 'WAITING_FOR_HUMAN_REVIEW'].includes(item.status));
+        run = await request(`/api/local/head-image/runs/${encodeURIComponent(run.run_id)}`); renderRun(run); reviewCandidates = orderedReviewCandidates();
         reviewIndex = reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
         if (render) renderReview();
         return true;
@@ -634,7 +646,7 @@
       } catch (error) { setStatus(error.message, true); }
     }
     async function navigateReview(offset) { const next = reviewIndex + offset; if (next < 0 || next >= reviewCandidates.length) return; if (!await saveReview({render:false})) return; reviewIndex = next; renderReview(); }
-    characterSelect.addEventListener('change', () => { clearFrontSource(); fill(phaseSelect, context.phases_by_character[characterSelect.value] || []); void loadRuns(); });
+    characterSelect.addEventListener('change', () => { clearFrontSource(); ZetLocalPipelineContext.fillPhases(phaseSelect, context, characterSelect.value); void loadRuns(); });
     phaseSelect.addEventListener('change', () => { clearFrontSource(); void loadRuns(); });
     runSelect.addEventListener('change', () => { clearFrontSource(); void loadRun(); });
     $('#copy-run-id').addEventListener('click', async () => {
@@ -721,7 +733,7 @@
         } catch (error) { setStatus(error.message, true); void loadGateSetup(); }
       }));
     }
-    async function init() { try { await loadGateSetup(); context = await request('/api/context'); fill(characterSelect, context.characters || []); if (context.default_character) characterSelect.value = context.default_character; fill(phaseSelect, context.phases_by_character[characterSelect.value] || [], context.default_phase || ''); await loadRuns(); } catch (error) { setStatus(error.message, true); } }
+    async function init() { try { await loadGateSetup(); context = await ZetLocalPipelineContext.initialize(characterSelect, phaseSelect); await loadRuns(); } catch (error) { setStatus(error.message, true); } }
     void init();
     setInterval(() => { if (run?.run_id && !reviewDialog.open) void loadRun(run.run_id); }, 5000);
   </script>

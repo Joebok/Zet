@@ -465,7 +465,10 @@ Reviewed At:
     )
 
 
-def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
+def compile_costume_dressing_job(
+    job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
+    pipeline_mode: str = "traditional",
+) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -477,14 +480,18 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT, *
     if task != "costume-dressing":
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for costume-dressing runner: {task}")
 
+    if pipeline_mode not in {"traditional", "local"}:
+        raise TemplateCompileError("INVALID_PIPELINE_MODE", f"Unsupported Costume-Dressing pipeline mode: {pipeline_mode}")
+
     bundle = load_bundle(project_root, "costume-dressing")
-    if prompt_variant == "analysis":
+    if prompt_variant == "analysis" or pipeline_mode == "local":
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     body_view_token = normalize_view(project_root, raw_body_view)
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    character_template_path = character_root(project_root) / character / phase / "Character.md"
+    character_template_path = Path(job_get(job, "Template Path", "template_path") or
+                                   (character_root(project_root) / character / phase / "Character.md"))
     costume_path = costume_path_for_job(project_root, job, character, phase)
     if not costume_path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")
@@ -501,7 +508,10 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT, *
         section_sources,
         body_view_token,
     )
-    selection = select_prompt_sections(project_root, bundle, all_sections, section_sources, body_view_token, prompt_variant=prompt_variant)
+    selection = select_prompt_sections(
+        project_root, bundle, all_sections, section_sources, body_view_token,
+        prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
+    )
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )
@@ -569,6 +579,12 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT, *
         "VIEW_LABEL": str(body_view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
+        "LOCAL_COSTUME_REFERENCE_GUIDANCE": (
+            "For non-FRONT views, Image 1 is the matching assembled character for this view. "
+            "Image 2 is the selected FRONT costume image and guides costume appearance only. "
+            "Preserve the requested view and the Image 1 pose, body, and framing."
+            if pipeline_mode == "local" and body_view_token != "FRONT" else ""
+        ),
         "COSTUME_VIEW_HEADING": "# View-Specific Costume Details" if f"COSTUME_DESCRIPTION_VIEW_{body_view_token}" in selection.sections else "",
         "EQUIPMENT_HEADING": equipment_heading,
         "EQUIPMENT_VIEW_HEADING": "# View-Specific Equipment Details" if equipment_view_selected else "",
@@ -595,6 +611,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT, *
         "COSTUME_VIEW_HEADING": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Optional costume view heading", "editable": False},
         "EQUIPMENT_HEADING": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Optional equipment heading", "editable": False},
         "EQUIPMENT_VIEW_HEADING": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Optional equipment view heading", "editable": False},
+        "LOCAL_COSTUME_REFERENCE_GUIDANCE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Local costume reference guidance", "editable": False},
     }
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,
@@ -609,6 +626,7 @@ def compile_costume_dressing_job(job: dict, project_root: Path = PROJECT_ROOT, *
         required_section_names=[],
         view_token=body_view_token,
         prompt_variant=prompt_variant,
+        pipeline_mode=pipeline_mode,
     )
     if prompt_variant == "generation":
         finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")

@@ -23,6 +23,7 @@ _ROLE_BY_SLOT = {
     "head_image_source": "edit_base",
     "body_reference": "edit_base",
     "head_image": "subject_reference",
+    "front_assembly": "subject_reference",
     "character_assembly": "edit_base",
     "scene_appearance_source": "edit_base",
     "identity_key": "edit_base",

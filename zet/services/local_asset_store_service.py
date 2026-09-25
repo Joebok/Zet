@@ -24,8 +24,11 @@ class LocalAssetStoreService:
         self.root = Path(library_root).resolve() / "Experiments" / "Character-Pipeline"
 
     @staticmethod
-    def key(pipeline: str, view: str) -> str:
-        return f"{str(pipeline).strip().lower()}:{str(view).strip().upper()}"
+    def key(pipeline: str, view: str, qualifier: str = "") -> str:
+        pipeline_key = str(pipeline).strip().lower()
+        qualifier_key = re.sub(r"[^a-z0-9_-]+", "_", str(qualifier or "").strip().lower()).strip("_")
+        view_key = str(view).strip().upper()
+        return f"{pipeline_key}:{qualifier_key}:{view_key}" if qualifier_key else f"{pipeline_key}:{view_key}"
 
     @staticmethod
     def _safe(value: str) -> str:
@@ -53,11 +56,15 @@ class LocalAssetStoreService:
         value = self._read(character, phase)
         return {"character": character, "phase": phase, "assets": value.get("assets", {})}
 
-    def locked_assets(self, character: str, phase: str) -> list[dict[str, Any]]:
+    def locked_assets(self, character: str, phase: str, pipeline: str = "", qualifier: str = "") -> list[dict[str, Any]]:
         """Return only verified locked assets for downstream local pipelines."""
         records = self.detail(character, phase)["assets"]
         result = []
         for key, record in records.items():
+            if pipeline and record.get("pipeline", "").lower() != pipeline.lower():
+                continue
+            if qualifier and str(record.get("qualifier") or "").lower() != qualifier.lower():
+                continue
             if not record.get("locked") or record.get("stale"):
                 continue
             path = Path(str(record.get("locked_image_path") or "")).resolve()
@@ -80,9 +87,9 @@ class LocalAssetStoreService:
             if item.get("locked") and any(dep.get("key") == parent_key for dep in item.get("dependencies", []))
         )
 
-    def assert_change_allowed(self, character: str, phase: str, pipeline: str, view: str) -> None:
+    def assert_change_allowed(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> None:
         value = self._read(character, phase)
-        key = self.key(pipeline, view)
+        key = self.key(pipeline, view, qualifier)
         current = value.get("assets", {}).get(key, {})
         if current.get("locked"):
             raise LocalAssetStoreError(f"{key} is locked. Unlock it before changing its selection.")
@@ -92,15 +99,57 @@ class LocalAssetStoreService:
                 f"Cannot change {key}; unlock downstream local assets first: {', '.join(dependents)}."
             )
 
+    def assert_batch_change_allowed(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> None:
+        """Batch work changes run state; shared asset locks do not restrict it."""
+
+    def record_batch_selection(
+        self, character: str, phase: str, pipeline: str, view: str, *,
+        candidate_id: str, image_path: str | Path, batch_id: str,
+        dependencies: list[dict[str, str]] | None = None, qualifier: str = "",
+    ) -> dict[str, Any] | None:
+        """Keep a batch selection in its run when the shared asset cannot be changed."""
+        try:
+            self.assert_change_allowed(character, phase, pipeline, view, qualifier)
+        except LocalAssetStoreError:
+            return None
+        return self.record_selection(
+            character, phase, pipeline, view, candidate_id=candidate_id,
+            image_path=image_path, batch_id=batch_id,
+            dependencies=dependencies, qualifier=qualifier,
+        )
+
+    def lock_batch_selection(
+        self, character: str, phase: str, pipeline: str, view: str, *,
+        candidate_id: str, image_path: str | Path, batch_id: str,
+        dependencies: list[dict[str, str]] | None = None, qualifier: str = "",
+    ) -> dict[str, Any]:
+        """Publish a reviewed batch selection only when its view can be locked."""
+        self.assert_change_allowed(character, phase, pipeline, view, qualifier)
+        self.record_selection(
+            character, phase, pipeline, view, candidate_id=candidate_id,
+            image_path=image_path, batch_id=batch_id,
+            dependencies=dependencies, qualifier=qualifier,
+        )
+        return self.lock(character, phase, pipeline, view, qualifier)
+
+    def clear_batch_selection(self, character: str, phase: str, pipeline: str, view: str,
+                              batch_id: str, qualifier: str = "") -> None:
+        """Clear the shared selection only when this batch owns it and it is unlocked."""
+        key = self.key(pipeline, view, qualifier)
+        record = self.detail(character, phase)["assets"].get(key) or {}
+        if record.get("batch_id") == batch_id and not record.get("locked"):
+            self.clear_selection(character, phase, pipeline, view, qualifier)
+
     def record_selection(
         self, character: str, phase: str, pipeline: str, view: str, *,
         candidate_id: str, image_path: str | Path, batch_id: str,
         dependencies: list[dict[str, str]] | None = None,
+        qualifier: str = "",
     ) -> dict[str, Any]:
         image = Path(image_path).resolve()
         if not image.is_file():
             raise LocalAssetStoreError(f"Selected local image is missing: {image}")
-        key = self.key(pipeline, view)
+        key = self.key(pipeline, view, qualifier)
         path = self.workspace_path(character, phase)
         with file_lock(path.with_suffix(".lock")):
             value = self._read(character, phase)
@@ -123,6 +172,7 @@ class LocalAssetStoreService:
             record = {
                 **current,
                 "pipeline": str(pipeline), "view": str(view).upper(),
+                "qualifier": str(qualifier or ""),
                 "candidate_id": str(candidate_id), "batch_id": str(batch_id),
                 "image_path": str(image), "image_sha256": digest,
                 "dependencies": list(dependencies or []),
@@ -133,8 +183,8 @@ class LocalAssetStoreService:
             write_json_atomic(path, value)
             return dict(record)
 
-    def clear_selection(self, character: str, phase: str, pipeline: str, view: str) -> dict[str, Any]:
-        key = self.key(pipeline, view)
+    def clear_selection(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
+        key = self.key(pipeline, view, qualifier)
         path = self.workspace_path(character, phase)
         with file_lock(path.with_suffix(".lock")):
             value = self._read(character, phase)
@@ -157,8 +207,8 @@ class LocalAssetStoreService:
             write_json_atomic(path, value)
             return value
 
-    def lock(self, character: str, phase: str, pipeline: str, view: str) -> dict[str, Any]:
-        key = self.key(pipeline, view)
+    def lock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
+        key = self.key(pipeline, view, qualifier)
         path = self.workspace_path(character, phase)
         with file_lock(path.with_suffix(".lock")):
             value = self._read(character, phase)
@@ -174,7 +224,10 @@ class LocalAssetStoreService:
                     raise LocalAssetStoreError(f"Required local dependency {dependency.get('key')} is not current.")
                 if parent.get("image_sha256") != dependency.get("image_sha256"):
                     raise LocalAssetStoreError(f"Required local dependency {dependency.get('key')} changed.")
-            locked_root = path.parent / "locked" / self._safe(pipeline) / self._safe(view)
+            locked_root = path.parent / "locked" / self._safe(pipeline)
+            if qualifier:
+                locked_root /= self._safe(qualifier)
+            locked_root /= self._safe(view)
             locked_path = locked_root / f"{record['image_sha256'][:16]}_{source.name}"
             locked_root.mkdir(parents=True, exist_ok=True)
             if not locked_path.exists():
@@ -192,8 +245,8 @@ class LocalAssetStoreService:
             write_json_atomic(path, value)
             return dict(record)
 
-    def unlock(self, character: str, phase: str, pipeline: str, view: str) -> dict[str, Any]:
-        key = self.key(pipeline, view)
+    def unlock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
+        key = self.key(pipeline, view, qualifier)
         path = self.workspace_path(character, phase)
         with file_lock(path.with_suffix(".lock")):
             value = self._read(character, phase)

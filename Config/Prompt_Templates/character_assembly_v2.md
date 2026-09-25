@@ -26,6 +26,10 @@ Judge the candidate image against the visible requirements below and the supplie
 {{CHATGPT_IMAGE_INPUTS}}
 <!-- ZET:END ANALYSIS_PROMPT_ONLY -->
 
+<!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
+{{LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE}}
+<!-- ZET:END LOCAL_PIPELINE_ONLY -->
+
 - Preserve Image 1's body proportions, pose, stance, framing, and orientation.
 - Keep the body proportions, pose, stance, framing, and orientation exactly as they are.
 - Preserve Image 2's face, hair, ears, apparent age, and gaze.

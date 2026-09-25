@@ -15,8 +15,10 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         self.template_path.write_text("Canonical Art Style: `[Test canonical style]`\n", encoding="utf-8")
         self.body_path = self.root / "body.png"
         self.head_path = self.root / "head.png"
+        self.front_path = self.root / "front-assembly.png"
         self.body_path.write_bytes(b"body")
         self.head_path.write_bytes(b"head")
+        self.front_path.write_bytes(b"front assembly")
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -110,6 +112,39 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         self.assertIn("Keep the face, hair, ears, and apparent age", analysis_text)
         self.assertNotIn("# Render Task", analysis_text)
         self.assertNotIn("<!-- ZET:", analysis_text)
+
+    def test_local_non_front_prompt_uses_front_assembly_as_proportion_anchor(self) -> None:
+        job = self._job("BACK", output_name="local-back")
+        job["Reference Files"].append({
+            "role": "front_assembly",
+            "path": str(self.front_path),
+            "view": "FRONT",
+            "character": "Test",
+            "phase": "Adult",
+        })
+
+        result = compile_character_assembly_job(job, PROJECT_ROOT, pipeline_mode="local")
+        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+
+        self.assertIn("Image 3 is the selected FRONT Character-Assembly anchor", prompt)
+        self.assertIn("head-to-body scale", prompt)
+        self.assertIn("do not copy Image 3's front orientation", prompt)
+        self.assertEqual(["edit_base", "subject_reference", "subject_reference"],
+                         [item["role"] for item in manifest["image_inputs"]])
+        self.assertEqual(["body_reference", "head_image", "front_assembly"],
+                         manifest["required_reference_roles"])
+
+    def test_local_non_front_prompt_requires_front_assembly_anchor(self) -> None:
+        with self.assertRaises(TemplateCompileError) as raised:
+            compile_character_assembly_job(
+                self._job("BACK", output_name="local-back-without-anchor"),
+                PROJECT_ROOT,
+                pipeline_mode="local",
+            )
+
+        self.assertEqual("MISSING_REFERENCE", raised.exception.code)
+        self.assertFalse((self.root / "local-back-without-anchor" / "Final_Image_Prompt.md").exists())
 
     def test_missing_or_malformed_character_template_is_rejected(self) -> None:
         malformed_path = self.root / "Malformed.md"

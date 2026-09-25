@@ -19,6 +19,7 @@ from PIL import Image
 
 from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
+from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES, clear_candidate_artifacts, gate_result_is_current
 from zet.services.local_render_backend_service import LocalRenderBackendService
@@ -210,10 +211,7 @@ class LocalHeadImageService:
 
     @staticmethod
     def _write(path: Path, value: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        write_json_atomic(path, value)
 
     def detail(self, run_id: str) -> dict[str, Any]:
         root = self._run_root(run_id)
@@ -439,7 +437,13 @@ class LocalHeadImageService:
             if time.monotonic() >= deadline:
                 raise LocalHeadImageError("Timed out waiting for the ComfyUI render.")
             time.sleep(max(.5, float(self.app.config.comfyui_poll_seconds)))
-        self._update(run_id, candidate_id, status="WAITING_FOR_GATES", image_sha256=self._hash(target), rendered_at=self._now())
+        try:
+            self._update(run_id, candidate_id, status="WAITING_FOR_GATES", image_sha256=self._hash(target), rendered_at=self._now())
+        except OSError:
+            # The saved image is durable render evidence; a transient state-file
+            # replacement failure must not turn a successful render into a retry.
+            if not target.is_file():
+                raise
         return True
 
     @classmethod
@@ -793,7 +797,7 @@ class LocalHeadImageService:
         view = str(view or "").upper()
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         root, state = self._state(run_id)
         state.setdefault("rankings", {})[view] = {"status": "QUEUED", "queued_at": self._now()}
         self._write(root / "state.json", state)
@@ -814,14 +818,16 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_path = Path(str((anchor or {}).get("image_path") or ""))
         if view != FRONT and not anchor_path.is_file():
             raise LocalHeadImageError("Select a FRONT anchor before ranking other views.")
         survivors = [item for item in run["candidates"] if item["view"] == view
-                     and item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                     and not item.get("rejection_gate") and item.get("human_review", {}).get("decision") != "reject"
+                     and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                          or item.get("human_review", {}).get("decision") == "keep")
+                     and (not item.get("rejection_gate") or item.get("human_review", {}).get("decision") == "keep")
+                     and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         if not survivors:
             root, state = self._state(run_id)
@@ -844,6 +850,8 @@ class LocalHeadImageService:
             expected = {"candidate": hashes[candidate["candidate_id"]], "front_anchor": ""}
             definitions = self.review_gates(candidate["view"], has_front_source=bool(run.get("front_source")))
             for definition in definitions:
+                if candidate.get("human_review", {}).get("decision") == "keep":
+                    continue
                 if definition.uses_anchor:
                     expected["front_anchor"] = anchor_hash
                 if definition.key == "source_identity":
@@ -911,10 +919,10 @@ class LocalHeadImageService:
         if not candidate_id:
             if view == FRONT:
                 for downstream in VIEWS[1:]:
-                    self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", downstream)
+                    self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream)
             asset_key = self.asset_store.key("Head-Image", view)
             record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(asset_key) or {}
-            if record.get("batch_id") == run_id and record.get("candidate_id") == selected.get(view):
+            if record.get("batch_id") == run_id and record.get("candidate_id") == selected.get(view) and not record.get("locked"):
                 self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
             root, state = self._state(run_id)
             state.setdefault("selected_views", {}).pop(view, None)
@@ -927,20 +935,21 @@ class LocalHeadImageService:
             self._write(root / "state.json", state)
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        if not candidate or candidate["view"] != view or candidate.get("rejection_gate"):
-            raise LocalHeadImageError("Choose a gate-surviving candidate from this view.")
+        human_pass = bool(candidate and candidate.get("human_review", {}).get("decision") == "keep")
+        if not candidate or candidate["view"] != view or (candidate.get("rejection_gate") and not human_pass):
+            raise LocalHeadImageError("Choose a gate-surviving or human-passed candidate from this view.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str(candidate.get("image_path") or ""))
         if (ranking.get("status") != "COMPLETE" or candidate_id not in ranking.get("ordered_candidate_ids", [])
                 or not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
             raise LocalHeadImageError("The candidate needs a current gate review and ranking before selection.")
-        if not self._candidate_gates_current(run, candidate):
+        if not human_pass and not self._candidate_gates_current(run, candidate):
             raise LocalHeadImageError("The candidate has missing or stale gate results; re-evaluate and rank this view before selection.")
         if view == FRONT and (run.get("front_anchor") != candidate_id):
             for downstream_view in VIEWS[1:]:
-                self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
+                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
         if selected.get(view) != candidate_id:
-            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         dependencies = []
         if view != FRONT:
             anchor = next(item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"])
@@ -957,7 +966,7 @@ class LocalHeadImageService:
             if old_anchor_id != candidate_id:
                 self._invalidate_downstream(run, state)
                 state["status"] = "READY_FOR_VIEWS"
-        self.asset_store.record_selection(run["character"], run["phase"], "Head-Image", view,
+        self.asset_store.record_batch_selection(run["character"], run["phase"], "Head-Image", view,
                                           candidate_id=candidate_id, image_path=image, batch_id=run_id,
                                           dependencies=dependencies)
         if previous_id and previous_id != candidate_id:
@@ -977,19 +986,16 @@ class LocalHeadImageService:
         decision = str(payload.get("decision") or "undecided")
         if not candidate or decision not in {"keep", "reject", "undecided"}:
             raise LocalHeadImageError("Invalid candidate or human decision.")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
-        if candidate.get("rejection_gate"):
-            raise LocalHeadImageError("Gate-rejected candidates cannot be selected for human review.")
-        if candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}:
-            raise LocalHeadImageError("Candidate must pass current gates before human review.")
-        if not self._candidate_gates_current(run, candidate):
-            raise LocalHeadImageError("Candidate has missing or stale gate results; re-evaluate this view before human review.")
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file():
+            raise LocalHeadImageError("Candidate image must be complete before human review.")
         if decision == "reject" and (run.get("selected_views") or {}).get(candidate["view"]) == candidate_id:
             root, state = self._state(run_id)
             if candidate["view"] == FRONT:
                 for downstream_view in VIEWS:
                     if downstream_view != FRONT:
-                        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
+                        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
             self._clear_owned_selection(run, candidate["view"])
             state.setdefault("selected_views", {}).pop(candidate["view"], None)
             state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
@@ -1003,26 +1009,33 @@ class LocalHeadImageService:
             state.setdefault("candidates", {}).setdefault(candidate_id, {})["status"] = "WAITING_FOR_HUMAN_REVIEW"
             self._write(root / "state.json", state)
             return self.detail(run_id)
-        self._update(run_id, candidate_id, human_review={"decision": decision, "notes": str(payload.get("notes") or "")})
+        self._update(run_id, candidate_id,
+                     human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
+                     status="COMPLETE" if decision == "keep" else candidate.get("status"))
         return self.detail(run_id)
 
     def lock_selected_view(self, run_id: str, view: str) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate_id = (run.get("selected_views") or {}).get(view)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str((candidate or {}).get("image_path") or ""))
-        local_asset = (run.get("local_assets") or {}).get(self.asset_store.key("Head-Image", view)) or {}
-        if local_asset.get("candidate_id") != candidate_id or local_asset.get("batch_id") != run_id:
-            raise LocalHeadImageError("Select this candidate as the current local asset before locking it.")
-        if (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
-                or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
-            raise LocalHeadImageError("Select a candidate with current gates and ranking before locking it.")
+        if not candidate or not image.is_file():
+            raise LocalHeadImageError("The selected candidate image is missing.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalHeadImageError("A human-rejected candidate cannot be locked.")
-        if not self._candidate_gates_current(run, candidate):
-            raise LocalHeadImageError("The selected candidate has missing or stale gate results; re-evaluate and rank this view before locking it.")
-        return self.asset_store.lock(run["character"], run["phase"], "Head-Image", view)
+        dependencies = []
+        if view != FRONT:
+            anchor = next((item for item in run["candidates"]
+                           if item["candidate_id"] == run.get("front_anchor")), None)
+            anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+            if anchor_image.is_file():
+                dependencies.append({"key": self.asset_store.key("Head-Image", FRONT),
+                                     "image_sha256": self._hash(anchor_image)})
+        return self.asset_store.lock_batch_selection(
+            run["character"], run["phase"], "Head-Image", view,
+            candidate_id=candidate_id, image_path=image, batch_id=run_id,
+            dependencies=dependencies,
+        )
 
     def unlock_view(self, character: str, phase: str, view: str) -> dict[str, Any]:
         return self.asset_store.unlock(character, phase, "Head-Image", view)
@@ -1033,7 +1046,8 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Select a reviewed FRONT candidate before generating other views.")
         anchor = next((item for item in run["candidates"]
                        if item["candidate_id"] == run["front_anchor"]), None)
-        if (not anchor or anchor.get("rejection_gate") or not self._candidate_gates_current(run, anchor)):
+        if (not anchor or (anchor.get("rejection_gate") and anchor.get("human_review", {}).get("decision") != "keep")
+                or (anchor.get("human_review", {}).get("decision") != "keep" and not self._candidate_gates_current(run, anchor))):
             raise LocalHeadImageError("The FRONT anchor has missing or stale gate results; re-evaluate and rank FRONT before proceeding.")
         pending_views = {view for view in VIEWS if view != FRONT and any(
             item["view"] == view and item["status"] in {"PENDING", "FAILED"} for item in run["candidates"])}
@@ -1046,13 +1060,13 @@ class LocalHeadImageService:
         if self._runner_lock.locked() or run["run_id"] in self._active:
             raise LocalHeadImageError("Wait for the local image runner to finish before re-running candidates.")
         for view in views:
-            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
 
     def _clear_owned_selection(self, run: dict[str, Any], view: str) -> None:
         record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(
             self.asset_store.key("Head-Image", view), {}
         )
-        if record.get("batch_id") == run["run_id"]:
+        if record.get("batch_id") == run["run_id"] and not record.get("locked"):
             self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
 
     def _invalidate_downstream(self, run: dict[str, Any], state: dict[str, Any]) -> None:
@@ -1199,7 +1213,7 @@ class LocalHeadImageService:
         for target in targets:
             if target not in VIEWS:
                 raise LocalHeadImageError(f"Unknown view: {target}")
-            self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", target)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", target)
         root, state = self._state(run_id)
         for target in targets:
             self._clear_owned_selection(run, target)
@@ -1225,7 +1239,7 @@ class LocalHeadImageService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
         image = Path(str(candidate.get("image_path") or ""))
         if candidate.get("failed_gate") and image.is_file():
             gates = dict(candidate.get("gates") or {})
@@ -1243,7 +1257,7 @@ class LocalHeadImageService:
 
     def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str) -> dict[str, Any]:
         run = self.detail(run_id)
-        self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         ranking = (run.get("rankings") or {}).get(view) or {}
         order = list(ranking.get("ordered_candidate_ids") or [])
         if ranking.get("status") != "COMPLETE" or candidate_id not in order or direction not in {"up", "down"}:
@@ -1298,7 +1312,7 @@ class LocalHeadImageService:
         for view in VIEWS:
             record = assets.get(self.asset_store.key("Head-Image", view), {})
             if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
-                self.asset_store.assert_change_allowed(run["character"], run["phase"], "Head-Image", view)
+                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         for view in reversed(VIEWS):
             record = assets.get(self.asset_store.key("Head-Image", view), {})
             if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):

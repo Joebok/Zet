@@ -24,6 +24,8 @@ A gate result is current only when its policy, status, verdict, image, anchor/re
 | --- | --- | --- | --- |
 | Local Body-Reference | Compiled body facts; no rendered source image required | Face, proportion, framing, orientation, and body identity after FRONT. Orientation defaults to `Disabled` pending validation. | Selected FRONT physique guides generation and body identity review. |
 | Local Head-Image | Compiled head facts; optional uploaded FRONT image is snapshotted into the run | Background, framing, and orientation on every view; gaze on FRONT, the two frontal three-quarter views, and both profiles; source identity if a FRONT source was supplied; identity after FRONT. All default to `Active`. | Selected FRONT head guides generation, gaze comparison where applicable, and identity review. |
+| Local Character-Assembly | Locked same-view Body-Reference and Head-Image snapshots; selected FRONT Character-Assembly image guides later views | Framing, orientation, body preservation, and head identity. New gates default to `Disabled` until validated. | Select FRONT before generating other views; the FRONT anchor preserves head-to-body scale, proportions, silhouette, and integrated appearance. |
+| Local Costume-Dressing | Locked same-view Character-Assembly snapshot; selected FRONT Costume-Dressing image guides later views | Framing, orientation, costume fidelity, and character preservation. New gates default to `Disabled` until validated. | Select FRONT before generating other views; local assets are scoped by costume. |
 
 Gate policy is stored by the shared gate registry and can override these defaults. Changing a Head-Image FRONT source recompiles its prompt and resets that batch's generated results. Consult each service's gate catalog for the current prompt text and exact image roles.
 
@@ -52,4 +54,5 @@ Gate policy is stored by the shared gate registry and can override these default
 - [Local Body-Reference candidate-selection process and current gates](QwenImage2.1/body_reference_candidate_selection_pipeline.md)
 - [Body-Reference orientation gate investigation](QwenImage2.1/Orientation%20Gate%20Investigation.md)
 - Local Head-Image: `zet/services/local_head_image_service.py` and the Local Head-Image dashboard.
+- Local Character-Assembly and Costume-Dressing: `zet/services/local_character_asset_pipeline_service.py` and the local character pipeline dashboard pages.
 - [Local image generation architecture](Local_Image_Generation.md)

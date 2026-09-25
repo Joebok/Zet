@@ -33,6 +33,7 @@ from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
+from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -945,6 +946,7 @@ def create_app(
         )
     )
     app.include_router(create_pipeline_inspection_router(lambda: _app(app.state.config_path)))
+    app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
     app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")
@@ -960,6 +962,16 @@ def create_app(
     @app.get("/local-head-image", response_class=HTMLResponse)
     def local_head_image_page() -> str:
         return (PACKAGE_ROOT / "templates" / "local_head_image.html").read_text(encoding="utf-8")
+
+    @app.get("/local-character-assembly", response_class=HTMLResponse)
+    def local_character_assembly_page() -> str:
+        template = (PACKAGE_ROOT / "templates" / "local_character_pipeline.html").read_text(encoding="utf-8")
+        return template.replace("{{PIPELINE}}", "character-assembly").replace("{{LABEL}}", "Local Character-Assembly")
+
+    @app.get("/local-costume-dressing", response_class=HTMLResponse)
+    def local_costume_dressing_page() -> str:
+        template = (PACKAGE_ROOT / "templates" / "local_character_pipeline.html").read_text(encoding="utf-8")
+        return template.replace("{{PIPELINE}}", "costume-dressing").replace("{{LABEL}}", "Local Costume-Dressing")
 
     @app.get("/gate-test-rig", response_class=HTMLResponse)
     def gate_test_rig_page() -> str:
@@ -2792,14 +2804,25 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/local/body-reference/runs")
-    def create_local_body_reference(
-        background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(...)
-    ) -> dict[str, Any]:
+    def create_local_body_reference(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.create_run(payload)
-            background_tasks.add_task(service.execute_run, run["run_id"])
             return run
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/body-reference/runs/{run_id}/start")
+    def start_local_body_reference(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
+            run = service.detail(run_id)
+            if run.get("status") != "QUEUED":
+                raise HTTPException(status_code=409, detail="Only a queued Local Body-Reference batch can be started.")
+            background_tasks.add_task(service.execute_run, run_id)
+            return {"started": True, "run_id": run_id}
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
