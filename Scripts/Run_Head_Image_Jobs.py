@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -84,7 +85,7 @@ def compile_head_image_job(
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for head-image runner: {task}")
 
     bundle = load_bundle(project_root, task)
-    if prompt_variant == "analysis":
+    if prompt_variant == "analysis" or pipeline_mode == "local":
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
     view_data = load_view_data(project_root, view_token)
@@ -112,7 +113,17 @@ def compile_head_image_job(
             sections[name] = ""
     elif pipeline_mode == "local":
         sections["HEAD_IMAGE_SOURCE_RULES"] = _local_source_rules(sections.get("HEAD_IMAGE_SOURCE_RULES", ""))
-    if str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
+    local_phase_changes = ""
+    if pipeline_mode == "local":
+        local_phase_changes = str(
+            sections.get("HEAD_IMAGE_LOCAL_PHASE_CHANGES") or sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or ""
+        ).strip()
+        if view_token != "FRONT":
+            local_phase_changes = ""
+        sections["HEAD_IMAGE_TRANSFORM_INSTRUCTIONS"] = ""
+        if view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+            sections["HEAD_DESCRIPTION_FACTS"] = ""
+    elif str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
         for name in (
             "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
             "HEAD_DESCRIPTION_FACTS",
@@ -135,14 +146,25 @@ def compile_head_image_job(
         references, render_mode=render_mode
     )
     contract_values["LOCAL_RENDER_MODE"] = render_mode
+    local_style = str(template_metadata(template_path).get("CANONICAL_ART_STYLE") or "").rstrip(". ")
+    if view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+        local_style = re.sub(
+            r" with anime-influenced facial proportions(?:,\s*(?:and\s+)?|\s+and\s+)large expressive eyes",
+            "",
+            local_style,
+        )
+        local_style = local_style.replace(", and refined linework", " with refined linework")
+        local_style = local_style.replace(", refined linework, and ", " with refined linework and ")
     if source_references and view_token != "FRONT":
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
-            "Use Image 1, the selected local FRONT render, as the identity and appearance anchor only. The source gaze is not authoritative. Turn the head to the requested view and aim the eyes along the face and nose direction specified below."
+            "Use Image 1, the selected FRONT render, as the identity and appearance anchor."
         )
     elif source_references:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
-            "Use Image 1 as the identity reference; its gaze is not authoritative. Preserve recognizable traits while following the requested target view, eye direction, and phase details."
+            "Use Image 1 as the identity and appearance reference."
         )
+    elif pipeline_mode == "local":
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = "Build the character from the identifying details below."
     else:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = ""
 
@@ -167,6 +189,18 @@ def compile_head_image_job(
         "VIEW_TOKEN": view_token,
         "VIEW_LABEL": str(view_data["label"]),
         "VIEW_INSTRUCTION": view_instruction(view_data, "head", task, include_intro=True),
+        "LOCAL_VIEW_INSTRUCTION": str(view_data.get("local_head_image_instruction") or ""),
+        "LOCAL_GAZE_INSTRUCTION": str(view_data.get("local_head_image_gaze") or ""),
+        "LOCAL_PHASE_CHANGES": local_phase_changes,
+        "LOCAL_VISIBLE_CHARACTER_FACTS": "\n\n".join(
+            value for value in (
+                sections.get("HEAD_DESCRIPTION_FACTS", "") if view_token == "FRONT" else "",
+                sections.get(f"HEAD_DESCRIPTION_VIEW_{view_token}", ""),
+                sections.get("HAIR_DESCRIPTION_FACTS", "") if view_token == "FRONT" else "",
+                sections.get(f"HAIR_DESCRIPTION_VIEW_{view_token}", ""),
+            ) if str(value or "").strip()
+        ),
+        "LOCAL_STYLE_INSTRUCTION": local_style,
         "HEAD_IMAGE_GAZE_RULE": (
             "Do not preserve the source image's camera-facing gaze; the subject must not look toward the viewer."
             if pipeline_mode == "local" and view_token != "FRONT" else ""
@@ -179,6 +213,8 @@ def compile_head_image_job(
         "VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Head view token", "editable": False},
         "VIEW_LABEL": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view label", "json_pointer": f"/views/{view_token}/label", "editable": True},
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
+        "LOCAL_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Local head-image view instruction", "json_pointer": f"/views/{view_token}/local_head_image_instruction", "editable": True},
+        "LOCAL_GAZE_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Local head-image gaze instruction", "json_pointer": f"/views/{view_token}/local_head_image_gaze", "editable": True},
     }
     gaze_review_items = {
         "FRONT": "- [ ] The eyes look forward with the face.",

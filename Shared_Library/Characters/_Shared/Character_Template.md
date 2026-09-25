@@ -412,6 +412,14 @@ Rendering priorities:
 
 <!-- ZET:END HEAD_IMAGE_TRANSFORM_INSTRUCTIONS -->
 
+## Local Head-Image Phase Changes
+
+<!-- ZET:BEGIN HEAD_IMAGE_LOCAL_PHASE_CHANGES -->
+
+
+
+<!-- ZET:END HEAD_IMAGE_LOCAL_PHASE_CHANGES -->
+
 ## Source Instructions
 
 <!-- ZET:BEGIN HEAD_IMAGE_SOURCE_INSTRUCTIONS -->

@@ -15,7 +15,19 @@ Setting up HTTPS://
 Local Image:
 Allow/require naming of runs
 
-Gate management - enable/disable gates. Create regression test cases - copy/paste image, provide any other required info (such as view) and indicate if the gate should give pass or fail. Adapt the gate tester to use the regression images for testing. Have the parameters for llm choices default to the current values (like temperature, context, etc). It is likely that prompt, model, and thinking level edits are going to be the primary route of experimentation.
+Gates:
+
+Create test case suite for head-image orientation gate (create 8 sets of 5 images. Each set has a correct image for a view and images for the 4 most adjacent views - for example, the set for "front" has an actual "front" view and a front left 3/4, a front right 3/4, a left profile and a right profile. These are all for a front gaze view test which is expected to pass the correct one and fail all the others.
+
+Do the same for the body-reference orientation gate. 
+
+Use these tests and the knowledge gained from the new local head-image prompts to craft gate prompt language to try to get the gates working. For the models, start with image-analsysis-alt with thinking on (the default I believe). Analyze the return information to try to refine the prompts if they are not working. Remember to prioritize brevity, simplicity and directness. Try with thinking and off, and also try with luna with high and none thinking levels. If after 3 prompt edits you are still not getting valid results, write a summary of your findings and move on. And a reminder that prompts can be different for different views, you do not have to find one single prompt that universally works for each view.
+
+As a part of this process, make sure to set up and save tests in the gate test rig - make sure that it works as intended. Fix any bugs you find it in, use gate test rig services to run the tests to make sure that it works.
+
+Full automation after front anchor
+
+Gate config - setting for regen after fail T/F, max re-tries
 
 Library Integration - 
 

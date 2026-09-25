@@ -82,9 +82,8 @@ class HeadImageCompilerTests(unittest.TestCase):
                                             PROJECT_ROOT, pipeline_mode="local")
             edited_prompt = Path(edited["final_prompt"]).read_text(encoding="utf-8")
             edited_manifest = json.loads(Path(edited["dependency_manifest"]).read_text(encoding="utf-8"))
-            self.assertIn("Use Image 1 as the identity reference", edited_prompt)
+            self.assertIn("Use Image 1 as the identity and appearance reference", edited_prompt)
             self.assertNotIn("optional identity reference", edited_prompt.lower())
-            self.assertIn("gaze is not authoritative", edited_prompt)
             self.assertNotIn("camera-facing gaze", edited_prompt)
             self.assertEqual("edit", edited_manifest["render_mode"])
             self.assertEqual([str(source)], [item["path"] for item in edited_manifest["resources"]])
@@ -94,12 +93,9 @@ class HeadImageCompilerTests(unittest.TestCase):
                                            "Reference Files": [{"role": "head_image_source", "path": str(source)}]},
                                           PROJECT_ROOT, pipeline_mode="local")
             side_prompt = Path(side["final_prompt"]).read_text(encoding="utf-8")
-            self.assertIn("aim the eyes along the face and nose direction", side_prompt)
-            self.assertIn("toward image-left", side_prompt)
-            self.assertIn("do not make eye contact with the viewer", side_prompt)
-            self.assertIn("Do not preserve the source image's camera-facing gaze; the subject must not look toward the viewer.", side_prompt)
-            self.assertLess(side_prompt.index("Do not preserve the source image's camera-facing gaze"),
-                            side_prompt.index("# Subject Details"))
+            self.assertIn("nose points image-left", side_prompt)
+            self.assertIn("Both eyes look image-left along the turned face", side_prompt)
+            self.assertIn("Use Image 1, the selected FRONT render, as the identity and appearance anchor", side_prompt)
 
     def test_local_source_contract_is_present_only_with_a_source(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -125,10 +121,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                                                   "Reference Files": [{"role": "head_image_source", "path": str(source)}]},
                                                  PROJECT_ROOT, pipeline_mode="local")
             with_source_prompt = Path(with_source["final_prompt"]).read_text(encoding="utf-8")
-            self.assertIn("Source-image contract:", with_source_prompt)
-            self.assertIn("Use the source image as the visual authority for identity.", with_source_prompt)
-            self.assertNotIn("Optional source-image contract", with_source_prompt)
-            self.assertNotIn("When a source image is supplied", with_source_prompt)
+            self.assertIn("Use Image 1 as the identity and appearance reference.", with_source_prompt)
             self.assertNotIn("Without a source image", with_source_prompt)
 
     def test_local_non_front_gaze_rule_precedes_subject_details_for_every_view(self) -> None:
@@ -137,7 +130,15 @@ class HeadImageCompilerTests(unittest.TestCase):
             source = root / "source.png"
             source.write_bytes(b"source")
             template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
-            sentence = "Do not preserve the source image's camera-facing gaze; the subject must not look toward the viewer."
+            gaze_by_view = {
+                "FRONT_LEFT_3_4": "Both eyes look image-left along the turned face.",
+                "FRONT_RIGHT_3_4": "Both eyes look image-right along the turned face.",
+                "LEFT_PROFILE": "The visible eye looks image-left along the nose.",
+                "RIGHT_PROFILE": "The visible eye looks image-right along the nose.",
+                "BACK_LEFT_3_4": "Keep the face turned away; no eye or expression is visible.",
+                "BACK_RIGHT_3_4": "Keep the face turned away; no eye or expression is visible.",
+                "BACK": "No eyes or facial features are visible.",
+            }
             for view in VIEWS:
                 if view == "FRONT":
                     continue
@@ -148,8 +149,68 @@ class HeadImageCompilerTests(unittest.TestCase):
                         "Reference Files": [{"role": "head_image_source", "path": str(source)}],
                     }, PROJECT_ROOT, pipeline_mode="local")
                     prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
-                    self.assertEqual(1, prompt.count(sentence))
-                    self.assertLess(prompt.index(sentence), prompt.index("# Subject Details"))
+                    self.assertIn(gaze_by_view[view], prompt)
+                    self.assertNotIn("If the requested view", prompt)
+
+    def test_local_prompt_instructions_are_compiled_for_all_eight_views(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.png"
+            source.write_bytes(b"source")
+            template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            expected = {
+                "FRONT": ("camera is directly in front", "Both eyes look straight ahead"),
+                "FRONT_LEFT_3_4": ("camera is in front of the character's anatomical left", "Both eyes look image-left"),
+                "FRONT_RIGHT_3_4": ("camera is in front of the character's anatomical right", "Both eyes look image-right"),
+                "LEFT_PROFILE": ("camera is directly beside the character's anatomical left", "visible eye looks image-left"),
+                "RIGHT_PROFILE": ("camera is directly beside the character's anatomical right", "visible eye looks image-right"),
+                "BACK_LEFT_3_4": ("camera is behind the character's anatomical left", "no eye or expression is visible"),
+                "BACK_RIGHT_3_4": ("camera is behind the character's anatomical right", "no eye or expression is visible"),
+                "BACK": ("camera is directly behind the character", "No eyes or facial features are visible"),
+            }
+            for view, (view_text, gaze_text) in expected.items():
+                with self.subTest(view=view):
+                    result = compile_head_image_job({
+                        "Job": f"local-{view}", "Task": "head-image", "Character": "Test", "Phase": "Adult",
+                        "Head View": view, "Template Path": str(template), "Output Directory": str(root / view),
+                        "Reference Files": [{"role": "head_image_source", "path": str(source)}],
+                    }, PROJECT_ROOT, pipeline_mode="local")
+                    prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+                    self.assertIn(view_text, prompt)
+                    self.assertIn(gaze_text, prompt)
+                    self.assertNotIn("if the requested view", prompt.lower())
+                    self.assertNotIn("{{", prompt)
+                    if view in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+                        self.assertNotIn("Eye shape:", prompt)
+                        self.assertNotIn("large expressive eyes", prompt)
+
+    def test_local_phase_changes_are_compact_and_traditional_transform_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = Path(r"C:\Users\Joe\Projects\Zet_Library\Characters\Tsaeytte\Elder\Character.md")
+            source = root / "source.png"
+            source.write_bytes(b"source")
+            reference = [{"role": "head_image_source", "path": str(source)}]
+            job = {"Job": "elder-phase", "Task": "head-image", "Character": "Tsaeytte", "Phase": "Elder",
+                   "Head View": "Front", "Template Path": str(template), "Reference Files": reference}
+            local = compile_head_image_job({**job, "Output Directory": str(root / "local")}, PROJECT_ROOT,
+                                           pipeline_mode="local")
+            local_prompt = Path(local["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("Show Tsaeytte as the same person in her Elder phase", local_prompt)
+            self.assertIn("luminous silver", local_prompt)
+            self.assertNotIn("primary goal of this task is successful age transformation", local_prompt)
+
+            rear = compile_head_image_job({**job, "Head View": "BACK_RIGHT_3_4",
+                                           "Output Directory": str(root / "rear")}, PROJECT_ROOT,
+                                          pipeline_mode="local")
+            rear_prompt = Path(rear["final_prompt"]).read_text(encoding="utf-8")
+            self.assertNotIn("large expressive eyes", rear_prompt)
+            self.assertIn("Painterly semi-realistic fantasy illustration", rear_prompt)
+
+            traditional = compile_head_image_job({**job, "Output Directory": str(root / "traditional")}, PROJECT_ROOT)
+            traditional_prompt = Path(traditional["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("primary goal of this task is successful age transformation", traditional_prompt)
+            self.assertIn("The final face must read as Elder Tsaeytte", traditional_prompt)
 
     def test_local_non_front_requires_selected_front_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

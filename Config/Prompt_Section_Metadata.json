@@ -16,6 +16,7 @@
     "SCENE_CHARACTER_IDENTITY": {"label": "Scene Character Identity", "description": "Compact complete identity description consumed by scene building.", "required_content": true},
     "BODY_REFERENCE_CHARACTER_REQUIREMENTS": {"label": "Body-Reference Character Requirements", "description": "Character-varying body-reference requirements only.", "required_content": true},
     "HEAD_IMAGE_TRANSFORM_INSTRUCTIONS": {"label": "Head-Image Transform Instructions", "description": "Complete source-to-target transformation contract; when filled, replaces the standard head-image character sections.", "required_content": false, "requires_reference_role": "head_image_source"},
+    "HEAD_IMAGE_LOCAL_PHASE_CHANGES": {"label": "Local Head-Image Phase Changes", "description": "Concise phase-specific changes used by the local FRONT generation prompt.", "required_content": false},
     "HEAD_IMAGE_SOURCE_INSTRUCTIONS": {"label": "Head-Image Source Instructions", "description": "Character-specific source-image instructions used by the standard head-image path.", "required_content": false, "requires_reference_role": "head_image_source"},
     "HEAD_IMAGE_SOURCE_RULES": {"label": "Head-Image Source Rules", "description": "Identity and transformation precedence used only with a source image.", "required_content": false, "requires_reference_role": "head_image_source"},
     "HEAD_IMAGE_CHARACTER_REQUIREMENTS": {"label": "Head-Image Character Requirements", "description": "Character-varying head-only output requirements.", "required_content": true},
