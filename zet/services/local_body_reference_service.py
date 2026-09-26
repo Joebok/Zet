@@ -22,7 +22,7 @@ from zet.services.candidate_review_contract import ReviewGate, parse_rejection_v
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail,
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, pipeline_page_config,
     gate_result_is_current, upgrade_legacy_review_v1,
 )
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -308,6 +308,10 @@ Do not explain your reasoning."""
             "candidate_count": candidate_count,
             "methods": [METHOD_FRONT_CONDITIONED],
             "front_anchor_required": True,
+            "pipeline": "body-reference",
+            "pipeline_config": pipeline_page_config("body-reference"),
+            "can_create": True,
+            "blocking_reasons": [],
         }
 
     def _compile_view(self, root: Path, character: str, phase: str, view: str, index: int) -> dict[str, Any]:
@@ -628,6 +632,14 @@ Do not explain your reasoning."""
             str(value.get("character") or ""), str(value.get("phase") or "")
         ).get("assets", {})
         return decorate_local_pipeline_detail(value, "body-reference")
+
+    def image_path(self, run_id: str, candidate_id: str) -> Path:
+        run = self.detail(run_id)
+        candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
+        path = Path(str((candidate or {}).get("image_path") or "")).resolve()
+        if not path.is_file() or not path.is_relative_to(Path(run["root"]).resolve()):
+            raise LocalBodyReferenceError("Candidate image is unavailable.")
+        return path
 
     def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
         name = str(batch_name or "").strip()

@@ -21,7 +21,7 @@ from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 from zet.services.candidate_review_contract import ReviewGate, validate_ranking
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current, upgrade_legacy_review_v1,
+    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current, pipeline_page_config, upgrade_legacy_review_v1,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -166,24 +166,29 @@ class LocalCharacterAssetPipelineService:
         total = front_count + 7 * other_count
         if front_count < 1 or other_count < 1 or total > 256:
             raise LocalCharacterAssetPipelineError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
-        inputs = {}
+        inputs, blocking_reasons = {}, []
         requested_views = ("FRONT",) if payload.get("front_only") else VIEWS
         for view in requested_views:
-            if self.pipeline == "character-assembly":
-                inputs[view] = {
-                    "body_reference": self._locked(character, phase, "Body-Reference", view),
-                    "head_image": self._locked(character, phase, "Head-Image", view),
-                }
-            else:
-                inputs[view] = {"character_assembly": self._locked(character, phase, "Character-Assembly", view)}
+            requirements = (("body_reference", "Body-Reference"), ("head_image", "Head-Image")) \
+                if self.pipeline == "character-assembly" else (("character_assembly", "Character-Assembly"),)
+            resolved = {}
+            for role, pipeline in requirements:
+                try:
+                    resolved[role] = self._locked(character, phase, pipeline, view)
+                except LocalCharacterAssetPipelineError as exc:
+                    blocking_reasons.append(str(exc))
+            if len(resolved) == len(requirements):
+                inputs[view] = resolved
         costume_path = self._costume_path(character, phase, costume) if costume else None
         if costume_path and not costume_path.is_file():
-            raise LocalCharacterAssetPipelineError(f"Costume template not found: {costume_path}")
-        return {"pipeline": self.pipeline, "character": character, "phase": phase, "costume": costume,
+            blocking_reasons.append(f"Costume template not found: {costume_path}")
+        return {"pipeline": self.pipeline, "pipeline_config": pipeline_page_config(self.pipeline),
+                "character": character, "phase": phase, "costume": costume,
                 "views": list(VIEWS), "front_count": front_count, "other_count": other_count,
                 "candidate_count": total, "inputs": inputs, "front_only": bool(payload.get("front_only")),
-                "use_front_anchor": bool(payload.get("use_front_anchor", False)),
-                "front_anchor_required_for_other_views": bool(payload.get("use_front_anchor", False))}
+                "use_front_anchor": bool(payload.get("use_front_anchor", True)),
+                "front_anchor_required_for_other_views": bool(payload.get("use_front_anchor", True)),
+                "can_create": not blocking_reasons, "blocking_reasons": list(dict.fromkeys(blocking_reasons))}
 
     def _requires_front_anchor(self, run: dict[str, Any]) -> bool:
         return bool(run.get("use_front_anchor", True))
@@ -210,6 +215,8 @@ class LocalCharacterAssetPipelineService:
 
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan = self.preview(payload)
+        if not plan["can_create"]:
+            raise LocalCharacterAssetPipelineError("Cannot create this batch: " + " ".join(plan["blocking_reasons"]))
         run_id = uuid4().hex
         root = self._workspace(plan["character"], plan["phase"], plan["costume"]) / run_id
         root.mkdir(parents=True, exist_ok=False)

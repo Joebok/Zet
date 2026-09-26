@@ -57,6 +57,41 @@ class CostumeDressingCompilerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def _add_auxiliary_images(self) -> tuple[str, str]:
+        resource_dir = self.library / "AuxiliaryResources" / "Images" / "costume-details"
+        resource_dir.mkdir(parents=True)
+        embroidery = resource_dir / "embroidery.png"
+        jewelry = resource_dir / "jewelry.png"
+        embroidery.write_bytes(b"embroidery")
+        jewelry.write_bytes(b"jewelry")
+        embroidery_tag = "{{AUX:thing:costume-details:embroidery}}"
+        jewelry_tag = "{{AUX:thing:costume-details:jewelry}}"
+        inventory = {
+            "resources": [{
+                "category": "thing",
+                "resource_id": "costume-details",
+                "label": "Costume Details",
+                "images": [
+                    {
+                        "image_id": "embroidery",
+                        "label": "Overskirt Embroidery",
+                        "tag": embroidery_tag,
+                        "image_path": str(embroidery),
+                    },
+                    {
+                        "image_id": "jewelry",
+                        "label": "Jewelry",
+                        "tag": jewelry_tag,
+                        "image_path": str(jewelry),
+                    },
+                ],
+            }],
+        }
+        (self.library / "AuxiliaryResources" / "AuxiliaryResources.json").write_text(
+            json.dumps(inventory), encoding="utf-8"
+        )
+        return embroidery_tag, jewelry_tag
+
     def _compile(self, costume_sections: str, body_view: str = "FRONT", head_view: str | None = None, *, prompt_variant: str = "generation") -> tuple[str, dict, dict]:
         costume_path = self.character_dir / "Costume_Test_Outfit.md"
         costume_path.write_text(
@@ -158,6 +193,39 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertEqual(["edit_base"], [item["role"] for item in manifest["image_inputs"]])
         for name in ("Final_Image_Prompt.md", "Compiled_Sections.md", "Prompt_Source_Map.json", "dependency_manifest.json", "Prompt_Review.md", "Image_Review.md"):
             self.assertTrue((Path(result["output_dir"]) / name).exists())
+
+    def test_embedded_costume_images_use_numbered_image_level_citations(self) -> None:
+        embroidery_tag, jewelry_tag = self._add_auxiliary_images()
+        prompt, _, result = self._compile(
+            self._sections(
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+                "* Silhouette: `Fitted teal outfit.`.\n"
+                f"* Overskirt hem reference: {embroidery_tag}.\n"
+                f"* Repeat the same hem reference at the rear: {embroidery_tag}.\n"
+                f"* Use this jewelry design for the pendant and earrings: {jewelry_tag}.\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
+            )
+        )
+
+        self.assertIn(
+            "**Image 2 — object_reference:** Costume Details — Overskirt Embroidery.",
+            prompt,
+        )
+        self.assertIn("**Image 3 — object_reference:** Costume Details — Jewelry.", prompt)
+        self.assertEqual(2, prompt.count("Image 2 (Costume Details — Overskirt Embroidery)"))
+        self.assertIn("Image 3 (Costume Details — Jewelry)", prompt)
+        self.assertNotIn("Image file:", prompt)
+        self.assertNotIn("{{AUX:", prompt)
+        self.assertNotIn(str(self.library), prompt)
+
+        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+        embedded = manifest["image_inputs"][1:]
+        self.assertEqual([2, 3], [item["index"] for item in embedded])
+        self.assertEqual(
+            ["Costume Details — Overskirt Embroidery", "Costume Details — Jewelry"],
+            [item["label"] for item in embedded],
+        )
+        self.assertEqual(3, len(manifest["image_inputs"]))
 
     def test_profile_and_back_three_quarter_locks_do_not_cross_contaminate(self) -> None:
         facts = (

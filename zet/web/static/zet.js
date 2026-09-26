@@ -1,5 +1,6 @@
 const state = {
   workspace: "character",
+  activePageId: "",
   productionWorkSummary: { current: {}, project: {} },
   productionWorkRequest: 0,
   productionWorkTimer: null,
@@ -10,7 +11,7 @@ const state = {
   selectionGenerations: {},
   selectionControllers: {},
   workspaceSummary: { character: null, story: null },
-  lastWorkspacePages: { character: "onboarding", story: "scenes" },
+  lastWorkspacePages: { character: "onboarding", local: "local-overview", story: "scenes" },
   characters: [],
   phasesByCharacter: {},
   onboardingStatuses: {},
@@ -165,6 +166,14 @@ const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "scene-appearances", "expressions", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
+const LOCAL_PAGES = new Set([
+  "local-overview", "local-body-reference", "local-head-image", "local-character-assembly",
+  "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
+  "local-scene-appearances", "local-expressions", "local-comparison",
+]);
+const LOCAL_ASSET_PAGES = new Set([
+  "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
+]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
 
 const characterSelect = document.querySelector("#character-select");
@@ -175,8 +184,12 @@ const sceneWorkflowMenu = document.querySelector("#scene-workflow-menu");
 const characterContext = document.querySelector("#character-context");
 const storyContext = document.querySelector("#story-context");
 const workspaceCharacter = document.querySelector("#workspace-character");
+const workspaceLocal = document.querySelector("#workspace-local");
 const workspaceStory = document.querySelector("#workspace-story");
 const characterNavigation = document.querySelector("#character-navigation");
+const localNavigation = document.querySelector("#local-navigation");
+const localAssetsButton = document.querySelector("#local-assets-button");
+const localAssetsMenu = document.querySelector("#local-assets-menu");
 const storyNavigation = document.querySelector("#story-navigation");
 const responsiveSectionMenu = document.querySelector("#responsive-section-menu");
 const characterProductionMenu = document.querySelector("#character-production-menu");
@@ -192,10 +205,6 @@ const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
-const toolbarLocalBodyReference = document.querySelector("#toolbar-local-body-reference");
-const toolbarLocalHeadImage = document.querySelector("#toolbar-local-head-image");
-const toolbarLocalCharacterAssembly = document.querySelector("#toolbar-local-character-assembly");
-const toolbarLocalCostumeDressing = document.querySelector("#toolbar-local-costume-dressing");
 const toolbarLocalCharacterOverview = document.querySelector("#toolbar-local-character-overview");
 const toolbarGateTestRig = document.querySelector("#toolbar-gate-test-rig");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
@@ -1577,7 +1586,11 @@ function renderProductionWorkSummary() {
 }
 
 async function refreshProductionWorkSummary() {
-  if (document.hidden) return null;
+  if (document.hidden || state.workspace === "local") {
+    if (state.productionWorkTimer) window.clearTimeout(state.productionWorkTimer);
+    state.productionWorkTimer = null;
+    return null;
+  }
   if (state.productionWorkPromise) {
     state.productionWorkRefreshPending = true;
     return state.productionWorkPromise;
@@ -1614,7 +1627,7 @@ async function refreshProductionWorkSummary() {
 function scheduleProductionWorkSummary(delay = 45000) {
   if (state.productionWorkTimer) window.clearTimeout(state.productionWorkTimer);
   state.productionWorkTimer = null;
-  if (document.hidden || document.body.dataset.dashboardReady !== "true") return;
+  if (document.hidden || state.workspace === "local" || document.body.dataset.dashboardReady !== "true") return;
   state.productionWorkTimer = window.setTimeout(() => {
     state.productionWorkTimer = null;
     void refreshProductionWorkSummary();
@@ -1685,14 +1698,16 @@ function loadStoredWorkspacePreferences() {
     const raw = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
+    const pages = data?.pages || {};
     return {
-      workspace: data?.workspace === "story" ? "story" : "character",
+      workspace: ["character", "local", "story"].includes(data?.workspace) ? data.workspace : "character",
       pages: {
-        character: CHARACTER_PAGES.has(data?.pages?.character) || PRODUCTION_PAGES.has(data?.pages?.character)
-          ? data.pages.character
+        character: CHARACTER_PAGES.has(pages.character) || PRODUCTION_PAGES.has(pages.character)
+          ? pages.character
           : "onboarding",
-        story: STORY_PAGES.has(data?.pages?.story) || PRODUCTION_PAGES.has(data?.pages?.story)
-          ? data.pages.story
+        local: LOCAL_PAGES.has(pages.local) ? pages.local : "local-overview",
+        story: STORY_PAGES.has(pages.story) || PRODUCTION_PAGES.has(pages.story)
+          ? pages.story
           : "scenes",
       },
     };
@@ -1714,6 +1729,7 @@ function saveWorkspacePreferences() {
 
 function pageWorkspace(page) {
   if (CHARACTER_PAGES.has(page)) return "character";
+  if (LOCAL_PAGES.has(page)) return "local";
   if (STORY_PAGES.has(page)) return "story";
   return null;
 }
@@ -1744,6 +1760,14 @@ const RESPONSIVE_WORKSPACE_PAGES = {
     ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
     ["render-console", "Render Console"], ["local-image-review", "Local Variants"], ["render-review", "Image Review"],
   ],
+  local: [
+    ["local-overview", "Overview"], ["local-body-reference", "Body-Reference"],
+    ["local-head-image", "Head-Image"], ["local-character-assembly", "Character-Assembly"],
+    ["local-costume-dressing", "Costume-Dressing"], ["local-identity-keys", "Identity Keys"],
+    ["local-turnarounds", "Turnarounds"], ["local-costumes", "Costumes"],
+    ["local-scene-appearances", "Scene Appearances"], ["local-expressions", "Expressions"],
+    ["local-comparison", "Comparison"],
+  ],
 };
 
 const RESPONSIVE_TOOL_PAGES = [
@@ -1755,7 +1779,7 @@ const RESPONSIVE_TOOL_PAGES = [
 function renderResponsiveSectionMenu(selectedPage = activePageName() || state.lastWorkspacePages[state.workspace]) {
   responsiveSectionMenu.replaceChildren();
   const sectionGroup = document.createElement("optgroup");
-  sectionGroup.label = state.workspace === "story" ? "Story Telling" : "Character Development";
+  sectionGroup.label = state.workspace === "story" ? "Story Telling" : state.workspace === "local" ? "Local" : "Character Development";
   const countKeys = { "prompt-review": "prompt_available", "render-console": "render_waiting", "render-review": "image_review_waiting" };
   for (const [value, label] of RESPONSIVE_WORKSPACE_PAGES[state.workspace]) {
     const count = Number(state.productionWorkSummary.project?.[countKeys[value]] || 0);
@@ -1775,21 +1799,26 @@ function syncResponsiveChrome() {
 
 function applyWorkspaceChrome() {
   const storyActive = state.workspace === "story";
-  workspaceCharacter.setAttribute("aria-pressed", storyActive ? "false" : "true");
+  const localActive = state.workspace === "local";
+  workspaceCharacter.setAttribute("aria-pressed", !storyActive && !localActive ? "true" : "false");
+  workspaceLocal.setAttribute("aria-pressed", localActive ? "true" : "false");
   workspaceStory.setAttribute("aria-pressed", storyActive ? "true" : "false");
   characterContext.hidden = storyActive;
   storyContext.hidden = !storyActive;
-  characterNavigation.hidden = storyActive;
+  characterNavigation.hidden = storyActive || localActive;
+  localNavigation.hidden = !localActive;
   storyNavigation.hidden = !storyActive;
   headerFitmentPreview.hidden = storyActive || !headerFitmentPreview.getAttribute("src");
   for (const item of newMenu.querySelectorAll("[data-workspace-item]")) {
-    item.hidden = item.dataset.workspaceItem !== state.workspace;
+    item.hidden = item.dataset.workspaceItem !== state.workspace
+      && !(localActive && item.dataset.workspaceItem === "character");
   }
   renderHeaderStoryContext();
   syncResponsiveChrome();
 }
 
 function rememberPage(page) {
+  state.activePageId = page;
   const workspace = pageWorkspace(page);
   if (workspace) {
     state.workspace = workspace;
@@ -1813,7 +1842,7 @@ async function switchWorkspace(workspace) {
       await loadStories();
       if (navigationRequest !== state.navigationRequest || workspaceTransitionGeneration !== state.pageGeneration) return false;
     }
-    const fallback = workspace === "character" ? "onboarding" : (state.selectedStorySlug ? "scenes" : "stories");
+    const fallback = workspace === "character" ? "onboarding" : workspace === "local" ? "local-overview" : (state.selectedStorySlug ? "scenes" : "stories");
     const target = state.lastWorkspacePages[workspace] || fallback;
     await activatePage(target, { skipAutosave: true });
   });
@@ -2789,6 +2818,7 @@ async function advanceAllAssets() {
 }
 
 function activePageName() {
+  if (state.activePageId) return state.activePageId;
   const activePage = document.querySelector("main > .page.active");
   return activePage?.id?.replace(/-page$/, "") || "";
 }
@@ -3089,10 +3119,11 @@ async function activatePage(page, options = {}) {
   state.navigationRequest += 1;
   if (
     !selectedPhaseReady()
-    && state.workspace === "character"
-    && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page))
+    && ((state.workspace === "character"
+      && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page)))
+      || LOCAL_ASSET_PAGES.has(page))
   ) {
-    page = "onboarding";
+    page = state.workspace === "local" ? "local-overview" : "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
     characterProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
@@ -3108,7 +3139,7 @@ async function activatePage(page, options = {}) {
   storyProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "story");
   characterProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "character" ? page : "";
   storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
-  document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
+  document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding" || page === "local-overview");
   document.querySelector("#assets-page").classList.toggle("active", page === "assets");
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
   document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
@@ -3133,11 +3164,36 @@ async function activatePage(page, options = {}) {
   document.querySelector("#local-image-review-page").classList.toggle("active", page === "local-image-review");
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
   document.querySelector("#help-page").classList.toggle("active", page === "help");
+  document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
+  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview");
+  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
+  if (LOCAL_ASSET_PAGES.has(page)) {
+    const labels = {
+      "local-body-reference": "Body-Reference",
+      "local-head-image": "Head-Image",
+      "local-character-assembly": "Character-Assembly",
+      "local-costume-dressing": "Costume-Dressing",
+    };
+    document.querySelector("#local-pipeline-title").textContent = labels[page];
+  }
+  if (LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview") {
+    const labels = {
+      "local-identity-keys": "Identity Keys",
+      "local-turnarounds": "Turnarounds",
+      "local-costumes": "Costumes",
+      "local-scene-appearances": "Scene Appearances",
+      "local-expressions": "Expressions",
+      "local-comparison": "Comparison",
+    };
+    document.querySelector("#local-stub-title").textContent = labels[page];
+  }
   document
     .querySelector("#placeholder-page")
     .classList.toggle(
       "active",
     );
+  if (LOCAL_ASSET_PAGES.has(page)) window.ZetLocalAssetPipeline?.activate(page);
+  else window.ZetLocalAssetPipeline?.deactivate();
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -3244,13 +3300,18 @@ function setupTabs() {
   }
   for (const button of document.querySelectorAll("button.tab")) {
     button.addEventListener("click", async () => {
+      if (!button.dataset.page) return;
       if (button.dataset.page === "identity-keys") {
         state.identityKeyMode = "list";
       }
       closeToolbarSettingsMenu();
       closeHelpMenu();
       try {
-        await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
+        const changed = await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
+        if (changed && LOCAL_ASSET_PAGES.has(button.dataset.page)) {
+          localAssetsMenu.hidden = true;
+          localAssetsButton.setAttribute("aria-expanded", "false");
+        }
       } catch (error) {
         showActionMessage(`Unable to open ${button.textContent.trim()}: ${error.message}`, "error");
       }
@@ -11456,7 +11517,31 @@ for (const button of actionButtons) {
 }
 
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
+workspaceLocal.addEventListener("click", () => switchWorkspace("local"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
+localAssetsButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  localAssetsMenu.hidden = !localAssetsMenu.hidden;
+  localAssetsButton.setAttribute("aria-expanded", String(!localAssetsMenu.hidden));
+  if (!localAssetsMenu.hidden) {
+    const rect = localAssetsButton.getBoundingClientRect();
+    localAssetsMenu.style.left = `${Math.max(8, rect.left)}px`;
+    localAssetsMenu.style.top = `${rect.bottom + 6}px`;
+  }
+  if (!localAssetsMenu.hidden) localAssetsMenu.querySelector("button")?.focus();
+});
+localAssetsMenu.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  localAssetsMenu.hidden = true;
+  localAssetsButton.setAttribute("aria-expanded", "false");
+  localAssetsButton.focus();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".local-assets-menu")) {
+    localAssetsMenu.hidden = true;
+    localAssetsButton.setAttribute("aria-expanded", "false");
+  }
+});
 responsiveSectionMenu.addEventListener("change", async () => {
   const page = responsiveSectionMenu.value;
   if (!page) return;
@@ -11519,23 +11604,6 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
 }));
 toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
-toolbarLocalBodyReference.addEventListener("click", () => {
-  window.location.assign("/local-body-reference");
-  closeToolbarSettingsMenu();
-});
-
-toolbarLocalHeadImage.addEventListener("click", () => {
-  window.location.assign("/local-head-image");
-  closeToolbarSettingsMenu();
-});
-toolbarLocalCharacterAssembly.addEventListener("click", () => {
-  window.location.assign("/local-character-assembly");
-  closeToolbarSettingsMenu();
-});
-toolbarLocalCostumeDressing.addEventListener("click", () => {
-  window.location.assign("/local-costume-dressing");
-  closeToolbarSettingsMenu();
-});
 toolbarLocalCharacterOverview.addEventListener("click", () => {
   window.location.assign("/local-character-overview");
   closeToolbarSettingsMenu();

@@ -204,34 +204,29 @@ def _load_auxiliary_resources(template_path: Path) -> list[dict]:
     return resources
 
 
-def _auxiliary_resource_text(resource: dict, image: dict) -> str:
-    """Render an auxiliary resource record into prompt-readable text."""
-    category = str(resource.get("category") or "")
-    resource_id = str(resource.get("resource_id") or "")
-    label = str(resource.get("label") or resource_id)
-    image_path = str(image.get("image_path") or "")
-    return f"Auxiliary reference ({category}/{resource_id}): {label}. Image file: {image_path}."
+def _image_input_by_tag(image_inputs: list[dict] | None) -> dict[str, dict]:
+    return {
+        str(item.get("tag") or "").strip(): item
+        for item in image_inputs or []
+        if str(item.get("tag") or "").strip()
+    }
 
 
-def _managed_image_text(image: dict) -> str:
-    label = str(image.get("label") or image.get("catalog_id") or "Imported image")
-    return f"Imported image reference: {label}. Image file: {image.get('image_path') or ''}."
+def _image_input_citation(tag: str, image_inputs_by_tag: dict[str, dict]) -> str:
+    image_input = image_inputs_by_tag.get(tag)
+    if image_input is None:
+        raise TemplateCompileError(
+            "UNNUMBERED_IMAGE_REFERENCE",
+            f"Embedded image reference was not assigned an image input number: {tag}",
+        )
+    label = str(image_input.get("label") or image_input.get("source_role") or "reference image").strip()
+    return f"Image {image_input['index']} ({label})"
 
 
-def _replace_auxiliary_resource_tags(text: str, template_path: Path, resources: list[dict] | None = None) -> str:
-    """Replace auxiliary resource tags with prompt-readable text."""
-    resource_index = resources if resources is not None else _load_auxiliary_resources(template_path)
-
-    managed = load_managed_image_lookup(_project_root_for_template(template_path))
-
+def _replace_auxiliary_resource_tags(text: str, image_inputs_by_tag: dict[str, dict]) -> str:
+    """Replace embedded image tags with their numbered prompt citations."""
     def replace(match: re.Match) -> str:
-        if match.group(0) in managed:
-            return _managed_image_text(managed[match.group(0)])
-        try:
-            resource, image = auxiliary_resource_image_for_tag(resource_index, match.group(0))
-        except LookupError:
-            raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {match.group(0)}")
-        return _auxiliary_resource_text(resource, image)
+        return _image_input_citation(match.group(0), image_inputs_by_tag)
 
     text = AUXILIARY_RESOURCE_TAG_RE.sub(replace, text)
     return IMAGE_TAG_RE.sub(replace, text)
@@ -292,6 +287,7 @@ def render_static_prompt_with_source_map(
     required_section_names: list[str],
     view_token: str,
     final_prompt_name: str,
+    image_inputs: list[dict] | None = None,
 ) -> tuple[str, dict]:
     legacy = LEGACY_SECTION_PLACEHOLDER_RE.search(template_text)
     if legacy:
@@ -313,6 +309,7 @@ def render_static_prompt_with_source_map(
     cursor = 0
     auxiliary_resources = _load_auxiliary_resources(template_path)
     managed_images = load_managed_image_lookup(_project_root_for_template(template_path))
+    image_inputs_by_tag = _image_input_by_tag(image_inputs)
 
     def section_source(name: str) -> dict:
         return selection.section_sources.get(
@@ -337,23 +334,27 @@ def render_static_prompt_with_source_map(
             image = managed_images.get(placeholder)
             if image is None:
                 raise TemplateCompileError("MISSING_IMAGE_REFERENCE", f"No imported image found for tag: {placeholder}")
-            text = _managed_image_text(image)
+            image_input = image_inputs_by_tag.get(placeholder)
+            text = _image_input_citation(placeholder, image_inputs_by_tag)
             source = {
                 "source_kind": "image_catalog",
                 "source_path": str(library_root(_project_root_for_template(template_path)) / "ImageCatalog" / "ImageCatalog.json"),
                 "source_label": f"Imported image: {image.get('label') or image.get('catalog_id')}",
                 "catalog_id": image.get("catalog_id"),
+                "image_index": image_input["index"],
                 "editable": True,
             }
         elif inner.startswith("AUX:"):
             managed_image = managed_images.get(placeholder)
             if managed_image is not None:
-                text = _managed_image_text(managed_image)
+                image_input = image_inputs_by_tag.get(placeholder)
+                text = _image_input_citation(placeholder, image_inputs_by_tag)
                 source = {
                     "source_kind": "image_catalog",
                     "source_path": str(library_root(_project_root_for_template(template_path)) / "ImageCatalog" / "ImageCatalog.json"),
                     "source_label": f"Imported image: {managed_image.get('label') or managed_image.get('catalog_id')}",
                     "catalog_id": managed_image.get("catalog_id"),
+                    "image_index": image_input["index"],
                     "editable": True,
                 }
                 pieces.append(_source_fragment(text, source))
@@ -363,13 +364,15 @@ def render_static_prompt_with_source_map(
                 resource, image = auxiliary_resource_image_for_tag(auxiliary_resources, placeholder)
             except LookupError:
                 raise TemplateCompileError("MISSING_AUXILIARY_RESOURCE", f"No auxiliary resource found for tag: {placeholder}")
-            text = _auxiliary_resource_text(resource, image)
+            image_input = image_inputs_by_tag.get(placeholder)
+            text = _image_input_citation(placeholder, image_inputs_by_tag)
             source = {
                 "source_kind": "auxiliary_resource",
                 "source_path": str(_auxiliary_inventory_path(template_path)),
                 "source_label": f"Auxiliary resource: {resource.get('label') or resource.get('resource_id')}",
                 "resource_id": resource.get("resource_id"),
                 "category": resource.get("category"),
+                "image_index": image_input["index"],
                 "editable": True,
             }
         else:
@@ -393,7 +396,7 @@ def render_static_prompt_with_source_map(
                 if name in required_set and not text.strip():
                     raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
                 text = _replace_single_brace_tokens(text, single_brace_values)
-                text = _replace_auxiliary_resource_tags(text, template_path, auxiliary_resources)
+                text = _replace_auxiliary_resource_tags(text, image_inputs_by_tag)
                 source = section_source(name)
         pieces.append(_source_fragment(text, source, placeholder=placeholder))
         cursor = match.end()

@@ -298,6 +298,7 @@ def compile_character_assembly_job(
         view_token=body_view_token,
         prompt_variant=prompt_variant,
         pipeline_mode=pipeline_mode,
+        image_inputs=image_inputs,
     )
     if prompt_variant == "generation":
         finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "composite")

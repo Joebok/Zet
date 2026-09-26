@@ -18,6 +18,7 @@
     </div>
     <div class="workspace-switch" role="group" aria-label="Workspace">
       <button id="workspace-character" class="workspace-option" type="button" aria-pressed="true">Character Development</button>
+      <button id="workspace-local" class="workspace-option" type="button" aria-pressed="false">Local</button>
       <button id="workspace-story" class="workspace-option" type="button" aria-pressed="false">Story Telling</button>
     </div>
     <div class="header-middle">
@@ -94,6 +95,24 @@
         <option value="render-review">Image Review</option>
       </select>
     </div>
+    <div id="local-navigation" class="workspace-navigation" hidden>
+      <button class="tab workflow-tab" data-page="local-overview">Overview</button>
+      <div class="toolbar-menu local-assets-menu">
+        <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
+        <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
+          <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
+          <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
+          <button class="tab workflow-tab" data-page="local-costume-dressing">Costume-Dressing</button>
+        </div>
+      </div>
+      <button class="tab workflow-tab" data-page="local-identity-keys">Identity Keys</button>
+      <button class="tab workflow-tab" data-page="local-turnarounds">Turnarounds</button>
+      <button class="tab workflow-tab" data-page="local-costumes">Costumes</button>
+      <button class="tab workflow-tab" data-page="local-scene-appearances">Scene Appearances</button>
+      <button class="tab workflow-tab" data-page="local-expressions">Expressions</button>
+      <button class="tab workflow-tab" data-page="local-comparison">Comparison</button>
+    </div>
     <div id="story-navigation" class="workspace-navigation" hidden>
       <button class="tab workflow-tab" data-page="stories">Overview</button>
       <button class="tab workflow-tab" data-page="scenes">Scenes</button>
@@ -122,10 +141,6 @@
           <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
-          <button id="toolbar-local-body-reference" type="button">Local Body-Reference</button>
-          <button id="toolbar-local-head-image" type="button">Local Head-Image</button>
-          <button id="toolbar-local-character-assembly" type="button">Local Character-Assembly</button>
-          <button id="toolbar-local-costume-dressing" type="button">Local Costume-Dressing</button>
           <button id="toolbar-local-character-overview" type="button">Local Character Overview</button>
           <button id="toolbar-gate-test-rig" type="button">Gate Test Rig</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
@@ -218,6 +233,74 @@
         </section>
         </div>
       </details>
+    </section>
+    <section id="local-pipeline-page" class="page">
+      <div class="page-title-row"><h1 id="local-pipeline-title">Local Assets</h1></div>
+      <div id="local-pipeline-content" class="local-pipeline-layout">
+        <section class="control-panel local-pipeline-panel">
+          <details id="local-pipeline-gates"><summary>Gate settings</summary><div id="local-pipeline-gate-settings"></div></details>
+          <div class="local-pipeline-controls">
+            <label id="local-pipeline-costume-label" hidden>Costume<select id="local-pipeline-costume"></select></label>
+            <label class="local-pipeline-batch-label">Batch<select id="local-pipeline-runs"></select></label>
+            <button id="local-pipeline-refresh" type="button">Refresh</button>
+            <button id="local-pipeline-start" class="primary-action" type="button" disabled>Start batch</button>
+            <button id="local-pipeline-stop" class="danger-action" type="button" hidden>Stop</button>
+            <button id="local-pipeline-rerun" type="button" disabled>Re-run batch</button>
+            <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
+            <button id="local-pipeline-proceed" type="button" hidden disabled>Run remaining</button>
+            <button id="local-pipeline-delete" class="danger-action" type="button" disabled>Delete batch</button>
+          </div>
+          <form id="local-pipeline-rename" class="local-pipeline-controls" hidden>
+            <label>Batch name<input id="local-pipeline-batch-name" type="text" maxlength="120"></label>
+            <button class="primary-action" type="submit">Save name</button>
+          </form>
+          <p id="local-pipeline-summary" class="muted" role="status"></p>
+          <section id="local-pipeline-options" class="local-pipeline-options">
+            <h2>New batch</h2>
+            <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" value="8"></label>
+            <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" value="4"></label>
+            <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
+            <div id="local-pipeline-source-option" hidden>
+              <label>Optional FRONT reference<input id="local-pipeline-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+              <div id="local-pipeline-source-paste" class="local-pipeline-source-paste" contenteditable="true" role="textbox" aria-label="Paste optional FRONT reference image">Click here, then paste a reference image</div>
+              <div id="local-pipeline-source-preview" class="muted">No FRONT reference selected.</div>
+              <button id="local-pipeline-source-remove" type="button" hidden>Remove reference</button>
+            </div>
+            <button id="local-pipeline-preview" type="button">Check requirements</button>
+            <button id="local-pipeline-create" class="primary-action" type="button" disabled>Create batch</button>
+            <button id="local-pipeline-lineup" type="button" hidden>Save selected views as lineup</button>
+            <p id="local-pipeline-readiness" class="muted" role="status"></p>
+          </section>
+          <p id="local-pipeline-status" class="action-message" role="status"></p>
+        </section>
+        <section id="local-pipeline-selected" class="local-pipeline-selected" aria-label="Selected views"></section>
+        <section id="local-pipeline-views" class="local-pipeline-views"></section>
+      </div>
+    </section>
+    <dialog id="local-pipeline-review-dialog" class="local-pipeline-review-dialog" aria-label="Review local image candidate">
+      <button id="local-pipeline-review-close" class="review-close" type="button">Close</button>
+      <div class="local-pipeline-review-layout">
+        <section class="local-pipeline-review-comparison" aria-label="Candidate comparison">
+          <figure>
+            <header><strong id="local-pipeline-review-compare-title">Front anchor</strong><label id="local-pipeline-review-toggle-label" hidden><input id="local-pipeline-review-toggle" type="checkbox"> Compare opposite side</label></header>
+            <img id="local-pipeline-review-compare-image" alt="">
+            <p id="local-pipeline-review-compare-empty" hidden></p>
+          </figure>
+          <figure>
+            <header><strong>Image to review</strong></header>
+            <img id="local-pipeline-review-image" alt="">
+          </figure>
+        </section>
+        <div class="local-pipeline-review-info">
+          <button id="local-pipeline-review-prev" class="review-nav" type="button" aria-label="Previous candidate">‹</button>
+          <section id="local-pipeline-review-panel"></section>
+          <button id="local-pipeline-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
+        </div>
+      </div>
+    </dialog>
+    <section id="local-stub-page" class="page">
+      <div class="page-title-row"><h1 id="local-stub-title">Coming soon</h1></div>
+      <div class="control-panel"><p class="muted">This Local workflow is coming soon.</p></div>
     </section>
 
     <section id="assets-page" class="page active">
@@ -1928,5 +2011,6 @@ Add prompt language here.
   </main>
 
   <script src="/static/zet.js?v=20260923-gate-test-rig"></script>
+  <script src="/static/local_asset_pipeline.js?v=20260925-local-dashboard"></script>
 </body>
 </html>

@@ -11,16 +11,24 @@ from typing import Any
 PIPELINE_PAGE_CONFIG: dict[str, dict[str, Any]] = {
     "body-reference": {"key": "body-reference", "label": "Body-Reference", "identity": ("character", "phase"),
                        "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                       "references": "body-reference-prompt", "analysis": True},
+                       "references": "body-reference-prompt", "analysis": True,
+                       "capabilities": ["front_anchor", "analysis", "lineup"], "prerequisites": [],
+                       "front_anchor_rule": "required"},
     "head-image": {"key": "head-image", "label": "Head-Image", "identity": ("character", "phase"),
                    "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                   "references": "optional-front-source", "analysis": False},
+                   "references": "optional-front-source", "analysis": False,
+                   "capabilities": ["optional_source_image", "front_anchor"], "prerequisites": [],
+                   "front_anchor_rule": "required"},
     "character-assembly": {"key": "character-assembly", "label": "Character-Assembly", "identity": ("character", "phase"),
                            "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                           "references": "locked-body-and-head", "analysis": False},
+                           "references": "locked-body-and-head", "analysis": False,
+                           "capabilities": ["front_anchor"], "prerequisites": ["Body-Reference", "Head-Image"],
+                           "front_anchor_rule": "optional"},
     "costume-dressing": {"key": "costume-dressing", "label": "Costume-Dressing", "identity": ("character", "phase", "costume"),
                          "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                         "references": "locked-assembly-and-costume", "analysis": False},
+                         "references": "locked-assembly-and-costume", "analysis": False,
+                         "capabilities": ["costume", "front_anchor"], "prerequisites": ["Character-Assembly", "costume"],
+                         "front_anchor_rule": "optional"},
 }
 
 RUN_STATUS_LABELS = {

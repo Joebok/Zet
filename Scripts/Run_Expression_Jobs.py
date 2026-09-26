@@ -364,6 +364,7 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT, *, prom
         view_token="EXPRESSION",
         ensure_ascii_source_map=True,
         prompt_variant=prompt_variant,
+        image_inputs=image_inputs,
     )
     if prompt_variant == "generation":
         finalize_chatgpt_prompt(paths["diagnostics"], prompt_text, image_inputs, "edit")

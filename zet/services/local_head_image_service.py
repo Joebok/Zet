@@ -22,7 +22,7 @@ from zet.services.candidate_review_contract import ReviewGate, parse_rejection_v
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, gate_result_is_current,
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, gate_result_is_current, pipeline_page_config,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -128,7 +128,9 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         return {"character": character, "phase": phase, "views": list(VIEWS), "front_count": front_count,
                 "other_count": other_count, "candidate_count": front_count + 7 * other_count,
-                "front_source_optional": True, "front_anchor_required_for_other_views": True}
+                "front_source_optional": True, "front_anchor_required_for_other_views": True,
+                "pipeline": "head-image", "pipeline_config": pipeline_page_config("head-image"),
+                "can_create": True, "blocking_reasons": []}
 
     def upload_source(self, character: str, phase: str, filename: str, contents: bytes) -> dict[str, str]:
         if not contents or len(contents) > 32 * 1024 * 1024:

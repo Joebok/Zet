@@ -244,6 +244,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, 
         required_section_names=[],
         view_token=view_token,
         prompt_variant=prompt_variant,
+        image_inputs=image_inputs,
     )
     if prompt_variant == "generation":
         finalize_chatgpt_prompt(diagnostics_path, prompt_text, image_inputs, "generate")

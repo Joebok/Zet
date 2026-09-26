@@ -67,3 +67,25 @@ def test_batch_selection_waits_for_existing_lock(tmp_path: Path) -> None:
     locked = store.lock_batch_selection("Test", "Adult", "Body-Reference", "FRONT",
                                         candidate_id="new", image_path=new_image, batch_id="new-run")
     assert locked["locked"] and locked["batch_id"] == "new-run"
+
+
+def test_lock_reports_when_dependency_does_not_match_selected_upstream(tmp_path: Path) -> None:
+    store = LocalAssetStoreService(tmp_path)
+    old_front, selected_front, back = (tmp_path / name for name in ("old-front.png", "selected-front.png", "back.png"))
+    Image.new("RGB", (32, 32), "white").save(old_front)
+    Image.new("RGB", (32, 32), "gray").save(selected_front)
+    Image.new("RGB", (32, 32), "black").save(back)
+    store.record_selection("Test", "Adult", "Head-Image", "FRONT", candidate_id="old-front",
+                           image_path=old_front, batch_id="old-run")
+    store.lock("Test", "Adult", "Head-Image", "FRONT")
+    store.unlock("Test", "Adult", "Head-Image", "FRONT")
+    store.record_selection("Test", "Adult", "Head-Image", "FRONT", candidate_id="selected-front",
+                           image_path=selected_front, batch_id="new-run")
+    store.record_selection("Test", "Adult", "Head-Image", "BACK", candidate_id="back",
+                           image_path=back, batch_id="new-run", dependencies=[{
+                               "key": store.key("Head-Image", "FRONT"),
+                               "image_sha256": store._image_hash(old_front),
+                           }])
+
+    with pytest.raises(LocalAssetStoreError, match="does not match the selected upstream image"):
+        store.lock("Test", "Adult", "Head-Image", "BACK")

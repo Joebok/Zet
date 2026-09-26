@@ -239,6 +239,7 @@ def compile_head_image_job(
         view_token=view_token,
         prompt_variant=prompt_variant,
         pipeline_mode=pipeline_mode,
+        image_inputs=image_inputs,
     )
     write_json_file(paths["dependency_manifest"], {
         **metadata,

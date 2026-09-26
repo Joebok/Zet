@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from zet.services.comfyui_workflow_registry import compile_prompt_workflow, QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService, VIEWS
 from zet.web.app import create_app
 
@@ -372,20 +373,46 @@ BasePipelinePath = "{pipeline_root.as_posix()}"
 BaseAIQueuePath = "{queue_root.as_posix()}"
 """, encoding="utf-8")
         with TestClient(create_app(config_path, validate_catalog_on_create=False)) as client:
-            assembly = client.get("/local-character-assembly")
-            dressing = client.get("/local-costume-dressing")
-            body_reference = client.get("/local-body-reference")
-            head_image = client.get("/local-head-image")
+            assembly = client.get("/local-character-assembly", follow_redirects=False)
+            dressing = client.get("/local-costume-dressing", follow_redirects=False)
+            body_reference = client.get("/local-body-reference", follow_redirects=False)
+            head_image = client.get("/local-head-image", follow_redirects=False)
+            context = {"character": "Test", "phase": "Adult", "front_count": 1, "other_count": 1}
+            previews = {
+                pipeline: client.post(f"/api/local/{pipeline}/preview", json={**context, **extra})
+                for pipeline, extra in (("body-reference", {}), ("head-image", {}),
+                                        ("character-assembly", {}), ("costume-dressing", {"costume": "Test Outfit"}))
+            }
             assembly_gates = client.get("/api/local-gates/local-character-assembly")
-            self.assertEqual(200, assembly.status_code)
-            self.assertIn("character-assembly", assembly.text)
-            self.assertEqual(200, dressing.status_code)
-            self.assertIn("costume-dressing", dressing.text)
-            for page in (assembly, dressing, body_reference, head_image):
-                self.assertIn('/static/local_pipeline_context.js', page.text)
-            self.assertEqual(200, client.get('/static/local_pipeline_context.js').status_code)
+            self.assertEqual((307, "/?page=local-character-assembly"), (assembly.status_code, assembly.headers["location"]))
+            self.assertEqual((307, "/?page=local-costume-dressing"), (dressing.status_code, dressing.headers["location"]))
+            self.assertEqual((307, "/?page=local-body-reference"), (body_reference.status_code, body_reference.headers["location"]))
+            self.assertEqual((307, "/?page=local-head-image"), (head_image.status_code, head_image.headers["location"]))
+            self.assertEqual({200}, {response.status_code for response in previews.values()})
+            for pipeline, response in previews.items():
+                self.assertEqual(pipeline, response.json()["pipeline_config"]["key"])
+                self.assertIn("can_create", response.json())
+                self.assertIn("blocking_reasons", response.json())
+            self.assertTrue(previews["body-reference"].json()["can_create"])
+            self.assertTrue(previews["head-image"].json()["can_create"])
+            self.assertFalse(previews["character-assembly"].json()["can_create"])
+            self.assertFalse(previews["costume-dressing"].json()["can_create"])
             self.assertEqual(200, assembly_gates.status_code)
             self.assertEqual({"Disabled"}, set(assembly_gates.json()["statuses"].values()))
+
+            body_service = LocalBodyReferenceService(self.app, PROJECT_ROOT)
+            with patch.object(body_service, "_compile_view", side_effect=lambda root, character, phase, view, index: {
+                "view": view, "view_index": index, "manual_prompt": view, "qwen_prompt": view,
+                "prompt_path": "", "prompt_sha256": view, "source_map": "", "dependency_manifest": "",
+            }):
+                run = body_service.create_run({**context, "seeds": list(range(8))})
+            image = Path(run["root"]) / "renders" / "c001" / "front.png"
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b"body reference image")
+            body_service._candidate_update(run["run_id"], "c001", {"image_path": str(image)})
+            response = client.get(f"/api/local/body-reference/runs/{run['run_id']}/images/c001")
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(b"body reference image", response.content)
 
 
 if __name__ == "__main__":

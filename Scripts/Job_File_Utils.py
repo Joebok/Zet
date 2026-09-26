@@ -59,6 +59,7 @@ def render_static_prompt_artifacts(
     ensure_ascii_source_map: bool = False,
     prompt_variant: str = "generation",
     pipeline_mode: str = "traditional",
+    image_inputs: list[dict] | None = None,
 ) -> str:
     service = PromptTemplateService(project_root)
     prompt_text = service.render_artifacts(
@@ -75,6 +76,7 @@ def render_static_prompt_artifacts(
         ensure_ascii_source_map=ensure_ascii_source_map,
         prompt_variant=prompt_variant,
         pipeline_mode=pipeline_mode,
+        image_inputs=image_inputs,
     )
     legacy_template = str(bundle.get("legacy_static_prompt_template") or "").strip()
     if legacy_template:
@@ -95,6 +97,7 @@ def render_static_prompt_artifacts(
             ensure_ascii_source_map=ensure_ascii_source_map,
             prompt_variant=prompt_variant,
             pipeline_mode=pipeline_mode,
+            image_inputs=image_inputs,
         )
     return prompt_text
 

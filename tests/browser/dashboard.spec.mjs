@@ -1161,225 +1161,199 @@ test("running prompt analysis harvests and opens without changing the selected p
   expect(queuedAgain).toBe(0);
 });
 
-test("Local Head-Image review shows the selected FRONT candidate as its anchor", async ({ page }) => {
-  const runId = "20260924_120000_000001";
-  const run = {
-    run_id: runId, review_version: 2, status: "AWAITING_HUMAN_SELECTION",
-    character: "Test", phase: "Adult", candidate_count: 2,
-    views: ["FRONT", "FRONT_LEFT_3_4"], front_anchor: "c001",
-    selected_views: { FRONT: "c001" }, rankings: {}, local_assets: {},
-    candidates: [
-      { candidate_id: "c001", view: "FRONT", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "front.png", gates: {}, human_review: {} },
-      { candidate_id: "c002", view: "FRONT_LEFT_3_4", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "left.png", gates: {}, human_review: {} },
-    ],
-  };
-  await page.route("**/api/context", (route) => route.fulfill({ json: {
-    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
-  } }));
-  await page.route(/\/api\/local\/head-image\/runs\?/, (route) => route.fulfill({ json: { runs: [
-    { run_id: runId, status: run.status, candidate_count: 2, complete_count: 0 },
-  ] } }));
-  await page.route(new RegExp(`/api/local/head-image/runs/${runId}$`), (route) => route.fulfill({ json: run }));
-  await page.route(/\/api\/local\/head-image\/runs\/[^/]+\/images\//, (route) => route.fulfill({
-    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
-  }));
+test("Local workspace reuses dashboard context and routes each workflow in app", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await expect(page.locator("#workspace-local")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#character-context")).toBeVisible();
+  await expect(page.locator("#story-context")).toBeHidden();
+  await expect(page.locator("#onboarding-page")).toHaveClass(/active/);
+  await expect(page).toHaveURL(/page=local-overview/);
 
-  await page.goto("/local-head-image");
-  await page.locator('#gallery [data-view="FRONT_LEFT_3_4"] [data-review="c002"]').first().click();
-  await expect(page.locator("#review-anchor-image")).toBeVisible();
-  await expect(page.locator("#review-anchor-image")).toHaveAttribute("src", `/api/local/head-image/runs/${runId}/images/c001`);
-  await expect(page.locator("#review-anchor-message")).toBeHidden();
+  await page.locator("#local-assets-button").click();
+  await expect(page.locator("#local-assets-button")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#local-assets-menu button")).toHaveText([
+    "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
+  ]);
+  await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
+  await expect(page.locator("#local-pipeline-page")).toHaveClass(/active/);
+  await expect(page.locator("#local-pipeline-title")).toHaveText("Body-Reference");
+  await expect(page.locator("#local-pipeline-page #character-select, #local-pipeline-page #phase-select")).toHaveCount(0);
+  await expect(page).toHaveURL(/page=local-body-reference/);
+
+  await page.locator('#local-navigation [data-page="local-turnarounds"]').click();
+  await expect(page.locator("#local-stub-page")).toHaveClass(/active/);
+  await expect(page.locator("#local-stub-title")).toHaveText("Turnarounds");
+  await expect(page.locator("#local-stub-page")).toContainText("coming soon");
+
+  await expect(page.locator("#toolbar-local-body-reference")).toHaveCount(0);
+  await expect(page.locator("#toolbar-local-character-overview")).toHaveCount(1);
+  await expect(page.locator("#toolbar-gate-test-rig")).toHaveCount(1);
 });
 
-test("Local Character-Assembly restores dashboard character and phase and keeps both selectable", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("zet:last-character-phase", JSON.stringify({ character: "Tsaeytte", phase: "Adult" })));
-  await page.route("**/api/context", (route) => route.fulfill({ json: {
-    characters: ["Another", "Tsaeytte"],
-    phases_by_character: { Another: ["Child", "Adult"], Tsaeytte: ["Child", "Adult"] },
-    default_character: "Another", default_phase: "Child",
-  } }));
-  await page.route(/\/api\/local\/character-assembly\/runs\?/, (route) => route.fulfill({ json: { runs: [] } }));
-  await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ status: 400, json: { detail: "No locked inputs" } }));
-  await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
-
-  await page.goto("/local-character-assembly");
-  await expect(page.locator("#character")).toHaveValue("Tsaeytte");
-  await expect(page.locator("#phase")).toHaveValue("Adult");
-  await expect(page.locator("#character option")).toHaveCount(2);
-  await expect(page.locator("#phase option")).toHaveCount(2);
-  await page.locator("#character").selectOption("Another");
-  await expect(page.locator("#phase")).toHaveValue("Child");
-  await page.locator("#phase").selectOption("Adult");
-  await expect(page.locator("#phase")).toHaveValue("Adult");
-});
-
-test("Local Character-Assembly opens review and displays candidates in automatic Luna order", async ({ page }) => {
-  const pageErrors = [];
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  const run = {
-    run_id: "assembly-ranked", character: "Test", phase: "Adult", status: "AWAITING_FRONT_ANCHOR",
-    candidate_count: 2, views: ["FRONT"], front_anchor: null, selected_views: {}, local_assets: {},
-    rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c002", "c001"], entries: [
-      { candidate_id: "c002", reason: "Best source preservation and proportions." },
-      { candidate_id: "c001", reason: "Minor proportion drift." },
-    ] } },
-    candidates: [
-      { candidate_id: "c001", view: "FRONT", seed: "111", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "one.png",
-        gates: { identity: { status: "COMPLETE", verdict: "FALSE" } }, human_review: { decision: "undecided", notes: "" } },
-      { candidate_id: "c002", view: "FRONT", seed: "222", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "two.png",
-        gates: { identity: { status: "COMPLETE", verdict: "FALSE" } }, human_review: { decision: "undecided", notes: "" } },
-    ],
-  };
-  await page.route("**/api/context", (route) => route.fulfill({ json: {
-    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
-  } }));
-  await page.route(/\/api\/local\/character-assembly\/runs\?/, (route) => route.fulfill({ json: { runs: [run] } }));
-  await page.route("**/api/local/character-assembly/runs/assembly-ranked", (route) => route.fulfill({ json: run }));
-  await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ json: { candidate_count: 2, views: ["FRONT"] } }));
-  await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
-  await page.route("**/api/local/character-assembly/runs/assembly-ranked/candidates/*/review", (route) => route.fulfill({ json: run }));
-  await page.route(/\/api\/local\/character-assembly\/runs\/assembly-ranked\/images\//, (route) => route.fulfill({
-    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
-  }));
-
-  await page.goto("/local-character-assembly");
-  const cards = page.locator('#views [data-view="FRONT"] .card');
-  await expect(cards).toHaveCount(2);
-  await expect(cards.first()).toHaveAttribute("data-candidate", "c002");
-  await expect(page.locator('#views [data-view="FRONT"] h2')).toContainText("Luna ranked");
-  await expect(cards.first()).toContainText("Rank #1");
-  await expect(cards.first()).not.toContainText("seed 222");
-  await cards.first().locator(".candidate-image").click();
-  await expect(page.locator("#candidate-review")).toBeVisible();
-  await expect(page.locator("#review-panel")).toContainText("Ranked #1: Best source preservation and proportions.");
-  await page.locator("#review-next").click();
-  await expect(page.locator("#review-panel h2")).toContainText("c001");
-  await expect(page.locator("#review-panel")).toContainText("Ranked #2: Minor proportion drift.");
-  await page.locator("#review-close").click();
-  await expect(cards.first()).toHaveAttribute("data-candidate", "c002");
-  await expect(cards.first()).toContainText("Rank #1");
-  expect(pageErrors).toEqual([]);
-});
-
-test("Local Character-Assembly selected strip exposes run-other-views and unselects through the shared action", async ({ page }) => {
-  let run = {
-    run_id: "assembly-selected", character: "Test", phase: "Adult", status: "AWAITING_HUMAN_SELECTION",
-    candidate_count: 1, views: ["FRONT"], front_anchor: "c001", views_started: false,
-    selected_views: { FRONT: "c001" }, local_assets: {},
-    rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c001"],
-      input_hashes: { c001: "fixture" }, entries: [{ candidate_id: "c001", reason: "Passed." }] } },
-    candidates: [{ candidate_id: "c001", view: "FRONT", status: "COMPLETE", image_path: "front.png",
-      gates: { framing: { status: "DISABLED", policy_status: "Disabled" } },
-      human_review: { decision: "keep", notes: "passed" } }],
-  };
-  await page.route("**/api/context", (route) => route.fulfill({ json: {
-    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
-  } }));
-  await page.route(/\/api\/local\/character-assembly\/runs\?/, (route) => route.fulfill({ json: { runs: [run] } }));
-  await page.route("**/api/local/character-assembly/runs/assembly-selected", (route) => route.fulfill({ json: run }));
-  await page.route("**/api/local/character-assembly/preview", (route) => route.fulfill({ json: { candidate_count: 1, views: ["FRONT"] } }));
-  await page.route("**/api/local-gates/local-character-assembly", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
-  await page.route(/\/api\/local\/character-assembly\/runs\/assembly-selected\/images\//, (route) => route.fulfill({
-    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
-  }));
-  await page.route("**/api/local/character-assembly/runs/assembly-selected/views/FRONT/select", async (route) => {
-    expect(route.request().postDataJSON()).toEqual({ candidate_id: "" });
-    run = { ...run, front_anchor: null, selected_views: {}, status: "AWAITING_FRONT_ANCHOR" };
-    await route.fulfill({ json: run });
+test("all Local asset routes share batch UI and expose only pipeline-specific inputs", async ({ page }) => {
+  const previews = [];
+  const runLists = [];
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/local/*/runs?**", async (route) => {
+    runLists.push(route.request().url());
+    await route.fulfill({ json: { runs: [] } });
   });
-  page.on("dialog", (dialog) => dialog.accept());
+  await page.route("**/api/costumes?**", (route) => route.fulfill({ json: { costumes: [{ name: "Travel" }] } }));
+  await page.route("**/api/local/*/preview", async (route) => {
+    previews.push({ url: route.request().url(), body: route.request().postDataJSON() });
+    await route.fulfill({ json: { candidate_count: 36, views: ["FRONT"] } });
+  });
 
-  await page.goto("/local-character-assembly");
-  await expect(page.locator("#selected-views")).toBeVisible();
-  await expect(page.locator("#selected-views")).toContainText("Run other views");
-  await page.locator('#selected-views [data-action="unselect"]').click();
-  await expect(page.locator("#selected-views")).toBeHidden();
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  for (const [pageName, title] of [
+    ["local-body-reference", "Body-Reference"], ["local-head-image", "Head-Image"],
+    ["local-character-assembly", "Character-Assembly"], ["local-costume-dressing", "Costume-Dressing"],
+  ]) {
+    await page.locator("#local-assets-button").click();
+    await page.locator(`#local-assets-menu [data-page="${pageName}"]`).click();
+    await expect(page.locator("#local-pipeline-title")).toHaveText(title);
+    await expect(page.locator("#local-pipeline-runs")).toBeVisible();
+    await expect(page.locator("#local-pipeline-create")).toBeEnabled();
+    await expect(page.locator("#local-pipeline-front-count")).toBeVisible();
+    await expect(page.locator("#local-pipeline-other-count")).toBeVisible();
+    await expect(page.locator("#local-pipeline-page #character-select, #local-pipeline-page #phase-select")).toHaveCount(0);
+    if (pageName === "local-costume-dressing") await expect(page.locator("#local-pipeline-costume-label")).toBeVisible();
+    else await expect(page.locator("#local-pipeline-costume-label")).toBeHidden();
+    if (["local-character-assembly", "local-costume-dressing"].includes(pageName)) await expect(page.locator("#local-pipeline-anchor-option")).toBeVisible();
+    else await expect(page.locator("#local-pipeline-anchor-option")).toBeHidden();
+    if (pageName === "local-head-image") await expect(page.locator("#local-pipeline-source-option")).toBeVisible();
+    else await expect(page.locator("#local-pipeline-source-option")).toBeHidden();
+  }
+  expect(runLists).toHaveLength(4);
+  expect(previews).toHaveLength(4);
+  for (const call of runLists) {
+    expect(call).toMatch(/character=/);
+    expect(call).toMatch(/phase=/);
+  }
+  for (const call of previews) {
+    expect(call.body.character).toBeTruthy();
+    expect(call.body.phase).toBeTruthy();
+  }
+  expect(previews.find((item) => item.url.includes("costume-dressing")).body.costume).toBe("Travel");
 });
 
-test("Local Body-Reference shows gate rejects, Luna order, selection, and repair controls", async ({ page }) => {
-  let selectedRequest;
-  let run = {
-    run_id: "20260922_120000_000001", review_version: 2, status: "AWAITING_FRONT_ANCHOR",
-    candidate_count: 3, views: ["FRONT"], front_anchor: null, selected_views: {},
-    rankings: { FRONT: { status: "COMPLETE", ordered_candidate_ids: ["c001"], entries: [
-      { candidate_id: "c001", reason: "Clear silhouette and strong proportions." },
-    ] } },
+test("costume locks disable only the matching costume batch's Lock button", async ({ page }) => {
+  const costumes = ["Travel", "Evening"];
+  const runFor = (costume) => {
+    const runId = `batch-${costume.toLowerCase()}`;
+    const candidateId = `front-${costume.toLowerCase()}`;
+    return {
+      run_id: runId, character: "Test", phase: "Adult", costume, status: "AWAITING_HUMAN_SELECTION",
+      views: ["FRONT"], candidate_count: 1, use_front_anchor: true, front_anchor: candidateId,
+      selected_views: { FRONT: candidateId }, rankings: {},
+      local_assets: {
+        "costume-dressing:evening:FRONT": {
+          pipeline: "Costume-Dressing", view: "FRONT", qualifier: "Evening",
+          candidate_id: "older-evening-front", batch_id: "older-evening-batch", locked: true,
+        },
+      },
+      candidates: [{ candidate_id: candidateId, view: "FRONT", status: "COMPLETE", image_path: `/images/${runId}/front` }],
+    };
+  };
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/costumes?**", (route) => route.fulfill({ json: { costumes: costumes.map((name) => ({ name })) } }));
+  await page.route("**/api/local/costume-dressing/runs?**", async (route) => {
+    const costume = new URL(route.request().url()).searchParams.get("costume");
+    const run = runFor(costume);
+    await route.fulfill({ json: { runs: [{ run_id: run.run_id, status: run.status }] } });
+  });
+  await page.route(/\/api\/local\/costume-dressing\/runs\/batch-(travel|evening)\?costume=(Travel|Evening)/, async (route) => {
+    const costume = new URL(route.request().url()).searchParams.get("costume");
+    await route.fulfill({ json: runFor(costume) });
+  });
+
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-costume-dressing"]').click();
+
+  const frontLock = page.locator('#local-pipeline-selected [data-view="FRONT"][data-local-action="lock"]');
+  await expect(frontLock).toBeEnabled();
+  await expect(page.locator(".local-pipeline-lock-notice")).toBeHidden();
+  await page.locator("#local-pipeline-costume").selectOption("Evening");
+  await expect(frontLock).toBeDisabled();
+  await expect(page.locator(".local-pipeline-lock-notice")).toHaveText("Locked images for this pipeline in another batch.");
+});
+
+test("Run remaining is placed after batch review actions and tracks unstarted views", async ({ page }) => {
+  const makeRun = (runId, hasMissingView) => ({
+    run_id: runId, character: "Test", phase: "Adult", status: "AWAITING_HUMAN_SELECTION",
+    views: ["FRONT", "RIGHT_PROFILE"], candidate_count: 2, use_front_anchor: true,
+    front_anchor: "front-candidate", selected_views: { FRONT: "front-candidate" },
+    rankings: {}, local_assets: {},
     candidates: [
-      { candidate_id: "c001", view: "FRONT", status: "WAITING_FOR_HUMAN_REVIEW", image_path: "front.png",
-        gates: { face: { status: "COMPLETE", verdict: "FALSE" }, proportion: { status: "COMPLETE", verdict: "FALSE" } },
-        human_review: { decision: "undecided", notes: "" } },
-      { candidate_id: "c002", view: "FRONT", status: "GATE_REJECTED", rejection_gate: "face", image_path: "reject.png",
-        gates: { face: { status: "COMPLETE", verdict: "TRUE" } }, human_review: { decision: "undecided", notes: "" } },
-      { candidate_id: "c009", view: "FRONT", status: "FAILED", failed_gate: "orientation", image_path: "failed.png",
-        gates: { orientation: { status: "FAILED", error: "Ollama returned no answer (done_reason=length)." } },
-        human_review: { decision: "undecided", notes: "" } },
+      { candidate_id: "front-candidate", view: "FRONT", status: "COMPLETE", image_path: `/images/${runId}/front` },
+      { candidate_id: "right-candidate", view: "RIGHT_PROFILE", status: hasMissingView ? "PENDING" : "COMPLETE",
+        image_path: hasMissingView ? "" : `/images/${runId}/right` },
     ],
-  };
-  await page.route("**/api/context", (route) => route.fulfill({ json: {
-    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
-  } }));
-  await page.route(/\/api\/local\/body-reference\/runs\?/, (route) => route.fulfill({ json: { runs: [
-    { run_id: run.run_id, status: run.status, candidate_count: 3, complete_count: 0 },
-  ] } }));
-  await page.route(new RegExp(`/api/local/body-reference/runs/${run.run_id}$`), (route) => route.fulfill({ json: run }));
-  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/images\//, (route) => route.fulfill({
-    contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='30'></svg>",
-  }));
-  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/gates\/face\/prompt$/, (route) => route.fulfill({ body: "Inspect the head in the image." }));
-  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/gates\/orientation\/prompt$/, (route) => route.fulfill({ body: "Judge the orientation." }));
-  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/views\/FRONT\/selection$/, async (route) => {
-    selectedRequest = route.request().postDataJSON();
-    run = { ...run, status: "AWAITING_HUMAN_SELECTION", front_anchor: selectedRequest.candidate_id,
-      selected_views: { FRONT: selectedRequest.candidate_id }, candidates: run.candidates.map((item) => ({
-        ...item, status: item.candidate_id === selectedRequest.candidate_id ? "COMPLETE" : item.status,
-      })) };
-    await route.fulfill({ json: run });
   });
-  await page.route(/\/api\/local\/body-reference\/runs\/[^/]+\/rerun-failed\?view=FRONT$/, async (route) => {
-    run = { ...run, status: "RUNNING" };
-    await route.fulfill({ json: run });
+  const remainingRun = makeRun("remaining", true);
+  const completeRun = makeRun("complete", false);
+  const runs = [remainingRun, completeRun];
+  let proceedRequest = null;
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/local/body-reference/runs?**", (route) => route.fulfill({ json: { runs: runs.map(({ run_id, status }) => ({ run_id, status })) } }));
+  await page.route(/\/api\/local\/body-reference\/runs\/(remaining|complete)$/, (route) => {
+    const run = route.request().url().endsWith("/remaining") ? remainingRun : completeRun;
+    return route.fulfill({ json: run });
   });
-  page.on("dialog", (dialog) => dialog.accept());
+  await page.route("**/api/local/body-reference/runs/remaining/views/FRONT/proceed", async (route) => {
+    proceedRequest = route.request().url();
+    await route.fulfill({ json: { ...remainingRun, status: "READY_FOR_VIEWS", target_views: ["RIGHT_PROFILE"] } });
+  });
 
-  await page.goto("/local-body-reference");
-  await expect(page.locator("h1")).toHaveText("Local Body-Reference");
-  await expect(page.locator("#gallery")).toContainText("Face gate: Rejected");
-  await expect(page.locator("#gallery")).toContainText("Proportion gate: N/A");
-  await page.getByRole("button", { name: "Show Face gate prompt" }).click();
-  await expect(page.locator("#gate-prompt-text")).toHaveText("Inspect the head in the image.");
-  await page.locator("#gate-prompt-close").click();
-  await expect(page.locator("#gallery")).toContainText("Orientation gate: Disabled");
-  await expect(page.locator("#gallery .ai-summary p:has-text('Orientation gate: Disabled')")).toHaveCount(3);
-  await expect(page.locator("#gallery .ai-summary p:has-text('Orientation gate: Disabled')").first()).toHaveClass(/muted/);
-  await expect(page.locator("#gallery")).toContainText("Re-evaluate this view to clear the previous result.");
-  await expect(page.locator('[data-rerun-view="FRONT"]')).toBeEnabled();
-  await expect(page.locator('[data-rerun-failed-view="FRONT"]')).toBeEnabled();
-  await expect(page.locator('[data-reevaluate-view="FRONT"]')).toBeEnabled();
-  await page.locator('#gallery [data-review="c001"]').click();
-  await expect(page.locator("#review-panel")).toContainText("Clear silhouette and strong proportions.");
-  await page.locator("#review-close").click();
-  await expect(page.getByRole("button", { name: "Select", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Select", exact: true }).click();
-  expect(selectedRequest).toEqual({ candidate_id: "c001" });
-  await expect(page.locator("#status")).toContainText("FRONT anchor: c001");
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
+  const runButton = page.locator("#local-pipeline-proceed");
+  await expect(runButton).toHaveText("Run remaining");
+  await expect(runButton).toBeEnabled();
+  const controlOrder = await runButton.evaluate((button) => Array.from(button.parentElement.children)
+    .filter((item) => ["local-pipeline-rerun", "local-pipeline-reevaluate", "local-pipeline-proceed"].includes(item.id))
+    .map((item) => item.id));
+  expect(controlOrder).toEqual(["local-pipeline-rerun", "local-pipeline-reevaluate", "local-pipeline-proceed"]);
+
+  await page.locator("#local-pipeline-runs").selectOption("complete");
+  await expect(runButton).toBeDisabled();
+  await page.locator("#local-pipeline-runs").selectOption("remaining");
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
+  await expect.poll(() => proceedRequest).not.toBeNull();
+  expect(proceedRequest).toContain("/views/FRONT/proceed");
+  await expect(runButton).toBeDisabled();
 });
 
-test("Local Body-Reference keeps a new batch usable beside an earlier lock", async ({ page }) => {
-  const run = {
-    run_id: "new-run", character: "Test", phase: "Adult", review_version: 2,
-    status: "AWAITING_FRONT_ANCHOR", candidate_count: 1, views: ["FRONT"],
-    front_anchor: null, selected_views: {}, rankings: {}, candidates: [],
-    local_assets: { "body-reference:FRONT": { locked: true, batch_id: "earlier", candidate_id: "old" } },
-  };
-  await page.route("**/api/context", (route) => route.fulfill({ json: {
-    characters: ["Test"], phases_by_character: { Test: ["Adult"] }, default_character: "Test", default_phase: "Adult",
-  } }));
-  await page.route(/\/api\/local\/body-reference\/runs\?/, (route) => route.fulfill({ json: { runs: [run] } }));
-  await page.route(/\/api\/local\/body-reference\/runs\/new-run$/, (route) => route.fulfill({ json: run }));
-  await page.goto("/local-body-reference");
-  await expect(page.locator("#status")).toContainText("Existing locks: FRONT");
-  await expect(page.locator("#selected-views .selected-view")).toHaveCount(0);
-  await expect(page.locator("#gallery details[data-view=FRONT]")).toBeVisible();
+test("Local workspace skips production work summary requests", async ({ page }) => {
+  const summaryRequests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/production-work-summary") summaryRequests.push(request.url());
+  });
+
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await expect(page.locator("#workspace-local")).toHaveAttribute("aria-pressed", "true");
+  expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
+
+  const characterSummary = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/production-work-summary" && url.searchParams.get("workspace") === "character";
+  });
+  await page.locator("#workspace-character").click();
+  await characterSummary;
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

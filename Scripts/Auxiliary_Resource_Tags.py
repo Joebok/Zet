@@ -96,12 +96,22 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
         key = ("auxiliary_resource", category, resource_id, str(image_path))
         if key in existing_keys:
             continue
+        image_label = str(image.get("label") or image_id).strip()
+        resource_label = str(
+            (resource or {}).get("label") or (resource_id if resource is not None else "")
+        ).strip()
+        label = (
+            f"{resource_label} — {image_label}"
+            if resource_label and image_label and resource_label.casefold() != image_label.casefold()
+            else image_label or resource_label
+        )
         references.append(
             {
                 "role": "auxiliary_resource",
                 "category": category,
                 "resource_id": resource_id,
-                "label": str((resource or {}).get("label") or image.get("label") or resource_id),
+                "image_id": image_id,
+                "label": label,
                 "tag": tag,
                 "path": str(image_path),
             }

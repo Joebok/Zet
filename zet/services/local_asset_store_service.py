@@ -223,7 +223,10 @@ class LocalAssetStoreService:
                 if not parent.get("selected") or parent.get("stale"):
                     raise LocalAssetStoreError(f"Required local dependency {dependency.get('key')} is not current.")
                 if parent.get("image_sha256") != dependency.get("image_sha256"):
-                    raise LocalAssetStoreError(f"Required local dependency {dependency.get('key')} changed.")
+                    raise LocalAssetStoreError(
+                        f"Required local dependency {dependency.get('key')} does not match the selected upstream image. "
+                        "Unlock and lock the current upstream selection before locking this view."
+                    )
             locked_root = path.parent / "locked" / self._safe(pipeline)
             if qualifier:
                 locked_root /= self._safe(qualifier)

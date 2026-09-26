@@ -126,6 +126,7 @@ class PromptTemplateService:
         ensure_ascii_source_map: bool = False,
         prompt_variant: str = "generation",
         pipeline_mode: str = "traditional",
+        image_inputs: list[dict] | None = None,
     ) -> str:
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         prompt_text, source_map = render_static_prompt_with_source_map(
@@ -140,6 +141,7 @@ class PromptTemplateService:
             required_section_names=required_section_names,
             view_token=view_token,
             final_prompt_name=final_prompt_path.name,
+            image_inputs=image_inputs,
         )
         final_prompt_path.write_text(prompt_text, encoding="utf-8")
         source_map_path.write_text(

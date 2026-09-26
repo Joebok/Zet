@@ -5,12 +5,11 @@ import json
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from functools import partial
 from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import markdown
 from starlette.background import BackgroundTask
@@ -22,6 +21,8 @@ from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIE
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_image_review_service import LocalImageReviewService
+from zet.services.local_body_reference_service import LocalBodyReferenceService
+from zet.services.local_head_image_service import LocalHeadImageService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_metrics_service import ManualRenderMetricsService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
@@ -43,10 +44,6 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 
 from zet.services.prompt_review_service import LocalRenderUnavailable
-
-LocalBodyReferenceService = partial(LocalImagePipelineWorkflowService, pipeline="body-reference")
-LocalHeadImageService = partial(LocalImagePipelineWorkflowService, pipeline="head-image")
-
 
 def _app(config_path: str | Path) -> ZetApp:
     return ZetApp.from_config(config_path)
@@ -961,23 +958,21 @@ def create_app(
     def index() -> str:
         return (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
 
-    @app.get("/local-body-reference", response_class=HTMLResponse)
-    def local_body_reference_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "local_body_reference.html").read_text(encoding="utf-8")
+    @app.get("/local-body-reference")
+    def local_body_reference_page() -> RedirectResponse:
+        return RedirectResponse("/?page=local-body-reference", status_code=307)
 
-    @app.get("/local-head-image", response_class=HTMLResponse)
-    def local_head_image_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "local_head_image.html").read_text(encoding="utf-8")
+    @app.get("/local-head-image")
+    def local_head_image_page() -> RedirectResponse:
+        return RedirectResponse("/?page=local-head-image", status_code=307)
 
-    @app.get("/local-character-assembly", response_class=HTMLResponse)
-    def local_character_assembly_page() -> str:
-        template = (PACKAGE_ROOT / "templates" / "local_character_pipeline.html").read_text(encoding="utf-8")
-        return template.replace("{{PIPELINE}}", "character-assembly").replace("{{LABEL}}", "Local Character-Assembly")
+    @app.get("/local-character-assembly")
+    def local_character_assembly_page() -> RedirectResponse:
+        return RedirectResponse("/?page=local-character-assembly", status_code=307)
 
-    @app.get("/local-costume-dressing", response_class=HTMLResponse)
-    def local_costume_dressing_page() -> str:
-        template = (PACKAGE_ROOT / "templates" / "local_character_pipeline.html").read_text(encoding="utf-8")
-        return template.replace("{{PIPELINE}}", "costume-dressing").replace("{{LABEL}}", "Local Costume-Dressing")
+    @app.get("/local-costume-dressing")
+    def local_costume_dressing_page() -> RedirectResponse:
+        return RedirectResponse("/?page=local-costume-dressing", status_code=307)
 
     @app.get("/local-character-overview", response_class=HTMLResponse)
     def local_character_overview_page() -> str:

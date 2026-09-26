@@ -29,10 +29,6 @@ class LocalImagePipelineWorkflowService:
         else:
             self.adapter = LocalCharacterAssetPipelineService(app, self.project_root, self.pipeline)
 
-    def __getattr__(self, name: str) -> Any:
-        """Keep pipeline-specific reference and rendering endpoints available to legacy routes."""
-        return getattr(self.adapter, name)
-
     def action(self, name: str, **args: Any) -> dict[str, Any] | list[dict[str, Any]]:
         """Call a stable action name while preserving adapter-specific render details."""
         run_id = str(args.get("run_id") or "")
