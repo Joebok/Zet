@@ -23,7 +23,7 @@ from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved, pipeline_page_config,
-    gate_result_is_current, resume_cancelled_autogenerate_state, upgrade_legacy_review_v1,
+    gate_result_is_current, resume_cancelled_autogenerate_state, upgrade_legacy_review_v1, view_candidate_id,
 )
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -458,7 +458,7 @@ Do not explain your reasoning."""
             count = plan["front_count"] if prompt["view"] == FRONT_VIEW else plan["other_count"]
             for method in count_methods:
                 for ordinal in range(count):
-                    candidate_id = f"c{len(candidates) + 1:03d}"
+                    candidate_id = view_candidate_id(prompt["view"], ordinal + 1)
                     candidate_prompt = prompt["qwen_prompt"]
                     if method == METHOD_FRONT_CONDITIONED:
                         candidate_prompt = self._qwen_prompt(prompt["manual_prompt"], prompt["view"], anchor=True)
@@ -937,18 +937,18 @@ Do not explain your reasoning."""
         for target_view in target_views:
             self._review_facts(run, target_view)
         if int(run.get("review_version") or 1) >= 2:
-            for target_view in target_views:
-                self._clear_owned_selection(run, target_view)
             state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
             stamp = self._now()
             for target_view in target_views:
-                state.setdefault("rankings", {}).pop(target_view, None)
-                state.setdefault("selected_views", {}).pop(target_view, None)
+                old_ranking = state.setdefault("rankings", {}).pop(target_view, None)
+                if old_ranking:
+                    state.setdefault("ranking_history", {}).setdefault(target_view, []).append(
+                        {"archived_at": stamp, "ranking": old_ranking}
+                    )
             for candidate in completed:
                 update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
                 update.update(status="WAITING_FOR_GATES", gates={}, failed_gate="", rejection_gate="",
-                              render_error="", completed_at="", human_review={"decision": "undecided", "notes": ""},
-                              review_history=[], gate_history=[], gate_rejection_history=[])
+                              render_error="", completed_at="")
             (self._root(run_id) / "cancelled.json").unlink(missing_ok=True)
             state.update(status="REEVALUATING", review_only=True, target_views=target_views,
                          target_candidate_ids=[item["candidate_id"] for item in completed],
@@ -2103,11 +2103,6 @@ Do not explain your reasoning."""
         surviving_ids = set(ranking.get("ordered_candidate_ids") or [])
         if selected_id and selected_id in surviving_ids:
             state.setdefault("candidates", {}).setdefault(selected_id, {}).update(status="COMPLETE")
-        elif selected_id:
-            selected_views.pop(view, None)
-            if view == FRONT_VIEW:
-                self._invalidate_views_after_anchor_change(run_id, state)
-                state["front_anchor"] = None
         state["ranking_history"] = ranking_history
         state["updated_at"] = self._now()
         self._save_state(run_id, state)

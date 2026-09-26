@@ -1293,8 +1293,9 @@ test("Run remaining is placed after batch review actions and tracks unstarted vi
     rankings: {}, local_assets: {},
     candidates: [
       { candidate_id: "front-candidate", view: "FRONT", status: "COMPLETE", image_path: `/images/${runId}/front` },
-      { candidate_id: "right-candidate", view: "RIGHT_PROFILE", status: hasMissingView ? "PENDING" : "COMPLETE",
-        image_path: hasMissingView ? "" : `/images/${runId}/right` },
+      { candidate_id: "right-candidate", view: "RIGHT_PROFILE", status: hasMissingView ? "RUNNING" : "COMPLETE",
+        image_path: `/images/${runId}/right`,
+        image_filled: !hasMissingView },
     ],
   });
   const remainingRun = makeRun("remaining", true);

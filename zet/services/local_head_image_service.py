@@ -23,7 +23,7 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved,
-    gate_result_is_current, pipeline_page_config, resume_cancelled_autogenerate_state,
+    gate_result_is_current, pipeline_page_config, resume_cancelled_autogenerate_state, view_candidate_id,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -195,7 +195,7 @@ class LocalHeadImageService:
             count = plan["front_count"] if view == FRONT else plan["other_count"]
             for ordinal in range(1, count + 1):
                 index += 1
-                candidates.append({"candidate_id": f"c{index:03d}", "view": view, "ordinal": ordinal,
+                candidates.append({"candidate_id": view_candidate_id(view, ordinal), "view": view, "ordinal": ordinal,
                                    "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
                                    "gates": {}, "human_review": {"decision": "undecided", "notes": ""},
                                    "retry_count": 0})

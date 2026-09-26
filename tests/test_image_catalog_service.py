@@ -39,10 +39,41 @@ class EmptyStoryService:
         return []
 
     def _asset_reference_pipeline_code(self, pipeline):
-        return pipeline
+        return {"Costume-Dressing": "Costume"}.get(pipeline, pipeline)
 
 
 class ImageCatalogServiceTests(unittest.TestCase):
+    def test_costume_dressing_tag_keeps_asset_id_and_uses_current_costume_name(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            character_dir = root / "Characters" / "Tsaeytte" / "Adult"
+            asset_dir = root / "Assets" / "Tsaeytte" / "Adult"
+            character_dir.mkdir(parents=True)
+            asset_dir.mkdir(parents=True)
+            image_path = asset_dir / "Costume-Dressing_Front_Front_Paladin.png"
+            image_path.write_bytes(b"image")
+            asset = Asset(
+                asset_id=68, character="Tsaeytte", phase="Adult", pipeline="Costume-Dressing",
+                body_view="Front", head_view="Front", costume="Paladin",
+                asset_state="LOCKED", pipeline_stage="LOCKED", final_image_output=image_path.name,
+            )
+            config = Config(
+                base_library_path=str(root), base_character_path=str(root / "Characters"),
+                base_asset_path=str(root / "Assets"), base_pipeline_path=str(root / "Pipelines"),
+                base_ai_queue_path=str(root / "Queue"),
+            )
+            paths = PathService(config, root)
+            empty = EmptyRepository()
+            service = ImageCatalogService(
+                config, paths, ImageCatalogRepository(paths), FixedAssetRepository([asset]),
+                empty, empty, EmptyStoryService(),
+            )
+
+            item = next(item for item in service.list_items(include_base=True) if ":68:" in item.tag)
+
+            self.assertEqual("{{ASSET:Tsaeytte:Adult:68:Costume | Front | Paladin}}", item.tag)
+            self.assertNotIn("Armored", item.tag)
+
     def test_scene_appearance_picker_item_preserves_internal_arrangement(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

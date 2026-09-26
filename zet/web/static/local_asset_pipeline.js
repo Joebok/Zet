@@ -43,6 +43,19 @@
     return `?${params.toString()}`;
   }
 
+  function syncPipelineRoute() {
+    if (!state.pipeline || !document.querySelector("#local-pipeline-page").classList.contains("active")) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", Object.keys(pagePipelines).find((page) => pagePipelines[page] === state.pipeline));
+    const runId = $("runs").value;
+    if (runId) params.set("local_batch", runId);
+    else params.delete("local_batch");
+    if (isCostume() && selectedCostume()) params.set("local_costume", selectedCostume());
+    else params.delete("local_costume");
+    const search = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
+  }
+
   async function request(path, options = {}) {
     const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
     const data = await response.json().catch(() => ({}));
@@ -61,7 +74,7 @@
   function unstartedViews(run) {
     return (run?.views || []).filter((view) => view !== "FRONT" && (() => {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
-      return candidates.length > 0 && candidates.every((candidate) => candidate.status === "PENDING" && !candidate.image_path);
+      return candidates.length > 0 && candidates.some((candidate) => candidate.image_filled === false || !candidate.image_path);
     })());
   }
 
@@ -157,7 +170,7 @@
       const label = document.createElement("label");
       label.className = "local-pipeline-gate-setting";
       const name = document.createElement("span");
-      name.textContent = key.replaceAll("_", " ");
+      name.textContent = `${key.replaceAll("_", " ")}:`;
       const select = document.createElement("select");
       for (const value of ["Disabled", "Warning", "Active"]) select.add(new Option(value, value));
       select.value = state.gatePolicies[key] || "Disabled";
@@ -219,9 +232,9 @@
       if (labelText !== "Disabled") {
         const prompt = document.createElement("a");
         prompt.href = route("gate-prompt", state.run.run_id, candidate.view, key);
-        prompt.target = "_blank";
-        prompt.rel = "noopener";
         prompt.className = "local-pipeline-prompt-link";
+        prompt.dataset.gatePrompt = "true";
+        prompt.dataset.gateName = key.replaceAll("_", " ");
         prompt.textContent = "▤";
         prompt.setAttribute("aria-label", `${key.replaceAll("_", " ")} prompt`);
         prompt.title = "View prompt";
@@ -487,9 +500,11 @@
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
-    const chosen = [preferred, current].find((id) => id && state.runs.some((run) => run.run_id === id)) || state.runs[0]?.run_id || "";
+    const routeBatch = new URLSearchParams(window.location.search).get("local_batch") || "";
+    const chosen = [preferred, current, routeBatch].find((id) => id && state.runs.some((run) => run.run_id === id)) || state.runs[0]?.run_id || "";
     select.value = chosen;
     await loadRun(chosen, generation);
+    syncPipelineRoute();
   }
 
   async function readiness() {
@@ -539,7 +554,9 @@
     const previous = select.value;
     select.replaceChildren(...(data.costumes || []).map((item) => new Option(item.name, item.name)));
     if (!select.options.length) select.add(new Option("No costumes available", ""));
-    if (Array.from(select.options).some((item) => item.value === previous)) select.value = previous;
+    const routeCostume = new URLSearchParams(window.location.search).get("local_costume") || "";
+    const preferred = routeCostume || previous;
+    if (Array.from(select.options).some((item) => item.value === preferred)) select.value = preferred;
   }
 
   function configurePipeline(pipeline) {
@@ -822,6 +839,22 @@
     $("review-dialog").showModal();
   }
 
+  async function openGatePrompt(link) {
+    const dialog = $("gate-prompt-dialog");
+    const title = $("gate-prompt-title");
+    const content = $("gate-prompt-content");
+    title.textContent = `${link.dataset.gateName} prompt`;
+    content.textContent = "Loading prompt…";
+    dialog.showModal();
+    try {
+      const response = await fetch(link.href);
+      if (!response.ok) throw new Error(response.statusText || "Could not load prompt.");
+      content.textContent = await response.text();
+    } catch (error) {
+      content.textContent = `Could not load prompt: ${error.message}`;
+    }
+  }
+
   async function handleAction(button) {
     const action = button.dataset.localAction;
     const view = button.dataset.view;
@@ -873,8 +906,11 @@
       } catch (error) { setStatus(error.message, true); await readiness(); }
     });
     $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });
-    $("runs").addEventListener("change", () => void loadRun($("runs").value).catch((error) => setStatus(error.message, true)));
-    $("costume").addEventListener("change", () => void refreshContext());
+    $("runs").addEventListener("change", () => {
+      syncPipelineRoute();
+      void loadRun($("runs").value).catch((error) => setStatus(error.message, true));
+    });
+    $("costume").addEventListener("change", () => { syncPipelineRoute(); void refreshContext(); });
     $("front-count").addEventListener("change", () => void readiness());
     $("other-count").addEventListener("change", () => void readiness());
     $("use-anchor").addEventListener("change", () => void readiness());
@@ -906,6 +942,12 @@
       }
     });
     for (const host of [$("views"), $("selected")]) host.addEventListener("click", (event) => {
+      const prompt = event.target.closest("a[data-gate-prompt]");
+      if (prompt) {
+        event.preventDefault();
+        void openGatePrompt(prompt);
+        return;
+      }
       const button = event.target.closest("button[data-local-action]");
       if (button?.closest("summary")) {
         event.preventDefault();
@@ -914,6 +956,10 @@
       if (button) void handleAction(button).catch((error) => setStatus(error.message, true));
     });
     $("review-close").addEventListener("click", () => $("review-dialog").close());
+    $("gate-prompt-close").addEventListener("click", () => $("gate-prompt-dialog").close());
+    $("gate-prompt-dialog").addEventListener("click", (event) => {
+      if (event.target === $("gate-prompt-dialog")) $("gate-prompt-dialog").close();
+    });
     $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
     $("review-prev").addEventListener("click", () => { state.reviewIndex -= 1; renderReview(); });
     $("review-next").addEventListener("click", () => { state.reviewIndex += 1; renderReview(); });

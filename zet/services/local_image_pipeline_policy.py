@@ -39,6 +39,23 @@ RUN_STATUS_LABELS = {
     "STOPPED": "Stopped", "INTERRUPTED": "Interrupted", "ERROR": "Error",
 }
 
+VIEW_CANDIDATE_PREFIXES = {
+    "FRONT": "F-", "FRONT_LEFT_3_4": "FL-", "FRONT_RIGHT_3_4": "FR-",
+    "LEFT_PROFILE": "PL-", "RIGHT_PROFILE": "PR-", "BACK": "B-",
+    "BACK_RIGHT_3_4": "BR-", "BACK_LEFT_3_4": "BL-",
+}
+
+
+def view_candidate_id(view: str, ordinal: int) -> str:
+    """Return the stable, view-prefixed ID for a candidate within one view."""
+    try:
+        prefix = VIEW_CANDIDATE_PREFIXES[str(view)]
+    except KeyError as exc:
+        raise ValueError(f"Unknown local image candidate view: {view}") from exc
+    if int(ordinal) < 1:
+        raise ValueError("Candidate ordinal must be positive.")
+    return f"{prefix}{int(ordinal):03d}"
+
 
 def front_anchor_approved(candidate: dict[str, Any]) -> bool:
     """Accept a human Pass or the recorded autogenerate selection approval."""
@@ -184,7 +201,7 @@ def gate_result_is_current(
 
 def clear_candidate_artifacts(run_root: Path, candidate_id: str, image_path: str | Path | None = None) -> None:
     """Delete only this run's generated image and gate-output directories."""
-    if not re.fullmatch(r"c\d{3,}", str(candidate_id or "")):
+    if not re.fullmatch(r"(?:F|FL|FR|PL|PR|B|BR|BL)-\d{3,}", str(candidate_id or "")):
         raise ValueError("Invalid local image candidate ID.")
     root = run_root.resolve()
     for relative in (

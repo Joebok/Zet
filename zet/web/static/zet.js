@@ -2453,6 +2453,13 @@ function browserRouteUrl() {
   const params = new URLSearchParams();
   const page = activePageName();
   if (page) params.set("page", page);
+  if (LOCAL_ASSET_PAGES.has(page)) {
+    const currentParams = new URLSearchParams(window.location.search);
+    for (const key of ["local_batch", "local_costume"]) {
+      const value = currentParams.get(key);
+      if (value) params.set(key, value);
+    }
+  }
   if (state.workspace === "story") {
     if (state.selectedStorySlug) params.set("story_slug", state.selectedStorySlug);
     if (state.selectedSceneSlug) params.set("scene_slug", state.selectedSceneSlug);

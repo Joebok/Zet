@@ -435,6 +435,50 @@ def test_single_survivor_is_ranked_without_luna_and_can_be_selected(tmp_path, mo
     assert selected["selected_views"] == {"FRONT": "c001"}
 
 
+def test_reevaluate_preserves_selected_and_locked_front_reference(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    image = Path(run["root"]) / "front.png"
+    image.write_bytes(b"selected front image")
+    service._candidate_update(run["run_id"], "c001", {
+        "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image),
+        "gates": current_gate_results(service, "FRONT", image),
+        "human_review": {"decision": "keep", "notes": "Approved front"},
+    })
+    service.rank_view(run["run_id"], "FRONT")
+    service.select_view(run["run_id"], "FRONT", "c001")
+    service.lock_selected_view(run["run_id"], "FRONT")
+
+    reevaluating = service.reevaluate(run["run_id"], view="FRONT")
+    candidate = next(item for item in reevaluating["candidates"] if item["candidate_id"] == "c001")
+    asset = next(item for item in reevaluating["local_assets"].values() if item.get("view") == "FRONT")
+    assert reevaluating["selected_views"] == {"FRONT": "c001"}
+    assert reevaluating["front_anchor"] == "c001"
+    assert candidate["status"] == "WAITING_FOR_GATES"
+    assert candidate["human_review"] == {"decision": "keep", "notes": "Approved front"}
+    assert asset["selected"] is True
+    assert asset["locked"] is True
+    saved = json.loads((Path(run["root"]) / "state.json").read_text(encoding="utf-8"))
+    assert saved["ranking_history"]["FRONT"][-1]["ranking"]["status"] == "COMPLETE"
+
+    # A changed gate result must not silently unselect an already locked asset.
+    state = json.loads((Path(run["root"]) / "state.json").read_text(encoding="utf-8"))
+    state["candidates"]["c001"].update(status="GATE_REJECTED", rejection_gate="face")
+    state["candidates"]["c001"]["gates"] = {"face": {"status": "COMPLETE", "verdict": "TRUE"}}
+    (Path(run["root"]) / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    ranked = service.rank_view(run["run_id"], "FRONT")
+    assert ranked["selected_views"] == {"FRONT": "c001"}
+    assert ranked["front_anchor"] == "c001"
+    locked = next(item for item in ranked["local_assets"].values() if item.get("view") == "FRONT")
+    assert locked["selected"] is True
+    assert locked["locked"] is True
+
+
 def test_autogenerate_front_approval_can_start_remaining_views(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:

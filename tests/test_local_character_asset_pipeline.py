@@ -292,6 +292,111 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual([], second["target_views"])
         self.assertTrue(all(item["status"] == "QUEUED" for item in second["candidates"] if item["view"] != "FRONT"))
 
+    def test_proceed_requires_front_selection_only_when_anchor_is_enabled(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        required = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                       "other_count": 1, "seeds": list(range(8))})
+        with self.assertRaisesRegex(ValueError, "FRONT selection is required for other views"):
+            service.proceed(required["run_id"])
+
+        optional = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                       "other_count": 1, "use_front_anchor": False,
+                                       "seeds": list(range(8))})
+        result = service.proceed(optional["run_id"])
+        self.assertEqual(list(VIEWS[1:]), result["target_views"])
+        self.assertIsNone(result["front_anchor"])
+
+    def test_proceed_uses_selected_front_without_requiring_another_ranking_pass(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                  "other_count": 1, "seeds": list(range(8))})
+        run, _ = self._set_assembly_front_anchor(service, run)
+        state_root, state = service._state(run["run_id"])
+        state["rankings"]["FRONT"] = {"status": "STALE", "ordered_candidate_ids": []}
+        service._write(state_root / "state.json", state)
+
+        result = service.proceed(run["run_id"])
+
+        self.assertEqual(list(VIEWS[1:]), result["target_views"])
+
+    def test_proceed_recovers_missing_image_with_stale_running_status(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "front.png"
+        image.write_bytes(b"selected costume front")
+        service._update(run["run_id"], front["candidate_id"], costume,
+                        status="WAITING_FOR_GATES", image_path=str(image))
+        service.run_candidate_gates(run["run_id"], front["candidate_id"], costume)
+        service.update_candidate(run["run_id"], front["candidate_id"],
+                                 {"decision": "keep", "notes": "passed"}, costume)
+        service.rank_view(run["run_id"], "FRONT", costume)
+        run = service.select_view(run["run_id"], "FRONT", front["candidate_id"], costume)
+        for candidate in run["candidates"]:
+            if candidate["view"] in {"FRONT", "LEFT_PROFILE"}:
+                continue
+            completed_image = Path(run["root"]) / f"{candidate['candidate_id']}.png"
+            completed_image.write_bytes(candidate["candidate_id"].encode())
+            service._update(run["run_id"], candidate["candidate_id"], costume,
+                            status="COMPLETE", image_path=str(completed_image))
+        missing = next(item for item in run["candidates"] if item["view"] == "LEFT_PROFILE")
+        service._update(run["run_id"], missing["candidate_id"], costume, status="RUNNING",
+                        ask_id="missing-from-ai-queue")
+
+        result = service.proceed(run["run_id"], costume)
+
+        self.assertEqual(["LEFT_PROFILE"], result["target_views"])
+
+    def test_execute_run_requeues_stale_running_candidate(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                  "other_count": 1, "seeds": list(range(8))})
+        run, _ = self._set_assembly_front_anchor(service, run)
+        missing = next(item for item in run["candidates"] if item["view"] == "LEFT_PROFILE")
+        service._update(run["run_id"], missing["candidate_id"], status="RUNNING", ask_id="stale-ask")
+
+        def stage_replacement(run_id, candidate_id, costume=""):
+            candidate = next(item for item in service.detail(run_id, costume)["candidates"]
+                             if item["candidate_id"] == candidate_id)
+            service._update(run_id, candidate_id, costume, status="QUEUED",
+                            ask_id=f"replacement-{candidate['retry_count']}")
+
+        with patch.object(service, "_proxy_answer", return_value=("UNKNOWN", {})), \
+                patch.object(service, "queue_render_candidate", side_effect=stage_replacement) as stage, \
+                patch.object(service, "_wait_render", return_value=True), \
+                patch.object(service, "run_candidate_gates"), patch.object(service, "rank_view"):
+            service.execute_run(run["run_id"], views={"LEFT_PROFILE"})
+
+        recovered = next(item for item in service.detail(run["run_id"])["candidates"]
+                         if item["candidate_id"] == missing["candidate_id"])
+        self.assertEqual(1, recovered["retry_count"])
+        self.assertEqual("replacement-1", recovered["ask_id"])
+        stage.assert_called_once()
+
+    def test_execute_run_does_not_duplicate_an_existing_ai_queue_job(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                  "other_count": 1, "seeds": list(range(8))})
+        run, _ = self._set_assembly_front_anchor(service, run)
+        missing = next(item for item in run["candidates"] if item["view"] == "LEFT_PROFILE")
+        service._update(run["run_id"], missing["candidate_id"], status="RUNNING", ask_id="queued-ask")
+
+        with patch.object(service, "_proxy_answer", return_value=("QUEUED", {})), \
+                patch.object(service, "queue_render_candidate") as stage, \
+                patch.object(service, "_wait_render", return_value=True) as wait, \
+                patch.object(service, "run_candidate_gates"), patch.object(service, "rank_view"):
+            service.execute_run(run["run_id"], views={"LEFT_PROFILE"})
+
+        stage.assert_not_called()
+        wait.assert_called_once_with(run["run_id"], missing["candidate_id"], "")
+
     def test_human_review_preserves_ranking_unless_rejection_changes_survivors(self) -> None:
         self._sources("character-assembly")
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")

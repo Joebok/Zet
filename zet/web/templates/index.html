@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260830-scene-builder-usability">
+  <link rel="stylesheet" href="/static/zet.css?v=20260926-gate-prompt-dialog">
 </head>
 <body>
   <header class="app-header">
@@ -297,6 +297,13 @@
           <button id="local-pipeline-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
         </div>
       </div>
+    </dialog>
+    <dialog id="local-pipeline-gate-prompt-dialog" class="local-pipeline-gate-prompt-dialog" aria-labelledby="local-pipeline-gate-prompt-title">
+      <header>
+        <h2 id="local-pipeline-gate-prompt-title">Gate prompt</h2>
+        <button id="local-pipeline-gate-prompt-close" type="button">Close</button>
+      </header>
+      <pre id="local-pipeline-gate-prompt-content" aria-live="polite"></pre>
     </dialog>
     <section id="local-stub-page" class="page">
       <div class="page-title-row"><h1 id="local-stub-title">Coming soon</h1></div>
@@ -2011,6 +2018,6 @@ Add prompt language here.
   </main>
 
   <script src="/static/zet.js?v=20260923-gate-test-rig"></script>
-  <script src="/static/local_asset_pipeline.js?v=20260925-local-dashboard"></script>
+  <script src="/static/local_asset_pipeline.js?v=20260926-gate-prompt-dialog"></script>
 </body>
 </html>

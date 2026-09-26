@@ -488,17 +488,29 @@ main {
 }
 
 #local-pipeline-gate-settings {
-  display: grid;
-  gap: 6px;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-items: center;
+  column-gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 8px;
   padding: 10px 0;
 }
 
 .local-pipeline-gate-setting {
   align-items: center;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) 120px;
+  display: flex;
+  gap: 6px;
+}
+
+.local-pipeline-gate-setting > span {
+  font-weight: 600;
+}
+
+.local-pipeline-gate-setting > select {
+  min-width: 0;
+  width: 96px;
+  min-height: 28px;
+  padding: 2px 8px;
 }
 
 .local-pipeline-selected {
@@ -633,6 +645,42 @@ main {
 
 .local-pipeline-prompt-link:hover {
   color: var(--primary);
+}
+
+.local-pipeline-gate-prompt-dialog {
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 10px;
+  max-height: min(82vh, 760px);
+  max-width: min(760px, 92vw);
+  padding: 20px;
+  width: min(760px, 92vw);
+}
+
+.local-pipeline-gate-prompt-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.local-pipeline-gate-prompt-dialog header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.local-pipeline-gate-prompt-dialog h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.local-pipeline-gate-prompt-dialog pre {
+  font: inherit;
+  line-height: 1.5;
+  margin: 16px 0 0;
+  max-height: calc(82vh - 100px);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .warning-text {
