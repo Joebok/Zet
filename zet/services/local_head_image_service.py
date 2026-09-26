@@ -327,6 +327,41 @@ class LocalHeadImageService:
                 continue
         return sorted(result, key=lambda item: item["run_id"], reverse=True)
 
+    def list_run_summaries(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
+        """List batches without validating every candidate image and review gate."""
+        result = []
+        for path in self.root.glob("*/*/Head-Image/*/spec.json"):
+            try:
+                spec = json.loads(path.read_text(encoding="utf-8"))
+                if spec.get("kind") != "local_head_image":
+                    continue
+                if (character and spec.get("character") != character) or (phase and spec.get("phase") != phase):
+                    continue
+                state_path = path.with_name("state.json")
+                state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+                run_id = str(spec.get("run_id") or path.parent.name)
+                status = str(state.get("status") or spec.get("status") or "UNKNOWN")
+                if status in ACTIVE_RUN_STATUSES:
+                    with self._active_lock:
+                        if run_id not in self._active:
+                            status = "INTERRUPTED"
+                candidates = {item["candidate_id"]: item for item in spec.get("candidates", [])}
+                for candidate_id, update in (state.get("candidates") or {}).items():
+                    if candidate_id in candidates:
+                        candidates[candidate_id].update(update)
+                result.append({
+                    "run_id": run_id, "batch_name": spec.get("batch_name", ""),
+                    "character": spec.get("character", ""), "phase": spec.get("phase", ""),
+                    "created_at": spec.get("created_at", ""), "status": status,
+                    "candidate_count": int(spec.get("candidate_count") or len(candidates)),
+                    "complete_count": sum(bool(item.get("image_path")) for item in candidates.values()),
+                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "selected_views": state.get("selected_views") or {},
+                })
+            except (OSError, ValueError, KeyError, json.JSONDecodeError):
+                continue
+        return sorted(result, key=lambda item: item["run_id"], reverse=True)
+
     def _state(self, run_id: str) -> tuple[Path, dict[str, Any]]:
         root = self._run_root(run_id)
         return root, json.loads((root / "state.json").read_text(encoding="utf-8"))

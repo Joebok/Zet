@@ -1333,6 +1333,30 @@ test("local provisional source batches are chosen by name and sent as API values
   await expect(bodySource.locator("option:checked")).not.toContainText("body-run-id");
 });
 
+test("local character asset candidates render every view section", async ({ page }) => {
+  const run = {
+    run_id: "assembly-render-test", character: "Test", phase: "Adult", status: "AWAITING_HUMAN_SELECTION",
+    views: ["FRONT", "RIGHT_PROFILE"], candidate_count: 2, selected_views: {}, rankings: {},
+    candidates: [
+      { candidate_id: "front-1", view: "FRONT", status: "COMPLETE", render_status: "COMPLETE", image_path: "/images/front" },
+      { candidate_id: "right-1", view: "RIGHT_PROFILE", status: "COMPLETE", render_status: "COMPLETE", image_path: "/images/right" },
+    ],
+  };
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/local/character-assembly/runs?**", (route) => route.fulfill({ json: { runs: [{ run_id: run.run_id, status: run.status }] } }));
+  await page.route("**/api/local/character-assembly/runs/assembly-render-test", (route) => route.fulfill({ json: run }));
+
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-character-assembly"]').click();
+
+  await expect(page.locator("#local-pipeline-views .local-pipeline-view")).toHaveCount(2);
+  await expect(page.locator("#local-pipeline-views")).toContainText("FRONT");
+  await expect(page.locator("#local-pipeline-views")).toContainText("RIGHT_PROFILE");
+});
+
 test("Run remaining is placed after batch review actions and tracks unstarted views", async ({ page }) => {
   const makeRun = (runId, hasMissingView) => ({
     run_id: runId, character: "Test", phase: "Adult", status: "AWAITING_HUMAN_SELECTION",

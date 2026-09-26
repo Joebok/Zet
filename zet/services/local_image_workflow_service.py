@@ -46,7 +46,7 @@ class LocalImagePipelineWorkflowService:
                 return self.adapter.detail(run_id, upgrade_legacy=True, **({"costume": costume} if self.pipeline in {"character-assembly", "costume-dressing"} else {}))
             return self.adapter.detail(run_id)
         if name == "list":
-            return self.adapter.list_runs(str(args.get("character") or ""), str(args.get("phase") or ""), costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.list_runs(str(args.get("character") or ""), str(args.get("phase") or ""))
+            return self.adapter.list_run_summaries(str(args.get("character") or ""), str(args.get("phase") or ""), costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.list_run_summaries(str(args.get("character") or ""), str(args.get("phase") or ""))
         if name == "rename_batch":
             return self.adapter.rename_run(run_id, str(payload.get("batch_name") or ""), costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rename_run(run_id, str(payload.get("batch_name") or ""))
         if name == "delete_batch":

@@ -182,7 +182,7 @@ class LocalCharacterAssetPipelineService:
         options: dict[str, list[dict[str, Any]]] = {}
         for role, pipeline in self._requirements():
             adapter = self._source_adapter(pipeline)
-            runs = adapter.list_runs(character, phase)
+            runs = adapter.list_run_summaries(character, phase)
             values = []
             for item in runs:
                 selected = item.get("selected_views") or {}
@@ -394,6 +394,40 @@ class LocalCharacterAssetPipelineService:
                     continue
         return sorted(result, key=lambda item: item.get("created_at", ""), reverse=True)
 
+    def list_run_summaries(self, character: str = "", phase: str = "", costume: str = "") -> list[dict[str, Any]]:
+        """List batches without building full details or checking image lineage."""
+        if costume and self.definition["qualifies"]:
+            paths = self._workspace(character, phase, costume).glob("*/spec.json")
+        else:
+            base = (self.root / (self._safe(character) if character else "*")
+                    / (self._safe(phase) if phase else "*") / self.definition["workspace"])
+            paths = base.glob("**/spec.json")
+        result = []
+        for path in paths:
+            try:
+                spec = self._read(path)
+                if spec.get("kind") != self.pipeline:
+                    continue
+                state = self._read(path.with_name("state.json"))
+                run_id = str(spec.get("run_id") or path.parent.name)
+                status = str(state.get("status") or spec.get("status") or "UNKNOWN")
+                interrupted = False
+                if status in ACTIVE_RUN_STATUSES:
+                    with self._active_lock:
+                        interrupted = run_id not in self._active
+                    if interrupted:
+                        status = "INTERRUPTED"
+                result.append({
+                    "run_id": run_id, "batch_name": spec.get("batch_name", ""),
+                    "character": spec.get("character", ""), "phase": spec.get("phase", ""),
+                    "costume": spec.get("costume", ""), "created_at": spec.get("created_at", ""),
+                    "status": status, "candidate_count": int(spec.get("candidate_count") or len(spec.get("candidates") or [])),
+                    "selected_views": state.get("selected_views") or {},
+                })
+            except (OSError, LocalCharacterAssetPipelineError, ValueError):
+                continue
+        return sorted(result, key=lambda item: item.get("created_at", ""), reverse=True)
+
     def rename_run(self, run_id: str, batch_name: str, costume: str = "") -> dict[str, Any]:
         name = str(batch_name or "").strip()
         if len(name) > 120:
@@ -411,6 +445,7 @@ class LocalCharacterAssetPipelineService:
 
     def _lineage_warnings(self, run: dict[str, Any]) -> dict[str, list[str]]:
         warnings: dict[str, list[str]] = {}
+        source_runs: dict[tuple[str, str], dict[str, Any]] = {}
         for view, sources in (run.get("sources") or {}).items():
             entries = []
             for role, source in sources.items():
@@ -429,7 +464,10 @@ class LocalCharacterAssetPipelineService:
                 source_label = str(source.get("batch_name") or "")
                 if not source_label and source_batch:
                     try:
-                        source_label = self._batch_label(self._source_adapter(pipeline).detail(source_batch))
+                        source_key = (pipeline, source_batch)
+                        if source_key not in source_runs:
+                            source_runs[source_key] = self._source_adapter(pipeline).detail(source_batch)
+                        source_label = self._batch_label(source_runs[source_key])
                     except Exception:
                         source_label = "a previous batch"
                 source_label = source_label or "a previous batch"
@@ -444,8 +482,10 @@ class LocalCharacterAssetPipelineService:
                                   (run.get("source_batches") or {}).get(role) or "locked")
                 if source_mode != "locked" and source_batch and source_candidate:
                     try:
-                        adapter = self._source_adapter(pipeline)
-                        source_run = adapter.detail(source_batch)
+                        source_key = (pipeline, source_batch)
+                        if source_key not in source_runs:
+                            source_runs[source_key] = self._source_adapter(pipeline).detail(source_batch)
+                        source_run = source_runs[source_key]
                         selected = str((source_run.get("selected_views") or {}).get(view) or "")
                         candidate = next((item for item in source_run.get("candidates", [])
                                           if item.get("candidate_id") == source_candidate), None)

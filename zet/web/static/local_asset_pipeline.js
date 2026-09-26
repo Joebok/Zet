@@ -484,23 +484,10 @@
 
   function renderLineageWarnings(run) {
     const host = $("lineage-warning");
-    host.replaceChildren();
     const warnings = run?.lineage_warnings || {};
     const views = Object.entries(warnings).filter(([, entries]) => entries?.length);
     host.hidden = !views.length;
-    if (!views.length) return;
-    const heading = document.createElement("h2");
-    heading.textContent = "Source lineage warning";
-    host.append(heading);
-    const list = document.createElement("ul");
-    for (const [view, entries] of views) {
-      for (const message of entries) {
-        const line = document.createElement("li");
-        line.textContent = `${view}: ${message}`;
-        list.append(line);
-      }
-    }
-    host.append(list);
+    host.textContent = views.length ? "Source lineage warning" : "";
   }
 
   function renderSourceBatchOptions(result) {

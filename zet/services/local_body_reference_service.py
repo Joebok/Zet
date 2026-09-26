@@ -687,6 +687,51 @@ Do not explain your reasoning."""
             })
         return sorted(runs, key=lambda item: str(item.get("created_at") or item["run_id"]), reverse=True)
 
+    def list_run_summaries(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
+        """List batches without recalculating rankings or hashing candidate images."""
+        wanted_character = str(character or "").strip()
+        wanted_phase = str(phase or "").strip()
+        runs: list[dict[str, Any]] = []
+        for spec_path in self.runs_root.glob("*/*/*/spec.json"):
+            try:
+                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                if wanted_character and spec.get("character") != wanted_character:
+                    continue
+                if wanted_phase and spec.get("phase") != wanted_phase:
+                    continue
+                state_path = spec_path.with_name("state.json")
+                state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+                run_id = str(spec.get("run_id") or spec_path.parent.name)
+                status = str(state.get("status") or spec.get("status") or "UNKNOWN")
+                if status in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"} and not self._runner_is_active(run_id):
+                    status = "INTERRUPTED"
+                candidates = {item["candidate_id"]: item for item in spec.get("candidates", [])}
+                for candidate_id, update in (state.get("candidates") or {}).items():
+                    if candidate_id in candidates:
+                        candidates[candidate_id].update(update)
+                selected = state.get("selected_views") or spec.get("selected_views") or {}
+                counts: dict[str, int] = {}
+                for candidate in candidates.values():
+                    candidate_status = str(candidate.get("status") or "UNKNOWN")
+                    counts[candidate_status] = counts.get(candidate_status, 0) + 1
+                try:
+                    review_version = int(spec.get("review_version") or 1)
+                except (TypeError, ValueError):
+                    review_version = 1
+                runs.append({
+                    "run_id": run_id, "batch_name": spec.get("batch_name", ""),
+                    "character": spec.get("character", ""), "phase": spec.get("phase", ""),
+                    "created_at": spec.get("created_at", ""), "status": status,
+                    "candidate_count": int(spec.get("candidate_count") or len(candidates)),
+                    "complete_count": len(selected) if review_version >= 2 else counts.get("COMPLETE", 0),
+                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "source_run_id": spec.get("source_run_id", ""),
+                    "selected_views": selected,
+                })
+            except (OSError, ValueError, json.JSONDecodeError, LocalBodyReferenceError):
+                continue
+        return sorted(runs, key=lambda item: str(item.get("created_at") or item["run_id"]), reverse=True)
+
     def list_codex_jobs(self) -> list[dict[str, Any]]:
         """Summarize Codex/Luna reviews across Local Body-Reference batches."""
         jobs = []
