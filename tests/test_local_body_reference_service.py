@@ -1223,6 +1223,8 @@ def test_runner_batches_images_before_reviews_for_each_view(tmp_path, monkeypatc
     monkeypatch.setattr(service, "_wait_for_render", wait_for_render)
     monkeypatch.setattr(service, "queue_local_analysis", queue_local)
     monkeypatch.setattr(service, "run_luna_analysis", run_luna)
+    monkeypatch.setattr(service, "stage_view_evaluation",
+                        lambda _run_id, view, *, candidate_ids=None: events.append(("evaluate", view)))
     service.execute_run(run["run_id"])
 
     other_views = [view for view in run["views"] if view != "FRONT"]
@@ -1235,16 +1237,150 @@ def test_runner_batches_images_before_reviews_for_each_view(tmp_path, monkeypatc
         if event[1] in first_view_ids
     ]
     assert [event[1] for _, event in first_view_events if event[0] == "queue"] == first_view_ids
-    assert max(index for index, event in first_view_events if event[0] == "wait") < min(
-        index for index, event in first_view_events if event[0] in {"local", "luna"}
-    )
+    evaluation_index = events.index(("evaluate", other_views[0]))
+    assert max(index for index, event in first_view_events if event[0] == "wait") < evaluation_index
     next_view_ids = [
         item["candidate_id"] for item in run["candidates"]
         if item["view"] == other_views[1]
     ]
-    assert max(index for index, event in first_view_events) < min(
+    # Advice starts after renders are ready and must not hold the runner from
+    # queueing the next view's image jobs.
+    assert max(index for index, event in first_view_events if event[0] in {"queue", "wait"}) < min(
         index for index, event in enumerate(events) if event[1] in next_view_ids
     )
+    next_view_index = min(index for index, event in enumerate(events) if event[1] in next_view_ids)
+    assert evaluation_index < next_view_index
+
+
+def test_view_evaluation_stages_every_gate_before_waiting_and_ranks_during_gate_wait(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 2,
+                              "other_count": 1, "seeds": list(range(9))})
+    candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
+    staged = []
+    waiting = threading.Event()
+    ranked = threading.Event()
+    release = threading.Event()
+    from zet.services.local_gate_registry_service import LocalGateRegistryService
+    registry = LocalGateRegistryService(service.app, service.project_root)
+    for gate in service.review_gates("FRONT"):
+        registry.set_status("body-reference", gate.key, "Active")
+    for candidate in candidates:
+        image = Path(run["root"]) / f"{candidate['candidate_id']}.png"
+        image.write_bytes(candidate["candidate_id"].encode())
+        service._candidate_update(run["run_id"], candidate["candidate_id"],
+                                  {"status": "WAITING_FOR_GATES", "image_path": str(image)})
+
+    def queue(_run_id, candidate_id, gate):
+        staged.append((candidate_id, gate.key))
+        return {"status": "QUEUED", "ask_id": f"{candidate_id}-{gate.key}",
+                "output_path": str(Path(run["root"]) / f"{candidate_id}-{gate.key}.txt"),
+                "input_hashes": {"candidate": service._hash(Path(next(
+                    item["image_path"] for item in service.detail(run["run_id"])["candidates"]
+                    if item["candidate_id"] == candidate_id))), "front_anchor": ""}}
+
+    def wait_gate(_run_id, _candidate_id, _gate_key):
+        assert len(staged) == sum(len(service.review_gates("FRONT")) for _ in candidates)
+        waiting.set()
+        release.wait(5)
+        return "FALSE", ""
+
+    def rank(_run_id, _view, *, evaluation_id=""):
+        ranked.set()
+        return service.detail(run["run_id"])
+
+    monkeypatch.setattr(service, "_queue_review_gate", queue)
+    monkeypatch.setattr(service, "_wait_for_review_gate", wait_gate)
+    monkeypatch.setattr(service, "rank_view", rank)
+    try:
+        service.stage_view_evaluation(run["run_id"], "FRONT")
+        current = service.detail(run["run_id"])
+        assert waiting.wait(2), {"staged_count": len(staged), "evaluation": current.get("evaluations"),
+            "candidates": [(item["candidate_id"], item.get("status"),
+                [(key, value.get("status"), value.get("evaluation_id")) for key, value in item.get("gates", {}).items()])
+                for item in current["candidates"] if item["view"] == "FRONT"]}
+        assert ranked.wait(2)
+        assert len(staged) == 2 * len(service.review_gates("FRONT"))
+        service.update_candidate(run["run_id"], candidates[0]["candidate_id"],
+                                 {"decision": "keep", "notes": "Human approval during evaluation"})
+    finally:
+        release.set()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        current = service.detail(run["run_id"])
+        if (current.get("evaluations") or {}).get("FRONT", {}).get("gates_status") == "COMPLETE":
+            break
+        time.sleep(0.02)
+    reviewed = next(item for item in service.detail(run["run_id"])["candidates"]
+                    if item["candidate_id"] == candidates[0]["candidate_id"])
+    assert reviewed["human_review"]["decision"] == "keep"
+
+
+def test_superseded_gate_answer_cannot_commit_over_new_evaluation(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+    image = Path(run["root"]) / "superseded.png"
+    image.write_bytes(b"front")
+    service._candidate_update(run["run_id"], candidate["candidate_id"],
+                              {"status": "WAITING_FOR_GATES", "image_path": str(image)})
+    from zet.services.local_gate_registry_service import LocalGateRegistryService
+    registry = LocalGateRegistryService(service.app, service.project_root)
+    for gate in service.review_gates("FRONT"):
+        registry.set_status("body-reference", gate.key, "Active")
+    waiting, release = threading.Event(), threading.Event()
+
+    def queue(_run_id, candidate_id, gate):
+        return {"status": "QUEUED", "ask_id": f"{candidate_id}-{gate.key}",
+                "output_path": str(Path(run["root"]) / f"{gate.key}.txt"),
+                "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+
+    def wait_gate(_run_id, _candidate_id, _gate_key):
+        waiting.set()
+        assert release.wait(3)
+        return "TRUE", "late reject"
+
+    monkeypatch.setattr(service, "_queue_review_gate", queue)
+    monkeypatch.setattr(service, "_wait_for_review_gate", wait_gate)
+    service.stage_view_evaluation(run["run_id"], "FRONT")
+    assert waiting.wait(2)
+    current = service.detail(run["run_id"])
+    evaluation = dict(current["evaluations"]["FRONT"])
+    evaluation.update(status="SUPERSEDED", gates_status="SUPERSEDED", ranking_status="SUPERSEDED")
+    service._run_update(run["run_id"], evaluations={"FRONT": evaluation})
+    service._save_ranking_result(run["run_id"], "FRONT", evaluation["evaluation_id"],
+                                 {candidate["candidate_id"]: service._hash(image)},
+                                 {"status": "COMPLETE", "ordered_candidate_ids": [candidate["candidate_id"]],
+                                  "error": "late stale result"})
+    assert service.detail(run["run_id"]).get("rankings", {}).get("FRONT", {}).get("error") != "late stale result"
+    release.set()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        current = service.detail(run["run_id"])
+        gates = next(item for item in current["candidates"]
+                     if item["candidate_id"] == candidate["candidate_id"])["gates"]
+        if not any(record.get("verdict") for record in gates.values()):
+            time.sleep(0.02)
+            continue
+        break
+    gates = next(item for item in service.detail(run["run_id"])["candidates"]
+                 if item["candidate_id"] == candidate["candidate_id"])["gates"]
+    assert all(record.get("verdict") is None for record in gates.values())
 
 
 def test_legacy_run_and_queue_metadata_migrates_once(tmp_path):

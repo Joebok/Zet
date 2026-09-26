@@ -416,7 +416,7 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertIn(service.asset_store.key("Character-Assembly", "FRONT"),
                       [item["key"] for item in locked["dependencies"]])
 
-    def test_other_views_are_claimed_once_and_require_a_passed_front_anchor(self) -> None:
+    def test_other_views_are_claimed_once_after_front_selection_without_waiting_for_advice(self) -> None:
         self._sources("character-assembly")
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
         run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1, "other_count": 1,
@@ -426,11 +426,8 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         image.parent.mkdir(parents=True, exist_ok=True)
         image.write_bytes(b"front")
         service._update(run["run_id"], front["candidate_id"], status="WAITING_FOR_GATES", image_path=str(image))
-        service.run_candidate_gates(run["run_id"], front["candidate_id"])
-        with self.assertRaisesRegex(ValueError, "pass a FRONT"):
-            service.select_view(run["run_id"], "FRONT", front["candidate_id"])
         service.update_candidate(run["run_id"], front["candidate_id"], {"decision": "keep"})
-        service.rank_view(run["run_id"], "FRONT")
+        # The human can select FRONT while gate and Luna advice is pending.
         service.select_view(run["run_id"], "FRONT", front["candidate_id"])
         first = service.proceed(run["run_id"])
         second = service.proceed(run["run_id"])
@@ -637,6 +634,14 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual("AWAITING_FRONT_ANCHOR", blocked["status"])
         self.assertIn("Select a FRONT candidate", blocked["error"])
 
+        image = Path(run["root"]) / "renders" / front["candidate_id"] / "front.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"human selected despite gate advice")
+        service._update(run["run_id"], front["candidate_id"], image_path=str(image), status="GATE_REJECTED")
+        service.select_view(run["run_id"], "FRONT", front["candidate_id"])
+        self.assertEqual(front["candidate_id"], service.detail(run["run_id"])["front_anchor"])
+        service.proceed(run["run_id"])
+
     def test_assembly_automatically_ranks_after_all_candidate_gates_finish(self) -> None:
         self._sources("character-assembly")
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
@@ -650,20 +655,14 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
             image.write_bytes(candidate["candidate_id"].encode())
             service._update(run["run_id"], candidate["candidate_id"], status="WAITING_FOR_GATES", image_path=str(image))
 
-        def finish_gates(run_id: str, candidate_id: str, costume: str = "") -> bool:
-            events.append(("gates", candidate_id))
-            service._update(run_id, candidate_id, costume, status="WAITING_FOR_HUMAN_REVIEW")
-            return True
-
-        def rank(run_id: str, view: str, costume: str = "") -> dict:
-            events.append(("rank", view))
+        def stage_evaluation(run_id: str, view: str, costume: str = "", *, candidate_ids=None) -> dict:
+            events.append(("evaluate", view, candidate_ids))
             return service.detail(run_id, costume)
 
-        with patch.object(service, "run_candidate_gates", side_effect=finish_gates), \
-             patch.object(service, "rank_view", side_effect=rank):
+        with patch.object(service, "stage_view_evaluation", side_effect=stage_evaluation):
             service.execute_run(run["run_id"])
 
-        self.assertEqual([("gates", item["candidate_id"]) for item in front] + [("rank", "FRONT")], events)
+        self.assertEqual([("evaluate", "FRONT", {item["candidate_id"] for item in front})], events)
 
     def test_changed_locked_source_makes_candidate_gates_stale(self) -> None:
         self._sources("character-assembly")

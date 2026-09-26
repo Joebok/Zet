@@ -411,19 +411,13 @@ class HeadImageCompilerTests(unittest.TestCase):
                 service._update(run["run_id"], candidate_id, status="WAITING_FOR_GATES")
                 return True
 
-            def gates(_run_id, candidate_id):
-                events.append(("gate", candidate_id))
-                service._update(run["run_id"], candidate_id, status="WAITING_FOR_HUMAN_REVIEW")
-                return True
-
-            def rank(_run_id, view):
-                events.append(("rank", view))
-                return service.detail(run["run_id"])
+            def stage_evaluation(_run_id, view, *, candidate_ids=None):
+                events.append(("evaluate", view, candidate_ids))
+                return {"status": "RUNNING"}
 
             with patch.object(service, "queue_render_candidate", side_effect=queue), \
                     patch.object(service, "_wait_render", side_effect=wait), \
-                    patch.object(service, "run_candidate_gates", side_effect=gates), \
-                    patch.object(service, "rank_view", side_effect=rank):
+                    patch.object(service, "stage_view_evaluation", side_effect=stage_evaluation):
                 service.execute_run(run["run_id"], views={"FRONT"}, candidate_ids=candidate_ids)
 
             self.assertEqual([
@@ -431,9 +425,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                 ("render", candidates[1]["candidate_id"]),
                 ("wait", candidates[0]["candidate_id"]),
                 ("wait", candidates[1]["candidate_id"]),
-                ("gate", candidates[0]["candidate_id"]),
-                ("gate", candidates[1]["candidate_id"]),
-                ("rank", "FRONT"),
+                ("evaluate", "FRONT", candidate_ids),
             ], events)
 
     def test_local_head_ranking_closes_temporary_files(self) -> None:

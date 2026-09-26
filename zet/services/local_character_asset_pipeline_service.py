@@ -21,7 +21,7 @@ from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 from zet.services.candidate_review_contract import ReviewGate, validate_ranking
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, front_anchor_approved, gate_result_is_current,
+    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current,
     mutate_local_run_state, pipeline_page_config, resume_cancelled_autogenerate_state, serialize_local_run_state,
     upgrade_legacy_review_v1, view_candidate_id,
 )
@@ -687,7 +687,7 @@ class LocalCharacterAssetPipelineService:
                 return False
         return True
 
-    def run_candidate_gates(self, run_id: str, candidate_id: str, costume: str = "") -> bool:
+    def _stage_candidate_gates(self, run_id: str, candidate_id: str, costume: str = "") -> bool:
         run = self.detail(run_id, costume)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         image = Path(str((candidate or {}).get("image_path") or ""))
@@ -709,26 +709,167 @@ class LocalCharacterAssetPipelineService:
                                          "input_hashes": hashes, "prompt_sha256": prompt_hash, "completed_at": self._now()}
                 self._update(run_id, candidate_id, costume, gates=gates)
                 continue
+            if (record.get("status") == "COMPLETE" and record.get("policy_status") == policy
+                    and record.get("input_hashes") == hashes and record.get("prompt_sha256") == prompt_hash):
+                record["evaluation_id"] = str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or "")
+                gates[definition.key] = record
+                self._update(run_id, candidate_id, costume, gates=gates)
+                continue
+            if (record.get("status") in {"QUEUED", "RUNNING"} and record.get("policy_status") == policy
+                    and record.get("input_hashes") == hashes and record.get("prompt_sha256") == prompt_hash):
+                record["evaluation_id"] = str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or "")
+                gates[definition.key] = record
+                self._update(run_id, candidate_id, costume, gates=gates)
+                continue
             try:
                 record = self._queue_gate(run, candidate, definition, hashes)
-                self._update(run_id, candidate_id, costume, status="WAITING_FOR_GATES", gates={**gates, definition.key: record})
-                verdict, reason = self._wait_gate(run_id, candidate_id, definition.key, costume)
-                gates[definition.key] = {**record, "status": "COMPLETE", "policy_status": policy,
-                                         "verdict": verdict, "reason": reason, "input_hashes": hashes,
-                                         "prompt_sha256": prompt_hash, "completed_at": self._now()}
-                self._update(run_id, candidate_id, costume, gates=gates)
-                if verdict == "TRUE" and policy == "Active":
-                    self._update(run_id, candidate_id, costume, status="GATE_REJECTED", rejection_gate=definition.key)
-                    return True
+                record.update(policy_status=policy, prompt_sha256=prompt_hash,
+                              evaluation_id=str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or ""))
+                gates[definition.key] = record
+                self._update(run_id, candidate_id, costume, status="WAITING_FOR_GATES", gates=gates)
             except Exception as exc:
                 gates[definition.key] = {"status": "FAILED", "policy_status": policy, "input_hashes": hashes,
                                          "prompt_sha256": prompt_hash, "error": str(exc)}
                 self._update(run_id, candidate_id, costume, gates=gates)
-                if policy != "Warning":
-                    self._update(run_id, candidate_id, costume, status="FAILED", failed_gate=definition.key)
-                    return False
-        self._update(run_id, candidate_id, costume, status="WAITING_FOR_HUMAN_REVIEW", gates=gates)
         return True
+
+    def _collect_candidate_gates(self, run_id: str, candidate_id: str, costume: str = "",
+                                 evaluation_id: str = "") -> bool:
+        run = self.detail(run_id, costume)
+        candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
+        if not candidate:
+            return False
+        if evaluation_id:
+            evaluation = (run.get("evaluations") or {}).get(str(candidate.get("view") or ""), {})
+            if evaluation.get("evaluation_id") != evaluation_id or evaluation.get("status") not in {"RUNNING", "STAGING"}:
+                return False
+            image = Path(str(candidate.get("image_path") or ""))
+            if not image.is_file() or evaluation.get("input_hashes", {}).get(candidate_id) != self._hash(image):
+                return False
+        gates = dict(candidate.get("gates") or {})
+        for definition in self.review_gates(self.pipeline, candidate["view"]):
+            record = dict(gates.get(definition.key) or {})
+            if record.get("status") in {"COMPLETE", "DISABLED", "FAILED"} or not record.get("ask_id"):
+                continue
+            if self.detail(run_id, costume).get("stop_requested"):
+                return False
+            try:
+                verdict, reason = self._wait_gate(run_id, candidate_id, definition.key, costume)
+                record.update(status="COMPLETE", verdict=verdict, reason=reason, completed_at=self._now())
+            except Exception as exc:
+                record.update(status="FAILED", error=str(exc), failed_at=self._now())
+            if evaluation_id:
+                latest_run = self.detail(run_id, costume)
+                active = (latest_run.get("evaluations") or {}).get(candidate["view"], {})
+                if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}:
+                    return False
+                latest_candidate = next(item for item in latest_run["candidates"] if item["candidate_id"] == candidate_id)
+                gates = dict(latest_candidate.get("gates") or {})
+            gates[definition.key] = record
+            self._update(run_id, candidate_id, costume, gates=gates)
+        if evaluation_id:
+            latest_run = self.detail(run_id, costume)
+            active = (latest_run.get("evaluations") or {}).get(candidate["view"], {})
+            if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}:
+                return False
+        latest = next(item for item in self.detail(run_id, costume)["candidates"] if item["candidate_id"] == candidate_id)
+        rejection = next((gate.key for gate in self.review_gates(self.pipeline, candidate["view"])
+                          if (latest.get("gates") or {}).get(gate.key, {}).get("verdict") == "TRUE"
+                          and (latest.get("gates") or {}).get(gate.key, {}).get("policy_status") == "Active"), "")
+        self._update(run_id, candidate_id, costume,
+                     status="GATE_REJECTED" if rejection else "WAITING_FOR_HUMAN_REVIEW",
+                     rejection_gate=rejection, review_error="")
+        return True
+
+    def run_candidate_gates(self, run_id: str, candidate_id: str, costume: str = "") -> bool:
+        """Synchronous compatibility entry point; queue the full gate set first."""
+        self._stage_candidate_gates(run_id, candidate_id, costume)
+        return self._collect_candidate_gates(run_id, candidate_id, costume)
+
+    def stage_view_evaluation(self, run_id: str, view: str, costume: str = "", *,
+                              candidate_ids: set[str] | None = None) -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        view = str(view or "").upper()
+        run = self.detail(run_id, costume)
+        candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                      and (candidate_ids is None or item["candidate_id"] in candidate_ids)
+                      and Path(str(item.get("image_path") or "")).is_file()]
+        evaluation_id = uuid4().hex
+        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in candidates}
+        previous = (run.get("evaluations") or {}).get(view) or {}
+        if previous.get("status") in {"STAGING", "RUNNING"} and previous.get("input_hashes") == hashes:
+            self.reconcile_review_jobs(run_id, costume)
+            return previous
+        from zet.services.local_image_evaluation_service import update_view_evaluation
+        update_view_evaluation(self._run_root(run_id, costume), view, {
+            "evaluation_id": evaluation_id, "status": "STAGING", "input_hashes": hashes,
+            "started_at": self._now(),
+        })
+
+        def stage() -> None:
+            for item in candidates:
+                if self.detail(run_id, costume).get("stop_requested"):
+                    return
+                try:
+                    self._stage_candidate_gates(run_id, item["candidate_id"], costume)
+                except Exception as exc:
+                    self._update(run_id, item["candidate_id"], costume, review_error=str(exc))
+
+        def collect() -> None:
+            current = self.detail(run_id, costume)
+            if (current.get("evaluations") or {}).get(view, {}).get("evaluation_id") == evaluation_id and \
+                    current["evaluations"][view].get("gates_status") == "COMPLETE":
+                return
+            for item in candidates:
+                if self.detail(run_id, costume).get("stop_requested"):
+                    return
+                self._collect_candidate_gates(run_id, item["candidate_id"], costume, evaluation_id)
+            current = self.detail(run_id, costume)
+            if (current.get("evaluations") or {}).get(view, {}).get("evaluation_id") == evaluation_id:
+                evaluation = dict(current["evaluations"][view])
+                evaluation["status"] = "COMPLETE" if evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY"} else "RUNNING"
+                update_view_evaluation(self._run_root(run_id, costume), view,
+                    {**evaluation, "gates_status": "COMPLETE", "updated_at": self._now()},
+                    evaluation_id=evaluation_id)
+
+        def rank() -> None:
+            if self.detail(run_id, costume).get("stop_requested"):
+                return
+            current = self.detail(run_id, costume)
+            evaluation = (current.get("evaluations") or {}).get(view) or {}
+            if evaluation.get("evaluation_id") == evaluation_id and evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY"}:
+                return
+            self.rank_view(run_id, view, costume, evaluation_id=evaluation_id)
+            current = self.detail(run_id, costume)
+            evaluation = dict((current.get("evaluations") or {}).get(view) or {})
+            if evaluation.get("evaluation_id") == evaluation_id and evaluation.get("gates_status") == "COMPLETE":
+                evaluation["status"] = "COMPLETE"
+                update_view_evaluation(self._run_root(run_id, costume), view, evaluation, evaluation_id=evaluation_id)
+
+        service = local_image_evaluation_service()
+        return service.stage_view_evaluation(run_id, view, evaluation_id, stage_gates=stage,
+            collect_gates=collect, rank=rank,
+            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id, costume), view, record,
+                evaluation_id=evaluation_id), input_hashes=hashes)
+
+    def reconcile_review_jobs(self, run_id: str, costume: str = "") -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        run = self.detail(run_id, costume)
+        for view, evaluation in (run.get("evaluations") or {}).items():
+            if evaluation.get("status") not in {"RUNNING", "STAGING"}:
+                continue
+            evaluation_id = str(evaluation.get("evaluation_id") or "")
+            if not evaluation_id:
+                continue
+            candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                          and item["candidate_id"] in (evaluation.get("input_hashes") or {})]
+            local_image_evaluation_service().reconcile_review_jobs(run_id, view, evaluation_id,
+                stage_gates=lambda: [self._stage_candidate_gates(run_id, item["candidate_id"], costume)
+                                     for item in candidates],
+                collect_gates=lambda: [self._collect_candidate_gates(run_id, item["candidate_id"], costume, evaluation_id)
+                                       for item in candidates],
+                rank=lambda: self.rank_view(run_id, view, costume, evaluation_id=evaluation_id))
+        return self.detail(run_id, costume)
 
     def _queue_gate(self, run: dict[str, Any], candidate: dict[str, Any], gate: ReviewGate,
                     hashes: dict[str, str]) -> dict[str, Any]:
@@ -846,24 +987,13 @@ class LocalCharacterAssetPipelineService:
                                 self._wait_render(run_id, item["candidate_id"], costume)
                             except Exception as exc:
                                 self._update(run_id, item["candidate_id"], costume, status="FAILED", render_error=str(exc))
-                if not render_only:
-                    for view in [item for item in VIEWS if item in views]:
+                    if not render_only and not self.detail(run_id, costume).get("stop_requested"):
                         pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
                                    and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                    and Path(str(item.get("image_path") or "")).is_file()]
-                        for item in pending:
-                            if self.detail(run_id, costume).get("stop_requested"):
-                                break
-                            try:
-                                self.run_candidate_gates(run_id, item["candidate_id"], costume)
-                            except Exception as exc:
-                                self._update(run_id, item["candidate_id"], costume, status="WAITING_FOR_HUMAN_REVIEW",
-                                             review_error=str(exc))
-                        if not self.detail(run_id, costume).get("stop_requested"):
-                            try:
-                                self.rank_view(run_id, view, costume)
-                            except Exception as exc:
-                                self._run_update(run_id, costume, review_errors={view: str(exc)})
+                        if pending and not self.detail(run_id, costume).get("stop_requested"):
+                            self.stage_view_evaluation(run_id, view, costume,
+                                candidate_ids={item["candidate_id"] for item in pending})
                 latest = self.detail(run_id, costume)
                 selected = latest.get("selected_views") or {}
                 complete = all(selected.get(view) for view in VIEWS)
@@ -879,11 +1009,7 @@ class LocalCharacterAssetPipelineService:
 
     def _rank(self, run: dict[str, Any], view: str) -> dict[str, Any]:
         survivors = [item for item in run["candidates"] if item["view"] == view
-                     and item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                     and (not item.get("rejection_gate") or item.get("human_review", {}).get("decision") == "keep")
-                     and item.get("human_review", {}).get("decision") != "reject"
-                     and Path(str(item.get("image_path") or "")).is_file()
-                     and (item.get("human_review", {}).get("decision") == "keep" or self._candidate_gates_current(run, item))]
+                     and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         if self._costume_is_local_only(run) and survivors:
             ordered = sorted(survivors, key=lambda item: (int(item.get("ordinal") or 0), item["candidate_id"]))
@@ -898,7 +1024,7 @@ class LocalCharacterAssetPipelineService:
             item = survivors[0]
             ranking = {"status": "COMPLETE", "ordered_candidate_ids": [item["candidate_id"]],
                        "luna_ordered_candidate_ids": [item["candidate_id"]],
-                       "entries": [{"candidate_id": item["candidate_id"], "reason": "Only candidate survived the gates."}],
+                       "entries": [{"candidate_id": item["candidate_id"], "reason": "Only completed image in this view."}],
                        "input_hashes": hashes, "model": "deterministic-single-survivor", "recorded_at": self._now()}
         else:
             schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
@@ -907,7 +1033,7 @@ class LocalCharacterAssetPipelineService:
             with tempfile.TemporaryDirectory(prefix="zet_local_character_rank_") as temp:
                 schema_path, output_path = Path(temp) / "schema.json", Path(temp) / "ranking.json"
                 schema_path.write_text(json.dumps(schema), encoding="utf-8")
-                prompt = f"Rank these {self.definition['label']} candidates for {view}. Compare view accuracy, source preservation, identity, and usefulness as a reference. Candidate IDs: " + ", ".join(hashes)
+                prompt = f"Rank all rendered {self.definition['label']} images for {view}. Gates and human reviews are independent advice; assess every image on its visual merits. Compare view accuracy, source preservation, identity, and usefulness as a reference. Candidate IDs: " + ", ".join(hashes)
                 command = [shutil.which("codex") or "codex", "-a", "never", "-s", "read-only", "-m",
                            str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
                            "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
@@ -943,7 +1069,7 @@ class LocalCharacterAssetPipelineService:
         bracketed = re.fullmatch(r"\[(.*)\]", value)
         return (bracketed.group(1) if bracketed else value).strip().casefold() == "yes"
 
-    def rank_view(self, run_id: str, view: str, costume: str = "") -> dict[str, Any]:
+    def rank_view(self, run_id: str, view: str, costume: str = "", *, evaluation_id: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
         view = view.upper()
         if view not in VIEWS:
@@ -951,20 +1077,53 @@ class LocalCharacterAssetPipelineService:
         if view != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before ranking other views.")
         root, state = self._state(run_id, costume)
-        mutate_local_run_state(root, lambda current: current.setdefault("rankings", {}).update({
-            view: {"status": "RUNNING", "started_at": self._now()}
-        }))
+        current_evaluation = (run.get("evaluations") or {}).get(view) or {}
+        evaluation_id = evaluation_id or str(current_evaluation.get("evaluation_id") or "")
+        if evaluation_id and (current_evaluation.get("evaluation_id") != evaluation_id
+                              or current_evaluation.get("status") not in {"RUNNING", "STAGING"}):
+            return run
+        hashes_before = {item["candidate_id"]: self._hash(Path(item["image_path"]))
+                         for item in run["candidates"] if item.get("view") == view
+                         and Path(str(item.get("image_path") or "")).is_file()}
+        can_start = []
+        def mark_running(current: dict[str, Any]) -> None:
+            active = (current.get("evaluations") or {}).get(view) or {}
+            if evaluation_id and (active.get("evaluation_id") != evaluation_id
+                                  or active.get("status") not in {"RUNNING", "STAGING"}):
+                can_start.append(False)
+                return
+            current.setdefault("rankings", {}).update({
+                view: {"status": "RUNNING", "started_at": self._now(), "evaluation_id": evaluation_id,
+                       "input_hashes": hashes_before}
+            })
+            can_start.append(True)
+        mutate_local_run_state(root, mark_running)
+        if can_start and not can_start[-1]:
+            return run
         try:
             ranking = self._rank(run, view)
         except Exception as exc:
             ranking = {"status": "FAILED", "error": str(exc), "recorded_at": self._now()}
-        root, state = self._state(run_id, costume)
-        state.setdefault("rankings", {})[view] = ranking
-        self._write(root / "state.json", state)
+        def save(current: dict[str, Any]) -> None:
+            active = (current.get("evaluations") or {}).get(view) or {}
+            if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
+                return
+            hashes_now = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+                          for item in self.detail(run_id, costume)["candidates"] if item.get("view") == view
+                          and Path(str(item.get("image_path") or "")).is_file()}
+            if hashes_now != hashes_before:
+                return
+            ranking["evaluation_id"] = evaluation_id
+            current.setdefault("rankings", {})[view] = ranking
+            if evaluation_id:
+                active.update(ranking_status=ranking.get("status"), ranking_updated_at=self._now())
+                current.setdefault("evaluations", {})[view] = active
+        mutate_local_run_state(root, save)
         return self.detail(run_id, costume)
 
     def move_rank(self, run_id: str, view: str, candidate_id: str, direction: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
+        root = Path(run["root"])
         view = view.upper()
         ranking = dict((run.get("rankings") or {}).get(view) or {})
         ordered = list(ranking.get("ordered_candidate_ids") or [])
@@ -1010,6 +1169,8 @@ class LocalCharacterAssetPipelineService:
                 "retry_count": int(candidate.get("retry_count") or 0) + 1,
             }
         state.setdefault("rankings", {}).pop(view, None)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, {view}, "Candidates in this view are being re-run.")
         state["status"] = "QUEUED"
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
@@ -1022,6 +1183,8 @@ class LocalCharacterAssetPipelineService:
         if any(current != "FRONT" for current in views) and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before re-evaluating other views.")
         root, state = self._state(run_id, costume)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, views, "The view is being re-evaluated.")
         for candidate in run["candidates"]:
             if candidate["view"] in views and Path(str(candidate.get("image_path") or "")).is_file():
                 state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
@@ -1086,6 +1249,8 @@ class LocalCharacterAssetPipelineService:
             old_anchor = state.get("front_anchor")
             state["front_anchor"] = candidate_id
             if old_anchor != candidate_id and self._requires_front_anchor(run):
+                from zet.services.local_image_evaluation_service import supersede_evaluations
+                supersede_evaluations(state, set(VIEWS[1:]), "The selected FRONT anchor changed.")
                 state["views_started"] = True
                 for other in VIEWS[1:]:
                     ranking = state.setdefault("rankings", {}).get(other)
@@ -1123,6 +1288,9 @@ class LocalCharacterAssetPipelineService:
                 self.definition["asset_pipeline"], target, run_id, qualifier)
         if view == "FRONT":
             state["front_anchor"] = None
+            if self._requires_front_anchor(run):
+                from zet.services.local_image_evaluation_service import supersede_evaluations
+                supersede_evaluations(state, set(VIEWS[1:]), "The selected FRONT anchor changed.")
             for other in VIEWS[1:]:
                 ranking = state.setdefault("rankings", {}).get(other)
                 if ranking:
@@ -1268,21 +1436,21 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("Invalid candidate or human decision.")
         if not Path(str(candidate.get("image_path") or "")).is_file():
             raise LocalCharacterAssetPipelineError("Candidate image must be complete before human review.")
-        root, state = self._state(run_id, costume)
         previous_decision = str((candidate.get("human_review") or {}).get("decision") or "undecided")
-        if previous_decision != decision and (
-            previous_decision == "reject" or decision == "reject" or candidate.get("rejection_gate")
-        ):
-            ranking = state.setdefault("rankings", {}).get(candidate["view"])
-            if ranking and ranking.get("status") == "COMPLETE":
-                ranking = dict(ranking)
-                ranking["status"] = "STALE"
-                ranking["stale_reason"] = "Human review changed the ranked survivor set. Re-rank this view."
-                state["rankings"][candidate["view"]] = ranking
-        self._write(root / "state.json", state)
-        self._update(run_id, candidate_id, costume,
-                     human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
-                     status=candidate.get("status"))
+        root = Path(run["root"])
+        def apply(state: dict[str, Any]) -> None:
+            if previous_decision != decision and (
+                previous_decision == "reject" or decision == "reject" or candidate.get("rejection_gate")
+            ):
+                ranking = state.setdefault("rankings", {}).get(candidate["view"])
+                if ranking and ranking.get("status") == "COMPLETE":
+                    ranking.update(status="STALE", stale_reason="Human review changed. Re-rank this view.")
+            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
+                human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
+                status=candidate.get("status"),
+            )
+            state["updated_at"] = self._now()
+        mutate_local_run_state(root, apply)
         return self.detail(run_id, costume)
 
     def retry_candidate(self, run_id: str, candidate_id: str, costume: str = "") -> dict[str, Any]:
@@ -1293,6 +1461,10 @@ class LocalCharacterAssetPipelineService:
         if candidate["view"] != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before retrying other views.")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.definition["asset_pipeline"], candidate["view"], self._qualifier(costume))
+        root, state = self._state(run_id, costume)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, {str(candidate["view"])}, "A candidate in this view is being retried.")
+        self._write(root / "state.json", state)
         from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
         root = Path(run["root"])
         clear_candidate_artifacts(root, candidate_id, candidate.get("image_path"))
@@ -1319,6 +1491,8 @@ class LocalCharacterAssetPipelineService:
         else:
             self._verify_snapshot_view(run, view)
         root, state = self._state(run_id, costume)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, {view}, "A view or its inputs are being re-run.")
         for candidate in [item for item in run["candidates"] if item["view"] == view]:
             from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
@@ -1355,6 +1529,8 @@ class LocalCharacterAssetPipelineService:
                 if view in (run.get("sources") or {}):
                     self._verify_snapshot_view(run, view)
         root, state = self._state(run_id, costume)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, set(VIEWS), "The run is being restarted.")
         if refresh_sources:
             for view, sources in fresh_sources.items():
                 self._snapshot_view_inputs(run, view, sources)
@@ -1402,8 +1578,8 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("A FRONT selection is required for other views.")
         if candidate_id:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-            if not anchor or not front_anchor_approved(anchor):
-                raise LocalCharacterAssetPipelineError("Review and pass the FRONT candidate before continuing.")
+            if not anchor or not Path(str(anchor.get("image_path") or "")).is_file():
+                raise LocalCharacterAssetPipelineError("The selected FRONT image is unavailable.")
             if run.get("front_anchor") != candidate_id:
                 raise LocalCharacterAssetPipelineError("The selected FRONT candidate is not the current anchor.")
         if run.get("status") in ACTIVE_RUN_STATUSES:
@@ -1503,7 +1679,11 @@ class LocalCharacterAssetPipelineService:
         return definition.prompt
 
     def request_stop(self, run_id: str, costume: str = "") -> dict[str, Any]:
-        self._run_update(run_id, costume, status="CANCELLED", stop_requested=True)
+        root, state = self._state(run_id, costume)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
+        state.update(status="CANCELLED", stop_requested=True)
+        self._write(root / "state.json", state)
         self._withdraw_queued_asks(run_id, costume)
         return self.detail(run_id, costume)
 

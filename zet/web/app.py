@@ -2736,9 +2736,14 @@ def create_app(
     @app.post("/api/local/head-image/runs/{run_id}/views/{view}/selection")
     def select_local_head_image_view(run_id: str, view: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
-            return LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).select_view(
-                run_id, view, str(payload.get("candidate_id") or "")
+            selected_id = str(payload.get("candidate_id") or "")
+            result = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT).select_view(
+                run_id, view, selected_id
             )
+            if view.upper() == "FRONT" and selected_id:
+                from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
+                LocalRunAllRemainingService(_app(app.state.config_path), PROJECT_ROOT).front_selection_changed("head-image", run_id)
+            return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2746,8 +2751,7 @@ def create_app(
     def rank_local_head_image_view(run_id: str, view: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
-            queued = service.queue_view_ranking(run_id, view)
-            submit_local_pipeline_task(service.rank_view, run_id, view)
+            queued = service.stage_view_evaluation(run_id, view)
             return queued
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2998,7 +3002,12 @@ def create_app(
     ) -> dict[str, Any]:
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
-            return service.select_view(run_id, view, str(payload.get("candidate_id") or ""))
+            selected_id = str(payload.get("candidate_id") or "")
+            result = service.select_view(run_id, view, selected_id)
+            if view.upper() == "FRONT" and selected_id:
+                from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
+                LocalRunAllRemainingService(_app(app.state.config_path), PROJECT_ROOT).front_selection_changed("body-reference", run_id)
+            return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -3022,8 +3031,7 @@ def create_app(
     ) -> dict[str, Any]:
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
-            queued = service.queue_view_ranking(run_id, view)
-            submit_local_pipeline_task(service.rank_view, run_id, view)
+            queued = service.stage_view_evaluation(run_id, view)
             return queued
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

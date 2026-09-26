@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 from typing import Any
+from uuid import uuid4
 
 from PIL import Image
 
@@ -584,7 +585,7 @@ class LocalHeadImageService:
             raise LocalHeadImageError(f"{gate_key} gate returned an invalid verdict.")
         return match.group(1).upper(), (match.group(2) or "").strip()
 
-    def run_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
+    def _stage_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
         run = self.detail(run_id)
         candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
         image = Path(str(candidate.get("image_path") or ""))
@@ -613,35 +614,78 @@ class LocalHeadImageService:
                 continue
             if (current.get("policy_status") == policy and current.get("status") == "COMPLETE"
                     and current.get("input_hashes") == hashes and current.get("prompt_sha256") == prompt_hash
-                    and (current.get("verdict") == "FALSE" or policy == "Warning")):
-                verdict, reason = current["verdict"], current.get("reason", "")
-            else:
-                try:
-                    current = self._queue_gate(run_id, candidate, definition)
-                    current["policy_status"] = policy
-                    gates[definition.key] = current
-                    self._update(run_id, candidate_id, status="WAITING_FOR_GATES", gates=gates)
-                    verdict, reason = self._wait_gate(run_id, candidate_id, definition.key)
-                    current.update(status="COMPLETE", verdict=verdict, reason=reason,
-                                   policy_status=policy, completed_at=self._now())
-                    gates[definition.key] = current
-                    self._update(run_id, candidate_id, gates=gates)
-                except Exception as exc:
-                    current.update(status="FAILED", policy_status=policy, input_hashes=hashes,
-                                   prompt_sha256=prompt_hash, error=str(exc))
-                    gates[definition.key] = current
-                    if policy == "Warning":
-                        self._update(run_id, candidate_id, gates=gates)
-                        continue
-                    self._update(run_id, candidate_id, status="FAILED", failed_gate=definition.key, gates=gates)
-                    return False
-            if verdict == "TRUE" and policy == "Active":
-                self._update(run_id, candidate_id, status="GATE_REJECTED", rejection_gate=definition.key,
-                             gates=gates, completed_at=self._now())
-                return True
-        self._update(run_id, candidate_id, status="WAITING_FOR_HUMAN_REVIEW", gates=gates,
-                     image_sha256=self._hash(image))
+                    ):
+                current["evaluation_id"] = str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or "")
+                gates[definition.key] = current
+                self._update(run_id, candidate_id, gates=gates)
+                continue
+            if (current.get("policy_status") == policy and current.get("status") in {"QUEUED", "RUNNING"}
+                    and current.get("input_hashes") == hashes and current.get("prompt_sha256") == prompt_hash):
+                current["evaluation_id"] = str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or "")
+                gates[definition.key] = current
+                self._update(run_id, candidate_id, gates=gates)
+                continue
+            try:
+                current = self._queue_gate(run_id, candidate, definition)
+                current.update(policy_status=policy, evaluation_id=str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or ""))
+                gates[definition.key] = current
+                self._update(run_id, candidate_id, status="WAITING_FOR_GATES", gates=gates)
+            except Exception as exc:
+                gates[definition.key] = {"status": "FAILED", "policy_status": policy,
+                    "input_hashes": hashes, "prompt_sha256": prompt_hash, "error": str(exc)}
+                self._update(run_id, candidate_id, gates=gates)
         return True
+
+    def _collect_candidate_gates(self, run_id: str, candidate_id: str, evaluation_id: str = "") -> bool:
+        run = self.detail(run_id)
+        candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
+        if not candidate:
+            return False
+        view = candidate["view"]
+        image = Path(str(candidate.get("image_path") or ""))
+        if evaluation_id:
+            evaluation = (run.get("evaluations") or {}).get(view, {})
+            if evaluation.get("evaluation_id") != evaluation_id or evaluation.get("status") not in {"RUNNING", "STAGING"}:
+                return False
+            if not image.is_file() or evaluation.get("input_hashes", {}).get(candidate_id) != self._hash(image):
+                return False
+        gates = dict(candidate.get("gates") or {})
+        for definition in self.review_gates(view, has_front_source=bool(run.get("front_source"))):
+            record = dict(gates.get(definition.key) or {})
+            if record.get("status") in {"COMPLETE", "DISABLED", "FAILED"} or not record.get("ask_id"):
+                continue
+            if self.detail(run_id).get("stop_requested"):
+                return False
+            try:
+                verdict, reason = self._wait_gate(run_id, candidate_id, definition.key)
+                record.update(status="COMPLETE", verdict=verdict, reason=reason, completed_at=self._now())
+            except Exception as exc:
+                record.update(status="FAILED", error=str(exc), failed_at=self._now())
+            if evaluation_id:
+                latest_run = self.detail(run_id)
+                active = (latest_run.get("evaluations") or {}).get(view, {})
+                if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}:
+                    return False
+                latest_candidate = next(item for item in latest_run["candidates"] if item["candidate_id"] == candidate_id)
+                gates = dict(latest_candidate.get("gates") or {})
+            gates[definition.key] = record
+            self._update(run_id, candidate_id, gates=gates)
+        if evaluation_id:
+            latest_run = self.detail(run_id)
+            active = (latest_run.get("evaluations") or {}).get(view, {})
+            if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}:
+                return False
+        latest = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
+        rejection = next((gate.key for gate in self.review_gates(view, has_front_source=bool(run.get("front_source")))
+            if (latest.get("gates") or {}).get(gate.key, {}).get("verdict") == "TRUE"
+            and (latest.get("gates") or {}).get(gate.key, {}).get("policy_status") == "Active"), "")
+        self._update(run_id, candidate_id, status="GATE_REJECTED" if rejection else "WAITING_FOR_HUMAN_REVIEW",
+                     rejection_gate=rejection, image_sha256=self._hash(image), review_error="")
+        return True
+
+    def run_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
+        self._stage_candidate_gates(run_id, candidate_id)
+        return self._collect_candidate_gates(run_id, candidate_id)
 
     def execute_run(self, run_id: str, *, views: set[str] | None = None, candidate_ids: set[str] | None = None,
                     render_only: bool = False) -> None:
@@ -700,46 +744,26 @@ class LocalHeadImageService:
                     if self.detail(run_id).get("stop_requested"):
                         break
 
+                    if not render_only:
+                        completed_view = [item for item in self.detail(run_id)["candidates"] if item["view"] == view
+                                          and (candidate_ids is None or item["candidate_id"] in candidate_ids)
+                                          and Path(str(item.get("image_path") or "")).is_file()]
+                        if completed_view and not self.detail(run_id).get("stop_requested"):
+                            self.stage_view_evaluation(run_id, view,
+                                candidate_ids={item["candidate_id"] for item in completed_view})
+
                 if render_only:
                     latest = self.detail(run_id)
                     status = "CANCELLED" if latest.get("stop_requested") else (
                         "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "AWAITING_HUMAN_SELECTION")
                     self._run_update(run_id, status=status, target_views=[])
                     return
-                for view in selected_views:
-                    view_candidates = [item for item in self.detail(run_id)["candidates"] if item["view"] == view
-                                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
-                                       and Path(str(item.get("image_path") or "")).is_file()]
-                    # Review runs after rendering has advanced through every runnable view.
-                    for candidate in view_candidates:
-                        if self.detail(run_id).get("stop_requested"):
-                            break
-                        candidate_id = candidate["candidate_id"]
-                        current = next(item for item in self.detail(run_id)["candidates"]
-                                       if item["candidate_id"] == candidate_id)
-                        if (current.get("status") not in {"PENDING", "FAILED", "QUEUED", "RUNNING", "WAITING_FOR_GATES",
-                                                          "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                                or not Path(str(current.get("image_path") or "")).is_file()):
-                            continue
-                        try:
-                            self.run_candidate_gates(run_id, candidate_id)
-                        except Exception as exc:
-                            self._update(run_id, candidate_id, status="WAITING_FOR_HUMAN_REVIEW", review_error=str(exc))
-
-                    if self.detail(run_id).get("stop_requested"):
-                        break
-                    try:
-                        self.rank_view(run_id, view)
-                    except Exception as exc:
-                        current = self.detail(run_id).get("review_errors") or {}
-                        current[view] = str(exc)
-                        self._run_update(run_id, review_errors=current)
                 latest = self.detail(run_id)
                 waiting_anchor = not latest.get("front_anchor")
                 selected_views = latest.get("selected_views") or {}
                 complete = all(selected_views.get(view) and any(
                     item["candidate_id"] == selected_views[view] and item["view"] == view
-                    and item.get("status") == "COMPLETE" and self._candidate_gates_current(latest, item)
+                    and Path(str(item.get("image_path") or "")).is_file()
                     for item in latest["candidates"]
                 ) for view in VIEWS)
                 self._run_update(run_id, status=("CANCELLED" if latest.get("stop_requested") else
@@ -828,17 +852,111 @@ class LocalHeadImageService:
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
-    def rank_view(self, run_id: str, view: str) -> dict[str, Any]:
+    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None) -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        view = str(view or "").upper()
+        run = self.detail(run_id)
+        candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                      and (candidate_ids is None or item["candidate_id"] in candidate_ids)
+                      and Path(str(item.get("image_path") or "")).is_file()]
+        evaluation_id = uuid4().hex
+        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in candidates}
+        previous = (run.get("evaluations") or {}).get(view) or {}
+        if previous.get("status") in {"STAGING", "RUNNING"} and previous.get("input_hashes") == hashes:
+            self.reconcile_review_jobs(run_id)
+            return previous
+        from zet.services.local_image_evaluation_service import update_view_evaluation
+        update_view_evaluation(self._run_root(run_id), view, {
+            "evaluation_id": evaluation_id, "status": "STAGING", "input_hashes": hashes,
+            "started_at": self._now(),
+        })
+
+        def stage() -> None:
+            for item in candidates:
+                if self.detail(run_id).get("stop_requested"):
+                    return
+                try:
+                    self._stage_candidate_gates(run_id, item["candidate_id"])
+                except Exception as exc:
+                    self._update(run_id, item["candidate_id"], review_error=str(exc))
+
+        def collect() -> None:
+            current = self.detail(run_id)
+            if (current.get("evaluations") or {}).get(view, {}).get("evaluation_id") == evaluation_id and \
+                    current["evaluations"][view].get("gates_status") == "COMPLETE":
+                return
+            for item in candidates:
+                if self.detail(run_id).get("stop_requested"):
+                    return
+                self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
+            current = self.detail(run_id)
+            if (current.get("evaluations") or {}).get(view, {}).get("evaluation_id") == evaluation_id:
+                evaluation = dict(current["evaluations"][view])
+                evaluation["status"] = "COMPLETE" if evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY"} else "RUNNING"
+                update_view_evaluation(self._run_root(run_id), view,
+                    {**evaluation, "gates_status": "COMPLETE", "updated_at": self._now()},
+                    evaluation_id=evaluation_id)
+
+        def rank() -> None:
+            current = self.detail(run_id)
+            if current.get("stop_requested"):
+                return
+            evaluation = (current.get("evaluations") or {}).get(view) or {}
+            if evaluation.get("evaluation_id") == evaluation_id and evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY"}:
+                return
+            self.rank_view(run_id, view, evaluation_id=evaluation_id)
+            current = self.detail(run_id)
+            evaluation = dict((current.get("evaluations") or {}).get(view) or {})
+            if evaluation.get("evaluation_id") == evaluation_id and evaluation.get("gates_status") == "COMPLETE":
+                evaluation["status"] = "COMPLETE"
+                update_view_evaluation(self._run_root(run_id), view, evaluation, evaluation_id=evaluation_id)
+
+        return local_image_evaluation_service().stage_view_evaluation(run_id, view, evaluation_id,
+            stage_gates=stage, collect_gates=collect, rank=rank,
+            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id), view, record,
+                evaluation_id=evaluation_id), input_hashes=hashes)
+
+    def reconcile_review_jobs(self, run_id: str) -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        run = self.detail(run_id)
+        for view, evaluation in (run.get("evaluations") or {}).items():
+            if evaluation.get("status") not in {"RUNNING", "STAGING"}:
+                continue
+            evaluation_id = str(evaluation.get("evaluation_id") or "")
+            if not evaluation_id:
+                continue
+            candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                          and item["candidate_id"] in (evaluation.get("input_hashes") or {})]
+            local_image_evaluation_service().reconcile_review_jobs(run_id, view, evaluation_id,
+                stage_gates=lambda: [self._stage_candidate_gates(run_id, item["candidate_id"])
+                                     for item in candidates],
+                collect_gates=lambda: [self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
+                                       for item in candidates],
+                rank=lambda: self.rank_view(run_id, view, evaluation_id=evaluation_id))
+        return self.detail(run_id)
+
+    def rank_view(self, run_id: str, view: str, *, evaluation_id: str = "") -> dict[str, Any]:
         try:
-            return self._rank_view(run_id, view)
+            return self._rank_view(run_id, view, evaluation_id=evaluation_id)
         except Exception as exc:
             root = self._run_root(run_id)
-            mutate_local_run_state(root, lambda state: state.setdefault("rankings", {}).update({
-                str(view or "").upper(): {"status": "FAILED", "error": str(exc), "recorded_at": self._now()}
-            }))
+            def fail(state: dict[str, Any]) -> None:
+                key = str(view or "").upper()
+                evaluation = (state.get("evaluations") or {}).get(key, {})
+                if evaluation_id and (evaluation.get("evaluation_id") != evaluation_id or evaluation.get("status") not in {"RUNNING", "STAGING"}):
+                    return
+                state.setdefault("rankings", {}).update({key: {"status": "FAILED", "evaluation_id": evaluation_id,
+                    "error": str(exc), "recorded_at": self._now()}})
+                if evaluation_id:
+                    evaluation = dict(evaluation)
+                    evaluation.update(ranking_status="FAILED", ranking_updated_at=self._now())
+                    if evaluation.get("gates_status") == "COMPLETE":
+                        evaluation["status"] = "COMPLETE"
+                    state.setdefault("evaluations", {})[key] = evaluation
+            mutate_local_run_state(root, fail)
             return self.detail(run_id)
 
-    def _rank_view(self, run_id: str, view: str) -> dict[str, Any]:
+    def _rank_view(self, run_id: str, view: str, *, evaluation_id: str = "") -> dict[str, Any]:
         run = self.detail(run_id)
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
@@ -847,44 +965,24 @@ class LocalHeadImageService:
         anchor_path = Path(str((anchor or {}).get("image_path") or ""))
         if view != FRONT and not anchor_path.is_file():
             raise LocalHeadImageError("Select a FRONT anchor before ranking other views.")
+        evaluation_id = evaluation_id or str((run.get("evaluations") or {}).get(view, {}).get("evaluation_id") or "")
+        active = (run.get("evaluations") or {}).get(view) or {}
+        if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
+            return run
         survivors = [item for item in run["candidates"] if item["view"] == view
-                     and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                          or item.get("human_review", {}).get("decision") == "keep")
-                     and (not item.get("rejection_gate") or item.get("human_review", {}).get("decision") == "keep")
-                     and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
+        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         if not survivors:
             anchor_hash = self._hash(anchor_path) if view != FRONT and anchor_path.is_file() else ""
             ranking = {
                 "status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [],
                 "input_hashes": {}, "anchor_hash": anchor_hash, "model": "", "recorded_at": self._now(),
             }
-            mutate_local_run_state(self._run_root(run_id),
-                                   lambda state: state.setdefault("rankings", {}).update({view: ranking}))
+            self._save_ranking_result(run_id, view, evaluation_id, hashes, ranking)
             return self.detail(run_id)
-        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         anchor_hash = self._hash(anchor_path) if view != FRONT else ""
-        from zet.services.local_gate_registry_service import LocalGateRegistryService
-        registry = LocalGateRegistryService(self.app, self.project_root)
-        for candidate in survivors:
-            expected = {"candidate": hashes[candidate["candidate_id"]], "front_anchor": ""}
-            definitions = self.review_gates(candidate["view"], has_front_source=bool(run.get("front_source")))
-            for definition in definitions:
-                if candidate.get("human_review", {}).get("decision") == "keep":
-                    continue
-                if definition.uses_anchor:
-                    expected["front_anchor"] = anchor_hash
-                if definition.key == "source_identity":
-                    expected["front_source"] = run.get("front_source_sha256", "")
-                gate = (candidate.get("gates") or {}).get(definition.key) or {}
-                prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
-                if not gate_result_is_current(
-                    gate, input_hashes=expected, prompt_sha256=prompt_hash,
-                    policy_status=registry.status("head-image", definition.key),
-                ):
-                    raise LocalHeadImageError(f"{candidate['candidate_id']} has missing or stale {definition.key} gates; re-evaluate this view.")
         if len(survivors) == 1:
-            entries = [{"candidate_id": survivors[0]["candidate_id"], "reason": "Only candidate survived the gates."}]
+            entries = [{"candidate_id": survivors[0]["candidate_id"], "reason": "Only completed image in this view."}]
             model = "deterministic-single-survivor"
         else:
             schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
@@ -896,9 +994,8 @@ class LocalHeadImageService:
             os.close(output_fd)
             schema_file, output_file = Path(schema_name), Path(output_name)
             schema_file.write_text(json.dumps(schema), encoding="utf-8")
-            prompt = (f"Rank these head-image candidates for {view}. Compare orientation, clear identity, complete head and hair silhouette, "
-                      "character details, and usefulness as a reference. All supplied candidates passed narrow rejection gates. "
-                      "Return each candidate once with a concise reason. Candidate IDs: "
+            prompt = (f"Rank all rendered head-image candidates for {view}. Gates and human reviews are independent advice; assess every image on its visual merits. Compare orientation, clear identity, complete head and hair silhouette, "
+                      "character details, and usefulness as a reference. Return each candidate once with a concise reason. Candidate IDs: "
                       + ", ".join(item["candidate_id"] for item in survivors))
             executable = shutil.which("codex")
             if not executable and os.name == "nt" and os.environ.get("LOCALAPPDATA"):
@@ -925,13 +1022,31 @@ class LocalHeadImageService:
             finally:
                 schema_file.unlink(missing_ok=True)
                 output_file.unlink(missing_ok=True)
-        ranking = {"status": "COMPLETE",
+        ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
             "ordered_candidate_ids": [item["candidate_id"] for item in entries],
             "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
             "input_hashes": hashes, "anchor_hash": anchor_hash, "model": model, "recorded_at": self._now()}
-        mutate_local_run_state(self._run_root(run_id),
-                               lambda state: state.setdefault("rankings", {}).update({view: ranking}))
+        self._save_ranking_result(run_id, view, evaluation_id, hashes, ranking)
         return self.detail(run_id)
+
+    def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,
+                             input_hashes: dict[str, str], ranking: dict[str, Any]) -> None:
+        def save(state: dict[str, Any]) -> None:
+            active = (state.get("evaluations") or {}).get(view) or {}
+            if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
+                return
+            run = self.detail(run_id)
+            current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+                for item in run.get("candidates") or [] if item.get("view") == view
+                and Path(str(item.get("image_path") or "")).is_file()}
+            if current_hashes != input_hashes:
+                return
+            ranking["evaluation_id"] = evaluation_id
+            state.setdefault("rankings", {})[view] = ranking
+            if evaluation_id:
+                active.update(ranking_status=ranking.get("status"), ranking_updated_at=self._now())
+                state.setdefault("evaluations", {})[view] = active
+        mutate_local_run_state(self._run_root(run_id), save)
 
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
@@ -1110,6 +1225,8 @@ class LocalHeadImageService:
 
     def _mark_downstream_review_stale(self, run: dict[str, Any], state: dict[str, Any]) -> None:
         """Preserve downstream renders when a human changes the FRONT choice."""
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, set(VIEWS) - {FRONT}, "The selected FRONT anchor changed.")
         for view in VIEWS[1:]:
             ranking = state.setdefault("rankings", {}).get(view)
             if ranking:
@@ -1214,6 +1331,8 @@ class LocalHeadImageService:
         for affected in affected_views:
             state.setdefault("rankings", {}).pop(affected, None)
             state.setdefault("selected_views", {}).pop(affected, None)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, affected_views, "A view or its inputs are being re-run.")
         if view == FRONT:
             state["front_anchor"] = None
         state.update(status="RUNNING", stop_requested=False, error="")
@@ -1236,6 +1355,8 @@ class LocalHeadImageService:
         self._clear_owned_selection(run, view)
         state.setdefault("rankings", {}).pop(view, None)
         state.setdefault("selected_views", {}).pop(view, None)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, {view}, "Candidates in this view are being re-run.")
         for item in candidates:
             clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
             state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
@@ -1254,6 +1375,8 @@ class LocalHeadImageService:
                 raise LocalHeadImageError(f"Unknown view: {target}")
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", target)
         root, state = self._state(run_id)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, set(targets), "The view is being re-evaluated.")
         for target in targets:
             self._clear_owned_selection(run, target)
             state.setdefault("selected_views", {}).pop(target, None)
@@ -1279,6 +1402,10 @@ class LocalHeadImageService:
         if not candidate:
             raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
+        root, state = self._state(run_id)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, {str(candidate["view"])}, "A candidate in this view is being retried.")
+        self._write(root / "state.json", state)
         image = Path(str(candidate.get("image_path") or ""))
         if candidate.get("failed_gate") and image.is_file():
             gates = dict(candidate.get("gates") or {})
@@ -1313,7 +1440,11 @@ class LocalHeadImageService:
         return self.detail(run_id)
 
     def request_stop(self, run_id: str) -> dict[str, Any]:
-        self._run_update(run_id, stop_requested=True, status="CANCELLED")
+        root, state = self._state(run_id)
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
+        state.update(stop_requested=True, status="CANCELLED")
+        self._write(root / "state.json", state)
         self._withdraw_queued_asks(run_id)
         return self.detail(run_id)
 

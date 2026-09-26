@@ -97,6 +97,24 @@ class LocalRunAllRemainingServiceTests(unittest.TestCase):
             self.assertEqual("RECOVERING", recovered["status"])
             self.assertEqual("QUEUED", recovered["batches"][0]["result"])
 
+    def test_front_selection_during_advisory_review_is_recorded_for_batch_resume(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root)))
+            service = LocalRunAllRemainingService(app, root)
+            campaign_id = "c" * 32
+            service.root.mkdir(parents=True)
+            campaign_path = service._campaign_path(campaign_id)
+            campaign_path.parent.mkdir(parents=True)
+            campaign_path.write_text(json.dumps({"campaign_id": campaign_id, "status": "RUNNING", "batches": [
+                {"pipeline": "body-reference", "run_id": "run-1", "result": "REVIEW_PENDING"}
+            ]}), encoding="utf-8")
+            service.active_path.write_text(json.dumps({"campaign_id": campaign_id}), encoding="utf-8")
+
+            service.front_selection_changed("body-reference", "run-1")
+
+            self.assertTrue(service.status(campaign_id)["batches"][0]["front_selection_ready"])
+
     def test_proxy_failure_does_not_retry_or_block_other_candidates_in_batch(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

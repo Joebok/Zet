@@ -68,6 +68,8 @@ class LocalRunAllRemainingService:
         batches: list[dict[str, Any]] = []
         for pipeline in PIPELINES:
             adapter = self._adapter(pipeline)
+            if not hasattr(adapter, "list_runs"):
+                continue
             for summary in adapter.list_runs():
                 run_id = str(summary.get("run_id") or "")
                 if not run_id:
@@ -139,6 +141,21 @@ class LocalRunAllRemainingService:
         return campaign
 
     def recover(self) -> None:
+        # Review asks and Luna rankings have their own persisted lifecycle and
+        # must resume independently of a batch render runner after restart.
+        for pipeline in PIPELINES:
+            adapter = self._adapter(pipeline)
+            if not hasattr(adapter, "list_runs"):
+                continue
+            for summary in adapter.list_runs():
+                run_id = str(summary.get("run_id") or "")
+                if not run_id:
+                    continue
+                kwargs = {"costume": summary.get("costume") or ""} if pipeline in {"character-assembly", "costume-dressing"} else {}
+                try:
+                    adapter.reconcile_review_jobs(run_id, **kwargs)
+                except Exception:
+                    continue
         active_id = str(self._read(self.active_path).get("campaign_id") or "")
         if not active_id:
             return
@@ -160,6 +177,25 @@ class LocalRunAllRemainingService:
             self._update(active_id, lambda item: item.update(status="RECOVERING"))
             self._launch(active_id)
 
+    def front_selection_changed(self, pipeline: str, run_id: str, costume: str = "") -> None:
+        """Wake a campaign batch that was waiting for its required FRONT choice."""
+        active_id = str(self._read(self.active_path).get("campaign_id") or "")
+        if not active_id:
+            return
+        campaign = self._read(self._campaign_path(active_id))
+        batches = campaign.get("batches") or []
+        for index, job in enumerate(batches):
+            if (job.get("pipeline") == pipeline and job.get("run_id") == run_id
+                    and (not costume or job.get("costume") == costume)
+                    and job.get("result") in {"WAITING_FOR_SELECTION", "REVIEW_PENDING"}):
+                if job.get("result") == "REVIEW_PENDING":
+                    self._set_batch(active_id, index, front_selection_ready=True)
+                    return
+                self._set_batch(active_id, index, result="QUEUED", message="FRONT selection is ready.")
+                self._update(active_id, lambda item: item.update(status="RUNNING"))
+                self._launch(active_id)
+                return
+
     def _run(self, campaign_id: str) -> None:
         try:
             self._update(campaign_id, lambda item: item.update(status="RUNNING", started_at=item.get("started_at") or self._now()))
@@ -167,7 +203,7 @@ class LocalRunAllRemainingService:
             jobs = list(campaign.get("batches") or [])
             futures = {}
             for index, job in enumerate(jobs):
-                if job.get("result") in {"COMPLETE", "WAITING_FOR_SELECTION", "WAITING_FOR_REFERENCE"}:
+                if job.get("result") in {"COMPLETE", "WAITING_FOR_REFERENCE"}:
                     continue
                 future = _RENDER_POOL.submit(self._run_batch, campaign_id, index, dict(job))
                 futures[future] = index
@@ -197,6 +233,11 @@ class LocalRunAllRemainingService:
         finally:
             with _ACTIVE_LOCK:
                 _ACTIVE.discard(campaign_id)
+            campaign = self._read(self._campaign_path(campaign_id))
+            if (campaign.get("status") not in {"FAILED", "CANCELLED"}
+                    and any(item.get("result") == "QUEUED" for item in campaign.get("batches") or [])):
+                self._update(campaign_id, lambda item: item.update(status="RUNNING"))
+                self._launch(campaign_id)
 
     def _set_batch(self, campaign_id: str, index: int, **changes: Any) -> None:
         def apply(campaign: dict[str, Any]) -> None:
@@ -225,7 +266,7 @@ class LocalRunAllRemainingService:
             image = Path(str(candidate.get("image_path") or ""))
             if not image.is_file() or image.stat().st_size <= 0:
                 missing_views.add(str(candidate.get("view") or ""))
-        needs_anchor = pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor", False))
+        needs_anchor = pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor", True))
         if not run.get("front_anchor") and needs_anchor:
             missing_views.intersection_update({"FRONT"})
             if not missing_views:
@@ -293,9 +334,20 @@ class LocalRunAllRemainingService:
         candidate_ids = {str(item["candidate_id"]) for item in run.get("candidates") or []
                          if item.get("view") in selected_views and item.get("candidate_id") not in blocked_candidate_ids
                          and not Path(str(item.get("image_path") or "")).is_file()}
-        if candidate_ids:
-            adapter.execute_run(run_id, views=selected_views, candidate_ids=candidate_ids,
-                                render_only=True, **kwargs)
+        for view in (item for item in run.get("views") or [] if item in selected_views):
+            view_candidate_ids = {str(item["candidate_id"]) for item in run.get("candidates") or []
+                                  if item.get("view") == view and item.get("candidate_id") in candidate_ids}
+            if view_candidate_ids:
+                adapter.execute_run(run_id, views={view}, candidate_ids=view_candidate_ids,
+                                    render_only=True, **kwargs)
+            refreshed_view = adapter.detail(run_id, **kwargs)
+            if hasattr(adapter, "stage_view_evaluation") and any(
+                   item.get("view") == view and Path(str(item.get("image_path") or "")).is_file()
+                   for item in refreshed_view.get("candidates") or []):
+                if pipeline in {"character-assembly", "costume-dressing"}:
+                    adapter.stage_view_evaluation(run_id, view, kwargs["costume"])
+                else:
+                    adapter.stage_view_evaluation(run_id, view)
         refreshed = adapter.detail(run_id, **kwargs)
         remaining = sum(not Path(str(item.get("image_path") or "")).is_file()
                         for item in refreshed.get("candidates") or [])
@@ -329,16 +381,22 @@ class LocalRunAllRemainingService:
         run = adapter.detail(run_id, **kwargs)
         views = {str(item.get("view")) for item in run.get("candidates") or []
                  if Path(str(item.get("image_path") or "")).is_file()}
-        if not run.get("front_anchor") and (pipeline in {"body-reference", "head-image"} or run.get("use_front_anchor")):
+        if not run.get("front_anchor") and (pipeline in {"body-reference", "head-image"} or run.get("use_front_anchor", True)):
             views.intersection_update({"FRONT"})
         self._set_batch(campaign_id, index, review_status="RUNNING")
         try:
-            if pipeline in {"character-assembly", "costume-dressing"}:
-                adapter.execute_run(run_id, views=views, render_only=False, **kwargs)
-            elif pipeline == "head-image":
-                adapter.execute_run(run_id, views=views, render_only=False)
-            else:
-                adapter.execute_run(run_id, views=views, render_only=False)
+            for view in views:
+                hashes = {str(item["candidate_id"]): adapter._hash(Path(str(item["image_path"])))
+                          for item in run.get("candidates") or [] if item.get("view") == view
+                          and Path(str(item.get("image_path") or "")).is_file()}
+                evaluation = (run.get("evaluations") or {}).get(view) or {}
+                if evaluation.get("input_hashes") == hashes and evaluation.get("status") in {"RUNNING", "STAGING"}:
+                    adapter.reconcile_review_jobs(run_id, **kwargs)
+                elif not (evaluation.get("input_hashes") == hashes and evaluation.get("status") == "COMPLETE"):
+                    if pipeline in {"character-assembly", "costume-dressing"}:
+                        adapter.stage_view_evaluation(run_id, view, kwargs["costume"])
+                    else:
+                        adapter.stage_view_evaluation(run_id, view)
         except Exception:
             # Advisory review failures remain visible in batch review status.
             pass
@@ -352,6 +410,20 @@ class LocalRunAllRemainingService:
             for item in refreshed.get("candidates") or []) or any(
                 ranking.get("status") == "FAILED" for ranking in (refreshed.get("rankings") or {}).values())
         result = "WAITING_FOR_SELECTION" if unselected or remaining else "COMPLETE"
-        self._set_batch(campaign_id, index, result=result, review_status="FAILED" if review_errors else "COMPLETE",
-                        images_remaining=remaining, images_complete=len(refreshed.get("candidates") or []) - remaining,
-                        review_error="One or more advisory gates or rankings need re-evaluation." if review_errors else "")
+        needs_anchor = pipeline in {"body-reference", "head-image"} or bool(refreshed.get("use_front_anchor", True))
+        later_views_missing = bool(refreshed.get("front_anchor")) and any(
+            item.get("view") != "FRONT" and not Path(str(item.get("image_path") or "")).is_file()
+            for item in refreshed.get("candidates") or [])
+        def finish(campaign: dict[str, Any]) -> None:
+            batches = campaign.setdefault("batches", [])
+            if not 0 <= index < len(batches):
+                return
+            batch = batches[index]
+            batch.pop("front_selection_ready", None)
+            next_result = "QUEUED" if (needs_anchor and later_views_missing) else result
+            batch.update(result=next_result, review_status="FAILED" if review_errors else "COMPLETE",
+                         images_remaining=remaining, images_complete=len(refreshed.get("candidates") or []) - remaining,
+                         review_error="One or more advisory gates or rankings need re-evaluation." if review_errors else "",
+                         message="FRONT selection is ready; dependent views are queued." if next_result == "QUEUED" else batch.get("message", ""),
+                         updated_at=self._now())
+        self._update(campaign_id, finish)

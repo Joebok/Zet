@@ -6,13 +6,18 @@
     "local-costume-dressing": "costume-dressing",
   };
   const $ = (id) => document.getElementById(`local-pipeline-${id}`);
-  const statusLabels = {
+    const statusLabels = {
     QUEUED: "Queued", PREFLIGHT: "Checking inputs", RUNNING: "Running", STOPPING: "Stopping",
     REEVALUATING: "Re-evaluating", READY_FOR_VIEWS: "Ready for other views",
     AWAITING_FRONT_ANCHOR: "Awaiting FRONT selection", AWAITING_HUMAN_SELECTION: "Awaiting selection",
     REVIEW_REQUIRED: "Review required", COMPLETE: "Complete", CANCELLED: "Stopped",
     STOPPED: "Stopped", INTERRUPTED: "Interrupted", ERROR: "Error", PENDING: "Pending",
     WAITING_FOR_GATES: "Waiting for gates", GATE_REJECTED: "Gate rejected", FAILED: "Failed",
+  };
+  const evaluationLabels = {
+    STAGING: "Staging reviews", RUNNING: "Reviews running", COMPLETE: "Reviews complete",
+    QUEUED: "Queued", FAILED: "Review failed", EMPTY: "No images to rank", STALE: "Review stale",
+    SUPERSEDED: "Superseded", SKIPPED: "Not used for legacy reviews",
   };
   const renderStatusLabels = {
     PENDING: "Image pending", QUEUED: "Render queued", RUNNING: "Rendering",
@@ -318,6 +323,7 @@
 
   function renderCandidate(view, candidate, ranking, run) {
     const card = document.createElement("article");
+    const selectedViews = run.selected_views || {};
     const selected = run.selected_views?.[view] === candidate.candidate_id;
     card.className = `local-pipeline-candidate${selected ? " is-selected" : ""}`;
     card.dataset.view = view;
@@ -382,13 +388,14 @@
       heading.textContent = `${view} · ${run.selected_views?.[view] || "not selected"} · ${candidates.filter((item) => item.image_path).length}/${candidates.length} images`;
       summary.append(heading);
       const ranking = run.rankings?.[view] || {};
+      const evaluation = run.evaluations?.[view] || {};
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact";
       const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
       addButton(viewActions, "Re-run view", "rerun-view", { disabled: busy(run) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || !viewReady || !candidates.some((item) => ["FAILED", "GATE_REJECTED"].includes(item.status)), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
-      addButton(viewActions, ranking.status === "COMPLETE" ? "Re-rank" : "Rank survivors", "rank", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
+      addButton(viewActions, ranking.status === "COMPLETE" ? "Re-rank" : "Rank images", "rank", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
       summary.append(viewActions);
       details.append(summary);
       if (hasSharedAssetRouter()) {
@@ -416,6 +423,14 @@
       links.append(document.createTextNode(" · "));
       addLink(links, "Image prompt", route("image-prompt", run.run_id, view));
       details.append(links);
+      if (evaluation.evaluation_id || ranking.status) {
+        const reviewProgress = document.createElement("p");
+        reviewProgress.className = "muted local-pipeline-review-progress";
+        const gatesText = evaluationLabels[evaluation.gates_status] || evaluationLabels[evaluation.status] || "Gates not queued";
+        const rankText = evaluationLabels[evaluation.ranking_status] || evaluationLabels[ranking.status] || "Ranking not queued";
+        reviewProgress.textContent = `Advice · Gates: ${gatesText} · Luna: ${rankText}`;
+        details.append(reviewProgress);
+      }
       const gallery = document.createElement("div");
       gallery.className = "local-pipeline-gallery";
       candidates.sort((left, right) => {

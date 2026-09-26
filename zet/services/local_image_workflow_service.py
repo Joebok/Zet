@@ -70,8 +70,7 @@ class LocalImagePipelineWorkflowService:
         if name == "reevaluate":
             return self.adapter.reevaluate(run_id, view or None, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.reevaluate(run_id, view or None)
         if name == "rank":
-            method = self.adapter.rank_view if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rank_view
-            return method(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view)
+            return self.adapter.stage_view_evaluation(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.stage_view_evaluation(run_id, view)
         if name == "move_rank":
             if self.pipeline in {"head-image", "body-reference"}:
                 return self.adapter.move_candidate_rank(run_id, view, candidate_id, direction)
@@ -82,7 +81,12 @@ class LocalImagePipelineWorkflowService:
         if name in {"select_view", "unselect_view"}:
             selected_id = candidate_id if name == "select_view" else ""
             method = self.adapter.select_view
-            return method(run_id, view, selected_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view, selected_id)
+            result = method(run_id, view, selected_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view, selected_id)
+            if view.upper() == "FRONT" and selected_id:
+                from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
+                LocalRunAllRemainingService(self.app, self.project_root).front_selection_changed(
+                    self.pipeline, run_id, costume if self.pipeline == "costume-dressing" else "")
+            return result
         if name == "select_front_anchor":
             if self.pipeline == "body-reference":
                 return self.adapter.select_front_anchor(run_id, candidate_id)
@@ -108,3 +112,16 @@ class LocalImagePipelineWorkflowService:
         else:
             self.adapter.execute_run(run_id, views=views, candidate_ids=candidate_ids,
                                      render_only=render_only)
+
+    def stage_view_evaluation(self, run_id: str, view: str, *, costume: str = "",
+                              candidate_ids: set[str] | None = None) -> dict[str, Any]:
+        """Start advisory evaluation without taking the batch runner lock."""
+        if self.pipeline in {"character-assembly", "costume-dressing"}:
+            return self.adapter.stage_view_evaluation(run_id, view, costume, candidate_ids=candidate_ids)
+        return self.adapter.stage_view_evaluation(run_id, view, candidate_ids=candidate_ids)
+
+    def reconcile_review_jobs(self, run_id: str, *, costume: str = "") -> dict[str, Any]:
+        """Resume persisted advisory jobs after a server restart."""
+        if self.pipeline in {"character-assembly", "costume-dressing"}:
+            return self.adapter.reconcile_review_jobs(run_id, costume)
+        return self.adapter.reconcile_review_jobs(run_id)
