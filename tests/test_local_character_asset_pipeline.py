@@ -85,10 +85,156 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
                          [item["role"] for item in service._references(run, "LEFT_PROFILE")])
         compiled = service._compile(run, "LEFT_PROFILE", service._references(run, "LEFT_PROFILE"))
         prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
-        self.assertIn("Image 1 is the locked Body-Reference image", prompt)
+        self.assertIn("Image 1 is the selected Body-Reference image", prompt)
         self.assertIn("Image 3 is the selected FRONT Character-Assembly anchor", prompt)
         self.assertIn("preserve the established head-to-body scale", prompt)
         self.assertNotIn("legacy_static_prompt", json.dumps(compiled))
+
+    def _selected_front_batch(self, service, costume=""):
+        payload = {"character": "Test", "phase": "Adult", "front_count": 1, "other_count": 1,
+                   "front_only": True, "seeds": list(range(8))}
+        if costume:
+            payload["costume"] = costume
+        run = service.create_run(payload)
+        candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "renders" / candidate["candidate_id"] / "front.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"selected provisional source")
+        service._update(run["run_id"], candidate["candidate_id"], costume,
+                        status="WAITING_FOR_HUMAN_REVIEW", image_path=str(image))
+        root, state = service._state(run["run_id"], costume)
+        state.setdefault("selected_views", {})["FRONT"] = candidate["candidate_id"]
+        service._write(root / "state.json", state)
+        return service.detail(run["run_id"], costume), candidate
+
+    def test_dressing_can_snapshot_a_selected_assembly_batch_and_warn_after_lock_changes(self) -> None:
+        self._sources("character-assembly")
+        assembly = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        source_run, candidate = self._selected_front_batch(assembly)
+        dressing = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = dressing.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                   "front_count": 1, "other_count": 1, "front_only": True,
+                                   "source_batches": {"character_assembly": source_run["run_id"]},
+                                   "seeds": list(range(8))})
+        source = run["sources"]["FRONT"]["character_assembly"]
+        self.assertEqual(source_run["run_id"], source["batch_id"])
+        self.assertEqual(candidate["candidate_id"], source["candidate_id"])
+        self.assertEqual("locked", run["source_batches"].get("body_reference", "locked"))
+
+        replacement = self.root / "replacement-assembly.png"
+        replacement.write_bytes(b"new current assembly")
+        self.store.record_selection("Test", "Adult", "Character-Assembly", "FRONT",
+                                    candidate_id="new-front", image_path=replacement, batch_id="new-batch")
+        self.store.lock("Test", "Adult", "Character-Assembly", "FRONT")
+        new_head = self.root / "new-head.png"
+        new_head.write_bytes(b"new current head")
+        self.store.record_selection("Test", "Adult", "Head-Image", "FRONT",
+                                    candidate_id="new-head", image_path=new_head, batch_id="head-new")
+        self.store.lock("Test", "Adult", "Head-Image", "FRONT")
+        warning = dressing.detail(run["run_id"], "Test Outfit")["lineage_warnings"]["FRONT"]
+        self.assertTrue(any("not the current locked image" in item for item in warning))
+        self.assertTrue(any("Character-Assembly lineage:" in item for item in warning))
+
+    def test_selected_source_batch_must_have_each_requested_view(self) -> None:
+        self._sources("character-assembly")
+        assembly = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        source_run, _ = self._selected_front_batch(assembly)
+        dressing = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        preview = dressing.preview({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                    "front_count": 1, "other_count": 1,
+                                    "source_batches": {"character_assembly": source_run["run_id"]}})
+        self.assertFalse(preview["can_create"])
+        self.assertTrue(any("Selected Character-Assembly image" in item for item in preview["blocking_reasons"]))
+
+    def test_rerun_can_retain_or_refresh_the_original_locked_source_snapshot(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                  "other_count": 1, "front_only": True, "seeds": list(range(8))})
+        spec_path = Path(run["root"]) / "spec.json"
+        legacy_spec = service._read(spec_path)
+        legacy_spec.pop("source_batches", None)
+        service._write(spec_path, legacy_spec)
+        run = service.detail(run["run_id"])
+        original = run["sources"]["FRONT"]["head_image"]["sha256"]
+        replacement = self.root / "replacement-head.png"
+        replacement.write_bytes(b"new locked head")
+        self.store.record_selection("Test", "Adult", "Head-Image", "FRONT",
+                                    candidate_id="replacement-head", image_path=replacement, batch_id="head-new")
+        self.store.lock("Test", "Adult", "Head-Image", "FRONT")
+
+        retained = service.rerun_view(run["run_id"], "FRONT", refresh_sources=False)
+        self.assertEqual(original, retained["sources"]["FRONT"]["head_image"]["sha256"])
+        refreshed = service.rerun_view(run["run_id"], "FRONT")
+        self.assertEqual(self.store._image_hash(replacement), refreshed["sources"]["FRONT"]["head_image"]["sha256"])
+
+    def test_front_only_dressing_batch_can_continue_from_selected_source_batch(self) -> None:
+        self._sources("character-assembly")
+        assembly = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        source_run = assembly.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                          "other_count": 1, "seeds": list(range(8))})
+        for candidate in source_run["candidates"]:
+            image = Path(source_run["root"]) / "renders" / candidate["candidate_id"] / "selected.png"
+            image.parent.mkdir(parents=True, exist_ok=True)
+            image.write_bytes(candidate["candidate_id"].encode())
+            assembly._update(source_run["run_id"], candidate["candidate_id"], image_path=str(image))
+        root, source_state = assembly._state(source_run["run_id"])
+        for candidate in source_run["candidates"]:
+            source_state.setdefault("selected_views", {})[candidate["view"]] = candidate["candidate_id"]
+        assembly._write(root / "state.json", source_state)
+        source_run = assembly.detail(source_run["run_id"])
+
+        dressing = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = dressing.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                   "front_count": 1, "other_count": 1, "front_only": True,
+                                   "source_batches": {"character_assembly": source_run["run_id"]},
+                                   "seeds": list(range(8))})
+        front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "renders" / front["candidate_id"] / "front.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"reviewed costume front")
+        dressing._update(run["run_id"], front["candidate_id"], "Test Outfit", image_path=str(image),
+                         human_review={"decision": "keep", "notes": "approved"})
+        root, state = dressing._state(run["run_id"], "Test Outfit")
+        state["selected_views"]["FRONT"] = front["candidate_id"]
+        state["front_anchor"] = front["candidate_id"]
+        state["status"] = "AWAITING_HUMAN_SELECTION"
+        dressing._write(root / "state.json", state)
+
+        continued = dressing.proceed(run["run_id"], "Test Outfit")
+        self.assertIn("BACK", continued["target_views"])
+        self.assertEqual(source_run["run_id"],
+                         continued["sources"]["BACK"]["character_assembly"]["batch_id"])
+
+    def test_locking_dressing_promotes_selected_assembly_ancestor(self) -> None:
+        self._sources("character-assembly")
+        assembly = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        source_run = assembly.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                          "other_count": 1, "seeds": list(range(8))})
+        source_run, source_candidate = self._set_assembly_front_anchor(assembly, source_run)
+        dressing = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = dressing.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                   "front_count": 1, "other_count": 1, "front_only": True,
+                                   "source_batches": {"character_assembly": source_run["run_id"]},
+                                   "seeds": list(range(8))})
+        candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "renders" / candidate["candidate_id"] / "front.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"selected costume")
+        dressing._update(run["run_id"], candidate["candidate_id"], "Test Outfit",
+                         status="WAITING_FOR_GATES", image_path=str(image))
+        dressing.run_candidate_gates(run["run_id"], candidate["candidate_id"], "Test Outfit")
+        dressing.update_candidate(run["run_id"], candidate["candidate_id"],
+                                  {"decision": "keep"}, "Test Outfit")
+        dressing.rank_view(run["run_id"], "FRONT", "Test Outfit")
+        dressing.select_view(run["run_id"], "FRONT", candidate["candidate_id"], "Test Outfit")
+        preview = dressing.lock_preview(run["run_id"], "FRONT", "Test Outfit")
+        self.assertTrue(any(item["pipeline"] == "Character-Assembly" for item in preview["changes"]))
+        dressing.lock_selected_view(run["run_id"], "FRONT", "Test Outfit")
+        assets = self.store.detail("Test", "Adult")["assets"]
+        self.assertEqual(source_run["run_id"], assets["character-assembly:FRONT"]["batch_id"])
+        self.assertEqual(source_candidate["candidate_id"], assets["character-assembly:FRONT"]["candidate_id"])
+        self.assertTrue(assets["costume-dressing:test_outfit:FRONT"]["locked"])
 
     def test_front_only_assembly_batch_snapshots_other_inputs_when_later_started(self) -> None:
         self._lock("Body-Reference", "FRONT")
@@ -402,6 +548,8 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
         run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2, "other_count": 1,
                                   "seeds": list(range(9))})
+        front_candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
+        rejected_candidate_id, ranked_candidate_id = [item["candidate_id"] for item in front_candidates]
         candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
         for candidate in candidates:
             image = Path(run["root"]) / "renders" / candidate["candidate_id"] / "front.png"
@@ -412,34 +560,63 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         candidates = [item for item in service.detail(run["run_id"])["candidates"] if item["view"] == "FRONT"]
         root, state = service._state(run["run_id"])
         state["rankings"] = {"FRONT": {
-            "status": "COMPLETE", "ordered_candidate_ids": ["c002", "c001"],
-            "entries": [{"candidate_id": "c002", "reason": "Best match."},
-                        {"candidate_id": "c001", "reason": "Second best."}],
+            "status": "COMPLETE", "ordered_candidate_ids": [ranked_candidate_id, rejected_candidate_id],
+            "entries": [{"candidate_id": ranked_candidate_id, "reason": "Best match."},
+                        {"candidate_id": rejected_candidate_id, "reason": "Second best."}],
             "input_hashes": {item["candidate_id"]: service._hash(Path(item["image_path"])) for item in candidates},
         }}
         service._write(root / "state.json", state)
 
-        saved = service.update_candidate(run["run_id"], "c001", {"decision": "keep", "notes": "Looks good."})
+        saved = service.update_candidate(run["run_id"], rejected_candidate_id, {"decision": "keep", "notes": "Looks good."})
         self.assertEqual("COMPLETE", saved["rankings"]["FRONT"]["status"])
-        self.assertEqual(["c002", "c001"], saved["rankings"]["FRONT"]["ordered_candidate_ids"])
+        self.assertEqual([ranked_candidate_id, rejected_candidate_id], saved["rankings"]["FRONT"]["ordered_candidate_ids"])
         self.assertEqual("Second best.", saved["rankings"]["FRONT"]["entries"][1]["reason"])
 
-        rejected = service.update_candidate(run["run_id"], "c001", {"decision": "reject", "notes": "Changed my mind."})
+        rejected = service.update_candidate(run["run_id"], rejected_candidate_id, {"decision": "reject", "notes": "Changed my mind."})
         self.assertEqual("STALE", rejected["rankings"]["FRONT"]["status"])
-        self.assertEqual(["c002", "c001"], rejected["rankings"]["FRONT"]["ordered_candidate_ids"])
+        self.assertEqual([ranked_candidate_id, rejected_candidate_id], rejected["rankings"]["FRONT"]["ordered_candidate_ids"])
         self.assertIn("Re-rank", rejected["rankings"]["FRONT"]["stale_reason"])
 
-        service._update(run["run_id"], "c001", rejection_gate="framing", status="WAITING_FOR_HUMAN_REVIEW",
+        service._update(run["run_id"], rejected_candidate_id, rejection_gate="framing", status="WAITING_FOR_HUMAN_REVIEW",
                         human_review={"decision": "undecided", "notes": ""})
         root, state = service._state(run["run_id"])
         state["rankings"]["FRONT"] = {
-            "status": "COMPLETE", "ordered_candidate_ids": ["c002"],
-            "entries": [{"candidate_id": "c002", "reason": "Only current survivor."}],
-            "input_hashes": {"c002": service._hash(Path(next(item for item in candidates if item["candidate_id"] == "c002")["image_path"]))},
+            "status": "COMPLETE", "ordered_candidate_ids": [ranked_candidate_id],
+            "entries": [{"candidate_id": ranked_candidate_id, "reason": "Only current survivor."}],
+            "input_hashes": {ranked_candidate_id: service._hash(Path(next(item for item in candidates if item["candidate_id"] == ranked_candidate_id)["image_path"]))},
         }
         service._write(root / "state.json", state)
-        newly_eligible = service.update_candidate(run["run_id"], "c001", {"decision": "keep"})
+        newly_eligible = service.update_candidate(run["run_id"], rejected_candidate_id, {"decision": "keep"})
         self.assertEqual("STALE", newly_eligible["rankings"]["FRONT"]["status"])
+        selected = service.select_view(run["run_id"], "FRONT", rejected_candidate_id)
+        self.assertEqual(rejected_candidate_id, selected["selected_views"]["FRONT"])
+
+    def test_stale_selections_are_advisory_and_selection_preserves_active_run(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1, "other_count": 1,
+                                  "seeds": list(range(8))})
+        front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "renders" / front["candidate_id"] / "front.png"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"human-selected front")
+        service._update(run["run_id"], front["candidate_id"], status="WAITING_FOR_HUMAN_REVIEW",
+                        image_path=str(image), human_review={"decision": "keep", "notes": ""})
+        root, state = service._state(run["run_id"])
+        state["status"] = "RUNNING"
+        service._write(root / "state.json", state)
+
+        with service._active_lock:
+            service._active.add(run["run_id"])
+        try:
+            selected = service.select_view(run["run_id"], "FRONT", front["candidate_id"])
+        finally:
+            with service._active_lock:
+                service._active.discard(run["run_id"])
+
+        self.assertEqual("RUNNING", selected["status"])
+        self.assertEqual(["FRONT"], selected["stale_selections"])
+        self.assertEqual("RUNNING", service._read(root / "state.json")["status"])
 
     def test_assembly_batch_does_not_start_non_front_views_without_anchor(self) -> None:
         self._sources("character-assembly")
@@ -508,8 +685,9 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         body_path.write_bytes(b"changed locked image")
         refreshed = service.detail(run["run_id"])
         changed = next(item for item in refreshed["candidates"] if item["candidate_id"] == candidate["candidate_id"])
-        self.assertFalse(service._candidate_gates_current(refreshed, changed))
-        self.assertEqual("EMPTY", service.rank_view(run["run_id"], "BACK")["rankings"]["BACK"]["status"])
+        self.assertTrue(service._candidate_gates_current(refreshed, changed))
+        self.assertTrue(any("current locked image" in item
+                            for item in service.detail(run["run_id"])["lineage_warnings"]["BACK"]))
 
     def test_costume_keys_are_scoped_and_later_prompt_uses_front_guide(self) -> None:
         self._sources("costume-dressing")

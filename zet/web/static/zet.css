@@ -461,6 +461,30 @@ main {
   width: 150px;
 }
 
+.local-pipeline-source-batches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.local-pipeline-lineage-warning {
+  border: 2px solid var(--warning, #a66b00);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning, #a66b00) 10%, transparent);
+  margin: 10px 0;
+  padding: 10px 14px;
+}
+
+.local-pipeline-lineage-warning h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.local-pipeline-lineage-warning ul {
+  margin: 0;
+  padding-left: 22px;
+}
+
 #local-pipeline-source-option {
   border: 1px solid var(--line);
   border-radius: 8px;

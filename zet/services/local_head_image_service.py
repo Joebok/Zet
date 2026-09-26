@@ -319,7 +319,8 @@ class LocalHeadImageService:
                                "created_at": run["created_at"], "status": run["status"],
                                "candidate_count": run["candidate_count"],
                                "complete_count": sum(1 for item in run["candidates"] if item.get("image_path")),
-                               "front_anchor": run.get("front_anchor")})
+                               "front_anchor": run.get("front_anchor"),
+                               "selected_views": run.get("selected_views") or {}})
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 continue
         return sorted(result, key=lambda item: item["run_id"], reverse=True)
@@ -942,8 +943,8 @@ class LocalHeadImageService:
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         human_pass = bool(candidate and candidate.get("human_review", {}).get("decision") == "keep")
-        if not candidate or candidate["view"] != view or (candidate.get("rejection_gate") and not human_pass):
-            raise LocalHeadImageError("Choose a gate-surviving or human-passed candidate from this view.")
+        if not candidate or candidate["view"] != view:
+            raise LocalHeadImageError("Choose a candidate from this view.")
         auto_approved = bool(autogenerate and view == FRONT)
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalHeadImageError("A human-rejected candidate cannot be autoselected.")
@@ -951,16 +952,13 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str(candidate.get("image_path") or ""))
-        if (ranking.get("status") != "COMPLETE" or candidate_id not in ranking.get("ordered_candidate_ids", [])
-                or not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
-            raise LocalHeadImageError("The candidate needs a current gate review and ranking before selection.")
+        if not image.is_file():
+            raise LocalHeadImageError("The candidate image is missing.")
         luna_order = list(ranking.get("luna_ordered_candidate_ids") or [])
         if not luna_order and len(ranking.get("ordered_candidate_ids") or []) == 1:
             luna_order = list(ranking["ordered_candidate_ids"])
         if auto_approved and (not luna_order or luna_order[0] != candidate_id):
             raise LocalHeadImageError("Autogenerate can select only the original #1 Luna candidate.")
-        if not human_pass and not self._candidate_gates_current(run, candidate):
-            raise LocalHeadImageError("The candidate has missing or stale gate results; re-evaluate and rank this view before selection.")
         if view == FRONT and (run.get("front_anchor") != candidate_id):
             for downstream_view in VIEWS[1:]:
                 self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
@@ -968,10 +966,11 @@ class LocalHeadImageService:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         dependencies = []
         if view != FRONT:
-            anchor = next(item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"])
-            anchor_hash = self._hash(Path(anchor["image_path"]))
-            if ranking.get("anchor_hash") != anchor_hash:
-                raise LocalHeadImageError("The FRONT anchor changed after ranking; rerun review for this view.")
+            anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
+            anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+            if not anchor_image.is_file():
+                raise LocalHeadImageError("A current FRONT candidate is required before selecting another view.")
+            anchor_hash = self._hash(anchor_image)
             dependencies = [{"key": self.asset_store.key("Head-Image", FRONT), "image_sha256": anchor_hash}]
         root, state = self._state(run_id)
         previous_id = selected.get(view)

@@ -60,6 +60,7 @@ Width = 3960
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 60
+ArchivePath = "E:/Archived/AI_Queue_Archive"
 
 [Render]
 Backend = "manual_chatgpt"

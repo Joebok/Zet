@@ -88,16 +88,8 @@ class LocalAssetStoreService:
         )
 
     def assert_change_allowed(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> None:
-        value = self._read(character, phase)
-        key = self.key(pipeline, view, qualifier)
-        current = value.get("assets", {}).get(key, {})
-        if current.get("locked"):
-            raise LocalAssetStoreError(f"{key} is locked. Unlock it before changing its selection.")
-        dependents = self._locked_dependents(value.get("assets", {}), key)
-        if dependents:
-            raise LocalAssetStoreError(
-                f"Cannot change {key}; unlock downstream local assets first: {', '.join(dependents)}."
-            )
+        # Upstream edits are allowed. Batch lineage warnings explain downstream drift.
+        return None
 
     def assert_batch_change_allowed(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> None:
         """Batch work changes run state; shared asset locks do not restrict it."""
@@ -108,6 +100,9 @@ class LocalAssetStoreService:
         dependencies: list[dict[str, str]] | None = None, qualifier: str = "",
     ) -> dict[str, Any] | None:
         """Keep a batch selection in its run when the shared asset cannot be changed."""
+        current = self.detail(character, phase)["assets"].get(self.key(pipeline, view, qualifier), {})
+        if current.get("locked"):
+            return None
         try:
             self.assert_change_allowed(character, phase, pipeline, view, qualifier)
         except LocalAssetStoreError:
@@ -158,13 +153,6 @@ class LocalAssetStoreService:
             digest = self._image_hash(image)
             changed = current.get("candidate_id") != candidate_id or current.get("image_sha256") != digest
             if changed:
-                if current.get("locked"):
-                    raise LocalAssetStoreError(f"{key} is locked. Unlock it before changing its selection.")
-                dependents = self._locked_dependents(assets, key)
-                if dependents:
-                    raise LocalAssetStoreError(
-                        f"Cannot change {key}; unlock downstream local assets first: {', '.join(dependents)}."
-                    )
                 for child in assets.values():
                     if any(dep.get("key") == key for dep in child.get("dependencies", [])) and not child.get("locked"):
                         child["stale"] = True
@@ -192,13 +180,6 @@ class LocalAssetStoreService:
             current = assets.get(key)
             if not current:
                 return value
-            if current.get("locked"):
-                raise LocalAssetStoreError(f"{key} is locked. Unlock it before clearing its selection.")
-            dependents = self._locked_dependents(assets, key)
-            if dependents:
-                raise LocalAssetStoreError(
-                    f"Cannot clear {key}; unlock downstream local assets first: {', '.join(dependents)}."
-                )
             assets.pop(key)
             for child in assets.values():
                 if any(dep.get("key") == key for dep in child.get("dependencies", [])) and not child.get("locked"):
@@ -218,15 +199,6 @@ class LocalAssetStoreService:
             source = Path(str(record.get("image_path") or "")).resolve()
             if not source.is_file() or self._image_hash(source) != record.get("image_sha256"):
                 raise LocalAssetStoreError(f"Selected image for {key} is missing or has changed; review it again.")
-            for dependency in record.get("dependencies", []):
-                parent = value.get("assets", {}).get(str(dependency.get("key") or ""), {})
-                if not parent.get("selected") or parent.get("stale"):
-                    raise LocalAssetStoreError(f"Required local dependency {dependency.get('key')} is not current.")
-                if parent.get("image_sha256") != dependency.get("image_sha256"):
-                    raise LocalAssetStoreError(
-                        f"Required local dependency {dependency.get('key')} does not match the selected upstream image. "
-                        "Unlock and lock the current upstream selection before locking this view."
-                    )
             locked_root = path.parent / "locked" / self._safe(pipeline)
             if qualifier:
                 locked_root /= self._safe(qualifier)
@@ -248,6 +220,57 @@ class LocalAssetStoreService:
             write_json_atomic(path, value)
             return dict(record)
 
+    def promote_chain(self, character: str, phase: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Atomically publish a preflighted set of selected local assets as locked."""
+        path = self.workspace_path(character, phase)
+        staged: list[tuple[str, dict[str, Any], Path, Path, str]] = []
+        with file_lock(path.with_suffix(".lock")):
+            value = self._read(character, phase)
+            assets = value.setdefault("assets", {})
+            for item in records:
+                pipeline, view = str(item["pipeline"]), str(item["view"]).upper()
+                qualifier = str(item.get("qualifier") or "")
+                image = Path(str(item["image_path"])).resolve()
+                digest = str(item["image_sha256"])
+                if not image.is_file() or self._image_hash(image) != digest:
+                    raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing or changed.")
+                key = self.key(pipeline, view, qualifier)
+                locked_root = path.parent / "locked" / self._safe(pipeline)
+                if qualifier:
+                    locked_root /= self._safe(qualifier)
+                locked_root /= self._safe(view)
+                locked_path = locked_root / f"{digest[:16]}_{image.name}"
+                staged.append((key, item, image, locked_path, digest))
+
+            result = []
+            for key, item, image, locked_path, digest in staged:
+                locked_path.parent.mkdir(parents=True, exist_ok=True)
+                if not locked_path.exists():
+                    shutil.copy2(image, locked_path)
+                if self._image_hash(locked_path) != digest:
+                    raise LocalAssetStoreError(f"Could not verify immutable local image copy for {key}.")
+                current = assets.get(key, {})
+                record = {
+                    **current, "pipeline": str(item["pipeline"]), "view": str(item["view"]).upper(),
+                    "qualifier": str(item.get("qualifier") or ""),
+                    "candidate_id": str(item["candidate_id"]), "batch_id": str(item["batch_id"]),
+                    "batch_name": str(item.get("batch_name") or ""),
+                    "image_path": str(image), "image_sha256": digest,
+                    "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
+                    "locked": True, "locked_image_path": str(locked_path),
+                    "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                }
+                if current.get("image_sha256") != digest or current.get("candidate_id") != record["candidate_id"]:
+                    record["lock_history"] = [*current.get("lock_history", []), {
+                        "locked_at": record["locked_at"], "image_sha256": digest,
+                        "batch_id": record["batch_id"], "candidate_id": record["candidate_id"],
+                    }]
+                assets[key] = record
+                result.append(dict(record))
+            write_json_atomic(path, value)
+            return result
+
     def unlock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
         key = self.key(pipeline, view, qualifier)
         path = self.workspace_path(character, phase)
@@ -257,11 +280,6 @@ class LocalAssetStoreService:
             record = assets.get(key)
             if not record or not record.get("locked"):
                 raise LocalAssetStoreError(f"{key} is not locked.")
-            dependents = self._locked_dependents(assets, key)
-            if dependents:
-                raise LocalAssetStoreError(
-                    f"Unlock downstream local assets first: {', '.join(dependents)}."
-                )
             record.update({"locked": False, "unlocked_at": datetime.now().astimezone().isoformat(timespec="seconds")})
             write_json_atomic(path, value)
             return dict(record)

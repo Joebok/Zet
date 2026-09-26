@@ -103,6 +103,7 @@
       case "review": return `${baseUrl()}/runs/${id}/candidates/${candidate}/review${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "retry": return `${baseUrl()}/runs/${id}/candidates/${candidate}/retry${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "lock": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "lock-preview": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock-preview${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "unlock": return `${baseUrl()}/runs/${id}/views/${encodedView}/unlock${query()}`;
       case "proceed": return `${baseUrl()}/runs/${id}/views/FRONT/proceed${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "prompt": return `${baseUrl()}/runs/${id}/review-spec/${encodedView}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -122,6 +123,7 @@
       other_count: Number($("other-count").value),
       use_front_anchor: hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || state.pipeline === "head-image",
       front_source_path: state.frontSourcePath,
+      source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
     };
   }
 
@@ -301,7 +303,7 @@
         const controls = document.createElement("div");
         controls.className = "button-row compact";
         addButton(controls, locked ? "Unlock" : "Lock", locked ? "unlock" : "lock",
-          { view, disabled: lockedInAnotherBatch });
+          { view });
         if (!locked) addButton(controls, "Unselect", "unselect", { view, candidate: candidate.candidate_id });
         article.append(controls);
       }
@@ -352,8 +354,7 @@
     } else {
       if (candidate.image_path) addButton(controls, "Review", "review", { disabled: busy(run), view, candidate: candidate.candidate_id });
       const humanDecision = candidate.human_review?.decision || "undecided";
-      const canSelect = rank >= 0 && !selected && !busy(run)
-        && (!candidate.rejection_gate || humanDecision === "keep")
+      const canSelect = !selected && !busy(run)
         && humanDecision !== "reject" && (view !== "FRONT" || humanDecision === "keep");
       if (canSelect) addButton(controls, "Select", "select", { primary: true, view, candidate: candidate.candidate_id });
       if (["FAILED", "GATE_REJECTED"].includes(candidate.status)) addButton(controls, "Retry", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
@@ -437,7 +438,9 @@
 
   function render() {
     const run = state.run;
+    renderLineageWarnings(run);
     if (!run) {
+      $("lineage-warning").hidden = true;
       $("summary").textContent = "No batch selected. Check requirements and create a new batch.";
       $("rename").hidden = true;
       $("selected").replaceChildren();
@@ -460,6 +463,47 @@
     renderSelectedViews(run);
     renderViews(run);
     updateRefreshButton();
+  }
+
+  function renderLineageWarnings(run) {
+    const host = $("lineage-warning");
+    host.replaceChildren();
+    const warnings = run?.lineage_warnings || {};
+    const views = Object.entries(warnings).filter(([, entries]) => entries?.length);
+    host.hidden = !views.length;
+    if (!views.length) return;
+    const heading = document.createElement("h2");
+    heading.textContent = "Source lineage warning";
+    host.append(heading);
+    const list = document.createElement("ul");
+    for (const [view, entries] of views) {
+      for (const message of entries) {
+        const line = document.createElement("li");
+        line.textContent = `${view}: ${message}`;
+        list.append(line);
+      }
+    }
+    host.append(list);
+  }
+
+  function renderSourceBatchOptions(result) {
+    if (!hasSharedAssetRouter()) return;
+    const host = $("source-batches");
+    const selected = Object.fromEntries(Array.from(host.querySelectorAll("select[data-source-role]"), (item) => [item.dataset.sourceRole, item.value]));
+    host.replaceChildren();
+    for (const [role, runs] of Object.entries(result.source_batch_options || {})) {
+      const label = document.createElement("label");
+      label.textContent = `${role.replaceAll("_", " ")} source batch`;
+      const select = document.createElement("select");
+      select.dataset.sourceRole = role;
+      select.add(new Option("Current locked images", "locked"));
+      for (const run of runs) select.add(new Option(`${run.batch_name} · ${(run.selected_views || []).length}/${(state.run?.views || []).length || 8} selected views`, run.run_id));
+      select.value = selected[role] && Array.from(select.options).some((option) => option.value === selected[role])
+        ? selected[role] : "locked";
+      label.append(select);
+      host.append(label);
+    }
+    host.hidden = false;
   }
 
   async function loadRun(runId, generation = state.generation) {
@@ -515,6 +559,7 @@
       const result = await request(route("preview"), { method: "POST", body: JSON.stringify(payload()) });
       if (generation !== state.previewGeneration) return;
       const blockers = result.blocking_reasons || [];
+      renderSourceBatchOptions(result);
       const canCreate = result.can_create !== false && blockers.length === 0;
       $("readiness").textContent = blockers.length ? blockers.join(" · ")
         : `${result.candidate_count || ""} candidates across ${(result.views || []).length} views. ${canCreate ? "Ready to create." : "Resolve requirements first."}`;
@@ -571,6 +616,8 @@
     }[pipeline];
     $("costume-label").hidden = !isCostume();
     $("anchor-option").hidden = !hasSharedAssetRouter();
+    $("source-batches").hidden = !hasSharedAssetRouter();
+    $("rerun-refresh-option").hidden = !hasSharedAssetRouter();
     if (hasSharedAssetRouter()) $("use-anchor").checked = false;
     $("source-option").hidden = pipeline !== "head-image";
     $("lineup").hidden = true;
@@ -752,8 +799,7 @@
     });
     const select = document.createElement("button");
     select.textContent = "Select this image";
-    select.disabled = selectedViews[candidate.view] === candidate.candidate_id
-      || !(run.rankings?.[candidate.view]?.ordered_candidate_ids || []).includes(candidate.candidate_id);
+    select.disabled = selectedViews[candidate.view] === candidate.candidate_id;
     select.addEventListener("click", async () => {
       try {
         await perform("select", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id });
@@ -860,7 +906,26 @@
     const view = button.dataset.view;
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }
-    if (["delete", "rerun", "rerun-view", "rerun-failed", "unselect", "unlock"].includes(action)) {
+    if (action === "lock") {
+      if (hasSharedAssetRouter()) {
+        const plan = await request(route("lock-preview", state.run.run_id, view));
+        const changes = plan.changes || [];
+        const summary = changes.length
+          ? `Lock ${view} and replace these lineage images?\n\n${changes.map((item) => `${item.pipeline} ${item.view} · ${item.batch_name || "selected batch"}${item.replacing_batch ? ` (currently ${item.replacing_batch})` : ""}`).join("\n")}`
+          : `Lock the selected ${view} image? Its required lineage is already locked to these images.`;
+        if (!window.confirm(summary)) return;
+      }
+      await perform("lock", view, candidateId);
+      return;
+    }
+    if (action === "rerun" || action === "rerun-view") {
+      const refreshSources = $("rerun-refresh-sources").checked;
+      const label = refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
+      if (!window.confirm(action === "rerun" ? `Re-run this batch and ${label}? This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?`)) return;
+      await perform(action, view, candidateId, { refresh_sources: refreshSources });
+      return;
+    }
+    if (["delete", "rerun-failed", "unselect", "unlock"].includes(action)) {
       const prompts = {
         delete: "Delete this batch and its run-owned files?", rerun: "Re-run the batch? This replaces generated images and reviews.",
         "rerun-view": `Replace all ${view} candidates?`, "rerun-failed": `Re-run failed ${view} candidates?`,
@@ -914,6 +979,7 @@
     $("front-count").addEventListener("change", () => void readiness());
     $("other-count").addEventListener("change", () => void readiness());
     $("use-anchor").addEventListener("change", () => void readiness());
+    $("source-batches").addEventListener("change", () => void readiness());
     $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status)
       || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));

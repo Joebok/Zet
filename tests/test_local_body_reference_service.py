@@ -555,7 +555,7 @@ def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_view
     assert next(item for item in switched["candidates"] if item["candidate_id"] == "c003")["status"] == "PENDING"
 
 
-def test_later_view_requires_current_front_anchor_hash(tmp_path, monkeypatch):
+def test_later_view_selection_uses_current_anchor_even_when_ranking_is_stale(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
                         {"view": view, "view_index": index, "manual_prompt": view,
@@ -563,31 +563,34 @@ def test_later_view_requires_current_front_anchor_hash(tmp_path, monkeypatch):
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+    other_view = "FRONT_LEFT_3_4"
+    other_candidate = next(item for item in run["candidates"] if item["view"] == other_view)
     anchor_image = Path(run["root"]) / "anchor.png"
     anchor_image.write_bytes(b"accepted anchor")
     anchor_hash = service._hash(anchor_image)
     front_gates = current_gate_results(service, "FRONT", anchor_image)
-    service._candidate_update(run["run_id"], "c001", {
+    service._candidate_update(run["run_id"], front_candidate["candidate_id"], {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(anchor_image), "gates": front_gates,
         "human_review": {"decision": "keep", "notes": "passed"},
     })
     service.rank_view(run["run_id"], "FRONT")
-    service.select_view(run["run_id"], "FRONT", "c001")
+    service.select_view(run["run_id"], "FRONT", front_candidate["candidate_id"])
 
-    other_view = "FRONT_LEFT_3_4"
     candidate_image = Path(run["root"]) / "left.png"
     candidate_image.write_bytes(b"left view")
     candidate_hash = service._hash(candidate_image)
     gates = current_gate_results(service, other_view, candidate_image, anchor_image)
-    service._candidate_update(run["run_id"], "c002", {
+    service._candidate_update(run["run_id"], other_candidate["candidate_id"], {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(candidate_image), "gates": gates,
     })
-    candidate = next(item for item in service.detail(run["run_id"])["candidates"] if item["candidate_id"] == "c002")
+    candidate = next(item for item in service.detail(run["run_id"])["candidates"]
+                     if item["candidate_id"] == other_candidate["candidate_id"])
     assert candidate["view"] == other_view, candidate
     assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW", candidate
     assert not candidate.get("rejection_gate"), candidate
     assert candidate.get("human_review", {}).get("decision") == "undecided", candidate
-    assert service.detail(run["run_id"])["front_anchor"] == "c001"
+    assert service.detail(run["run_id"])["front_anchor"] == front_candidate["candidate_id"]
     assert candidate["gates"]["body_identity"]["input_hashes"]["front_anchor"] == anchor_hash
     assert candidate["gates"]["body_identity"]["input_hashes"]["candidate"] == candidate_hash
     assert all(candidate["gates"][gate.key]["verdict"] == "FALSE"
@@ -595,12 +598,12 @@ def test_later_view_requires_current_front_anchor_hash(tmp_path, monkeypatch):
                and (not gate.uses_anchor or candidate["gates"][gate.key]["input_hashes"]["front_anchor"] == service._hash(anchor_image))
                for gate in service.review_gates(other_view))
     ranked = service.rank_view(run["run_id"], other_view)
-    assert ranked["rankings"][other_view]["ordered_candidate_ids"] == ["c002"], {
+    assert ranked["rankings"][other_view]["ordered_candidate_ids"] == [other_candidate["candidate_id"]], {
         "candidate": candidate, "ranking": ranked["rankings"][other_view],
     }
     anchor_image.write_bytes(b"changed anchor")
-    with pytest.raises(LocalBodyReferenceError, match="anchor changed"):
-        service.select_view(run["run_id"], other_view, "c002")
+    selected = service.select_view(run["run_id"], other_view, other_candidate["candidate_id"])
+    assert selected["selected_views"][other_view] == other_candidate["candidate_id"]
 
 
 def test_codex_jobs_report_pending_running_done_and_failed(tmp_path):

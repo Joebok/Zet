@@ -1,4 +1,7 @@
 import json
+import shutil
+import time
+from datetime import datetime
 from pathlib import Path
 from collections.abc import Iterator
 
@@ -9,6 +12,8 @@ from zet.services.workflow_storage import task_state_path
 
 
 class AIProxyPathService:
+    ARCHIVE_RETRY_DELAY_SECONDS = 2
+
     def __init__(self, config: Config):
         self.config = config
         self.file_proxy_client = FileProxyClient(config.base_ai_queue_path)
@@ -37,7 +42,46 @@ class AIProxyPathService:
 
     def harvested_archive_root(self) -> Path:
         """Return the harvested-answer archive root."""
-        return self.archive_root() / "Harvested"
+        configured_path = self.config.ai_harvest_archive_path
+        if not configured_path:
+            return self.archive_root() / "Harvested"
+        path = Path(configured_path)
+        if path.is_absolute():
+            return path
+        return Path(self.config.base_ai_queue_path) / path
+
+    def archive_harvested_answer(self, answer_path: Path) -> Path:
+        """Move a harvested answer into the dated archive, retrying once for a slow drive."""
+        archive_root = self.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
+        self._retry_archive_operation(lambda: archive_root.mkdir(parents=True, exist_ok=True))
+
+        dest_path = archive_root / answer_path.name
+        if self._retry_archive_operation(dest_path.exists):
+            suffix = datetime.now().strftime("%H%M%S_%f")
+            dest_path = archive_root / f"{answer_path.name}.{suffix}"
+
+        def move_answer() -> Path:
+            try:
+                return Path(shutil.move(str(answer_path), str(dest_path)))
+            except OSError:
+                # A failed cross-drive move can leave a partial destination behind.
+                # Remove it before retrying so shutil.move does not nest the source in it.
+                if answer_path.exists() and dest_path.exists():
+                    try:
+                        shutil.rmtree(dest_path)
+                    except OSError:
+                        pass
+                raise
+
+        return self._retry_archive_operation(move_answer)
+
+    @classmethod
+    def _retry_archive_operation(cls, operation):
+        try:
+            return operation()
+        except OSError:
+            time.sleep(cls.ARCHIVE_RETRY_DELAY_SECONDS)
+            return operation()
 
     def manual_ask_path(self, ask_id: str) -> Path:
         return self.manual_ask_root() / ask_id

@@ -92,7 +92,7 @@ def write_dependency_manifest(
         ],
         **contract,
         "notes": [
-            "Character-assembly uses locked Body-Reference and Head-Image assets selected by matching body/head view.",
+            "Character-Assembly uses the selected Body-Reference and Head-Image images for each body/head view.",
             *(["Non-front local views also use the selected FRONT Character-Assembly anchor for proportion and appearance consistency."]
               if any(item.get("role") == "front_assembly" for item in reference_files) else []),
             "Prompt text describes reference usage; image file selection is stored in asset.reference_files and ask manifest.",
@@ -254,13 +254,13 @@ def compile_character_assembly_job(
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
             "LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE": (
-                "Image 1 is the locked Body-Reference image for the requested view. Image 2 is the locked "
+                "Image 1 is the selected Body-Reference image for the requested view. Image 2 is the selected "
                 "Head-Image for that same view. Image 3 is the selected FRONT Character-Assembly anchor. "
                 "Use Image 3 to preserve the established head-to-body scale, head and body proportions, silhouette, "
                 "and integrated character appearance across views. Use Images 1 and 2 as authoritative for the "
                 "requested view, pose, orientation, and view-specific details; do not copy Image 3's front orientation."
                 if pipeline_mode == "local" and front_assembly
-                else "Image 1 is the locked Body-Reference image for the requested view. Image 2 is the locked "
+                else "Image 1 is the selected Body-Reference image for the requested view. Image 2 is the selected "
                      "Head-Image for that same view. Use only these two images as visual sources."
                 if pipeline_mode == "local"
                 else ""

@@ -1,5 +1,4 @@
 import json
-import shutil
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -882,7 +881,6 @@ class AIProxyService:
         """Move harvested answer folders into a dated archive folder."""
         self._ensure_queue_dirs()
         archive_root = self.ai_proxy_path_service.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
-        archive_root.mkdir(parents=True, exist_ok=True)
 
         moved: list[dict] = []
         skipped: list[dict] = []
@@ -892,11 +890,7 @@ class AIProxyService:
                 skipped.append({"name": answer_path.name, "reason": "not harvested"})
                 continue
 
-            dest_path = archive_root / answer_path.name
-            if dest_path.exists():
-                suffix = datetime.now().strftime("%H%M%S_%f")
-                dest_path = archive_root / f"{answer_path.name}.{suffix}"
-            shutil.move(str(answer_path), str(dest_path))
+            dest_path = self.ai_proxy_path_service.archive_harvested_answer(answer_path)
             self.ai_proxy_path_service.file_proxy_client.remove_route(answer_path.name)
             moved.append({"name": answer_path.name, "archived_to": str(dest_path)})
 

@@ -61,9 +61,9 @@ class LocalImagePipelineWorkflowService:
         if name == "resume":
             return self.adapter.resume(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.resume(run_id)
         if name == "rerun_batch":
-            return self.adapter.rerun(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun(run_id)
+            return self.adapter.rerun(run_id, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun(run_id)
         if name == "rerun_view":
-            return self.adapter.rerun_view(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_view(run_id, view)
+            return self.adapter.rerun_view(run_id, view, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_view(run_id, view)
         if name == "rerun_failed":
             method = self.adapter.rerun_failed_view if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_failed_view
             return method(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view)
@@ -91,6 +91,8 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.proceed(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.proceed(run_id)
         if name == "lock_view":
             return self.adapter.lock_selected_view(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.lock_selected_view(run_id, view)
+        if name == "lock_preview":
+            return self.adapter.lock_preview(run_id, view, costume)
         if name == "unlock_view":
             character, phase = str(args.get("character") or ""), str(args.get("phase") or "")
             return self.adapter.unlock_view(character, phase, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.unlock_view(character, phase, view)

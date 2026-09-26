@@ -246,6 +246,28 @@ class HeadImageCompilerTests(unittest.TestCase):
             self.assertNotIn("source image", prompt.lower())
             self.assertEqual(1, len([item for item in run["candidates"] if item["view"] == "FRONT"]))
 
+    def test_local_head_run_summaries_include_selected_views_for_source_batch_choices(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+            selected_candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+            state_path = Path(run["root"]) / "state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["selected_views"] = {"FRONT": selected_candidate["candidate_id"]}
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            summary = next(item for item in service.list_runs("Test", "Adult") if item["run_id"] == run["run_id"])
+
+            self.assertEqual({"FRONT": selected_candidate["candidate_id"]}, summary["selected_views"])
+
     def test_saved_render_survives_transient_state_replace_access_denied(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -288,7 +310,7 @@ class HeadImageCompilerTests(unittest.TestCase):
             self.assertTrue(target.is_file())
             self.assertGreaterEqual(attempts, 2)
 
-    def test_old_ranking_is_stale_and_cannot_select_without_new_gaze_result(self) -> None:
+    def test_old_ranking_and_missing_gates_do_not_block_human_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             characters = root / "Characters" / "Test" / "Adult"
@@ -317,8 +339,8 @@ class HeadImageCompilerTests(unittest.TestCase):
             self.assertEqual("Keep these notes.", next(item for item in current["candidates"]
                                                          if item["candidate_id"] == candidate["candidate_id"])
                              ["human_review"]["notes"])
-            with self.assertRaisesRegex(Exception, "current gate review"):
-                service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
+            selected = service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
+            self.assertEqual(candidate["candidate_id"], selected["selected_views"]["FRONT"])
 
     def test_autogenerate_selects_and_locks_ranked_front_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

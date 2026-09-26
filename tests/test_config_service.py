@@ -27,6 +27,7 @@ BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 300
+ArchivePath = "Zet_File_Proxy_State/Archive/Harvested"
 
 [Render]
 Backend = "manual_chatgpt"
@@ -41,6 +42,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(config.base_character_path, "_Lib/Characters/")
             self.assertTrue(config.ai_harvest_auto_enabled)
             self.assertEqual(config.ai_harvest_interval_seconds, 300)
+            self.assertEqual(config.ai_harvest_archive_path, "Zet_File_Proxy_State/Archive/Harvested")
             self.assertEqual(config.render_backend, "manual_chatgpt")
             self.assertEqual(config.local_render_layout_backend, "forge_couple_basic")
             self.assertEqual(config.zine_print_scale, 0.978)

@@ -1241,7 +1241,7 @@ test("all Local asset routes share batch UI and expose only pipeline-specific in
   expect(previews.find((item) => item.url.includes("costume-dressing")).body.costume).toBe("Travel");
 });
 
-test("costume locks disable only the matching costume batch's Lock button", async ({ page }) => {
+test("costume lock remains available when another batch currently owns the lock", async ({ page }) => {
   const costumes = ["Travel", "Evening"];
   const runFor = (costume) => {
     const runId = `batch-${costume.toLowerCase()}`;
@@ -1281,8 +1281,36 @@ test("costume locks disable only the matching costume batch's Lock button", asyn
   await expect(frontLock).toBeEnabled();
   await expect(page.locator(".local-pipeline-lock-notice")).toBeHidden();
   await page.locator("#local-pipeline-costume").selectOption("Evening");
-  await expect(frontLock).toBeDisabled();
+  await expect(frontLock).toBeEnabled();
   await expect(page.locator(".local-pipeline-lock-notice")).toHaveText("Locked images for this pipeline in another batch.");
+});
+
+test("local provisional source batches are chosen by name and sent as API values", async ({ page }) => {
+  let previewBody = null;
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/local/character-assembly/runs?**", (route) => route.fulfill({ json: { runs: [] } }));
+  await page.route("**/api/local/character-assembly/preview", async (route) => {
+    previewBody = route.request().postDataJSON();
+    await route.fulfill({ json: {
+      candidate_count: 8, views: ["FRONT"], can_create: false, blocking_reasons: [],
+      source_batch_options: {
+        body_reference: [{ run_id: "body-run-id", batch_name: "Body · 2026-09-25 11:05", selected_views: ["FRONT"] }],
+        head_image: [{ run_id: "head-run-id", batch_name: "Head · 2026-09-25 11:06", selected_views: ["FRONT"] }],
+      },
+    } });
+  });
+
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-character-assembly"]').click();
+  const bodySource = page.locator('#local-pipeline-source-batches select[data-source-role="body_reference"]');
+  await expect(bodySource).toBeVisible();
+  await expect(bodySource).toContainText("Body · 2026-09-25 11:05");
+  await bodySource.selectOption("body-run-id");
+  await expect.poll(() => previewBody?.source_batches?.body_reference).toBe("body-run-id");
+  await expect(bodySource.locator("option:checked")).not.toContainText("body-run-id");
 });
 
 test("Run remaining is placed after batch review actions and tracks unstarted views", async ({ page }) => {

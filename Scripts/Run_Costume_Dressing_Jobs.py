@@ -386,7 +386,7 @@ def write_dependency_manifest(
         "required_reference_roles": ["character_assembly"],
         **contract,
         "notes": [
-            "Costume-dressing uses a locked Character-Assembly asset selected by matching body/head view.",
+            "Costume-Dressing uses the selected Character-Assembly image for the matching body/head view.",
             "Costume and equipment sections are loaded from the selected costume markdown file.",
         ],
     }

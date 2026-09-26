@@ -1,5 +1,4 @@
 import json
-import shutil
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -223,13 +222,7 @@ class AIAnswerHarvester:
         (answer_path / "harvest_error.json").unlink(missing_ok=True)
 
     def _archive_harvested_answer(self, answer_path: Path) -> None:
-        archive_root = self.ai_proxy_path_service.harvested_archive_root() / datetime.now().strftime("%Y-%m-%d")
-        archive_root.mkdir(parents=True, exist_ok=True)
-        dest_path = archive_root / answer_path.name
-        if dest_path.exists():
-            suffix = datetime.now().strftime("%H%M%S_%f")
-            dest_path = archive_root / f"{answer_path.name}.{suffix}"
-        shutil.move(str(answer_path), str(dest_path))
+        self.ai_proxy_path_service.archive_harvested_answer(answer_path)
         self.ai_proxy_path_service.file_proxy_client.remove_route(answer_path.name)
 
     def _apply_successful_answer(self, answer_path: Path, answer: AIProxyAnswer, character: str, phase: str):

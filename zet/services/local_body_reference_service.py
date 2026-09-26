@@ -2181,8 +2181,6 @@ Do not explain your reasoning."""
         if not candidate or candidate.get("view") != view:
             raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
         human_pass = candidate.get("human_review", {}).get("decision") == "keep"
-        if (candidate.get("status") == "GATE_REJECTED" or candidate.get("rejection_gate")) and not human_pass:
-            raise LocalBodyReferenceError("A candidate must survive its gates or receive a human Pass before selection.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be selected.")
         auto_approved = bool(autogenerate and view == FRONT_VIEW)
@@ -2194,18 +2192,16 @@ Do not explain your reasoning."""
         if view != FRONT_VIEW:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            if anchor_image is None or not anchor_image.is_file() or ranking.get("anchor_hash") != self._hash(anchor_image):
-                raise LocalBodyReferenceError("The FRONT anchor changed after ranking; rerun this view.")
-        if ranking.get("status") != "COMPLETE" or candidate_id not in (ranking.get("ordered_candidate_ids") or []):
-            raise LocalBodyReferenceError("The candidate must have a current view ranking.")
+            if anchor_image is None or not anchor_image.is_file():
+                raise LocalBodyReferenceError("A current FRONT candidate is required before selecting another view.")
         luna_order = list(ranking.get("luna_ordered_candidate_ids") or [])
         if not luna_order and len(ranking.get("ordered_candidate_ids") or []) == 1:
             luna_order = list(ranking["ordered_candidate_ids"])
         if auto_approved and (not luna_order or luna_order[0] != candidate_id):
             raise LocalBodyReferenceError("Autogenerate can select only the original #1 Luna candidate.")
         image = Path(str(candidate.get("image_path") or ""))
-        if not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
-            raise LocalBodyReferenceError("The candidate image changed after ranking; rerun its review.")
+        if not image.is_file():
+            raise LocalBodyReferenceError("The candidate image is missing.")
         previous_id = selected.get(view)
         if previous_id != candidate_id:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)

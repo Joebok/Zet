@@ -55,6 +55,7 @@ class Config:
     turnaround_width: int = 3960
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
+    ai_harvest_archive_path: str = ""
     render_backend: str = "local_image"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
@@ -247,6 +248,9 @@ class ConfigService:
                 turnaround_width=int(turnaround.get("Width", 3960)),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
                 ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
+                ai_harvest_archive_path=ConfigService._normalize_path_value(
+                    ai_harvest.get("ArchivePath", "Zet_File_Proxy_State/Archive/Harvested")
+                ),
                 render_backend=str(render.get("Backend", "local_image")),
                 ai_prompt_analysis_model=str(
                     ai_models.get(

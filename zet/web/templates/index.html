@@ -255,11 +255,14 @@
             <button class="primary-action" type="submit">Save name</button>
           </form>
           <p id="local-pipeline-summary" class="muted" role="status"></p>
+          <section id="local-pipeline-lineage-warning" class="local-pipeline-lineage-warning" role="status" hidden></section>
           <section id="local-pipeline-options" class="local-pipeline-options">
             <h2>New batch</h2>
             <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" value="8"></label>
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
+            <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
+            <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
             <div id="local-pipeline-source-option" hidden>
               <label>Optional FRONT reference<input id="local-pipeline-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
               <div id="local-pipeline-source-paste" class="local-pipeline-source-paste" contenteditable="true" role="textbox" aria-label="Paste optional FRONT reference image">Click here, then paste a reference image</div>
