@@ -113,6 +113,52 @@ def test_new_run_uses_version_two_review_contract(tmp_path, monkeypatch):
     )
 
 
+def test_render_can_finish_before_review_and_selection_stays_advisory_while_running(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    monkeypatch.setattr(service, "_preflight", lambda: None)
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+    image = Path(run["root"]) / "render.png"
+
+    def queue(_run_id, candidate_id):
+        service._candidate_update(run["run_id"], candidate_id, {"status": "QUEUED", "ask_id": "render-ask"})
+
+    def finish(_run_id, candidate_id):
+        image.write_bytes(b"rendered image")
+        service._candidate_update(run["run_id"], candidate_id, {
+            "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image),
+        })
+        return True
+
+    monkeypatch.setattr(service, "queue_render_candidate", queue)
+    monkeypatch.setattr(service, "_wait_for_render", finish)
+    monkeypatch.setattr(service, "_review_view_candidates_v2",
+                        lambda *_args: pytest.fail("render-only work must not wait for review"))
+    service.execute_run(run["run_id"], views={"FRONT"}, render_only=True)
+    rendered = service.detail(run["run_id"])
+    assert Path(rendered["candidates"][0]["image_path"]).is_file()
+    assert rendered["candidates"][0]["render_status"] == "COMPLETE"
+
+    root = Path(run["root"])
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    state["status"] = "RUNNING"
+    service._write(root / "state.json", state)
+    with service._active_runs_lock:
+        service._active_runs.add(run["run_id"])
+    try:
+        selected = service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
+    finally:
+        with service._active_runs_lock:
+            service._active_runs.discard(run["run_id"])
+    assert selected["selected_views"]["FRONT"] == candidate["candidate_id"]
+    assert selected["status"] == "RUNNING"
+
+
 def test_opening_review_v1_batch_preserves_original_and_marks_saved_results_stale(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:

@@ -4750,3 +4750,6 @@ dd {
     grid-template-columns: 1fr;
   }
 }
+#local-run-all-status {
+  white-space: pre-line;
+}

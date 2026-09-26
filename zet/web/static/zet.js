@@ -8,6 +8,8 @@ const state = {
   productionWorkRefreshPending: false,
   pageGeneration: 0,
   pageController: null,
+  localRunAllCampaignId: "",
+  localRunAllTimer: null,
   selectionGenerations: {},
   selectionControllers: {},
   workspaceSummary: { character: null, story: null },
@@ -11526,6 +11528,66 @@ for (const button of actionButtons) {
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
 workspaceLocal.addEventListener("click", () => switchWorkspace("local"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
+const localRunAllButton = document.querySelector("#local-run-all-remaining");
+const localRunAllStatus = document.querySelector("#local-run-all-status");
+
+function renderLocalRunAllStatus(campaign) {
+  const progress = campaign.progress || {};
+  const running = Number(progress.RUNNING || 0);
+  const waiting = Number(progress.WAITING_FOR_SELECTION || 0);
+  const waitingReferences = Number(progress.WAITING_FOR_REFERENCE || 0);
+  const failed = Number(progress.FAILED || 0);
+  const complete = Number(progress.COMPLETE || 0);
+  const total = Number(campaign.batch_count || (campaign.batches || []).length);
+  const imageCounts = `${campaign.images_complete || 0} images ready · ${campaign.images_remaining || 0} remaining`;
+  const batchCounts = `${running} running · ${waiting} waiting for selection · ${waitingReferences} waiting for references · ${failed} failed · ${complete}/${total} complete`;
+  const details = (campaign.batches || []).filter((item) => ["FAILED", "WAITING_FOR_SELECTION", "WAITING_FOR_REFERENCE"].includes(item.result)
+    || item.review_error)
+    .slice(0, 4).map((item) => `${item.character} ${item.phase}${item.costume ? ` · ${item.costume}` : ""}: ${item.review_error
+      ? `Advisory review: ${item.review_error}` : item.message || item.error || item.result.replaceAll("_", " ").toLowerCase()}`);
+  const campaignLabel = campaign.status === "COMPLETE" ? "Run all Remaining finished."
+    : campaign.status === "FAILED" ? `Run all Remaining failed: ${campaign.error || "see campaign details."}`
+      : "Run all Remaining is active.";
+  localRunAllStatus.textContent = [campaignLabel, imageCounts, batchCounts, ...details].join("\n");
+  localRunAllStatus.hidden = false;
+}
+
+async function pollLocalRunAll(campaignId) {
+  try {
+    const campaign = await fetchJson(`/api/local/run-all-remaining/${encodeURIComponent(campaignId)}`, { bindToPage: false });
+    if (state.localRunAllCampaignId !== campaignId) return;
+    renderLocalRunAllStatus(campaign);
+    if (["QUEUED", "RUNNING", "RECOVERING"].includes(campaign.status)) {
+      state.localRunAllTimer = window.setTimeout(() => void pollLocalRunAll(campaignId), 3000);
+    } else {
+      state.localRunAllTimer = null;
+      localRunAllButton.disabled = false;
+    }
+  } catch (error) {
+    localRunAllStatus.textContent = `Could not read run-all progress: ${error.message}`;
+    localRunAllStatus.hidden = false;
+    state.localRunAllTimer = window.setTimeout(() => void pollLocalRunAll(campaignId), 6000);
+  }
+}
+
+localRunAllButton.addEventListener("click", async () => {
+  localRunAllButton.disabled = true;
+  localRunAllStatus.textContent = "Starting or reconnecting to the library-wide run…";
+  localRunAllStatus.hidden = false;
+  try {
+    const campaign = await fetchJson("/api/local/run-all-remaining", { method: "POST", bindToPage: false });
+    state.localRunAllCampaignId = campaign.campaign_id;
+    if (state.localRunAllTimer) window.clearTimeout(state.localRunAllTimer);
+    renderLocalRunAllStatus(campaign);
+    localRunAllButton.disabled = false;
+    void pollLocalRunAll(campaign.campaign_id);
+  } catch (error) {
+    localRunAllStatus.textContent = `Could not start run-all: ${error.message}`;
+    localRunAllStatus.hidden = false;
+    localRunAllButton.disabled = false;
+  }
+});
+
 localAssetsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   localAssetsMenu.hidden = !localAssetsMenu.hidden;

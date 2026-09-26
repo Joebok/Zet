@@ -23,7 +23,8 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved,
-    gate_result_is_current, pipeline_page_config, resume_cancelled_autogenerate_state, view_candidate_id,
+    gate_result_is_current, mutate_local_run_state, pipeline_page_config, resume_cancelled_autogenerate_state,
+    serialize_local_run_state, view_candidate_id,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -330,15 +331,17 @@ class LocalHeadImageService:
         return root, json.loads((root / "state.json").read_text(encoding="utf-8"))
 
     def _update(self, run_id: str, candidate_id: str, **changes: Any) -> None:
-        root, state = self._state(run_id)
-        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(changes)
-        state["updated_at"] = self._now()
-        self._write(root / "state.json", state)
+        root = self._run_root(run_id)
+        def apply(state: dict[str, Any]) -> None:
+            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(changes)
+            state["updated_at"] = self._now()
+        mutate_local_run_state(root, apply)
 
     def _run_update(self, run_id: str, **changes: Any) -> None:
-        root, state = self._state(run_id)
-        state.update(changes, updated_at=self._now())
-        self._write(root / "state.json", state)
+        root = self._run_root(run_id)
+        def apply(state: dict[str, Any]) -> None:
+            state.update(changes, updated_at=self._now())
+        mutate_local_run_state(root, apply)
 
     def queue_render_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
@@ -640,7 +643,8 @@ class LocalHeadImageService:
                      image_sha256=self._hash(image))
         return True
 
-    def execute_run(self, run_id: str, *, views: set[str] | None = None, candidate_ids: set[str] | None = None) -> None:
+    def execute_run(self, run_id: str, *, views: set[str] | None = None, candidate_ids: set[str] | None = None,
+                    render_only: bool = False) -> None:
         root = self._run_root(run_id)
         try:
             with file_lock(root / "runner.lock", timeout=0):
@@ -655,7 +659,7 @@ class LocalHeadImageService:
                     view_candidates = [item for item in self.detail(run_id)["candidates"]
                                        if item["view"] == view
                                        and (candidate_ids is None or item["candidate_id"] in candidate_ids)
-                                       and item.get("status") in {"PENDING", "FAILED", "QUEUED", "RUNNING", "WAITING_FOR_GATES"}]
+                                       and not Path(str(item.get("image_path") or "")).is_file()]
 
                     # Queue the whole view first so ComfyUI can render its candidates
                     # as a batch before any candidate is sent through review gates.
@@ -676,8 +680,7 @@ class LocalHeadImageService:
                     if self.detail(run_id).get("stop_requested"):
                         break
 
-                    # Wait until every queued render for this view has finished (or
-                    # failed) before starting any gates for the view.
+                    # Finish every render in the selected views before starting review.
                     for candidate in view_candidates:
                         if self.detail(run_id).get("stop_requested"):
                             break
@@ -697,7 +700,17 @@ class LocalHeadImageService:
                     if self.detail(run_id).get("stop_requested"):
                         break
 
-                    # Gate every rendered candidate, then rank the view's survivors.
+                if render_only:
+                    latest = self.detail(run_id)
+                    status = "CANCELLED" if latest.get("stop_requested") else (
+                        "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "AWAITING_HUMAN_SELECTION")
+                    self._run_update(run_id, status=status, target_views=[])
+                    return
+                for view in selected_views:
+                    view_candidates = [item for item in self.detail(run_id)["candidates"] if item["view"] == view
+                                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
+                                       and Path(str(item.get("image_path") or "")).is_file()]
+                    # Review runs after rendering has advanced through every runnable view.
                     for candidate in view_candidates:
                         if self.detail(run_id).get("stop_requested"):
                             break
@@ -711,11 +724,16 @@ class LocalHeadImageService:
                         try:
                             self.run_candidate_gates(run_id, candidate_id)
                         except Exception as exc:
-                            self._update(run_id, candidate_id, status="FAILED", render_error=str(exc))
+                            self._update(run_id, candidate_id, status="WAITING_FOR_HUMAN_REVIEW", review_error=str(exc))
 
                     if self.detail(run_id).get("stop_requested"):
                         break
-                    self.rank_view(run_id, view)
+                    try:
+                        self.rank_view(run_id, view)
+                    except Exception as exc:
+                        current = self.detail(run_id).get("review_errors") or {}
+                        current[view] = str(exc)
+                        self._run_update(run_id, review_errors=current)
                 latest = self.detail(run_id)
                 waiting_anchor = not latest.get("front_anchor")
                 selected_views = latest.get("selected_views") or {}
@@ -814,11 +832,10 @@ class LocalHeadImageService:
         try:
             return self._rank_view(run_id, view)
         except Exception as exc:
-            root, state = self._state(run_id)
-            state.setdefault("rankings", {})[str(view or "").upper()] = {
-                "status": "FAILED", "error": str(exc), "recorded_at": self._now(),
-            }
-            self._write(root / "state.json", state)
+            root = self._run_root(run_id)
+            mutate_local_run_state(root, lambda state: state.setdefault("rankings", {}).update({
+                str(view or "").upper(): {"status": "FAILED", "error": str(exc), "recorded_at": self._now()}
+            }))
             return self.detail(run_id)
 
     def _rank_view(self, run_id: str, view: str) -> dict[str, Any]:
@@ -837,17 +854,13 @@ class LocalHeadImageService:
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         if not survivors:
-            root, state = self._state(run_id)
             anchor_hash = self._hash(anchor_path) if view != FRONT and anchor_path.is_file() else ""
-            state.setdefault("rankings", {})[view] = {
+            ranking = {
                 "status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [],
                 "input_hashes": {}, "anchor_hash": anchor_hash, "model": "", "recorded_at": self._now(),
             }
-            selected_id = state.setdefault("selected_views", {}).pop(view, None)
-            if selected_id:
-                self._clear_owned_selection(run, view)
-                state["status"] = "REVIEW_REQUIRED"
-            self._write(root / "state.json", state)
+            mutate_local_run_state(self._run_root(run_id),
+                                   lambda state: state.setdefault("rankings", {}).update({view: ranking}))
             return self.detail(run_id)
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         anchor_hash = self._hash(anchor_path) if view != FRONT else ""
@@ -912,14 +925,15 @@ class LocalHeadImageService:
             finally:
                 schema_file.unlink(missing_ok=True)
                 output_file.unlink(missing_ok=True)
-        root, state = self._state(run_id)
-        state.setdefault("rankings", {})[view] = {"status": "COMPLETE",
+        ranking = {"status": "COMPLETE",
             "ordered_candidate_ids": [item["candidate_id"] for item in entries],
             "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
             "input_hashes": hashes, "anchor_hash": anchor_hash, "model": model, "recorded_at": self._now()}
-        self._write(root / "state.json", state)
+        mutate_local_run_state(self._run_root(run_id),
+                               lambda state: state.setdefault("rankings", {}).update({view: ranking}))
         return self.detail(run_id)
 
+    @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         run = self.detail(run_id)
         selected = run.get("selected_views") or {}
@@ -935,21 +949,21 @@ class LocalHeadImageService:
             state.setdefault("selected_views", {}).pop(view, None)
             if view == FRONT:
                 state["front_anchor"] = None
-                self._invalidate_downstream(run, state)
-                state["status"] = "AWAITING_FRONT_ANCHOR"
-            else:
+                self._mark_downstream_review_stale(run, state)
+            if state.get("status") not in ACTIVE_RUN_STATUSES and view != FRONT:
                 state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
+            elif state.get("status") not in ACTIVE_RUN_STATUSES:
+                state["status"] = "AWAITING_FRONT_ANCHOR"
             self._write(root / "state.json", state)
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        human_pass = bool(candidate and candidate.get("human_review", {}).get("decision") == "keep")
         if not candidate or candidate["view"] != view:
             raise LocalHeadImageError("Choose a candidate from this view.")
         auto_approved = bool(autogenerate and view == FRONT)
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalHeadImageError("A human-rejected candidate cannot be autoselected.")
-        if view == FRONT and not human_pass and not auto_approved:
-            raise LocalHeadImageError("Review and pass a FRONT candidate before selecting it as the anchor.")
+        if auto_approved and not self._candidate_gates_current(run, candidate):
+            raise LocalHeadImageError("Re-evaluate and pass the FRONT gates before autoselecting this candidate.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
@@ -959,19 +973,20 @@ class LocalHeadImageService:
             luna_order = list(ranking["ordered_candidate_ids"])
         if auto_approved and (not luna_order or luna_order[0] != candidate_id):
             raise LocalHeadImageError("Autogenerate can select only the original #1 Luna candidate.")
+        if auto_approved and ranking.get("status") != "COMPLETE":
+            raise LocalHeadImageError("Autogenerate requires a completed Luna ranking.")
         if view == FRONT and (run.get("front_anchor") != candidate_id):
             for downstream_view in VIEWS[1:]:
                 self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
         if selected.get(view) != candidate_id:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         dependencies = []
-        if view != FRONT:
+        if view != FRONT and run.get("front_anchor"):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
             anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-            if not anchor_image.is_file():
-                raise LocalHeadImageError("A current FRONT candidate is required before selecting another view.")
-            anchor_hash = self._hash(anchor_image)
-            dependencies = [{"key": self.asset_store.key("Head-Image", FRONT), "image_sha256": anchor_hash}]
+            if anchor_image.is_file():
+                anchor_hash = self._hash(anchor_image)
+                dependencies = [{"key": self.asset_store.key("Head-Image", FRONT), "image_sha256": anchor_hash}]
         root, state = self._state(run_id)
         previous_id = selected.get(view)
         state.setdefault("selected_views", {})[view] = candidate_id
@@ -979,21 +994,20 @@ class LocalHeadImageService:
             old_anchor_id = state.get("front_anchor")
             state["front_anchor"] = candidate_id
             if old_anchor_id != candidate_id:
-                self._invalidate_downstream(run, state)
-                state["status"] = "READY_FOR_VIEWS"
+                self._mark_downstream_review_stale(run, state)
+                if state.get("status") not in ACTIVE_RUN_STATUSES:
+                    state["status"] = "READY_FOR_VIEWS"
         self.asset_store.record_batch_selection(run["character"], run["phase"], "Head-Image", view,
                                           candidate_id=candidate_id, image_path=image, batch_id=run_id,
                                           dependencies=dependencies)
-        if previous_id and previous_id != candidate_id:
-            state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
-        update = {"status": "COMPLETE", "selected_at": self._now()}
+        update = {"selected_at": self._now()}
         if auto_approved:
             update["autogenerate_approval"] = {"approved_at": self._now(), "reason": "Current #1 Luna FRONT candidate passed local gates."}
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         all_selected = all((state.get("selected_views") or {}).get(target) for target in VIEWS)
-        if all_selected:
+        if all_selected and state.get("status") not in ACTIVE_RUN_STATUSES:
             state["status"] = "COMPLETE"
-        elif state.get("front_anchor") and view != FRONT:
+        elif state.get("status") not in ACTIVE_RUN_STATUSES and state.get("front_anchor") and view != FRONT:
             state["status"] = "AWAITING_HUMAN_SELECTION"
         self._write(root / "state.json", state)
         return self.detail(run_id)
@@ -1008,28 +1022,9 @@ class LocalHeadImageService:
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalHeadImageError("Candidate image must be complete before human review.")
-        if decision == "reject" and (run.get("selected_views") or {}).get(candidate["view"]) == candidate_id:
-            root, state = self._state(run_id)
-            if candidate["view"] == FRONT:
-                for downstream_view in VIEWS:
-                    if downstream_view != FRONT:
-                        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
-            self._clear_owned_selection(run, candidate["view"])
-            state.setdefault("selected_views", {}).pop(candidate["view"], None)
-            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
-                human_review={"decision": decision, "notes": str(payload.get("notes") or "")})
-            if candidate["view"] == FRONT:
-                state["front_anchor"] = None
-                self._invalidate_downstream(run, state)
-                state["status"] = "AWAITING_FRONT_ANCHOR"
-            else:
-                state["status"] = "AWAITING_HUMAN_SELECTION"
-            state.setdefault("candidates", {}).setdefault(candidate_id, {})["status"] = "WAITING_FOR_HUMAN_REVIEW"
-            self._write(root / "state.json", state)
-            return self.detail(run_id)
         self._update(run_id, candidate_id,
                      human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
-                     status="COMPLETE" if decision == "keep" else candidate.get("status"))
+                     status=candidate.get("status"))
         return self.detail(run_id)
 
     def lock_selected_view(self, run_id: str, view: str) -> dict[str, Any]:
@@ -1039,8 +1034,6 @@ class LocalHeadImageService:
         image = Path(str((candidate or {}).get("image_path") or ""))
         if not candidate or not image.is_file():
             raise LocalHeadImageError("The selected candidate image is missing.")
-        if candidate.get("human_review", {}).get("decision") == "reject":
-            raise LocalHeadImageError("A human-rejected candidate cannot be locked.")
         dependencies = []
         if view != FRONT:
             anchor = next((item for item in run["candidates"]
@@ -1114,6 +1107,24 @@ class LocalHeadImageService:
                 failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
                 retry_count=int(candidate.get("retry_count") or 0) + (1 if candidate.get("image_path") else 0),
             )
+
+    def _mark_downstream_review_stale(self, run: dict[str, Any], state: dict[str, Any]) -> None:
+        """Preserve downstream renders when a human changes the FRONT choice."""
+        for view in VIEWS[1:]:
+            ranking = state.setdefault("rankings", {}).get(view)
+            if ranking:
+                ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
+            for candidate in run.get("candidates") or []:
+                if candidate.get("view") != view:
+                    continue
+                update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+                gates = update.get("gates") or candidate.get("gates") or {}
+                if gates:
+                    update["gates"] = {key: {**record, "status": "STALE",
+                                             "stale_reason": "The selected FRONT anchor changed."}
+                                       for key, record in gates.items()}
+                if state.get("selected_views", {}).get(view) == candidate.get("candidate_id"):
+                    update["stale_selection"] = True
 
     def rerun(self, run_id: str) -> dict[str, Any]:
         """Clear the current batch's candidates and reviews, then restart FRONT."""

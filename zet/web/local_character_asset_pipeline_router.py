@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_character_overview_service import submit_local_pipeline_task
+from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 
 
 def create_local_character_asset_pipeline_router(
@@ -26,6 +27,17 @@ def create_local_character_asset_pipeline_router(
             raise
         except Exception as exc:
             raise HTTPException(status_code=missing, detail=str(exc)) from exc
+
+    def run_all_service() -> LocalRunAllRemainingService:
+        return LocalRunAllRemainingService(app_factory(), root)
+
+    @router.post("/api/local/run-all-remaining")
+    def start_run_all_remaining():
+        return call(run_all_service().start)
+
+    @router.get("/api/local/run-all-remaining/{campaign_id}")
+    def run_all_remaining_status(campaign_id: str):
+        return call(lambda: run_all_service().status(campaign_id), missing=404)
 
     for pipeline in ("body-reference", "head-image", "character-assembly", "costume-dressing"):
         prefix = f"/api/local/{pipeline}"

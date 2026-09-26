@@ -34,6 +34,7 @@ from zet.services.local_head_image_service import VIEWS
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_character_overview_service import LocalCharacterOverviewService, submit_local_pipeline_task
+from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
@@ -909,6 +910,7 @@ def create_app(
         application.state.zet_app.image_catalog_service.repository.load()
         application.state.zet_app.library_index_reconciler.start()
         LocalCharacterOverviewService(_app(application.state.config_path), PROJECT_ROOT).recover()
+        LocalRunAllRemainingService(_app(application.state.config_path), PROJECT_ROOT).recover()
         try:
             yield
         finally:

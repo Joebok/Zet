@@ -14,6 +14,10 @@
     STOPPED: "Stopped", INTERRUPTED: "Interrupted", ERROR: "Error", PENDING: "Pending",
     WAITING_FOR_GATES: "Waiting for gates", GATE_REJECTED: "Gate rejected", FAILED: "Failed",
   };
+  const renderStatusLabels = {
+    PENDING: "Image pending", QUEUED: "Render queued", RUNNING: "Rendering",
+    COMPLETE: "Image ready", FAILED: "Render failed",
+  };
   const activeStatuses = new Set(["PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"]);
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
     gatePolicies: {}, frontSourcePath: "", poll: null, previewGeneration: 0, contextKey: "", compareOpposite: false,
@@ -334,13 +338,13 @@
       card.append(imageButton);
     } else {
       const pending = document.createElement("p");
-      pending.textContent = statusLabels[candidate.status] || candidate.status || "Waiting";
+      pending.textContent = renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Waiting";
       card.append(pending);
     }
     const status = document.createElement("p");
     status.className = "muted";
     const rank = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
-    status.textContent = `${statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}` : ""}`;
+    status.textContent = `${renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}` : ""}`;
     card.append(status);
     for (const line of gateSummary(candidate)) card.append(line);
     const human = document.createElement("p");
@@ -350,12 +354,10 @@
     const controls = document.createElement("div");
     controls.className = "button-row compact local-pipeline-candidate-controls";
     if (state.pipeline === "body-reference") {
-      if (candidate.image_path) addButton(controls, "Review", "review", { disabled: busy(run), view, candidate: candidate.candidate_id });
+      if (candidate.image_path) addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
     } else {
-      if (candidate.image_path) addButton(controls, "Review", "review", { disabled: busy(run), view, candidate: candidate.candidate_id });
-      const humanDecision = candidate.human_review?.decision || "undecided";
-      const canSelect = !selected && !busy(run)
-        && humanDecision !== "reject" && (view !== "FRONT" || humanDecision === "keep");
+      if (candidate.image_path) addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
+      const canSelect = candidate.render_status === "COMPLETE" && selectedViews[view] !== candidate.candidate_id;
       if (canSelect) addButton(controls, "Select", "select", { primary: true, view, candidate: candidate.candidate_id });
       if (["FAILED", "GATE_REJECTED"].includes(candidate.status)) addButton(controls, "Retry", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
     }
@@ -453,7 +455,7 @@
       return;
     }
     const progress = run.page_summary || {};
-    const completed = progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
+    const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
     $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (state.pipeline === "body-reference" && run.set_report?.coherent) {
       $("summary").textContent += ` · lineup ${Object.values(run.set_report.coherent).every(Boolean) ? "coherent" : "needs review"}`;

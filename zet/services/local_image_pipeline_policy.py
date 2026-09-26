@@ -5,7 +5,11 @@ import json
 import shutil
 from pathlib import Path
 import re
+from functools import wraps
+import inspect
 from typing import Any
+
+from zet.services.workflow_storage import file_lock
 
 
 PIPELINE_PAGE_CONFIG: dict[str, dict[str, Any]] = {
@@ -90,10 +94,14 @@ def pipeline_page_config(pipeline: str) -> dict[str, Any]:
 def local_pipeline_batch_summary(run: dict[str, Any]) -> dict[str, Any]:
     """Project common progress and stale-selection counts for local pipeline pages."""
     candidates = list(run.get("candidates") or [])
+    completed_count = 0
+    for item in candidates:
+        image = Path(str(item.get("image_path") or ""))
+        completed_count += int(image.is_file() and image.stat().st_size > 0)
     return {
         "status": str(run.get("status") or "UNKNOWN"),
         "status_label": RUN_STATUS_LABELS.get(str(run.get("status") or ""), str(run.get("status") or "Unknown")),
-        "completed_count": sum(bool(item.get("image_path")) for item in candidates),
+        "completed_count": completed_count,
         "candidate_count": int(run.get("candidate_count") or len(candidates)),
         "selected_view_count": len(run.get("selected_views") or {}),
         "front_anchor": run.get("front_anchor") or "",
@@ -106,9 +114,67 @@ def local_pipeline_batch_summary(run: dict[str, Any]) -> dict[str, Any]:
 def decorate_local_pipeline_detail(run: dict[str, Any], pipeline: str) -> dict[str, Any]:
     """Add the common pipeline identity and status projection to a run detail."""
     result = dict(run)
+    candidates = []
+    counts = {"PENDING": 0, "QUEUED": 0, "RUNNING": 0, "COMPLETE": 0, "FAILED": 0}
+    for source in result.get("candidates") or []:
+        candidate = dict(source)
+        image = Path(str(candidate.get("image_path") or ""))
+        if image.is_file() and image.stat().st_size > 0:
+            render_status = "COMPLETE"
+        elif candidate.get("render_error"):
+            render_status = "FAILED"
+        elif candidate.get("status") == "RUNNING":
+            render_status = "RUNNING"
+        elif candidate.get("status") == "QUEUED" and candidate.get("ask_id"):
+            render_status = "QUEUED"
+        else:
+            render_status = "PENDING"
+        candidate["render_status"] = render_status
+        counts[render_status] += 1
+        candidates.append(candidate)
+    result["candidates"] = candidates
+    result["render_progress"] = {
+        **counts,
+        "total": len(candidates),
+        "remaining": counts["PENDING"] + counts["QUEUED"] + counts["RUNNING"] + counts["FAILED"],
+    }
     result["pipeline_config"] = pipeline_page_config(pipeline)
     result["page_summary"] = local_pipeline_batch_summary(result)
     return result
+
+
+def mutate_local_run_state(run_root: Path, mutator) -> dict[str, Any]:
+    """Apply a short read/modify/write transaction to a run's state file."""
+    state_path = run_root / "state.json"
+    with file_lock(run_root / "state.lock"):
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            state = {}
+        mutator(state)
+        from zet.services.atomic_file_service import write_json_atomic
+        write_json_atomic(state_path, state)
+        return state
+
+
+def serialize_local_run_state(function):
+    """Serialize one short run-state workflow against runner state updates."""
+    signature = inspect.signature(function)
+
+    @wraps(function)
+    def wrapped(self, *args, **kwargs):
+        bound = signature.bind(self, *args, **kwargs)
+        run_id = str(bound.arguments.get("run_id") or "")
+        costume = str(bound.arguments.get("costume") or "")
+        resolver = getattr(self, "_run_root", None) or getattr(self, "_root")
+        try:
+            root = resolver(run_id, costume)
+        except TypeError:
+            root = resolver(run_id)
+        with file_lock(Path(root) / "state.lock"):
+            return function(self, *args, **kwargs)
+
+    return wrapped
 
 
 def upgrade_legacy_review_v1(run_root: Path, spec: dict[str, Any], state: dict[str, Any], *, active: bool = False) -> bool:

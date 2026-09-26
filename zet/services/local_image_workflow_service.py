@@ -100,8 +100,11 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.retry_candidate(run_id, candidate_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.retry_candidate(run_id, candidate_id)
         raise LocalImageWorkflowError(f"Unsupported local image workflow action: {name}")
 
-    def execute(self, run_id: str, *, views: set[str] | None = None, costume: str = "") -> None:
+    def execute(self, run_id: str, *, views: set[str] | None = None, costume: str = "",
+                candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
         if self.pipeline in {"character-assembly", "costume-dressing"}:
-            self.adapter.execute_run(run_id, views=views, costume=costume)
+            self.adapter.execute_run(run_id, views=views, costume=costume,
+                                     candidate_ids=candidate_ids, render_only=render_only)
         else:
-            self.adapter.execute_run(run_id, views=views)
+            self.adapter.execute_run(run_id, views=views, candidate_ids=candidate_ids,
+                                     render_only=render_only)

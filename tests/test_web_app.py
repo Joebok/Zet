@@ -16,6 +16,28 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
+    def test_local_assets_can_start_and_check_library_wide_run(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = write_project_fixture(root)
+            config_path.write_text(
+                config_path.read_text(encoding="utf-8").replace(
+                    "[BaseFolders]\n",
+                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
+                ),
+                encoding="utf-8",
+            )
+            with TestClient(create_app(config_path)) as client:
+                page = client.get("/")
+                self.assertEqual(200, page.status_code)
+                self.assertIn('id="local-run-all-remaining"', page.text)
+                started = client.post("/api/local/run-all-remaining")
+                self.assertEqual(200, started.status_code, started.text)
+                campaign_id = started.json()["campaign_id"]
+                status = client.get(f"/api/local/run-all-remaining/{campaign_id}")
+                self.assertEqual(200, status.status_code, status.text)
+                self.assertEqual(0, status.json()["images_remaining"])
+
     def test_gate_test_rig_and_gate_setup_apis(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

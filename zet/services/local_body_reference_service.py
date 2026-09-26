@@ -23,7 +23,8 @@ from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved, pipeline_page_config,
-    gate_result_is_current, resume_cancelled_autogenerate_state, upgrade_legacy_review_v1, view_candidate_id,
+    gate_result_is_current, mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
+    upgrade_legacy_review_v1, view_candidate_id,
 )
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -1082,8 +1083,6 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if run.get("review_version", 1) >= 2:
-            if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
-                raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before reviewing.")
             decision = str(payload.get("decision") or "undecided")
             notes = str(payload.get("notes") or "")
             if decision not in {"keep", "reject", "undecided"}:
@@ -1091,55 +1090,15 @@ Do not explain your reasoning."""
             image = Path(str(candidate.get("image_path") or ""))
             if not image.is_file():
                 raise LocalBodyReferenceError("The candidate must have a completed image before human review.")
-            image_hash = self._hash(image)
-            anchor = next((item for item in run["candidates"]
-                           if item.get("candidate_id") == run.get("front_anchor")), None)
-            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            anchor_hash = self._hash(anchor_image) if anchor_image and anchor_image.is_file() else ""
-            gates = candidate.get("gates") or {}
-            gates_current = True
-            from zet.services.local_gate_registry_service import LocalGateRegistryService
-            registry = LocalGateRegistryService(self.app, self.project_root)
-            for gate in self.review_gates(candidate["view"]):
-                record = gates.get(gate.key) or {}
-                expected_hashes = {"candidate": image_hash,
-                                   "front_anchor": anchor_hash if gate.uses_anchor else ""}
-                if not gate_result_is_current(
-                    record, input_hashes=expected_hashes,
-                    prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
-                    policy_status=registry.status("body-reference", gate.key),
-                ):
-                    gates_current = False
-                    break
-            if not gates_current and decision == "undecided":
-                raise LocalBodyReferenceError("The candidate must pass current gates before human review.")
             root = self._root(run_id)
-            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update({
-                "human_review": {"decision": decision, "notes": notes},
-            })
-            if decision == "keep":
-                state["candidates"][candidate_id].update(status="COMPLETE", disposition="human_keep", completed_at=self._now())
-            elif decision == "reject":
-                state["candidates"][candidate_id].update(status="COMPLETE", disposition="human_reject", completed_at=self._now())
-            else:
-                state["candidates"][candidate_id].update(status=candidate.get("status"), disposition="pending")
-            if decision == "reject" and state.get("selected_views", {}).get(candidate["view"]) == candidate_id:
-                if candidate["view"] == FRONT_VIEW:
-                    for downstream_view in run.get("views", []):
-                        if downstream_view != FRONT_VIEW:
-                            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
-                self._clear_owned_selection(run, candidate["view"])
-                state["selected_views"].pop(candidate["view"], None)
-                state["candidates"][candidate_id]["status"] = "WAITING_FOR_HUMAN_REVIEW"
-                if candidate["view"] == FRONT_VIEW:
-                    state["front_anchor"] = None
-                    self._invalidate_views_after_anchor_change(run_id, state)
-                    state.update(status="AWAITING_FRONT_ANCHOR", target_views=[], target_candidate_ids=[])
-                else:
-                    state["status"] = "AWAITING_HUMAN_SELECTION"
-            state["updated_at"] = self._now()
-            self._save_state(run_id, state)
+            disposition = "human_keep" if decision == "keep" else "human_reject" if decision == "reject" else "pending"
+            def apply(state: dict[str, Any]) -> None:
+                state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
+                    human_review={"decision": decision, "notes": notes}, disposition=disposition,
+                    status=candidate.get("status"),
+                )
+                state["updated_at"] = self._now()
+            mutate_local_run_state(root, apply)
             return self.detail(run_id)
         update = {"human_review": {"decision": str(payload.get("decision") or "undecided"),
                                    "notes": str(payload.get("notes") or "")}}
@@ -1397,18 +1356,25 @@ Do not explain your reasoning."""
         return {"provider": "local", "ask_id": ask_id, "status": "QUEUED", "output_path": str(output), "input_hashes": manifest["input_hashes"]}
 
     def _candidate_update(self, run_id: str, candidate_id: str, update: dict[str, Any]) -> None:
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
-        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
-        state["updated_at"] = self._now()
-        self._save_state(run_id, state)
+        root = self._root(run_id)
+        def apply(state: dict[str, Any]) -> None:
+            state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
+            state["updated_at"] = self._now()
+            if (root / "cancelled.json").is_file():
+                state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
+        mutate_local_run_state(root, apply)
 
     def _run_update(self, run_id: str, **update: Any) -> None:
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
-        if state.get("status") == "CANCELLED" and update.get("status") != "CANCELLED":
-            update.pop("status", None)
-            update.pop("error", None)
-        state.update(update, updated_at=self._now())
-        self._save_state(run_id, state)
+        root = self._root(run_id)
+        def apply(state: dict[str, Any]) -> None:
+            changes = dict(update)
+            if state.get("status") == "CANCELLED" and changes.get("status") != "CANCELLED":
+                changes.pop("status", None)
+                changes.pop("error", None)
+            state.update(changes, updated_at=self._now())
+            if (root / "cancelled.json").is_file():
+                state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
+        mutate_local_run_state(root, apply)
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
@@ -1523,14 +1489,6 @@ Do not explain your reasoning."""
                 except Exception as exc:
                     self._candidate_update(run_id, candidate_id, {"status": "FAILED", "render_error": str(exc)})
                     continue
-            if current.get("status") == "WAITING_FOR_FACE_GATE" and not (current.get("face_gate") or {}).get("ask_id"):
-                try:
-                    self._run_face_gate(run_id, candidate_id)
-                except Exception as exc:
-                    self._candidate_update(run_id, candidate_id, {
-                        "status": "FAILED", "render_error": str(exc),
-                        "face_gate": {**(current.get("face_gate") or {}), "status": "FAILED", "error": str(exc)},
-                    })
         return True
 
     @staticmethod
@@ -1863,14 +1821,12 @@ Do not explain your reasoning."""
                         history = list(candidate.get("face_gate_history") or [])
                         history.append(gate)
                         self._candidate_update(run_id, candidate["candidate_id"], {
-                            "status": "PENDING", "seed": str(random.SystemRandom().randrange(0, 2**63 - 1)),
-                            "image_path": "", "image_sha256": "", "ask_id": "", "queued_at": "",
-                            "completed_at": "", "face_gate": {}, "face_gate_history": history,
-                            "render_error": "", "retry_count": int(candidate.get("retry_count") or 0) + 1,
+                            "status": "GATE_REJECTED", "rejection_gate": "face",
+                            "face_gate": gate, "face_gate_history": history,
                         })
                     else:
                         self._candidate_update(run_id, candidate["candidate_id"], {
-                            "status": "WAITING_FOR_ANALYSIS", "face_gate": gate,
+                            "status": "WAITING_FOR_HUMAN_REVIEW", "face_gate": gate,
                         })
                     pending.setdefault(run_id, []).append(candidate["candidate_id"])
                     continue
@@ -1879,7 +1835,7 @@ Do not explain your reasoning."""
                     failed_runs.add(run_id)
                     message = str(answer.get("error_message") or "Face-gate analysis failed.")
                     self._candidate_update(run_id, candidate["candidate_id"], {
-                        "status": "FAILED", "render_error": message,
+                        "status": "WAITING_FOR_HUMAN_REVIEW", "review_error": message,
                         "face_gate": {**gate, "status": "FAILED", "error": message},
                     })
                 elif proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
@@ -2014,15 +1970,12 @@ Do not explain your reasoning."""
         )]
         root = self._root(run_id)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-        rankings = state.setdefault("rankings", {})
-        ranking_history = state.setdefault("ranking_history", {})
-        previous = dict(rankings.get(view) or {})
+        previous = dict((state.get("rankings") or {}).get(view) or {})
         if previous.get("status") == "COMPLETE":
             current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
             current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
             if previous.get("input_hashes") == current_hashes and previous.get("anchor_hash", "") == current_anchor_hash:
                 return run
-            ranking_history.setdefault(view, []).append({"archived_at": self._now(), "ranking": previous})
         current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
         current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
         if not survivors:
@@ -2090,22 +2043,21 @@ Do not explain your reasoning."""
                 ranking = {"status": "FAILED", "ordered_candidate_ids": [], "entries": [],
                            "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                            "error": str(exc), "recorded_at": self._now()}
-                rankings[view] = ranking
-                state["updated_at"] = self._now()
-                self._save_state(run_id, state)
+                mutate_local_run_state(root, lambda current: current.setdefault("rankings", {}).update({view: ranking}))
                 raise LocalBodyReferenceError(f"Luna ranking failed for {view}: {exc}") from exc
             finally:
                 schema_file.unlink(missing_ok=True)
                 output_file.unlink(missing_ok=True)
-        rankings[view] = ranking
-        selected_views = state.setdefault("selected_views", {})
-        selected_id = selected_views.get(view)
-        surviving_ids = set(ranking.get("ordered_candidate_ids") or [])
-        if selected_id and selected_id in surviving_ids:
-            state.setdefault("candidates", {}).setdefault(selected_id, {}).update(status="COMPLETE")
-        state["ranking_history"] = ranking_history
-        state["updated_at"] = self._now()
-        self._save_state(run_id, state)
+        def save_ranking(current: dict[str, Any]) -> None:
+            current_rankings = current.setdefault("rankings", {})
+            previous = current_rankings.get(view)
+            if previous and previous != ranking and previous.get("status") not in {"QUEUED", "RUNNING"}:
+                current.setdefault("ranking_history", {}).setdefault(view, []).append(
+                    {"archived_at": self._now(), "ranking": previous}
+                )
+            current_rankings[view] = ranking
+            current["updated_at"] = self._now()
+        mutate_local_run_state(root, save_ranking)
         return self.detail(run_id)
 
     def _invalidate_views_after_anchor_change(self, run_id: str, state: dict[str, Any]) -> None:
@@ -2140,14 +2092,33 @@ Do not explain your reasoning."""
                 "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
             })
 
+    def _mark_downstream_review_stale(self, run: dict[str, Any], state: dict[str, Any]) -> None:
+        """Keep rendered work and selections when a human changes the FRONT choice."""
+        for view in run.get("views") or []:
+            if view == FRONT_VIEW:
+                continue
+            ranking = state.setdefault("rankings", {}).get(view)
+            if ranking:
+                ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
+            for candidate in run.get("candidates") or []:
+                if candidate.get("view") != view:
+                    continue
+                gates = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).get("gates")
+                if gates:
+                    state["candidates"][candidate["candidate_id"]]["gates"] = {
+                        key: {**record, "status": "STALE", "stale_reason": "The selected FRONT anchor changed."}
+                        for key, record in gates.items()
+                    }
+                if state.get("selected_views", {}).get(view) == candidate.get("candidate_id"):
+                    state["candidates"][candidate["candidate_id"]]["stale_selection"] = True
+
+    @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         """Select the human-approved candidate for one version 2 view."""
         run = self.detail(run_id)
         view = str(view or "").upper()
         if run.get("review_version", 1) < 2:
             raise LocalBodyReferenceError("View selection is available for version 2 runs.")
-        if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
-            raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before selecting.")
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         root = self._root(run_id)
@@ -2166,34 +2137,28 @@ Do not explain your reasoning."""
             )
             if not removed_id:
                 return self.detail(run_id)
-            state.setdefault("candidates", {}).setdefault(removed_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
+            state.setdefault("candidates", {}).setdefault(removed_id, {}).update(selected_at="")
             if view == FRONT_VIEW:
                 if state.get("front_anchor") == removed_id:
                     state["front_anchor"] = None
-                self._invalidate_views_after_anchor_change(run_id, state)
-                state["status"] = "AWAITING_FRONT_ANCHOR"
-            else:
+                self._mark_downstream_review_stale(run, state)
+            if state.get("status") not in ACTIVE_RUN_STATUSES and view != FRONT_VIEW:
                 state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
+            elif state.get("status") not in ACTIVE_RUN_STATUSES:
+                state["status"] = "AWAITING_FRONT_ANCHOR"
             state["updated_at"] = self._now()
             self._save_state(run_id, state)
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate or candidate.get("view") != view:
             raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
-        human_pass = candidate.get("human_review", {}).get("decision") == "keep"
-        if candidate.get("human_review", {}).get("decision") == "reject":
-            raise LocalBodyReferenceError("A human-rejected candidate cannot be selected.")
         auto_approved = bool(autogenerate and view == FRONT_VIEW)
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be autoselected.")
-        if view == FRONT_VIEW and not human_pass and not auto_approved:
-            raise LocalBodyReferenceError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
-        if view != FRONT_VIEW:
+        if view != FRONT_VIEW and run.get("front_anchor"):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            if anchor_image is None or not anchor_image.is_file():
-                raise LocalBodyReferenceError("A current FRONT candidate is required before selecting another view.")
         luna_order = list(ranking.get("luna_ordered_candidate_ids") or [])
         if not luna_order and len(ranking.get("ordered_candidate_ids") or []) == 1:
             luna_order = list(ranking["ordered_candidate_ids"])
@@ -2202,6 +2167,9 @@ Do not explain your reasoning."""
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalBodyReferenceError("The candidate image is missing.")
+        if auto_approved and (ranking.get("status") != "COMPLETE"
+                              or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
+            raise LocalBodyReferenceError("Autogenerate requires a current ranking from passed FRONT gates.")
         previous_id = selected.get(view)
         if previous_id != candidate_id:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
@@ -2210,25 +2178,24 @@ Do not explain your reasoning."""
             for downstream_view in run.get("views", []):
                 if downstream_view != FRONT_VIEW:
                     self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
-        if previous_id and previous_id != candidate_id:
-            state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
         selected[view] = candidate_id
-        update = {"status": "COMPLETE", "selected_at": self._now()}
+        update = {"selected_at": self._now()}
         if auto_approved:
             update["autogenerate_approval"] = {"approved_at": self._now(), "reason": "Current #1 Luna FRONT candidate passed local gates."}
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         if view == FRONT_VIEW:
             state["front_anchor"] = candidate_id
             if old_anchor_id != candidate_id:
-                self._invalidate_views_after_anchor_change(run_id, state)
-                state.update(status="READY_FOR_VIEWS", target_views=[], target_candidate_ids=[])
+                self._mark_downstream_review_stale(run, state)
+                if state.get("status") not in ACTIVE_RUN_STATUSES:
+                    state.update(status="READY_FOR_VIEWS", target_views=[], target_candidate_ids=[])
         image_hash = self._hash(image)
         dependencies = []
         if view != FRONT_VIEW:
             anchor = next((item for item in run["candidates"]
                            if item.get("candidate_id") == run.get("front_anchor")), None)
             anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-            if anchor_image.is_file():
+            if anchor_image and anchor_image.is_file():
                 dependencies.append({
                     "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
                     "image_sha256": self._hash(anchor_image),
@@ -2240,8 +2207,10 @@ Do not explain your reasoning."""
         )
 
         all_selected = all(view_name in selected for view_name in run.get("views") or [])
-        if all_selected and state.get("front_anchor") == selected.get(FRONT_VIEW) and not self.detail(run_id).get("stale_selections"):
+        if all_selected and state.get("front_anchor") == selected.get(FRONT_VIEW) and not self.detail(run_id).get("stale_selections") and state.get("status") not in ACTIVE_RUN_STATUSES:
             state.update(status="COMPLETE", target_views=[], target_candidate_ids=[], review_only=False)
+        elif state.get("status") in ACTIVE_RUN_STATUSES:
+            pass
         elif state.get("front_anchor"):
             state.setdefault("status", "AWAITING_HUMAN_SELECTION")
             if state.get("status") not in {"READY_FOR_VIEWS", "RUNNING", "PREFLIGHT"}:
@@ -2263,8 +2232,6 @@ Do not explain your reasoning."""
         image = Path(str((candidate or {}).get("image_path") or ""))
         if not candidate or not image.is_file():
             raise LocalBodyReferenceError("The selected candidate image is missing.")
-        if candidate.get("human_review", {}).get("decision") == "reject":
-            raise LocalBodyReferenceError("A human-rejected candidate cannot be locked.")
         try:
             dependencies = []
             if view != FRONT_VIEW:
@@ -2386,14 +2353,16 @@ Do not explain your reasoning."""
         self._candidate_update(run_id, candidate_id, {"local_job": job})
         return True
 
-    def execute_run(self, run_id: str, *, views: set[str] | None = None) -> None:
+    def execute_run(self, run_id: str, *, views: set[str] | None = None,
+                    candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
         try:
             with file_lock(self._root(run_id) / "runner.lock", timeout=0):
-                self._execute_run_locked(run_id, views=views)
+                self._execute_run_locked(run_id, views=views, candidate_ids=candidate_ids, render_only=render_only)
         except TimeoutError:
             return
 
-    def _execute_run_locked(self, run_id: str, *, views: set[str] | None = None) -> None:
+    def _execute_run_locked(self, run_id: str, *, views: set[str] | None = None,
+                            candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
         with self._active_runs_lock:
             self._active_runs.add(run_id)
         try:
@@ -2404,7 +2373,10 @@ Do not explain your reasoning."""
                 return
             review_only = bool(initial_state.get("review_only"))
             target_views = list(initial_state.get("target_views") or [])
-            target_candidate_ids = set(initial_state["target_candidate_ids"]) if initial_state.get("target_candidate_ids") else None
+            saved_candidate_ids = set(initial_state.get("target_candidate_ids") or [])
+            target_candidate_ids = saved_candidate_ids | candidate_ids if candidate_ids is not None else (
+                saved_candidate_ids or None
+            )
             if not review_only:
                 self._run_update(run_id, status="PREFLIGHT", error="")
                 self._preflight()
@@ -2423,12 +2395,25 @@ Do not explain your reasoning."""
                     self._withdraw_queued_asks(run_id)
                     self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
-                review_method = (self._review_view_candidates_v2
-                                 if run.get("review_version", 1) >= 2 else self._review_view_candidates)
-                if not review_method(run_id, view, target_candidate_ids):
+            if render_only:
+                latest = self.detail(run_id)
+                status = "CANCELLED" if latest.get("stop_requested") else (
+                    "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "AWAITING_HUMAN_SELECTION")
+                self._run_update(run_id, status=status, review_only=False, target_views=[], target_candidate_ids=[])
+                return
+            for view in views:
+                if self.detail(run_id)["stop_requested"]:
                     self._withdraw_queued_asks(run_id)
                     self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
+                review_method = (self._review_view_candidates_v2
+                                 if run.get("review_version", 1) >= 2 else self._review_view_candidates)
+                try:
+                    review_method(run_id, view, target_candidate_ids)
+                except Exception as exc:
+                    current = self.detail(run_id).get("review_errors") or {}
+                    current[view] = str(exc)
+                    self._run_update(run_id, review_errors=current)
                 latest = self.detail(run_id)
                 if latest.get("stop_requested"):
                     self._withdraw_queued_asks(run_id)

@@ -1174,7 +1174,7 @@ test("Local workspace reuses dashboard context and routes each workflow in app",
   await page.locator("#local-assets-button").click();
   await expect(page.locator("#local-assets-button")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#local-assets-menu button")).toHaveText([
-    "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
+    "Run all Remaining", "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
   ]);
   await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
   await expect(page.locator("#local-pipeline-page")).toHaveClass(/active/);
@@ -1190,6 +1190,26 @@ test("Local workspace reuses dashboard context and routes each workflow in app",
   await expect(page.locator("#toolbar-local-body-reference")).toHaveCount(0);
   await expect(page.locator("#toolbar-local-character-overview")).toHaveCount(1);
   await expect(page.locator("#toolbar-gate-test-rig")).toHaveCount(1);
+});
+
+test("Run all Remaining starts independently of the open page", async ({ page, request }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  await page.locator("#local-assets-button").click();
+  const started = page.waitForResponse((response) => response.url().endsWith("/api/local/run-all-remaining")
+    && response.request().method() === "POST");
+  await page.locator("#local-run-all-remaining").click();
+  const response = await started;
+  expect(response.ok()).toBeTruthy();
+  const campaignId = (await response.json()).campaign_id;
+  await expect(page.locator("#local-run-all-status")).toBeVisible();
+  await page.close();
+
+  await expect.poll(async () => {
+    const status = await request.get(`/api/local/run-all-remaining/${campaignId}`);
+    return (await status.json()).status;
+  }).toBe("COMPLETE");
 });
 
 test("all Local asset routes share batch UI and expose only pipeline-specific inputs", async ({ page }) => {
