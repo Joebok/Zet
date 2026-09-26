@@ -17,6 +17,7 @@ from zet.services.character_phase_discovery_service import CharacterPhaseDiscove
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
 from zet.services.workflow_storage import file_lock
 from zet.services.atomic_file_service import write_json_atomic
 
@@ -166,9 +167,11 @@ class LocalCharacterOverviewService:
     def _cancel_run_if_owned(self, job: dict[str, Any]) -> None:
         if job.get("run_id") and job.get("owns_run") and not self._run_has_other_autogenerate_users(job):
             try:
-                self._pipeline_service(job["pipeline"]).adapter.request_stop(job["run_id"], **(
-                    {"costume": job["costume"]} if job["pipeline"] in {"character-assembly", "costume-dressing"} else {}
-                ))
+                adapter = self._pipeline_service(job["pipeline"]).adapter
+                kwargs = ({"costume": job["costume"]}
+                          if job["pipeline"] in {"character-assembly", "costume-dressing"} else {})
+                if adapter.detail(job["run_id"], **kwargs).get("status") in ACTIVE_RUN_STATUSES:
+                    adapter.request_stop(job["run_id"], **kwargs)
             except Exception:
                 pass
 
@@ -287,7 +290,14 @@ class LocalCharacterOverviewService:
         payload: dict[str, Any] = {"character": character, "phase": phase}
         if pipeline in {"character-assembly", "costume-dressing"}:
             payload.update(costume=costume, front_only=True)
-        return service.adapter.create_run(payload)
+        run = service.adapter.create_run(payload)
+        spec_path = Path(run["root"]) / "spec.json"
+        if spec_path.is_file():
+            spec = self._read(spec_path)
+            spec["created_by_autogenerate"] = True
+            write_json_atomic(spec_path, spec)
+        return service.adapter.detail(run["run_id"], **({"costume": costume}
+            if pipeline in {"character-assembly", "costume-dressing"} else {}))
 
     def _rerank_front(self, adapter: Any, pipeline: str, run: dict[str, Any], costume: str) -> dict[str, Any]:
         run_id = str(run["run_id"])

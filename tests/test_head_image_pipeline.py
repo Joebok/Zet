@@ -356,6 +356,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                                       if item["candidate_id"] == candidate["candidate_id"])
             self.assertIn("autogenerate_approval", selected_candidate)
             self.assertTrue(locked["locked"])
+            self.assertEqual(list(VIEWS[1:]), service.proceed(run["run_id"])["target_views"])
 
     def test_local_head_renders_view_before_gates_then_ranks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

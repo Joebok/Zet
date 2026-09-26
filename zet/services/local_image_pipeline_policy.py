@@ -40,6 +40,27 @@ RUN_STATUS_LABELS = {
 }
 
 
+def front_anchor_approved(candidate: dict[str, Any]) -> bool:
+    """Accept a human Pass or the recorded autogenerate selection approval."""
+    decision = (candidate.get("human_review") or {}).get("decision")
+    approval = candidate.get("autogenerate_approval")
+    return decision == "keep" or (decision != "reject" and isinstance(approval, dict)
+                                  and bool(approval.get("approved_at")))
+
+
+def resume_cancelled_autogenerate_state(run: dict[str, Any], state: dict[str, Any],
+                                        *, ready_status: str) -> None:
+    """Preserve completed work when reopening an autogenerate-owned stopped batch."""
+    for candidate in run.get("candidates") or []:
+        image = Path(str(candidate.get("image_path") or ""))
+        if candidate.get("status") in {"QUEUED", "RUNNING"} and not image.is_file():
+            state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
+                status="PENDING", image_path="", ask_id="",
+            )
+    state.update(status=ready_status if run.get("front_anchor") else "QUEUED",
+                 stop_requested=False, error="", target_views=[], target_candidate_ids=[])
+
+
 def pipeline_page_config(pipeline: str) -> dict[str, Any]:
     """Return the stable page contract for a local image pipeline."""
     try:

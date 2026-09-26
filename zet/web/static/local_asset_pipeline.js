@@ -115,9 +115,11 @@
   function setBusyControls() {
     const run = state.run;
     const isBusy = busy(run);
+    const resumable = ["INTERRUPTED", "STOPPED"].includes(run?.status)
+      || (run?.status === "CANCELLED" && run?.created_by_autogenerate);
     $("start").hidden = !run;
-    $("start").disabled = isBusy || !["QUEUED", "INTERRUPTED", "STOPPED"].includes(run?.status);
-    $("start").textContent = ["INTERRUPTED", "STOPPED"].includes(run?.status) ? "Resume batch" : "Start batch";
+    $("start").disabled = isBusy || !(run?.status === "QUEUED" || resumable);
+    $("start").textContent = resumable ? "Resume batch" : "Start batch";
     $("stop").hidden = !isBusy;
     $("stop").disabled = !isBusy;
     $("rerun").disabled = !run || isBusy;
@@ -125,7 +127,7 @@
     $("delete").disabled = !run || isBusy;
     $("rename").hidden = !run;
     $("proceed").hidden = !run;
-    $("proceed").disabled = isBusy || run?.status === "READY_FOR_VIEWS"
+    $("proceed").disabled = isBusy || (run?.status === "READY_FOR_VIEWS" && (run.target_views || []).length > 0)
       || !run?.front_anchor || !unstartedViews(run).length;
     $("lineup").hidden = state.pipeline !== "body-reference" || !run || !Object.keys(run.selected_views || {}).length;
   }
@@ -616,7 +618,14 @@
       setStatus("Batch deleted.");
       return;
     }
-    if (["start", "resume", "stop", "rank", "local-analysis", "luna-analysis", "queue-render", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view", "proceed"].includes(action)) {
+    if (action === "proceed") {
+      const queued = (result.target_views || []).length;
+      const blocked = Object.values(result.blocked_views || {});
+      setStatus(queued ? `Work queued for ${queued} view(s).${blocked.length ? ` ${blocked.length} view(s) still need locked inputs.` : ""}`
+        : blocked.length ? `No views are ready. ${blocked[0]}` : "No unstarted views remain.");
+    } else if (action === "resume" && result.status !== "QUEUED") {
+      setStatus("Batch ready to continue.");
+    } else if (["start", "resume", "stop", "rank", "local-analysis", "luna-analysis", "queue-render", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
       setStatus(action === "stop" ? "Stop requested." : "Work queued.");
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
       setStatus("Selection updated.");
@@ -869,7 +878,8 @@
     $("front-count").addEventListener("change", () => void readiness());
     $("other-count").addEventListener("change", () => void readiness());
     $("use-anchor").addEventListener("change", () => void readiness());
-    $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status) ? "resume" : "start").catch((error) => setStatus(error.message, true)));
+    $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status)
+      || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
     $("reevaluate").addEventListener("click", () => void perform("reevaluate").catch((error) => setStatus(error.message, true)));

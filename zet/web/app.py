@@ -2802,7 +2802,8 @@ def create_app(
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             result = service.resume(run_id)
-            submit_local_pipeline_task(service.execute_run, run_id)
+            if result.get("status") == "QUEUED":
+                submit_local_pipeline_task(service.execute_run, run_id)
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3112,7 +3113,8 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.resume(run_id)
-            submit_local_pipeline_task(service.execute_run, run_id)
+            if run.get("status") == "QUEUED":
+                submit_local_pipeline_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

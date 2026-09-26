@@ -21,7 +21,8 @@ from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 from zet.services.candidate_review_contract import ReviewGate, validate_ranking
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current, pipeline_page_config, upgrade_legacy_review_v1,
+    ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, front_anchor_approved, gate_result_is_current,
+    pipeline_page_config, resume_cancelled_autogenerate_state, upgrade_legacy_review_v1,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -320,25 +321,32 @@ class LocalCharacterAssetPipelineService:
         self._write(spec_path, spec)
         return self.detail(run_id, costume)
 
+    def _locked_view_inputs(self, run: dict[str, Any], view: str) -> dict[str, dict[str, Any]]:
+        required = (("body_reference", "Body-Reference"), ("head_image", "Head-Image")) \
+            if self.pipeline == "character-assembly" else (("character_assembly", "Character-Assembly"),)
+        return {role: self._locked(run["character"], run["phase"], pipeline, view)
+                for role, pipeline in required}
+
+    def _snapshot_view_inputs(self, run: dict[str, Any], view: str,
+                              locked: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        inputs = {}
+        for role, record in locked.items():
+            source = Path(record["image_path"])
+            destination = Path(run["root"]) / "inputs" / view / f"{role}{source.suffix.lower()}"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            inputs[role] = {**record, "image_path": str(destination), "sha256": self._hash(destination)}
+        spec_path = Path(run["root"]) / "spec.json"
+        spec = self._read(spec_path)
+        spec.setdefault("sources", {})[view] = inputs
+        self._write(spec_path, spec)
+        run.setdefault("sources", {})[view] = inputs
+        return inputs
+
     def _references(self, run: dict[str, Any], view: str) -> list[dict[str, Any]]:
         inputs = run.get("sources", {}).get(view)
         if inputs is None:
-            inputs = {}
-            required = (("body_reference", "Body-Reference"), ("head_image", "Head-Image")) if self.pipeline == "character-assembly" else (("character_assembly", "Character-Assembly"),)
-            qualifier = self._qualifier(run.get("costume") or "") if self.pipeline == "costume-dressing" else ""
-            for role, pipeline in required:
-                record = self._locked(run["character"], run["phase"], pipeline, view, qualifier)
-                source = Path(record["image_path"])
-                destination = Path(run["root"]) / "inputs" / view / f"{role}{source.suffix.lower()}"
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if not destination.exists():
-                    shutil.copy2(source, destination)
-                inputs[role] = {**record, "image_path": str(destination), "sha256": self._hash(destination)}
-            spec_path = Path(run["root"]) / "spec.json"
-            spec = self._read(spec_path)
-            spec.setdefault("sources", {})[view] = inputs
-            self._write(spec_path, spec)
-            run.setdefault("sources", {})[view] = inputs
+            inputs = self._snapshot_view_inputs(run, view, self._locked_view_inputs(run, view))
         if self.pipeline == "character-assembly":
             roles = (("body_reference", "head_image") if view == "FRONT" or not self._requires_front_anchor(run)
                      else ("body_reference", "head_image", "front_assembly"))
@@ -706,7 +714,14 @@ class LocalCharacterAssetPipelineService:
                      and Path(str(item.get("image_path") or "")).is_file()
                      and (item.get("human_review", {}).get("decision") == "keep" or self._candidate_gates_current(run, item))]
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
-        if not survivors:
+        if self._costume_is_local_only(run) and survivors:
+            ordered = sorted(survivors, key=lambda item: (int(item.get("ordinal") or 0), item["candidate_id"]))
+            ranking = {"status": "COMPLETE", "ordered_candidate_ids": [item["candidate_id"] for item in ordered],
+                       "luna_ordered_candidate_ids": [],
+                       "entries": [{"candidate_id": item["candidate_id"],
+                                    "reason": "LocalOnly costume; Luna ranking skipped."} for item in ordered],
+                       "input_hashes": hashes, "model": "local-only", "recorded_at": self._now()}
+        elif not survivors:
             ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [], "input_hashes": {}, "recorded_at": self._now()}
         elif len(survivors) == 1:
             item = survivors[0]
@@ -743,6 +758,19 @@ class LocalCharacterAssetPipelineService:
                            "entries": entries, "input_hashes": hashes,
                            "model": str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")), "recorded_at": self._now()}
         return ranking
+
+    def _costume_is_local_only(self, run: dict[str, Any]) -> bool:
+        if self.pipeline != "costume-dressing":
+            return False
+        path = Path(str(run.get("costume_path") or ""))
+        if not path.is_file():
+            return False
+        match = re.search(r"^\s*LocalOnly\s*:\s*(.*?)\s*$", path.read_text(encoding="utf-8"), re.IGNORECASE | re.MULTILINE)
+        if not match:
+            return False
+        value = match.group(1).strip().strip("` ").strip()
+        bracketed = re.fullmatch(r"\[(.*)\]", value)
+        return (bracketed.group(1) if bracketed else value).strip().casefold() == "yes"
 
     def rank_view(self, run_id: str, view: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
@@ -866,6 +894,9 @@ class LocalCharacterAssetPipelineService:
             for pipeline in ("Body-Reference", "Head-Image"):
                 source = run["sources"][view]["body_reference" if pipeline == "Body-Reference" else "head_image"]
                 dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
+        else:
+            source = run["sources"][view]["character_assembly"]
+            dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
         if view != "FRONT" and self._requires_front_anchor(run):
             front = next(item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor"))
             dependencies.append({"key": self.asset_store.key(self.definition["asset_pipeline"], "FRONT", qualifier),
@@ -952,6 +983,9 @@ class LocalCharacterAssetPipelineService:
             for pipeline, role in (("Body-Reference", "body_reference"), ("Head-Image", "head_image")):
                 source = run["sources"][view][role]
                 dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
+        else:
+            source = run["sources"][view]["character_assembly"]
+            dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
         if view != "FRONT" and self._requires_front_anchor(run):
             dependencies.append({"key": self.asset_store.key(self.definition["asset_pipeline"], "FRONT", self._qualifier(costume)),
                                  "image_sha256": self._hash(anchor_image)})
@@ -1029,6 +1063,7 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("Clear or unlock downstream selections before rerunning FRONT.")
         if view != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before rerunning other views.")
+        locked_inputs = self._locked_view_inputs(run, view)
         root, state = self._state(run_id, costume)
         for candidate in [item for item in run["candidates"] if item["view"] == view]:
             from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
@@ -1047,6 +1082,7 @@ class LocalCharacterAssetPipelineService:
             state["views_started"] = False
         state["status"] = "QUEUED"
         self._write(root / "state.json", state)
+        self._snapshot_view_inputs(run, view, locked_inputs)
         return self.detail(run_id, costume)
 
     def rerun(self, run_id: str, costume: str = "") -> dict[str, Any]:
@@ -1096,8 +1132,13 @@ class LocalCharacterAssetPipelineService:
         if not candidate_id:
             raise LocalCharacterAssetPipelineError("Select the FRONT candidate before continuing.")
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        if not anchor or anchor.get("human_review", {}).get("decision") != "keep":
+        if not anchor or not front_anchor_approved(anchor):
             raise LocalCharacterAssetPipelineError("Review and pass the FRONT candidate before continuing.")
+        for source in (run.get("sources", {}).get("FRONT") or {}).values():
+            current = (run.get("local_assets") or {}).get(source.get("key")) or {}
+            if (not current.get("locked") or current.get("stale")
+                    or current.get("image_sha256") != source.get("sha256")):
+                raise LocalCharacterAssetPipelineError("A locked FRONT input changed; re-run FRONT in this batch before continuing.")
         anchor_image = Path(str(anchor.get("image_path") or ""))
         front_ranking = (run.get("rankings") or {}).get("FRONT") or {}
         if (not anchor_image.is_file() or front_ranking.get("status") != "COMPLETE"
@@ -1113,12 +1154,23 @@ class LocalCharacterAssetPipelineService:
             view: [item for item in run["candidates"] if item["view"] == view]
             for view in VIEWS[1:]
         }
-        target_views = {
-            view for view, candidates in candidates_by_view.items()
-            if candidates and all(item.get("status") == "PENDING" and not item.get("image_path") for item in candidates)
-        }
+        target_views = set()
+        blocked_views = {}
+        required = (("Body-Reference", "Head-Image") if self.pipeline == "character-assembly"
+                    else ("Character-Assembly",))
+        for view, candidates in candidates_by_view.items():
+            if not candidates or not all(item.get("status") == "PENDING" and not item.get("image_path")
+                                         for item in candidates):
+                continue
+            try:
+                for pipeline in required:
+                    self._locked(run["character"], run["phase"], pipeline, view)
+            except LocalCharacterAssetPipelineError as exc:
+                blocked_views[view] = str(exc)
+                continue
+            target_views.add(view)
         if not target_views:
-            return {**run, "target_views": []}
+            return {**run, "target_views": [], "blocked_views": blocked_views}
         state_root, state = self._state(run_id, costume)
         state["front_anchor"] = candidate_id
         state["status"] = "READY_FOR_VIEWS"
@@ -1128,7 +1180,8 @@ class LocalCharacterAssetPipelineService:
             if candidate["view"] in target_views:
                 state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})["status"] = "QUEUED"
         self._write(state_root / "state.json", state)
-        return {**self.detail(run_id, costume), "target_views": [view for view in VIEWS[1:] if view in target_views]}
+        return {**self.detail(run_id, costume), "target_views": [view for view in VIEWS[1:] if view in target_views],
+                "blocked_views": blocked_views}
 
     def image_path(self, run_id: str, candidate_id: str, costume: str = "") -> Path:
         run = self.detail(run_id, costume)
@@ -1210,6 +1263,14 @@ class LocalCharacterAssetPipelineService:
 
     def resume(self, run_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
+        if run.get("status") == "CANCELLED" and run.get("created_by_autogenerate"):
+            with self._active_lock:
+                if run_id in self._active:
+                    raise LocalCharacterAssetPipelineError("Wait for the stopped batch runner to finish before resuming.")
+            root, state = self._state(run_id, costume)
+            resume_cancelled_autogenerate_state(run, state, ready_status="AWAITING_HUMAN_SELECTION")
+            self._write(root / "state.json", state)
+            return self.detail(run_id, costume)
         if run.get("status") != "INTERRUPTED":
             raise LocalCharacterAssetPipelineError("Only an interrupted run can be resumed.")
         self._run_update(run_id, costume, stop_requested=False, status="QUEUED")

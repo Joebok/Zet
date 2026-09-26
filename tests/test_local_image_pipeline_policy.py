@@ -6,11 +6,37 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from zet.services.local_image_pipeline_policy import (
-    local_pipeline_batch_summary, pipeline_page_config, upgrade_legacy_review_v1,
+    front_anchor_approved, local_pipeline_batch_summary, pipeline_page_config,
+    resume_cancelled_autogenerate_state, upgrade_legacy_review_v1,
 )
 
 
 class LocalImagePipelinePolicyTests(unittest.TestCase):
+    def test_autogenerate_approval_does_not_override_human_rejection(self) -> None:
+        candidate = {"human_review": {"decision": "undecided"},
+                     "autogenerate_approval": {"approved_at": "2026-09-25T18:43:58"}}
+        self.assertTrue(front_anchor_approved(candidate))
+        candidate["human_review"]["decision"] = "reject"
+        self.assertFalse(front_anchor_approved(candidate))
+
+    def test_reopening_stopped_autogenerate_keeps_completed_front(self) -> None:
+        with TemporaryDirectory() as temp:
+            image = Path(temp) / "front.png"
+            image.write_bytes(b"front")
+            run = {"front_anchor": "c001", "candidates": [
+                {"candidate_id": "c001", "status": "COMPLETE", "image_path": str(image)},
+                {"candidate_id": "c002", "status": "QUEUED", "image_path": str(Path(temp) / "missing.png")},
+            ]}
+            state = {"status": "CANCELLED", "stop_requested": True, "target_views": ["LEFT_PROFILE"],
+                     "candidates": {"c001": {"status": "COMPLETE"}, "c002": {"status": "QUEUED", "ask_id": "old"}}}
+            resume_cancelled_autogenerate_state(run, state, ready_status="READY_FOR_VIEWS")
+            self.assertEqual("READY_FOR_VIEWS", state["status"])
+            self.assertFalse(state["stop_requested"])
+            self.assertEqual("COMPLETE", state["candidates"]["c001"]["status"])
+            self.assertEqual("PENDING", state["candidates"]["c002"]["status"])
+            self.assertEqual("", state["candidates"]["c002"]["ask_id"])
+            self.assertEqual([], state["target_views"])
+
     def test_all_page_configs_share_common_defaults_and_keep_identity_qualifiers(self) -> None:
         pipelines = ("body-reference", "head-image", "character-assembly", "costume-dressing")
         configs = [pipeline_page_config(pipeline) for pipeline in pipelines]

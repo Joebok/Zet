@@ -22,7 +22,8 @@ from zet.services.candidate_review_contract import ReviewGate, parse_rejection_v
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, gate_result_is_current, pipeline_page_config,
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved,
+    gate_result_is_current, pipeline_page_config, resume_cancelled_autogenerate_state,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -1066,7 +1067,7 @@ class LocalHeadImageService:
                        if item["candidate_id"] == run["front_anchor"]), None)
         anchor_image = Path(str((anchor or {}).get("image_path") or ""))
         front_ranking = (run.get("rankings") or {}).get(FRONT) or {}
-        if (not anchor or anchor.get("human_review", {}).get("decision") != "keep"
+        if (not anchor or not front_anchor_approved(anchor)
                 or not anchor_image.is_file() or front_ranking.get("status") != "COMPLETE"
                 or anchor["candidate_id"] not in (front_ranking.get("ordered_candidate_ids") or [])
                 or front_ranking.get("input_hashes", {}).get(anchor["candidate_id"]) != self._hash(anchor_image)
@@ -1326,6 +1327,14 @@ class LocalHeadImageService:
 
     def resume(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
+        if run.get("status") == "CANCELLED" and run.get("created_by_autogenerate"):
+            with self._active_lock:
+                if run_id in self._active:
+                    raise LocalHeadImageError("Wait for the stopped batch runner to finish before resuming.")
+            root, state = self._state(run_id)
+            resume_cancelled_autogenerate_state(run, state, ready_status="READY_FOR_VIEWS")
+            self._write(root / "state.json", state)
+            return self.detail(run_id)
         if run.get("status") != "INTERRUPTED":
             raise LocalHeadImageError("Only an interrupted batch can be resumed; cancelled batches are terminal.")
         self._run_update(run_id, stop_requested=False, status="QUEUED")

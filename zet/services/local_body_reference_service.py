@@ -22,8 +22,8 @@ from zet.services.candidate_review_contract import ReviewGate, parse_rejection_v
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, pipeline_page_config,
-    gate_result_is_current, upgrade_legacy_review_v1,
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved, pipeline_page_config,
+    gate_result_is_current, resume_cancelled_autogenerate_state, upgrade_legacy_review_v1,
 )
 from zet.services.workflow_storage import file_lock, supersede_task
 
@@ -523,6 +523,7 @@ Do not explain your reasoning."""
         value["lineups"] = state.get("lineups") or value.get("lineups") or {}
         value["selected_views"] = state.get("selected_views") or value.get("selected_views") or {}
         value["rankings"] = state.get("rankings") or value.get("rankings") or {}
+        value["target_views"] = state.get("target_views") or []
         value["set_report"] = state.get("set_report") or {}
         if interrupted:
             for candidate in candidates.values():
@@ -2577,6 +2578,16 @@ Do not explain your reasoning."""
 
     def resume(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
+        if run.get("status") == "CANCELLED" and run.get("created_by_autogenerate"):
+            if self._runner_is_active(run_id):
+                raise LocalBodyReferenceError("Wait for the stopped batch runner to finish before resuming.")
+            root = self._root(run_id)
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            resume_cancelled_autogenerate_state(run, state, ready_status="READY_FOR_VIEWS")
+            state["updated_at"] = self._now()
+            (root / "cancelled.json").unlink(missing_ok=True)
+            self._save_state(run_id, state)
+            return self.detail(run_id)
         if run.get("status") != "INTERRUPTED":
             raise LocalBodyReferenceError("Only an interrupted batch can be resumed; cancelled batches are terminal.")
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
@@ -2597,7 +2608,7 @@ Do not explain your reasoning."""
             anchor = next((item for item in run["candidates"] if item.get("candidate_id") == run["front_anchor"]), None)
             image = Path(str((anchor or {}).get("image_path") or ""))
             ranking = (run.get("rankings") or {}).get(FRONT_VIEW) or {}
-            if (not anchor or anchor.get("human_review", {}).get("decision") != "keep"
+            if (not anchor or not front_anchor_approved(anchor)
                     or not image.is_file() or ranking.get("status") != "COMPLETE"
                     or anchor["candidate_id"] not in (ranking.get("ordered_candidate_ids") or [])
                     or ranking.get("input_hashes", {}).get(anchor["candidate_id"]) != self._hash(image)):

@@ -169,7 +169,8 @@ def create_local_character_asset_pipeline_router(
         def resume(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.action("resume", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
-            submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
+            if result.get("status") == "QUEUED":
+                submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
             return result
 
     return router
