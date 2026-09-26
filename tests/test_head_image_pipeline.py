@@ -380,6 +380,30 @@ class HeadImageCompilerTests(unittest.TestCase):
             self.assertTrue(locked["locked"])
             self.assertEqual(list(VIEWS[1:]), service.proceed(run["run_id"])["target_views"])
 
+    def test_proceed_needs_front_image_but_not_front_review_or_ranking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+            candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+            image = root / "selected-front.png"
+            image.write_bytes(b"selected front")
+            service._update(run["run_id"], candidate["candidate_id"], status="WAITING_FOR_HUMAN_REVIEW",
+                            image_path=str(image))
+            service._run_update(run["run_id"], front_anchor=candidate["candidate_id"],
+                                selected_views={"FRONT": candidate["candidate_id"]})
+
+            result = service.proceed(run["run_id"])
+
+            self.assertEqual(list(VIEWS[1:]), result["target_views"])
+
     def test_local_head_renders_view_before_gates_then_ranks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

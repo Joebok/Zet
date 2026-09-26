@@ -350,6 +350,73 @@ test("WP03 To Do and Template Instruction Manuals open and report load failures"
   );
 });
 
+test("Batch Status is first in local Assets and links directly to the batch", async ({ page }) => {
+  await page.route("**/api/local/batch-status", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      batch_count: 1,
+      groups: [{ status: "AWAITING_FRONT_ANCHOR", label: "Awaiting FRONT anchor", batches: [{
+        pipeline: "costume-dressing", pipeline_label: "Costume-Dressing", run_id: "batch-42",
+        batch_name: "Winter coat", character: "Mira", phase: "Adult", costume: "Winter",
+        status: "AWAITING_FRONT_ANCHOR", status_label: "Awaiting FRONT anchor", current_view: "",
+      }] }],
+    }),
+  }));
+  await openPage(page, "local-batch-status");
+
+  await page.locator("#local-assets-button").click();
+  await expect(page.locator("#local-assets-menu [data-page]").first()).toHaveAttribute("data-page", "local-batch-status");
+  await expect(page.locator("#local-assets-menu #local-run-all-remaining")).toHaveCount(0);
+  await expect(page.locator("#local-batch-status-page #local-run-all-remaining")).toBeVisible();
+  const link = page.locator("#local-batch-status-groups a");
+  await expect(link).toHaveText("Winter coat");
+  const href = new URL(await link.getAttribute("href"), page.url());
+  expect(href.searchParams.get("page")).toBe("local-costume-dressing");
+  expect(href.searchParams.get("character")).toBe("Mira");
+  expect(href.searchParams.get("phase")).toBe("Adult");
+  expect(href.searchParams.get("local_costume")).toBe("Winter");
+  expect(href.searchParams.get("local_batch")).toBe("batch-42");
+});
+
+test("Batch Status refreshes while visible and reports empty and failed loads", async ({ page }) => {
+  let requestCount = 0;
+  await page.route("**/api/local/batch-status", (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return route.fulfill({ contentType: "application/json", body: '{"groups":[],"batch_count":0}' });
+    }
+    if (requestCount === 2) {
+      return route.fulfill({ status: 503, contentType: "application/json", body: '{"detail":"Seeded batch status failure"}' });
+    }
+    return route.fulfill({ contentType: "application/json", body: '{"groups":[],"batch_count":0}' });
+  });
+  await openPage(page, "local-batch-status");
+  await expect(page.locator("#local-batch-status-message")).toHaveText("No active or actionable batches.");
+  await page.locator("#local-batch-status-refresh").click();
+  await expect(page.locator("#local-batch-status-message")).toContainText("Seeded batch status failure");
+  await expect.poll(() => requestCount, { timeout: 7000 }).toBeGreaterThan(2);
+});
+
+test("Run All Remaining starts from the top of Batch Status", async ({ page }) => {
+  await page.route("**/api/local/batch-status", (route) => route.fulfill({
+    contentType: "application/json", body: '{"groups":[],"batch_count":0}',
+  }));
+  await page.route("**/api/local/run-all-remaining", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ campaign_id: "campaign-1", status: "RUNNING", batches: [], batch_count: 0,
+      progress: { RUNNING: 0 }, images_complete: 0, images_remaining: 0 }),
+  }));
+  await page.route("**/api/local/run-all-remaining/campaign-1", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ campaign_id: "campaign-1", status: "COMPLETE", batches: [], batch_count: 0,
+      progress: { COMPLETE: 0 }, images_complete: 0, images_remaining: 0 }),
+  }));
+  await openPage(page, "local-batch-status");
+  await page.locator("#local-run-all-remaining").click();
+  await expect(page.locator("#local-run-all-status")).toContainText("Run all Remaining finished.");
+  await expect(page.locator("#local-run-all-status")).toContainText("0/0 complete");
+});
+
 test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });
@@ -1174,7 +1241,7 @@ test("Local workspace reuses dashboard context and routes each workflow in app",
   await page.locator("#local-assets-button").click();
   await expect(page.locator("#local-assets-button")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#local-assets-menu button")).toHaveText([
-    "Run all Remaining", "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
+    "Batch Status", "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
   ]);
   await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
   await expect(page.locator("#local-pipeline-page")).toHaveClass(/active/);
@@ -1197,6 +1264,7 @@ test("Run all Remaining starts independently of the open page", async ({ page, r
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-batch-status"]').click();
   const started = page.waitForResponse((response) => response.url().endsWith("/api/local/run-all-remaining")
     && response.request().method() === "POST");
   await page.locator("#local-run-all-remaining").click();

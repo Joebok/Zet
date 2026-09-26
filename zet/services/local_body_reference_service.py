@@ -23,7 +23,7 @@ from zet.services.candidate_review_contract import ReviewGate, parse_rejection_v
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved, pipeline_page_config,
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, pipeline_page_config,
     gate_result_is_current, mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
     upgrade_legacy_review_v1, view_candidate_id,
 )
@@ -396,7 +396,7 @@ Do not explain your reasoning."""
                 + instruction.replace("Create one", "Edit the supplied identity anchor into one", 1)
                 + " Preserve the anchor's body proportions while changing only the requested view."
             )
-        return f"{instruction} Character facts: {body[:5000]}"
+        return f"{instruction} Character facts: {body}"
 
     @staticmethod
     def compile_qwen_workflow(
@@ -2784,12 +2784,8 @@ Do not explain your reasoning."""
         if run.get("review_version", 1) >= 2:
             anchor = next((item for item in run["candidates"] if item.get("candidate_id") == run["front_anchor"]), None)
             image = Path(str((anchor or {}).get("image_path") or ""))
-            ranking = (run.get("rankings") or {}).get(FRONT_VIEW) or {}
-            if (not anchor or not front_anchor_approved(anchor)
-                    or not image.is_file() or ranking.get("status") != "COMPLETE"
-                    or anchor["candidate_id"] not in (ranking.get("ordered_candidate_ids") or [])
-                    or ranking.get("input_hashes", {}).get(anchor["candidate_id"]) != self._hash(image)):
-                raise LocalBodyReferenceError("Re-evaluate and rank the human-passed FRONT candidate before proceeding.")
+            if not anchor or not image.is_file():
+                raise LocalBodyReferenceError("Select a FRONT anchor with an available image before proceeding.")
             claimed = set(state.get("target_views") or [])
             target_views = [view for view in run.get("views", []) if view != FRONT_VIEW and view not in claimed and
                             (candidates := [item for item in run["candidates"] if item.get("view") == view]) and

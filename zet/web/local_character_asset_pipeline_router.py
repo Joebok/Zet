@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_character_overview_service import submit_local_pipeline_task
+from zet.services.local_batch_status_service import LocalBatchStatusService
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 
 
@@ -30,6 +31,13 @@ def create_local_character_asset_pipeline_router(
 
     def run_all_service() -> LocalRunAllRemainingService:
         return LocalRunAllRemainingService(app_factory(), root)
+
+    def batch_status_service() -> LocalBatchStatusService:
+        return LocalBatchStatusService(app_factory(), root)
+
+    @router.get("/api/local/batch-status")
+    def local_batch_status():
+        return call(batch_status_service().list_actionable_batches)
 
     @router.post("/api/local/run-all-remaining")
     def start_run_all_remaining():

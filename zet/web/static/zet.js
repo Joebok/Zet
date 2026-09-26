@@ -169,7 +169,7 @@ const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "scene-appearances", "expressions", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
 const LOCAL_PAGES = new Set([
-  "local-overview", "local-body-reference", "local-head-image", "local-character-assembly",
+  "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
   "local-scene-appearances", "local-expressions", "local-comparison",
 ]);
@@ -1763,7 +1763,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
     ["render-console", "Render Console"], ["local-image-review", "Local Variants"], ["render-review", "Image Review"],
   ],
   local: [
-    ["local-overview", "Overview"], ["local-body-reference", "Body-Reference"],
+    ["local-overview", "Overview"], ["local-batch-status", "Batch Status"], ["local-body-reference", "Body-Reference"],
     ["local-head-image", "Head-Image"], ["local-character-assembly", "Character-Assembly"],
     ["local-costume-dressing", "Costume-Dressing"], ["local-identity-keys", "Identity Keys"],
     ["local-turnarounds", "Turnarounds"], ["local-costumes", "Costumes"],
@@ -3174,8 +3174,9 @@ async function activatePage(page, options = {}) {
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
   document.querySelector("#help-page").classList.toggle("active", page === "help");
   document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
-  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview");
-  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
+  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview" && page !== "local-batch-status");
+  document.querySelector("#local-batch-status-page").classList.toggle("active", page === "local-batch-status");
+  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "local-batch-status");
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
@@ -3203,6 +3204,8 @@ async function activatePage(page, options = {}) {
     );
   if (LOCAL_ASSET_PAGES.has(page)) window.ZetLocalAssetPipeline?.activate(page);
   else window.ZetLocalAssetPipeline?.deactivate();
+  if (page === "local-batch-status") window.ZetLocalBatchStatus?.activate();
+  else window.ZetLocalBatchStatus?.deactivate();
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -3317,7 +3320,7 @@ function setupTabs() {
       closeHelpMenu();
       try {
         const changed = await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
-        if (changed && LOCAL_ASSET_PAGES.has(button.dataset.page)) {
+        if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "local-batch-status")) {
           localAssetsMenu.hidden = true;
           localAssetsButton.setAttribute("aria-expanded", "false");
         }
@@ -12320,6 +12323,17 @@ async function main() {
     state.selectedSceneSlug = storyContext.scene || null;
     await loadContext();
     if (!pageLoadIsCurrent(startupLoad)) return;
+    const initialRouteParams = new URLSearchParams(window.location.search);
+    const routeCharacter = initialRouteParams.get("character");
+    const routePhase = initialRouteParams.get("phase");
+    if (routeCharacter && state.characters.includes(routeCharacter)) {
+      state.character = routeCharacter;
+      const routePhases = state.phasesByCharacter[routeCharacter] || [];
+      state.phase = routePhase && routePhases.includes(routePhase) ? routePhase : routePhases[0] || null;
+      characterSelect.value = state.character;
+      updatePhaseSelect();
+      saveStoredContext();
+    }
     await loadAssets();
     if (!pageLoadIsCurrent(startupLoad)) return;
     await loadStories(state.selectedStorySlug);

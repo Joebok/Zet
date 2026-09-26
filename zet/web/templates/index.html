@@ -100,8 +100,7 @@
       <div class="toolbar-menu local-assets-menu">
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
-          <button id="local-run-all-remaining" class="primary-action" type="button">Run all Remaining</button>
-          <p id="local-run-all-status" class="muted" role="status" aria-live="polite" hidden></p>
+          <button class="tab workflow-tab" data-page="local-batch-status">Batch Status</button>
           <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
           <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
           <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
@@ -281,6 +280,21 @@
         <section id="local-pipeline-selected" class="local-pipeline-selected" aria-label="Selected views"></section>
         <section id="local-pipeline-views" class="local-pipeline-views"></section>
       </div>
+    </section>
+    <section id="local-batch-status-page" class="page">
+      <div class="page-title-row"><h1>Batch Status</h1></div>
+      <section class="control-panel batch-status-run-all">
+        <button id="local-run-all-remaining" class="primary-action" type="button">Run All Remaining</button>
+        <p id="local-run-all-status" class="muted" role="status" aria-live="polite" hidden></p>
+      </section>
+      <section class="control-panel batch-status-panel" aria-labelledby="local-batch-status-heading">
+        <div class="page-title-row batch-status-heading-row">
+          <h2 id="local-batch-status-heading">Active and actionable batches</h2>
+          <button id="local-batch-status-refresh" type="button">Refresh</button>
+        </div>
+        <p id="local-batch-status-message" class="muted" role="status" aria-live="polite"></p>
+        <div id="local-batch-status-groups" aria-live="polite"></div>
+      </section>
     </section>
     <dialog id="local-pipeline-review-dialog" class="local-pipeline-review-dialog" aria-label="Review local image candidate">
       <button id="local-pipeline-review-close" class="review-close" type="button">Close</button>
@@ -2022,7 +2036,8 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260923-gate-test-rig"></script>
+  <script src="/static/zet.js?v=20260926-batch-status"></script>
   <script src="/static/local_asset_pipeline.js?v=20260926-gate-prompt-dialog"></script>
+  <script src="/static/local_batch_status.js?v=20260926-batch-status"></script>
 </body>
 </html>

@@ -378,12 +378,14 @@ class LocalCharacterAssetPipelineService:
         return decorate_local_pipeline_detail(result, self.pipeline)
 
     def list_runs(self, character: str = "", phase: str = "", costume: str = "") -> list[dict[str, Any]]:
+        character_path = self._safe(character) if character else "*"
+        phase_path = self._safe(phase) if phase else "*"
         if costume and self.definition["qualifies"]:
-            base = self._workspace(character, phase, costume)
-            paths = base.glob("*/spec.json")
+            pattern = (f"{character_path}/{phase_path}/{self.definition['workspace']}/"
+                       f"{self._qualifier(costume)}/*/spec.json")
         else:
-            base = self.root / (self._safe(character) if character else "*") / (self._safe(phase) if phase else "*") / self.definition["workspace"]
-            paths = base.glob("**/spec.json")
+            pattern = (f"{character_path}/{phase_path}/{self.definition['workspace']}/**/spec.json")
+        paths = self.root.glob(pattern)
         result = []
         for path in paths:
             spec = self._read(path)
@@ -396,12 +398,14 @@ class LocalCharacterAssetPipelineService:
 
     def list_run_summaries(self, character: str = "", phase: str = "", costume: str = "") -> list[dict[str, Any]]:
         """List batches without building full details or checking image lineage."""
+        character_path = self._safe(character) if character else "*"
+        phase_path = self._safe(phase) if phase else "*"
         if costume and self.definition["qualifies"]:
-            paths = self._workspace(character, phase, costume).glob("*/spec.json")
+            pattern = (f"{character_path}/{phase_path}/{self.definition['workspace']}/"
+                       f"{self._qualifier(costume)}/*/spec.json")
         else:
-            base = (self.root / (self._safe(character) if character else "*")
-                    / (self._safe(phase) if phase else "*") / self.definition["workspace"])
-            paths = base.glob("**/spec.json")
+            pattern = (f"{character_path}/{phase_path}/{self.definition['workspace']}/**/spec.json")
+        paths = self.root.glob(pattern)
         result = []
         for path in paths:
             try:

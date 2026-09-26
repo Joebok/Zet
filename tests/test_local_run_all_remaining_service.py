@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService, PIPELINES
+from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 from zet.services.local_image_pipeline_policy import mutate_local_run_state
 
 
@@ -52,6 +53,49 @@ class LocalRunAllRemainingServiceTests(unittest.TestCase):
                                     and item["costume"] == "Coat"]))
             self.assertTrue(all(item["images_complete"] == 1 and item["images_remaining"] == 1
                                 for item in batches))
+
+    def test_discovery_finds_queued_costume_batches_in_nested_workspace(self):
+        run_ids = ("6bdedfedce50446689df1688fb951719", "23cfbb159606407b967ffab25b58d1d4")
+        with tempfile.TemporaryDirectory() as temporary:
+            library = Path(temporary) / "Library"
+            app = SimpleNamespace(config=SimpleNamespace(
+                base_library_path=str(library), base_character_path=str(library / "Characters"),
+            ))
+            workspace = (library / "Experiments" / "Character-Pipeline" / "Tsaeytte" / "Adult"
+                         / "Costume-Dressing" / "Canonical_Adventure_Gear")
+            for run_id in run_ids:
+                run_root = workspace / run_id
+                run_root.mkdir(parents=True)
+                (run_root / "spec.json").write_text(json.dumps({
+                    "kind": "costume-dressing", "run_id": run_id, "character": "Tsaeytte",
+                    "phase": "Adult", "costume": "Canonical Adventure Gear",
+                    "created_at": "2026-09-26T14:40:31-07:00",
+                }), encoding="utf-8")
+                (run_root / "state.json").write_text(json.dumps({"status": "QUEUED"}), encoding="utf-8")
+
+            class EmptyAdapter:
+                def list_runs(self):
+                    return []
+
+            def adapter_for(pipeline):
+                if pipeline != "costume-dressing":
+                    return EmptyAdapter()
+                adapter = LocalCharacterAssetPipelineService(app, library, pipeline)
+                adapter.detail = lambda run_id, costume="": {
+                    "run_id": run_id, "character": "Tsaeytte", "phase": "Adult",
+                    "costume": costume, "status": "QUEUED", "candidates": [
+                        {"image_path": str(library / "missing.png")},
+                    ],
+                }
+                return adapter
+
+            service = LocalRunAllRemainingService(app, library)
+            with patch.object(service, "_adapter", side_effect=adapter_for):
+                batches = service._discover()
+
+        costume_batches = [item for item in batches if item["pipeline"] == "costume-dressing"]
+        self.assertEqual(set(run_ids), {item["run_id"] for item in costume_batches})
+        self.assertTrue(all(item["costume"] == "Canonical Adventure Gear" for item in costume_batches))
 
     def test_start_attaches_to_active_campaign_and_persists_image_counts(self):
         with tempfile.TemporaryDirectory() as temporary:

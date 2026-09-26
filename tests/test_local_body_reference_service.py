@@ -96,6 +96,17 @@ def test_preview_has_eight_views_and_thirty_six_candidates(tmp_path):
     assert plan["methods"] == [METHOD_FRONT_CONDITIONED]
 
 
+def test_qwen_prompt_preserves_character_facts_after_five_thousand_characters():
+    fitment_rules = "Use simple neutral fitment clothing. Clothing rules: olive green tank top and compression shorts."
+    manual_prompt = "Body facts. " + "x " * 2600 + fitment_rules
+
+    prompt = LocalBodyReferenceService._qwen_prompt(manual_prompt, "FRONT")
+
+    assert len(manual_prompt) > 5000
+    assert prompt.endswith(f"Character facts: {manual_prompt}")
+    assert fitment_rules in prompt
+
+
 def test_new_run_uses_version_two_review_contract(tmp_path, monkeypatch):
     service = make_service(tmp_path)
     monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
@@ -545,6 +556,28 @@ def test_autogenerate_front_approval_can_start_remaining_views(tmp_path, monkeyp
     assert selected["target_views"] == []
     assert selected["candidates"][0]["human_review"]["decision"] == "undecided"
     assert service.proceed(run["run_id"])["target_views"] == list(run["views"][1:])
+
+
+def test_proceed_needs_front_image_but_not_front_review_or_ranking(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index:
+                        {"view": view, "view_index": index, "manual_prompt": view,
+                         "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
+                         "source_map": "", "dependency_manifest": ""})
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+    image = Path(run["root"]) / "front.png"
+    image.write_bytes(b"selected front")
+    service._candidate_update(run["run_id"], front["candidate_id"], {
+        "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image),
+    })
+    service._run_update(run["run_id"], front_anchor=front["candidate_id"],
+                        selected_views={"FRONT": front["candidate_id"]})
+
+    result = service.proceed(run["run_id"])
+
+    assert result["target_views"] == list(run["views"][1:])
 
 
 def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_views(tmp_path, monkeypatch):

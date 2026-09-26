@@ -23,7 +23,7 @@ from zet.services.candidate_review_contract import ReviewGate, parse_rejection_v
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
-    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, front_anchor_approved,
+    ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail,
     gate_result_is_current, mutate_local_run_state, pipeline_page_config, resume_cancelled_autogenerate_state,
     serialize_local_run_state, view_candidate_id,
 )
@@ -1204,17 +1204,12 @@ class LocalHeadImageService:
     def proceed(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         if not run.get("front_anchor"):
-            raise LocalHeadImageError("Select a reviewed FRONT candidate before generating other views.")
+            raise LocalHeadImageError("Select a FRONT candidate with an available image before generating other views.")
         anchor = next((item for item in run["candidates"]
                        if item["candidate_id"] == run["front_anchor"]), None)
         anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-        front_ranking = (run.get("rankings") or {}).get(FRONT) or {}
-        if (not anchor or not front_anchor_approved(anchor)
-                or not anchor_image.is_file() or front_ranking.get("status") != "COMPLETE"
-                or anchor["candidate_id"] not in (front_ranking.get("ordered_candidate_ids") or [])
-                or front_ranking.get("input_hashes", {}).get(anchor["candidate_id"]) != self._hash(anchor_image)
-                or not self._candidate_gates_current(run, anchor)):
-            raise LocalHeadImageError("Re-evaluate and rank the human-passed FRONT anchor before proceeding.")
+        if not anchor or not anchor_image.is_file():
+            raise LocalHeadImageError("Select a FRONT anchor with an available image before proceeding.")
         if run.get("status") in ACTIVE_RUN_STATUSES:
             raise LocalHeadImageError("Wait for active batch work to finish before generating other views.")
         claimed = set(run.get("target_views") or [])

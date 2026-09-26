@@ -1031,6 +1031,85 @@ main {
   font-size: 12px;
 }
 
+.batch-status-run-all,
+.batch-status-panel {
+  margin: 0 auto 16px;
+  max-width: 1320px;
+}
+
+.batch-status-run-all {
+  display: grid;
+  gap: 8px;
+}
+
+.batch-status-run-all p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.batch-status-heading-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 12px;
+}
+
+.batch-status-heading-row h2,
+.batch-status-group h2 {
+  margin: 0;
+}
+
+.batch-status-group {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.batch-status-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  margin-top: 10px;
+}
+
+.batch-status-card {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.batch-status-card h3 {
+  font-size: 15px;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.batch-status-card a {
+  color: var(--primary);
+}
+
+.batch-status-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.batch-status-field {
+  background: var(--surface);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.batch-status-field::before {
+  color: var(--text);
+  content: attr(data-label) ": ";
+  font-weight: 600;
+}
+
 .overview-recommendation {
   align-items: center;
   background: var(--primary-soft);
