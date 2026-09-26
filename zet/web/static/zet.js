@@ -196,6 +196,7 @@ const toolbarLocalBodyReference = document.querySelector("#toolbar-local-body-re
 const toolbarLocalHeadImage = document.querySelector("#toolbar-local-head-image");
 const toolbarLocalCharacterAssembly = document.querySelector("#toolbar-local-character-assembly");
 const toolbarLocalCostumeDressing = document.querySelector("#toolbar-local-costume-dressing");
+const toolbarLocalCharacterOverview = document.querySelector("#toolbar-local-character-overview");
 const toolbarGateTestRig = document.querySelector("#toolbar-gate-test-rig");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const helpMenuButton = document.querySelector("#help-menu-button");
@@ -11533,6 +11534,10 @@ toolbarLocalCharacterAssembly.addEventListener("click", () => {
 });
 toolbarLocalCostumeDressing.addEventListener("click", () => {
   window.location.assign("/local-costume-dressing");
+  closeToolbarSettingsMenu();
+});
+toolbarLocalCharacterOverview.addEventListener("click", () => {
+  window.location.assign("/local-character-overview");
   closeToolbarSettingsMenu();
 });
 

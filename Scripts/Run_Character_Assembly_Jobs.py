@@ -173,11 +173,6 @@ def compile_character_assembly_job(
     front_assembly = next((reference for reference in references if reference.get("role") == "front_assembly"), None)
     validate_reference(body_reference, "body_reference")
     validate_reference(head_image, "head_image")
-    if pipeline_mode == "local" and body_view_token != "FRONT" and not front_assembly:
-        raise TemplateCompileError(
-            "MISSING_REFERENCE",
-            "Local non-front Character-Assembly views require the selected FRONT assembly anchor.",
-        )
     if front_assembly:
         validate_reference(front_assembly, "front_assembly")
         raw_anchor_view = str(front_assembly.get("view") or "").strip()

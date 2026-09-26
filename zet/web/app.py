@@ -32,6 +32,7 @@ from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.local_head_image_service import VIEWS
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.local_character_overview_service import LocalCharacterOverviewService, submit_local_pipeline_task
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
@@ -910,6 +911,7 @@ def create_app(
     async def lifespan(application: FastAPI):
         application.state.zet_app.image_catalog_service.repository.load()
         application.state.zet_app.library_index_reconciler.start()
+        LocalCharacterOverviewService(_app(application.state.config_path), PROJECT_ROOT).recover()
         try:
             yield
         finally:
@@ -976,6 +978,47 @@ def create_app(
     def local_costume_dressing_page() -> str:
         template = (PACKAGE_ROOT / "templates" / "local_character_pipeline.html").read_text(encoding="utf-8")
         return template.replace("{{PIPELINE}}", "costume-dressing").replace("{{LABEL}}", "Local Costume-Dressing")
+
+    @app.get("/local-character-overview", response_class=HTMLResponse)
+    def local_character_overview_page() -> str:
+        return (PACKAGE_ROOT / "templates" / "local_character_overview.html").read_text(encoding="utf-8")
+
+    @app.get("/api/local/character-overview")
+    def local_character_overview() -> dict[str, Any]:
+        try:
+            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).overview()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local/character-overview/image/{character}/{phase}/{costume}")
+    def local_character_overview_image(character: str, phase: str, costume: str) -> FileResponse:
+        try:
+            path = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).image_path(character, phase, costume)
+            return FileResponse(path)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/local/character-overview/{character}/{phase}/{costume}/autogenerate")
+    def local_character_overview_start(character: str, phase: str, costume: str) -> dict[str, Any]:
+        try:
+            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).start(character, phase, costume)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/local/character-overview/{character}/{phase}/{costume}/autogenerate")
+    def local_character_overview_status(character: str, phase: str, costume: str) -> dict[str, Any]:
+        try:
+            result = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).slot_status(character, phase, costume)
+            return result or {"status": "IDLE", "pipeline": "", "message": "", "job_id": ""}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/local/character-overview/{character}/{phase}/{costume}/stop")
+    def local_character_overview_stop(character: str, phase: str, costume: str) -> dict[str, Any]:
+        try:
+            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).stop(character, phase, costume)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/gate-test-rig", response_class=HTMLResponse)
     def gate_test_rig_page() -> str:
@@ -2565,7 +2608,7 @@ def create_app(
             run = service.detail(run_id)
             if run.get("status") != "QUEUED":
                 raise HTTPException(status_code=409, detail="Only a queued Head-Image batch can be started.")
-            background_tasks.add_task(service.execute_run, run_id, views={"FRONT"})
+            submit_local_pipeline_task(service.execute_run, run_id, views={"FRONT"})
             return {"started": True, "run_id": run_id}
         except HTTPException:
             raise
@@ -2640,10 +2683,10 @@ def create_app(
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             if view:
                 result = service.rerun_view(run_id, view)
-                background_tasks.add_task(service.execute_run, run_id, views={view.upper()})
+                submit_local_pipeline_task(service.execute_run, run_id, views={view.upper()})
             else:
                 result = service.rerun(run_id)
-                background_tasks.add_task(service.execute_run, run_id, views={"FRONT"})
+                submit_local_pipeline_task(service.execute_run, run_id, views={"FRONT"})
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2662,7 +2705,7 @@ def create_app(
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             result = service.rerun_failed_view(run_id, view)
-            background_tasks.add_task(service.execute_run, run_id, views={view.upper()})
+            submit_local_pipeline_task(service.execute_run, run_id, views={view.upper()})
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2672,7 +2715,7 @@ def create_app(
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             result = service.reevaluate(run_id, view or None)
-            background_tasks.add_task(service.execute_run, run_id, views={view.upper()} if view else set(VIEWS))
+            submit_local_pipeline_task(service.execute_run, run_id, views={view.upper()} if view else set(VIEWS))
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2707,7 +2750,7 @@ def create_app(
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             queued = service.queue_view_ranking(run_id, view)
-            background_tasks.add_task(service.rank_view, run_id, view)
+            submit_local_pipeline_task(service.rank_view, run_id, view)
             return queued
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2728,7 +2771,7 @@ def create_app(
             result = service.proceed(run_id)
             target_views = set(result.get("target_views") or [])
             if target_views:
-                background_tasks.add_task(service.execute_run, run_id, views=target_views)
+                submit_local_pipeline_task(service.execute_run, run_id, views=target_views)
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2747,7 +2790,7 @@ def create_app(
             result = service.retry_candidate(run_id, candidate_id)
             candidate_view = next(item["view"] for item in result["candidates"]
                                   if item["candidate_id"] == candidate_id)
-            background_tasks.add_task(service.execute_run, run_id, views={candidate_view}, candidate_ids={candidate_id})
+            submit_local_pipeline_task(service.execute_run, run_id, views={candidate_view}, candidate_ids={candidate_id})
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2764,7 +2807,7 @@ def create_app(
         try:
             service = LocalHeadImageService(_app(app.state.config_path), PROJECT_ROOT)
             result = service.resume(run_id)
-            background_tasks.add_task(service.execute_run, run_id)
+            submit_local_pipeline_task(service.execute_run, run_id)
             return result
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2825,7 +2868,7 @@ def create_app(
             run = service.detail(run_id)
             if run.get("status") != "QUEUED":
                 raise HTTPException(status_code=409, detail="Only a queued Local Body-Reference batch can be started.")
-            background_tasks.add_task(service.execute_run, run_id)
+            submit_local_pipeline_task(service.execute_run, run_id)
             return {"started": True, "run_id": run_id}
         except HTTPException:
             raise
@@ -2880,7 +2923,7 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.rerun_view(run_id, view) if view.strip() else service.rerun(run_id)
-            background_tasks.add_task(service.execute_run, run["run_id"])
+            submit_local_pipeline_task(service.execute_run, run["run_id"])
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2894,7 +2937,7 @@ def create_app(
             if not view.strip():
                 raise LocalBodyReferenceError("Select a view to re-run failed images.")
             run = service.rerun_failed_view(run_id, view)
-            background_tasks.add_task(service.execute_run, run_id)
+            submit_local_pipeline_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2906,7 +2949,7 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.reevaluate(run_id, view=view.strip() or None)
-            background_tasks.add_task(service.execute_run, run_id)
+            submit_local_pipeline_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2982,7 +3025,7 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             queued = service.queue_view_ranking(run_id, view)
-            background_tasks.add_task(service.rank_view, run_id, view)
+            submit_local_pipeline_task(service.rank_view, run_id, view)
             return queued
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3005,7 +3048,7 @@ def create_app(
             run = service.proceed(run_id)
             target_views = list(run.get("target_views") or [])
             if target_views:
-                background_tasks.add_task(service.execute_run, run_id)
+                submit_local_pipeline_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3074,7 +3117,7 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.resume(run_id)
-            background_tasks.add_task(service.execute_run, run_id)
+            submit_local_pipeline_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3086,7 +3129,7 @@ def create_app(
         try:
             service = LocalBodyReferenceService(_app(app.state.config_path), PROJECT_ROOT)
             run = service.retry_candidate(run_id, candidate_id)
-            background_tasks.add_task(service.execute_run, run_id)
+            submit_local_pipeline_task(service.execute_run, run_id)
             return run
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

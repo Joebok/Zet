@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+from zet.services.local_character_overview_service import submit_local_pipeline_task
 
 
 def create_local_character_asset_pipeline_router(
@@ -54,14 +55,14 @@ def create_local_character_asset_pipeline_router(
             current = call(lambda: service(_pipeline).detail(run_id, costume), missing=404)
             if current.get("status") != "QUEUED":
                 raise HTTPException(status_code=409, detail="Only a queued local image batch can be started.")
-            background_tasks.add_task(service(_pipeline).execute_run, run_id, costume=costume)
+            submit_local_pipeline_task(service(_pipeline).execute_run, run_id, costume=costume)
             return {"started": True, "run_id": run_id}
 
         @router.post(f"{prefix}/runs/{{run_id}}/rerun")
         def rerun(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.rerun(run_id, costume))
-            background_tasks.add_task(instance.execute_run, run_id, costume=costume)
+            submit_local_pipeline_task(instance.execute_run, run_id, costume=costume)
             return result
 
         @router.get(f"{prefix}/runs/{{run_id}}/images/{{candidate_id}}")
@@ -93,7 +94,7 @@ def create_local_character_asset_pipeline_router(
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/rank")
         def rank(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
-            background_tasks.add_task(instance.rank_view, run_id, view, costume)
+            submit_local_pipeline_task(instance.rank_view, run_id, view, costume)
             return {"queued": True, "run_id": run_id, "view": view.upper()}
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/ranking/move")
@@ -104,14 +105,14 @@ def create_local_character_asset_pipeline_router(
         def rerun_failed(run_id: str, background_tasks: BackgroundTasks, view: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.rerun_failed_view(run_id, view, costume))
-            background_tasks.add_task(instance.execute_run, run_id, views={view.upper()}, costume=costume)
+            submit_local_pipeline_task(instance.execute_run, run_id, views={view.upper()}, costume=costume)
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/reevaluate")
         def reevaluate(run_id: str, background_tasks: BackgroundTasks, view: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.reevaluate(run_id, view.strip() or None, costume))
-            background_tasks.add_task(instance.execute_run, run_id, views={view.upper()} if view else None, costume=costume)
+            submit_local_pipeline_task(instance.execute_run, run_id, views={view.upper()} if view else None, costume=costume)
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/lock")
@@ -128,7 +129,7 @@ def create_local_character_asset_pipeline_router(
             result = call(lambda: instance.proceed(run_id, costume))
             target_views = set(result.get("target_views") or [])
             if target_views:
-                background_tasks.add_task(instance.execute_run, run_id, views=target_views, costume=costume)
+                submit_local_pipeline_task(instance.execute_run, run_id, views=target_views, costume=costume)
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/candidates/{{candidate_id}}/review")
@@ -139,7 +140,7 @@ def create_local_character_asset_pipeline_router(
         def retry(run_id: str, candidate_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.retry_candidate(run_id, candidate_id, costume))
-            background_tasks.add_task(instance.execute_run, run_id, views={next(item["view"] for item in result["candidates"] if item["candidate_id"] == candidate_id)}, costume=costume)
+            submit_local_pipeline_task(instance.execute_run, run_id, views={next(item["view"] for item in result["candidates"] if item["candidate_id"] == candidate_id)}, costume=costume)
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/stop")
@@ -150,7 +151,7 @@ def create_local_character_asset_pipeline_router(
         def rerun_view(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.rerun_view(run_id, view, costume))
-            background_tasks.add_task(instance.execute_run, run_id, views={view.upper()}, costume=costume)
+            submit_local_pipeline_task(instance.execute_run, run_id, views={view.upper()}, costume=costume)
             return result
 
         @router.delete(f"{prefix}/runs/{{run_id}}")
@@ -161,7 +162,7 @@ def create_local_character_asset_pipeline_router(
         def resume(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.resume(run_id, costume))
-            background_tasks.add_task(instance.execute_run, run_id, costume=costume)
+            submit_local_pipeline_task(instance.execute_run, run_id, costume=costume)
             return result
 
     return router

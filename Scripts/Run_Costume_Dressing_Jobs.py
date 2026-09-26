@@ -501,6 +501,7 @@ def compile_costume_dressing_job(
     references = reference_files_for_job(job)
     character_assembly = reference_by_role(references, "character_assembly")
     validate_reference(character_assembly, "character_assembly")
+    has_front_costume_reference = any(item.get("role") == "front_costume" for item in references)
 
     all_sections, section_sources = load_costume_dressing_section_data(project_root, character_template_path, costume_path)
     all_sections, section_sources, suppressed_sections = normalize_costume_dressing_sections(
@@ -581,8 +582,9 @@ def compile_costume_dressing_job(
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         "LOCAL_COSTUME_REFERENCE_GUIDANCE": (
             "For non-FRONT views, Image 1 is the matching assembled character for this view. "
-            "Image 2 is the selected FRONT costume image and guides costume appearance only. "
-            "Preserve the requested view and the Image 1 pose, body, and framing."
+            + ("Image 2 is the selected FRONT costume image and guides costume appearance only. "
+               if has_front_costume_reference else "")
+            + "Preserve the requested view and the Image 1 pose, body, and framing."
             if pipeline_mode == "local" and body_view_token != "FRONT" else ""
         ),
         "COSTUME_VIEW_HEADING": "# View-Specific Costume Details" if f"COSTUME_DESCRIPTION_VIEW_{body_view_token}" in selection.sections else "",

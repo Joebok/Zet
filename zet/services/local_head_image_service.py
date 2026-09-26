@@ -836,7 +836,7 @@ class LocalHeadImageService:
             root, state = self._state(run_id)
             anchor_hash = self._hash(anchor_path) if view != FRONT and anchor_path.is_file() else ""
             state.setdefault("rankings", {})[view] = {
-                "status": "EMPTY", "ordered_candidate_ids": [], "entries": [],
+                "status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [],
                 "input_hashes": {}, "anchor_hash": anchor_hash, "model": "", "recorded_at": self._now(),
             }
             selected_id = state.setdefault("selected_views", {}).pop(view, None)
@@ -910,23 +910,23 @@ class LocalHeadImageService:
                 output_file.unlink(missing_ok=True)
         root, state = self._state(run_id)
         state.setdefault("rankings", {})[view] = {"status": "COMPLETE",
-            "ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
+            "ordered_candidate_ids": [item["candidate_id"] for item in entries],
+            "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
             "input_hashes": hashes, "anchor_hash": anchor_hash, "model": model, "recorded_at": self._now()}
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
-    def select_view(self, run_id: str, view: str, candidate_id: str) -> dict[str, Any]:
+    def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         run = self.detail(run_id)
-        view = str(view or "").upper()
         selected = run.get("selected_views") or {}
+        view = str(view or "").upper()
         if not candidate_id:
             if view == FRONT:
                 for downstream in VIEWS[1:]:
                     self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream)
-            asset_key = self.asset_store.key("Head-Image", view)
-            record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(asset_key) or {}
-            if record.get("batch_id") == run_id and record.get("candidate_id") == selected.get(view) and not record.get("locked"):
-                self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
+            self.asset_store.clear_batch_selection(
+                run["character"], run["phase"], "Head-Image", view, run_id
+            )
             root, state = self._state(run_id)
             state.setdefault("selected_views", {}).pop(view, None)
             if view == FRONT:
@@ -941,13 +941,21 @@ class LocalHeadImageService:
         human_pass = bool(candidate and candidate.get("human_review", {}).get("decision") == "keep")
         if not candidate or candidate["view"] != view or (candidate.get("rejection_gate") and not human_pass):
             raise LocalHeadImageError("Choose a gate-surviving or human-passed candidate from this view.")
-        if view == FRONT and not human_pass:
+        auto_approved = bool(autogenerate and view == FRONT)
+        if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
+            raise LocalHeadImageError("A human-rejected candidate cannot be autoselected.")
+        if view == FRONT and not human_pass and not auto_approved:
             raise LocalHeadImageError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         image = Path(str(candidate.get("image_path") or ""))
         if (ranking.get("status") != "COMPLETE" or candidate_id not in ranking.get("ordered_candidate_ids", [])
                 or not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
             raise LocalHeadImageError("The candidate needs a current gate review and ranking before selection.")
+        luna_order = list(ranking.get("luna_ordered_candidate_ids") or [])
+        if not luna_order and len(ranking.get("ordered_candidate_ids") or []) == 1:
+            luna_order = list(ranking["ordered_candidate_ids"])
+        if auto_approved and (not luna_order or luna_order[0] != candidate_id):
+            raise LocalHeadImageError("Autogenerate can select only the original #1 Luna candidate.")
         if not human_pass and not self._candidate_gates_current(run, candidate):
             raise LocalHeadImageError("The candidate has missing or stale gate results; re-evaluate and rank this view before selection.")
         if view == FRONT and (run.get("front_anchor") != candidate_id):
@@ -976,7 +984,10 @@ class LocalHeadImageService:
                                           dependencies=dependencies)
         if previous_id and previous_id != candidate_id:
             state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
-        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(status="COMPLETE", selected_at=self._now())
+        update = {"status": "COMPLETE", "selected_at": self._now()}
+        if auto_approved:
+            update["autogenerate_approval"] = {"approved_at": self._now(), "reason": "Current #1 Luna FRONT candidate passed local gates."}
+        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         all_selected = all((state.get("selected_views") or {}).get(target) for target in VIEWS)
         if all_selected:
             state["status"] = "COMPLETE"

@@ -172,7 +172,6 @@ Do not explain your reasoning."""
         "required": ["ranking"], "additionalProperties": False,
     }
 
-    _runner_lock = threading.Lock()
     _active_runs: set[str] = set()
     _active_runs_lock = threading.Lock()
 
@@ -711,8 +710,8 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         if run.get("status") in ACTIVE_RUN_STATUSES or run.get("interrupted"):
             raise LocalBodyReferenceError("Wait for the current batch to finish or recover it before starting a fresh batch.")
-        if self._runner_lock.locked():
-            raise LocalBodyReferenceError("Wait for the local image runner to finish before starting a fresh batch.")
+        if self._runner_is_active(run_id):
+            raise LocalBodyReferenceError("Wait for this batch to finish before starting a fresh run.")
         views = set(run.get("views", []))
         for view in views:
             self.asset_store.assert_batch_change_allowed(
@@ -754,8 +753,8 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
-        if self._runner_lock.locked():
-            raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
+        if self._runner_is_active(run_id):
+            raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
         candidates = [item for item in run["candidates"] if item.get("view") == view]
         if not candidates:
             raise LocalBodyReferenceError(f"This batch has no candidates for view {view}.")
@@ -811,8 +810,8 @@ Do not explain your reasoning."""
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
-        if self._runner_lock.locked():
-            raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
+        if self._runner_is_active(run_id):
+            raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
 
         def is_failed_candidate(candidate: dict[str, Any]) -> bool:
             if candidate.get("view") != view:
@@ -907,8 +906,8 @@ Do not explain your reasoning."""
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", target_view)
         if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-evaluating it.")
-        if self._runner_lock.locked():
-            raise LocalBodyReferenceError("Another Local Body-Reference batch is running; try again when it finishes.")
+        if self._runner_is_active(run_id):
+            raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
         if int(run.get("review_version") or 1) >= 2:
             completed = [item for item in run["candidates"] if item.get("view") in target_views
                          and item.get("status") in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "GATE_REJECTED", "FAILED"}
@@ -973,10 +972,34 @@ Do not explain your reasoning."""
                 or not root.is_relative_to(runs_root)):
             raise LocalBodyReferenceError("Invalid Local Body-Reference batch location.")
         run = self.detail(run_id)
+        state_path = root / "state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+        except (OSError, ValueError, json.JSONDecodeError):
+            state = {}
+        candidates = {item["candidate_id"]: item for item in run.get("candidates", [])}
+        active_selections = {
+            view: candidate_id
+            for view, candidate_id in (run.get("selected_views") or {}).items()
+            if (candidate := candidates.get(candidate_id))
+            and candidate.get("view") == view
+            and Path(str(candidate.get("image_path") or "")).is_file()
+        }
+        # Older selection flows could clear state.json but leave an unlocked
+        # batch-owned record in local_assets.json. Reconcile those invisible
+        # records before applying the delete guard.
+        for record in run.get("local_assets", {}).values():
+            if (record.get("selected") and record.get("batch_id") == run_id
+                    and not record.get("locked")
+                    and active_selections.get(record.get("view")) != record.get("candidate_id")):
+                self.asset_store.clear_batch_selection(
+                    run["character"], run["phase"], "Body-Reference", record["view"], run_id,
+                    str(record.get("qualifier") or ""),
+                )
+        run = self.detail(run_id)
         if any(record.get("selected") and record.get("batch_id") == run_id and not record.get("locked")
                for record in run.get("local_assets", {}).values()):
             raise LocalBodyReferenceError("Lock or unselect this batch's local assets before deleting it.")
-        state_path = root / "state.json"
         if state_path.is_file():
             try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -995,11 +1018,9 @@ Do not explain your reasoning."""
         self._write(root / "state.json", state)
 
     def _clear_owned_selection(self, run: dict[str, Any], view: str) -> None:
-        record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(
-            self.asset_store.key("Body-Reference", view), {}
+        self.asset_store.clear_batch_selection(
+            run["character"], run["phase"], "Body-Reference", view, run["run_id"]
         )
-        if record.get("batch_id") == run["run_id"] and not record.get("locked"):
-            self.asset_store.clear_selection(run["character"], run["phase"], "Body-Reference", view)
 
     def _withdraw_queued_asks(self, run_id: str, *, affected_views: set[str] | None = None,
                               candidate_ids: set[str] | None = None) -> None:
@@ -1884,7 +1905,7 @@ Do not explain your reasoning."""
 
     def _execute_after_current_run(self, run_id: str) -> None:
         """Resume after another serialized batch operation releases the runner lock."""
-        while self._runner_lock.locked() or self._runner_is_active(run_id):
+        while self._runner_is_active(run_id):
             time.sleep(1)
         self.execute_run(run_id)
 
@@ -1992,12 +2013,13 @@ Do not explain your reasoning."""
         current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
         current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
         if not survivors:
-            ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "entries": [],
+            ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [],
                        "input_hashes": {}, "anchor_hash": current_anchor_hash,
                        "model": "", "recorded_at": self._now()}
         elif len(survivors) == 1:
             only = survivors[0]
             ranking = {"status": "COMPLETE", "ordered_candidate_ids": [only["candidate_id"]],
+                       "luna_ordered_candidate_ids": [only["candidate_id"]],
                        "entries": [{"candidate_id": only["candidate_id"], "reason": "Only candidate survived the rejection gates."}],
                        "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                        "model": "deterministic-single-survivor", "recorded_at": self._now()}
@@ -2047,6 +2069,7 @@ Do not explain your reasoning."""
                 result = json.loads(output_file.read_text(encoding="utf-8"))
                 entries = validate_ranking(result, [item["candidate_id"] for item in survivors])
                 ranking = {"status": "COMPLETE", "ordered_candidate_ids": [item["candidate_id"] for item in entries],
+                           "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries],
                            "entries": entries, "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                            "model": str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
                            "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "recorded_at": self._now()}
@@ -2091,10 +2114,9 @@ Do not explain your reasoning."""
         for view in (run.get("views") or []):
             if view == FRONT_VIEW:
                 continue
-            selected_id = selected.pop(view, None)
+            selected.pop(view, None)
             rankings.pop(view, None)
-            if selected_id:
-                self._clear_owned_selection(run, view)
+            self._clear_owned_selection(run, view)
         for candidate in run.get("candidates") or []:
             if candidate.get("view") == FRONT_VIEW:
                 continue
@@ -2110,7 +2132,7 @@ Do not explain your reasoning."""
                 "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
             })
 
-    def select_view(self, run_id: str, view: str, candidate_id: str) -> dict[str, Any]:
+    def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         """Select the human-approved candidate for one version 2 view."""
         run = self.detail(run_id)
         view = str(view or "").upper()
@@ -2129,12 +2151,13 @@ Do not explain your reasoning."""
                     if downstream_view != FRONT_VIEW:
                         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
             removed_id = selected.pop(view, None)
+            if not removed_id and view == FRONT_VIEW:
+                removed_id = state.get("front_anchor")
+            self.asset_store.clear_batch_selection(
+                run["character"], run["phase"], "Body-Reference", view, run_id
+            )
             if not removed_id:
                 return self.detail(run_id)
-            asset_key = self.asset_store.key("Body-Reference", view)
-            record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(asset_key) or {}
-            if record.get("batch_id") == run_id and record.get("candidate_id") == removed_id and not record.get("locked"):
-                self.asset_store.clear_selection(run["character"], run["phase"], "Body-Reference", view)
             state.setdefault("candidates", {}).setdefault(removed_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
             if view == FRONT_VIEW:
                 if state.get("front_anchor") == removed_id:
@@ -2154,7 +2177,10 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("A candidate must survive its gates or receive a human Pass before selection.")
         if candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be selected.")
-        if view == FRONT_VIEW and not human_pass:
+        auto_approved = bool(autogenerate and view == FRONT_VIEW)
+        if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
+            raise LocalBodyReferenceError("A human-rejected candidate cannot be autoselected.")
+        if view == FRONT_VIEW and not human_pass and not auto_approved:
             raise LocalBodyReferenceError("Review and pass a FRONT candidate before selecting it as the anchor.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         if view != FRONT_VIEW:
@@ -2164,6 +2190,11 @@ Do not explain your reasoning."""
                 raise LocalBodyReferenceError("The FRONT anchor changed after ranking; rerun this view.")
         if ranking.get("status") != "COMPLETE" or candidate_id not in (ranking.get("ordered_candidate_ids") or []):
             raise LocalBodyReferenceError("The candidate must have a current view ranking.")
+        luna_order = list(ranking.get("luna_ordered_candidate_ids") or [])
+        if not luna_order and len(ranking.get("ordered_candidate_ids") or []) == 1:
+            luna_order = list(ranking["ordered_candidate_ids"])
+        if auto_approved and (not luna_order or luna_order[0] != candidate_id):
+            raise LocalBodyReferenceError("Autogenerate can select only the original #1 Luna candidate.")
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file() or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image):
             raise LocalBodyReferenceError("The candidate image changed after ranking; rerun its review.")
@@ -2178,7 +2209,10 @@ Do not explain your reasoning."""
         if previous_id and previous_id != candidate_id:
             state.setdefault("candidates", {}).setdefault(previous_id, {}).update(status="WAITING_FOR_HUMAN_REVIEW")
         selected[view] = candidate_id
-        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(status="COMPLETE", selected_at=self._now())
+        update = {"status": "COMPLETE", "selected_at": self._now()}
+        if auto_approved:
+            update["autogenerate_approval"] = {"approved_at": self._now(), "reason": "Current #1 Luna FRONT candidate passed local gates."}
+        state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         if view == FRONT_VIEW:
             state["front_anchor"] = candidate_id
             if old_anchor_id != candidate_id:
@@ -2348,17 +2382,14 @@ Do not explain your reasoning."""
         self._candidate_update(run_id, candidate_id, {"local_job": job})
         return True
 
-    def execute_run(self, run_id: str) -> None:
+    def execute_run(self, run_id: str, *, views: set[str] | None = None) -> None:
         try:
             with file_lock(self._root(run_id) / "runner.lock", timeout=0):
-                self._execute_run_locked(run_id)
+                self._execute_run_locked(run_id, views=views)
         except TimeoutError:
             return
 
-    def _execute_run_locked(self, run_id: str) -> None:
-        if not self._runner_lock.acquire(blocking=False):
-            threading.Thread(target=self._execute_after_current_run, args=(run_id,), daemon=True).start()
-            return
+    def _execute_run_locked(self, run_id: str, *, views: set[str] | None = None) -> None:
         with self._active_runs_lock:
             self._active_runs.add(run_id)
         try:
@@ -2375,7 +2406,7 @@ Do not explain your reasoning."""
                 self._preflight()
             self._run_update(run_id, status="REEVALUATING" if review_only else "RUNNING")
             run = self.detail(run_id)
-            views = target_views or (list(run.get("views") or []) if review_only else (
+            views = target_views or list(views or []) or (list(run.get("views") or []) if review_only else (
                 [FRONT_VIEW] if not run.get("front_anchor") else
                 [view for view in run.get("views") or [] if view != FRONT_VIEW]
             ))
@@ -2449,7 +2480,6 @@ Do not explain your reasoning."""
         finally:
             with self._active_runs_lock:
                 self._active_runs.discard(run_id)
-            self._runner_lock.release()
     def queue_render_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)

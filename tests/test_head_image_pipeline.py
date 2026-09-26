@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shutil
 import tempfile
@@ -318,6 +319,43 @@ class HeadImageCompilerTests(unittest.TestCase):
                              ["human_review"]["notes"])
             with self.assertRaisesRegex(Exception, "current gate review"):
                 service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
+
+    def test_autogenerate_selects_and_locks_ranked_front_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Characters" / "Test" / "Adult"
+            characters.mkdir(parents=True)
+            shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+            candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+            image = root / "front.png"
+            image.write_bytes(b"ranked front image")
+            service._update(run["run_id"], candidate["candidate_id"], status="WAITING_FOR_HUMAN_REVIEW",
+                            image_path=str(image))
+            state_path = Path(run["root"]) / "state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["rankings"]["FRONT"] = {
+                "status": "COMPLETE",
+                "ordered_candidate_ids": [candidate["candidate_id"]],
+                "luna_ordered_candidate_ids": [candidate["candidate_id"]],
+                "input_hashes": {candidate["candidate_id"]: hashlib.sha256(image.read_bytes()).hexdigest()},
+            }
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            service._candidate_gates_current = lambda _run, _candidate: True
+
+            selected = service.select_view(run["run_id"], "FRONT", candidate["candidate_id"], autogenerate=True)
+            locked = service.lock_selected_view(run["run_id"], "FRONT")
+
+            self.assertEqual(candidate["candidate_id"], selected["selected_views"]["FRONT"])
+            selected_candidate = next(item for item in selected["candidates"]
+                                      if item["candidate_id"] == candidate["candidate_id"])
+            self.assertIn("autogenerate_approval", selected_candidate)
+            self.assertTrue(locked["locked"])
 
     def test_local_head_renders_view_before_gates_then_ranks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
