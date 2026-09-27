@@ -40,13 +40,13 @@
     const title = document.createElement("h3");
     const link = document.createElement("a");
     link.href = directBatchUrl(batch);
-    link.textContent = batch.batch_name || `Unnamed batch · ${batch.run_id.slice(0, 8)}`;
+    link.textContent = [batch.character, batch.phase, batch.batch_name || batch.run_id.slice(0, 8)]
+      .filter(Boolean)
+      .join("/");
     title.append(link);
 
     const fields = document.createElement("div");
     fields.className = "batch-status-fields";
-    appendField(fields, "Character", batch.character);
-    appendField(fields, "Phase", batch.phase);
     appendField(fields, "Pipeline", batch.pipeline_label);
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);

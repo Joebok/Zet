@@ -321,7 +321,7 @@ class LocalCharacterAssetPipelineService:
                 index += 1
                 candidates.append({"candidate_id": view_candidate_id(view, ordinal), "view": view, "ordinal": ordinal,
                                   "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
-                                  "gates": {}, "human_review": {"decision": "undecided", "notes": ""}, "retry_count": 0})
+                                  "gates": {}, "human_review": {"decision": "undecided"}, "retry_count": 0})
         spec = {"schema_version": 1, "review_version": 2, "kind": self.pipeline, "run_id": run_id,
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "costume": plan["costume"], "views": list(VIEWS), "front_count": plan["front_count"],
@@ -343,6 +343,8 @@ class LocalCharacterAssetPipelineService:
             active = run_id in self._active
         if upgrade_legacy and upgrade_legacy_review_v1(root, spec, state, active=active):
             spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
+        from zet.services.local_prompt_improvement_service import ensure_view_reviews
+        spec, state = ensure_view_reviews(root, spec, state)
         candidates = {item["candidate_id"]: dict(item) for item in spec.get("candidates", [])}
         for cid, update in (state.get("candidates") or {}).items():
             if cid in candidates:
@@ -580,6 +582,8 @@ class LocalCharacterAssetPipelineService:
             job.update({"Body View": view, "Head View": view, "Costume": run["costume"],
                         "Costume Path": run["costume_path"]})
             result = compile_costume_dressing_job(job, self.project_root, pipeline_mode="local")
+        from zet.services.local_prompt_improvement_service import record_compiler_sources
+        record_compiler_sources(output)
         return result
 
     def queue_render_candidate(self, run_id: str, candidate_id: str, costume: str = "") -> dict[str, Any]:
@@ -1163,6 +1167,8 @@ class LocalCharacterAssetPipelineService:
                 active.update(ranking_status=ranking.get("status"), ranking_updated_at=self._now())
                 current.setdefault("evaluations", {})[view] = active
         mutate_local_run_state(root, save)
+        from zet.services.local_prompt_improvement_service import after_initial_ranking
+        after_initial_ranking(self, self.pipeline, self.project_root, run_id, view, costume)
         return self.detail(run_id, costume)
 
     def move_rank(self, run_id: str, view: str, candidate_id: str, direction: str, costume: str = "") -> dict[str, Any]:
@@ -1209,7 +1215,7 @@ class LocalCharacterAssetPipelineService:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {})[candidate["candidate_id"]] = {
                 "status": "PENDING", "image_path": "", "ask_id": "", "gates": {}, "rejection_gate": "",
-                "human_review": {"decision": "undecided", "notes": ""},
+                "human_review": {"decision": "undecided"},
                 "retry_count": int(candidate.get("retry_count") or 0) + 1,
             }
         state.setdefault("rankings", {}).pop(view, None)
@@ -1490,7 +1496,7 @@ class LocalCharacterAssetPipelineService:
                 if ranking and ranking.get("status") == "COMPLETE":
                     ranking.update(status="STALE", stale_reason="Human review changed. Re-rank this view.")
             state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
-                human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
+                human_review={"decision": decision},
                 status=candidate.get("status"),
             )
             state["updated_at"] = self._now()
@@ -1515,7 +1521,7 @@ class LocalCharacterAssetPipelineService:
         self._update(run_id, candidate_id, costume, status="PENDING", image_path="", ask_id="", gates={},
                      rejection_gate="", failed_gate="", render_error="", review_error="",
                      retry_count=int(candidate.get("retry_count") or 0) + 1,
-                     human_review={"decision": "undecided", "notes": ""})
+                     human_review={"decision": "undecided"})
         return self.detail(run_id, costume)
 
     def rerun_view(self, run_id: str, view: str, costume: str = "", *, refresh_sources: bool = True) -> dict[str, Any]:
@@ -1542,7 +1548,7 @@ class LocalCharacterAssetPipelineService:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {})[candidate["candidate_id"]] = {
                 "status": "PENDING", "image_path": "", "ask_id": "", "gates": {},
-                "rejection_gate": "", "human_review": {"decision": "undecided", "notes": ""},
+                "rejection_gate": "", "human_review": {"decision": "undecided"},
                 "retry_count": int(candidate.get("retry_count") or 0) + 1,
             }
         state.setdefault("rankings", {}).pop(view, None)
@@ -1589,7 +1595,7 @@ class LocalCharacterAssetPipelineService:
                      selected_views={}, rankings={},
                      candidates={item["candidate_id"]: {"status": "PENDING", "image_path": "", "ask_id": "", "gates": {},
                          "rejection_gate": "", "retry_count": int(item.get("retry_count") or 0) + 1,
-                         "human_review": {"decision": "undecided", "notes": ""}} for item in run["candidates"]})
+                         "human_review": {"decision": "undecided"}} for item in run["candidates"]})
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 

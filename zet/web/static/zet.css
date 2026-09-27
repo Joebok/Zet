@@ -620,6 +620,30 @@ main {
   display: none;
 }
 
+.local-pipeline-view-observations {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.local-pipeline-view-observations label {
+  display: block;
+}
+
+.local-pipeline-view-observations textarea {
+  margin-top: 4px;
+  min-height: 110px;
+}
+
+.local-pipeline-view-observations button {
+  justify-self: start;
+}
+
+.local-pipeline-ai-observations {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .local-pipeline-gallery {
   align-items: stretch;
   display: grid;

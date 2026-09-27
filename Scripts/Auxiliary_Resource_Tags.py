@@ -44,21 +44,40 @@ def load_auxiliary_resource_lookup(project_root: Path) -> list[dict]:
 
 def load_managed_image_lookup(project_root: Path) -> dict[str, dict]:
     """Load catalog-owned imported images keyed by their stable tag."""
-    path = library_root(project_root) / "ImageCatalog" / "ImageCatalog.json"
+    catalog_root = library_root(project_root) / "ImageCatalog"
+    path = catalog_root / "ImageCatalog.json"
     if not path.is_file():
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog is malformed: {path}: {exc}") from exc
-    managed = payload.get("managed_images", {}) if isinstance(payload, dict) else {}
-    if not isinstance(managed, dict):
-        raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog has no managed_images object: {path}")
-    return {
-        str(record.get("tag") or ""): record
-        for record in managed.values()
-        if isinstance(record, dict) and str(record.get("tag") or "")
-    }
+    managed = payload.get("managed_images") if isinstance(payload, dict) else None
+    if isinstance(managed, dict):
+        return {
+            str(record.get("tag") or ""): record
+            for record in managed.values()
+            if isinstance(record, dict) and str(record.get("tag") or "")
+        }
+
+    # Schema v3 catalogs keep the manifest in ImageCatalog.json and each image
+    # in a separate Records/<catalog_id>.json file.
+    if isinstance(payload, dict) and payload.get("schema_version") == 3:
+        records_dir = catalog_root / "Records"
+        if not records_dir.is_dir():
+            raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog records are missing: {records_dir}")
+        records: dict[str, dict] = {}
+        for record_path in sorted(records_dir.glob("*.json")):
+            try:
+                record_payload = json.loads(record_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog record is malformed: {record_path}: {exc}") from exc
+            image = record_payload.get("managed_image") if isinstance(record_payload, dict) else None
+            if isinstance(image, dict) and str(image.get("tag") or ""):
+                records[str(image["tag"])] = image
+        return records
+
+    raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog has no managed_images object: {path}")
 
 
 def auxiliary_references_for_texts(project_root: Path, texts: list[str], existing_references: list[dict]) -> list[dict]:

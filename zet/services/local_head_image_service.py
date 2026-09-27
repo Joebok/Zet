@@ -161,7 +161,10 @@ class LocalHeadImageService:
                "Phase": phase, "Head View": view, "Template Path": str(template_path),
                "Output Directory": str(output_dir), "Reference Files": references}
         try:
-            return compile_head_image_job(job, self.project_root, pipeline_mode="local")
+            result = compile_head_image_job(job, self.project_root, pipeline_mode="local")
+            from zet.services.local_prompt_improvement_service import record_compiler_sources
+            record_compiler_sources(output_dir)
+            return result
         except Exception as exc:
             raise LocalHeadImageError(f"Could not compile the local {view} prompt: {exc}") from exc
 
@@ -199,7 +202,7 @@ class LocalHeadImageService:
                 index += 1
                 candidates.append({"candidate_id": view_candidate_id(view, ordinal), "view": view, "ordinal": ordinal,
                                    "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
-                                   "gates": {}, "human_review": {"decision": "undecided", "notes": ""},
+                                   "gates": {}, "human_review": {"decision": "undecided"},
                                    "retry_count": 0})
         front_prompt = self._compile(root, plan["character"], plan["phase"], FRONT,
                                      ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []))
@@ -224,6 +227,8 @@ class LocalHeadImageService:
         root = self._run_root(run_id)
         spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        from zet.services.local_prompt_improvement_service import ensure_view_reviews
+        spec, state = ensure_view_reviews(root, spec, state)
         candidates = {item["candidate_id"]: dict(item) for item in spec.get("candidates", [])}
         for candidate_id, update in (state.get("candidates") or {}).items():
             if candidate_id in candidates:
@@ -1062,6 +1067,8 @@ class LocalHeadImageService:
             "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
             "input_hashes": hashes, "anchor_hash": anchor_hash, "model": model, "recorded_at": self._now()}
         self._save_ranking_result(run_id, view, evaluation_id, hashes, ranking)
+        from zet.services.local_prompt_improvement_service import after_initial_ranking
+        after_initial_ranking(self, "head-image", self.project_root, run_id, view)
         return self.detail(run_id)
 
     def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,
@@ -1173,7 +1180,7 @@ class LocalHeadImageService:
         if not image.is_file():
             raise LocalHeadImageError("Candidate image must be complete before human review.")
         self._update(run_id, candidate_id,
-                     human_review={"decision": decision, "notes": str(payload.get("notes") or "")},
+                     human_review={"decision": decision},
                      status=candidate.get("status"))
         return self.detail(run_id)
 
@@ -1249,7 +1256,7 @@ class LocalHeadImageService:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
-                failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(candidate.get("retry_count") or 0) + (1 if candidate.get("image_path") else 0),
             )
 
@@ -1331,7 +1338,7 @@ class LocalHeadImageService:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
-                failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
             )
@@ -1355,7 +1362,7 @@ class LocalHeadImageService:
                 clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
                     status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
-                    failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                    failed_gate="", render_error="", human_review={"decision": "undecided"},
                     retry_count=int(item.get("retry_count") or 0) + 1,
                     seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
         for affected in affected_views:
@@ -1391,7 +1398,7 @@ class LocalHeadImageService:
             clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
             state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
                 status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
-                failed_gate="", render_error="", human_review={"decision": "undecided", "notes": ""},
+                failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(item.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
         self._write(root / "state.json", state)
@@ -1414,7 +1421,7 @@ class LocalHeadImageService:
             if item["view"] in targets and Path(str(item.get("image_path") or "")).is_file():
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
                     status="WAITING_FOR_GATES", gates={}, rejection_gate="", failed_gate="", render_error="",
-                    human_review={"decision": "undecided", "notes": ""})
+                    human_review={"decision": "undecided"})
         rankings = state.setdefault("rankings", {})
         for target in targets:
             if rankings.get(target):

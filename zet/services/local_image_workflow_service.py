@@ -8,6 +8,7 @@ from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 from zet.services.local_head_image_service import LocalHeadImageService
 from zet.services.local_image_pipeline_policy import pipeline_page_config
+from zet.services.local_prompt_improvement_service import LocalPromptImprovementService
 
 
 class LocalImageWorkflowError(ValueError):
@@ -28,6 +29,7 @@ class LocalImagePipelineWorkflowService:
             self.adapter = LocalBodyReferenceService(app, self.project_root)
         else:
             self.adapter = LocalCharacterAssetPipelineService(app, self.project_root, self.pipeline)
+        self.prompt_improvement = LocalPromptImprovementService(self.adapter, self.pipeline, self.project_root)
 
     def action(self, name: str, **args: Any) -> dict[str, Any] | list[dict[str, Any]]:
         """Call a stable action name while preserving adapter-specific render details."""
@@ -42,9 +44,7 @@ class LocalImagePipelineWorkflowService:
         if name == "create":
             return self.adapter.create_run(payload)
         if name == "detail":
-            if self.pipeline in {"body-reference", "character-assembly", "costume-dressing"}:
-                return self.adapter.detail(run_id, upgrade_legacy=True, **({"costume": costume} if self.pipeline in {"character-assembly", "costume-dressing"} else {}))
-            return self.adapter.detail(run_id)
+            return self.prompt_improvement.detail(run_id, costume, upgrade_legacy=True)
         if name == "list":
             return self.adapter.list_run_summaries(str(args.get("character") or ""), str(args.get("phase") or ""), costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.list_run_summaries(str(args.get("character") or ""), str(args.get("phase") or ""))
         if name == "rename_batch":
@@ -61,9 +61,13 @@ class LocalImagePipelineWorkflowService:
         if name == "resume":
             return self.adapter.resume(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.resume(run_id)
         if name == "rerun_batch":
-            return self.adapter.rerun(run_id, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun(run_id)
+            result = self.adapter.rerun(run_id, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun(run_id)
+            self.prompt_improvement.reset_after_rerender(run_id, set(result.get("views") or []), costume)
+            return self.prompt_improvement.detail(run_id, costume)
         if name == "rerun_view":
-            return self.adapter.rerun_view(run_id, view, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_view(run_id, view)
+            result = self.adapter.rerun_view(run_id, view, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_view(run_id, view)
+            self.prompt_improvement.reset_after_rerender(run_id, {view.upper()}, costume)
+            return self.prompt_improvement.detail(run_id, costume)
         if name == "rerun_failed":
             method = self.adapter.rerun_failed_view if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_failed_view
             return method(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view)
@@ -78,6 +82,10 @@ class LocalImagePipelineWorkflowService:
         if name == "review_candidate":
             method = self.adapter.update_candidate
             return method(run_id, candidate_id, payload, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, candidate_id, payload)
+        if name == "save_observations":
+            return self.prompt_improvement.save_observations(run_id, view, payload.get("observations"), costume)
+        if name == "reanalyze":
+            return self.prompt_improvement.start(run_id, view, costume)
         if name in {"select_view", "unselect_view"}:
             selected_id = candidate_id if name == "select_view" else ""
             method = self.adapter.select_view

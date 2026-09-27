@@ -336,9 +336,10 @@ class HeadImageCompilerTests(unittest.TestCase):
             current = service.detail(run["run_id"])
             self.assertEqual("STALE", current["rankings"]["FRONT"]["status"])
             self.assertIn("gaze", [gate.key for gate in service.review_gates("FRONT")])
-            self.assertEqual("Keep these notes.", next(item for item in current["candidates"]
-                                                         if item["candidate_id"] == candidate["candidate_id"])
-                             ["human_review"]["notes"])
+            self.assertEqual(f"{candidate['candidate_id']}: Keep these notes.",
+                             current["view_reviews"]["FRONT"]["observations"])
+            self.assertNotIn("notes", next(item for item in current["candidates"]
+                                           if item["candidate_id"] == candidate["candidate_id"])["human_review"])
             selected = service.select_view(run["run_id"], "FRONT", candidate["candidate_id"])
             self.assertEqual(candidate["candidate_id"], selected["selected_views"]["FRONT"])
 

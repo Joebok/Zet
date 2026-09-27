@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
+from starlette.background import BackgroundTask
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_character_overview_service import submit_local_pipeline_task
@@ -123,6 +124,23 @@ def create_local_character_asset_pipeline_router(
             instance = service(_pipeline)
             submit_local_pipeline_task(instance.action, "rank", run_id=run_id, view=view, costume=costume if _pipeline == "costume-dressing" else "")
             return {"queued": True, "run_id": run_id, "view": view.upper()}
+
+        @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/observations")
+        def save_observations(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "save_observations", run_id=run_id, view=view, payload=payload,
+                                       costume=costume if _pipeline == "costume-dressing" else ""))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/reanalyze")
+        def reanalyze(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "reanalyze", run_id=run_id, view=view,
+                                       costume=costume if _pipeline == "costume-dressing" else ""))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/prompt-improvement-package")
+        def prompt_improvement_package(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            path = call(lambda: service(_pipeline).prompt_improvement.create_package(
+                run_id, costume if _pipeline == "costume-dressing" else ""), missing=404)
+            return FileResponse(path, media_type="application/zip", filename=f"{_pipeline}_{run_id}_prompt_improvement.zip",
+                                background=BackgroundTask(path.unlink, missing_ok=True))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/ranking/move")
         def move_rank(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):

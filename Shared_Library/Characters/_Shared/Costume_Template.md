@@ -182,3 +182,11 @@ Costume preservation rules:
 
 
 <!-- ZET:END SCENE_COSTUME_IDENTITY -->
+
+## Scene Costume Anchors
+
+<!-- ZET:BEGIN SCENE_COSTUME_ANCHORS -->
+
+
+
+<!-- ZET:END SCENE_COSTUME_ANCHORS -->

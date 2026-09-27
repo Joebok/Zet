@@ -334,6 +334,8 @@ Do not explain your reasoning."""
         final_prompt = Path(str(result["final_prompt"]))
         if not final_prompt.is_file():
             raise LocalBodyReferenceError(f"Compiled prompt is missing for {view}: {final_prompt}")
+        from zet.services.local_prompt_improvement_service import record_compiler_sources
+        record_compiler_sources(output)
         text = final_prompt.read_text(encoding="utf-8")
         qwen_prompt = self._qwen_prompt(text, view)
         return {
@@ -469,7 +471,7 @@ Do not explain your reasoning."""
                         "method": method, "ordinal": ordinal + 1, "seed": str(seeds[seed_index]),
                         "prompt": candidate_prompt, "prompt_sha256": hashlib.sha256(candidate_prompt.encode()).hexdigest(),
                         "status": "PENDING", "image_path": "", "render_error": "",
-                        "analyses": {}, "disposition": "pending", "human_review": {"decision": "undecided", "notes": ""},
+                        "analyses": {}, "disposition": "pending", "human_review": {"decision": "undecided"},
                         "gates": {},
                     })
                     seed_index += 1
@@ -508,6 +510,8 @@ Do not explain your reasoning."""
         if upgrade_legacy and upgrade_legacy_review_v1(root, value, state, active=self._runner_is_active(run_id)):
             value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
             state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        from zet.services.local_prompt_improvement_service import ensure_view_reviews
+        value, state = ensure_view_reviews(root, value, state)
         candidates = {item["candidate_id"]: dict(item) for item in value.get("candidates", [])}
         for candidate_id, update in (state.get("candidates") or {}).items():
             if candidate_id in candidates:
@@ -525,6 +529,7 @@ Do not explain your reasoning."""
         value["lineups"] = state.get("lineups") or value.get("lineups") or {}
         value["selected_views"] = state.get("selected_views") or value.get("selected_views") or {}
         value["rankings"] = state.get("rankings") or value.get("rankings") or {}
+        value["view_reviews"] = state.get("view_reviews") or {}
         value["evaluations"] = state.get("evaluations") or value.get("evaluations") or {}
         value["target_views"] = state.get("target_views") or []
         value["set_report"] = state.get("set_report") or {}
@@ -791,7 +796,7 @@ Do not explain your reasoning."""
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
                 render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
                 face_gate={}, face_gate_error="", disposition="pending",
-                human_review={"decision": "undecided", "notes": ""}, local_job={},
+                human_review={"decision": "undecided"}, local_job={},
                 luna_status="PENDING", luna_error="", review_history=[], analysis_history=[],
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
@@ -839,7 +844,7 @@ Do not explain your reasoning."""
                 status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
                 render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
-                disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                disposition="pending", human_review={"decision": "undecided"},
                 retry_count=int(affected.get("retry_count") or 0) + 1,
             )
         if int(run.get("review_version") or 1) >= 2:
@@ -921,7 +926,7 @@ Do not explain your reasoning."""
                 image_path="", image_sha256="", ask_id="", queued_at="",
                 completed_at="", render_error="", analyses={}, analysis_history=[], review_history=[],
                 gate_history=[], gate_rejection_history=[], ranking_history=[], local_job={}, luna_status="",
-                luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided", "notes": ""},
+                luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided"},
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
 
@@ -1139,7 +1144,6 @@ Do not explain your reasoning."""
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if run.get("review_version", 1) >= 2:
             decision = str(payload.get("decision") or "undecided")
-            notes = str(payload.get("notes") or "")
             if decision not in {"keep", "reject", "undecided"}:
                 raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
             image = Path(str(candidate.get("image_path") or ""))
@@ -1149,14 +1153,13 @@ Do not explain your reasoning."""
             disposition = "human_keep" if decision == "keep" else "human_reject" if decision == "reject" else "pending"
             def apply(state: dict[str, Any]) -> None:
                 state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
-                    human_review={"decision": decision, "notes": notes}, disposition=disposition,
+                    human_review={"decision": decision}, disposition=disposition,
                     status=candidate.get("status"),
                 )
                 state["updated_at"] = self._now()
             mutate_local_run_state(root, apply)
             return self.detail(run_id)
-        update = {"human_review": {"decision": str(payload.get("decision") or "undecided"),
-                                   "notes": str(payload.get("notes") or "")}}
+        update = {"human_review": {"decision": str(payload.get("decision") or "undecided")}}
         if update["human_review"]["decision"] not in {"keep", "reject", "undecided"}:
             raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
         if candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not all(
@@ -2237,6 +2240,8 @@ Do not explain your reasoning."""
                 current.setdefault("evaluations", {})[view] = active
             current["updated_at"] = self._now()
         mutate_local_run_state(root, save_ranking)
+        from zet.services.local_prompt_improvement_service import after_initial_ranking
+        after_initial_ranking(self, "body-reference", self.project_root, run_id, view)
         return self.detail(run_id)
 
     def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,
@@ -2286,7 +2291,7 @@ Do not explain your reasoning."""
                 "gates": {}, "failed_gate": "", "rejection_gate": "", "render_error": "",
                 "analyses": {}, "analysis_history": [], "review_history": [], "gate_history": [],
                 "gate_rejection_history": [],
-                "human_review": {"decision": "undecided", "notes": ""},
+                "human_review": {"decision": "undecided"},
                 "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
             })
 

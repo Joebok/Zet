@@ -47,6 +47,10 @@ Used by expression and character-source workflows. List the few costume traits t
 
 Used by scene building. Give a compact, complete description that keeps the costume recognizable at scene scale. Include key colors, silhouette, layers, footwear, and signature equipment. Exclude camera view, pose, scene action, and pipeline instructions.
 
+### `SCENE_COSTUME_ANCHORS` — optional
+
+Used by scene building for reference-backed characters. List a few compact, distinctive costume details that should remain stable in the image. Keep this shorter than `SCENE_COSTUME_IDENTITY`; include only visible features that help prevent costume drift.
+
 ## Final completeness check
 
 Verify that the name is correct, `COSTUME_DESCRIPTION_FACTS` is complete, side-specific items use anatomical left/right, equipment is in the equipment sections, optional sections are empty rather than invented, no character identity or narrative was added, and every marker is unchanged.
