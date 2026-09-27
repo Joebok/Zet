@@ -353,7 +353,7 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertNotEqual(old_hash, source["sha256"])
         self.assertEqual(service._hash(replacement), source["sha256"])
 
-    def test_local_only_costume_skips_luna_ranking(self) -> None:
+    def test_local_only_costume_uses_shared_luna_ranking(self) -> None:
         self._sources("costume-dressing")
         costume_path = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
         costume_path.write_text("Costume Name: Test Outfit\nLocalOnly: `[Yes]`\n", encoding="utf-8")
@@ -369,14 +369,21 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
                             status="WAITING_FOR_HUMAN_REVIEW", image_path=str(image),
                             human_review={"decision": "keep", "notes": ""})
 
-        with patch("zet.services.local_character_asset_pipeline_service.subprocess.run") as luna:
+        def luna_result(command, **_kwargs):
+            ids = [item["candidate_id"] for item in front_candidates]
+            Path(command[command.index("--output-last-message") + 1]).write_text(json.dumps({
+                "ranking": [{"candidate_id": candidate_id, "reason": "Reviewed image."} for candidate_id in ids]
+            }), encoding="utf-8")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with patch("zet.services.local_character_asset_pipeline_service.subprocess.run", side_effect=luna_result) as luna:
             ranking = service._rank(service.detail(run["run_id"], "Test Outfit"), "FRONT")
 
-        luna.assert_not_called()
+        luna.assert_called_once()
         self.assertEqual("COMPLETE", ranking["status"])
         self.assertEqual([item["candidate_id"] for item in front_candidates], ranking["ordered_candidate_ids"])
-        self.assertEqual([], ranking["luna_ordered_candidate_ids"])
-        self.assertEqual("local-only", ranking["model"])
+        self.assertEqual(ranking["ordered_candidate_ids"], ranking["luna_ordered_candidate_ids"])
+        self.assertNotEqual("local-only", ranking["model"])
 
     def test_manual_rank_changes_preserve_original_luna_order(self) -> None:
         self._sources("character-assembly")
@@ -540,7 +547,7 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         stage.assert_not_called()
         wait.assert_called_once_with(run["run_id"], missing["candidate_id"], "")
 
-    def test_human_review_preserves_ranking_unless_rejection_changes_survivors(self) -> None:
+    def test_human_review_never_invalidates_current_image_ranking(self) -> None:
         self._sources("character-assembly")
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
         run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2, "other_count": 1,
@@ -570,9 +577,8 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual("Second best.", saved["rankings"]["FRONT"]["entries"][1]["reason"])
 
         rejected = service.update_candidate(run["run_id"], rejected_candidate_id, {"decision": "reject", "notes": "Changed my mind."})
-        self.assertEqual("STALE", rejected["rankings"]["FRONT"]["status"])
+        self.assertEqual("COMPLETE", rejected["rankings"]["FRONT"]["status"])
         self.assertEqual([ranked_candidate_id, rejected_candidate_id], rejected["rankings"]["FRONT"]["ordered_candidate_ids"])
-        self.assertIn("Re-rank", rejected["rankings"]["FRONT"]["stale_reason"])
 
         service._update(run["run_id"], rejected_candidate_id, rejection_gate="framing", status="WAITING_FOR_HUMAN_REVIEW",
                         human_review={"decision": "undecided", "notes": ""})
@@ -584,7 +590,7 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         }
         service._write(root / "state.json", state)
         newly_eligible = service.update_candidate(run["run_id"], rejected_candidate_id, {"decision": "keep"})
-        self.assertEqual("STALE", newly_eligible["rankings"]["FRONT"]["status"])
+        self.assertEqual("COMPLETE", newly_eligible["rankings"]["FRONT"]["status"])
         selected = service.select_view(run["run_id"], "FRONT", rejected_candidate_id)
         self.assertEqual(rejected_candidate_id, selected["selected_views"]["FRONT"])
 
@@ -728,6 +734,28 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
                                  [compiled.debug["references_used"][index - 1]["path"] for index in range(1, count + 1)])
                 self.assertEqual(count, len([key for key in node if key.startswith("images.image_")]))
 
+    def test_legacy_pipeline_specific_review_routes_are_removed(self) -> None:
+        config_path = self.root / "config.toml"
+        asset_root, pipeline_root, queue_root = self.library / "Assets", self.library / "Pipelines", self.library / "Queue"
+        config_path.write_text(f"""[BaseFolders]
+BaseLibraryPath = "{self.library.as_posix()}"
+BaseCharacterPath = "{self.characters.as_posix()}"
+BaseAssetPath = "{asset_root.as_posix()}"
+BasePipelinePath = "{pipeline_root.as_posix()}"
+BaseAIQueuePath = "{queue_root.as_posix()}"
+""", encoding="utf-8")
+        with TestClient(create_app(config_path, validate_catalog_on_create=False)) as client:
+            legacy_routes = (
+                ("post", "/api/local/body-reference/runs/example/candidates/c001/analysis"),
+                ("post", "/api/local/body-reference/runs/example/candidates/c001/local-analysis"),
+                ("post", "/api/local/body-reference/runs/example/candidates/c001/luna-analysis"),
+                ("put", "/api/local/body-reference/runs/example/lineups/front-conditioned"),
+                ("post", "/api/local/head-image/runs/example/views/FRONT/selection"),
+            )
+            for method, path in legacy_routes:
+                response = getattr(client, method)(path, json={})
+                self.assertEqual(404, response.status_code, path)
+
     def test_local_pipeline_pages_and_gate_catalog_are_exposed(self) -> None:
         config_path = self.root / "config.toml"
         asset_root, pipeline_root, queue_root = self.library / "Assets", self.library / "Pipelines", self.library / "Queue"
@@ -772,11 +800,12 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
                 "prompt_path": "", "prompt_sha256": view, "source_map": "", "dependency_manifest": "",
             }):
                 run = body_service.create_run({**context, "seeds": list(range(8))})
-            image = Path(run["root"]) / "renders" / "c001" / "front.png"
+            candidate_id = run["candidates"][0]["candidate_id"]
+            image = Path(run["root"]) / "renders" / candidate_id / "front.png"
             image.parent.mkdir(parents=True)
             image.write_bytes(b"body reference image")
-            body_service._candidate_update(run["run_id"], "c001", {"image_path": str(image)})
-            response = client.get(f"/api/local/body-reference/runs/{run['run_id']}/images/c001")
+            body_service._candidate_update(run["run_id"], candidate_id, {"image_path": str(image)})
+            response = client.get(f"/api/local/body-reference/runs/{run['run_id']}/images/{candidate_id}")
             self.assertEqual(200, response.status_code)
             self.assertEqual(b"body reference image", response.content)
 

@@ -18,10 +18,15 @@ from uuid import uuid4
 
 from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
 from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
-from zet.services.candidate_review_contract import ReviewGate, validate_ranking
+from zet.services.candidate_review_contract import ReviewGate
+from zet.services.local_candidate_review_contract import (
+    adjust_candidate_ranking, normalize_human_decision,
+)
+from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current,
+    local_image_pipeline_config,
     mutate_local_run_state, pipeline_page_config, resume_cancelled_autogenerate_state, serialize_local_run_state,
     upgrade_legacy_review_v1, view_candidate_id,
 )
@@ -160,8 +165,14 @@ class LocalCharacterAssetPipelineService:
         return {**record, "key": key, "image_path": str(path)}
 
     def _requirements(self) -> tuple[tuple[str, str], ...]:
-        return (("body_reference", "Body-Reference"), ("head_image", "Head-Image")) \
-            if self.pipeline == "character-assembly" else (("character_assembly", "Character-Assembly"),)
+        source_pipeline = {
+            "body_reference": "Body-Reference",
+            "head_image": "Head-Image",
+            "character_assembly": "Character-Assembly",
+        }
+        return tuple((role, source_pipeline[role])
+                     for role in local_image_pipeline_config(self.pipeline).reference_roles
+                     if role in source_pipeline)
 
     def _source_adapter(self, pipeline: str):
         if pipeline == "Body-Reference":
@@ -617,7 +628,8 @@ class LocalCharacterAssetPipelineService:
         ref_hashes = {str(ref["role"]): self._hash(Path(ref["path"])) for ref in refs}
         self._update(run_id, candidate_id, costume=costume, status="QUEUED", ask_id=ask["ask_id"],
                      image_path=str(target), prompt_path=str(prompt_path), prompt_sha256=self._hash(prompt_path),
-                     reference_images=[{"role": ref["role"], "path": ref["path"], "sha256": ref_hashes[ref["role"]]} for ref in refs],
+                     reference_images=[{"role": ref["role"], "label": ref.get("label", ""),
+                                        "path": ref["path"], "sha256": ref_hashes[ref["role"]]} for ref in refs],
                      input_hashes=ref_hashes, workflow_kind=str(ask.get("workflow_kind") or profile.get("workflow_kind") or ""),
                      render_preset=preset_name, queued_at=self._now())
         return self.detail(run_id, costume)
@@ -1059,14 +1071,7 @@ class LocalCharacterAssetPipelineService:
         survivors = [item for item in run["candidates"] if item["view"] == view
                      and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
-        if self._costume_is_local_only(run) and survivors:
-            ordered = sorted(survivors, key=lambda item: (int(item.get("ordinal") or 0), item["candidate_id"]))
-            ranking = {"status": "COMPLETE", "ordered_candidate_ids": [item["candidate_id"] for item in ordered],
-                       "luna_ordered_candidate_ids": [],
-                       "entries": [{"candidate_id": item["candidate_id"],
-                                    "reason": "LocalOnly costume; Luna ranking skipped."} for item in ordered],
-                       "input_hashes": hashes, "model": "local-only", "recorded_at": self._now()}
-        elif not survivors:
+        if not survivors:
             ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [], "input_hashes": {}, "recorded_at": self._now()}
         elif len(survivors) == 1:
             item = survivors[0]
@@ -1075,47 +1080,36 @@ class LocalCharacterAssetPipelineService:
                        "entries": [{"candidate_id": item["candidate_id"], "reason": "Only completed image in this view."}],
                        "input_hashes": hashes, "model": "deterministic-single-survivor", "recorded_at": self._now()}
         else:
-            schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
-                "type": "object", "properties": {"candidate_id": {"type": "string"}, "reason": {"type": "string"}},
-                "required": ["candidate_id", "reason"], "additionalProperties": False}}}, "required": ["ranking"], "additionalProperties": False}
-            with tempfile.TemporaryDirectory(prefix="zet_local_character_rank_") as temp:
-                schema_path, output_path = Path(temp) / "schema.json", Path(temp) / "ranking.json"
-                schema_path.write_text(json.dumps(schema), encoding="utf-8")
-                prompt = f"Rank all rendered {self.definition['label']} images for {view}. Gates and human reviews are independent advice; assess every image on its visual merits. Compare view accuracy, source preservation, identity, and usefulness as a reference. Candidate IDs: " + ", ".join(hashes)
-                command = [shutil.which("codex") or "codex", "-a", "never", "-s", "read-only", "-m",
-                           str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
-                           "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
-                           "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema",
-                           str(schema_path), "--output-last-message", str(output_path)]
-                if view != "FRONT" and self._requires_front_anchor(run):
-                    anchor = next(item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"])
-                    guide = "costume appearance" if self.pipeline == "costume-dressing" else "assembled-character proportion and appearance"
-                    prompt += f". The first image is the selected FRONT {guide} guide; rank candidates for consistency with it."
-                    command.extend(["--image", str(anchor["image_path"])])
-                for item in survivors:
-                    command.extend(["--image", str(item["image_path"])])
-                result = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=1800, check=False)
-                if result.returncode:
-                    raise LocalCharacterAssetPipelineError((result.stderr or result.stdout or "Luna ranking failed")[-2000:])
-                entries = validate_ranking(json.loads(output_path.read_text(encoding="utf-8")), list(hashes))
+            prompt = (f"Rank all rendered {self.definition['label']} images for {view}. "
+                      "Gates and human reviews are independent advice; assess every image on its visual merits. "
+                      "Compare view accuracy, source preservation, identity, and usefulness as a reference. "
+                      "Candidate IDs: " + ", ".join(hashes))
+            reference_image_paths = []
+            if view != "FRONT" and self._requires_front_anchor(run):
+                anchor = next(item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"])
+                guide = "costume appearance" if self.pipeline == "costume-dressing" else "assembled-character proportion and appearance"
+                prompt += f". The first image is the selected FRONT {guide} guide; rank candidates for consistency with it."
+                reference_image_paths.append(str(anchor["image_path"]))
+            image_paths = [str(item["image_path"]) for item in survivors]
+            try:
+                executable = shutil.which("codex") or "codex"
+                entries, model = rank_images_with_luna(
+                    project_root=self.project_root,
+                    model=str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
+                    prompt=prompt,
+                    candidate_ids=list(hashes),
+                    image_paths=image_paths,
+                    executable=executable,
+                    reference_image_paths=reference_image_paths,
+                    runner=subprocess.run,
+                )
+            except Exception as exc:
+                raise LocalCharacterAssetPipelineError(str(exc)) from exc
             ranking = {"status": "COMPLETE", "ordered_candidate_ids": [entry["candidate_id"] for entry in entries],
                        "luna_ordered_candidate_ids": [entry["candidate_id"] for entry in entries],
                            "entries": entries, "input_hashes": hashes,
-                           "model": str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")), "recorded_at": self._now()}
+                           "model": model, "recorded_at": self._now()}
         return ranking
-
-    def _costume_is_local_only(self, run: dict[str, Any]) -> bool:
-        if self.pipeline != "costume-dressing":
-            return False
-        path = Path(str(run.get("costume_path") or ""))
-        if not path.is_file():
-            return False
-        match = re.search(r"^\s*LocalOnly\s*:\s*(.*?)\s*$", path.read_text(encoding="utf-8"), re.IGNORECASE | re.MULTILINE)
-        if not match:
-            return False
-        value = match.group(1).strip().strip("` ").strip()
-        bracketed = re.fullmatch(r"\[(.*)\]", value)
-        return (bracketed.group(1) if bracketed else value).strip().casefold() == "yes"
 
     def rank_view(self, run_id: str, view: str, costume: str = "", *, evaluation_id: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
@@ -1176,19 +1170,12 @@ class LocalCharacterAssetPipelineService:
         root = Path(run["root"])
         view = view.upper()
         ranking = dict((run.get("rankings") or {}).get(view) or {})
-        ordered = list(ranking.get("ordered_candidate_ids") or [])
-        if direction not in {"up", "down"} or candidate_id not in ordered:
-            raise LocalCharacterAssetPipelineError("Candidate is not in the current ranking.")
-        index = ordered.index(candidate_id)
-        target = index - 1 if direction == "up" else index + 1
-        if target < 0 or target >= len(ordered):
+        try:
+            adjusted = adjust_candidate_ranking(ranking, candidate_id, direction, timestamp=self._now())
+        except ValueError as exc:
+            raise LocalCharacterAssetPipelineError(str(exc)) from exc
+        if adjusted == ranking:
             return run
-        ranking.setdefault("luna_ordered_candidate_ids", list(ordered))
-        ordered[index], ordered[target] = ordered[target], ordered[index]
-        entries = {entry["candidate_id"]: entry for entry in ranking.get("entries", [])}
-        ranking["ordered_candidate_ids"] = ordered
-        ranking["entries"] = [entries[cid] for cid in ordered if cid in entries]
-        ranking["recorded_at"] = self._now()
         def save_ranking(current: dict[str, Any]) -> None:
             rankings = current.setdefault("rankings", {})
             previous = rankings.get(view)
@@ -1196,7 +1183,7 @@ class LocalCharacterAssetPipelineService:
                 current.setdefault("ranking_history", {}).setdefault(view, []).append(
                     {"archived_at": self._now(), "ranking": previous}
                 )
-            rankings[view] = ranking
+            rankings[view] = adjusted
         mutate_local_run_state(root, save_ranking)
         return self.detail(run_id, costume)
 
@@ -1481,20 +1468,16 @@ class LocalCharacterAssetPipelineService:
     def update_candidate(self, run_id: str, candidate_id: str, payload: dict[str, Any], costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        decision = str(payload.get("decision") or "undecided")
-        if not candidate or decision not in {"keep", "reject", "undecided"}:
-            raise LocalCharacterAssetPipelineError("Invalid candidate or human decision.")
+        if not candidate:
+            raise LocalCharacterAssetPipelineError(f"Unknown candidate: {candidate_id}")
+        try:
+            decision = normalize_human_decision(payload.get("decision"))
+        except ValueError as exc:
+            raise LocalCharacterAssetPipelineError(str(exc)) from exc
         if not Path(str(candidate.get("image_path") or "")).is_file():
             raise LocalCharacterAssetPipelineError("Candidate image must be complete before human review.")
-        previous_decision = str((candidate.get("human_review") or {}).get("decision") or "undecided")
         root = Path(run["root"])
         def apply(state: dict[str, Any]) -> None:
-            if previous_decision != decision and (
-                previous_decision == "reject" or decision == "reject" or candidate.get("rejection_gate")
-            ):
-                ranking = state.setdefault("rankings", {}).get(candidate["view"])
-                if ranking and ranking.get("status") == "COMPLETE":
-                    ranking.update(status="STALE", stale_reason="Human review changed. Re-rank this view.")
             state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
                 human_review={"decision": decision},
                 status=candidate.get("status"),

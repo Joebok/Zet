@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from zet.services.local_image_pipeline_policy import (
-    front_anchor_approved, local_pipeline_batch_summary, pipeline_page_config,
+    front_anchor_approved, local_image_pipeline_config, local_pipeline_batch_summary, pipeline_page_config,
     resume_cancelled_autogenerate_state, upgrade_legacy_review_v1,
 )
 
@@ -48,15 +48,25 @@ class LocalImagePipelinePolicyTests(unittest.TestCase):
         self.assertTrue(all(config["review_version"] == 2 for config in configs))
         self.assertTrue(all((config["front_count"], config["other_count"], config["candidate_limit"]) == (8, 4, 256)
                             for config in configs))
-        self.assertTrue(pipeline_page_config("body-reference")["analysis"])
-        self.assertFalse(pipeline_page_config("head-image")["analysis"])
+        self.assertTrue(all(config["analysis"] for config in configs))
+        self.assertTrue(all({"human_review", "ranking", "observations"}.issubset(config["capabilities"])
+                            for config in configs))
+        self.assertEqual({"body-reference", "head-image", "character-assembly", "costume-dressing"},
+                         {local_image_pipeline_config(pipeline).generation_adapter for pipeline in pipelines})
+        self.assertEqual(("body_reference", "head_image"),
+                         local_image_pipeline_config("character-assembly").reference_roles)
+        self.assertTrue(local_image_pipeline_config("head-image").optional_front_source)
+        self.assertEqual("required", local_image_pipeline_config("body-reference").front_anchor_rule)
 
     def test_common_batch_summary_labels_known_and_unknown_statuses(self) -> None:
-        summary = local_pipeline_batch_summary({
-            "status": "AWAITING_FRONT_ANCHOR", "candidate_count": 3,
-            "candidates": [{"image_path": "a.png", "status": "GATE_REJECTED"}, {"status": "PENDING"}],
-            "selected_views": {"FRONT": "c001"}, "stale_selections": ["BACK"], "error": "needs review",
-        })
+        with TemporaryDirectory() as temp:
+            image = Path(temp) / "a.png"
+            image.write_bytes(b"image")
+            summary = local_pipeline_batch_summary({
+                "status": "AWAITING_FRONT_ANCHOR", "candidate_count": 3,
+                "candidates": [{"image_path": str(image), "status": "GATE_REJECTED"}, {"status": "PENDING"}],
+                "selected_views": {"FRONT": "c001"}, "stale_selections": ["BACK"], "error": "needs review",
+            })
 
         self.assertEqual("Awaiting FRONT selection", summary["status_label"])
         self.assertEqual((1, 3, 1, 1), (summary["completed_count"], summary["candidate_count"],

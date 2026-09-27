@@ -19,7 +19,9 @@ from PIL import Image
 
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 from zet.services.atomic_file_service import write_json_atomic
-from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
+from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict
+from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
+from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
@@ -1143,9 +1145,10 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", candidate["view"])
         if run.get("review_version", 1) >= 2:
-            decision = str(payload.get("decision") or "undecided")
-            if decision not in {"keep", "reject", "undecided"}:
-                raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
+            try:
+                decision = normalize_human_decision(payload.get("decision"))
+            except ValueError as exc:
+                raise LocalBodyReferenceError(str(exc)) from exc
             image = Path(str(candidate.get("image_path") or ""))
             if not image.is_file():
                 raise LocalBodyReferenceError("The candidate must have a completed image before human review.")
@@ -1159,9 +1162,11 @@ Do not explain your reasoning."""
                 state["updated_at"] = self._now()
             mutate_local_run_state(root, apply)
             return self.detail(run_id)
-        update = {"human_review": {"decision": str(payload.get("decision") or "undecided")}}
-        if update["human_review"]["decision"] not in {"keep", "reject", "undecided"}:
-            raise LocalBodyReferenceError("Human decision must be keep, reject, or undecided.")
+        try:
+            decision = normalize_human_decision(payload.get("decision"))
+        except ValueError as exc:
+            raise LocalBodyReferenceError(str(exc)) from exc
+        update = {"human_review": {"decision": decision}}
         if candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not all(
             candidate.get("analyses", {}).get(provider) for provider in ("local", "luna")
         ):
@@ -1641,23 +1646,14 @@ Do not explain your reasoning."""
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
             raise LocalBodyReferenceError("Wait for the current operation to finish before changing rank.")
         ranking = (run.get("rankings") or {}).get(view) or {}
-        order = list(ranking.get("ordered_candidate_ids") or [])
-        if ranking.get("status") != "COMPLETE" or candidate_id not in order:
-            raise LocalBodyReferenceError("The candidate needs a current ranking before its rank can change.")
-        if direction not in {"up", "down"}:
-            raise LocalBodyReferenceError("Rank direction must be up or down.")
-        index = order.index(candidate_id)
-        neighbor = index + (-1 if direction == "up" else 1)
-        if neighbor < 0 or neighbor >= len(order):
+        try:
+            adjusted = adjust_candidate_ranking(ranking, candidate_id, direction, timestamp=self._now())
+        except ValueError as exc:
+            raise LocalBodyReferenceError(str(exc)) from exc
+        if adjusted is ranking:
             return run
-        order[index], order[neighbor] = order[neighbor], order[index]
         state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
-        saved = state["rankings"][view]
-        saved.setdefault("luna_ordered_candidate_ids", list(saved["ordered_candidate_ids"]))
-        saved["ordered_candidate_ids"] = order
-        entries = {entry["candidate_id"]: entry for entry in saved.get("entries") or []}
-        saved["entries"] = [entries[item] for item in order]
-        saved["adjusted_at"] = self._now()
+        state.setdefault("rankings", {})[view] = adjusted
         state["updated_at"] = self._now()
         self._save_state(run_id, state)
         return self.detail(run_id)
@@ -2159,12 +2155,6 @@ Do not explain your reasoning."""
                        "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                        "model": "deterministic-single-survivor", "recorded_at": self._now()}
         else:
-            schema_fd, schema_name = tempfile.mkstemp(prefix="zet_body_reference_ranking_schema_", suffix=".json")
-            output_fd, output_name = tempfile.mkstemp(prefix="zet_body_reference_ranking_", suffix=".json")
-            os.close(schema_fd)
-            os.close(output_fd)
-            schema_file, output_file = Path(schema_name), Path(output_name)
-            schema_file.write_text(json.dumps(self.RANKING_SCHEMA), encoding="utf-8")
             try:
                 codex_executable = shutil.which("codex")
                 if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
@@ -2173,17 +2163,12 @@ Do not explain your reasoning."""
                         codex_executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
                 if not codex_executable:
                     raise LocalBodyReferenceError("Codex CLI is unavailable for Luna ranking.")
-                command = [codex_executable, "-a", "never", "-s", "read-only", "-m",
-                           str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
-                           "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
-                           "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema_file),
-                           "--output-last-message", str(output_file)]
                 image_labels: list[str] = []
+                reference_images = []
                 if view != FRONT_VIEW and anchor_image:
-                    command.extend(["--image", str(anchor_image)])
+                    reference_images.append(anchor_image)
                     image_labels.append("Image 1: accepted FRONT anchor")
                 for index, candidate in enumerate(survivors, start=1):
-                    command.extend(["--image", str(candidate["image_path"])])
                     image_labels.append(f"Candidate {candidate['candidate_id']}: image {index + (1 if view != FRONT_VIEW else 0)}")
                 prompt = (
                     "Rank all rendered body-reference candidates from best to worst. Gates and human reviews are independent advice; assess every image on its visual merits. Compare them against one another; do not turn minor "
@@ -2196,12 +2181,18 @@ Do not explain your reasoning."""
                     + "Image mapping:\n" + "\n".join(image_labels) + "\n\n"
                     + "Body-Reference specification:\n" + self._review_facts(run, view)
                 )
-                completed = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=1800,
-                                           check=False, env=self._luna_environment())
-                if completed.returncode != 0:
-                    raise LocalBodyReferenceError((completed.stderr or completed.stdout or "Luna ranking failed")[-2000:])
-                result = json.loads(output_file.read_text(encoding="utf-8"))
-                entries = validate_ranking(result, [item["candidate_id"] for item in survivors])
+                model = str(getattr(self.app.config, "codex_default_model", "gpt-6-luna"))
+                entries, model = rank_images_with_luna(
+                    project_root=self.project_root,
+                    model=model,
+                    prompt=prompt,
+                    candidate_ids=[item["candidate_id"] for item in survivors],
+                    image_paths=[item["image_path"] for item in survivors],
+                    reference_image_paths=reference_images,
+                    executable=codex_executable,
+                    runner=subprocess.run,
+                    environment=self._luna_environment(),
+                )
                 ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
                            "ordered_candidate_ids": [item["candidate_id"] for item in entries],
                            "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries],
@@ -2214,9 +2205,6 @@ Do not explain your reasoning."""
                            "error": str(exc), "recorded_at": self._now()}
                 self._save_ranking_result(run_id, view, evaluation_id, current_hashes, ranking)
                 raise LocalBodyReferenceError(f"Luna ranking failed for {view}: {exc}") from exc
-            finally:
-                schema_file.unlink(missing_ok=True)
-                output_file.unlink(missing_ok=True)
         def save_ranking(current: dict[str, Any]) -> None:
             active = (current.get("evaluations") or {}).get(view) or {}
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
@@ -2712,6 +2700,10 @@ Do not explain your reasoning."""
         )
         ask = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
         update = {"status": "QUEUED", "ask_id": ask["ask_id"], "queued_at": self._now(),
+                  "reference_images": [{"role": str(item.get("role") or ""),
+                                        "label": str(item.get("label") or ""),
+                                        "path": str(item.get("path") or "")}
+                                       for item in references],
                   "image_path": str(candidate_dir / "Local_Test_Renders" / ask["expected_output"])}
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)

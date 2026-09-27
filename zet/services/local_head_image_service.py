@@ -19,7 +19,9 @@ from uuid import uuid4
 from PIL import Image
 
 from Scripts.Run_Head_Image_Jobs import compile_head_image_job
-from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict, validate_ranking
+from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict
+from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
+from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_image_pipeline_policy import (
@@ -426,6 +428,7 @@ class LocalHeadImageService:
         )
         ask = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
         reference_images = [{"role": str(reference.get("role") or ""),
+                             "label": str(reference.get("label") or ""),
                              "path": str(reference.get("path") or ""),
                              "sha256": self._hash(Path(reference["path"]))}
                             for reference in references]
@@ -1025,15 +1028,6 @@ class LocalHeadImageService:
             entries = [{"candidate_id": survivors[0]["candidate_id"], "reason": "Only completed image in this view."}]
             model = "deterministic-single-survivor"
         else:
-            schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
-                "type": "object", "properties": {"candidate_id": {"type": "string"}, "reason": {"type": "string"}},
-                "required": ["candidate_id", "reason"], "additionalProperties": False}}}, "required": ["ranking"], "additionalProperties": False}
-            schema_fd, schema_name = tempfile.mkstemp(prefix="zet_local_head_rank_schema_", suffix=".json")
-            output_fd, output_name = tempfile.mkstemp(prefix="zet_local_head_rank_", suffix=".json")
-            os.close(schema_fd)
-            os.close(output_fd)
-            schema_file, output_file = Path(schema_name), Path(output_name)
-            schema_file.write_text(json.dumps(schema), encoding="utf-8")
             prompt = (f"Rank all rendered head-image candidates for {view}. Gates and human reviews are independent advice; assess every image on its visual merits. Compare orientation, clear identity, complete head and hair silhouette, "
                       "character details, and usefulness as a reference. Return each candidate once with a concise reason. Candidate IDs: "
                       + ", ".join(item["candidate_id"] for item in survivors))
@@ -1044,24 +1038,20 @@ class LocalHeadImageService:
                     executable = str(max(installs, key=lambda p: p.stat().st_mtime_ns))
             if not executable:
                 raise LocalHeadImageError("Codex CLI is unavailable for Luna ranking.")
-            command = [executable, "-a", "never", "-s", "read-only", "-m",
-                       str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
-                       "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root),
-                       "exec", "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema",
-                       str(schema_file), "--output-last-message", str(output_file)]
-            if view != FRONT:
-                command.extend(["--image", str(anchor_path)])
-            for item in survivors:
-                command.extend(["--image", str(item["image_path"])])
             try:
-                result = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=1800, check=False)
-                if result.returncode:
-                    raise LocalHeadImageError((result.stderr or result.stdout or "Luna ranking failed")[-2000:])
-                entries = validate_ranking(json.loads(output_file.read_text(encoding="utf-8")), [item["candidate_id"] for item in survivors])
                 model = str(getattr(self.app.config, "codex_default_model", "gpt-6-luna"))
-            finally:
-                schema_file.unlink(missing_ok=True)
-                output_file.unlink(missing_ok=True)
+                entries, model = rank_images_with_luna(
+                    project_root=self.project_root,
+                    model=model,
+                    prompt=prompt,
+                    candidate_ids=[item["candidate_id"] for item in survivors],
+                    image_paths=[item["image_path"] for item in survivors],
+                    reference_image_paths=([anchor_path] if view != FRONT else []),
+                    executable=executable,
+                    runner=subprocess.run,
+                )
+            except Exception as exc:
+                raise LocalHeadImageError(str(exc)) from exc
         ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
             "ordered_candidate_ids": [item["candidate_id"] for item in entries],
             "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
@@ -1172,9 +1162,12 @@ class LocalHeadImageService:
     def update_candidate(self, run_id: str, candidate_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        decision = str(payload.get("decision") or "undecided")
-        if not candidate or decision not in {"keep", "reject", "undecided"}:
-            raise LocalHeadImageError("Invalid candidate or human decision.")
+        if not candidate:
+            raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
+        try:
+            decision = normalize_human_decision(payload.get("decision"))
+        except ValueError as exc:
+            raise LocalHeadImageError(str(exc)) from exc
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
@@ -1462,18 +1455,15 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
         ranking = (run.get("rankings") or {}).get(view) or {}
-        order = list(ranking.get("ordered_candidate_ids") or [])
-        if ranking.get("status") != "COMPLETE" or candidate_id not in order or direction not in {"up", "down"}:
-            raise LocalHeadImageError("A current ranking and valid direction are required.")
-        index = order.index(candidate_id); other = index + (-1 if direction == "up" else 1)
-        if not 0 <= other < len(order): return run
-        order[index], order[other] = order[other], order[index]
+        try:
+            adjusted = adjust_candidate_ranking(ranking, candidate_id, direction, timestamp=self._now())
+        except ValueError as exc:
+            raise LocalHeadImageError(str(exc)) from exc
+        if adjusted is ranking:
+            return run
         root, state = self._state(run_id); ranking = state["rankings"][view]
-        ranking.setdefault("luna_ordered_candidate_ids", ranking["ordered_candidate_ids"])
-        ranking["ordered_candidate_ids"] = order
-        by_id = {item["candidate_id"]: item for item in ranking["entries"]}
-        ranking["entries"] = [by_id[item] for item in order]
-        ranking["adjusted_at"] = self._now(); self._write(root / "state.json", state)
+        state["rankings"][view] = adjusted
+        self._write(root / "state.json", state)
         return self.detail(run_id)
 
     def request_stop(self, run_id: str) -> dict[str, Any]:

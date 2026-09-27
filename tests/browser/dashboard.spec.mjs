@@ -1329,6 +1329,57 @@ test("all Local asset routes share batch UI and expose only pipeline-specific in
   expect(previews.find((item) => item.url.includes("costume-dressing")).body.costume).toBe("Travel");
 });
 
+test("all four local pipelines expose the same ranked candidate review and observations", async ({ page }) => {
+  const runFor = (pipeline) => ({
+    run_id: "shared-review-run", batch_name: "Shared review", pipeline,
+    character: "Tsaeytte", phase: "Adult", costume: pipeline === "costume-dressing" ? "Travel" : "",
+    status: "COMPLETE", views: ["FRONT"], candidate_count: 1, use_front_anchor: false,
+    front_anchor: "F-001", selected_views: {}, local_assets: {}, view_reviews: {
+      FRONT: { observations: "Manual observations", ai_observations: { status: "COMPLETE", text: "AI observations" } },
+    },
+    evaluations: {}, rankings: { FRONT: {
+      status: "COMPLETE", ordered_candidate_ids: ["F-001"], luna_ordered_candidate_ids: ["F-001"],
+      entries: [{ candidate_id: "F-001", reason: "Best image." }],
+    } },
+    candidates: [{ candidate_id: "F-001", view: "FRONT", status: "COMPLETE", render_status: "COMPLETE",
+      image_path: "/images/shared-review/front.png", human_review: { decision: "undecided" }, gates: {} }],
+  });
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/costumes?**", (route) => route.fulfill({ json: { costumes: [{ name: "Travel" }] } }));
+  await page.route("**/api/local/**", async (route) => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split("/");
+    const pipeline = parts[3];
+    if (!["body-reference", "head-image", "character-assembly", "costume-dressing"].includes(pipeline)) return route.continue();
+    if (parts.at(-1) === "runs" && route.request().method() === "GET") {
+      return route.fulfill({ json: { runs: [runFor(pipeline)] } });
+    }
+    if (parts.at(-1) === "shared-review-run") return route.fulfill({ json: runFor(pipeline) });
+    if (parts.at(-2) === "images") {
+      return route.fulfill({ status: 200, contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" });
+    }
+    return route.continue();
+  });
+  await page.route("**/api/local/*/preview", (route) => route.fulfill({ json: { candidate_count: 1, views: ["FRONT"] } }));
+
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#workspace-local").click();
+  for (const pageName of ["local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing"]) {
+    await page.locator("#local-assets-button").click();
+    await page.locator(`#local-assets-menu [data-page="${pageName}"]`).click();
+    await expect(page.locator("#local-pipeline-runs option")).not.toHaveCount(0);
+    await expect(page.locator(".local-pipeline-candidate")).toContainText("Rank #1");
+    await page.locator(".local-pipeline-candidate").getByRole("button", { name: "Review", exact: true }).click();
+    const dialog = page.locator("#local-pipeline-review-dialog");
+    await expect(dialog.getByRole("button", { name: "Rank up" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Rank down" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(page.locator('[data-view-observations="FRONT"]')).toHaveValue("Manual observations");
+    await expect(page.locator('.local-pipeline-view [data-local-action="reanalyze"]')).toBeVisible();
+  }
+});
+
 test("costume lock remains available when another batch currently owns the lock", async ({ page }) => {
   const costumes = ["Travel", "Evening"];
   const runFor = (costume) => {

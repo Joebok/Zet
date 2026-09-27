@@ -150,6 +150,11 @@ def test_package_uses_saved_prompt_and_flags_changed_sources(tmp_path, pipeline)
             assert "Prompt_Compiler_Guide.md" in names
             assert "ChatGPT_Review_Request.md" in names
             assert archive.read("prompts/FRONT/Final_Image_Prompt.md") == b"Original compiled prompt"
+            review_request = archive.read("ChatGPT_Review_Request.md").decode("utf-8")
+            assert "complete proposed replacement template" in review_request
+            assert "issues that template edits alone cannot adequately address" in review_request
+            assert "recommendations separate from the proposed templates" in review_request
+            assert "Preserve all required tags and compiler contracts" in review_request
             assert any(item.get("status") == "FAILED" for item in manifest["missing"])
             assert manifest["source_changes"]
     finally:

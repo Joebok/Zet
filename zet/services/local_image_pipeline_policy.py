@@ -7,32 +7,68 @@ from pathlib import Path
 import re
 from functools import wraps
 import inspect
+from dataclasses import dataclass, asdict
 from typing import Any
 
 from zet.services.workflow_storage import file_lock
 
 
+@dataclass(frozen=True)
+class LocalImagePipelineConfig:
+    """Generation-specific inputs for the shared local image review workflow."""
+
+    key: str
+    label: str
+    identity: tuple[str, ...]
+    generation_adapter: str
+    compiler: str
+    reference_roles: tuple[str, ...]
+    optional_front_source: bool
+    gate_profile: str
+    ranking_profile: str
+    prerequisites: tuple[str, ...] = ()
+    front_anchor_rule: str = "optional"
+    front_count: int = 8
+    other_count: int = 4
+    candidate_limit: int = 256
+    review_version: int = 2
+
+    def page_contract(self) -> dict[str, Any]:
+        value = asdict(self)
+        value["identity"] = list(self.identity)
+        value["reference_roles"] = list(self.reference_roles)
+        value["prerequisites"] = list(self.prerequisites)
+        value["capabilities"] = ["human_review", "ranking", "observations"]
+        if self.front_anchor_rule != "none":
+            value["capabilities"].append("front_anchor")
+        if self.optional_front_source:
+            value["capabilities"].append("optional_source_image")
+        if self.key == "costume-dressing":
+            value["capabilities"].append("costume")
+        # Kept as an observation capability for clients of the former page contract.
+        value["analysis"] = True
+        return value
+
+
+LOCAL_IMAGE_PIPELINES: dict[str, LocalImagePipelineConfig] = {
+    "body-reference": LocalImagePipelineConfig(
+        "body-reference", "Body-Reference", ("character", "phase"), "body-reference", "body_reference",
+        (), False, "body-reference", "body-reference", front_anchor_rule="required"),
+    "head-image": LocalImagePipelineConfig(
+        "head-image", "Head-Image", ("character", "phase"), "head-image", "head_image",
+        ("front_reference",), True, "head-image", "head-image", front_anchor_rule="required"),
+    "character-assembly": LocalImagePipelineConfig(
+        "character-assembly", "Character-Assembly", ("character", "phase"), "character-assembly",
+        "character_assembly", ("body_reference", "head_image"), False, "character-assembly",
+        "character-assembly", prerequisites=("Body-Reference", "Head-Image")),
+    "costume-dressing": LocalImagePipelineConfig(
+        "costume-dressing", "Costume-Dressing", ("character", "phase", "costume"), "costume-dressing",
+        "costume_dressing", ("character_assembly", "costume"), False, "costume-dressing",
+        "costume-dressing", prerequisites=("Character-Assembly", "costume")),
+}
+
 PIPELINE_PAGE_CONFIG: dict[str, dict[str, Any]] = {
-    "body-reference": {"key": "body-reference", "label": "Body-Reference", "identity": ("character", "phase"),
-                       "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                       "references": "body-reference-prompt", "analysis": True,
-                       "capabilities": ["front_anchor", "analysis", "lineup"], "prerequisites": [],
-                       "front_anchor_rule": "required"},
-    "head-image": {"key": "head-image", "label": "Head-Image", "identity": ("character", "phase"),
-                   "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                   "references": "optional-front-source", "analysis": False,
-                   "capabilities": ["optional_source_image", "front_anchor"], "prerequisites": [],
-                   "front_anchor_rule": "required"},
-    "character-assembly": {"key": "character-assembly", "label": "Character-Assembly", "identity": ("character", "phase"),
-                           "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                           "references": "locked-body-and-head", "analysis": False,
-                           "capabilities": ["front_anchor"], "prerequisites": ["Body-Reference", "Head-Image"],
-                           "front_anchor_rule": "optional"},
-    "costume-dressing": {"key": "costume-dressing", "label": "Costume-Dressing", "identity": ("character", "phase", "costume"),
-                         "review_version": 2, "front_count": 8, "other_count": 4, "candidate_limit": 256,
-                         "references": "locked-assembly-and-costume", "analysis": False,
-                         "capabilities": ["costume", "front_anchor"], "prerequisites": ["Character-Assembly", "costume"],
-                         "front_anchor_rule": "optional"},
+    key: config.page_contract() for key, config in LOCAL_IMAGE_PIPELINES.items()
 }
 
 RUN_STATUS_LABELS = {
@@ -89,6 +125,14 @@ def pipeline_page_config(pipeline: str) -> dict[str, Any]:
     except KeyError as exc:
         raise ValueError(f"Unsupported local image pipeline: {pipeline}") from exc
     return {**value, "identity": list(value["identity"])}
+
+
+def local_image_pipeline_config(pipeline: str) -> LocalImagePipelineConfig:
+    """Return the generation adapter configuration for a supported pipeline."""
+    try:
+        return LOCAL_IMAGE_PIPELINES[str(pipeline).lower()]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported local image pipeline: {pipeline}") from exc
 
 
 def local_pipeline_batch_summary(run: dict[str, Any]) -> dict[str, Any]:

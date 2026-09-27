@@ -17,6 +17,7 @@ import zipfile
 
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_image_pipeline_policy import mutate_local_run_state
+from zet.services.local_candidate_review_contract import view_review_defaults
 from zet.services.workflow_storage import file_lock
 
 
@@ -78,8 +79,9 @@ def ensure_view_reviews(root: Path, spec: dict[str, Any], state: dict[str, Any])
         reviews = state.setdefault("view_reviews", {})
         for view in spec.get("views") or []:
             record = reviews.setdefault(str(view), {})
-            record.setdefault("observations", "")
-            record.setdefault("ai_observations", {"status": "PENDING", "text": "", "auto_started": False})
+            defaults = view_review_defaults()
+            record.setdefault("observations", defaults["observations"])
+            record.setdefault("ai_observations", defaults["ai_observations"])
         updates = state.setdefault("candidates", {})
         for candidate in spec.get("candidates") or []:
             candidate_id = str(candidate.get("candidate_id") or "")
@@ -456,9 +458,13 @@ class LocalPromptImprovementService:
                 "Use Observations.json, all available images, saved compiled prompts, the relevant source templates, "
                 "source maps, dependency manifests, and Prompt_Compiler_Guide.md. Identify major structural variation "
                 "that clearer prompt or template wording could reduce. Give evidence by view and candidate ID. "
-                "Propose minimal, targeted edits with exact source sections and explain how they compile into the final prompt. "
-                "Distinguish prompt ambiguity from model inconsistency and missing images. Preserve tags and compiler contracts. "
-                "Do not edit files or treat any suggested change as approved.\n")
+                "Distinguish prompt ambiguity from model inconsistency and missing images. "
+                "For every source template you recommend changing, return the complete proposed replacement template, ready for review, "
+                "with only minimal, targeted changes. Identify the exact source sections changed and explain how each change compiles "
+                "into the final prompt. Preserve all required tags and compiler contracts. "
+                "Identify issues that template edits alone cannot adequately address. Where evidence supports it, recommend specific "
+                "improvements to compilation, review, image selection, or other parts of the process, and keep these recommendations "
+                "separate from the proposed templates. Do not edit files or treat any suggested change as approved.\n")
 
 
 def after_initial_ranking(adapter: Any, pipeline: str, project_root: Path,

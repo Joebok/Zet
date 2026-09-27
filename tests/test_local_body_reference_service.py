@@ -96,6 +96,38 @@ def test_preview_has_eight_views_and_thirty_six_candidates(tmp_path):
     assert plan["methods"] == [METHOD_FRONT_CONDITIONED]
 
 
+def test_body_reference_ranking_uses_shared_luna_runner(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index: {
+        "view": view, "view_index": index, "manual_prompt": view, "qwen_prompt": view,
+        "prompt_path": "", "prompt_sha256": view, "source_map": "", "dependency_manifest": "",
+    })
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 2,
+                              "other_count": 1, "seeds": list(range(9))})
+    candidates = [item for item in run["candidates"] if item["view"] == "FRONT"]
+    for candidate in candidates:
+        image = Path(run["root"]) / f"{candidate['candidate_id']}.png"
+        image.write_bytes(candidate["candidate_id"].encode())
+        service._candidate_update(run["run_id"], candidate["candidate_id"], {"image_path": str(image)})
+
+    calls = []
+    def rank(command, **kwargs):
+        calls.append((command, kwargs))
+        Path(command[command.index("--output-last-message") + 1]).write_text(json.dumps({
+            "ranking": [{"candidate_id": item["candidate_id"], "reason": "Compared image."}
+                        for item in reversed(candidates)]
+        }), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("zet.services.local_body_reference_service.shutil.which", lambda _: "codex")
+    monkeypatch.setattr("zet.services.local_body_reference_service.subprocess.run", rank)
+    monkeypatch.setattr("zet.services.local_prompt_improvement_service.after_initial_ranking", lambda *args: None)
+    result = service.rank_view(run["run_id"], "FRONT")
+    assert result["rankings"]["FRONT"]["ordered_candidate_ids"] == [item["candidate_id"] for item in reversed(candidates)]
+    assert len(calls) == 1
+    assert calls[0][0].count("--image") == 2
+
+
 def test_qwen_prompt_preserves_character_facts_after_five_thousand_characters():
     fitment_rules = "Use simple neutral fitment clothing. Clothing rules: olive green tank top and compression shorts."
     manual_prompt = "Body facts. " + "x " * 2600 + fitment_rules

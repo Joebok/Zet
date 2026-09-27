@@ -97,6 +97,7 @@
       case "create": return `${baseUrl()}/runs`;
       case "detail": return `${baseUrl()}/runs/${id}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "image": return `${baseUrl()}/runs/${id}/images/${candidate}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "reference-image": return `${baseUrl()}/runs/${id}/reference-images/${encodedView}/${encodeURIComponent(candidate)}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rename": return `${baseUrl()}/runs/${id}/name${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "start": return `${baseUrl()}/runs/${id}/start${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "resume": return `${baseUrl()}/runs/${id}/resume${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -160,7 +161,6 @@
     $("proceed").hidden = !run;
     $("proceed").disabled = isBusy || (run?.status === "READY_FOR_VIEWS" && (run.target_views || []).length > 0)
       || !run?.front_anchor || !unstartedViews(run).length;
-    $("lineup").hidden = state.pipeline !== "body-reference" || !run || !Object.keys(run.selected_views || {}).length;
   }
 
   function gateLabel(record, policy) {
@@ -428,6 +428,43 @@
         }
         details.append(sources);
       }
+      const referenceImages = [];
+      const seenReferences = new Set();
+      for (const candidate of candidates) {
+        for (const reference of candidate.reference_images || []) {
+          const key = `${reference.role || ""}\u0000${reference.path || ""}`;
+          if (reference.path && !seenReferences.has(key)) {
+            seenReferences.add(key);
+            referenceImages.push(reference);
+          }
+        }
+      }
+      const renderedRoles = state.pipeline === "head-image" && view === "FRONT" && run.front_source
+        ? new Set(["head_image_source"])
+        : state.pipeline === "character-assembly"
+        ? new Set(["body_reference", "head_image"])
+        : state.pipeline === "costume-dressing"
+        ? new Set(["character_assembly"])
+        : new Set();
+      const remainingReferences = referenceImages
+        .map((reference, index) => ({ reference, index }))
+        .filter(({ reference }) => !renderedRoles.has(reference.role));
+      if (remainingReferences.length) {
+        const sources = document.createElement("div");
+        sources.className = "local-pipeline-sources";
+        for (const { reference, index } of remainingReferences) {
+          const figure = document.createElement("figure");
+          const caption = document.createElement("figcaption");
+          caption.textContent = (reference.label || reference.role || "Reference image").replaceAll("_", " ");
+          const image = document.createElement("img");
+          image.loading = "lazy";
+          image.alt = caption.textContent;
+          image.src = route("reference-image", run.run_id, view, String(index));
+          figure.append(caption, image);
+          sources.append(figure);
+        }
+        details.append(sources);
+      }
       const links = document.createElement("p");
       links.className = "muted";
       addLink(links, "Review specification", route("prompt", run.run_id, view));
@@ -500,9 +537,6 @@
     const progress = run.page_summary || {};
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
     $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
-    if (state.pipeline === "body-reference" && run.set_report?.coherent) {
-      $("summary").textContent += ` · lineup ${Object.values(run.set_report.coherent).every(Boolean) ? "coherent" : "needs review"}`;
-    }
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     renderSelectedViews(run);
@@ -654,7 +688,6 @@
     $("rerun-refresh-option").hidden = !hasSharedAssetRouter();
     if (hasSharedAssetRouter()) $("use-anchor").checked = false;
     $("source-option").hidden = pipeline !== "head-image";
-    $("lineup").hidden = true;
     $("source-remove").hidden = true;
     $("source-preview").textContent = "No FRONT reference selected.";
     $("runs").replaceChildren(new Option("Loading batches…", ""));
@@ -693,14 +726,10 @@
   }
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
-    const method = action === "rename" || action === "lineup"
+    const method = action === "rename"
       ? "PUT" : action === "delete" ? "DELETE" : "POST";
     let path;
-    if (action === "local-analysis") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/candidates/${encodeURIComponent(candidateId)}/local-analysis`;
-    else if (action === "luna-analysis") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/candidates/${encodeURIComponent(candidateId)}/luna-analysis`;
-    else if (action === "queue-render") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/candidates/${encodeURIComponent(candidateId)}/render`;
-    else if (action === "lineup") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/lineups/front-conditioned`;
-    else if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view })}`;
+    if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view })}`;
     else path = route(action, state.run?.run_id, view, candidateId);
     const result = await request(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
     if (action === "delete") {
@@ -716,11 +745,11 @@
         : blocked.length ? `No views are ready. ${blocked[0]}` : "No unstarted views remain.");
     } else if (action === "resume" && result.status !== "QUEUED") {
       setStatus("Batch ready to continue.");
-    } else if (["start", "resume", "stop", "rank", "reanalyze", "local-analysis", "luna-analysis", "queue-render", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
+    } else if (["start", "resume", "stop", "rank", "reanalyze", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
       setStatus(action === "stop" ? "Stop requested." : "Work queued.");
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
       setStatus("Selection updated.");
-    } else if (action === "lineup") setStatus("Selected views saved as the FRONT-conditioned lineup.");
+    }
     if (action === "rerun" || action === "rerun-view" || action === "rerun-failed" || action === "reevaluate" || action === "reevaluate-view" || action === "proceed") {
       state.run = result;
       state.polledRun = null;
@@ -963,11 +992,6 @@
       };
       if (!window.confirm(prompts[action])) return;
     }
-    if (action === "lineup") {
-      const selections = { ...(state.run.selected_views || {}) };
-      await perform(action, "", "", { selections });
-      return;
-    }
     if (action === "rank-up" || action === "rank-down") {
       const ordered = state.run.rankings?.[view]?.ordered_candidate_ids || [];
       const position = ordered.indexOf(candidateId);
@@ -1020,7 +1044,6 @@
     $("reevaluate").addEventListener("click", () => void perform("reevaluate").catch((error) => setStatus(error.message, true)));
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
     $("proceed").addEventListener("click", () => void perform("proceed").catch((error) => setStatus(error.message, true)));
-    $("lineup").addEventListener("click", () => void handleAction({ dataset: { localAction: "lineup" } }).catch((error) => setStatus(error.message, true)));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
     $("source-paste").addEventListener("paste", (event) => {
       const file = Array.from(event.clipboardData?.items || []).map((item) => item.getAsFile()).find(Boolean);

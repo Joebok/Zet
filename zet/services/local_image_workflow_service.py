@@ -7,7 +7,7 @@ from typing import Any
 from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 from zet.services.local_head_image_service import LocalHeadImageService
-from zet.services.local_image_pipeline_policy import pipeline_page_config
+from zet.services.local_image_pipeline_policy import local_image_pipeline_config, pipeline_page_config
 from zet.services.local_prompt_improvement_service import LocalPromptImprovementService
 
 
@@ -22,10 +22,11 @@ class LocalImagePipelineWorkflowService:
         self.app = app
         self.project_root = Path(project_root)
         self.pipeline = str(pipeline).lower()
+        self.pipeline_config = local_image_pipeline_config(self.pipeline)
         self.config = pipeline_page_config(self.pipeline)
-        if self.pipeline == "head-image":
+        if self.pipeline_config.generation_adapter == "head-image":
             self.adapter = LocalHeadImageService(app, self.project_root)
-        elif self.pipeline == "body-reference":
+        elif self.pipeline_config.generation_adapter == "body-reference":
             self.adapter = LocalBodyReferenceService(app, self.project_root)
         else:
             self.adapter = LocalCharacterAssetPipelineService(app, self.project_root, self.pipeline)
@@ -42,7 +43,9 @@ class LocalImagePipelineWorkflowService:
         if name == "preview":
             return self.adapter.preview(payload)
         if name == "create":
-            return self.adapter.create_run(payload)
+            created = self.adapter.create_run(payload)
+            return self.prompt_improvement.detail(str(created.get("run_id") or ""), costume,
+                                                  upgrade_legacy=True)
         if name == "detail":
             return self.prompt_improvement.detail(run_id, costume, upgrade_legacy=True)
         if name == "list":
@@ -70,7 +73,10 @@ class LocalImagePipelineWorkflowService:
             return self.prompt_improvement.detail(run_id, costume)
         if name == "rerun_failed":
             method = self.adapter.rerun_failed_view if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_failed_view
-            return method(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view)
+            result = method(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, view)
+            affected = {view.upper()} if view else set(result.get("views") or [])
+            self.prompt_improvement.reset_after_rerender(run_id, affected, costume)
+            return self.prompt_improvement.detail(run_id, costume)
         if name == "reevaluate":
             return self.adapter.reevaluate(run_id, view or None, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.reevaluate(run_id, view or None)
         if name == "rank":
@@ -109,7 +115,11 @@ class LocalImagePipelineWorkflowService:
             character, phase = str(args.get("character") or ""), str(args.get("phase") or "")
             return self.adapter.unlock_view(character, phase, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.unlock_view(character, phase, view)
         if name == "retry_candidate":
-            return self.adapter.retry_candidate(run_id, candidate_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.retry_candidate(run_id, candidate_id)
+            result = self.adapter.retry_candidate(run_id, candidate_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.retry_candidate(run_id, candidate_id)
+            candidate = next((item for item in result.get("candidates") or []
+                              if item.get("candidate_id") == candidate_id), {})
+            self.prompt_improvement.reset_after_rerender(run_id, {str(candidate.get("view") or "")}, costume)
+            return self.prompt_improvement.detail(run_id, costume)
         raise LocalImageWorkflowError(f"Unsupported local image workflow action: {name}")
 
     def execute(self, run_id: str, *, views: set[str] | None = None, costume: str = "",

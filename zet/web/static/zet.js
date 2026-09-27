@@ -3197,11 +3197,10 @@ async function activatePage(page, options = {}) {
     };
     document.querySelector("#local-stub-title").textContent = labels[page];
   }
-  document
-    .querySelector("#placeholder-page")
-    .classList.toggle(
-      "active",
-    );
+  document.querySelector("#placeholder-page").classList.toggle(
+    "active",
+    !document.querySelector(".page.active:not(#placeholder-page)"),
+  );
   if (LOCAL_ASSET_PAGES.has(page)) window.ZetLocalAssetPipeline?.activate(page);
   else window.ZetLocalAssetPipeline?.deactivate();
   if (page === "local-batch-status") window.ZetLocalBatchStatus?.activate();

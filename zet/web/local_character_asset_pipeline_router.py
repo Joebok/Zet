@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from starlette.background import BackgroundTask
 
@@ -47,6 +47,14 @@ def create_local_character_asset_pipeline_router(
     @router.get("/api/local/run-all-remaining/{campaign_id}")
     def run_all_remaining_status(campaign_id: str):
         return call(lambda: run_all_service().status(campaign_id), missing=404)
+
+    @router.post("/api/local/head-image/sources")
+    async def upload_head_image_source(request: Request, filename: str = Query(...),
+                                       character: str = Query(...), phase: str = Query(...)):
+        request_body = await request.body()
+        return call(lambda: service("head-image").adapter.upload_source(
+            character, phase, filename, request_body
+        ))
 
     for pipeline in ("body-reference", "head-image", "character-assembly", "costume-dressing"):
         prefix = f"/api/local/{pipeline}"
@@ -96,11 +104,47 @@ def create_local_character_asset_pipeline_router(
             path = call(lambda: service(_pipeline).adapter.image_path(run_id, candidate_id, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404)
             return FileResponse(path)
 
+        @router.get(f"{prefix}/runs/{{run_id}}/reference-images/{{view}}/{{index}}")
+        def reference_image(run_id: str, view: str, index: int, costume: str = Query(""), _pipeline: str = pipeline):
+            def resolve_reference():
+                adapter = service(_pipeline).adapter
+                run = adapter.detail(run_id, **({"costume": costume} if _pipeline == "costume-dressing" else {}))
+                references = []
+                seen = set()
+                for candidate in run.get("candidates", []):
+                    if str(candidate.get("view") or "").upper() != view.upper():
+                        continue
+                    for reference in candidate.get("reference_images", []):
+                        path = str(reference.get("path") or "")
+                        key = (str(reference.get("role") or ""), path)
+                        if path and key not in seen:
+                            seen.add(key)
+                            references.append(reference)
+                if index < 0 or index >= len(references):
+                    raise FileNotFoundError("Reference image is unavailable.")
+                path = Path(str(references[index].get("path") or "")).resolve()
+                if not path.is_file():
+                    raise FileNotFoundError("Reference image is unavailable.")
+                return path
+            path = call(resolve_reference, missing=404)
+            return FileResponse(path)
+
         if shared_sources:
             @router.get(f"{prefix}/runs/{{run_id}}/sources/{{view}}/{{role}}")
             def source(run_id: str, view: str, role: str, costume: str = Query(""), _pipeline: str = pipeline):
                 path = call(lambda: service(_pipeline).adapter.source_path(run_id, view, role, costume), missing=404)
                 return FileResponse(path)
+        elif pipeline == "head-image":
+            @router.get(f"{prefix}/runs/{{run_id}}/source")
+            def front_source(run_id: str, _pipeline: str = pipeline):
+                path = call(lambda: service(_pipeline).adapter.front_source_path(run_id), missing=404)
+                return FileResponse(path)
+
+            @router.put(f"{prefix}/runs/{{run_id}}/source")
+            def update_front_source(run_id: str, payload: dict[str, Any] = Body(...), _pipeline: str = pipeline):
+                call(lambda: service(_pipeline).adapter.update_front_source(
+                    run_id, str(payload.get("source_path") or "")))
+                return call(lambda: service(_pipeline).prompt_improvement.detail(run_id))
 
         @router.get(f"{prefix}/runs/{{run_id}}/image-prompt/{{view}}", response_class=PlainTextResponse)
         def image_prompt(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
