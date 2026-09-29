@@ -39,7 +39,7 @@ Replace only the generic fitment clothing, jewelry, equipment, and footwear cont
 
 {{COSTUME_VIEW_HEADING}}
 
-{{COSTUME_DESCRIPTION_VIEW_{VIEW}}}
+{{COSTUME_DESCRIPTION_VIEW_OVERRIDES}}
 
 {{EQUIPMENT_HEADING}}
 
@@ -47,7 +47,9 @@ Replace only the generic fitment clothing, jewelry, equipment, and footwear cont
 
 {{EQUIPMENT_VIEW_HEADING}}
 
-{{EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}}}
+{{EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES}}
+
+{{COSTUME_DESCRIPTION_VIEW_SUPPRESSION}}
 
 # Pose, Contact, and Background
 

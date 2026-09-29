@@ -128,6 +128,10 @@ class LocalHeadImageService:
         character, phase = str(payload.get("character") or "").strip(), str(payload.get("phase") or "").strip()
         if not character or not phase:
             raise LocalHeadImageError("Character and phase are required.")
+        status_loader = getattr(self.app, "character_onboarding_status", None)
+        status = status_loader(character, phase) if callable(status_loader) else None
+        if status is not None and not status.template_ready:
+            raise LocalHeadImageError("A valid Character.md is required before local Head-Image can run: " + "; ".join(status.validation_errors))
         front_count, other_count = int(payload.get("front_count") or 8), int(payload.get("other_count") or 4)
         if front_count < 1 or other_count < 1 or front_count + 7 * other_count > 256:
             raise LocalHeadImageError("Candidate counts must be positive and the run cannot exceed 256 candidates.")

@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import asdict
 import json
+from typing import Any
 
 from zet.models.asset import Asset
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
@@ -22,7 +23,7 @@ from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.character_source_service import CharacterSourceService
 from zet.services.config_service import ConfigService
-from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
+from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeServiceError, CostumeUpdateResult
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
@@ -1083,6 +1084,24 @@ class ZetApp:
     def character_onboarding_status(self, character: str, phase: str):
         """Return onboarding status for a character phase."""
         return self.character_onboarding_service.status(character, phase)
+
+    def costume_template_status(self, character: str, phase: str, costume: str) -> dict[str, Any]:
+        """Return local readiness for one costume template without foundation onboarding."""
+        template_path = self.path_service.costume_template_path(character, phase, costume)
+        errors: list[str] = []
+        try:
+            self.costume_service.validate_template_file(template_path)
+        except CostumeServiceError as exc:
+            errors.append(str(exc))
+        return {
+            "character": character,
+            "phase": phase,
+            "costume": costume,
+            "template_path": str(template_path),
+            "template_exists": template_path.is_file(),
+            "template_ready": not errors,
+            "validation_errors": errors,
+        }
 
     def character_onboarding_prefill(self, character: str, source_phase: str = ""):
         """Return metadata defaults for a new character or phase."""

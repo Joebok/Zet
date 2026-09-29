@@ -10,7 +10,10 @@ Use this manual to convert an approved costume design and reference images into 
 - Do not write story, mood, personality, action, or decorative narrative.
 - Distinguish observation from inference. Leave optional content empty when the references do not support it.
 - “Left” and “right” mean the character's anatomical sides. Clarify viewer-side reversal when needed.
-- Put stable design facts in `*_FACTS`; put only view-dependent visibility, overlap, and silhouette in `*_VIEW_*`.
+- Put stable design facts in `*_FACTS`; put view-dependent visibility, overlap, and silhouette in `*_VIEW_OVERRIDES`.
+- Begin view-dependent bullets with comma-separated view tags such as `- [rearish] ...`; untagged facts intentionally apply to all views.
+- Use `<!-- ZET:VIEW_DOMAIN body -->` inside costume sections. Explicit `[head:...]` tags remain available for head-visible items such as earrings.
+- Use `<!-- ZET:VIEW_DEFAULT ... -->` for section defaults and `<!-- ZET:CANON_ONLY -->` for documentation excluded from generation prompts.
 - Do not describe the wearer's body or face except where a garment's attachment or occlusion requires it.
 
 ## Metadata
@@ -23,9 +26,9 @@ Costume Name is the dashboard and pipeline label. Keep any existing footwear and
 
 Used by costume-dressing. Record the complete stable garment design: layers, silhouette, colors, materials, construction, closures, trim, wear, fit, footwear, and attachment points. State explicit absences when they prevent common unwanted additions. Do not include camera direction or pose.
 
-### `COSTUME_DESCRIPTION_VIEW_{VIEW}` — optional for all eight views
+### `COSTUME_DESCRIPTION_VIEW_OVERRIDES` — optional for all eight views
 
-Used by costume-dressing for the selected body view. Record only view-dependent visibility, overlap, foreshortening, rear construction, side profile, and silhouette. Leave empty when the stable facts are sufficient. Do not restate the view orientation.
+Used by costume-dressing. Add tagged bullets for view-dependent visibility, overlap, foreshortening, rear construction, side profile, and silhouette. Leave empty when the stable facts are sufficient. Put anti-drift guidance in `COSTUME_DESCRIPTION_VIEW_SUPPRESSION`.
 
 ## Equipment, jewelry, and props
 
@@ -33,9 +36,9 @@ Used by costume-dressing for the selected body view. Record only view-dependent 
 
 Used by costume-dressing. Inventory every stable worn or carried item, including jewelry, weapons, tools, containers, and props. Give anatomical side, attachment point, scale, material, color, and whether the item is present or absent. Do not hide equipment inside garment prose.
 
-### `EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}` — optional for all eight views
+### `EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES` — optional for all eight views
 
-Used by costume-dressing for the selected body view. Describe only view-specific item visibility, overlap, side reversal, and occlusion. Do not duplicate the inventory.
+Used by costume-dressing. Add tagged bullets for view-specific item visibility, overlap, side reversal, and occlusion. Do not duplicate the inventory.
 
 ## Identity sections
 
@@ -53,4 +56,4 @@ Used by scene building for reference-backed characters. List a few compact, dist
 
 ## Final completeness check
 
-Verify that the name is correct, `COSTUME_DESCRIPTION_FACTS` is complete, side-specific items use anatomical left/right, equipment is in the equipment sections, optional sections are empty rather than invented, no character identity or narrative was added, and every marker is unchanged.
+Verify that the name is correct, `COSTUME_DESCRIPTION_FACTS` is complete, all tags use documented view aliases, side-specific items use anatomical left/right, equipment is in the equipment sections, optional sections are empty rather than invented, no character identity or narrative was added, and every marker is unchanged.

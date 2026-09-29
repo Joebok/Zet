@@ -86,7 +86,7 @@ Do not convert the technical stance into a fashion pose, action pose, contrappos
 
 {{COSTUME_VIEW_HEADING}}
 
-{{COSTUME_DESCRIPTION_VIEW_{VIEW}}}
+{{COSTUME_DESCRIPTION_VIEW_OVERRIDES}}
 
 {{EQUIPMENT_HEADING}}
 
@@ -94,7 +94,7 @@ Do not convert the technical stance into a fashion pose, action pose, contrappos
 
 {{EQUIPMENT_VIEW_HEADING}}
 
-{{EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}}}
+{{EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES}}
 
 # Identity Preservation
 

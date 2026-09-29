@@ -141,6 +141,34 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertNotIn("# Render Task", prompt)
         self.assertNotIn("<!-- ZET:", prompt)
 
+    def test_body_and_head_views_condition_costume_guidance_independently(self) -> None:
+        prompt, _, _ = self._compile(
+            self._sections(
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+                "* Silhouette: `Long continuous rear drape.`\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [body:rear_costume_visible] Keep one continuous rear overskirt drape.\n"
+                "* [body:front_costume_visible] Show the open front bodice.\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_OVERRIDES -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
+                "* [head:all] Earrings: `Dangling gemstone earrings.`\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [head:pr] Show the right earring when unobstructed.\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->",
+            ),
+            body_view="BACK",
+            head_view="RIGHT_PROFILE",
+        )
+
+        self.assertIn("continuous rear overskirt drape", prompt)
+        self.assertIn("Dangling gemstone earrings", prompt)
+        self.assertIn("right earring", prompt)
+        self.assertNotIn("open front bodice", prompt)
+
     @staticmethod
     def _sections(*parts: str) -> str:
         return "\n\n".join(parts)
@@ -154,9 +182,10 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "* Jewelry: `Small blue pendant.`.\n"
                 "* Equipment: `None.`.\n"
                 "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
-                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->\n"
-                "* Front detail: `Visible center overlap.`.\n"
-                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->",
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [f] Front detail: `Visible center overlap.`.\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_OVERRIDES -->",
                 "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
                 "* Use anatomical left and right.\n"
                 "* Right side: `None.`.\n"
@@ -164,9 +193,10 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "* Jewelry: `Small blue pendant.`.\n"
                 "* Primary weapon/tool: `N/A`.\n"
                 "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
-                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->\n"
-                "* Front view should show `jewelry only; no equipment.`.\n"
-                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [f] Front view should show `jewelry only; no equipment.`.\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->",
             )
         )
 

@@ -22,6 +22,7 @@ class CompiledSelection:
     forbidden_matches: list[str]
     sections: dict[str, str]
     section_sources: dict[str, dict] = field(default_factory=dict)
+    conditioned_out_sections: list[str] = field(default_factory=list)
 
 
 MARKER_RE = re.compile(
@@ -77,13 +78,15 @@ def load_template_sections_with_sources(
             raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET end marker without begin: {name}")
         if name != open_name:
             raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET marker mismatch: began {open_name}, ended {name}")
-        sections[name] = _trim_section_text(text[content_start:marker.start()])
+        raw_section = text[content_start:marker.start()]
+        leading_newlines = len(raw_section) - len(raw_section.lstrip("\n"))
+        sections[name] = _trim_section_text(raw_section)
         sources[name] = {
             "source_kind": source_kind,
             "source_path": str(path),
             "source_label": source_label or f"{source_kind}: {name}",
             "section_name": name,
-            "start_line": _line_number_at(text, content_start),
+            "start_line": _line_number_at(text, content_start) + leading_newlines,
             "end_line": _line_number_at(text, marker.start()),
             "editable": True,
         }
@@ -99,6 +102,7 @@ def select_sections(
     bundle: dict,
     view_token: str,
     section_sources: dict[str, dict] | None = None,
+    conditioned_out_sections: list[str] | None = None,
 ) -> CompiledSelection:
     required = [resolve_section_name(name, view_token) for name in bundle.get("required_sections", [])]
     optional = [resolve_section_name(name, view_token) for name in bundle.get("optional_sections", [])]
@@ -112,10 +116,13 @@ def select_sections(
     selected: dict[str, str] = {}
     selected_sources: dict[str, dict] = {}
     source_lookup = section_sources or {}
+    conditioned_out = set(conditioned_out_sections or [])
 
     for name in required:
         text = all_sections.get(name, "")
         if not text.strip():
+            if name in conditioned_out:
+                continue
             missing_required.append(name)
             continue
         included_required.append(name)
@@ -126,6 +133,8 @@ def select_sections(
     for name in optional:
         text = all_sections.get(name, "")
         if not text.strip():
+            if name in conditioned_out:
+                continue
             missing_optional.append(name)
             continue
         included_optional.append(name)
@@ -145,6 +154,7 @@ def select_sections(
         forbidden_matches=forbidden_matches,
         sections=selected,
         section_sources=selected_sources,
+        conditioned_out_sections=sorted(conditioned_out),
     )
 
 
@@ -154,14 +164,17 @@ def select_sections_for_prompt(
     view_token: str,
     section_sources: dict[str, dict] | None = None,
     known_section_names: set[str] | None = None,
+    conditioned_out_sections: list[str] | None = None,
 ) -> CompiledSelection:
     """Select only marked sections referenced by one direct-token prompt template."""
     selected: dict[str, str] = {}
     selected_sources: dict[str, dict] = {}
     included: list[str] = []
     missing: list[str] = []
+    filtered: list[str] = []
     source_lookup = section_sources or {}
     known_names = known_section_names or set()
+    conditioned_out = set(conditioned_out_sections or [])
 
     for match in PLACEHOLDER_RE.finditer(template_text):
         name = resolve_section_name(match.group(1), view_token)
@@ -170,6 +183,9 @@ def select_sections_for_prompt(
         if name not in all_sections:
             if name in known_names:
                 missing.append(name)
+            continue
+        if name in conditioned_out:
+            filtered.append(name)
             continue
         value = str(all_sections.get(name) or "")
         if value.strip():
@@ -188,5 +204,6 @@ def select_sections_for_prompt(
         forbidden_matches=[],
         sections=selected,
         section_sources=selected_sources,
+        conditioned_out_sections=filtered,
     )
 

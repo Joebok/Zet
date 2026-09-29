@@ -16,6 +16,7 @@ from zet.services.turnaround_views import TURNAROUND_VIEW_ORDER
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock
+from zet.services.view_conditioning_service import ViewConditioningError, validate_view_controls
 
 
 @dataclass(frozen=True)
@@ -316,10 +317,16 @@ class CostumeService:
                 upload_path.write_text(markdown, encoding="utf-8")
                 uploaded_sections = load_template_sections(upload_path)
                 actual = set(uploaded_sections)
+                validate_view_controls(str(upload_path))
         except TemplateCompileError as exc:
+            raise CostumeServiceError(str(exc)) from exc
+        except ViewConditioningError as exc:
             raise CostumeServiceError(str(exc)) from exc
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
+        legacy = sorted(name for name in extra if re.match(r"^(?:(?:BODY|HEAD|HAIR)_DESCRIPTION|COSTUME|EQUIPMENT_JEWELRY_PROPS)_VIEW_(?:FRONT|BACK|LEFT_PROFILE|RIGHT_PROFILE|.*_3_4)$", name))
+        if legacy:
+            raise CostumeServiceError("Legacy per-view sections are unsupported; move their content into tagged VIEW_OVERRIDES: " + ", ".join(legacy))
         if missing:
             raise CostumeServiceError(f"Costume template missing sections: {', '.join(missing)}")
         if extra:
@@ -338,6 +345,12 @@ class CostumeService:
                     raise CostumeServiceError(f"{canonical_name} must be filled in.")
                 if value == str(shared_sections.get(canonical_name) or "").strip():
                     raise CostumeServiceError(f"{canonical_name} still contains shared template placeholder text.")
+
+    def validate_template_file(self, template_path: Path) -> None:
+        """Validate an existing costume template against the active contract."""
+        if not template_path.is_file():
+            raise CostumeServiceError(f"Costume template not found: {template_path}")
+        self._validate_costume_markdown(template_path.read_text(encoding="utf-8"))
 
     def _default_costume_markdown(self) -> str:
         """Return the shared costume template contents."""

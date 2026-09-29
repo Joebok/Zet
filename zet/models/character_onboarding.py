@@ -25,6 +25,7 @@ class CharacterOnboardingStatus:
     species_ancestry: str = ""
     gender_presentation: str = ""
     canonical_art_style: str = ""
+    template_ready: bool = False
 
 
 @dataclass

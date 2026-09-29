@@ -10,7 +10,10 @@ Use this manual when an existing character design and one or more approved image
 - Do not write biography, motivation, personality, scene action, atmosphere, or decorative narrative.
 - Separate observation from inference. If a fact is uncertain, state the uncertainty narrowly or leave an optional section empty; never invent a defining feature.
 - “Left” and “right” always mean the character's anatomical left and right. Add a viewer-side clarification only when it prevents ambiguity.
-- Put stable facts in `*_FACTS`; put only view-dependent visibility, overlap, or silhouette information in `*_VIEW_*`.
+- Put stable facts in `*_FACTS`; put view-dependent visibility, overlap, or silhouette information in `*_VIEW_OVERRIDES`.
+- Begin view-dependent bullets with comma-separated view tags such as `* [f,fr] ...`; untagged facts intentionally apply to all views.
+- Use `<!-- ZET:VIEW_DOMAIN head -->` or `body` inside a marked section when its line tags should use the head or body orientation. Costume sections use `body`.
+- Use `<!-- ZET:VIEW_DEFAULT face_visible -->` to set a section default, `[all]` to restore all views on one bullet, and `<!-- ZET:CANON_ONLY -->` for documentation that must never reach generation prompts.
 - Do not add technical fitment clothing. Zet selects the global modesty layer: Youth for any youth phase, adult feminine or masculine for recognized adult phases, and Default for Elder and every other phase.
 
 ## Metadata
@@ -23,9 +26,9 @@ Metadata identifies the character and selects global behavior. Character Phase c
 
 Used by body-reference. Record stable build, proportions, height impression, torso, shoulders, waist, hips, limbs, hands, feet, skin, and silhouette. Exclude face, hair, costume, pose, camera direction, and fitment clothing.
 
-### `BODY_DESCRIPTION_VIEW_{VIEW}` — required for all eight views
+### `BODY_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
 
-Used by body-reference for the selected view. Record only facts that become visible, hidden, foreshortened, overlapped, or silhouette-critical in that view. Do not restate the orientation; Zet supplies it from view configuration.
+Used by body-reference. Add tagged bullets only where body visibility, overlap, or silhouette changes by view. Keep positive construction details in `*_VIEW_OVERRIDES`; reserve `BODY_DESCRIPTION_VIEW_SUPPRESSION` for anti-drift guidance.
 
 ## Head and hair sections
 
@@ -33,17 +36,17 @@ Used by body-reference for the selected view. Record only facts that become visi
 
 Used by head-image. Record head shape, facial geometry, apparent age, skin, eyes, brows, nose, mouth, ears, markings, and other stable head-only identity facts. Do not mention shoulders, torso, body proportions, clothing, pose, or full-body framing.
 
-### `HEAD_DESCRIPTION_VIEW_{VIEW}` — required for all eight views
+### `HEAD_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
 
-Used by head-image for the selected view. Describe visible facial planes, ear visibility, occlusion, and asymmetry. Keep it head-only and do not restate the requested orientation.
+Used by head-image. Add tagged bullets for visible facial planes, ear visibility, occlusion, and asymmetry. Keep it head-only; place anti-drift guidance in `HEAD_DESCRIPTION_VIEW_SUPPRESSION`.
 
 ### `HAIR_DESCRIPTION_FACTS` — required
 
 Used by head-image and expression work. Record color, texture, density, hairline, part, length, arrangement, and stable silhouette.
 
-### `HAIR_DESCRIPTION_VIEW_{VIEW}` — required for all eight views
+### `HAIR_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
 
-Used by head-image for the selected view. Record visible layers, overlaps, concealed areas, and view-specific silhouette. Do not add body guidance.
+Used by head-image. Add tagged bullets for visible layers, overlaps, concealed areas, and view-specific silhouette. Do not add body guidance.
 
 ## Expression and identity sections
 
@@ -99,4 +102,4 @@ Used by expression generation. List character- or phase-specific identity drift 
 
 ## Final completeness check
 
-Verify that metadata is filled, every required section contains useful content, all eight view sections exist, the transform section is either complete or empty, head-image text is body-free, anatomical sides are unambiguous, no technical modesty or stale orientation text was added, uncertain facts were not invented, and every marker is unchanged.
+Verify that metadata is filled, every required section contains useful content, view tags use documented tokens, the transform section is either complete or empty, head-image text is body-free, anatomical sides are unambiguous, no technical modesty or stale orientation text was added, uncertain facts were not invented, and every marker is unchanged.

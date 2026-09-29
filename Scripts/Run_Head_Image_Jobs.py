@@ -121,15 +121,13 @@ def compile_head_image_job(
         if view_token != "FRONT":
             local_phase_changes = ""
         sections["HEAD_IMAGE_TRANSFORM_INSTRUCTIONS"] = ""
-        if view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
-            sections["HEAD_DESCRIPTION_FACTS"] = ""
     elif str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
         for name in (
             "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
             "HEAD_DESCRIPTION_FACTS",
-            f"HEAD_DESCRIPTION_VIEW_{view_token}",
+            "HEAD_DESCRIPTION_VIEW_OVERRIDES",
             "HAIR_DESCRIPTION_FACTS",
-            f"HAIR_DESCRIPTION_VIEW_{view_token}",
+            "HAIR_DESCRIPTION_VIEW_OVERRIDES",
             "HEAD_IMAGE_SOURCE_RULES",
             "HEAD_IMAGE_CHARACTER_REQUIREMENTS",
         ):
@@ -194,10 +192,10 @@ def compile_head_image_job(
         "LOCAL_PHASE_CHANGES": local_phase_changes,
         "LOCAL_VISIBLE_CHARACTER_FACTS": "\n\n".join(
             value for value in (
-                sections.get("HEAD_DESCRIPTION_FACTS", "") if view_token == "FRONT" else "",
-                sections.get(f"HEAD_DESCRIPTION_VIEW_{view_token}", ""),
-                sections.get("HAIR_DESCRIPTION_FACTS", "") if view_token == "FRONT" else "",
-                sections.get(f"HAIR_DESCRIPTION_VIEW_{view_token}", ""),
+                selection.sections.get("HEAD_DESCRIPTION_FACTS", ""),
+                selection.sections.get("HEAD_DESCRIPTION_VIEW_OVERRIDES", ""),
+                selection.sections.get("HAIR_DESCRIPTION_FACTS", ""),
+                selection.sections.get("HAIR_DESCRIPTION_VIEW_OVERRIDES", ""),
             ) if str(value or "").strip()
         ),
         "LOCAL_STYLE_INSTRUCTION": local_style,

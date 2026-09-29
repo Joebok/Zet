@@ -287,7 +287,10 @@ def compile_expression_job(job: dict, project_root: Path = PROJECT_ROOT, *, prom
         if "COSTUME_IDENTITY_RULES" in costume_sections:
             sections["COSTUME_IDENTITY_RULES"] = costume_sections["COSTUME_IDENTITY_RULES"]
             section_sources["COSTUME_IDENTITY_RULES"] = costume_sources["COSTUME_IDENTITY_RULES"]
-    selection = select_prompt_sections(project_root, bundle, sections, section_sources, "EXPRESSION", prompt_variant=prompt_variant)
+    selection = select_prompt_sections(
+        project_root, bundle, sections, section_sources, "EXPRESSION",
+        prompt_variant=prompt_variant, head_view="FRONT", body_view="FRONT",
+    )
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references
     )

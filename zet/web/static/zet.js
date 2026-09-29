@@ -2143,6 +2143,10 @@ function selectedPhaseReady() {
   return !status || status.complete;
 }
 
+function selectedLocalPhaseReady() {
+  return Boolean(selectedOnboardingStatus()?.template_ready);
+}
+
 function showOnboardingMessage(message, kind = "info") {
   onboardingMessage.hidden = false;
   onboardingMessage.textContent = message;
@@ -3126,8 +3130,9 @@ async function openTemplateManual(manualId) {
 
 async function activatePage(page, options = {}) {
   state.navigationRequest += 1;
+  const phaseReady = LOCAL_ASSET_PAGES.has(page) ? selectedLocalPhaseReady() : selectedPhaseReady();
   if (
-    !selectedPhaseReady()
+    !phaseReady
     && ((state.workspace === "character"
       && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page)))
       || LOCAL_ASSET_PAGES.has(page))

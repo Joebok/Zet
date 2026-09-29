@@ -33,55 +33,29 @@ Footwear Contact: `[How the footwear or feet should contact the ground in a neut
 
 ## Costume Description — View-Specific
 
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_OVERRIDES -->
+<!-- ZET:VIEW_DOMAIN body -->
 
-* Front view should show `[front-visible costume anchors]`.
-* Front view anatomical side rule: the character's anatomical right appears on the viewer's left; the character's anatomical left appears on the viewer's right.
-* Front view garment behavior: `[what must remain visible from the front; hem and footwear behavior; what must not become a gown/cape/armor/etc.]`.
+* [f] Front view should show `[front-visible costume anchors]`.
+* [f] Front view anatomical side rule: the character's anatomical right appears on the viewer's left; the character's anatomical left appears on the viewer's right.
+* [f] Front view garment behavior: `[what must remain visible from the front; hem and footwear behavior; what must not become a gown/cape/armor/etc.]`.
+* [fl] Front-left 3/4 should show `[near-side garment depth, far-side visibility, equipment placement]`.
+* [pl] Left profile should show `[left-side silhouette and equipment]`.
+* [bl] Back-left 3/4 should show `[rear garment behavior and left/rear equipment]`.
+* [b] Back view should show `[back garment shape, rear closures, rear equipment, footwear backs]`.
+* [br] Back-right 3/4 should show `[rear garment behavior and right/rear equipment]`.
+* [pr] Right profile should show `[right-side silhouette and equipment]`.
+* [fr] Front-right 3/4 should show `[near-side garment depth, far-side visibility, equipment placement]`.
 
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:END COSTUME_DESCRIPTION_VIEW_OVERRIDES -->
 
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
+<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_SUPPRESSION -->
+<!-- ZET:VIEW_DOMAIN body -->
 
-* Front-left 3/4 should show `[near-side garment depth, far-side visibility, equipment placement]`.
+* [b] `[Keep the costume rear-facing and conceal front-only construction.]`
+* [bl,br] `[Do not rotate the garment toward the front.]`
 
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-* Front-right 3/4 should show `[near-side garment depth, far-side visibility, equipment placement]`.
-
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-* Left profile should show `[left-side silhouette and equipment]`.
-
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-* Right profile should show `[right-side silhouette and equipment]`.
-
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-* Back-left 3/4 should show `[rear garment behavior and left/rear equipment]`.
-
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-* Back-right 3/4 should show `[rear garment behavior and right/rear equipment]`.
-
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_BACK -->
-
-* Back view should show `[back garment shape, rear closures, rear equipment, footwear backs]`.
-
-<!-- ZET:END COSTUME_DESCRIPTION_VIEW_BACK -->
+<!-- ZET:END COSTUME_DESCRIPTION_VIEW_SUPPRESSION -->
 
 ---
 
@@ -107,54 +81,20 @@ Footwear Contact: `[How the footwear or feet should contact the ground in a neut
 
 ## Equipment, Jewelry, and Props — View-Specific
 
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->
+<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->
+<!-- ZET:VIEW_DOMAIN body -->
 
-* Front view should show `[front-visible equipment and jewelry]`.
-* In front view, anatomical right appears on the viewer's left and anatomical left appears on the viewer's right.
+* [f] Front view should show `[front-visible equipment and jewelry]`.
+* [f] In front view, anatomical right appears on the viewer's left and anatomical left appears on the viewer's right.
+* [fl] Front-left 3/4 should clarify `[left/right placement and overlap]`.
+* [pl] Left profile should show `[left-side equipment and jewelry]`.
+* [bl] Back-left 3/4 should show `[rear-left equipment]`.
+* [b] Back view should show `[rear-visible equipment and jewelry if any]`.
+* [br] Back-right 3/4 should show `[rear-right equipment]`.
+* [pr] Right profile should show `[right-side equipment and jewelry]`.
+* [fr] Front-right 3/4 should clarify `[left/right placement and overlap]`.
 
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_LEFT_3_4 -->
-
-* Front-left 3/4 should clarify `[left/right placement and overlap]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_RIGHT_3_4 -->
-
-* Front-right 3/4 should clarify `[left/right placement and overlap]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_LEFT_PROFILE -->
-
-* Left profile should show `[left-side equipment and jewelry]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_RIGHT_PROFILE -->
-
-* Right profile should show `[right-side equipment and jewelry]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_LEFT_3_4 -->
-
-* Back-left 3/4 should show `[rear-left equipment]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_RIGHT_3_4 -->
-
-* Back-right 3/4 should show `[rear-right equipment]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_BACK -->
-
-* Back view should show `[rear-visible equipment and jewelry if any]`.
-
-<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_BACK -->
+<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->
 
 ---
 

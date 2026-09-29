@@ -293,6 +293,10 @@ Do not explain your reasoning."""
         phase = str(payload.get("phase") or "").strip()
         if not character or not phase:
             raise LocalBodyReferenceError("Character and phase are required.")
+        status_loader = getattr(self.app, "character_onboarding_status", None)
+        status = status_loader(character, phase) if callable(status_loader) else None
+        if status is not None and not status.template_ready:
+            raise LocalBodyReferenceError("A valid Character.md is required before local Body-Reference can run: " + "; ".join(status.validation_errors))
         views = self._views()
         if len(views) != 8:
             raise LocalBodyReferenceError(f"Expected eight configured Body-Reference views; found {len(views)}.")

@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from Scripts.Compile_Character_Template import load_template_sections_with_sources
+
 from zet.models.asset import Asset
 from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.models.identity_key import IdentityKey
@@ -35,6 +37,7 @@ from zet.services.scene_render_target_service import SceneRenderTargetService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
+from zet.services.view_conditioning_service import ViewContext, condition_section
 from zet.services.summary_cache import invalidate_summary_cache
 
 
@@ -124,15 +127,28 @@ class StoryService:
                 return {}
             character_template = self.path_service.character_template_path(character, phase)
             costume_template = self.path_service.costume_template_path(character, phase, costume) if costume else Path()
+            conditioning_diagnostics: list[str] = []
+            def scene_text(path: Path, name: str) -> str:
+                if not path.is_file():
+                    return ""
+                sections, sources = load_template_sections_with_sources(path)
+                if name not in sections:
+                    return ""
+                text, source, _ = condition_section(
+                    sections[name], name, sources[name], ViewContext(unknown_view=True)
+                )
+                conditioning_diagnostics.extend(source.get("view_conditioning_diagnostics", []))
+                return text
             return {
-                "identity_preservation_core": self._source_section(character_template, "SCENE_CHARACTER_IDENTITY"),
-                "identity_preservation_costume": self._source_section(costume_template, "SCENE_COSTUME_IDENTITY"),
-                "identity_anchors": self._source_section(character_template, "SCENE_CHARACTER_ANCHORS"),
-                "costume_anchors": self._source_section(costume_template, "SCENE_COSTUME_ANCHORS"),
+                "identity_preservation_core": scene_text(character_template, "SCENE_CHARACTER_IDENTITY"),
+                "identity_preservation_costume": scene_text(costume_template, "SCENE_COSTUME_IDENTITY"),
+                "identity_anchors": scene_text(character_template, "SCENE_CHARACTER_ANCHORS"),
+                "costume_anchors": scene_text(costume_template, "SCENE_COSTUME_ANCHORS"),
                 "identity_anchor_source": self._library_relative_path(character_template),
                 "costume_anchor_source": self._library_relative_path(costume_template) if costume else "",
                 "identity_source": self._library_relative_path(character_template),
                 "costume_source": self._library_relative_path(costume_template) if costume else "",
+                "view_conditioning_diagnostics": conditioning_diagnostics,
             }
         if resource_type in {"Person", "Place", "Object"}:
             resource_id = str(element.get("reference_set_id") or element.get("aux_resource_id") or "").strip()

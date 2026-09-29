@@ -251,6 +251,27 @@ class LocalCharacterAssetPipelineService:
         costume = str(payload.get("costume") or "").strip()
         if not character or not phase or (self.definition["qualifies"] and not costume):
             raise LocalCharacterAssetPipelineError("Character and phase are required; Costume-Dressing also requires a costume.")
+        status_loader = getattr(self.app, "character_onboarding_status", None)
+        if callable(status_loader):
+            status = status_loader(character, phase)
+            if not status.template_ready:
+                raise LocalCharacterAssetPipelineError("A valid Character.md is required before local production: " + "; ".join(status.validation_errors))
+        if self.definition["qualifies"]:
+            costume_status_loader = getattr(self.app, "costume_template_status", None)
+            if callable(costume_status_loader):
+                costume_status = costume_status_loader(character, phase, costume)
+                if isinstance(costume_status, dict):
+                    template_ready = bool(costume_status.get("template_ready"))
+                    validation_errors = costume_status.get("validation_errors") or []
+                else:
+                    template_ready = bool(getattr(costume_status, "template_ready", False))
+                    validation_errors = getattr(costume_status, "validation_errors", []) or []
+                if not template_ready:
+                    details = "; ".join(str(error) for error in validation_errors)
+                    raise LocalCharacterAssetPipelineError(
+                        "A valid costume template is required before local Costume-Dressing can run"
+                        + (f": {details}" if details else ".")
+                    )
         front_count, other_count = int(payload.get("front_count") or 8), int(payload.get("other_count") or 4)
         total = front_count + 7 * other_count
         if front_count < 1 or other_count < 1 or total > 256:

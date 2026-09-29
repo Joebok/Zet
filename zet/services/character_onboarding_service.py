@@ -21,6 +21,7 @@ SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 from zet.services.pipeline_compiler_support import extract_template_field
+from zet.services.view_conditioning_service import ViewConditioningError, validate_view_controls
 
 
 FOUNDATION_VIEWS = [
@@ -92,6 +93,7 @@ class CharacterOnboardingService:
         if exists and template_path.exists() and not errors and not assets_path.exists():
             messages.append("Template is valid. Foundation assets have not been initialized yet.")
         complete = exists and template_path.exists() and assets_path.exists() and pipelines_path.exists() and not errors
+        template_ready = exists and template_path.exists() and not errors
         return CharacterOnboardingStatus(
             character=character,
             phase=phase,
@@ -107,6 +109,7 @@ class CharacterOnboardingService:
             species_ancestry=metadata["species_ancestry"],
             gender_presentation=metadata["gender_presentation"],
             canonical_art_style=metadata["canonical_art_style"],
+            template_ready=template_ready,
         )
 
     def prefill(self, character: str, source_phase: str = "") -> dict[str, str]:
@@ -207,6 +210,7 @@ class CharacterOnboardingService:
                 errors.append(f"{label} must be filled in.")
         try:
             template_sections = load_template_sections(template_path)
+            validate_view_controls(str(template_path))
             shared_sections = load_template_sections(self.path_service.shared_character_path() / "Character_Template.md")
             missing = sorted(set(shared_sections) - set(template_sections))
             extra = sorted(set(template_sections) - set(shared_sections) - COMPATIBLE_CHARACTER_SECTIONS)
@@ -214,6 +218,11 @@ class CharacterOnboardingService:
                 errors.append(f"Missing canonical sections: {', '.join(missing)}")
             if extra:
                 errors.append(f"Unsupported sections: {', '.join(extra)}")
+            legacy_views = sorted(name for name in extra if re.match(
+                r"^(?:BODY|HEAD|HAIR|COSTUME|EQUIPMENT_JEWELRY_PROPS)_.+_VIEW_(?:FRONT|BACK|LEFT_PROFILE|RIGHT_PROFILE|.*_3_4)$", name
+            ))
+            if legacy_views:
+                errors.append("Legacy per-view sections are unsupported; move their content into tagged VIEW_OVERRIDES: " + ", ".join(legacy_views))
             metadata_path = self.project_root / "Config" / "Prompt_Section_Metadata.json"
             metadata = json.loads(metadata_path.read_text(encoding="utf-8")).get("sections", {})
             required_sections: list[str] = []
@@ -233,6 +242,8 @@ class CharacterOnboardingService:
                 elif value == str(shared_sections.get(name) or "").strip():
                     errors.append(f"{name} still contains shared template placeholder text.")
         except TemplateCompileError as exc:
+            errors.append(str(exc))
+        except ViewConditioningError as exc:
             errors.append(str(exc))
         except Exception as exc:
             errors.append(f"Template validation failed: {exc}")

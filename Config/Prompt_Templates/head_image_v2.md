@@ -29,6 +29,11 @@ Create one clean head reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 
 {{LOCAL_PHASE_CHANGES}}
 
+~{{HEAD_DESCRIPTION_FACTS}}
+~{{HEAD_DESCRIPTION_VIEW_OVERRIDES}}
+~{{HAIR_DESCRIPTION_FACTS}}
+~{{HAIR_DESCRIPTION_VIEW_OVERRIDES}}
+
 {{LOCAL_VISIBLE_CHARACTER_FACTS}}
 
 Show the complete head, hairstyle, and neck against a plain transparent background. Render in {{LOCAL_STYLE_INSTRUCTION}}.
@@ -58,11 +63,13 @@ Judge the candidate image against the visible requirements below and the supplie
 
 {{HEAD_DESCRIPTION_FACTS}}
 
-{{HEAD_DESCRIPTION_VIEW_{VIEW}}}
+{{HEAD_DESCRIPTION_VIEW_OVERRIDES}}
 
 {{HAIR_DESCRIPTION_FACTS}}
 
-{{HAIR_DESCRIPTION_VIEW_{VIEW}}}
+{{HAIR_DESCRIPTION_VIEW_OVERRIDES}}
+
+{{HEAD_DESCRIPTION_VIEW_SUPPRESSION}}
 
 {{HEAD_IMAGE_SOURCE_RULES}}
 

@@ -13,6 +13,7 @@ from zet.services.character_phase_discovery_service import (
     CharacterPhaseDiscoveryService,
 )
 from zet.services.view_service import ViewService
+from zet.services.view_conditioning_service import ViewConditioningError, ViewContext, condition_sections, normalize_view
 
 
 SECTION_GROUPS = {
@@ -21,37 +22,37 @@ SECTION_GROUPS = {
     ),
     "face": (
         "HEAD_DESCRIPTION_FACTS",
-        "HEAD_DESCRIPTION_VIEW_{VIEW}",
+        "HEAD_DESCRIPTION_VIEW_OVERRIDES",
         "IDENTITY_PRESERVATION_FACE",
     ),
     "hair": (
         "HAIR_DESCRIPTION_FACTS",
-        "HAIR_DESCRIPTION_VIEW_{VIEW}",
+        "HAIR_DESCRIPTION_VIEW_OVERRIDES",
         "IDENTITY_PRESERVATION_HAIR",
     ),
     "eyes": ("IDENTITY_PRESERVATION_EYES",),
     "ears": ("IDENTITY_PRESERVATION_EARS",),
     "body proportions": (
         "BODY_DESCRIPTION_FACTS",
-        "BODY_DESCRIPTION_VIEW_{VIEW}",
+        "BODY_DESCRIPTION_VIEW_OVERRIDES",
     ),
     "age": ("IDENTITY_PRESERVATION_CORE",),
     "canonical art style": ("IDENTITY_PRESERVATION_CORE",),
     "selected costume": (
         "COSTUME_DESCRIPTION_FACTS",
-        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
+        "COSTUME_DESCRIPTION_VIEW_OVERRIDES",
         "COSTUME_IDENTITY_RULES",
     ),
     "signature worn items": (
         "EQUIPMENT_JEWELRY_PROPS_FACTS",
-        "EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}",
+        "EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES",
     ),
     "view/orientation requirements": (
-        "BODY_DESCRIPTION_VIEW_{VIEW}",
-        "HEAD_DESCRIPTION_VIEW_{VIEW}",
-        "HAIR_DESCRIPTION_VIEW_{VIEW}",
-        "COSTUME_DESCRIPTION_VIEW_{VIEW}",
-        "EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}",
+        "BODY_DESCRIPTION_VIEW_OVERRIDES",
+        "HEAD_DESCRIPTION_VIEW_OVERRIDES",
+        "HAIR_DESCRIPTION_VIEW_OVERRIDES",
+        "COSTUME_DESCRIPTION_VIEW_OVERRIDES",
+        "EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES",
     ),
     "negative or forbidden traits": ("NEGATIVE_GUIDANCE_EXPRESSION",),
 }
@@ -187,12 +188,23 @@ class CharacterSourceService:
             view_token,
             include_costume=costume is not None,
         )
+        try:
+            sections, sources, conditioned_out = condition_sections(
+                sections, sources,
+                ViewContext(body_view=normalize_view(view_token), head_view=normalize_view(view_token)),
+            )
+        except ViewConditioningError as exc:
+            raise CharacterSourceError(str(exc)) from exc
         selection = select_sections(
             sections,
             {"required_sections": requested},
             view_token,
             sources,
         )
+        filtered_names = set(conditioned_out) & set(selection.missing_required + selection.missing_optional)
+        selection.missing_required = [name for name in selection.missing_required if name not in filtered_names]
+        selection.missing_optional = [name for name in selection.missing_optional if name not in filtered_names]
+        selection.conditioned_out_sections = sorted(filtered_names)
         if selection.missing_required:
             raise CharacterSourceError(
                 "Missing requested Zet sections: "

@@ -256,6 +256,8 @@ def render_static_prompt(
         if metadata_key in metadata:
             return _replace_single_brace_tokens(metadata[metadata_key], single_brace_values)
         text = selection.sections.get(name, "" if name in selection.missing_optional else None)
+        if text is None and name in getattr(selection, "conditioned_out_sections", []):
+            return ""
         if text is None:
             return match.group(0)
         if name in required_set and not text.strip():
@@ -391,7 +393,7 @@ def render_static_prompt_with_source_map(
                         "editable": False,
                     },
                 )
-            elif name in selection.sections or name in selection.missing_optional:
+            elif name in selection.sections or name in selection.missing_optional or name in getattr(selection, "conditioned_out_sections", []):
                 text = selection.sections.get(name, "")
                 if name in required_set and not text.strip():
                     raise TemplateCompileError("MISSING_REQUIRED_SECTION", f"Required section missing from final prompt: {name}")
@@ -446,6 +448,9 @@ def write_compiled_sections(
     lines.extend(f"- {name}" for name in selection.included_optional)
     lines.extend(["", "## Missing Optional Sections", ""])
     lines.extend(f"- {name}" for name in selection.missing_optional)
+    if getattr(selection, "conditioned_out_sections", []):
+        lines.extend(["", "## Filtered for Requested View", ""])
+        lines.extend(f"- {name}" for name in selection.conditioned_out_sections)
     suppressed = job_metadata.get("suppressed_sections", {})
     if isinstance(suppressed, dict) and suppressed:
         lines.extend(["", "## Suppressed Sections", ""])

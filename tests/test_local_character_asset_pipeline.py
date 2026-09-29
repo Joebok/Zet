@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +30,15 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         character_root.mkdir(parents=True)
         shared_character = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
         (character_root / "Character.md").write_text(shared_character.read_text(encoding="utf-8"), encoding="utf-8")
+        shared_character_target = self.root / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+        shared_character_target.parent.mkdir(parents=True)
+        shared_character_target.write_text(shared_character.read_text(encoding="utf-8"), encoding="utf-8")
+        shared_costume = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Costume_Template.md"
+        shared_costume_target = shared_character_target.parent / "Costume_Template.md"
+        shared_costume_target.write_text(shared_costume.read_text(encoding="utf-8"), encoding="utf-8")
+        metadata_target = self.root / "Config" / "Prompt_Section_Metadata.json"
+        metadata_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Section_Metadata.json", metadata_target)
         (character_root / "Costume_Test_Outfit.md").write_text(
             "Costume Name: `Test Outfit`\nFootwear: `boots`\nFootwear Contact: `Boots planted.`\n\n"
             "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\nBlue coat and boots.\n<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->\n",
@@ -757,6 +768,46 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
                 self.assertEqual(404, response.status_code, path)
 
     def test_local_pipeline_pages_and_gate_catalog_are_exposed(self) -> None:
+        character_path = self.characters / "Test" / "Adult" / "Character.md"
+        template_text = character_path.read_text(encoding="utf-8")
+        for label, value in {
+            "Character Name": "Test",
+            "Character Phase": "Adult",
+            "Species / Ancestry": "Human",
+            "Gender Presentation": "neutral",
+            "Canonical Art Style": "test illustration style",
+        }.items():
+            template_text = re.sub(rf"(?m)^({re.escape(label)}:\s*)`[^`]*`", rf"\g<1>`{value}`", template_text)
+        metadata = json.loads((PROJECT_ROOT / "Config" / "Prompt_Section_Metadata.json").read_text(encoding="utf-8"))["sections"]
+        for name, record in metadata.items():
+            if not isinstance(record, dict) or not record.get("required_content"):
+                continue
+            marker = re.compile(
+                rf"(<!-- ZET:BEGIN {re.escape(name)} -->)(.*?)(<!-- ZET:END {re.escape(name)} -->)",
+                re.DOTALL,
+            )
+            if marker.search(template_text):
+                template_text = marker.sub(
+                    lambda match: f"{match.group(1)}\n\nTest fixture detail.\n\n{match.group(3)}",
+                    template_text,
+                    count=1,
+                )
+        character_path.write_text(template_text, encoding="utf-8")
+        costume_path = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
+        costume_text = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Costume_Template.md").read_text(encoding="utf-8")
+        for name, record in metadata.items():
+            if not name.startswith("COSTUME_") or not isinstance(record, dict) or not record.get("required_content"):
+                continue
+            marker = re.compile(
+                rf"(<!-- ZET:BEGIN {re.escape(name)} -->)(.*?)(<!-- ZET:END {re.escape(name)} -->)",
+                re.DOTALL,
+            )
+            costume_text = marker.sub(
+                lambda match: f"{match.group(1)}\n\nTest fixture detail.\n\n{match.group(3)}",
+                costume_text,
+                count=1,
+            )
+        costume_path.write_text(costume_text, encoding="utf-8")
         config_path = self.root / "config.toml"
         asset_root, pipeline_root, queue_root = self.library / "Assets", self.library / "Pipelines", self.library / "Queue"
         config_path.write_text(f"""[BaseFolders]
@@ -782,7 +833,11 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
             self.assertEqual((307, "/?page=local-costume-dressing"), (dressing.status_code, dressing.headers["location"]))
             self.assertEqual((307, "/?page=local-body-reference"), (body_reference.status_code, body_reference.headers["location"]))
             self.assertEqual((307, "/?page=local-head-image"), (head_image.status_code, head_image.headers["location"]))
-            self.assertEqual({200}, {response.status_code for response in previews.values()})
+            self.assertEqual(
+                {200},
+                {response.status_code for response in previews.values()},
+                {pipeline: response.text for pipeline, response in previews.items()},
+            )
             for pipeline, response in previews.items():
                 self.assertEqual(pipeline, response.json()["pipeline_config"]["key"])
                 self.assertIn("can_create", response.json())
@@ -791,6 +846,13 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
             self.assertTrue(previews["head-image"].json()["can_create"])
             self.assertFalse(previews["character-assembly"].json()["can_create"])
             self.assertFalse(previews["costume-dressing"].json()["can_create"])
+            costume_path.write_text("Costume Name: `Test Outfit`\n", encoding="utf-8")
+            invalid_costume = client.post(
+                "/api/local/costume-dressing/preview",
+                json={**context, "costume": "Test Outfit"},
+            )
+            self.assertEqual(400, invalid_costume.status_code)
+            self.assertIn("Costume template missing sections", invalid_costume.json()["detail"])
             self.assertEqual(200, assembly_gates.status_code)
             self.assertEqual({"Disabled"}, set(assembly_gates.json()["statuses"].values()))
 

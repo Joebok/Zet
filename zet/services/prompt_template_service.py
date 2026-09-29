@@ -9,6 +9,12 @@ from Scripts.Compile_Character_Template import (
     load_template_sections_with_sources,
     select_sections_for_prompt,
 )
+from zet.services.view_conditioning_service import (
+    ViewConditioningError,
+    ViewContext,
+    condition_sections,
+    normalize_view,
+)
 
 
 def filter_prompt_variant_blocks(template_text: str, prompt_variant: str) -> str:
@@ -97,18 +103,35 @@ class PromptTemplateService:
             for name in payload.get("sections", {})
         }
 
-    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, prompt_variant: str = "generation", pipeline_mode: str = "traditional"):
+    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, body_view: str | None = None, head_view: str | None = None, prompt_variant: str = "generation", pipeline_mode: str = "traditional"):
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
-        return select_sections_for_prompt(
-            all_sections,
+        if str(view_token).upper() in {"EXPRESSION", "ALL", ""} and body_view is None and head_view is None:
+            context = ViewContext()
+        else:
+            context = ViewContext(
+                body_view=normalize_view(body_view or view_token),
+                head_view=normalize_view(head_view or view_token),
+            )
+        try:
+            conditioned_sections, conditioned_sources, conditioned_out = condition_sections(
+                all_sections, section_sources, context
+            )
+        except ViewConditioningError as exc:
+            raise TemplateCompileError(exc.code, str(exc)) from exc
+        selection = select_sections_for_prompt(
+            conditioned_sections,
             filter_prompt_variant_blocks(
                 filter_pipeline_mode_blocks(template_file.read_text(encoding="utf-8"), pipeline_mode),
                 prompt_variant,
             ),
             view_token,
-            section_sources,
+            conditioned_sources,
             self._known_section_names(view_token),
         )
+        filtered_names = set(conditioned_out) & set(selection.missing_optional)
+        selection.missing_optional = [name for name in selection.missing_optional if name not in filtered_names]
+        selection.conditioned_out_sections = sorted(filtered_names)
+        return selection
 
     def render_artifacts(
         self,
