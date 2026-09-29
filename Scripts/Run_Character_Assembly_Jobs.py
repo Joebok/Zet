@@ -171,7 +171,10 @@ def compile_character_assembly_job(
     body_reference = reference_by_role(references, "body_reference")
     head_image = reference_by_role(references, "head_image")
     front_assembly = next((reference for reference in references if reference.get("role") == "front_assembly"), None)
-    if pipeline_mode == "local" and (body_view_token != "FRONT" or head_view_token != "FRONT") and not front_assembly:
+    anchor_setting = job_get(job, "Use Front Anchor", "use_front_anchor")
+    use_front_anchor = anchor_setting.lower() not in {"false", "0", "no", "off"}
+    if (pipeline_mode == "local" and use_front_anchor
+            and (body_view_token != "FRONT" or head_view_token != "FRONT") and not front_assembly):
         raise TemplateCompileError("MISSING_REFERENCE", "Local non-front Character-Assembly requires the selected FRONT assembly anchor.")
     validate_reference(body_reference, "body_reference")
     validate_reference(head_image, "head_image")

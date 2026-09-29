@@ -1,5 +1,6 @@
-import json
 import hashlib
+import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -288,6 +289,7 @@ def test_orientation_prompts_and_verdicts():
         prompt = next(gate.prompt for gate in LocalBodyReferenceService.review_gates(view)
                       if gate.key == "orientation")
         assert prompt.startswith(f"TARGET: {view}\n\nAuthoritative visual definition:\n\n- ")
+        assert not re.search(r"anatomical[ -](?:left|right)", prompt, re.IGNORECASE)
         assert "Do not derive or reinterpret the view name." in prompt
         assert "Return TRUE when it matches. Return FALSE when it does not match." in prompt
         assert prompt.endswith("TRUE\nor\nFALSE: <brief visible reason>\n\nDo not explain your reasoning.")

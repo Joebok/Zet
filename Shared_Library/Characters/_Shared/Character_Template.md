@@ -71,6 +71,8 @@ Suggested fields:
 ## Head Description — Just the Facts
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
+<!-- ZET:VIEW_DOMAIN head -->
+<!-- ZET:VIEW_DEFAULT face_visible -->
 
 [Technical head and face description.]
 
@@ -84,9 +86,9 @@ Suggested fields:
 * Eye shape:
 * Eye color:
 * Eyebrows:
-* Ears:
-* Neck:
-* Head-to-body proportion:
+* [all] Ears:
+* [all] Neck:
+* [all] Head-to-body proportion:
 
 <!-- ZET:END HEAD_DESCRIPTION_FACTS -->
 

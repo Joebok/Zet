@@ -41,20 +41,19 @@ DEFAULT_VIEWS = (
     "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK",
 )
 CANONICAL_VIEW_DEFINITIONS = {
-    "FRONT": "Direct frontal view. Subject faces the camera squarely; left/right sides are approximately symmetrical.",
-    "FRONT_LEFT_3_4": "Frontal three-quarter view showing more of the subject's anatomical LEFT side. Subject's left side is nearer the camera. Nose/face points toward IMAGE_LEFT.",
-    "FRONT_RIGHT_3_4": "Frontal three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Nose/face points toward IMAGE_RIGHT.",
-    "LEFT_PROFILE": "Exact profile showing the subject's anatomical LEFT side. Nose/face points toward IMAGE_LEFT.",
-    "RIGHT_PROFILE": "Exact profile showing the subject's anatomical RIGHT side. Nose/face points toward IMAGE_RIGHT.",
-    "BACK_LEFT_3_4": "Rear three-quarter view showing more of the subject's anatomical LEFT side. Subject's left side is nearer the camera. Head/body point away and toward IMAGE_LEFT.",
-    "BACK_RIGHT_3_4": "Rear three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Head/body point away and toward IMAGE_RIGHT.",
-    "BACK": "Direct rear view. Subject faces directly away from the camera; left/right sides are approximately symmetrical.",
+    "FRONT": "Direct frontal view. Subject faces the camera squarely; both sides are approximately symmetrical.",
+    "FRONT_LEFT_3_4": "Frontal three-quarter view. The near side appears on IMAGE_RIGHT, and the face points toward IMAGE_LEFT.",
+    "FRONT_RIGHT_3_4": "Frontal three-quarter view. The near side appears on IMAGE_LEFT, and the face points toward IMAGE_RIGHT.",
+    "LEFT_PROFILE": "Exact profile showing the near side. Nose/face points toward IMAGE_LEFT.",
+    "RIGHT_PROFILE": "Exact profile showing the near side. Nose/face points toward IMAGE_RIGHT.",
+    "BACK_LEFT_3_4": "Rear three-quarter view. The near side appears on IMAGE_LEFT; head and body point away and toward IMAGE_LEFT.",
+    "BACK_RIGHT_3_4": "Rear three-quarter view. The near side appears on IMAGE_RIGHT; head and body point away and toward IMAGE_RIGHT.",
+    "BACK": "Direct rear view. Subject faces directly away from the camera; both sides are approximately symmetrical.",
 }
 ORIENTATION_VIEW_DEFINITIONS = {
     "FRONT": (
         "- This is a direct frontal view.\n"
         "- The face and torso point straight toward the camera.\n"
-        "- The subject's anatomical LEFT side appears on IMAGE_RIGHT, and the anatomical RIGHT side appears on IMAGE_LEFT.\n"
         "- Both sides of the front of the torso are visible and approximately symmetrical.\n"
         "- It must not be essentially a three-quarter view, profile, or rear view."
     ),
@@ -62,7 +61,7 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a frontal three-quarter view.\n"
         "- The face and torso point diagonally toward IMAGE_LEFT.\n"
         "- The near side of the body appears on IMAGE_RIGHT.\n"
-        "- That near side is the subject's anatomical LEFT side.\n"
+        "- The near side appears on IMAGE_RIGHT; the far side appears on IMAGE_LEFT.\n"
         "- Both the front and side of the torso are clearly visible.\n"
         "- It must not be essentially FRONT or LEFT PROFILE."
     ),
@@ -70,21 +69,21 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a frontal three-quarter view.\n"
         "- The face and torso point diagonally toward IMAGE_RIGHT.\n"
         "- The near side of the body appears on IMAGE_LEFT.\n"
-        "- That near side is the subject's anatomical RIGHT side.\n"
+        "- The near side appears on IMAGE_LEFT; the far side appears on IMAGE_RIGHT.\n"
         "- Both the front and side of the torso are clearly visible.\n"
         "- It must not be essentially FRONT or RIGHT PROFILE."
     ),
     "LEFT_PROFILE": (
         "- This is an exact side profile.\n"
         "- The face and torso point toward IMAGE_LEFT.\n"
-        "- The visible side is the subject's anatomical LEFT side.\n"
+        "- Show the near side in profile.\n"
         "- The front and back of the torso are not clearly visible.\n"
         "- It must not be essentially FRONT_LEFT_3_4 or BACK_LEFT_3_4."
     ),
     "RIGHT_PROFILE": (
         "- This is an exact side profile.\n"
         "- The face and torso point toward IMAGE_RIGHT.\n"
-        "- The visible side is the subject's anatomical RIGHT side.\n"
+        "- Show the near side in profile.\n"
         "- The front and back of the torso are not clearly visible.\n"
         "- It must not be essentially FRONT_RIGHT_3_4 or BACK_RIGHT_3_4."
     ),
@@ -92,7 +91,7 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a rear three-quarter view.\n"
         "- The head and torso point away from the camera and diagonally toward IMAGE_LEFT.\n"
         "- The near side of the body appears on IMAGE_LEFT.\n"
-        "- That near side is the subject's anatomical LEFT side.\n"
+        "- The near side appears on IMAGE_LEFT; the far side appears on IMAGE_RIGHT.\n"
         "- Both the back and side of the torso are clearly visible.\n"
         "- It must not be essentially BACK or LEFT PROFILE."
     ),
@@ -100,14 +99,13 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a rear three-quarter view.\n"
         "- The head and torso point away from the camera and diagonally toward IMAGE_RIGHT.\n"
         "- The near side of the body appears on IMAGE_RIGHT.\n"
-        "- That near side is the subject's anatomical RIGHT side.\n"
+        "- The near side appears on IMAGE_RIGHT; the far side appears on IMAGE_LEFT.\n"
         "- Both the back and side of the torso are clearly visible.\n"
         "- It must not be essentially BACK or RIGHT PROFILE."
     ),
     "BACK": (
         "- This is a direct rear view.\n"
         "- The head and torso point straight away from the camera.\n"
-        "- The subject's anatomical LEFT side appears on IMAGE_LEFT, and the anatomical RIGHT side appears on IMAGE_RIGHT.\n"
         "- Both sides of the back of the torso are visible and approximately symmetrical.\n"
         "- It must not be essentially a three-quarter view, profile, or frontal view."
     ),

@@ -162,12 +162,12 @@ class HeadImageCompilerTests(unittest.TestCase):
             template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             expected = {
                 "FRONT": ("camera is directly in front", "Both eyes look straight ahead"),
-                "FRONT_LEFT_3_4": ("camera is in front of the character's anatomical left", "Both eyes look image-left"),
-                "FRONT_RIGHT_3_4": ("camera is in front of the character's anatomical right", "Both eyes look image-right"),
-                "LEFT_PROFILE": ("camera is directly beside the character's anatomical left", "visible eye looks image-left"),
-                "RIGHT_PROFILE": ("camera is directly beside the character's anatomical right", "visible eye looks image-right"),
-                "BACK_LEFT_3_4": ("camera is behind the character's anatomical left", "no eye or expression is visible"),
-                "BACK_RIGHT_3_4": ("camera is behind the character's anatomical right", "no eye or expression is visible"),
+                "FRONT_LEFT_3_4": ("camera is in front of the character, toward screen-left", "Both eyes look image-left"),
+                "FRONT_RIGHT_3_4": ("camera is in front of the character, toward screen-right", "Both eyes look image-right"),
+                "LEFT_PROFILE": ("camera is directly beside the character", "visible eye looks image-left"),
+                "RIGHT_PROFILE": ("camera is directly beside the character", "visible eye looks image-right"),
+                "BACK_LEFT_3_4": ("camera is behind the character, toward screen-left", "no eye or expression is visible"),
+                "BACK_RIGHT_3_4": ("camera is behind the character, toward screen-right", "no eye or expression is visible"),
                 "BACK": ("camera is directly behind the character", "No eyes or facial features are visible"),
             }
             for view, (view_text, gaze_text) in expected.items():
@@ -182,6 +182,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                     self.assertIn(gaze_text, prompt)
                     self.assertNotIn("if the requested view", prompt.lower())
                     self.assertNotIn("{{", prompt)
+                    self.assertNotRegex(prompt, r"anatomical[ -](?:left|right)")
                     if view in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
                         self.assertNotIn("Eye shape:", prompt)
                         self.assertNotIn("large expressive eyes", prompt)

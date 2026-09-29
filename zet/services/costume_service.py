@@ -271,11 +271,16 @@ class CostumeService:
         contents = path.read_text(encoding="utf-8")
         name = self.costume_name_from_slug(path.stem.removeprefix("Costume_"))
         role = self._extract_template_field(contents, ["Costume Role", "Role"]) or None
-        assets = [
-            asset
-            for asset in self.asset_repository.list_assets(character, phase)
-            if asset.pipeline == "Costume-Dressing" and asset.costume == name
-        ]
+        assets_path = self.path_service.character_path(character, phase) / "Assets.json"
+        assets = (
+            [
+                asset
+                for asset in self.asset_repository.list_assets(character, phase)
+                if asset.pipeline == "Costume-Dressing" and asset.costume == name
+            ]
+            if assets_path.is_file()
+            else []
+        )
         return Costume(
             name=name,
             slug=self.safe_costume_slug(name),

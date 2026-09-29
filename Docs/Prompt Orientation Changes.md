@@ -263,3 +263,26 @@ screen-left (anatomical right)
 from accidentally creeping back into production prompts.
 
 The overall goal is: **templates describe what the character physically is; the compiler describes what the camera sees.** That separation should make the eight-view system considerably less fragile.
+
+### Template annotation contract
+
+Use a line-scoped annotation after any leading view tag. `asymmetry` marks directional geometry; `fixed` marks a feature physically attached to an anatomical side. A fixed feature must have explicit view eligibility from its line tag or a section-level `VIEW_DEFAULT`.
+
+```markdown
+* [head:frontish,near_right] <!-- ZET:SPATIAL fixed --> A scar is on the anatomical-right cheek.
+* [head:far_right_3q] <!-- ZET:SPATIAL fixed state=partial --> A scar is on the anatomical-right cheek.
+* <!-- ZET:SPATIAL asymmetry --> Hair mass is heavier on the anatomical-right side.
+```
+
+`state` defaults to `visible`; `partial` adds a partial-visibility instruction, while `occluded` and `hidden` omit the positive feature statement. Split facts into separate bullets when their visibility differs. Annotated clauses must use qualified `anatomical-left` or `anatomical-right`; bare left/right is an authoring error. Existing head/body domains determine which requested view applies.
+
+| Requested view | Anatomical left resolves to | Anatomical right resolves to | Facing direction |
+| --- | --- | --- | --- |
+| `FRONT` | `screen-right` | `screen-left` | toward camera |
+| `FRONT_LEFT_3_4` | `near-side` | `far-side` | screen-left |
+| `FRONT_RIGHT_3_4` | `far-side` | `near-side` | screen-right |
+| `LEFT_PROFILE` | `near-side` | `far-side` | screen-left |
+| `RIGHT_PROFILE` | `far-side` | `near-side` | screen-right |
+| `BACK_LEFT_3_4` | `near-side` | `far-side` | away, toward screen-left |
+| `BACK_RIGHT_3_4` | `far-side` | `near-side` | away, toward screen-right |
+| `BACK` | `screen-left` | `screen-right` | away from camera |

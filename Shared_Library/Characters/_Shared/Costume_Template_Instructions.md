@@ -9,7 +9,10 @@ Use this manual to convert an approved costume design and reference images into 
 - Use short visual facts and direct imperatives, normally one fact per bullet.
 - Do not write story, mood, personality, action, or decorative narrative.
 - Distinguish observation from inference. Leave optional content empty when the references do not support it.
-- “Left” and “right” mean the character's anatomical sides. Clarify viewer-side reversal when needed.
+- Record canonical sides as `anatomical-left` or `anatomical-right`; generation prompts resolve these to screen-left/screen-right in front and back views, and near-side/far-side in three-quarter and profile views.
+- Mark a side-dependent line with `<!-- ZET:SPATIAL asymmetry -->` for garment or equipment geometry, or `<!-- ZET:SPATIAL fixed -->` for a physically bound feature such as an earring. Put the annotation after any leading view tag.
+- Fixed-feature annotations require an explicit view tag or section `ZET:VIEW_DEFAULT`. Use `state=partial`, `state=occluded`, or `state=hidden` when that state applies to the tagged views. Split facts with different visibility into separate bullets.
+- Do not use bare left/right in spatial facts. Keep facing direction separate from side placement; a front-left three-quarter view faces screen-left while its anatomical-left side is near.
 - Put stable design facts in `*_FACTS`; put view-dependent visibility, overlap, and silhouette in `*_VIEW_OVERRIDES`.
 - Begin view-dependent bullets with comma-separated view tags such as `- [rearish] ...`; untagged facts intentionally apply to all views.
 - Use `<!-- ZET:VIEW_DOMAIN body -->` inside costume sections. Explicit `[head:...]` tags remain available for head-visible items such as earrings.

@@ -48,18 +48,18 @@ VIEW_LABELS = {
 }
 VIEW_RULES = {
     "FRONT": "The face points squarely toward camera; show both sides of the face evenly.",
-    "FRONT_LEFT_3_4": "Turn the whole head toward the character's anatomical left; show more left cheek and ear, with both eyes visible.",
-    "FRONT_RIGHT_3_4": "Turn the whole head toward the character's anatomical right; show more right cheek and ear, with both eyes visible.",
-    "LEFT_PROFILE": "Show the character's exact anatomical left profile; keep the nose pointing image-left.",
-    "RIGHT_PROFILE": "Show the character's exact anatomical right profile; keep the nose pointing image-right.",
-    "BACK_LEFT_3_4": "Show the back of the skull and hair with the anatomical left rear side nearer the camera.",
-    "BACK_RIGHT_3_4": "Show the back of the skull and hair with the anatomical right rear side nearer the camera.",
+    "FRONT_LEFT_3_4": "Turn the whole head toward screen-left; show more of the near-side cheek and ear, with both eyes visible.",
+    "FRONT_RIGHT_3_4": "Turn the whole head toward screen-right; show more of the near-side cheek and ear, with both eyes visible.",
+    "LEFT_PROFILE": "Show an exact profile with the near side visible; keep the nose pointing image-left.",
+    "RIGHT_PROFILE": "Show an exact profile with the near side visible; keep the nose pointing image-right.",
+    "BACK_LEFT_3_4": "Show the back of the skull and hair; the near side is closer to the camera.",
+    "BACK_RIGHT_3_4": "Show the back of the skull and hair; the near side is closer to the camera.",
     "BACK": "Show the back of the head squarely; do not reveal the face.",
 }
 GAZE_RULES = {
     "FRONT": "The face points toward the viewer, so a forward gaze is correct.",
-    "FRONT_LEFT_3_4": "The face and nose turn toward the character's anatomical left. The eyes must turn with the face instead of maintaining eye contact with the camera.",
-    "FRONT_RIGHT_3_4": "The face and nose turn toward the character's anatomical right. The eyes must turn with the face instead of maintaining eye contact with the camera.",
+    "FRONT_LEFT_3_4": "The face and nose turn toward screen-left. The eyes must turn with the face instead of maintaining eye contact with the camera.",
+    "FRONT_RIGHT_3_4": "The face and nose turn toward screen-right. The eyes must turn with the face instead of maintaining eye contact with the camera.",
     "LEFT_PROFILE": "The nose points toward image-left. The visible eye must look along the nose direction, not back toward the camera.",
     "RIGHT_PROFILE": "The nose points toward image-right. The visible eye must look along the nose direction, not back toward the camera.",
 }

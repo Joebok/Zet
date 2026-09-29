@@ -9,7 +9,10 @@ Use this manual when an existing character design and one or more approved image
 - Use short, direct visual facts and imperatives. Prefer one observable fact per bullet.
 - Do not write biography, motivation, personality, scene action, atmosphere, or decorative narrative.
 - Separate observation from inference. If a fact is uncertain, state the uncertainty narrowly or leave an optional section empty; never invent a defining feature.
-- “Left” and “right” always mean the character's anatomical left and right. Add a viewer-side clarification only when it prevents ambiguity.
+- Record canonical sides as `anatomical-left` or `anatomical-right`; generation prompts resolve these to screen-left/screen-right in front and back views, and near-side/far-side in three-quarter and profile views.
+- Mark a side-dependent line with `<!-- ZET:SPATIAL asymmetry -->` for geometry such as hair mass or sweep, or `<!-- ZET:SPATIAL fixed -->` for a physical identity feature. Put the annotation after any leading view tag.
+- Fixed-feature annotations require an explicit view tag or section `ZET:VIEW_DEFAULT`. Use `state=partial`, `state=occluded`, or `state=hidden` when that visible-state instruction applies to the tagged views. Split facts with different visibility into separate bullets.
+- Do not use bare left/right in spatial facts. Keep facing direction separate from side placement; a front-left three-quarter view faces screen-left while its anatomical-left side is near.
 - Put stable facts in `*_FACTS`; put view-dependent visibility, overlap, or silhouette information in `*_VIEW_OVERRIDES`.
 - Begin view-dependent bullets with comma-separated view tags such as `* [f,fr] ...`; untagged facts intentionally apply to all views.
 - Use `<!-- ZET:VIEW_DOMAIN head -->` or `body` inside a marked section when its line tags should use the head or body orientation. Costume sections use `body`.

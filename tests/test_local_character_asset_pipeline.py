@@ -468,6 +468,22 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual(list(VIEWS[1:]), result["target_views"])
         self.assertIsNone(result["front_anchor"])
 
+    def test_optional_anchor_batch_compiles_non_front_prompt_without_anchor(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                  "other_count": 1, "use_front_anchor": False,
+                                  "seeds": list(range(8))})
+
+        refs = service._references(run, "FRONT_LEFT_3_4")
+        compiled = service._compile(run, "FRONT_LEFT_3_4", refs)
+        prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
+        manifest = json.loads(Path(compiled["dependency_manifest"]).read_text(encoding="utf-8"))
+
+        self.assertNotIn("front_assembly", [item["role"] for item in refs])
+        self.assertIn("Use only these two images as visual sources.", prompt)
+        self.assertEqual(["body_reference", "head_image"], manifest["required_reference_roles"])
+
     def test_proceed_uses_selected_front_without_requiring_another_ranking_pass(self) -> None:
         self._sources("character-assembly")
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")

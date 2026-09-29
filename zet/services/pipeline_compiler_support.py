@@ -52,24 +52,17 @@ def load_view_data(project_root: Path, view_token: str) -> dict:
 
 
 def view_orientation_intro(view_data: dict, include_orientation_details: bool = False) -> str:
-    """Return the shared anatomical side instruction for one view."""
+    """Return the shared screen-space orientation instruction for one view."""
     token = str(view_data.get("_view_token") or "").strip().upper()
     label = str(view_data.get("label") or token.lower().replace("_", " ")).strip()
     viewpoint = re.sub(r"\s+view$", "", label, flags=re.IGNORECASE).strip() or label
-    lines = ["Use anatomical left and right."]
-    if token in {"FRONT_LEFT_3_4", "BACK_LEFT_3_4"}:
-        lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical left side.")
-    elif token in {"FRONT_RIGHT_3_4", "BACK_RIGHT_3_4"}:
-        lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical right side.")
+    lines = ["Describe visible sides from the camera's view: use screen-left and screen-right for direct front and back views, and near-side and far-side for three-quarter and profile views."]
     if include_orientation_details:
         orientation = str(view_data.get("orientation_sentence") or "").strip()
         camera_position = str(view_data.get("camera_position") or "").strip()
         details = [value for value in (orientation, "Do not rotate the head independently of the body.", camera_position) if value]
         if orientation:
-            if len(lines) > 1:
-                lines[-1] = f"{lines[-1]} {' '.join(details)}"
-            else:
-                lines.append(" ".join(details))
+            lines.append(" ".join(details))
     return "\n".join(lines)
 
 

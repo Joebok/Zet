@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from Scripts.Compile_Character_Template import load_template_sections_with_sources
 
-
 VIEW_ORDER = ("FRONT", "FRONT_LEFT_3_4", "LEFT_PROFILE", "BACK_LEFT_3_4", "BACK",
               "BACK_RIGHT_3_4", "RIGHT_PROFILE", "FRONT_RIGHT_3_4")
 VIEW_SHORT = dict(zip(("f", "fl", "pl", "bl", "b", "br", "pr", "fr"), VIEW_ORDER))
@@ -38,6 +37,9 @@ _sets = {
 }
 _TAG = re.compile(r"^(\s*[-*+]\s+)\[([^]\n]*)\](?:[ \t]+|$)(.*)$")
 _DIRECTIVE = re.compile(r"^\s*<!--\s*ZET:(VIEW_DOMAIN|VIEW_DEFAULT|CANON_ONLY)(?:\s+([^\s]*))?\s*-->\s*$")
+_SPATIAL = re.compile(r"<!--\s*ZET:SPATIAL\s+(asymmetry|fixed)(?:\s+state=(visible|partial|occluded|hidden))?\s*-->")
+_ANATOMICAL_SIDE = re.compile(r"\banatomical[ -](left|right)(?:[ -](side))?\b", re.IGNORECASE)
+_BARE_SIDE = re.compile(r"(?<![\w-])(left|right)(?![\w-])", re.IGNORECASE)
 _MARKDOWN_HEADING = re.compile(r"^(\s{0,3})(#{1,6})\s+.*$")
 
 
@@ -70,6 +72,87 @@ class ViewContext:
 
     def requested(self, domain: str) -> str | None:
         return self.head_view if domain == "head" else self.body_view
+
+
+_SCREEN_SIDE = {
+    "FRONT": {"left": "screen-right", "right": "screen-left"},
+    "BACK": {"left": "screen-left", "right": "screen-right"},
+}
+_NEAR_SIDE = {
+    "FRONT_LEFT_3_4": "left", "LEFT_PROFILE": "left", "BACK_LEFT_3_4": "left",
+    "FRONT_RIGHT_3_4": "right", "RIGHT_PROFILE": "right", "BACK_RIGHT_3_4": "right",
+}
+
+
+def resolve_anatomical_side(side: str, view: str) -> str:
+    """Resolve an anatomical side to screen or depth language for one view."""
+    token = normalize_view(view)
+    side_key = str(side).strip().lower()
+    if side_key not in {"left", "right"}:
+        raise ViewConditioningError("INVALID_ANATOMICAL_SIDE", f"Unknown anatomical side: {side!r}")
+    if token in _SCREEN_SIDE:
+        return _SCREEN_SIDE[token][side_key]
+    near = _NEAR_SIDE[token]
+    return "near-side" if side_key == near else "far-side"
+
+
+def _translate_spatial_line(body: str, kind: str, state: str, domain: str | None,
+                            requested: str | None, allowed: set[str], explicit_visibility: bool, *, path: str,
+                            section: str, line: int) -> tuple[str, dict | None]:
+    location = f"{path}:{line} [{section}]"
+    if domain is None:
+        raise ViewConditioningError("MISSING_SPATIAL_DOMAIN", f"{location}: spatial annotation requires a head or body view domain")
+    if kind == "fixed" and not explicit_visibility:
+        raise ViewConditioningError("FIXED_FEATURE_VISIBILITY_REQUIRED", f"{location}: fixed features require an explicit view tag or ZET:VIEW_DEFAULT")
+    sides = list(_ANATOMICAL_SIDE.finditer(body))
+    if not sides:
+        if _BARE_SIDE.search(body):
+            raise ViewConditioningError("UNQUALIFIED_SPATIAL_SIDE", f"{location}: qualify left/right as anatomical left/right")
+        raise ViewConditioningError("MISSING_ANATOMICAL_SIDE", f"{location}: spatial annotation must identify anatomical left or right")
+    masked = _ANATOMICAL_SIDE.sub("", body)
+    if _BARE_SIDE.search(masked):
+        raise ViewConditioningError("UNQUALIFIED_SPATIAL_SIDE", f"{location}: qualify left/right as anatomical left/right")
+    if requested is None:
+        return body, {"section": section, "source_path": path, "source_line": line,
+                      "domain": domain, "kind": kind, "state": state,
+                      "canonical_text": body, "emitted_text": body,
+                      "omission_reason": "requested view unavailable"}
+    if kind == "fixed" and requested not in allowed:
+        return "", {"section": section, "source_path": path, "source_line": line,
+                    "domain": domain, "view": requested, "kind": kind, "state": state,
+                    "canonical_text": body, "emitted_text": "",
+                    "omission_reason": "outside authored visibility views"}
+    if state in {"hidden", "occluded"}:
+        return "", {"section": section, "source_path": path, "source_line": line,
+                    "domain": domain, "view": requested, "kind": kind, "state": state,
+                    "canonical_text": body, "emitted_text": "",
+                    "omission_reason": state}
+    # Reject unqualified directions in annotated clauses; they are ambiguous at generation time.
+    pieces: list[str] = []
+    cursor = 0
+    for match in sides:
+        pieces.append(body[cursor:match.start()])
+        side = match.group(1).lower()
+        phrase = resolve_anatomical_side(side, requested)
+        if phrase in {"near-side", "far-side"}:
+            opposite = "far-side" if phrase == "near-side" else "near-side"
+            if opposite in body.lower() and phrase not in body.lower():
+                raise ViewConditioningError(
+                    "CONTRADICTORY_SPATIAL_SIDE",
+                    f"{location}: {opposite} conflicts with anatomical-{side} in {requested}",
+                )
+        if match.group(2):
+            phrase = phrase.replace("-side", " side") if "-side" in phrase else f"{phrase} side"
+        pieces.append(phrase)
+        cursor = match.end()
+    pieces.append(body[cursor:])
+    emitted = "".join(pieces)
+    if state == "partial":
+        emitted = f"Partially visible: {emitted}"
+    return emitted, {"section": section, "source_path": path, "source_line": line,
+                     "domain": domain, "view": requested, "kind": kind, "state": state,
+                     "resolved_sides": {match.group(1).lower(): resolve_anatomical_side(match.group(1), requested) for match in sides},
+                     "canonical_text": body, "emitted_text": emitted, "omission_reason": ""}
 
 
 def _domain(value: str, *, path: str, section: str, line: int) -> str:
@@ -159,6 +242,8 @@ def condition_section(text: str, section: str, source: dict, context: ViewContex
     canon_only = False
     retained: list[tuple[str, int]] = []
     any_tagged_out = False
+    spatial_translations: list[dict] = list(source.get("spatial_translations") or [])
+    spatial_out = False
     for offset, raw_line in enumerate(text.splitlines()):
         line_no = start_line + offset
         directive = _DIRECTIVE.match(raw_line)
@@ -200,18 +285,43 @@ def condition_section(text: str, section: str, source: dict, context: ViewContex
         if requested is None and context.unknown_view and domain is not None and allowed != set(VIEW_ORDER):
             any_tagged_out = True
             continue
-        if requested is not None and requested not in allowed:
+        spatial_match = _SPATIAL.search(body)
+        spatial_kind = state = None
+        if "ZET:SPATIAL" in body and not spatial_match:
+            raise ViewConditioningError("MALFORMED_SPATIAL_ANNOTATION", f"{path}:{line_no} [{section}]: malformed ZET:SPATIAL annotation")
+        if spatial_match:
+            spatial_kind, state = spatial_match.groups()
+            state = state or "visible"
+            body = (body[:spatial_match.start()] + body[spatial_match.end():]).strip()
+        if requested is not None and requested not in allowed and spatial_kind != "fixed":
             any_tagged_out = True
             continue
-        cleaned = f"{bullet}{body}" if expression is not None else raw_line
+        if spatial_kind:
+            body, record = _translate_spatial_line(
+                body, spatial_kind, state, domain, requested, allowed,
+                expression is not None or default is not None,
+                path=path, section=section, line=line_no,
+            )
+            if record:
+                spatial_translations.append(record)
+            if not body:
+                spatial_out = True
+                continue
+        cleaned = f"{bullet}{body}" if expression is not None or spatial_match else raw_line
         retained.append((cleaned, line_no))
     retained = _prune_empty_headings(retained)
     rendered = "\n".join(line for line, _ in retained).strip("\n")
     diagnostics = list(source.get("view_conditioning_diagnostics") or [])
     if any_tagged_out and context.unknown_view:
         diagnostics.append(f"{section}: view-specific lines omitted because the requested orientation is unavailable")
-    updated_source = dict(source, retained_lines=[line for _, line in retained], view_conditioning_diagnostics=diagnostics)
-    return rendered, updated_source, any_tagged_out and not bool(rendered.strip())
+    if (context.head_view is not None or context.body_view is not None) and re.search(
+        r"\banatomical[ -](?:left|right)\b", rendered, re.IGNORECASE
+    ):
+        diagnostics.append(f"{section}: unresolved anatomical side wording remains in legacy prose")
+    updated_source = dict(source, retained_lines=[line for _, line in retained],
+                          view_conditioning_diagnostics=diagnostics,
+                          spatial_translations=spatial_translations)
+    return rendered, updated_source, (any_tagged_out or spatial_out) and not bool(rendered.strip())
 
 
 def condition_sections(sections: dict[str, str], sources: dict[str, dict], context: ViewContext) -> tuple[dict[str, str], dict[str, dict], list[str]]:

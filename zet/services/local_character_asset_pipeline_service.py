@@ -608,7 +608,8 @@ class LocalCharacterAssetPipelineService:
                "Character": run["character"], "Phase": run["phase"], "Output Directory": str(output),
                "Template Path": str(template), "Reference Files": refs}
         if self.pipeline == "character-assembly":
-            job.update({"Body View": view, "Head View": view})
+            job.update({"Body View": view, "Head View": view,
+                        "use_front_anchor": self._requires_front_anchor(run)})
             result = compile_character_assembly_job(job, self.project_root, pipeline_mode="local")
         else:
             job.update({"Body View": view, "Head View": view, "Costume": run["costume"],

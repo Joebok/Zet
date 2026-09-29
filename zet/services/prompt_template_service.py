@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from Scripts.Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
+from Scripts.Build_Static_Final_Prompt import (
+    prompt_template_path,
+    render_static_prompt_with_source_map,
+    write_compiled_sections,
+)
 from Scripts.Compile_Character_Template import (
     TemplateCompileError,
     load_template_sections_with_sources,
@@ -166,9 +171,24 @@ class PromptTemplateService:
             final_prompt_name=final_prompt_path.name,
             image_inputs=image_inputs,
         )
+        if prompt_variant == "generation" and "ZET:SPATIAL" in prompt_text:
+            raise TemplateCompileError("SPATIAL_ANNOTATION_LEAK", "A spatial template annotation reached the generation prompt.")
         final_prompt_path.write_text(prompt_text, encoding="utf-8")
         source_map_path.write_text(
-            json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=ensure_ascii_source_map) + "\n",
+            json.dumps({**source_map, **metadata,
+                        "spatial_translations": [
+                            translation
+                            for source in getattr(selection, "section_sources", {}).values()
+                            for translation in source.get("spatial_translations", [])
+                        ],
+                        "spatial_diagnostics": [
+                            diagnostic
+                            for source in getattr(selection, "section_sources", {}).values()
+                            for diagnostic in source.get("view_conditioning_diagnostics", [])
+                        ] + (["Unresolved anatomical left/right wording remains in this legacy prompt."]
+                             if prompt_variant == "generation" and re.search(
+                                 r"\banatomical[ -](?:left|right)\b", prompt_text, re.IGNORECASE
+                             ) else [])}, indent=2, ensure_ascii=ensure_ascii_source_map) + "\n",
             encoding="utf-8",
         )
         write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token=view_token, selection=selection)

@@ -41,7 +41,7 @@ Rear views (back and both rear three-quarter views), and sometimes profile views
 
 The goal is to include descriptions appropriate to the requested view and generation context. Explore line or section tags indicating which views and pipelines a description applies to. This is a candidate approach, not yet a chosen template format.
 
-See Docs\ZET_View_Conditioned_Template_Tagging_Spec.md
+See Docs\ZET_View_Conditioned_Template_Tagging_Spec.md and Docs\ZET_View_Conditioned_Template_Tagging_Spec.md. This work has largely been done. However, the shared templates and instructions in Shared_Library\Characters\_Shared should be updated to reflect the new approach.
 
 ## Library
 
@@ -49,17 +49,12 @@ The current library combines conventions from different eras: statically numbere
 
 The goal is a fresh, coherent organization that makes assets easy to find, understand, and reuse. Gather requirements before choosing a structure, taking the proposed Universe boundary into account.
 
-**Questions:**
-
-- How do you want to find and select assets in everyday work: by character/costume, scene, image purpose, visual browsing, or other groupings? Which current conventions are useful, and which cause friction?
-- What distinctions need to be clear in the library, such as enduring references, scene-specific references, test images, batch candidates, and selected results? Which should be kept for reuse?
-
-Character pipelines already have the mechanims to find and refer to the images they need to complete their runs, so scene selection is the primary consideration. Generally we have character/phases in a costumes, NPCs, and monsters as Subjects. The subjects may have Props, and scenes have Backdrops.
+Character pipelines have the mechanims to find and refer to the base images they need to complete their runs. Costume templates allow for additional reference images. But the primary use case is for inclusion in scenes. Generally we have character/phases in a costumes, NPCs, and monsters as Subjects. The subjects may have Props, and scenes have Backdrops.
 
 For non-Character Subjects, they will often start out as "one-shots" but can become recurring.
 - Images used in scenes should be tagged so we can know all images for a particiular scene, and we can see what scenes any particular image is in.
 - Images should also be associated with a "Scene Element" to facilitate grouping images related to one subject or prop, etc. Changes to the scene builder will be made to allow adding an existing Scene Element to a new scene.
-- In the local image mode, generally we will have a set of candidate images, one of which is promoted to locked. The locked image should be stored in the library proper. The candidates... ?? 
+- In the local image mode, generally we will have a set of candidate images, one of which is promoted to locked. The locked image should be stored in the library proper. The candidates stored in a seprate directory structure and are not searchable/insertable into scenes and templates.
 
 ### Universe Abstraction Layer
 

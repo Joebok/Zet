@@ -159,6 +159,8 @@ def _semantic_value(value: str) -> str:
 
 
 def _clean_section_line(line: str) -> str | None:
+    if "<!-- ZET:" in line:
+        return re.sub(r"\.{2,}$", ".", line.replace("`", "").rstrip())
     match = _labeled_match(line)
     if not match:
         stripped = re.sub(r"^\s*[-*]\s+", "", line).strip()
