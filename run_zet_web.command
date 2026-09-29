@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="${0:a:h}"
 cd "$SCRIPT_DIR"
 
-PORT=8080
+PORT=8081
 HOST="0.0.0.0"
 
 ZET_WEB_PID="$(lsof -nP -iTCP:${PORT} -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true)"

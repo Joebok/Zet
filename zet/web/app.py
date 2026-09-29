@@ -3690,7 +3690,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Zet FastAPI web dashboard.")
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", type=int, default=8081)
     return parser
 
 

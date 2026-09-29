@@ -94,7 +94,7 @@ source .venv/bin/activate
 ./run_zet_web.command
 ```
 
-Open [http://localhost:8080](http://localhost:8080). Use **New > Character** to begin character development or **New > Story** to begin a story.
+Open [http://localhost:8081](http://localhost:8081). Use **New > Character** to begin character development or **New > Story** to begin a story.
 
 To stop Zet, press `Ctrl+C` in the terminal running the server.
 
@@ -116,7 +116,7 @@ Run commands from the repository root. On Windows, rerun `setup_venv.bat`; on ma
 
 ### The dashboard does not start
 
-Check whether another process already uses port 8080. The Windows launcher reports an existing Zet listener instead of starting a duplicate.
+Check whether another process already uses port 8081. The Windows launcher reports an existing Zet listener instead of starting a duplicate.
 
 ### Local models or checkpoints are missing
 

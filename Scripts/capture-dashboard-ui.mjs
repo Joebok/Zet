@@ -5,7 +5,7 @@ import process from "node:process";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const OUTPUT_ROOT = path.join(ROOT, "Docs", "UI");
-const BASE_URL = process.env.ZET_DASHBOARD_URL || "http://127.0.0.1:8080/";
+const BASE_URL = process.env.ZET_DASHBOARD_URL || "http://127.0.0.1:8081/";
 const EXPECTED_PAGE_COUNT = 22;
 const VIEWPORTS = [
   { folder: "Desktop", width: 1920, height: 911 },
