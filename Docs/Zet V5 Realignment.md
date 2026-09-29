@@ -1,58 +1,112 @@
-# Major Refactor, Realignment
+# Zet V5 Realignment
 
-Based on everthing so far, we have a clearer idea of what is working well and what needs improvement. In addition, Qwen Image 2.1 is proving to be an excellent resource for local image generation.
+Based on everything so far, we have a clearer idea of what is working well and what needs improvement. In addition, Qwen Image 2.1 is proving to be an excellent resource for local image generation.
 
-Major 
-- Move away from focus on Character to focus on Scenes
-- Character and Costume template changes to facilitate more efficent prompts
-- Library rearrangement - start with fresh organization aimed at ease of use
-- Move to primary local image generation
+This is a statement of big-picture goals and open research questions, not an implementation plan. The questions below are prompts for refining the direction; they do not imply that a particular solution has been selected.
 
-Minor
-- UI Improvements, possible replacement of dashboard technology
-- Automation
-- Add "Universe" abstraction layer
+Major changes:
+
+- Move from a character-centered workflow to a scene-centered workflow.
+- Revise character and costume templates to produce more effective, context-appropriate prompts.
+- Start with a fresh library organization aimed at ease of use.
+- Make local image generation the primary generation workflow.
+
+Supporting changes:
+
+- Improve the UI, with possible replacement of dashboard technology.
+- Automation.
+
+**Questions to clarify the overall direction:**
+
+- Are the supporting changes lower priorities, or are some prerequisites for the major changes? In particular, Universe organization may shape the new library from the beginning.
+- What would make V5 successful in everyday use: less reference preparation, more reliable scene composition, faster iteration, easier asset discovery, or something else? Which outcomes matter most?
 
 ## Focus on Scenes
 
-Up until now, primary focus has been to create complet turnaround image sets for each character/phase and costume. See Docs\On the Turnaround Pipelines.md for the genesis of this idea.
+Up until now, the primary focus has been to create complete turnaround image sets for each character/phase and costume. See [On the Turnaround Pipelines](On%20the%20Turnaround%20Pipelines.md) for the discussion behind this change in direction.
 
-Current methodology is to provide reference images from a turnaround set in approximately the right orientation and hope the image generation can pose the character appropriately. The new emphasis will be approaching a (major) character in a scene as a "subscene" where the work of posing will largely be done in a subscene to become the reference image for the scene.
+The current method supplies reference images from a turnaround set in approximately the right orientation and relies on image generation to pose the character appropriately. The new emphasis is to approach a major character in a scene as a "subscene": resolve the pose in that smaller composition, then use the resulting image as a reference for the larger scene.
 
-Rethink the current scene data structure. Is it too rigid? Many frustrations with trying to describe the 3d position of elements - what about a crude 3D system?
+Rethink whether the current scene structure supports this workflow comfortably. Describing the spatial relationships of elements has been frustrating. A crude 3D staging system is one possible research direction for expressing positions, camera angles, and poses; its role and value are still to be explored.
+
+**Questions:**
+
+- Do complete turnaround sets become optional, with only the references needed for a particular scene generated? What minimum references should establish a character's identity and costume?
+- Should subscenes also cover interacting groups of characters? Are their results specific to one scene, reusable across scenes, or both? How should they relate to the enduring character references so that identity does not drift?
+- Which parts of scene description feel too rigid: spatial relationships, camera placement, posing, grouping elements, or something else? Would crude 3D primarily help with staging, or also supply visual guidance to image generation?
 
 ## Character and Costume Templates
 
-Back views (Back and both 3/4 views) and sometimes profile views are failing on costumes with regularity. The reason for this is the general philosphy of a complete costume description and then adding in view-specific overrides. This tends to result in the body of the character in the correct view but "wearing" the costume backwards. This effect is sometimes seen in head-image and character assembly, particulary related to forward-facing head and hair descriptions being in the prompt by default.
+Rear views (back and both rear three-quarter views), and sometimes profile views, are failing regularly for costumes. A suspected cause is the current approach of supplying a complete costume description and then adding view-specific overrides. The body may have the correct orientation while the costume appears to be worn backwards. Similar conflicts sometimes occur in head-image generation and character assembly when forward-facing head and hair descriptions are included by default.
 
-Explore ideas around line/section tags to indicate which views and pipelines the line applies.
+The goal is to include descriptions appropriate to the requested view and generation context. Explore line or section tags indicating which views and pipelines a description applies to. This is a candidate approach, not yet a chosen template format.
+
+See Docs\ZET_View_Conditioned_Template_Tagging_Spec.md
 
 ## Library
 
-Current library organization is a hodgepodge of different eras. We have statically numbered assets, we have Aux Images with naming convention tags, and we have more recent Library Image organization that has several different ways to group images. 
+The current library combines conventions from different eras: statically numbered assets, Aux Images with naming-convention tags, and newer Library Image organization with several ways to group images.
 
-Step one here will be to gather requirements.
+The goal is a fresh, coherent organization that makes assets easy to find, understand, and reuse. Gather requirements before choosing a structure, taking the proposed Universe boundary into account.
+
+**Questions:**
+
+- How do you want to find and select assets in everyday work: by character/costume, scene, image purpose, visual browsing, or other groupings? Which current conventions are useful, and which cause friction?
+- What distinctions need to be clear in the library, such as enduring references, scene-specific references, test images, batch candidates, and selected results? Which should be kept for reuse?
+
+Character pipelines already have the mechanims to find and refer to the images they need to complete their runs, so scene selection is the primary consideration. Generally we have character/phases in a costumes, NPCs, and monsters as Subjects. The subjects may have Props, and scenes have Backdrops.
+
+For non-Character Subjects, they will often start out as "one-shots" but can become recurring.
+- Images used in scenes should be tagged so we can know all images for a particiular scene, and we can see what scenes any particular image is in.
+- Images should also be associated with a "Scene Element" to facilitate grouping images related to one subject or prop, etc. Changes to the scene builder will be made to allow adding an existing Scene Element to a new scene.
+- In the local image mode, generally we will have a set of candidate images, one of which is promoted to locked. The locked image should be stored in the library proper. The candidates... ?? 
+
+### Universe Abstraction Layer
+
+Add a top-level organization for collections of related characters and scenes. Store the art style and other shared image-generation parameters at this level. Each Universe is intended to be a complete library unto itself.
+
+A Universe is fully independent. If there happen to be assets in one Universe that wanted in another, that asset can be imported just as any other image source. The UI does not need to support this option directly - one would simply save an image from one universe to a file, then switch to the other universe and add it. No linkage between them.
+
+Canonical Art Style and the dialog style for scenes are right now the main universal settings I have in mind. There should not be a provision to override these in characters, costumes, or scenes. These are forward looking changes. It is an aethetic decision of the operator on how to address previously generated images. No marking of previous images as "stale" - it should be entirely untracked.
 
 ## Local Image Generation
 
-Main difference here is that local image generation will largely be producing single "test" images for prompt refinement, and then running batches of several images from which to evaluate and pick
+Make local image generation the primary workflow. The expected pattern is to generate single test images while refining a prompt, then generate a batch of candidates to evaluate and select from.
+
+**Questions:**
+
+- Does "primary local" mean local by default with remote generation still available, or a fully local workflow? If remote generation remains, what role should it serve?
+- Is evaluation and selection primarily manual, or should existing automated quality checks help filter or rank candidates? What information from an accepted result should remain available to support later refinement or regeneration?
 
 ## UI
 
-The FastAPI pages seem primitive and are not doing responsive design very well. Compare/contrast other technology to provide a modern UI experience. The UI still will use Python calls to do all the back end work.
+The current dashboard feels primitive and does not adapt well to different screen sizes. Research ways to provide a more usable, modern interface, including improvements to the current approach and alternative dashboard technologies. The backend work will continue to be handled by Python services.
+
+There are two related goals: responsive layout and responsiveness during long-running work. The UI should hand tasks to Python services asynchronously and remain usable while those tasks run. The method for receiving progress and results is still open for research.
+
+**Questions:**
+
+- Which devices and screen sizes should the UI serve, and should they all support the same workflows?
+- Which everyday interactions most need improvement, such as scene editing, reference selection, comparing candidates, or monitoring jobs? These should guide technology research before a replacement is chosen.
 
 ## Automation
 
-Continue the "Batch Status" idea to manage local resources. It is expected that there will be a lot of background activity through AI_Proxy that will need to be run asynchronously with no guarantee Zet or the harverster is always running.
+Continue the "Batch Status" idea to manage local resources and track background work. Substantial activity is expected through AI_Proxy, with no guarantee that Zet or the harvester will be running continuously. Clarify the desired behavior when these components stop or restart before deciding how to coordinate them.
 
-## 'Universe' abstration layer
+**Questions:**
 
-Add a top level organization to the library in which to keep collections of related characters and scenes. Art style and other global parameters for image generation within that "universe" are stored here. Each Universe is a complete library unto itself.
+- When Zet or the harvester is closed, should submitted work continue, wait, or stop? On reopening, what should happen to unfinished jobs and completed results awaiting collection?
+- How much control should the user have over competing work: choosing priorities, pausing batches, cancelling jobs, or reserving resources for interactive tests?
 
-# Backwards Compatibility
+## Backwards Compatibility and Transition
 
-Not a requriement. Existing character and costume templates will be copied into the new library structure and modified as the new template format takes shape. Also many scenes will be copied over initially and modified as the new scene structure and methods take shape. But the existing Zet library will remain as it is.
+Backwards compatibility is not a requirement. Existing character and costume templates will be copied into the new library structure and adapted as the new format takes shape. Many scenes will also be copied and adapted as the new scene structure and workflow develop. The existing Zet library will remain as it is.
 
-There should be NO PROVISIONS for handling an old template or image tag. A clean break so we have clean code.
+There should be no runtime provisions for handling old template formats or image tags. Bringing selected content into V5 means converting it to the new conventions, not supporting the old conventions in V5. The goal is a clean break and clean code.
 
 This project is starting out in the Zet_v5 branch of Zet and will eventually be merged into main. The main branch is available for reference here: C:\Users\Joe\Projects\Zet
+
+**Questions:**
+
+- Is manual adaptation of copied content sufficient, or should one-time conversion assistance be considered separately from runtime compatibility?
+- After V5 merges into main, is the old library intended only as a preserved archive, or should a separate older Zet version remain usable with it?
