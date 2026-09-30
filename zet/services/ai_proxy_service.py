@@ -23,6 +23,7 @@ from zet.services.chatgpt_prompt_contract import (
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.scene_render_compiler import validate_scene_render_ir
+from zet.services.pipeline_compiler_support import with_universe_art_style
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
@@ -193,6 +194,9 @@ class AIProxyService:
         return self.ai_proxy_path_service.file_proxy_client.create_staging(ask_id)
 
     def _publish_ask_folder(self, path: Path, ask_id: str, worker_type: str) -> Path:
+        manifest = self._read_json_if_exists(path / "ask_manifest.json")
+        manifest["universe_id"] = str(getattr(self.path_service.config, "universe_id", "Moonsea"))
+        self._write_json_atomic(path / "ask_manifest.json", manifest)
         if worker_type == "manual_chatgpt_render":
             ready = self.ai_proxy_path_service.manual_ask_path(ask_id)
             manifest = self._read_json_if_exists(path / "ask_manifest.json")
@@ -693,6 +697,7 @@ class AIProxyService:
         image_generation: str | None = None,
         reference_files: list[dict] | None = None,
         prompt_text_override: str | None = None,
+        scene_render_ir_override: dict | None = None,
     ) -> Path:
         self._ensure_queue_dirs()
         submitted_prompt = prompt_text_override if prompt_text_override is not None else prompt_path.read_text(encoding="utf-8")
@@ -726,10 +731,9 @@ class AIProxyService:
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
         self._write_text_atomic(ask_path / prompt_path.name, submitted_prompt)
         if scene_render_ir_path is not None:
-            self._write_text_atomic(
-                ask_path / scene_render_ir_path.name,
-                scene_render_ir_path.read_text(encoding="utf-8"),
-            )
+            ir_text = (json.dumps(scene_render_ir_override, indent=2, ensure_ascii=False) + "\n"
+                       if scene_render_ir_override is not None else scene_render_ir_path.read_text(encoding="utf-8"))
+            self._write_text_atomic(ask_path / scene_render_ir_path.name, ir_text)
         return self._publish_ask_folder(ask_path, ask_manifest["ask_id"], "local_image_render")
 
     def stage_scene_local_render_ask(
@@ -757,6 +761,20 @@ class AIProxyService:
         layout_backend = str(getattr(self.path_service.config, "local_render_layout_backend", "forge_couple_basic"))
         brief_path = workspace / "Local_Render_Brief.json"
         brief = self._read_json_if_exists(brief_path)
+        if selected_backend == "stable_matrix":
+            scene_ir_path = workspace / "Scene_Local_Render_IR.json"
+            if not scene_ir_path.is_file():
+                scene_ir_path = workspace / "Scene_Render_IR.json"
+            if scene_ir_path.is_file():
+                from zet.services.scene_render_compiler import local_render_brief
+                scene_ir = with_universe_art_style(
+                    json.loads(scene_ir_path.read_text(encoding="utf-8")),
+                    self.path_service.config.base_library_path,
+                )
+                brief = local_render_brief(scene_ir, {
+                    "strict_primary_subject_count": self.path_service.config.local_render_strict_primary_subject_count,
+                    "forge_couple_debug_base_pass": self.path_service.config.local_render_forge_couple_debug_base_pass,
+                })
         if selected_backend == "stable_matrix" and layout_backend == "forge_couple_basic" and not brief:
             raise FileNotFoundError(f"No valid local render brief was found: {brief_path}")
         canvas = brief.get("canvas") if isinstance(brief.get("canvas"), dict) else {}
@@ -798,14 +816,20 @@ class AIProxyService:
         elif selected_backend == "stable_matrix" and layout_backend not in {"forge_couple_basic", "plain_txt2img"}:
             raise AIProxyServiceError(f"Unsupported local render layout backend: {layout_backend}")
 
-        ir_path = workspace / "Scene_Render_IR.json"
+        ir_path = workspace / "Scene_Local_Render_IR.json"
+        if not ir_path.exists():
+            ir_path = workspace / "Scene_Render_IR.json"
         if selected_backend == "comfyui" and not ir_path.exists():
             raise FileNotFoundError("Scene render IR is missing. Recompile the scene in Scene Builder before generating a local image.")
+        local_ir = None
+        if selected_backend == "comfyui":
+            local_ir = json.loads(ir_path.read_text(encoding="utf-8"))
+            validate_scene_render_ir(local_ir)
+            local_ir = with_universe_art_style(local_ir, self.path_service.config.base_library_path)
         qwen_prompt = None
         selected_model = checkpoint
         if qwen_selected:
-            ir = json.loads(ir_path.read_text(encoding="utf-8"))
-            validate_scene_render_ir(ir)
+            ir = local_ir
             if len(ir.get("image_inputs") or []) > 10:
                 raise AIProxyServiceError("Qwen Image 2.1 supports at most ten scene reference images.")
             qwen_prompt = compile_qwen_scene_prompt(ir) if qwen_prompt_override is None else qwen_prompt_override.strip()
@@ -833,6 +857,7 @@ class AIProxyService:
             render_preset=profile_name,
             image_generation=selected_backend,
             prompt_text_override=qwen_prompt,
+            scene_render_ir_override=local_ir,
         )
 
     def stage_prompt_inspection_render_ask_if_enabled(self, character: str, phase: str, asset_id: int) -> Path | None:

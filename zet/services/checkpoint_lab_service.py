@@ -157,6 +157,8 @@ class CheckpointLabService:
             },
             sections,
         )
+        from zet.services.pipeline_compiler_support import with_universe_art_style
+        ir = with_universe_art_style(ir, self.app.config.base_library_path)
         ir["source"]["scene_json_path"] = str(scene_path)
         ir["source"]["story_settings_path"] = str(settings_path)
         return ir

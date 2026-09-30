@@ -62,6 +62,9 @@ class Config:
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
     scene_candidate_sources: tuple[SceneCandidateSourceConfig, ...] = ()
+    universe_id: str = "Moonsea"
+    universe_is_legacy: bool = True
+    library_container_path: str = ""
 
 
 class ConfigService:

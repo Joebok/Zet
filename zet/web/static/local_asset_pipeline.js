@@ -277,6 +277,21 @@
     return button;
   }
 
+  function addRecompileOption(host, id = "") {
+    const label = document.createElement("label");
+    label.className = "local-pipeline-recompile-option";
+    const text = document.createElement("span");
+    text.textContent = "Recompile";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.recompile = "true";
+    if (id) input.id = id;
+    label.append(text, input);
+    label.addEventListener("click", (event) => event.stopPropagation());
+    host.append(label);
+    return input;
+  }
+
   function renderSelectedViews(run) {
     const host = $("selected");
     host.replaceChildren();
@@ -399,6 +414,7 @@
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact";
       const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
+      addRecompileOption(viewActions);
       addButton(viewActions, "Re-run view", "rerun-view", { disabled: busy(run) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || !viewReady || !candidates.some((item) => ["FAILED", "GATE_REJECTED"].includes(item.status)), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
@@ -455,7 +471,10 @@
         for (const { reference, index } of remainingReferences) {
           const figure = document.createElement("figure");
           const caption = document.createElement("figcaption");
-          caption.textContent = (reference.label || reference.role || "Reference image").replaceAll("_", " ");
+          const imageIndex = reference.image_index || index + 1;
+          const promptRole = reference.prompt_role || reference.role || "reference";
+          const label = reference.label || reference.tag || "Reference image";
+          caption.textContent = `Image ${imageIndex} — ${promptRole}: ${label}`;
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
@@ -979,9 +998,13 @@
     }
     if (action === "rerun" || action === "rerun-view") {
       const refreshSources = $("rerun-refresh-sources").checked;
-      const label = refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
-      if (!window.confirm(action === "rerun" ? `Re-run this batch and ${label}? This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?`)) return;
-      await perform(action, view, candidateId, { refresh_sources: refreshSources });
+      const recompile = action === "rerun"
+        ? $("rerun-recompile").checked
+        : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
+      const label = recompile || refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
+      const compileLabel = recompile ? " Recompile prompts from current templates and coding." : "";
+      if (!window.confirm(action === "rerun" ? `Re-run this batch and ${label}?${compileLabel} This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?${compileLabel}`)) return;
+      await perform(action, view, candidateId, { refresh_sources: refreshSources, recompile });
       return;
     }
     if (["delete", "rerun-failed", "unselect", "unlock"].includes(action)) {

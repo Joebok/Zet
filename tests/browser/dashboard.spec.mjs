@@ -25,6 +25,23 @@ function delayedGate(delayMs = 120_000) {
   return { promise, release };
 }
 
+test("universe pages create and save canonical art style", async ({ page }) => {
+  await openPage(page, "universes");
+  await expect(page.locator("#universe-list")).toContainText("Moonsea");
+  await page.getByRole("button", { name: "New Universe" }).click();
+  await expect(page.locator("#universe-create-page")).toHaveClass(/active/);
+  await page.locator("#universe-create-name").fill("Test Realm");
+  await page.locator("#universe-create-art-style").fill("Painterly fantasy");
+  await page.getByRole("button", { name: "Create Universe" }).click();
+  await expect(page.locator("#universe-settings-title")).toHaveText("Test Realm Settings");
+  await expect(page.locator("#universe-settings-art-style")).toHaveValue("Painterly fantasy");
+  await page.locator("#universe-settings-art-style").fill("Updated painterly fantasy");
+  await page.getByRole("button", { name: "Save Settings" }).click();
+  await expect(page.locator("#universe-settings-message")).toHaveText("Settings saved.");
+  await page.getByRole("button", { name: "Back to Universes" }).click();
+  await expect(page.locator("#universe-list")).toContainText("Updated painterly fantasy");
+});
+
 test("navigation cancels a delayed review load and ignores its late response", async ({ page }) => {
   await openPage(page, "stories");
   let markStarted;

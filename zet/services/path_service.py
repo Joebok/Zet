@@ -41,6 +41,26 @@ class PathService:
         """Return a path inside the configured library root."""
         return Path(self.config.base_library_path).joinpath(*parts)
 
+    def pipeline_candidates_path(self, *parts: str) -> Path:
+        """Return durable candidate work beneath this universe."""
+        return self.library_path("PipelineCandidates", *parts)
+
+    def state_path(self, *parts: str) -> Path:
+        """Return private workflow metadata beneath this universe."""
+        return self.library_path("_state", *parts)
+
+    def entity_library_root(self) -> Path:
+        """Return the root for the entity-centered image library."""
+        return Path(self.config.base_library_path).resolve()
+
+    def entity_library_database_path(self) -> Path:
+        """Return the authoritative SQLite database for the entity-centered image library."""
+        return self.entity_library_root() / "catalog.sqlite3"
+
+    def entity_library_images_path(self) -> Path:
+        """Return ID-addressed image blob storage for the entity-centered image library."""
+        return self.entity_library_root() / "images"
+
     def _path_parts(self, path: str | Path) -> tuple[str, ...]:
         """Return path parts while accepting stored POSIX or Windows separators."""
         text = str(path)
@@ -53,8 +73,12 @@ class PathService:
         parts = self._path_parts(path)
         if parts and parts[0].endswith(":\\"):
             library_name = Path(self.config.base_library_path).name
+            container_name = Path(getattr(self.config, "library_container_path", "") or self.config.base_library_path).name
             for index, part in enumerate(parts):
                 if part == library_name:
+                    return self.library_path(*parts[index + 1:])
+            for index, part in enumerate(parts):
+                if part == container_name:
                     return self.library_path(*parts[index + 1:])
             return Path(*parts)
         raw_path = Path(path)
@@ -62,7 +86,7 @@ class PathService:
             return raw_path
         if parts and parts[0] == "_Lib":
             return self.library_path(*parts[1:])
-        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog", "Stories"}:
+        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog", "Stories", "PipelineCandidates", "images"}:
             return self.library_path(*parts)
         return self.project_root.joinpath(*parts)
 
@@ -114,12 +138,12 @@ class PathService:
         return self.character_asset_path(character, phase) / "IdentityKeys" / f"{identity_key_id}.png"
 
     def auxiliary_resource_root(self) -> Path:
-        """Return the global auxiliary resource folder."""
-        return Path(self.config.base_character_path).parent / "AuxiliaryResources"
+        """Return the compatibility image folder for legacy auxiliary resources."""
+        return self.library_path("_state", "ResourceImages")
 
     def auxiliary_resource_inventory_path(self) -> Path:
         """Return the global auxiliary resource inventory path."""
-        return self.auxiliary_resource_root() / "AuxiliaryResources.json"
+        return self.library_path("_state", "AuxiliaryResourceIndex.json")
 
     def auxiliary_resource_inventory_default_path(self) -> Path:
         """Return the source-controlled default auxiliary resource inventory."""
@@ -131,7 +155,7 @@ class PathService:
 
     def auxiliary_resource_folder_path(self, resource_id: str) -> Path:
         """Return one auxiliary resource folder path."""
-        return self.auxiliary_resource_root() / "Images" / str(resource_id or "").strip()
+        return self.library_path("_state", "ResourceTemplates", str(resource_id or "").strip())
 
     def auxiliary_resource_template_source_path(self) -> Path:
         """Return the shared auxiliary resource template path."""
@@ -144,7 +168,8 @@ class PathService:
 
     def image_catalog_root(self) -> Path:
         """Return the logical image-catalog metadata folder."""
-        return Path(self.config.base_library_path) / "ImageCatalog"
+        state_root = getattr(self.config, "universe_is_legacy", True) is False
+        return Path(self.config.base_library_path) / ("_state" if state_root else "") / "ImageCatalog"
 
     def image_catalog_inventory_path(self) -> Path:
         """Return the logical image-catalog overlay path."""
@@ -215,7 +240,9 @@ class PathService:
 
     def story_pipeline_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the pipeline work folder for one story scene."""
-        return self.library_path("Pipelines", "Stories", story_slug, scene_slug)
+        if getattr(self.config, "universe_is_legacy", True):
+            return self.library_path("Pipelines", "Stories", story_slug, scene_slug)
+        return self.pipeline_candidates_path("Stories", story_slug, scene_slug)
 
     def scene_locked_image_path(self, story_slug: str, scene_slug: str) -> Path:
         """Return the published image path for one story scene."""

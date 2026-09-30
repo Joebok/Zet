@@ -175,12 +175,11 @@ class StoryService:
 
     def _element_source_sections(self, element: dict, catalog_by_tag: dict | None = None) -> dict:
         """Resolve selected-image compiler text, falling back to the canonical element source."""
-        references = [
-            item for item in element.get("reference_images") or []
-            if isinstance(item, dict) and str(item.get("tag") or "").strip()
-        ]
-        if references and self.image_catalog_service is not None:
-            tag = str(references[0].get("tag") or "")
+        references = [item for item in element.get("reference_images") or [] if isinstance(item, dict)]
+        tagged_references = [item for item in references if str(item.get("tag") or "").strip()]
+        if tagged_references and self.image_catalog_service is not None:
+            primary = next((item for item in tagged_references if item.get("primary_prompt_source")), tagged_references[0])
+            tag = str(primary.get("tag") or "")
             catalog_item = (
                 catalog_by_tag.get(tag)
                 if catalog_by_tag is not None
@@ -201,6 +200,38 @@ class StoryService:
                     "identity_status": catalog_item.identity_status,
                     "costume_status": catalog_item.costume_status,
                 }
+        library_references = [item for item in references if str(item.get("asset_id") or item.get("reference_key") or "").strip()]
+        if library_references and self.story_reference_service.entity_library_service is not None:
+            primary = next((item for item in library_references if item.get("primary_prompt_source")), library_references[0])
+            asset_id = str(primary.get("asset_id") or "").strip()
+            reference_key = str(primary.get("reference_key") or "").strip()
+            if asset_id or reference_key:
+                try:
+                    asset = (
+                        self.story_reference_service.entity_library_service.get_asset(asset_id)
+                        if asset_id
+                        else self.story_reference_service.entity_library_service.resolve_reference(reference_key)
+                    )
+                    descriptors = self.story_reference_service.entity_library_service.effective_descriptors(
+                        asset["asset_id"],
+                        str(primary.get("set_id") or asset.get("reference_set_id") or ""),
+                    )
+                    by_type = {item["descriptor_type"]: item["text"] for item in descriptors}
+                    canonical = self._canonical_element_source_sections(element)
+                    identity = "\n".join(
+                        text for text in (by_type.get("prompt_identity", ""), by_type.get("prompt_object", ""), by_type.get("prompt_background", ""), by_type.get("human_description", "")) if text
+                    ) or str(canonical.get("identity_preservation_core") or "")
+                    return {
+                        **canonical,
+                        "identity_preservation_core": identity,
+                        "identity_preservation_costume": by_type.get("prompt_costume", "") or str(canonical.get("identity_preservation_costume") or ""),
+                        "identity_source": f"Library/assets/{asset['asset_id']}",
+                        "costume_source": f"Library/assets/{asset['asset_id']}",
+                        "library_asset_id": asset["asset_id"],
+                        "library_checksum": asset["checksum"],
+                    }
+                except Exception as exc:
+                    raise StoryServiceError(str(exc)) from exc
         return self._canonical_element_source_sections(element)
 
     def _resolve_scene_element_sources(self, data: dict, *, allow_incomplete_descriptions: bool = False) -> dict:
@@ -230,6 +261,15 @@ class StoryService:
                 ):
                     raise StoryServiceError(
                         f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs costume description text."
+                    )
+                if (
+                    not allow_incomplete_descriptions
+                    and sections.get("library_asset_id")
+                    and not sections.get("identity_preservation_core")
+                    and not str(element.get("fallback_visual_description") or "").strip()
+                ):
+                    raise StoryServiceError(
+                        f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs prompt identity or object description text."
                     )
                 element["resolved_source_sections"] = sections
                 resolved[str(element.get("id") or "")] = sections
@@ -778,8 +818,9 @@ class StoryService:
         new_render_prefix = f"{{{{SCENE_RENDER:{target_story}:{safe_scene_slug}:"
         old_story_rel = f"Stories/{source_story}"
         new_story_rel = f"Stories/{target_story}"
-        old_pipeline_rel = f"Pipelines/Stories/{source_story}/{safe_scene_slug}"
-        new_pipeline_rel = f"Pipelines/Stories/{target_story}/{safe_scene_slug}"
+        library_root = Path(self.path_service.config.base_library_path)
+        old_pipeline_rel = source_pipeline.relative_to(library_root).as_posix()
+        new_pipeline_rel = target_pipeline.relative_to(library_root).as_posix()
         replacements = [
             (old_tag, new_tag),
             (old_render_prefix, new_render_prefix),
@@ -1356,14 +1397,22 @@ class StoryService:
                 item["reference_images"].append({"tag": item.pop("image_tag"), "roles": ["visual reference"], "ignore": ["source pose", "source background", "source framing"], "notes": ""})
             normalized_references = []
             for reference in item["reference_images"]:
-                if not isinstance(reference, dict) or not str(reference.get("tag") or "").strip():
+                if not isinstance(reference, dict):
                     continue
                 normalized_reference = copy.deepcopy(reference)
-                normalized_reference["tag"] = str(normalized_reference["tag"]).strip()
+                normalized_reference["tag"] = str(normalized_reference.get("tag") or "").strip()
+                normalized_reference["asset_id"] = str(normalized_reference.get("asset_id") or "").strip()
+                normalized_reference["reference_key"] = str(normalized_reference.get("reference_key") or "").strip()
+                normalized_reference["set_id"] = str(normalized_reference.get("set_id") or "").strip()
+                if sum(bool(normalized_reference[key]) for key in ("tag", "asset_id", "reference_key")) != 1:
+                    continue
                 normalized_reference.setdefault("roles", ["visual reference"])
+                normalized_reference.setdefault("primary_prompt_source", False)
                 normalized_reference.setdefault("ignore", ["source pose", "source background", "source framing"])
                 normalized_reference.setdefault("notes", "")
                 normalized_references.append(normalized_reference)
+            if normalized_references and not any(reference.get("primary_prompt_source") for reference in normalized_references):
+                normalized_references[0]["primary_prompt_source"] = True
             item["reference_images"] = normalized_references
             item.pop("identity_prompt", None)
             if item.get("default_visual_description") and not item.get("fallback_visual_description"):
@@ -1530,15 +1579,18 @@ class StoryService:
             if element_type not in {"Character", "Monster", "Prop", "Backdrop"}:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid element_type {element_type}.")
             has_source = element.get("resource_type") in {"Character", "Person", "Place", "Object"}
-            has_reference = any(str(item.get("tag") or "").strip() for item in element.get("reference_images") or [] if isinstance(item, dict))
+            has_reference = any(
+                str(item.get("tag") or item.get("asset_id") or item.get("reference_key") or "").strip()
+                for item in element.get("reference_images") or [] if isinstance(item, dict)
+            )
             for reference in element.get("reference_images") or []:
                 if not isinstance(reference, dict):
                     warnings.append(f"Scene element {element_id or element.get('display_name')} has an invalid image reference record.")
                     continue
-                tag = str(reference.get("tag") or "").strip()
-                if tag and tag in seen_reference_tags:
-                    warnings.append(f"Image reference tag {tag} is assigned more than once; one numbered input will be used.")
-                seen_reference_tags.add(tag)
+                reference_identity = str(reference.get("tag") or reference.get("asset_id") or reference.get("reference_key") or "").strip()
+                if reference_identity and reference_identity in seen_reference_tags:
+                    warnings.append(f"Image reference {reference_identity} is assigned more than once; one numbered input will be used.")
+                seen_reference_tags.add(reference_identity)
             if not has_reference and not str(element.get("fallback_visual_description") or "").strip():
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has no image reference tag or fallback visual description.")
         for placement in data.get("placements") or []:

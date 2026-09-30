@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import shutil
+from types import SimpleNamespace
 from typing import Any
 
 from zet.services.atomic_file_service import write_json_atomic
@@ -21,7 +21,22 @@ class LocalAssetStoreService:
     """Store local selections next to experiment batches, separate from canonical assets."""
 
     def __init__(self, library_root: str | Path):
-        self.root = Path(library_root).resolve() / "Experiments" / "Character-Pipeline"
+        self.library_root = Path(library_root).resolve()
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
+        self._entity_library = None
+
+    def _publish(self, image: Path, *, character: str, phase: str, pipeline: str, checksum: str) -> dict[str, Any]:
+        if self._entity_library is None:
+            from zet.repositories.entity_library_repository import EntityLibraryRepository
+            from zet.services.entity_library_service import EntityLibraryService
+            from zet.services.path_service import PathService
+            paths = PathService(SimpleNamespace(base_library_path=str(self.library_root)), self.library_root)
+            repository = EntityLibraryRepository(paths.entity_library_database_path())
+            repository.initialize()
+            self._entity_library = EntityLibraryService(paths, repository)
+        return self._entity_library.register_locked_pipeline_image(
+            image, label=image.stem, pipeline=pipeline, character=character, phase=phase, checksum=checksum,
+        )
 
     @staticmethod
     def key(pipeline: str, view: str, qualifier: str = "") -> str:
@@ -38,7 +53,7 @@ class LocalAssetStoreService:
         return result
 
     def workspace_path(self, character: str, phase: str) -> Path:
-        return self.root / self._safe(character) / self._safe(phase) / "local_assets.json"
+        return self.library_root / "_state" / "LocalAssets" / self._safe(character) / self._safe(phase) / "local_assets.json"
 
     def _read(self, character: str, phase: str) -> dict[str, Any]:
         path = self.workspace_path(character, phase)
@@ -199,18 +214,13 @@ class LocalAssetStoreService:
             source = Path(str(record.get("image_path") or "")).resolve()
             if not source.is_file() or self._image_hash(source) != record.get("image_sha256"):
                 raise LocalAssetStoreError(f"Selected image for {key} is missing or has changed; review it again.")
-            locked_root = path.parent / "locked" / self._safe(pipeline)
-            if qualifier:
-                locked_root /= self._safe(qualifier)
-            locked_root /= self._safe(view)
-            locked_path = locked_root / f"{record['image_sha256'][:16]}_{source.name}"
-            locked_root.mkdir(parents=True, exist_ok=True)
-            if not locked_path.exists():
-                shutil.copy2(source, locked_path)
-            if self._image_hash(locked_path) != record["image_sha256"]:
-                raise LocalAssetStoreError(f"Could not verify immutable local image copy for {key}.")
+            try:
+                published = self._publish(source, character=character, phase=phase, pipeline=pipeline, checksum=record["image_sha256"])
+            except Exception as exc:
+                raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
+            locked_path = Path(published["image_path"])
             record.update({
-                "locked": True, "locked_image_path": str(locked_path),
+                "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": published["asset_id"],
                 "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 "lock_history": [*record.get("lock_history", []), {
                     "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -235,20 +245,21 @@ class LocalAssetStoreService:
                 if not image.is_file() or self._image_hash(image) != digest:
                     raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing or changed.")
                 key = self.key(pipeline, view, qualifier)
-                locked_root = path.parent / "locked" / self._safe(pipeline)
-                if qualifier:
-                    locked_root /= self._safe(qualifier)
-                locked_root /= self._safe(view)
-                locked_path = locked_root / f"{digest[:16]}_{image.name}"
-                staged.append((key, item, image, locked_path, digest))
+                staged.append((key, item, image, Path(), digest))
 
-            result = []
-            for key, item, image, locked_path, digest in staged:
-                locked_path.parent.mkdir(parents=True, exist_ok=True)
-                if not locked_path.exists():
-                    shutil.copy2(image, locked_path)
+            published_assets = []
+            for key, item, image, _locked_path, digest in staged:
+                try:
+                    published = self._publish(image, character=character, phase=phase,
+                                              pipeline=str(item["pipeline"]), checksum=digest)
+                except Exception as exc:
+                    raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
+                locked_path = Path(published["image_path"])
                 if self._image_hash(locked_path) != digest:
-                    raise LocalAssetStoreError(f"Could not verify immutable local image copy for {key}.")
+                    raise LocalAssetStoreError(f"Could not verify permanent image for {key}.")
+                published_assets.append((key, item, image, locked_path, digest, published["asset_id"]))
+            result = []
+            for key, item, image, locked_path, digest, catalog_asset_id in published_assets:
                 current = assets.get(key, {})
                 record = {
                     **current, "pipeline": str(item["pipeline"]), "view": str(item["view"]).upper(),
@@ -257,7 +268,7 @@ class LocalAssetStoreService:
                     "batch_name": str(item.get("batch_name") or ""),
                     "image_path": str(image), "image_sha256": digest,
                     "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
-                    "locked": True, "locked_image_path": str(locked_path),
+                    "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": catalog_asset_id,
                     "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                     "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 }

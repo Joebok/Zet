@@ -58,6 +58,18 @@ def _items(values: Any) -> list[dict[str, Any]]:
     return [item for item in values or [] if isinstance(item, dict)]
 
 
+def _reference_tag(reference: dict[str, Any]) -> str:
+    if _clean(reference.get("tag")):
+        return _clean(reference.get("tag"))
+    asset_id = _clean(reference.get("asset_id"))
+    if asset_id:
+        return f"{{{{LIB:ASSET:{asset_id}}}}}"
+    reference_key = _clean(reference.get("reference_key"))
+    if reference_key:
+        return f"{{{{LIB:REF:{reference_key}}}}}"
+    return ""
+
+
 def _lines(values: Any) -> list[str]:
     return [_clean(item) for item in values or [] if _clean(item)]
 
@@ -125,11 +137,12 @@ def compile_scene_render_ir(
     references = []
     for element in _items(scene_data.get("scene_elements")):
         for reference in _items(element.get("reference_images")):
-            if not _clean(reference.get("tag")):
+            tag = _reference_tag(reference)
+            if not tag:
                 continue
             references.append({
-                "id": f"ref_{element.get('id')}_{reference.get('tag')}",
-                "tag": reference.get("tag", ""),
+                "id": f"ref_{element.get('id')}_{tag}",
+                "tag": tag,
                 "applies_to_element_id": element.get("id", ""),
                 "roles": reference.get("roles", []),
                 "preserve": reference.get("preserve", []),
@@ -140,11 +153,12 @@ def compile_scene_render_ir(
     render_target = scene_data.get("_render_target") if isinstance(scene_data.get("_render_target"), dict) else {"id": "main", "label": "Full Scene", "kind": "main"}
     target_anchor = render_target.get("anchor") if isinstance(render_target.get("anchor"), dict) else {}
     for reference in _items(target_anchor.get("reference_images")):
-        if not _clean(reference.get("tag")):
+        tag = _reference_tag(reference)
+        if not tag:
             continue
         references.append({
-            "id": f"ref_target_{target_anchor.get('id')}_{reference.get('tag')}",
-            "tag": reference.get("tag", ""),
+            "id": f"ref_target_{target_anchor.get('id')}_{tag}",
+            "tag": tag,
             "applies_to_element_id": target_anchor.get("id", ""),
             "roles": reference.get("roles", []),
             "preserve": reference.get("preserve", []),
@@ -543,7 +557,7 @@ def _count_word(value: int) -> str:
 
 
 def _normalized_view(element: dict[str, Any], placement: dict[str, Any]) -> str:
-    references = " ".join(_clean(item.get("tag")) for item in _items(element.get("reference_images")))
+    references = " ".join(_reference_tag(item) for item in _items(element.get("reference_images")))
     sources = [element.get("element_visual_override"), placement.get("placement_notes"), references]
     patterns = [
         (r"back[\s_-]*right(?:\s+|[-_/])*(?:3/4|three.quarter)", "back-right three-quarter"),
@@ -739,7 +753,7 @@ def build_forge_couple_plan(ir: dict[str, Any], settings: dict[str, Any] | None 
         f"{backdrop_text} spans the background" if backdrop_text else "",
         clean_prompt_sentence(environment.get("location")),
         clean_prompt_sentence(environment.get("lighting")),
-        clean_prompt_sentence(ir.get("style", {}).get("art_style")),
+        clean_prompt_sentence(ir.get("style", {}).get("canonical_art_style") or ir.get("style", {}).get("art_style")),
     ])
     advanced = bool(backdrops and len(ordered) >= 2)
     plan = {
@@ -1279,6 +1293,7 @@ def local_render_brief(ir: dict[str, Any], settings: dict[str, Any] | None = Non
         ]) if is_element_subscene else "",
         *anchor_parts,
         clean_prompt_sentence(ir.get("environment", {}).get("weather_or_atmosphere")),
+        clean_prompt_sentence((ir.get("style") or {}).get("canonical_art_style")),
     ]
     regions = []
     subject_prompt_lines: list[tuple[str, str]] = []

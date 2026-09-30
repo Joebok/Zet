@@ -80,7 +80,7 @@ class CostumeService:
             return
         old_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", old_name).strip("_") or "Costume"
         new_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", new_name).strip("_") or "Costume"
-        experiment_root = self.path_service.library_path("Experiments", "Character-Pipeline", character, phase)
+        experiment_root = self.path_service.pipeline_candidates_path("Character-Pipeline", character, phase)
         old_workspace = experiment_root / "Costume-Dressing" / old_folder
         new_workspace = experiment_root / "Costume-Dressing" / new_folder
         old_locked = experiment_root / "locked" / "Costume-Dressing" / old_folder

@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260926-gate-prompt-dialog">
+  <link rel="stylesheet" href="/static/zet.css?v=20260930-universes">
 </head>
 <body>
   <header class="app-header">
@@ -26,6 +26,10 @@
       <img id="header-fitment-preview" alt="Locked front-left three-quarter Head-Image" hidden>
     </div>
     <div class="context-controls">
+      <label class="universe-context">
+        Universe
+        <select id="universe-select" aria-label="Universe"></select>
+      </label>
       <div id="character-context" class="workspace-context">
         <label>
           Character
@@ -65,6 +69,7 @@
           <button id="new-phase" type="button" data-workspace-item="character">Phase</button>
           <button id="new-story" type="button" data-workspace-item="story">Story</button>
           <button id="new-scene" type="button" data-workspace-item="story">Scene</button>
+          <button id="new-universe" class="tab" data-page="universe-create">Universe</button>
         </div>
       </div>
     </div>
@@ -142,6 +147,7 @@
           <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
+          <button class="tab workflow-tab" data-page="universes">Universes</button>
           <button id="toolbar-local-character-overview" type="button">Local Character Overview</button>
           <button id="toolbar-gate-test-rig" type="button">Gate Test Rig</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
@@ -160,6 +166,28 @@
   </nav>
 
   <main>
+    <section id="universes-page" class="page">
+      <div class="page-title-row"><h1>Universes</h1><button class="primary-action tab" type="button" data-page="universe-create">New Universe</button></div>
+      <div id="universes-message" class="action-message" hidden></div>
+      <div id="universe-list" class="control-panel" aria-live="polite"></div>
+    </section>
+    <section id="universe-create-page" class="page">
+      <div class="page-title-row"><h1>New Universe</h1></div>
+      <form id="universe-create-form" class="control-panel">
+        <label>Universe Name<input id="universe-create-name" name="name" required maxlength="80" autocomplete="off"></label>
+        <label>Canonical Art Style<textarea id="universe-create-art-style" name="canonical_art_style" rows="4"></textarea></label>
+        <div id="universe-create-message" class="action-message" hidden></div>
+        <div class="button-row compact"><button class="primary-action" type="submit">Create Universe</button><button class="tab" type="button" data-page="universes">Cancel</button></div>
+      </form>
+    </section>
+    <section id="universe-settings-page" class="page">
+      <div class="page-title-row"><h1 id="universe-settings-title">Universe Settings</h1><button class="tab" type="button" data-page="universes">Back to Universes</button></div>
+      <div id="universe-settings-message" class="action-message" hidden></div>
+      <form id="universe-settings-form" class="control-panel">
+        <label>Canonical Art Style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
+        <div class="button-row compact"><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
+      </form>
+    </section>
     <section id="onboarding-page" class="page">
       <div class="page-title-row">
         <h1>Character Overview</h1>
@@ -247,6 +275,7 @@
             <button id="local-pipeline-start" class="primary-action" type="button" disabled>Start batch</button>
             <button id="local-pipeline-stop" class="danger-action" type="button" hidden>Stop</button>
             <button id="local-pipeline-rerun" type="button" disabled>Re-run batch</button>
+            <label class="local-pipeline-recompile-option"><span>Recompile</span><input id="local-pipeline-rerun-recompile" type="checkbox"></label>
             <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
             <a id="local-pipeline-prompt-improvement-package" hidden download>Download Prompt Improvement Package</a>
             <button id="local-pipeline-proceed" type="button" hidden disabled>Run remaining</button>
@@ -483,8 +512,88 @@
       <div class="page-title-row">
         <h1>Image Inventory</h1>
       </div>
+      <div class="entity-library-layout">
+        <div class="entity-library-mode-heading">
+          <button id="entity-library-back" class="text-action" type="button" hidden>← Back to images</button>
+        </div>
+        <aside class="entity-library-sidebar">
+          <section class="control-panel">
+            <h2>Find images</h2>
+            <label>Search<input id="entity-library-search" type="search" placeholder="Name, entity, set, or facet"></label>
+            <label>Entity<select id="entity-library-filter-entity"></select></label>
+            <label>Entity type<select id="entity-library-filter-type"><option value="">All types</option></select></label>
+            <label>Variant<select id="entity-library-filter-variant"></select></label>
+            <label>Reference set<select id="entity-library-filter-set"></select></label>
+            <label>Facet<select id="entity-library-filter-facet"></select></label>
+            <label>Status<select id="entity-library-filter-status"><option value="">All statuses</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
+            <label>Origin<select id="entity-library-filter-origin"><option value="">All origins</option><option value="import">Imported</option><option value="pipeline">Locked pipeline</option></select></label>
+            <button id="entity-library-refresh" class="primary-action" type="button">Search library</button>
+            <div id="entity-library-count" class="status-text" role="status"></div>
+          </section>
+          <section class="control-panel">
+            <h2>Add image</h2>
+            <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+            <div id="entity-library-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste an image to add to the library"><p>Or click here and paste an image</p></div>
+            <label>Image name<input id="entity-library-new-label" placeholder="Required"></label>
+            <button id="entity-library-import" type="button" disabled>Add to library</button>
+            <div id="entity-library-import-status" class="status-text" role="status"></div>
+          </section>
+          <section class="control-panel">
+            <h2>Create entity</h2>
+            <label>Name<input id="entity-library-entity-name"></label>
+            <label>Type<select id="entity-library-entity-type"><option value="character">Character</option><option value="person">Person</option><option value="creature">Creature</option><option value="group">Group</option><option value="location">Location</option><option value="structure">Structure</option><option value="prop">Prop</option><option value="costume">Costume</option><option value="symbol">Symbol</option></select></label>
+            <button id="entity-library-entity-create" type="button">Create entity</button>
+            <label>Variant owner<select id="entity-library-variant-entity"></select></label>
+            <label>Variant name<input id="entity-library-variant-name" placeholder="Adult, raven form, etc."></label>
+            <label>Variant type<select id="entity-library-variant-type"><option value="life_stage">Life stage</option><option value="form">Form</option><option value="state">State</option><option value="version">Version</option></select></label>
+            <button id="entity-library-variant-create" type="button">Create variant</button>
+            <label>Relationship source<select id="entity-library-relation-source"></select></label>
+            <label>Relationship<select id="entity-library-relation-type"><option value="part_of">Part of</option><option value="variant_of">Variant of</option><option value="associated_with">Associated with</option></select></label>
+            <label>Target<select id="entity-library-relation-target"></select></label>
+            <button id="entity-library-relation-create" type="button">Link entities</button>
+          </section>
+          <section class="control-panel">
+            <h2>Create reference set</h2>
+            <label>Name<input id="entity-library-set-name"></label>
+            <label>Purpose<input id="entity-library-set-type" placeholder="identity, costume, prop detail..."></label>
+            <button id="entity-library-set-create" type="button">Create set</button>
+          </section>
+          <section class="control-panel">
+            <h2>Shared prompt descriptor</h2>
+            <label>Owner type<select id="entity-library-descriptor-owner-type"><option value="entity">Entity</option><option value="variant">Variant</option><option value="set">Reference set</option></select></label>
+            <label>Owner<select id="entity-library-descriptor-owner"></select></label>
+            <label>Descriptor type<select id="entity-library-descriptor-type"><option value="prompt_identity">Prompt identity</option><option value="prompt_costume">Prompt costume</option><option value="prompt_object">Prompt object</option><option value="prompt_background">Prompt background</option><option value="negative_guidance">Negative guidance</option><option value="human_description">Human description</option><option value="selection_notes">Selection notes</option></select></label>
+            <label>Text<textarea id="entity-library-descriptor-text"></textarea></label>
+            <button id="entity-library-descriptor-save" type="button">Save shared descriptor</button>
+          </section>
+        </aside>
+        <section class="control-panel entity-library-results-panel">
+          <div class="image-catalog-results-heading"><h2>Images</h2></div>
+          <div id="entity-library-results" class="image-catalog-grid"></div>
+        </section>
+        <aside class="review-actions entity-library-editor">
+          <h2 id="entity-library-editor-title">Select an image</h2>
+          <img id="entity-library-preview" class="image-preview fullscreen-image-trigger" alt="Selected library image" hidden>
+          <label>Name<input id="entity-library-edit-label" disabled></label>
+          <label>Notes<textarea id="entity-library-edit-notes" disabled></textarea></label>
+          <label>Status<select id="entity-library-edit-status" disabled><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
+          <label>Entity links<select id="entity-library-edit-entities" multiple size="6" disabled></select><small>Use Ctrl or Command to select more than one entity.</small></label>
+          <label>Reference sets<select id="entity-library-edit-sets" multiple size="5" disabled></select><small>Group images of the same subject or purpose; use Ctrl or Command to select multiple sets.</small></label>
+          <label>Facets<textarea id="entity-library-edit-facets" placeholder="view:front, framing:object_detail" aria-describedby="entity-library-facets-help" disabled></textarea><small id="entity-library-facets-help">Comma-separated namespace:value pairs, for example view:front, view:left_profile, framing:object_detail. Views are searchable metadata; select the rendered view with tagged template lines.</small></label>
+          <label>Free tags<textarea id="entity-library-edit-tags" placeholder="necklace, earrings" disabled></textarea><small>Comma-separated search words or phrases; no namespace needed.</small></label>
+          <label>Prompt identity<textarea id="entity-library-edit-identity" disabled></textarea></label>
+          <label>Prompt costume<textarea id="entity-library-edit-costume" disabled></textarea></label>
+          <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
+          <button id="entity-library-save" class="primary-action" type="button" disabled>Save image</button>
+          <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
+          <div id="entity-library-replacement-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste a replacement image"><p>Or click here and paste a replacement image</p></div>
+          <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
+          <h3>Where used</h3>
+          <ul id="entity-library-usages"></ul>
+        </aside>
+      </div>
       <div id="aux-resource-message" class="action-message" hidden></div>
-      <div class="image-catalog-layout">
+      <div class="image-catalog-layout" hidden>
         <aside class="image-catalog-sidebar">
           <section class="control-panel image-catalog-filter-panel">
             <div class="image-catalog-filter-heading">
@@ -1160,18 +1269,23 @@
             <h2 id="builder-image-picker-modal-title">Image References</h2>
             <button id="builder-image-picker-close" type="button">Close</button>
           </div>
+          <label>Entity<select id="builder-image-picker-entity"></select></label>
+          <label>Variant<select id="builder-image-picker-variant"></select></label>
+          <label>Reference set<select id="builder-image-picker-set"></select></label>
+          <label>Facet<select id="builder-image-picker-facet"></select></label>
+          <label>Reference choice<select id="builder-image-picker-mode"><option value="asset">This exact image</option><option value="logical">Current preferred reference</option></select></label>
           <label>
             Character Filter
-            <select id="builder-image-picker-character"></select>
+            <select id="builder-image-picker-character" hidden></select>
           </label>
           <label>
             Search
             <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
           </label>
-          <label class="checkbox-field"><input id="builder-image-picker-include-base" type="checkbox"> Include base pipeline images</label>
-          <label>Source<select id="builder-image-picker-source"><option value="">All sources</option><option value="imported">Imported</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
-          <label>Category<select id="builder-image-picker-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
-          <label>Status<select id="builder-image-picker-status"><option value="">All states</option><option value="ready">Ready</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_review_required">AI review required</option></select></label>
+          <label class="checkbox-field" hidden><input id="builder-image-picker-include-base" type="checkbox"></label>
+          <select id="builder-image-picker-source" hidden></select>
+          <select id="builder-image-picker-category" hidden></select>
+          <select id="builder-image-picker-status" hidden></select>
           <button id="builder-image-picker-refresh" type="button">Refresh References</button>
           <div id="builder-image-picker-status" class="status-text"></div>
           <table id="builder-image-picker-table">
@@ -2036,7 +2150,7 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260926-batch-status"></script>
+  <script src="/static/zet.js?v=20260930-universes"></script>
   <script src="/static/local_asset_pipeline.js?v=20260926-gate-prompt-dialog"></script>
   <script src="/static/local_batch_status.js?v=20260926-batch-status"></script>
 </body>

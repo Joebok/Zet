@@ -204,7 +204,7 @@ class CharacterOnboardingService:
         if not template_path.exists():
             return [f"Template file not found: {template_path}"]
         errors: list[str] = []
-        for label in ["Character Name", "Character Phase", "Species / Ancestry", "Gender Presentation", "Canonical Art Style"]:
+        for label in ["Character Name", "Character Phase", "Species / Ancestry", "Gender Presentation"]:
             value = extract_template_field(template_path, [label])
             if not value or self._looks_placeholder(value):
                 errors.append(f"{label} must be filled in.")

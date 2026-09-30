@@ -107,6 +107,9 @@ class FileProxyClient:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         localized_paths = self._localize_references(staging, manifest)
         route: dict[str, str] = {}
+        universe_id = str(manifest.get("universe_id") or "").strip()
+        if universe_id:
+            route["universe_id"] = universe_id
         for key in (
             "target_output_dir",
             "artifact_output_dir",

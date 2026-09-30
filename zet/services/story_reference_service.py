@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 
 from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
 
@@ -24,12 +25,46 @@ class StoryReferenceService:
         self.error_type = error_type
         self.turnaround_repository = turnaround_repository
         self.image_catalog_service = None
+        self.entity_library_service = None
+
+    def resolve_library_asset(self, asset_id: str) -> dict:
+        service = self.entity_library_service
+        if service is None:
+            raise self.error_type("The entity image library is unavailable.")
+        asset = service.get_asset(asset_id)
+        if asset.get("status") != "approved":
+            raise self.error_type(f"Image asset is not approved: {asset_id}")
+        return {
+            "role": "story_reference", "label": asset["file_name"], "tag": f"{{{{LIB:ASSET:{asset_id}}}}}",
+            "path": asset["image_path"], "kind": "entity-library", "asset_id": asset_id,
+            "checksum": asset["checksum"],
+        }
+
+    def resolve_library_reference(self, reference_key: str) -> dict:
+        service = self.entity_library_service
+        if service is None:
+            raise self.error_type("The entity image library is unavailable.")
+        asset = service.resolve_reference(reference_key)
+        return {
+            "role": "story_reference", "label": asset["file_name"], "tag": f"{{{{LIB:REF:{reference_key}}}}}",
+            "path": asset["image_path"], "kind": "entity-library", "asset_id": asset["asset_id"],
+            "reference_key": reference_key, "set_id": asset.get("reference_set_id") or "",
+            "checksum": asset["checksum"],
+        }
 
     def resolve_aux_reference(self, tag: str) -> dict:
         if self.image_catalog_service is not None:
             item = self.image_catalog_service.managed_item_for_tag(tag)
             if item is not None:
                 return {"role": "story_reference", "label": item.label, "tag": item.tag, "path": item.image_path, "kind": "imported"}
+        if self.entity_library_service is not None:
+            try:
+                asset = self.entity_library_service.resolve_legacy_reference(tag)
+                return {"role": "story_reference", "label": asset["label"], "tag": tag,
+                        "path": asset["image_path"], "kind": "entity-library", "asset_id": asset["asset_id"],
+                        "checksum": asset["checksum"]}
+            except Exception:
+                pass
         try:
             resource, image = auxiliary_resource_image_for_tag(self.auxiliary_resource_repository.list_resources(), tag)
         except LookupError as exc:
@@ -203,4 +238,34 @@ class StoryReferenceService:
                 references.append(self.resolve_identity_reference(tag, match.group(4), match.group(5), match.group(6)))
             else:
                 references.append(self.resolve_scene_reference(tag, match.group(7), match.group(8)))
+        for match in re.finditer(r"\{\{LIB:ASSET:([0-9a-fA-F-]{36})\}\}", scene_text or ""):
+            tag = match.group(0)
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self.resolve_library_asset(match.group(1)))
+        for match in re.finditer(r"\{\{LIB:REF:([a-z0-9][a-z0-9._-]*)\}\}", scene_text or ""):
+            tag = match.group(0)
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self.resolve_library_reference(match.group(1)))
+        try:
+            payload = json.loads(scene_text)
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        def visit(value):
+            if isinstance(value, dict):
+                asset_id = str(value.get("asset_id") or "").strip()
+                reference_key = str(value.get("reference_key") or "").strip()
+                if asset_id or reference_key:
+                    reference = self.resolve_library_asset(asset_id) if asset_id else self.resolve_library_reference(reference_key)
+                    if reference["tag"] not in seen:
+                        seen.add(reference["tag"])
+                        references.append(reference)
+                for child in value.values():
+                    visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+        if payload is not None:
+            visit(payload)
         return references

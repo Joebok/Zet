@@ -81,6 +81,11 @@ class ImageReferenceRow:
     identity_status: str = ""
     costume_status: str = ""
     default_reference_roles: list[str] = field(default_factory=list)
+    asset_id: str = ""
+    reference_key: str = ""
+    set_id: str = ""
+    origin: str = ""
+    descriptor_ready: bool = False
 
 
 @dataclass(frozen=True)

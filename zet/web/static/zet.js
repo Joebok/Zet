@@ -1,4 +1,9 @@
 const state = {
+  universeId: "",
+  universeGeneration: 0,
+  universes: [],
+  universeSettingsId: "",
+  savedUniverseArtStyle: "",
   workspace: "character",
   activePageId: "",
   productionWorkSummary: { current: {}, project: {} },
@@ -134,6 +139,8 @@ const state = {
   imageCatalogOrganization: { collections: [], keywords: [] },
   imageCatalogReferenceSets: [],
   imageCatalogImportBlob: null,
+  entityLibraryImportBlob: null,
+  entityLibraryReplacementBlob: null,
   imageCatalogReplaceBlob: null,
   imageCatalogAddBlob: null,
   selectedImageCatalogId: null,
@@ -160,6 +167,10 @@ const state = {
   navigationRequest: 0,
   transitionPromise: null,
 };
+const universeSelect = document.querySelector("#universe-select");
+const universeSettingsForm = document.querySelector("#universe-settings-form");
+const universeSettingsArtStyle = document.querySelector("#universe-settings-art-style");
+const universeCreateForm = document.querySelector("#universe-create-form");
 
 const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
 const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
@@ -668,6 +679,11 @@ const builderElementCancel = document.querySelector("#builder-element-cancel");
 const builderElementAdd = document.querySelector("#builder-element-add");
 const builderImagePickerClose = document.querySelector("#builder-image-picker-close");
 const builderImagePickerCharacter = document.querySelector("#builder-image-picker-character");
+const builderImagePickerEntity = document.querySelector("#builder-image-picker-entity");
+const builderImagePickerVariant = document.querySelector("#builder-image-picker-variant");
+const builderImagePickerSet = document.querySelector("#builder-image-picker-set");
+const builderImagePickerFacet = document.querySelector("#builder-image-picker-facet");
+const builderImagePickerMode = document.querySelector("#builder-image-picker-mode");
 const builderImagePickerIncludeBase = document.querySelector("#builder-image-picker-include-base");
 const builderImagePickerSource = document.querySelector("#builder-image-picker-source");
 const builderImagePickerCategory = document.querySelector("#builder-image-picker-category");
@@ -725,6 +741,61 @@ fullscreenImageOverlay.append(
 );
 document.body.append(fullscreenImageOverlay);
 const auxResourceMessage = document.querySelector("#aux-resource-message");
+const entityLibrarySearch = document.querySelector("#entity-library-search");
+const entityLibraryFilterEntity = document.querySelector("#entity-library-filter-entity");
+const entityLibraryFilterType = document.querySelector("#entity-library-filter-type");
+const entityLibraryFilterVariant = document.querySelector("#entity-library-filter-variant");
+const entityLibraryFilterSet = document.querySelector("#entity-library-filter-set");
+const entityLibraryFilterFacet = document.querySelector("#entity-library-filter-facet");
+const entityLibraryFilterStatus = document.querySelector("#entity-library-filter-status");
+const entityLibraryFilterOrigin = document.querySelector("#entity-library-filter-origin");
+const entityLibraryRefresh = document.querySelector("#entity-library-refresh");
+const entityLibraryCount = document.querySelector("#entity-library-count");
+const entityLibraryResults = document.querySelector("#entity-library-results");
+const entityLibraryFile = document.querySelector("#entity-library-file");
+const entityLibraryNewLabel = document.querySelector("#entity-library-new-label");
+const entityLibraryImport = document.querySelector("#entity-library-import");
+const entityLibraryImportStatus = document.querySelector("#entity-library-import-status");
+const entityLibraryPaste = document.querySelector("#entity-library-paste");
+const entityLibraryEntityName = document.querySelector("#entity-library-entity-name");
+const entityLibraryEntityType = document.querySelector("#entity-library-entity-type");
+const entityLibraryEntityCreate = document.querySelector("#entity-library-entity-create");
+const entityLibraryVariantEntity = document.querySelector("#entity-library-variant-entity");
+const entityLibraryVariantName = document.querySelector("#entity-library-variant-name");
+const entityLibraryVariantType = document.querySelector("#entity-library-variant-type");
+const entityLibraryVariantCreate = document.querySelector("#entity-library-variant-create");
+const entityLibraryRelationSource = document.querySelector("#entity-library-relation-source");
+const entityLibraryRelationTarget = document.querySelector("#entity-library-relation-target");
+const entityLibraryRelationType = document.querySelector("#entity-library-relation-type");
+const entityLibraryRelationCreate = document.querySelector("#entity-library-relation-create");
+const entityLibrarySetName = document.querySelector("#entity-library-set-name");
+const entityLibrarySetType = document.querySelector("#entity-library-set-type");
+const entityLibrarySetCreate = document.querySelector("#entity-library-set-create");
+const entityLibraryEditorTitle = document.querySelector("#entity-library-editor-title");
+const entityLibraryPreview = document.querySelector("#entity-library-preview");
+const entityLibraryEditLabel = document.querySelector("#entity-library-edit-label");
+const entityLibraryEditNotes = document.querySelector("#entity-library-edit-notes");
+const entityLibraryEditStatus = document.querySelector("#entity-library-edit-status");
+const entityLibraryEditEntities = document.querySelector("#entity-library-edit-entities");
+const entityLibraryEditSets = document.querySelector("#entity-library-edit-sets");
+const entityLibraryEditFacets = document.querySelector("#entity-library-edit-facets");
+const entityLibraryEditTags = document.querySelector("#entity-library-edit-tags");
+const entityLibraryEditIdentity = document.querySelector("#entity-library-edit-identity");
+const entityLibraryEditCostume = document.querySelector("#entity-library-edit-costume");
+const entityLibraryEditReference = document.querySelector("#entity-library-edit-reference");
+const entityLibrarySave = document.querySelector("#entity-library-save");
+const entityLibraryReplacementFile = document.querySelector("#entity-library-replacement-file");
+const entityLibraryReplacementPaste = document.querySelector("#entity-library-replacement-paste");
+const entityLibraryReplace = document.querySelector("#entity-library-replace");
+const entityLibraryBack = document.querySelector("#entity-library-back");
+const entityLibraryUsages = document.querySelector("#entity-library-usages");
+const entityLibraryDescriptorOwnerType = document.querySelector("#entity-library-descriptor-owner-type");
+const entityLibraryDescriptorOwner = document.querySelector("#entity-library-descriptor-owner");
+const entityLibraryDescriptorType = document.querySelector("#entity-library-descriptor-type");
+const entityLibraryDescriptorText = document.querySelector("#entity-library-descriptor-text");
+const entityLibraryDescriptorSave = document.querySelector("#entity-library-descriptor-save");
+let entityLibrarySelectedAsset = null;
+let entityLibraryMetadata = { entities: [], variants: [], sets: [] };
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
 const imageCatalogCategory = document.querySelector("#image-catalog-category");
@@ -881,9 +952,14 @@ async function fetchJson(url, options = {}) {
     fetchOptions.signal = state.pageController.signal;
   }
   setBusy(busyTarget, true);
+  const requestUniverse = state.universeId;
   try {
+    const headers = new Headers(fetchOptions.headers || {});
+    if (requestUniverse) headers.set("X-Zet-Universe", requestUniverse);
+    fetchOptions.headers = headers;
     const response = await fetch(url, fetchOptions);
     if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
+    if (requestUniverse && requestUniverse !== state.universeId) throw new RequestCancelledError();
     if (!response.ok) {
       let detail = `${response.status} ${response.statusText}`;
       try {
@@ -904,6 +980,7 @@ async function fetchJson(url, options = {}) {
     }
     const payload = await response.json();
     if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
+    if (requestUniverse && requestUniverse !== state.universeId) throw new RequestCancelledError();
     return payload;
   } catch (error) {
     if (fetchOptions.signal?.aborted || isRequestCancellation(error)) throw new RequestCancelledError();
@@ -915,6 +992,7 @@ async function fetchJson(url, options = {}) {
 
 function fileUrl(path, cacheKey = "") {
   const params = new URLSearchParams({ path });
+  if (state.universeId) params.set("universe_id", state.universeId);
   if (cacheKey) {
     params.set("v", cacheKey);
   }
@@ -1730,6 +1808,7 @@ function saveWorkspacePreferences() {
 }
 
 function pageWorkspace(page) {
+  if (["universes", "universe-create", "universe-settings"].includes(page)) return null;
   if (CHARACTER_PAGES.has(page)) return "character";
   if (LOCAL_PAGES.has(page)) return "local";
   if (STORY_PAGES.has(page)) return "story";
@@ -2951,6 +3030,14 @@ function updateDirtyIndicators() {
 }
 
 function editorGuardForPage(page = activePageName()) {
+  if (page === "universe-settings" && universeSettingsArtStyle.value !== state.savedUniverseArtStyle) {
+    return {
+      name: "Universe settings",
+      autosave: false,
+      save: saveUniverseSettings,
+      discard: () => { universeSettingsArtStyle.value = state.savedUniverseArtStyle; },
+    };
+  }
   if (page === "stories" && state.storyDetail && storySnapshot() !== state.savedBaselines.story) {
     return {
       name: "story",
@@ -3154,6 +3241,9 @@ async function activatePage(page, options = {}) {
   characterProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "character" ? page : "";
   storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding" || page === "local-overview");
+  document.querySelector("#universes-page").classList.toggle("active", page === "universes");
+  document.querySelector("#universe-create-page").classList.toggle("active", page === "universe-create");
+  document.querySelector("#universe-settings-page").classList.toggle("active", page === "universe-settings");
   document.querySelector("#assets-page").classList.toggle("active", page === "assets");
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
   document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
@@ -3231,14 +3321,7 @@ async function activatePage(page, options = {}) {
     await loadIdentityKeys();
   }
   if (page === "auxiliary-resources") {
-    await loadImageCatalogOrganization();
-    await loadImageCatalogReferenceSets();
-    if (options.preferredCatalogId) {
-      await loadImageCatalog();
-      selectImageCatalogItem(options.preferredCatalogId);
-    } else if (!state.imageCatalogLoaded) {
-      renderImageCatalogIdle();
-    }
+    await loadEntityLibraryInventory();
   }
   if (page === "phase-comparison") {
     initializePhaseComparisonControls();
@@ -3292,6 +3375,18 @@ async function activatePage(page, options = {}) {
     renderOnboarding();
     await loadWorkspaceSummary();
   }
+  if (page === "universes") await loadUniverseList();
+  if (page === "universe-settings") {
+    try {
+      await loadUniverseSettings(options.universeId || state.universeId);
+    } catch (error) {
+      setUniverseMessage("universe-settings-message", error.message, "error");
+    }
+  }
+  if (page === "universe-create") {
+    universeCreateForm.reset();
+    setUniverseMessage("universe-create-message", "", "");
+  }
   if (page === "help") {
     await loadTemplateManuals();
   }
@@ -3317,13 +3412,17 @@ function setupTabs() {
   for (const button of document.querySelectorAll("button.tab")) {
     button.addEventListener("click", async () => {
       if (!button.dataset.page) return;
+      closeNewMenu();
       if (button.dataset.page === "identity-keys") {
         state.identityKeyMode = "list";
       }
       closeToolbarSettingsMenu();
       closeHelpMenu();
       try {
-        const changed = await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
+        const changed = await runGuardedTransition(() => activatePage(button.dataset.page, {
+          skipAutosave: true,
+          universeId: button.dataset.universeId || "",
+        }));
         if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "local-batch-status")) {
           localAssetsMenu.hidden = true;
           localAssetsButton.setAttribute("aria-expanded", "false");
@@ -5659,6 +5758,15 @@ function builderSyncControls() {
       const reference = (element.reference_images || [])[Number(control.dataset.builderReferenceIndex)];
       if (!reference) continue;
       const field = control.dataset.builderReferenceField;
+      if (field === "primary_prompt_source") {
+        reference[field] = control.checked;
+        if (control.checked) {
+          (element.reference_images || []).forEach((other, otherIndex) => {
+            if (otherIndex !== Number(control.dataset.builderReferenceIndex)) other.primary_prompt_source = false;
+          });
+        }
+        continue;
+      }
       reference[field] = ["roles", "preserve", "change", "ignore"].includes(field)
         ? control.value.split(",").map((value) => value.trim()).filter(Boolean)
         : control.value;
@@ -5989,6 +6097,13 @@ function builderDeleteDialogue(index) {
   renderSceneBuilder();
 }
 
+function builderReferenceIdentity(reference) {
+  if (reference?.tag) return reference.tag;
+  if (reference?.asset_id) return `{{LIB:ASSET:${reference.asset_id}}}`;
+  if (reference?.reference_key) return `{{LIB:REF:${reference.reference_key}}}`;
+  return "";
+}
+
 function builderRenderElements() {
   const activeSubscene = builderActiveSubscene();
   const visibleElements = (state.sceneBuilder.scene_elements || []).filter(
@@ -5998,7 +6113,7 @@ function builderRenderElements() {
     const placement = builderPlacementForElement(element.id);
     const position = placement?.position_within_cell || "—";
     const depth = position === "None" ? "None" : placement?.depth || "—";
-    const referenceTags = (element.reference_images || []).map((item) => item.tag).filter(Boolean);
+    const referenceTags = (element.reference_images || []).map(builderReferenceIdentity).filter(Boolean);
     const linkedReferenceCount = referenceTags.filter((tag) => (state.sceneBuilderReferences || []).some((item) => item.tag === tag)).length;
     const referenceKnown = Boolean(referenceTags.length && linkedReferenceCount === referenceTags.length);
     const referenceStatus = !referenceTags.length ? "No references" : referenceKnown ? `${referenceTags.length} reference(s) linked` : `${linkedReferenceCount}/${referenceTags.length} references linked`;
@@ -6049,16 +6164,18 @@ function builderRenderElementEditor() {
   }
   element.reference_images = element.reference_images || [];
   const referenceEditors = element.reference_images.map((imageReference, index) => {
-    const referenceTag = imageReference.tag || "";
+    const referenceTag = builderReferenceIdentity(imageReference);
     const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
+    const libraryReference = !imageReference.tag && (imageReference.asset_id || imageReference.reference_key);
     const referenceThumbnail = reference?.thumbnail_path
       ? `<span class="scene-builder-reference-preview"><img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}" data-story-slug="${escapeHtml(reference.story_slug || "")}" data-scene-slug="${escapeHtml(reference.scene_slug || "")}" data-candidate-pending="${reference.candidate_pending ? "true" : "false"}">${reference.candidate_pending ? `<a class="candidate-pending-overlay" href="${sceneImageReviewUrl(reference.story_slug, reference.scene_slug)}">Candidate Image Pending</a>` : ""}</span>`
       : "";
     return `<div class="scene-builder-reference-field full" data-builder-reference-row="${index}">
       ${referenceThumbnail}
       <div>
-        <label>${builderCaption(`Reference ${index + 1} tag`, "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-reference-field="tag" data-builder-reference-index="${index}"><button type="button" data-builder-action="pick-image-tag" data-builder-reference-index="${index}">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>
+        <label>${builderCaption(libraryReference ? `Reference ${index + 1} image` : `Reference ${index + 1} tag`, libraryReference ? "scene_elements[].reference_images[].asset_id" : "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(libraryReference ? (reference?.label || referenceTag) : referenceTag)}" data-builder-reference-field="${libraryReference ? "label" : "tag"}" data-builder-reference-index="${index}"${libraryReference ? " readonly" : ""}><button type="button" data-builder-action="pick-image-tag" data-builder-reference-index="${index}">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>
         <label>Roles (comma-separated)<input value="${escapeHtml((imageReference.roles || []).join(", "))}" data-builder-reference-field="roles" data-builder-reference-index="${index}"></label>
+        <label class="checkbox-field"><input type="checkbox" data-builder-reference-field="primary_prompt_source" data-builder-reference-index="${index}"${imageReference.primary_prompt_source ? " checked" : ""}> Use as primary prompt source</label>
         <label>Preserve (comma-separated)<input value="${escapeHtml((imageReference.preserve || []).join(", "))}" data-builder-reference-field="preserve" data-builder-reference-index="${index}"></label>
         <label>Change (comma-separated)<input value="${escapeHtml((imageReference.change || []).join(", "))}" data-builder-reference-field="change" data-builder-reference-index="${index}"></label>
         <label>Ignore (comma-separated)<input value="${escapeHtml((imageReference.ignore || []).join(", "))}" data-builder-reference-field="ignore" data-builder-reference-index="${index}"></label>
@@ -7536,6 +7653,27 @@ sceneCandidateRefresh.addEventListener("click", loadSceneCandidates);
 async function loadImagePickerReferences(picker) {
   picker.status.textContent = "Loading references...";
   const params = new URLSearchParams();
+  if (picker.library) {
+    if (picker.search.value.trim()) params.set("q", picker.search.value.trim());
+    if (builderImagePickerEntity.value) params.set("entity_id", builderImagePickerEntity.value);
+    if (builderImagePickerVariant.value) params.set("variant_id", builderImagePickerVariant.value);
+    if (builderImagePickerSet.value) params.set("set_id", builderImagePickerSet.value);
+    if (builderImagePickerFacet.value) {
+      const [namespace, value] = builderImagePickerFacet.value.split("\u0000");
+      params.set("facet_namespace", namespace || "");
+      params.set("facet_value", value || "");
+    }
+    try {
+      const payload = await fetchJson(`/api/entity-library/picker?${params.toString()}`);
+      picker.setRows(payload.assets || []);
+      renderImagePickerTable(picker);
+      picker.status.textContent = `${picker.rows().length} approved image(s)`;
+    } catch (error) {
+      picker.status.textContent = "Load failed.";
+      picker.onError(error);
+    }
+    return;
+  }
   if (picker.character.value) {
     params.set("character", picker.character.value);
   }
@@ -7580,6 +7718,31 @@ function renderImagePickerTable(picker) {
   for (const item of rows) {
     const row = document.createElement("tr");
     const labelCell = document.createElement("td");
+    if (picker.library) {
+      const thumb = document.createElement("img");
+      thumb.className = "aux-resource-thumb";
+      thumb.src = fileUrl(item.thumbnail_path || item.image_path);
+      thumb.alt = item.label || "Reference image";
+      const title = document.createElement("span");
+      const entityNames = (item.entities || []).map((entity) => [entity.name, entity.variant_name].filter(Boolean).join(" · ")).join(", ");
+      title.textContent = `${entityNames || item.origin} · ${item.width || "?"}×${item.height || "?"}${item.descriptor_ready ? " · prompt ready" : " · prompt text missing"}`;
+      labelCell.append(thumb, title);
+      const actionCell = document.createElement("td");
+      if (item.logical_reference) {
+        const logicalButton = document.createElement("button");
+        logicalButton.type = "button";
+        logicalButton.textContent = `Use ${item.logical_reference.reference_key}`;
+        logicalButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          picker.onSelect(item, "logical");
+        });
+        actionCell.append(logicalButton);
+      }
+      row.append(labelCell, actionCell);
+      makeSelectableRow(row, item.file_name || "image asset", false, () => picker.onSelect(item, builderImagePickerMode.value || "asset"));
+      picker.tableBody.append(row);
+      continue;
+    }
     if (picker.labelOnly && item.thumbnail_path) {
       const thumb = document.createElement("img");
       thumb.className = "aux-resource-thumb";
@@ -7620,6 +7783,7 @@ const sceneImagePicker = {
 };
 
 const builderImagePicker = {
+  library: true,
   labelOnly: true,
   character: builderImagePickerCharacter,
   search: builderImagePickerSearch,
@@ -7631,34 +7795,78 @@ const builderImagePicker = {
   tableBody: builderImagePickerTableBody,
   rows: () => state.builderImagePickerReferences,
   setRows: (rows) => { state.builderImagePickerReferences = rows; },
-  onSelect: async (item) => {
+  onSelect: async (item, mode = "asset") => {
     const element = builderSelectedElement();
     if (!element) {
       return;
     }
-    await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
+    if (mode === "logical" && !item.logical_reference?.reference_key) {
+      showSceneBuilderMessage("This image has no active preferred reference key.", "error");
+      return;
+    }
     element.reference_images = element.reference_images || [];
     const index = Number(state.builderReferenceIndex || 0);
     element.reference_images[index] = element.reference_images[index] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
-    element.reference_images[index].tag = item.tag || "";
-    if (!element.reference_images[index].roles?.length) {
-      element.reference_images[index].roles = item.default_reference_roles?.length
-        ? [...item.default_reference_roles]
-        : ["visual reference"];
-    }
+    const selectedReference = element.reference_images[index];
+    delete selectedReference.tag;
+    delete selectedReference.asset_id;
+    delete selectedReference.reference_key;
+    selectedReference[mode === "logical" ? "reference_key" : "asset_id"] = mode === "logical"
+      ? item.logical_reference?.reference_key || ""
+      : item.asset_id || "";
+    selectedReference.set_id = builderImagePickerSet.value || item.logical_reference?.set_id || "";
+    selectedReference.primary_prompt_source = !element.reference_images.some((reference, refIndex) => refIndex !== index && reference.primary_prompt_source);
+    const referenceTag = mode === "logical"
+      ? `{{LIB:REF:${item.logical_reference.reference_key}}}`
+      : `{{LIB:ASSET:${item.asset_id}}}`;
     state.sceneBuilderReferences = [
-      ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== item.tag),
-      item,
+      ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== referenceTag),
+      { ...item, tag: referenceTag, label: item.label || item.file_name, kind: "entity-library" },
     ];
+    if (!element.reference_images[index].roles?.length) {
+      element.reference_images[index].roles = ["visual reference"];
+    }
     builderImagePickerModal.close();
     renderSceneBuilder();
-    showSceneBuilderMessage(`Selected ${item.tag || "image tag"}.`, "success");
+    showSceneBuilderMessage(`Selected ${item.file_name || "image"}.`, "success");
   },
   onError: (error) => showSceneBuilderMessage(error.message, "error"),
 };
 
 async function loadSceneImageReferences() {
   await loadImagePickerReferences(sceneImagePicker);
+}
+
+async function loadEntityLibraryPickerFilters(element = null) {
+  const [entityPayload, variantPayload, setPayload, facetPayload] = await Promise.all([
+    fetchJson("/api/entity-library/entities"), fetchJson("/api/entity-library/variants"),
+    fetchJson("/api/entity-library/sets"), fetchJson("/api/entity-library/facets"),
+  ]);
+  const entities = entityPayload.entities || [];
+  setSelectOptionsWithLabels(builderImagePickerEntity, [
+    { value: "", label: "All entities" },
+    ...entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })),
+  ]);
+  const entityQuery = String(element?.character || element?.display_name || "").trim().toLowerCase();
+  const matchingEntity = entities.find((item) => item.name.toLowerCase() === entityQuery);
+  builderImagePickerEntity.value = matchingEntity?.entity_id || "";
+  const variants = (variantPayload.variants || []).filter((item) => !builderImagePickerEntity.value || item.entity_id === builderImagePickerEntity.value);
+  setSelectOptionsWithLabels(builderImagePickerVariant, [
+    { value: "", label: "All variants" },
+    ...variants.map((item) => ({ value: item.variant_id, label: `${item.name} · ${item.variant_type}` })),
+  ]);
+  setSelectOptionsWithLabels(builderImagePickerSet, [
+    { value: "", label: "All reference sets" },
+    ...(setPayload.sets || []).map((item) => ({ value: item.set_id, label: item.name })),
+  ]);
+  const facets = facetPayload.facets || [];
+  const options = [...new Map(facets.map((item) => [`${item.namespace}\u0000${item.value}`, item])).values()];
+  setSelectOptionsWithLabels(builderImagePickerFacet, [
+    { value: "", label: "All facets" },
+    ...options.map((item) => ({ value: `${item.namespace}\u0000${item.value}`, label: `${item.namespace}: ${item.value}` })),
+  ]);
+  const phaseQuery = String(element?.phase || "").trim().toLowerCase();
+  builderImagePickerVariant.value = variants.find((item) => item.name.toLowerCase() === phaseQuery)?.variant_id || "";
 }
 
 function openBuilderImagePicker(referenceIndex = 0) {
@@ -7674,7 +7882,10 @@ function openBuilderImagePicker(referenceIndex = 0) {
   state.builderImagePickerSearch = builderImagePickerSearch.value;
   builderImagePickerModal.showModal();
   builderImagePickerSearch.focus();
-  loadImagePickerReferences(builderImagePicker);
+  loadEntityLibraryPickerFilters(element).then(() => loadImagePickerReferences(builderImagePicker)).catch((error) => {
+    builderImagePickerStatus.textContent = "Filter options failed to load.";
+    showSceneBuilderMessage(error.message, "error");
+  });
 }
 
 function selectedImageCatalogItem() {
@@ -7894,6 +8105,201 @@ function selectImageCatalogItem(catalogId) {
 function syncImageCatalogOverrideControls() {
   imageCatalogIdentityText.disabled = imageCatalogIdentityMode.value !== "override";
   imageCatalogCostumeText.disabled = imageCatalogCostumeMode.value !== "override";
+}
+
+async function loadEntityLibraryInventory() {
+  const [entitiesPayload, variantsPayload, setsPayload, facetsPayload] = await Promise.all([
+    fetchJson("/api/entity-library/entities"), fetchJson("/api/entity-library/variants"),
+    fetchJson("/api/entity-library/sets"), fetchJson("/api/entity-library/facets"),
+  ]);
+  const entities = entitiesPayload.entities || [];
+  const variants = variantsPayload.variants || [];
+  const sets = setsPayload.sets || [];
+  const facets = facetsPayload.facets || [];
+  entityLibraryMetadata = { entities, variants, sets };
+  setSelectOptionsWithLabels(entityLibraryFilterEntity, [
+    { value: "", label: "All entities" }, ...entities.map((item) => ({ value: item.entity_id, label: item.name })),
+  ]);
+  const entityTypes = [...new Set(entities.map((item) => item.entity_type))].sort();
+  setSelectOptionsWithLabels(entityLibraryFilterType, [
+    { value: "", label: "All types" }, ...entityTypes.map((value) => ({ value, label: value })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryFilterVariant, [
+    { value: "", label: "All variants" }, ...variants.map((item) => ({ value: item.variant_id, label: `${item.name} · ${item.variant_type}` })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryFilterSet, [
+    { value: "", label: "All sets" }, ...sets.map((item) => ({ value: item.set_id, label: item.name })),
+  ]);
+  const facetChoices = [...new Map(facets.map((item) => [`${item.namespace}\u0000${item.value}`, item])).values()];
+  setSelectOptionsWithLabels(entityLibraryFilterFacet, [
+    { value: "", label: "All facets" }, ...facetChoices.map((item) => ({ value: `${item.namespace}\u0000${item.value}`, label: `${item.namespace}: ${item.value}` })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryEditEntities, entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })));
+  const entityOptions = entities.map((item) => ({ value: item.entity_id, label: item.name }));
+  for (const select of [entityLibraryVariantEntity, entityLibraryRelationSource, entityLibraryRelationTarget]) {
+    setSelectOptionsWithLabels(select, [{ value: "", label: "Choose entity" }, ...entityOptions]);
+  }
+  updateEntityLibraryDescriptorOwners();
+  setSelectOptionsWithLabels(entityLibraryEditSets, sets.map((item) => ({ value: item.set_id, label: item.name })));
+  await searchEntityLibrary();
+  const usagePayload = await fetchJson("/api/entity-library/usages");
+  const usageReport = usagePayload.report || {};
+  if (usageReport.missing?.length || usageReport.stale) {
+    entityLibraryUsages.replaceChildren();
+    for (const item of usageReport.missing || []) {
+      const row = document.createElement("li");
+      row.textContent = `Missing ${item.asset_id || item.reference_key} · ${item.consumer_id} · ${item.locator}`;
+      entityLibraryUsages.append(row);
+    }
+    if (usageReport.stale) {
+      const row = document.createElement("li");
+      row.textContent = `${usageReport.stale} stale usage record(s) are retained for review.`;
+      entityLibraryUsages.append(row);
+    }
+  }
+}
+
+async function searchEntityLibrary() {
+  const params = new URLSearchParams();
+  const values = {
+    q: entityLibrarySearch.value.trim(), entity_id: entityLibraryFilterEntity.value,
+    entity_type: entityLibraryFilterType.value, variant_id: entityLibraryFilterVariant.value,
+    set_id: entityLibraryFilterSet.value, status: entityLibraryFilterStatus.value,
+    origin: entityLibraryFilterOrigin.value,
+  };
+  if (entityLibraryFilterFacet.value) {
+    const [facet_namespace, facet_value] = entityLibraryFilterFacet.value.split("\u0000");
+    values.facet_namespace = facet_namespace;
+    values.facet_value = facet_value;
+  }
+  for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
+  entityLibraryCount.textContent = "Searching…";
+  const payload = await fetchJson(`/api/entity-library/assets?${params.toString()}`);
+  const assets = payload.assets || [];
+  entityLibraryResults.replaceChildren();
+  for (const asset of assets) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "image-catalog-card";
+    card.classList.toggle("selected", entityLibrarySelectedAsset?.asset_id === asset.asset_id);
+    const img = document.createElement("img");
+    img.src = fileUrl(asset.thumbnail_path || asset.image_path);
+    img.alt = asset.label || "Library image";
+    img.title = "Open full-size image";
+    img.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openFullscreenImage(fileUrl(asset.image_path), asset.label || asset.file_name || "Library image");
+    });
+    const title = document.createElement("strong");
+    title.textContent = asset.label || asset.file_name;
+    const detail = document.createElement("span");
+    detail.textContent = `${(asset.entities || []).map((item) => item.name).join(", ") || asset.origin} · ${asset.status}`;
+    card.append(img, title, detail);
+    card.addEventListener("click", () => selectEntityLibraryAsset(asset.asset_id));
+    entityLibraryResults.append(card);
+  }
+  entityLibraryCount.textContent = `${assets.length} image${assets.length === 1 ? "" : "s"}`;
+}
+
+function updateEntityLibraryDescriptorOwners() {
+  const ownerType = entityLibraryDescriptorOwnerType.value;
+  const source = ownerType === "entity" ? entityLibraryMetadata.entities
+    : ownerType === "variant" ? entityLibraryMetadata.variants
+      : entityLibraryMetadata.sets;
+  setSelectOptionsWithLabels(entityLibraryDescriptorOwner, [
+    { value: "", label: "Choose owner" },
+    ...source.map((item) => ({
+      value: item.entity_id || item.variant_id || item.set_id,
+      label: `${item.name || item.label}${item.variant_type ? ` · ${item.variant_type}` : ""}`,
+    })),
+  ]);
+}
+
+async function selectEntityLibraryAsset(assetId) {
+  const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(assetId)}`);
+  entityLibrarySelectedAsset = payload.asset;
+  document.querySelector(".entity-library-layout").classList.add("metadata-mode");
+  entityLibraryBack.hidden = false;
+  const asset = entityLibrarySelectedAsset;
+  entityLibraryEditorTitle.textContent = asset.label || asset.file_name;
+  entityLibraryPreview.src = fileUrl(asset.image_path);
+  entityLibraryPreview.hidden = false;
+  entityLibraryEditLabel.disabled = false;
+  entityLibraryEditNotes.disabled = false;
+  entityLibraryEditStatus.disabled = false;
+  entityLibraryEditEntities.disabled = false;
+  entityLibraryEditSets.disabled = false;
+  entityLibraryEditFacets.disabled = false;
+  entityLibraryEditTags.disabled = false;
+  entityLibraryEditIdentity.disabled = false;
+  entityLibraryEditCostume.disabled = false;
+  entityLibraryEditReference.disabled = false;
+  entityLibrarySave.disabled = false;
+  entityLibraryReplacementFile.disabled = false;
+  entityLibraryReplace.disabled = false;
+  entityLibraryEditLabel.value = asset.label || "";
+  entityLibraryEditNotes.value = asset.notes || "";
+  entityLibraryEditStatus.value = asset.status;
+  const entityIds = (asset.entities || []).map((item) => item.entity_id);
+  const setIds = (asset.sets || []).map((item) => item.set_id);
+  for (const optionItem of entityLibraryEditEntities.options) optionItem.selected = entityIds.includes(optionItem.value);
+  for (const optionItem of entityLibraryEditSets.options) optionItem.selected = setIds.includes(optionItem.value);
+  entityLibraryEditFacets.value = (asset.facets || []).map((item) => `${item.namespace}:${item.value}`).join(", ");
+  entityLibraryEditTags.value = (asset.tags || []).join(", ");
+  entityLibraryEditIdentity.value = (asset.descriptors || []).find((item) => item.descriptor_type === "prompt_identity")?.text || "";
+  entityLibraryEditCostume.value = (asset.descriptors || []).find((item) => item.descriptor_type === "prompt_costume")?.text || "";
+  entityLibraryEditReference.value = asset.logical_reference?.reference_key || "";
+  entityLibraryUsages.replaceChildren();
+  for (const usage of asset.usages || []) {
+    const row = document.createElement("li");
+    row.textContent = `${usage.consumer_type}: ${usage.consumer_id} · ${usage.locator}`;
+    entityLibraryUsages.append(row);
+  }
+  if (!asset.usages?.length) {
+    const row = document.createElement("li");
+    row.textContent = "No current consumers.";
+    entityLibraryUsages.append(row);
+  }
+  await searchEntityLibrary();
+}
+
+async function saveEntityLibraryAsset() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset) return;
+  const facets = entityLibraryEditFacets.value.split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+    const split = entry.indexOf(":");
+    return { namespace: split < 0 ? "tag" : entry.slice(0, split).trim(), value: split < 0 ? entry : entry.slice(split + 1).trim(), controlled: split >= 0 };
+  });
+  const existingEntityLinks = new Map((asset.entities || []).map((item) => [item.entity_id, item]));
+  const entityLinks = [...entityLibraryEditEntities.selectedOptions].map((optionItem) => ({
+    entity_id: optionItem.value,
+    role: existingEntityLinks.get(optionItem.value)?.role || "depicted_subject",
+    variant_id: existingEntityLinks.get(optionItem.value)?.variant_id || null,
+  }));
+  const setIds = [...entityLibraryEditSets.selectedOptions].map((optionItem) => optionItem.value);
+  const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label: entityLibraryEditLabel.value, notes: entityLibraryEditNotes.value, status: entityLibraryEditStatus.value, entity_links: entityLinks, set_ids: setIds, facets, tags: entityLibraryEditTags.value.split(",").map((tag) => tag.trim()).filter(Boolean) }),
+  });
+  entityLibrarySelectedAsset = payload.asset;
+  for (const [descriptor_type, text] of [["prompt_identity", entityLibraryEditIdentity.value], ["prompt_costume", entityLibraryEditCostume.value]]) {
+    await fetchJson("/api/entity-library/descriptors", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner_type: "asset", owner_id: asset.asset_id, descriptor_type, text }),
+    });
+  }
+  const referenceKey = entityLibraryEditReference.value.trim();
+  if (referenceKey) {
+    const existing = (await fetchJson("/api/entity-library/logical-references")).references || [];
+    const previous = existing.find((item) => item.reference_key === referenceKey);
+    await fetchJson(previous
+      ? `/api/entity-library/logical-references/${encodeURIComponent(referenceKey)}`
+      : "/api/entity-library/logical-references", {
+      method: previous ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reference_key: referenceKey, label: entityLibraryEditLabel.value, asset_id: asset.asset_id, set_id: previous?.set_id || setIds[0] || null, status: "active" }),
+    });
+  }
+  await selectEntityLibraryAsset(asset.asset_id);
 }
 
 async function loadImageCatalog() {
@@ -11919,6 +12325,191 @@ scenePickerSearch.addEventListener("input", () => {
 });
 scenePickerRefresh.addEventListener("click", loadSceneImageReferences);
 builderImagePickerCharacter.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerEntity.addEventListener("change", async () => {
+  const payload = await fetchJson(`/api/entity-library/variants?entity_id=${encodeURIComponent(builderImagePickerEntity.value)}`);
+  setSelectOptionsWithLabels(builderImagePickerVariant, [
+    { value: "", label: "All variants" },
+    ...(payload.variants || []).map((item) => ({ value: item.variant_id, label: `${item.name} · ${item.variant_type}` })),
+  ]);
+  await loadImagePickerReferences(builderImagePicker);
+});
+for (const control of [builderImagePickerVariant, builderImagePickerSet, builderImagePickerFacet]) {
+  control.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+}
+builderImagePickerMode.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+entityLibraryRefresh.addEventListener("click", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
+for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin]) {
+  control.addEventListener("change", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
+}
+entityLibrarySearch.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; });
+});
+entityLibraryFile.addEventListener("change", () => {
+  state.entityLibraryImportBlob = null;
+  entityLibraryPaste.textContent = entityLibraryFile.files?.[0]?.name || "Or click here and paste an image";
+  entityLibraryImport.disabled = !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+});
+entityLibraryNewLabel.addEventListener("input", () => {
+  entityLibraryImport.disabled = !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+});
+entityLibraryImport.addEventListener("click", async () => {
+  const file = state.entityLibraryImportBlob || entityLibraryFile.files?.[0];
+  const label = entityLibraryNewLabel.value.trim();
+  if (!file || !label) return;
+  entityLibraryImport.disabled = true;
+  entityLibraryImportStatus.textContent = "Adding image…";
+  try {
+    const response = await fetch(`/api/entity-library/assets?label=${encodeURIComponent(label)}`, {
+      method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Could not add the image.");
+    entityLibraryFile.value = "";
+    state.entityLibraryImportBlob = null;
+    entityLibraryPaste.textContent = "Or click here and paste an image";
+    entityLibraryNewLabel.value = "";
+    entityLibraryImportStatus.textContent = payload.message || "Image added.";
+    await loadEntityLibraryInventory();
+    if (payload.asset?.asset_id) await selectEntityLibraryAsset(payload.asset.asset_id);
+  } catch (error) {
+    entityLibraryImportStatus.textContent = error.message;
+  } finally {
+    entityLibraryImport.disabled = !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+  }
+});
+entityLibraryEntityCreate.addEventListener("click", async () => {
+  try {
+    await fetchJson("/api/entity-library/entities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: entityLibraryEntityName.value, entity_type: entityLibraryEntityType.value }) });
+    entityLibraryEntityName.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibrarySetCreate.addEventListener("click", async () => {
+  try {
+    await fetchJson("/api/entity-library/sets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: entityLibrarySetName.value, set_type: entityLibrarySetType.value || "general" }) });
+    entityLibrarySetName.value = "";
+    entityLibrarySetType.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibraryVariantCreate.addEventListener("click", async () => {
+  if (!entityLibraryVariantEntity.value || !entityLibraryVariantName.value.trim()) return;
+  try {
+    await fetchJson(`/api/entity-library/entities/${encodeURIComponent(entityLibraryVariantEntity.value)}/variants`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: entityLibraryVariantName.value, variant_type: entityLibraryVariantType.value }),
+    });
+    entityLibraryVariantName.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibraryRelationCreate.addEventListener("click", async () => {
+  if (!entityLibraryRelationSource.value || !entityLibraryRelationTarget.value) return;
+  try {
+    await fetchJson("/api/entity-library/relations", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_entity_id: entityLibraryRelationSource.value, target_entity_id: entityLibraryRelationTarget.value, relation_type: entityLibraryRelationType.value }),
+    });
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibraryDescriptorOwnerType.addEventListener("change", updateEntityLibraryDescriptorOwners);
+entityLibraryDescriptorSave.addEventListener("click", async () => {
+  if (!entityLibraryDescriptorOwner.value || !entityLibraryDescriptorText.value.trim()) return;
+  try {
+    await fetchJson("/api/entity-library/descriptors", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        owner_type: entityLibraryDescriptorOwnerType.value,
+        owner_id: entityLibraryDescriptorOwner.value,
+        descriptor_type: entityLibraryDescriptorType.value,
+        text: entityLibraryDescriptorText.value,
+      }),
+    });
+    entityLibraryDescriptorText.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibrarySave.addEventListener("click", async () => {
+  entityLibrarySave.disabled = true;
+  try {
+    await saveEntityLibraryAsset();
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    entityLibrarySave.disabled = !entityLibrarySelectedAsset;
+  }
+});
+entityLibraryReplacementFile.addEventListener("change", () => {
+  state.entityLibraryReplacementBlob = null;
+  entityLibraryReplacementPaste.textContent = entityLibraryReplacementFile.files?.[0]?.name || "Or click here and paste a replacement image";
+  entityLibraryReplace.disabled = !entityLibrarySelectedAsset || !(entityLibraryReplacementFile.files?.[0] || state.entityLibraryReplacementBlob);
+});
+entityLibraryReplace.addEventListener("click", async () => {
+  const file = state.entityLibraryReplacementBlob || entityLibraryReplacementFile.files?.[0];
+  if (!file || !entityLibrarySelectedAsset) return;
+  entityLibraryReplace.disabled = true;
+  try {
+    const response = await fetch(`/api/entity-library/assets/${encodeURIComponent(entityLibrarySelectedAsset.asset_id)}/image`, {
+      method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Could not replace the image.");
+    entityLibraryReplacementFile.value = "";
+    state.entityLibraryReplacementBlob = null;
+    entityLibraryReplacementPaste.textContent = "Or click here and paste a replacement image";
+    await loadEntityLibraryInventory();
+    await selectEntityLibraryAsset(payload.asset.asset_id);
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    entityLibraryReplace.disabled = !entityLibrarySelectedAsset || !(entityLibraryReplacementFile.files?.[0] || state.entityLibraryReplacementBlob);
+  }
+});
+for (const [zone, kind] of [[entityLibraryPaste, "import"], [entityLibraryReplacementPaste, "replacement"]]) {
+  zone.addEventListener("paste", (event) => {
+    const blob = imageBlobFromPasteEvent(event);
+    if (!blob) return;
+    event.preventDefault();
+    if (kind === "import") {
+      state.entityLibraryImportBlob = blob;
+      entityLibraryFile.value = "";
+      entityLibraryPaste.textContent = `${blob.name || "Pasted image"} ready`;
+      entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+    } else {
+      state.entityLibraryReplacementBlob = blob;
+      entityLibraryReplacementFile.value = "";
+      entityLibraryReplacementPaste.textContent = `${blob.name || "Pasted image"} ready`;
+      entityLibraryReplace.disabled = !entityLibrarySelectedAsset;
+    }
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("drag-over");
+    const blob = event.dataTransfer?.files?.[0];
+    if (!blob?.type.startsWith("image/")) return;
+    if (kind === "import") {
+      state.entityLibraryImportBlob = blob;
+      entityLibraryFile.value = "";
+      entityLibraryPaste.textContent = `${blob.name || "Image"} ready`;
+      entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+    } else {
+      state.entityLibraryReplacementBlob = blob;
+      entityLibraryReplacementFile.value = "";
+      entityLibraryReplacementPaste.textContent = `${blob.name || "Image"} ready`;
+      entityLibraryReplace.disabled = !entityLibrarySelectedAsset;
+    }
+  });
+}
+entityLibraryBack.addEventListener("click", () => {
+  document.querySelector(".entity-library-layout").classList.remove("metadata-mode");
+  entityLibraryBack.hidden = true;
+});
 builderImagePickerIncludeBase.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerSource.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerCategory.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
@@ -12314,6 +12905,7 @@ async function main() {
   });
   sourceEditorText.placeholder = "Open an editable source from Prompt Inspection.";
   setupTabs();
+  await loadUniverses();
   const startupLoad = beginPageLoad(null);
   loadStoredAssetFilters();
   try {
@@ -12386,6 +12978,164 @@ async function main() {
     scheduleProductionWorkSummary();
   }
 }
+
+function setUniverseMessage(id, message, kind = "info") {
+  const target = document.getElementById(id);
+  if (!target) return;
+  target.textContent = message;
+  target.className = `action-message ${kind}`.trim();
+  target.hidden = !message;
+}
+
+async function loadUniverses() {
+  const response = await fetch("/api/universes");
+  if (!response.ok) throw new Error(`Unable to load universes (${response.status}).`);
+  const payload = await response.json();
+  state.universeId = payload.selected_universe_id || "";
+  state.universes = payload.universes || [];
+  universeSelect.replaceChildren(...state.universes.map((universe) => {
+    const option = document.createElement("option");
+    option.value = universe.universe_id;
+    option.textContent = universe.name;
+    return option;
+  }));
+  universeSelect.value = state.universeId;
+}
+
+async function loadUniverseList() {
+  await loadUniverses();
+  const list = document.querySelector("#universe-list");
+  list.replaceChildren();
+  for (const universe of state.universes) {
+    const row = document.createElement("article");
+    row.className = "universe-list-row";
+    const details = document.createElement("div");
+    const title = document.createElement("h2");
+    title.textContent = universe.name;
+    const style = document.createElement("p");
+    style.textContent = universe.canonical_art_style || "No canonical art style set.";
+    details.append(title, style);
+    const actions = document.createElement("div");
+    actions.className = "button-row compact";
+    const settings = document.createElement("button");
+    settings.type = "button";
+    settings.textContent = "Settings";
+    settings.className = "tab";
+    settings.dataset.page = "universe-settings";
+    settings.dataset.universeId = universe.universe_id;
+    settings.addEventListener("click", () => runGuardedTransition(() => activatePage("universe-settings", {
+      skipAutosave: true,
+      universeId: universe.universe_id,
+    })));
+    actions.append(settings);
+    if (universe.universe_id !== state.universeId) {
+      const select = document.createElement("button");
+      select.type = "button";
+      select.textContent = "Select Universe";
+      select.addEventListener("click", () => selectUniverse(universe.universe_id));
+      actions.append(select);
+    } else {
+      const selected = document.createElement("span");
+      selected.textContent = "Selected";
+      actions.append(selected);
+    }
+    row.append(details, actions);
+    list.append(row);
+  }
+  if (!state.universes.length) list.textContent = "No universes yet.";
+}
+
+async function loadUniverseSettings(universeId) {
+  const response = await fetch(`/api/universes/${encodeURIComponent(universeId)}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.detail || "Unable to load universe settings.");
+  const universe = payload.universe;
+  state.universeSettingsId = universe.universe_id;
+  state.savedUniverseArtStyle = universe.canonical_art_style || "";
+  universeSettingsArtStyle.value = state.savedUniverseArtStyle;
+  document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
+  document.querySelector("#universe-settings-select").hidden = universe.universe_id === state.universeId;
+  setUniverseMessage("universe-settings-message", "", "");
+}
+
+async function saveUniverseSettings() {
+  const response = await fetch(`/api/universes/${encodeURIComponent(state.universeSettingsId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    setUniverseMessage("universe-settings-message", payload.detail || "Unable to save universe settings.", "error");
+    return false;
+  }
+  state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
+  setUniverseMessage("universe-settings-message", "Settings saved.", "success");
+  return true;
+}
+
+async function selectUniverse(universeId) {
+  const response = await fetch("/api/universes/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Zet-Universe": state.universeId },
+    body: JSON.stringify({ universe_id: universeId }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    setUniverseMessage("universes-message", payload.detail || "Unable to select universe.", "error");
+    return;
+  }
+  window.location.reload();
+}
+
+universeCreateForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = universeCreateForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/universes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.querySelector("#universe-create-name").value,
+        canonical_art_style: document.querySelector("#universe-create-art-style").value,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Unable to create universe.");
+    await loadUniverses();
+    state.universeSettingsId = payload.universe.universe_id;
+    await activatePage("universe-settings", { skipAutosave: true, universeId: state.universeSettingsId });
+  } catch (error) {
+    setUniverseMessage("universe-create-message", error.message, "error");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+universeSettingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveUniverseSettings();
+});
+
+document.querySelector("#universe-settings-select").addEventListener("click", () => {
+  void runGuardedTransition(() => selectUniverse(state.universeSettingsId));
+});
+
+universeSelect.addEventListener("change", async () => {
+  const nextUniverseId = universeSelect.value;
+  if (!nextUniverseId || nextUniverseId === state.universeId) return;
+  universeSelect.disabled = true;
+  try {
+    const changed = await runGuardedTransition(() => selectUniverse(nextUniverseId));
+    if (!changed) universeSelect.value = state.universeId;
+  } catch (error) {
+    universeSelect.value = state.universeId;
+    showActionMessage(`Unable to change universe: ${error.message}`, "error");
+  } finally {
+    universeSelect.disabled = false;
+  }
+});
 
 window.addEventListener("popstate", () => {
   void (async () => {

@@ -36,7 +36,7 @@ class LocalGateRegistryService:
     def __init__(self, app: Any, project_root: str | Path):
         self.app = app
         self.project_root = Path(project_root).resolve()
-        self.root = Path(app.config.base_library_path).resolve() / "Experiments" / "Gate-Test-Rig"
+        self.root = Path(app.config.base_library_path).resolve() / "PipelineCandidates" / "Gate-Test-Rig"
         self.settings_path = self.root / "pipeline-settings.json"
         self.case_root = self.root / "cases"
         self.saved_test_root = self.root / "saved-tests"

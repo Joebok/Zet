@@ -48,6 +48,7 @@ from zet.services.pipeline_compiler_support import (
     view_orientation_intro,
     view_instruction,
     with_view_orientation_intro,
+    universe_art_style,
 )
 
 
@@ -158,9 +159,14 @@ Reviewed At:
     )
 
 
-def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation") -> dict:
+def compile_body_reference_job(
+    job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
+    pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
+) -> dict:
     if prompt_variant not in {"generation", "analysis"}:
         raise ValueError(f"Unsupported body-reference prompt variant: {prompt_variant}")
+    if pipeline_mode not in {"traditional", "local"}:
+        raise TemplateCompileError("INVALID_PIPELINE_MODE", f"Unsupported Body-Reference pipeline mode: {pipeline_mode}")
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
     character = require_job_field(job, "Character", "character")
@@ -175,7 +181,10 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, 
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
     view_data = load_view_data(project_root, view_token)
-    template_path = template_path_for_job(project_root, job, character, phase)
+    template_path = template_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
     output_dir = output_dir_for_job(project_root, job, character, phase, view_data)
     expected_output = expected_output_for_job(job, view_data)
 
@@ -217,6 +226,7 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, 
         "phase": phase,
         "view_token": view_token,
     }
+    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
         "CHARACTER_NAME": character,
         "CHARACTER_PHASE": phase,
@@ -228,6 +238,8 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, 
         **template_metadata(template_path),
         **load_race_render_rules(project_root, template_path, view_token),
     }
+    if universe_style:
+        metadata_values["CANONICAL_ART_STYLE"] = universe_style
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,
         bundle=bundle,
@@ -239,11 +251,13 @@ def compile_body_reference_job(job: dict, project_root: Path = PROJECT_ROOT, *, 
         metadata_sources={
             **metadata_source_map(project_root, template_path, view_token, task, "body"),
             **background_treatment_source_map(project_root),
+            **(universe_sources if universe_style else {}),
         },
         selection=selection,
         required_section_names=[],
         view_token=view_token,
         prompt_variant=prompt_variant,
+        pipeline_mode=pipeline_mode,
         image_inputs=image_inputs,
     )
     if prompt_variant == "generation":

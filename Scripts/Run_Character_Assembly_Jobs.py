@@ -43,6 +43,7 @@ from zet.services.pipeline_compiler_support import (
     character_assembly_style_instruction,
     view_orientation_intro,
     with_view_orientation_intro,
+    universe_art_style,
 )
 
 
@@ -139,7 +140,7 @@ Reviewed At:
 
 def compile_character_assembly_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
-    pipeline_mode: str = "traditional",
+    pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -208,7 +209,10 @@ def compile_character_assembly_job(
         head_image=head_image,
     )
 
-    template_path = template_path_for_job(project_root, job, character, phase)
+    template_path = template_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
     all_sections, section_sources = load_body_reference_section_data(project_root, template_path)
     selection = select_prompt_sections(
         project_root, bundle, all_sections, section_sources, body_view_token,
@@ -245,6 +249,7 @@ def compile_character_assembly_job(
         "head_view_token": head_view_token,
         "assembly_style_mode": assembly_style_mode,
     }
+    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
             "CHARACTER_NAME": character,
             "CHARACTER_PHASE": phase,
@@ -271,10 +276,15 @@ def compile_character_assembly_job(
                 if pipeline_mode == "local"
                 else ""
             ),
+            "LOCAL_CANONICAL_ART_STYLE": (
+                f"Maintain the universe's Canonical Art Style: {universe_style}." if universe_style else ""
+            ),
             **contract_values,
             **template_metadata(template_path),
         }
     metadata_sources = {
+        **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
+           if universe_style else {}),
         "CHARACTER_NAME": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset character", "editable": False},
         "CHARACTER_PHASE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset phase", "editable": False},
         "VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Normalized view token", "editable": False},

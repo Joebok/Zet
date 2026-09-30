@@ -85,8 +85,19 @@ class LocalHeadImageService:
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
-        self.root = self.library_root / "Experiments" / "Character-Pipeline"
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self.asset_store = LocalAssetStoreService(self.library_root)
+        self._runner_lock = threading.Lock()
+
+    def _ask_belongs_to_run(self, ask: dict, run: dict) -> bool:
+        configured = str(getattr(self.app.config, "universe_id", "Moonsea"))
+        legacy = bool(getattr(self.app.config, "universe_is_legacy", True))
+        owner = str(ask.get("universe_id") or ("Moonsea" if legacy else "")).strip()
+        run_owner = str(run.get("universe_id") or ("Moonsea" if legacy else "")).strip()
+        return bool(owner) and owner == configured and run_owner == owner
+
+    def _active_key(self, run_id: str) -> str:
+        return f"{self.library_root}::{run_id}"
 
     @staticmethod
     def _now() -> str:
@@ -167,7 +178,10 @@ class LocalHeadImageService:
                "Phase": phase, "Head View": view, "Template Path": str(template_path),
                "Output Directory": str(output_dir), "Reference Files": references}
         try:
-            result = compile_head_image_job(job, self.project_root, pipeline_mode="local")
+            result = compile_head_image_job(
+                job, self.project_root, pipeline_mode="local",
+                universe_root=self.app.config.base_library_path,
+            )
             from zet.services.local_prompt_improvement_service import record_compiler_sources
             record_compiler_sources(output_dir)
             return result
@@ -213,6 +227,7 @@ class LocalHeadImageService:
         front_prompt = self._compile(root, plan["character"], plan["phase"], FRONT,
                                      ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []))
         spec = {"schema_version": 1, "review_version": 2, "kind": "local_head_image", "run_id": run_id,
+                "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "batch_name": "",
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "views": list(VIEWS), "front_count": plan["front_count"], "other_count": plan["other_count"],
@@ -244,7 +259,7 @@ class LocalHeadImageService:
         active = state.get("status") in ACTIVE_RUN_STATUSES
         if active:
             with self._active_lock:
-                value["interrupted"] = run_id not in self._active
+                value["interrupted"] = self._active_key(run_id) not in self._active
                 if value["interrupted"]:
                     value["status"] = "INTERRUPTED"
         else:
@@ -354,7 +369,7 @@ class LocalHeadImageService:
                 status = str(state.get("status") or spec.get("status") or "UNKNOWN")
                 if status in ACTIVE_RUN_STATUSES:
                     with self._active_lock:
-                        if run_id not in self._active:
+                        if self._active_key(run_id) not in self._active:
                             status = "INTERRUPTED"
                 candidates = {item["candidate_id"]: item for item in spec.get("candidates", [])}
                 for candidate_id, update in (state.get("candidates") or {}).items():
@@ -464,7 +479,8 @@ class LocalHeadImageService:
             return
         ask = json.loads((answer_dir / "ask_manifest.json").read_text(encoding="utf-8"))
         answer = json.loads((answer_dir / "answer_manifest.json").read_text(encoding="utf-8"))
-        if ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id or ask.get("pipeline") != "Local-Head-Image":
+        if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
+                or ask.get("pipeline") != "Local-Head-Image" or not self._ask_belongs_to_run(ask, run)):
             raise LocalHeadImageError("AI Proxy answer does not belong to this Local Head-Image candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER"}:
             raise LocalHeadImageError(str(answer.get("error_message") or "AI Proxy render failed."))
@@ -593,6 +609,7 @@ class LocalHeadImageService:
         ask = json.loads((folder / "ask_manifest.json").read_text(encoding="utf-8"))
         answer = json.loads((folder / "answer_manifest.json").read_text(encoding="utf-8"))
         if (ask.get("ask_id") != ask_id or ask.get("local_head_image_run_id") != run_id
+                or not self._ask_belongs_to_run(ask, self.detail(run_id))
                 or ask.get("candidate_id") != candidate_id or ask.get("task_type") != "local_head_image_gate"):
             raise LocalHeadImageError("AI Proxy gate answer does not match its Local Head-Image candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER"}:
@@ -740,7 +757,7 @@ class LocalHeadImageService:
         try:
             with file_lock(root / "runner.lock", timeout=0):
                 with self._active_lock:
-                    self._active.add(run_id)
+                    self._active.add(self._active_key(run_id))
                 run = self.detail(run_id)
                 if views is None:
                     views = {FRONT} if not run.get("front_anchor") else {view for view in VIEWS if view != FRONT}
@@ -823,7 +840,7 @@ class LocalHeadImageService:
             self._run_update(run_id, status="ERROR", error=str(exc))
         finally:
             with self._active_lock:
-                self._active.discard(run_id)
+                self._active.discard(self._active_key(run_id))
 
     def gate_prompt(self, run_id: str, view: str, gate: str) -> str:
         if view not in VIEWS:
@@ -1227,7 +1244,7 @@ class LocalHeadImageService:
     def _assert_rerun_allowed(self, run: dict[str, Any], views: set[str]) -> None:
         if run.get("status") in ACTIVE_RUN_STATUSES or run.get("status") == "STOPPING":
             raise LocalHeadImageError("Stop the active batch before re-running candidates.")
-        if self._runner_lock.locked() or run["run_id"] in self._active:
+        if self._runner_lock.locked() or self._active_key(run["run_id"]) in self._active:
             raise LocalHeadImageError("Wait for the local image runner to finish before re-running candidates.")
         for view in views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
@@ -1501,7 +1518,7 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         if run.get("status") == "CANCELLED" and run.get("created_by_autogenerate"):
             with self._active_lock:
-                if run_id in self._active:
+                if self._active_key(run_id) in self._active:
                     raise LocalHeadImageError("Wait for the stopped batch runner to finish before resuming.")
             root, state = self._state(run_id)
             resume_cancelled_autogenerate_state(run, state, ready_status="READY_FOR_VIEWS")

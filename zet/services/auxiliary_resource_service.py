@@ -1,11 +1,15 @@
 import re
 import shutil
 from datetime import datetime
+import hashlib
+import mimetypes
 from pathlib import Path
 
 from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.services.auxiliary_resource_tags import auxiliary_resource_tag
+from zet.repositories.entity_library_repository import EntityLibraryRepository
+from zet.services.entity_library_service import EntityLibraryService
 from zet.services.path_service import PathService
 
 
@@ -27,6 +31,9 @@ class AuxiliaryResourceService:
     def __init__(self, repository: AuxiliaryResourceRepository, path_service: PathService):
         self.repository = repository
         self.path_service = path_service
+        catalog_repository = EntityLibraryRepository(path_service.entity_library_database_path())
+        catalog_repository.initialize()
+        self.entity_library = EntityLibraryService(path_service, catalog_repository)
 
     def _timestamp(self) -> str:
         return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -88,6 +95,19 @@ class AuxiliaryResourceService:
         folder = self.path_service.auxiliary_resource_folder_path(resource_id)
         return folder, folder / f"{resource_id}_Template.md"
 
+    def _entity_and_set(self, category: str, resource_id: str, label: str) -> tuple[str, str]:
+        entity_type = {"person": "person", "place": "location", "thing": "prop"}[category]
+        entity = next((item for item in self.entity_library.list_entities(entity_type)
+                       if item["name"].casefold() == label.casefold()), None)
+        if entity is None:
+            entity = self.entity_library.create_entity({"name": label, "entity_type": entity_type})
+        set_name = f"Auxiliary: {category}/{resource_id}"
+        reference_set = next((item for item in self.entity_library.list_sets() if item["name"] == set_name), None)
+        if reference_set is None:
+            reference_set = self.entity_library.create_set({"name": set_name, "set_type": "legacy_auxiliary",
+                                                             "description": label, "entity_id": entity["entity_id"]})
+        return entity["entity_id"], reference_set["set_id"]
+
     def list_resources(self, category: str) -> list[AuxiliaryResource]:
         normalized = self._category(category)
         return sorted(
@@ -95,12 +115,64 @@ class AuxiliaryResourceService:
             key=lambda item: (item.label.lower(), item.resource_id),
         )
 
+    def migrate_legacy_images(self, original_library_root: str | Path) -> dict[str, int]:
+        """Register moved auxiliary image files in the universe catalog and retain their tags."""
+        original_root = Path(original_library_root).expanduser().resolve()
+        imported = 0
+        unresolved = 0
+        for resource in self.repository.list_resources():
+            entity_id, set_id = self._entity_and_set(resource.category, resource.resource_id, resource.label)
+            changed = False
+            for image in resource.images:
+                tag = str(image.get("tag") or self._tag(resource.category, resource.resource_id, str(image.get("image_id") or "")))
+                source = Path(str(image.get("image_path") or ""))
+                try:
+                    relative = source.resolve().relative_to(original_root)
+                    source = self.path_service.library_path("_state", *relative.parts)
+                except (OSError, ValueError):
+                    pass
+                if not source.is_file():
+                    unresolved += 1
+                    continue
+                data = source.read_bytes()
+                checksum = hashlib.sha256(data).hexdigest()
+                mime_type = mimetypes.guess_type(source.name)[0] or "image/png"
+                asset = self.entity_library.import_asset(
+                    str(image.get("label") or resource.label), mime_type, data,
+                    notes=str(resource.notes or ""), entity_ids=[entity_id], set_ids=[set_id],
+                    origin="legacy_auxiliary", origin_key=f"auxiliary:{tag}:{checksum}",
+                )
+                self.entity_library.register_legacy_reference(tag, asset["asset_id"])
+                image["image_path"] = asset["image_path"]
+                image["tag"] = tag
+                changed = True
+                imported += 1
+            old_folder = Path(str(resource.resource_path or ""))
+            try:
+                resource.resource_path = str(self.path_service.library_path("_state", *old_folder.resolve().relative_to(original_root).parts))
+                changed = True
+            except (OSError, ValueError):
+                pass
+            old_template = Path(str(resource.template_path or ""))
+            try:
+                resource.template_path = str(self.path_service.library_path("_state", *old_template.resolve().relative_to(original_root).parts))
+                changed = True
+            except (OSError, ValueError):
+                pass
+            if changed:
+                first = resource.images[0] if resource.images else {}
+                resource.image_path = str(first.get("image_path") or "")
+                resource.tag = str(first.get("tag") or "")
+                self.repository.save_resource(resource)
+        return {"imported": imported, "unresolved": unresolved}
+
     def create_resource(self, category: str, label: str) -> AuxiliaryResource:
         normalized = self._category(category)
         cleaned_label = str(label or "").strip()
         if not cleaned_label:
             raise AuxiliaryResourceServiceError("Auxiliary resource label is required.")
         resource_id = self._unique_resource_id(cleaned_label)
+        self._entity_and_set(normalized, resource_id, cleaned_label)
         folder, template_path = self._resource_paths(resource_id)
         folder.mkdir(parents=True, exist_ok=False)
         template_path.write_text(self._template_text(cleaned_label, normalized), encoding="utf-8")
@@ -139,8 +211,8 @@ class AuxiliaryResourceService:
     def delete_resource(self, resource_id: str) -> AuxiliaryResource:
         resource = self.repository.get_resource(resource_id)
         folder, _ = self._resource_paths(resource.resource_id)
-        images_root = self.path_service.auxiliary_resource_root() / "Images"
-        if not resource.resource_id or folder.resolve().parent != images_root.resolve():
+        templates_root = self.path_service.library_path("_state", "ResourceTemplates")
+        if not resource.resource_id or folder.resolve().parent != templates_root.resolve():
             raise AuxiliaryResourceServiceError("Auxiliary resource folder is invalid.")
         if folder.exists():
             shutil.rmtree(folder)
@@ -165,19 +237,29 @@ class AuxiliaryResourceService:
         image_id = str(existing.get("image_id")) if existing else self._unique_image_id(resource, cleaned_label)
         extension = self._extension_for_content_type(content_type) if image_bytes else Path(existing.get("image_path", "")).suffix if existing else ".png"
         image_path = folder / f"{image_id}{extension}"
-        if existing:
+        if not image_bytes and existing:
             old_path = Path(existing.get("image_path", ""))
-            if old_path.exists() and old_path != image_path:
-                old_path.rename(image_path)
-        if image_bytes:
-            image_path.write_bytes(image_bytes)
-        if not image_path.exists():
+            if old_path.is_file():
+                image_bytes = old_path.read_bytes()
+        if not image_bytes:
             raise AuxiliaryResourceServiceError("Auxiliary resource image is required.")
+        entity_id, set_id = self._entity_and_set(resource.category, resource.resource_id, resource.label)
+        mime_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}.get(extension.lower(), "image/png")
+        tag = self._tag(resource.category, resource.resource_id, image_id)
+        import hashlib
+        checksum = hashlib.sha256(image_bytes).hexdigest()
+        catalog_asset = self.entity_library.import_asset(
+            cleaned_label, mime_type, image_bytes,
+            notes=str(resource.notes or ""), entity_ids=[entity_id], set_ids=[set_id],
+            origin="legacy_auxiliary", origin_key=f"auxiliary:{tag}:{checksum}",
+        )
+        self.entity_library.register_legacy_reference(tag, catalog_asset["asset_id"])
+        image_path = Path(catalog_asset["image_path"])
         now = self._timestamp()
         image_record = {
             "image_id": image_id,
             "label": cleaned_label,
-            "tag": self._tag(resource.category, resource.resource_id, image_id),
+            "tag": tag,
             "image_path": str(image_path),
             "created_at": existing.get("created_at") if existing else now,
             "updated_at": now,

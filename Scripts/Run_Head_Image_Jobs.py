@@ -37,6 +37,7 @@ from zet.services.pipeline_compiler_support import (
     template_path_for_job,
     validate_reference,
     view_instruction,
+    universe_art_style,
 )
 
 
@@ -74,7 +75,7 @@ def _local_source_rules(rules: str) -> str:
 
 def compile_head_image_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
-    pipeline_mode: str = "traditional",
+    pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -89,7 +90,10 @@ def compile_head_image_job(
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
     view_data = load_view_data(project_root, view_token)
-    template_path = template_path_for_job(project_root, job, character, phase)
+    template_path = template_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
     output_dir = output_dir_for_job(project_root, job, character, phase, view_token)
     expected_output = job_get(job, "Expected Output", "expected_output") or f"Head-Image_{view_data['output_name_fragment']}.png"
 
@@ -144,8 +148,9 @@ def compile_head_image_job(
         references, render_mode=render_mode
     )
     contract_values["LOCAL_RENDER_MODE"] = render_mode
-    local_style = str(template_metadata(template_path).get("CANONICAL_ART_STYLE") or "").rstrip(". ")
-    if view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
+    local_style = str(universe_style or template_metadata(template_path).get("CANONICAL_ART_STYLE") or "").rstrip(". ")
+    if not universe_style and view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
         local_style = re.sub(
             r" with anime-influenced facial proportions(?:,\s*(?:and\s+)?|\s+and\s+)large expressive eyes",
             "",
@@ -213,6 +218,8 @@ def compile_head_image_job(
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
         "LOCAL_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Local head-image view instruction", "json_pointer": f"/views/{view_token}/local_head_image_instruction", "editable": True},
         "LOCAL_GAZE_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Local head-image gaze instruction", "json_pointer": f"/views/{view_token}/local_head_image_gaze", "editable": True},
+        **({"LOCAL_STYLE_INSTRUCTION": {**universe_sources["CANONICAL_ART_STYLE"], "source_label": "Universe Canonical Art Style"}}
+           if universe_style else {}),
     }
     gaze_review_items = {
         "FRONT": "- [ ] The eyes look forward with the face.",

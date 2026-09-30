@@ -6,15 +6,19 @@ import re
 from pathlib import Path
 
 from Scripts.Compile_Character_Template import TemplateCompileError
-from Scripts.Library_Paths import library_root, resolve_library_path
+from Scripts.Library_Paths import library_root, load_project_config, resolve_library_path
+from zet.repositories.entity_library_repository import EntityLibraryRepository
+from zet.services.entity_library_service import EntityLibraryService, EntityLibraryServiceError
+from zet.services.path_service import PathService
 from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
 
 IMAGE_TAG_RE = re.compile(r"\{\{IMAGE:(img_[A-Za-z0-9_-]+)\}\}")
+LIB_REFERENCE_TAG_RE = re.compile(r"\{\{LIB:REF:([a-z0-9][a-z0-9._-]*)\}\}")
 
 
 def auxiliary_inventory_path(project_root: Path) -> Path:
     """Return the global auxiliary resource inventory path."""
-    return library_root(project_root) / "AuxiliaryResources" / "AuxiliaryResources.json"
+    return library_root(project_root) / "_state" / "AuxiliaryResourceIndex.json"
 
 
 def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str, str]]:
@@ -25,6 +29,10 @@ def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str, str]]:
 def load_auxiliary_resource_lookup(project_root: Path) -> list[dict]:
     """Load auxiliary resource records."""
     path = auxiliary_inventory_path(project_root)
+    if not path.is_file():
+        legacy_root = library_root(project_root) / "AuxiliaryResources" / "AuxiliaryResources.json"
+        if legacy_root.is_file():
+            path = legacy_root
     if not path.exists():
         return []
     try:
@@ -44,21 +52,38 @@ def load_auxiliary_resource_lookup(project_root: Path) -> list[dict]:
 
 def load_managed_image_lookup(project_root: Path) -> dict[str, dict]:
     """Load catalog-owned imported images keyed by their stable tag."""
-    catalog_root = library_root(project_root) / "ImageCatalog"
+    universe_root = library_root(project_root)
+    catalog_root = universe_root / "_state" / "ImageCatalog"
+    if not catalog_root.is_dir():
+        catalog_root = universe_root / "ImageCatalog"
+    legacy_references: dict[str, dict] = {}
+    try:
+        service = PathService(load_project_config(project_root), project_root)
+        catalog = EntityLibraryRepository(service.entity_library_database_path())
+        rows = catalog.fetchall("SELECT r.reference_tag,a.asset_id,a.label,a.file_name,a.checksum,a.status FROM legacy_image_references r JOIN assets a ON a.asset_id=r.asset_id") if service.entity_library_database_path().is_file() else []
+        for row in rows:
+            legacy_references[row["reference_tag"]] = {
+                "tag": row["reference_tag"], "label": row["label"],
+                "image_path": str(service.entity_library_images_path() / f"{row['asset_id']}{Path(row['file_name']).suffix.lower()}"),
+                "checksum": row["checksum"], "status": row["status"],
+            }
+    except Exception:
+        # Older libraries do not have an entity catalog or alias table yet.
+        pass
     path = catalog_root / "ImageCatalog.json"
     if not path.is_file():
-        return {}
+        return legacy_references
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog is malformed: {path}: {exc}") from exc
     managed = payload.get("managed_images") if isinstance(payload, dict) else None
     if isinstance(managed, dict):
-        return {
+        return {**legacy_references, **{
             str(record.get("tag") or ""): record
             for record in managed.values()
             if isinstance(record, dict) and str(record.get("tag") or "")
-        }
+        }}
 
     # Schema v3 catalogs keep the manifest in ImageCatalog.json and each image
     # in a separate Records/<catalog_id>.json file.
@@ -75,7 +100,7 @@ def load_managed_image_lookup(project_root: Path) -> dict[str, dict]:
             image = record_payload.get("managed_image") if isinstance(record_payload, dict) else None
             if isinstance(image, dict) and str(image.get("tag") or ""):
                 records[str(image["tag"])] = image
-        return records
+        return {**legacy_references, **records}
 
     raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog has no managed_images object: {path}")
 
@@ -85,7 +110,8 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
     combined_text = "\n\n".join(text for text in texts if text)
     tags = auxiliary_tags_in_text(combined_text)
     image_tags = [match.group(0) for match in IMAGE_TAG_RE.finditer(combined_text)]
-    if not tags and not image_tags:
+    library_tags = list(dict.fromkeys(match.group(0) for match in LIB_REFERENCE_TAG_RE.finditer(combined_text)))
+    if not tags and not image_tags and not library_tags:
         return existing_references
 
     lookup = load_auxiliary_resource_lookup(project_root)
@@ -154,4 +180,40 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
             "catalog_id": str(image.get("catalog_id") or ""),
         })
         existing_keys.add(key)
+    if library_tags:
+        config = load_project_config(project_root)
+        paths = PathService(config, project_root)
+        repository = EntityLibraryRepository(paths.entity_library_database_path())
+        if not repository.database_path.is_file():
+            raise TemplateCompileError("MISSING_REFERENCE", f"Entity image library not found: {repository.database_path}")
+        service = EntityLibraryService(paths, repository)
+        for tag in library_tags:
+            key = LIB_REFERENCE_TAG_RE.fullmatch(tag).group(1)
+            try:
+                asset = service.resolve_reference(key)
+            except EntityLibraryServiceError as exc:
+                raise TemplateCompileError("MISSING_REFERENCE", str(exc)) from exc
+            image_path = Path(asset["image_path"])
+            if not image_path.is_file():
+                raise TemplateCompileError("MISSING_REFERENCE", f"Entity image file not found for {tag}: {image_path}")
+            reference_key = ("entity_library", "", "", str(image_path))
+            if reference_key in existing_keys:
+                continue
+            primary = next((item for item in asset["entities"] if item["role"] == "primary_subject"), None)
+            subject_type = primary["entity_type"] if primary else ""
+            prompt_role = (
+                "object_reference" if subject_type in {"prop", "symbol", "structure"}
+                else "costume_reference" if subject_type == "costume"
+                else "subject_reference"
+            )
+            references.append({
+                "role": "entity_library",
+                "prompt_role": prompt_role,
+                "label": asset["label"],
+                "tag": tag,
+                "path": str(image_path),
+                "asset_id": asset["asset_id"],
+                "reference_key": key,
+            })
+            existing_keys.add(reference_key)
     return references

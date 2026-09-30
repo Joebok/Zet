@@ -71,6 +71,9 @@ class ImageCatalogMigrationService:
     def _adopt_auxiliary(self, payload: dict) -> None:
         legacy_path = self.path_service.auxiliary_resource_inventory_path()
         if not legacy_path.is_file():
+            moved_legacy_path = self.path_service.library_path("_state", "AuxiliaryResources", "AuxiliaryResources.json")
+            legacy_path = moved_legacy_path if moved_legacy_path.is_file() else self.path_service.library_path("AuxiliaryResources", "AuxiliaryResources.json")
+        if not legacy_path.is_file():
             legacy_path = self.path_service.auxiliary_resource_inventory_default_path()
         if not legacy_path.is_file():
             return

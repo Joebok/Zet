@@ -39,11 +39,13 @@ from zet.services.pipeline_compiler_support import (
     output_files,
     require_job_field,
     resolve_project_path,
+    template_path_for_job,
     template_metadata,
     view_instruction,
     reference_by_role,
     reference_files_for_job,
     validate_reference,
+    universe_art_style,
 )
 
 
@@ -55,8 +57,18 @@ def safe_name(value: str) -> str:
     return safe_filename_fragment(value, "Costume")
 
 
-def costume_path_for_job(project_root: Path, job: dict, character: str, phase: str) -> Path:
+def costume_path_for_job(
+    project_root: Path, job: dict, character: str, phase: str,
+    *, universe_root: str | Path | None = None,
+) -> Path:
     explicit = job_get(job, "Costume Path", "costume_path")
+    if universe_root is not None:
+        if explicit:
+            filename = Path(explicit).name
+        else:
+            costume = job_get(job, "Costume", "costume") or "Canonical Adventure Gear"
+            filename = f"Costume_{safe_name(costume).replace('-', '_')}.md"
+        return Path(universe_root).expanduser().resolve() / "Characters" / character / phase / filename
     if explicit:
         return resolve_project_path(project_root, explicit)
     costume = job_get(job, "Costume", "costume") or "Canonical Adventure Gear"
@@ -477,7 +489,7 @@ Reviewed At:
 
 def compile_costume_dressing_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
-    pipeline_mode: str = "traditional",
+    pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -500,9 +512,14 @@ def compile_costume_dressing_job(
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    character_template_path = Path(job_get(job, "Template Path", "template_path") or
-                                   (character_root(project_root) / character / phase / "Character.md"))
-    costume_path = costume_path_for_job(project_root, job, character, phase)
+    character_template_path = template_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
+    costume_path = costume_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
     if not costume_path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")
     output_dir = output_dir_for_job(project_root, job, character, phase, body_view_token, head_view_token)
@@ -576,6 +593,7 @@ def compile_costume_dressing_job(
             or label.startswith("right side")
             or label.startswith("left side")
         ) else "# Jewelry"
+    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
         "CHARACTER_NAME": character,
         "CHARACTER_PHASE": phase,
@@ -598,6 +616,10 @@ def compile_costume_dressing_job(
             + "Preserve the requested view and the Image 1 pose, body, and framing."
             if pipeline_mode == "local" and body_view_token != "FRONT" else ""
         ),
+        "LOCAL_CANONICAL_ART_STYLE": (
+            f"Apply the universe's Canonical Art Style: {universe_style}."
+            if universe_style else "Preserve the supplied rendering style."
+        ),
         "COSTUME_VIEW_HEADING": "# View-Specific Costume Details" if "COSTUME_DESCRIPTION_VIEW_OVERRIDES" in selection.sections else "",
         "EQUIPMENT_HEADING": equipment_heading,
         "EQUIPMENT_VIEW_HEADING": "# View-Specific Equipment Details" if equipment_view_selected else "",
@@ -607,6 +629,8 @@ def compile_costume_dressing_job(
         **costume_metadata(costume_path),
     }
     metadata_sources = {
+        **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
+           if universe_style else {}),
         **metadata_source_map(project_root, character_template_path, body_view_token, task, "body"),
         **background_treatment_source_map(project_root),
         **costume_metadata_sources(costume_path),

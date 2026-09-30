@@ -9,6 +9,7 @@ from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepo
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.image_catalog_repository import ImageCatalogRepository
+from zet.repositories.entity_library_repository import EntityLibraryRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import (
@@ -28,6 +29,7 @@ from zet.services.expression_service import ExpressionCreateResult, ExpressionSe
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.image_catalog_service import ImageCatalogService
+from zet.services.entity_library_service import EntityLibraryService
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
@@ -56,6 +58,7 @@ from zet.services.worker_service import WorkerService
 from zet.services.workspace_summary_service import WorkspaceSummaryService
 from zet.services.zine_service import ZineService
 from zet.services.library_index_service import LibraryIndexReconciler, LibraryIndexService
+from zet.services.universe_service import UniverseService
 
 
 class AssetRef:
@@ -192,6 +195,7 @@ class ZetApp:
         self.story_service.library_index_service = self.library_index_service
         self.manual_render_publication_service = ManualRenderPublicationService(config)
         self.image_catalog_service = None
+        self.entity_library_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
         self.workspace_summary_service = WorkspaceSummaryService(
@@ -246,8 +250,11 @@ class ZetApp:
         return self.pipeline_inspection_service.open_folder(pipeline_id, file_id)
 
     @classmethod
-    def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True) -> "ZetApp":
-        config = ConfigService.load(config_path)
+    def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True, universe_id: str | None = None) -> "ZetApp":
+        container_config = ConfigService.load(config_path)
+        universe_service = UniverseService(container_config.base_library_path, Path(config_path).resolve().parent / "Config" / "universe-selection.json")
+        selected_id = universe_id or universe_service.selection()
+        config = universe_service.bind_config(container_config, selected_id)
         path_service = PathService(config, Path(config_path).resolve().parent)
         asset_repository = AssetRepository(path_service)
         auxiliary_resource_repository = AuxiliaryResourceRepository(path_service)
@@ -326,6 +333,8 @@ class ZetApp:
             turnaround_repository,
         )
         image_catalog_repository = ImageCatalogRepository(path_service)
+        entity_library_repository = EntityLibraryRepository(path_service.entity_library_database_path())
+        entity_library_repository.initialize()
         if validate_catalog:
             image_catalog_repository.load()
         image_catalog_service = ImageCatalogService(
@@ -359,9 +368,16 @@ class ZetApp:
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
+        app.universe_service = universe_service
+        app.universe_id = selected_id
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
         app.story_service.story_render_service.publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
+        entity_library_service = EntityLibraryService(path_service, entity_library_repository)
+        entity_library_service.pipeline_provider = lambda: image_catalog_service.list_items(include_base=True)
+        app.entity_library_service = entity_library_service
+        story_service.story_reference_service.entity_library_service = entity_library_service
+        entity_library_service.refresh_usages(config.base_library_path)
         app.library_index_service.list_items_provider = app._indexed_list_rows
         image_catalog_repository.after_write = app.refresh_library_index
         return app
@@ -418,6 +434,23 @@ class ZetApp:
                     item.scene_slug, item.subscene_id, *item.collections, *item.keywords,
                 )),
             ))
+        if self.entity_library_service is not None:
+            try:
+                for asset in self.entity_library_service.list_assets():
+                    entity_names = [entity["name"] for entity in asset.get("entities", [])]
+                    set_names = [reference_set["name"] for reference_set in asset.get("sets", [])]
+                    facet_values = [f"{facet['namespace']}:{facet['value']}" for facet in asset.get("facets", [])]
+                    rows.append(self._indexed_row(
+                        "inventory", asset["asset_id"], f"{asset['origin']}\0{asset['label'].casefold()}", asset,
+                        source_key=asset.get("origin_key"), status=asset["status"], source_type=asset["origin"],
+                        semantic_category=asset.get("entities", [{}])[0].get("entity_type", ""),
+                        collections=set_names, keywords=facet_values,
+                        search_text=" ".join([asset["asset_id"], asset["label"], asset["origin"], asset["status"], *entity_names, *set_names, *facet_values, *asset.get("tags", [])]),
+                    ))
+            except Exception as exc:
+                self.library_index_service._record_error(
+                    "project/.indexed-dashboard/entity-library", "indexed_dashboard", "provider", str(exc)
+                )
         for source in self.scene_candidate_import_service.list_sources():
             if not source.exists:
                 continue
@@ -556,8 +589,37 @@ class ZetApp:
         result = operation()
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
+        if self.entity_library_service is not None:
+            self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
         self.refresh_library_index()
         return result
+
+    def entity_library_assets(self, **filters):
+        return self.entity_library_service.list_assets(**filters)
+
+    def entity_library_asset(self, asset_id: str):
+        return self.entity_library_service.get_asset(asset_id)
+
+    def entity_library_update_asset(self, asset_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_asset(asset_id, data))
+
+    def entity_library_replace_asset(self, asset_id: str, mime_type: str, data: bytes):
+        return self._indexed_write(lambda: self.entity_library_service.replace_asset(asset_id, mime_type, data))
+
+    def entity_library_import(self, label: str, mime_type: str, data: bytes, **metadata):
+        return self._indexed_write(lambda: self.entity_library_service.import_asset(label, mime_type, data, **metadata))
+
+    def entity_library_create_entity(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.create_entity(data))
+
+    def entity_library_create_set(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.create_set(data))
+
+    def entity_library_save_descriptor(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.save_descriptor(data))
+
+    def entity_library_save_logical_reference(self, data: dict, reference_key: str = ""):
+        return self._indexed_write(lambda: self.entity_library_service.save_logical_reference(data, reference_key))
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return sorted(self.asset_repository.list_assets(character, phase), key=asset_sort_key)
@@ -923,7 +985,7 @@ class ZetApp:
             include_base=include_base,
             **filters,
         )
-        return [ImageReferenceRow(
+        rows = [ImageReferenceRow(
             tag=item.tag,
             label=item.label,
             character=item.character,
@@ -948,6 +1010,26 @@ class ZetApp:
             identity_status=item.identity_status,
             costume_status=item.costume_status,
         ) for item in items]
+        if self.entity_library_service is not None:
+            for asset in self.entity_library_service.list_assets():
+                if asset["status"] != "approved":
+                    continue
+                entity_labels = [item["name"] for item in asset.get("entities", [])]
+                label = asset.get("label") or asset["file_name"]
+                row_values = dict(
+                    label=label, character=", ".join(entity_labels), phase="", kind="entity-library",
+                    pipeline=asset["origin"], image_path=asset["image_path"], thumbnail_path=asset["thumbnail_path"],
+                    available=True, semantic_category=asset.get("entities", [{}])[0].get("entity_type", ""),
+                    asset_id=asset["asset_id"], origin=asset["origin"], descriptor_ready=asset["descriptor_ready"],
+                )
+                rows.append(ImageReferenceRow(tag=f"{{{{LIB:ASSET:{asset['asset_id']}}}}}", **row_values))
+                logical = asset.get("logical_reference")
+                if logical:
+                    rows.append(ImageReferenceRow(
+                        tag=f"{{{{LIB:REF:{logical['reference_key']}}}}}",
+                        **{**row_values, "reference_key": logical["reference_key"], "asset_id": ""},
+                    ))
+        return rows
 
     def image_catalog_items(self, *, discovery_context: DiscoveryContext | None = None, **filters):
         if discovery_context is not None:
@@ -1199,6 +1281,15 @@ class ZetApp:
             return context
 
     def harvest_ai_answers(self):
+        results = []
+        for universe in self.universe_service.list_universes():
+            target = self if universe["universe_id"] == self.universe_id else ZetApp.from_config(
+                self.config_path, universe_id=universe["universe_id"]
+            )
+            results.extend(target._harvest_current_universe())
+        return results
+
+    def _harvest_current_universe(self):
         results = self.asset_service.harvest_ai_answers()
         from zet.services.local_body_reference_service import LocalBodyReferenceService
         LocalBodyReferenceService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()

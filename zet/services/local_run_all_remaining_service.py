@@ -33,7 +33,7 @@ class LocalRunAllRemainingService:
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
-        self.root = self.library_root / "Experiments" / "Character-Pipeline" / "RunAllRemaining"
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline" / "RunAllRemaining"
         self.active_path = self.root / "active.json"
 
     @staticmethod

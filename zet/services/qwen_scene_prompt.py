@@ -27,7 +27,7 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
     environment = ir.get("environment") or {}
     style = ir.get("style") or {}
     orientation = _text(canvas.get("orientation")) or "landscape"
-    medium = _text(style.get("art_style")) or "fantasy illustration"
+    medium = _text(style.get("canonical_art_style") or style.get("art_style")) or "fantasy illustration"
     subject_names = [
         _text(elements.get(str(item.get("scene_element_id")), {}).get("display_name"))
         for item in ir.get("placements") or []

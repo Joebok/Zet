@@ -26,6 +26,7 @@ from zet.services.scene_render_compiler import (
 )
 from zet.services.scene_prompt_sections import load_final_image_prompt_sections
 from zet.services.scene_render_target_service import MAIN_RENDER_TARGET
+from zet.services.pipeline_compiler_support import with_universe_art_style
 
 
 class StoryRenderService:
@@ -274,13 +275,15 @@ class StoryRenderService:
         pipeline_path.mkdir(parents=True, exist_ok=True)
         final_prompt_path = pipeline_path / "Final_Image_Prompt.md"
         warnings = story.validate_scene_builder_data(normalized_scene)
-        brief = local_render_brief(ir, {
+        local_ir = with_universe_art_style(ir, story.path_service.config.base_library_path)
+        brief = local_render_brief(local_ir, {
             "strict_primary_subject_count": getattr(story.path_service.config, "local_render_strict_primary_subject_count", True),
             "forge_couple_debug_base_pass": getattr(story.path_service.config, "local_render_forge_couple_debug_base_pass", True),
         })
         story._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
         final_prompt_path.write_text(prompt, encoding="utf-8")
         story._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+        story._write_json(pipeline_path / "Scene_Local_Render_IR.json", local_ir)
         write_prompt_diagnostics(
             pipeline_path / "Prompt_Compile_Diagnostics.json",
             prompt,
@@ -294,7 +297,7 @@ class StoryRenderService:
         (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
         artifacts = [
             "Scene_Render_IR.json", "Final_Image_Prompt.md", "Final_Image_Prompt_V1.md",
-            "Prompt_Compile_Diagnostics.json", "Local_Render_Brief.json", "Local_Render_Prompt.md",
+            "Scene_Local_Render_IR.json", "Prompt_Compile_Diagnostics.json", "Local_Render_Brief.json", "Local_Render_Prompt.md",
         ]
         if getattr(story.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
             (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")

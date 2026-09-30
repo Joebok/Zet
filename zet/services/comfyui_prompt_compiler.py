@@ -155,7 +155,7 @@ def compile_scene_prompts(
             _clean(environment.get("location")),
             _clean(environment.get("weather_or_atmosphere")),
             _clean(environment.get("lighting")),
-            _clean(style.get("art_style")),
+            _clean(style.get("canonical_art_style") or style.get("art_style")),
         ]
     )
     region_records = []

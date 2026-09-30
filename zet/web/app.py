@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import threading
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -426,7 +428,9 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     configured_backend = str(zet_app.config.local_render_backend).strip().lower()
     configured_profile = (zet_app.config.comfyui_profile if configured_backend == "comfyui"
                           else zet_app.config.local_render_preset)
-    ir_path = workspace / "Scene_Render_IR.json"
+    ir_path = workspace / "Scene_Local_Render_IR.json"
+    if not ir_path.is_file():
+        ir_path = workspace / "Scene_Render_IR.json"
     qwen_profile = "comfyui-qwen-image-2-1-scene"
     default_profile = qwen_profile if ir_path.is_file() else configured_profile
     qwen_prompt = ""
@@ -434,7 +438,10 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     try:
         if not ir_path.is_file():
             raise FileNotFoundError("Scene render IR is missing. Recompile the scene in Scene Builder.")
-        qwen_prompt = compile_qwen_scene_prompt(json.loads(ir_path.read_text(encoding="utf-8")))
+        from zet.services.pipeline_compiler_support import with_universe_art_style
+        qwen_prompt = compile_qwen_scene_prompt(with_universe_art_style(
+            json.loads(ir_path.read_text(encoding="utf-8")), zet_app.config.base_library_path
+        ))
     except (OSError, ValueError, KeyError) as exc:
         qwen_error = str(exc)
     qwen_enabled = bool(qwen_prompt) and not qwen_error
@@ -904,18 +911,23 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        application.state.zet_app.image_catalog_service.repository.load()
-        application.state.zet_app.library_index_reconciler.start()
-        LocalCharacterOverviewService(_app(application.state.config_path), PROJECT_ROOT).recover()
-        LocalRunAllRemainingService(_app(application.state.config_path), PROJECT_ROOT).recover()
+        for zet_app in application.state.universe_apps.values():
+            zet_app.image_catalog_service.repository.load()
+            zet_app.library_index_reconciler.start()
+            LocalCharacterOverviewService(zet_app, PROJECT_ROOT).recover()
+            LocalRunAllRemainingService(zet_app, PROJECT_ROOT).recover()
         try:
             yield
         finally:
-            application.state.zet_app.library_index_reconciler.stop()
+            for zet_app in application.state.universe_apps.values():
+                zet_app.library_index_reconciler.stop()
 
     app = FastAPI(title="Zet Web", lifespan=lifespan)
     app.state.config_path = str(config_path)
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
+    app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
+    app.state.universe_lock = threading.RLock()
+    current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
     # Publish the first complete snapshot before any request can observe a validated app.
     if validate_catalog_on_create:
         app.state.zet_app.library_index_service.reconcile()
@@ -930,13 +942,96 @@ def create_app(
                 performance.record_duration("endpoint_duration", time.perf_counter() - started)
 
     def _app(_config_path: str | Path) -> ZetApp:
-        return app.state.zet_app
+        universe_id = current_universe.get()
+        if universe_id is None:
+            return app.state.zet_app
+        existing = app.state.universe_apps.get(universe_id)
+        if existing is not None:
+            return existing
+        with app.state.universe_lock:
+            existing = app.state.universe_apps.get(universe_id)
+            if existing is None:
+                existing = ZetApp.from_config(app.state.config_path, universe_id=universe_id)
+                existing.library_index_service.reconcile()
+                existing.library_index_reconciler.start()
+                LocalCharacterOverviewService(existing, PROJECT_ROOT).recover()
+                LocalRunAllRemainingService(existing, PROJECT_ROOT).recover()
+                app.state.universe_apps[universe_id] = existing
+            return existing
+
+    @app.middleware("http")
+    async def bind_universe(request: Request, call_next):
+        universe_id = request.headers.get("x-zet-universe") or request.query_params.get("universe_id")
+        if universe_id:
+            try:
+                app.state.zet_app.universe_service.get_universe(universe_id)
+            except Exception as exc:
+                return PlainTextResponse(str(exc), status_code=400)
+        token = current_universe.set(universe_id)
+        try:
+            return await call_next(request)
+        finally:
+            current_universe.reset(token)
 
     def _reload_app() -> ZetApp:
-        app.state.zet_app.library_index_reconciler.stop()
-        app.state.zet_app = ZetApp.from_config(app.state.config_path)
-        app.state.zet_app.library_index_reconciler.start()
-        return app.state.zet_app
+        selected = current_universe.get() or app.state.zet_app.universe_id
+        previous = app.state.universe_apps.get(selected)
+        if previous:
+            previous.library_index_reconciler.stop()
+        replacement = ZetApp.from_config(app.state.config_path, universe_id=selected)
+        replacement.library_index_reconciler.start()
+        app.state.universe_apps[selected] = replacement
+        if selected == app.state.zet_app.universe_id:
+            app.state.zet_app = replacement
+        return replacement
+
+    @app.get("/api/universes")
+    def universes() -> dict[str, Any]:
+        service = app.state.zet_app.universe_service
+        return {"universes": [{key: value for key, value in item.items() if key not in {"root", "legacy"}}
+                              for item in service.list_universes()],
+                "selected_universe_id": current_universe.get() or service.selection()}
+
+    def public_universe(universe: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in universe.items() if key not in {"root", "legacy"}}
+
+    @app.post("/api/universes")
+    def create_universe(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            service = app.state.zet_app.universe_service
+            return {"universe": public_universe(service.initialize(
+                str(data.get("name") or ""), str(data.get("canonical_art_style") or "")
+            ))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/universes/{universe_id}")
+    def universe_detail(universe_id: str) -> dict[str, Any]:
+        try:
+            return {"universe": public_universe(app.state.zet_app.universe_service.get_universe(universe_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch("/api/universes/{universe_id}")
+    def update_universe(universe_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            if "canonical_art_style" not in data:
+                raise ValueError("canonical_art_style is required.")
+            updated = app.state.zet_app.universe_service.update_settings(
+                universe_id, canonical_art_style=str(data.get("canonical_art_style") or "")
+            )
+            return {"universe": public_universe(updated)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/universes/select")
+    def select_universe(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            selected = app.state.zet_app.universe_service.select(str(data.get("universe_id") or ""))
+            _app(app.state.config_path)
+            return {"selected_universe_id": selected["universe_id"], "name": selected["name"]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     app.include_router(
         create_pipeline_controls_router(
@@ -2055,6 +2150,195 @@ def create_app(
                 cursor=cursor or None, limit=limit,
             )
             return _indexed_page_payload(page)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/assets")
+    def entity_library_assets(
+        q: str = Query(""), entity_id: str = Query(""), entity_type: str = Query(""),
+        variant_id: str = Query(""), set_id: str = Query(""), facet_namespace: str = Query(""),
+        facet_value: str = Query(""), origin: str = Query(""), status: str = Query(""),
+    ) -> dict[str, Any]:
+        try:
+            service = _app(app.state.config_path).entity_library_service
+            filters = {"q": q, "entity_id": entity_id, "entity_type": entity_type, "variant_id": variant_id,
+                       "set_id": set_id, "facet_namespace": facet_namespace, "facet_value": facet_value,
+                       "origin": origin, "status": status}
+            return {"assets": service.list_assets(**{key: value for key, value in filters.items() if value})}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/picker")
+    def entity_library_picker(
+        q: str = Query(""), entity_id: str = Query(""), entity_type: str = Query(""),
+        variant_id: str = Query(""), set_id: str = Query(""), facet_namespace: str = Query(""),
+        facet_value: str = Query(""), origin: str = Query(""),
+    ) -> dict[str, Any]:
+        try:
+            service = _app(app.state.config_path).entity_library_service
+            filters = {"q": q, "entity_id": entity_id, "entity_type": entity_type, "variant_id": variant_id,
+                       "set_id": set_id, "facet_namespace": facet_namespace, "facet_value": facet_value, "origin": origin}
+            filters = {key: value for key, value in filters.items() if value}
+            return {"assets": service.search_picker(**filters)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/assets")
+    async def entity_library_import(
+        request: Request, label: str = Query(...), entity_ids: str = Query(""), set_ids: str = Query(""),
+    ) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            asset = zet_app.entity_library_import(
+                label, request.headers.get("content-type", ""), await request.body(),
+                entity_ids=[value for value in entity_ids.split(",") if value],
+                set_ids=[value for value in set_ids.split(",") if value],
+            )
+            return {"asset": asset, "message": f"Added {label} to the image library."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/assets/{asset_id}")
+    def entity_library_asset(asset_id: str) -> dict[str, Any]:
+        try:
+            return {"asset": _app(app.state.config_path).entity_library_asset(asset_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.patch("/api/entity-library/assets/{asset_id}")
+    def entity_library_asset_update(asset_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"asset": _app(app.state.config_path).entity_library_update_asset(asset_id, data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/entity-library/assets/{asset_id}")
+    def entity_library_asset_archive(asset_id: str) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return {"asset": zet_app._indexed_write(lambda: zet_app.entity_library_service.delete_asset(asset_id))}
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.put("/api/entity-library/assets/{asset_id}/image")
+    async def entity_library_asset_replace(asset_id: str, request: Request) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            asset = zet_app.entity_library_replace_asset(asset_id, request.headers.get("content-type", ""), await request.body())
+            return {"asset": asset, "message": "Replacement added as a new immutable asset."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/entities")
+    def entity_library_entities(entity_type: str = Query("")) -> dict[str, Any]:
+        try:
+            return {"entities": _app(app.state.config_path).entity_library_service.list_entities(entity_type)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/entities")
+    def entity_library_entity_create(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"entity": _app(app.state.config_path).entity_library_create_entity(data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/entities/{entity_id}/variants")
+    def entity_library_variant_create(entity_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return {"variant": zet_app._indexed_write(lambda: zet_app.entity_library_service.create_variant(entity_id, data))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/variants")
+    def entity_library_variants(entity_id: str = Query("")) -> dict[str, Any]:
+        try:
+            return {"variants": _app(app.state.config_path).entity_library_service.list_variants(entity_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/relations")
+    def entity_library_relation_create(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return {"relation": zet_app._indexed_write(lambda: zet_app.entity_library_service.create_relation(data))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/sets")
+    def entity_library_sets() -> dict[str, Any]:
+        try:
+            return {"sets": _app(app.state.config_path).entity_library_service.list_sets()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/sets")
+    def entity_library_set_create(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"set": _app(app.state.config_path).entity_library_create_set(data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/sets/{set_id}/assets/{asset_id}")
+    def entity_library_set_asset_add(set_id: str, asset_id: str, role: str = Query("member"), sort_order: int = Query(0)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return {"set": zet_app._indexed_write(lambda: zet_app.entity_library_service.add_set_asset(set_id, asset_id, role, sort_order))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/descriptors")
+    def entity_library_descriptor_save(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"descriptor": _app(app.state.config_path).entity_library_save_descriptor(data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/facets")
+    def entity_library_facets() -> dict[str, Any]:
+        try:
+            return {"facets": _app(app.state.config_path).entity_library_service.list_facets()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/entity-library/assets/{asset_id}/facets")
+    def entity_library_facets_save(asset_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            facets = zet_app._indexed_write(lambda: zet_app.entity_library_service.save_facets(asset_id, data.get("facets") or []))
+            return {"facets": facets}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/logical-references")
+    def entity_library_logical_references() -> dict[str, Any]:
+        try:
+            return {"references": _app(app.state.config_path).entity_library_service.list_logical_references()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/logical-references")
+    def entity_library_logical_reference_create(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"reference": _app(app.state.config_path).entity_library_save_logical_reference(data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/entity-library/logical-references/{reference_key}")
+    def entity_library_logical_reference_update(reference_key: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"reference": _app(app.state.config_path).entity_library_save_logical_reference(data, reference_key)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/usages")
+    def entity_library_usages(asset_id: str = Query("")) -> dict[str, Any]:
+        try:
+            service = _app(app.state.config_path).entity_library_service
+            if asset_id:
+                return {"usages": service.usage_for_asset(asset_id)}
+            return {"report": service.refresh_usages(service.path_service.config.base_library_path)}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -90,6 +90,29 @@ class FakeTurnaroundRepository:
 
 class StoryServiceTests(unittest.TestCase):
 
+    def test_entity_library_reference_supplies_prompt_descriptors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            asset_id = "8f1d20de-dcc8-4d25-9f82-6c9c1b86120a"
+            service.story_reference_service.entity_library_service = SimpleNamespace(
+                get_asset=lambda requested_id: {"asset_id": requested_id, "checksum": "sha256:test"},
+                effective_descriptors=lambda requested_id, set_id: [
+                    {"descriptor_type": "prompt_identity", "text": "Silver feathers and amber eyes."},
+                    {"descriptor_type": "prompt_costume", "text": "Wears a blue mantle."},
+                ],
+            )
+
+            sections = service._element_source_sections({
+                "display_name": "Morrow",
+                "resource_type": "Creature",
+                "reference_images": [{"asset_id": asset_id, "primary_prompt_source": True}],
+            })
+
+            self.assertEqual("Silver feathers and amber eyes.", sections["identity_preservation_core"])
+            self.assertEqual("Wears a blue mantle.", sections["identity_preservation_costume"])
+            self.assertEqual(asset_id, sections["library_asset_id"])
+            self.assertEqual("sha256:test", sections["library_checksum"])
+
     def test_legacy_aux_and_new_image_tags_resolve_through_the_catalog(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

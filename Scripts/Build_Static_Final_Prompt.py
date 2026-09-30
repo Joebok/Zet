@@ -7,7 +7,7 @@ import re
 from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompileError, resolve_section_name
 from Scripts.Library_Paths import library_root
 from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE, auxiliary_resource_image_for_tag
-from Scripts.Auxiliary_Resource_Tags import IMAGE_TAG_RE, load_managed_image_lookup
+from Scripts.Auxiliary_Resource_Tags import IMAGE_TAG_RE, LIB_REFERENCE_TAG_RE, load_managed_image_lookup
 
 
 RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
@@ -180,7 +180,7 @@ def _project_root_for_template(template_path: Path) -> Path:
 
 def _auxiliary_inventory_path(template_path: Path) -> Path:
     """Return the global auxiliary resource inventory path."""
-    return library_root(_project_root_for_template(template_path)) / "AuxiliaryResources" / "AuxiliaryResources.json"
+    return library_root(_project_root_for_template(template_path)) / "_state" / "AuxiliaryResourceIndex.json"
 
 
 def _load_auxiliary_resources(template_path: Path) -> list[dict]:
@@ -229,7 +229,8 @@ def _replace_auxiliary_resource_tags(text: str, image_inputs_by_tag: dict[str, d
         return _image_input_citation(match.group(0), image_inputs_by_tag)
 
     text = AUXILIARY_RESOURCE_TAG_RE.sub(replace, text)
-    return IMAGE_TAG_RE.sub(replace, text)
+    text = IMAGE_TAG_RE.sub(replace, text)
+    return LIB_REFERENCE_TAG_RE.sub(replace, text)
 
 
 def render_static_prompt(
@@ -340,7 +341,7 @@ def render_static_prompt_with_source_map(
             text = _image_input_citation(placeholder, image_inputs_by_tag)
             source = {
                 "source_kind": "image_catalog",
-                "source_path": str(library_root(_project_root_for_template(template_path)) / "ImageCatalog" / "ImageCatalog.json"),
+                "source_path": str(library_root(_project_root_for_template(template_path)) / "_state" / "ImageCatalog" / "ImageCatalog.json"),
                 "source_label": f"Imported image: {image.get('label') or image.get('catalog_id')}",
                 "catalog_id": image.get("catalog_id"),
                 "image_index": image_input["index"],
@@ -353,7 +354,7 @@ def render_static_prompt_with_source_map(
                 text = _image_input_citation(placeholder, image_inputs_by_tag)
                 source = {
                     "source_kind": "image_catalog",
-                    "source_path": str(library_root(_project_root_for_template(template_path)) / "ImageCatalog" / "ImageCatalog.json"),
+                    "source_path": str(library_root(_project_root_for_template(template_path)) / "_state" / "ImageCatalog" / "ImageCatalog.json"),
                     "source_label": f"Imported image: {managed_image.get('label') or managed_image.get('catalog_id')}",
                     "catalog_id": managed_image.get("catalog_id"),
                     "image_index": image_input["index"],

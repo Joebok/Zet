@@ -189,6 +189,9 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"Missing ask_manifest.json in {answer_path}")
         manifest = self._read_json(manifest_path)
         manifest.update(self.ai_proxy_path_service.file_proxy_client.load_route(answer_path.name))
+        owner = str(manifest.get("universe_id") or "").strip()
+        if not owner and bool(getattr(self.path_service.config, "universe_is_legacy", True)):
+            manifest["universe_id"] = "Moonsea"
         return manifest
 
     def _render_review_comment_path(self, asset) -> Path:
@@ -632,6 +635,19 @@ class AIAnswerHarvester:
         results: list[HarvestResult] = []
         for answer_path in answer_paths:
             if self._has_external_consumer(answer_path):
+                continue
+            try:
+                manifest = self._load_ask_manifest(answer_path)
+                owner = str(manifest.get("universe_id") or "").strip()
+            except Exception:
+                owner = ""
+            if not owner:
+                if str(getattr(self.path_service.config, "universe_id", "Moonsea")) != "Moonsea":
+                    continue
+                results.append(HarvestResult(answer_path, answer_path.name, None, "ROUTE_REQUIRED",
+                                             "Answer has no universe ownership; files retained for recovery."))
+                continue
+            if owner != str(getattr(self.path_service.config, "universe_id", "Moonsea")):
                 continue
             try:
                 result = self.apply_answer_folder(answer_path)

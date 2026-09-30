@@ -217,6 +217,49 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual(source_run["run_id"],
                          continued["sources"]["BACK"]["character_assembly"]["batch_id"])
 
+    def test_costume_rerun_recompile_refreshes_the_costume_template_snapshot(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                  "front_count": 1, "other_count": 1, "use_front_anchor": False,
+                                  "seeds": list(range(8))})
+        source = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
+        source.write_text("Costume Name: `Test Outfit`\nJewelry reference: `rear`\n", encoding="utf-8")
+
+        service.rerun_view(run["run_id"], "BACK", "Test Outfit", recompile=True)
+
+        refreshed = service.detail(run["run_id"], "Test Outfit")
+        snapshot = Path(refreshed["costume_path"])
+        self.assertEqual(source.read_text(encoding="utf-8"), snapshot.read_text(encoding="utf-8"))
+        self.assertEqual(service._hash(snapshot), refreshed["costume_sha256"])
+        compiled_prompt = Path(refreshed["root"]) / "prompts" / "BACK" / "Final_Image_Prompt.md"
+        self.assertTrue(compiled_prompt.is_file())
+
+    def test_costume_batch_recompile_compiles_fresh_prompts_for_every_view(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                  "front_count": 1, "other_count": 1, "use_front_anchor": False,
+                                  "seeds": list(range(8))})
+        source = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
+        source.write_text(
+            "Costume Name: `Test Outfit`\n\n"
+            "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+            "Freshly recompiled garnet jewelry detail.\n"
+            "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->\n",
+            encoding="utf-8",
+        )
+
+        result = service.rerun(run["run_id"], "Test Outfit", recompile=True)
+
+        self.assertEqual(service._hash(source), result["costume_sha256"])
+        for view in VIEWS:
+            prompt_dir = Path(result["root"]) / "prompts" / view
+            prompt = (prompt_dir / "Final_Image_Prompt.md").read_text(encoding="utf-8")
+            manifest = json.loads((prompt_dir / "dependency_manifest.json").read_text(encoding="utf-8"))
+            self.assertIn("Freshly recompiled garnet jewelry detail", prompt)
+            self.assertEqual(view, manifest["body_view_token"])
+
     def test_locking_dressing_promotes_selected_assembly_ancestor(self) -> None:
         self._sources("character-assembly")
         assembly = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")

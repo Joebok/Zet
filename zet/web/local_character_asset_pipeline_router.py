@@ -81,7 +81,17 @@ def create_local_character_asset_pipeline_router(
 
         @router.get(f"{prefix}/runs/{{run_id}}")
         def detail(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "detail", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
+            def load_detail():
+                result = action(_pipeline, "detail", run_id=run_id,
+                                costume=costume if _pipeline == "costume-dressing" else "")
+                for candidate in result.get("candidates", []):
+                    image_path = str(candidate.get("image_path") or "")
+                    available = bool(image_path and Path(image_path).is_file())
+                    candidate["image_available"] = available
+                    if not available:
+                        candidate["image_path"] = ""
+                return result
+            return call(load_detail, missing=404)
 
         @router.post(f"{prefix}/runs/{{run_id}}/start")
         def start(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
@@ -95,7 +105,7 @@ def create_local_character_asset_pipeline_router(
         @router.post(f"{prefix}/runs/{{run_id}}/rerun")
         def rerun(run_id: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
-            result = call(lambda: instance.action("rerun_batch", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else "", refresh_sources=payload.get("refresh_sources", True)))
+            result = call(lambda: instance.action("rerun_batch", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else "", refresh_sources=payload.get("refresh_sources", True), recompile=payload.get("recompile", False)))
             submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
             return result
 
@@ -243,7 +253,7 @@ def create_local_character_asset_pipeline_router(
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/rerun")
         def rerun_view(run_id: str, view: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
-            result = call(lambda: instance.action("rerun_view", run_id=run_id, view=view, costume=costume if _pipeline == "costume-dressing" else "", refresh_sources=payload.get("refresh_sources", True)))
+            result = call(lambda: instance.action("rerun_view", run_id=run_id, view=view, costume=costume if _pipeline == "costume-dressing" else "", refresh_sources=payload.get("refresh_sources", True), recompile=payload.get("recompile", False)))
             submit_local_pipeline_task(instance.execute, run_id, views={view.upper()}, costume=costume if _pipeline == "costume-dressing" else "")
             return result
 

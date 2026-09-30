@@ -92,8 +92,26 @@ class LocalCharacterAssetPipelineService:
         self.pipeline = pipeline
         self.library_root = Path(app.config.base_library_path).resolve()
         self.character_root = Path(app.config.base_character_path).resolve()
-        self.root = self.library_root / "Experiments" / "Character-Pipeline"
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self.asset_store = LocalAssetStoreService(self.library_root)
+        self._runner_lock = threading.Lock()
+
+    def _ask_belongs_to_run(self, ask: dict[str, Any], run: dict[str, Any]) -> bool:
+        configured = str(getattr(self.app.config, "universe_id", "Moonsea"))
+        owner = str(ask.get("universe_id") or "").strip()
+        if not owner and bool(getattr(self.app.config, "universe_is_legacy", True)):
+            owner = "Moonsea"
+        run_owner = str(run.get("universe_id") or "").strip()
+        if not run_owner and bool(getattr(self.app.config, "universe_is_legacy", True)):
+            run_owner = "Moonsea"
+        return bool(owner) and owner == configured and run_owner == owner
+
+    def _active_key(self, run_id: str) -> str:
+        return f"{self.library_root}::{self.pipeline}::{run_id}"
+
+    def _is_active(self, run_id: str) -> bool:
+        key = self._active_key(run_id)
+        return key in self._active or (not hasattr(self.app.config, "universe_id") and run_id in self._active)
 
     @staticmethod
     def _now() -> str:
@@ -328,6 +346,21 @@ class LocalCharacterAssetPipelineService:
             costume_snapshot = str(destination)
         return snapshot, costume_snapshot
 
+    def _refresh_costume_snapshot(self, run: dict[str, Any]) -> None:
+        if self.pipeline != "costume-dressing":
+            return
+        source = self._costume_path(run["character"], run["phase"], run["costume"])
+        if not source.is_file():
+            raise LocalCharacterAssetPipelineError(f"Costume template not found: {source}")
+        root = Path(run["root"])
+        destination = root / "inputs" / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        spec = self._read(root / "spec.json")
+        spec["costume_path"] = str(destination)
+        spec["costume_sha256"] = self._hash(destination)
+        self._write(root / "spec.json", spec)
+
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan = self.preview(payload)
         if not plan["can_create"]:
@@ -355,6 +388,7 @@ class LocalCharacterAssetPipelineService:
                                   "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
                                   "gates": {}, "human_review": {"decision": "undecided"}, "retry_count": 0})
         spec = {"schema_version": 1, "review_version": 2, "kind": self.pipeline, "run_id": run_id,
+                "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "costume": plan["costume"], "views": list(VIEWS), "front_count": plan["front_count"],
                 "other_count": plan["other_count"], "candidate_count": count, "sources": sources,
@@ -372,7 +406,7 @@ class LocalCharacterAssetPipelineService:
         root = self._run_root(run_id, costume)
         spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
         with self._active_lock:
-            active = run_id in self._active
+            active = self._is_active(run_id)
         if upgrade_legacy and upgrade_legacy_review_v1(root, spec, state, active=active):
             spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
@@ -381,6 +415,23 @@ class LocalCharacterAssetPipelineService:
         for cid, update in (state.get("candidates") or {}).items():
             if cid in candidates:
                 candidates[cid].update(update)
+        if self.pipeline == "costume-dressing":
+            references_by_view = {}
+            for candidate in candidates.values():
+                view = str(candidate.get("view") or "")
+                if view not in references_by_view:
+                    manifest_path = root / "prompts" / view / "dependency_manifest.json"
+                    try:
+                        manifest = self._read(manifest_path)
+                    except LocalCharacterAssetPipelineError:
+                        manifest = {}
+                    resources = manifest.get("resources") if isinstance(manifest, dict) else None
+                    references_by_view[view] = (
+                        [dict(item) for item in resources if isinstance(item, dict)]
+                        if isinstance(resources, list) else []
+                    )
+                if references_by_view[view]:
+                    candidate["reference_images"] = references_by_view[view]
         result = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                   "selected_views": state.get("selected_views") or {}, "rankings": state.get("rankings") or {},
                   "stop_requested": bool(state.get("stop_requested")), "interrupted": False}
@@ -388,7 +439,7 @@ class LocalCharacterAssetPipelineService:
             candidate["image_filled"] = Path(str(candidate.get("image_path") or "")).is_file()
         if state.get("status") in ACTIVE_RUN_STATUSES:
             with self._active_lock:
-                result["interrupted"] = run_id not in self._active
+                result["interrupted"] = not self._is_active(run_id)
                 if result["interrupted"]:
                     result["status"] = "INTERRUPTED"
         result["local_assets"] = self.asset_store.detail(result["character"], result["phase"])["assets"]
@@ -452,7 +503,7 @@ class LocalCharacterAssetPipelineService:
                 interrupted = False
                 if status in ACTIVE_RUN_STATUSES:
                     with self._active_lock:
-                        interrupted = run_id not in self._active
+                        interrupted = not self._is_active(run_id)
                     if interrupted:
                         status = "INTERRUPTED"
                 result.append({
@@ -610,11 +661,17 @@ class LocalCharacterAssetPipelineService:
         if self.pipeline == "character-assembly":
             job.update({"Body View": view, "Head View": view,
                         "use_front_anchor": self._requires_front_anchor(run)})
-            result = compile_character_assembly_job(job, self.project_root, pipeline_mode="local")
+            result = compile_character_assembly_job(
+                job, self.project_root, pipeline_mode="local",
+                universe_root=self.app.config.base_library_path,
+            )
         else:
             job.update({"Body View": view, "Head View": view, "Costume": run["costume"],
                         "Costume Path": run["costume_path"]})
-            result = compile_costume_dressing_job(job, self.project_root, pipeline_mode="local")
+            result = compile_costume_dressing_job(
+                job, self.project_root, pipeline_mode="local",
+                universe_root=self.app.config.base_library_path,
+            )
         from zet.services.local_prompt_improvement_service import record_compiler_sources
         record_compiler_sources(output)
         return result
@@ -641,17 +698,23 @@ class LocalCharacterAssetPipelineService:
         ask_id = f"LocalCharacterAsset_{run_id}_{candidate_id}_{candidate.get('retry_count', 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
                     "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}", "pipeline_stage": "LOCAL_CHARACTER_RENDER"}
+        render_references = compiled.get("reference_files") or refs
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_copy, candidate_root, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
-            image_generation="comfyui", reference_files=refs,
+            image_generation="comfyui", reference_files=render_references,
         )
         ask = self._read(ask_path / "ask_manifest.json")
-        ref_hashes = {str(ref["role"]): self._hash(Path(ref["path"])) for ref in refs}
+        ref_hashes = {
+            str(ref.get("image_index") or index + 1): self._hash(Path(ref["path"]))
+            for index, ref in enumerate(render_references)
+        }
         self._update(run_id, candidate_id, costume=costume, status="QUEUED", ask_id=ask["ask_id"],
                      image_path=str(target), prompt_path=str(prompt_path), prompt_sha256=self._hash(prompt_path),
-                     reference_images=[{"role": ref["role"], "label": ref.get("label", ""),
-                                        "path": ref["path"], "sha256": ref_hashes[ref["role"]]} for ref in refs],
+                     reference_images=[{**ref, "role": str(ref.get("role") or "reference"),
+                                        "label": ref.get("label", ""), "path": ref["path"],
+                                        "sha256": self._hash(Path(ref["path"]))}
+                                       for ref in render_references],
                      input_hashes=ref_hashes, workflow_kind=str(ask.get("workflow_kind") or profile.get("workflow_kind") or ""),
                      render_preset=preset_name, queued_at=self._now())
         return self.detail(run_id, costume)
@@ -693,7 +756,7 @@ class LocalCharacterAssetPipelineService:
         ask, answer = self._read(answer_dir / "ask_manifest.json"), self._read(answer_dir / "answer_manifest.json")
         expected_pipeline = f"Local-{self.definition['label'].removeprefix('Local ')}"
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
-                or ask.get("pipeline") != expected_pipeline):
+                or ask.get("pipeline") != expected_pipeline or not self._ask_belongs_to_run(ask, run)):
             raise LocalCharacterAssetPipelineError("AI Proxy answer does not belong to this candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER"}:
             raise LocalCharacterAssetPipelineError(str(answer.get("error_message") or "Local render failed."))
@@ -996,6 +1059,7 @@ class LocalCharacterAssetPipelineService:
                 ask = self._read(folder / "ask_manifest.json")
                 answer = self._read(folder / "answer_manifest.json")
                 if (ask.get("ask_id") != record.get("ask_id") or answer.get("ask_id") != record.get("ask_id")
+                        or not self._ask_belongs_to_run(ask, run)
                         or ask.get("local_character_asset_run_id") != run_id
                         or ask.get("candidate_id") != candidate_id or ask.get("task_type") != "local_character_asset_gate"):
                     raise LocalCharacterAssetPipelineError("AI Proxy gate answer does not match this local candidate.")
@@ -1028,7 +1092,7 @@ class LocalCharacterAssetPipelineService:
         try:
             with file_lock(root / "runner.lock", timeout=0):
                 with self._active_lock:
-                    self._active.add(run_id)
+                    self._active.add(self._active_key(run_id))
                 run = self.detail(run_id, costume)
                 if views is None:
                     views = set(VIEWS) if run.get("front_anchor") or not self._requires_front_anchor(run) else {"FRONT"}
@@ -1087,7 +1151,7 @@ class LocalCharacterAssetPipelineService:
             self._run_update(run_id, costume, status="ERROR", error=str(exc), target_views=[])
         finally:
             with self._active_lock:
-                self._active.discard(run_id)
+                self._active.discard(self._active_key(run_id))
 
     def _rank(self, run: dict[str, Any], view: str) -> dict[str, Any]:
         survivors = [item for item in run["candidates"] if item["view"] == view
@@ -1529,7 +1593,9 @@ class LocalCharacterAssetPipelineService:
                      human_review={"decision": "undecided"})
         return self.detail(run_id, costume)
 
-    def rerun_view(self, run_id: str, view: str, costume: str = "", *, refresh_sources: bool = True) -> dict[str, Any]:
+    def rerun_view(self, run_id: str, view: str, costume: str = "", *, refresh_sources: bool = True,
+                   recompile: bool = False) -> dict[str, Any]:
+        refresh_sources = refresh_sources or recompile
         run, view = self.detail(run_id, costume), view.upper()
         if view not in VIEWS:
             raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
@@ -1545,6 +1611,9 @@ class LocalCharacterAssetPipelineService:
             self._refresh_view_inputs(run, view)
         else:
             self._verify_snapshot_view(run, view)
+        if recompile:
+            self._refresh_costume_snapshot(run)
+            self._compile(run, view, self._references(run, view))
         root, state = self._state(run_id, costume)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {view}, "A view or its inputs are being re-run.")
@@ -1567,7 +1636,9 @@ class LocalCharacterAssetPipelineService:
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
-    def rerun(self, run_id: str, costume: str = "", *, refresh_sources: bool = True) -> dict[str, Any]:
+    def rerun(self, run_id: str, costume: str = "", *, refresh_sources: bool = True,
+              recompile: bool = False) -> dict[str, Any]:
+        refresh_sources = refresh_sources or recompile
         run = self.detail(run_id, costume)
         for view in VIEWS:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.definition["asset_pipeline"], view, self._qualifier(costume))
@@ -1583,12 +1654,20 @@ class LocalCharacterAssetPipelineService:
             for view in VIEWS:
                 if view in (run.get("sources") or {}):
                     self._verify_snapshot_view(run, view)
+        if recompile:
+            self._refresh_costume_snapshot(run)
+            run = self.detail(run_id, costume)
         root, state = self._state(run_id, costume)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, set(VIEWS), "The run is being restarted.")
         if refresh_sources:
             for view, sources in fresh_sources.items():
                 self._snapshot_view_inputs(run, view, sources)
+        if recompile:
+            run = self.detail(run_id, costume)
+            views_to_compile = VIEWS if not self._requires_front_anchor(run) else ("FRONT",)
+            for view in views_to_compile:
+                self._compile(run, view, self._references(run, view))
         from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
         for candidate in run["candidates"]:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
@@ -1766,7 +1845,7 @@ class LocalCharacterAssetPipelineService:
         run = self.detail(run_id, costume)
         if run.get("status") == "CANCELLED" and run.get("created_by_autogenerate"):
             with self._active_lock:
-                if run_id in self._active:
+                if self._is_active(run_id):
                     raise LocalCharacterAssetPipelineError("Wait for the stopped batch runner to finish before resuming.")
             root, state = self._state(run_id, costume)
             resume_cancelled_autogenerate_state(run, state, ready_status="AWAITING_HUMAN_SELECTION")
