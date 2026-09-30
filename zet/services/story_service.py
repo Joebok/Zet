@@ -2022,7 +2022,8 @@ class StoryService:
         image_path = self.path_service.resolve_path(str(sheet.locked_image_path or ""))
         available = image_path.is_file()
         return ImageReferenceRow(
-            tag=f"{{{{ASSET:{sheet.character}:{sheet.phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail_parts)}}}}}",
+            tag=(f"{{{{ASSET:{sheet.character}:{sheet.phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail_parts)}}}}}"
+                 if sheet.source_asset_ids else f"{{{{TURNAROUND:{sheet.character}:{sheet.phase}:{sheet.turnaround_id}}}}}"),
             label=(
                 " / ".join(["Scene Appearance", *detail_parts[2:], "Turnaround"])
                 if sheet.source_pipeline == "Scene-Appearance"

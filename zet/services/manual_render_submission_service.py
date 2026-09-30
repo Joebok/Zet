@@ -23,7 +23,8 @@ class ManualRenderSubmissionService:
         story_slug: str = "",
         scene_slug: str = "",
     ) -> list[ManualRenderTask]:
-        tasks = self.queue.list_tasks()
+        tasks = [task for task in self.queue.list_tasks()
+                 if task.manifest.get("story_slug") and task.manifest.get("scene_slug")]
         if character:
             tasks = [task for task in tasks if not task.character or task.character == character]
         if phase:
@@ -42,6 +43,8 @@ class ManualRenderSubmissionService:
     ) -> ManualRenderTask | None:
         task = self.queue.get_task(ask_id)
         if task is None:
+            return None
+        if not task.manifest.get("story_slug") or not task.manifest.get("scene_slug"):
             return None
         if character and task.character and task.character != character:
             return None

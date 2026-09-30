@@ -10,9 +10,11 @@ class IdentityKey:
     phase: str
     label: str
     crop_percent: float
-    source_asset_id: int
+    source_asset_id: int | None
     source_pipeline: str
     source_body_view: str
+    source_local_key: Optional[str] = None
+    source_sha256: Optional[str] = None
     source_head_view: Optional[str] = None
     source_costume: Optional[str] = None
     source_expression: Optional[str] = None

@@ -9,7 +9,7 @@ from zet.models.identity_key import IdentityKey
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.config_service import Config
 from zet.services.costume_service import CostumeService
-from zet.services.expression_service import ExpressionService
+from zet.services.expression_service import ExpressionService, ExpressionServiceError
 from zet.services.path_service import PathService
 
 
@@ -53,43 +53,37 @@ class CompoundAssetCommandTests(unittest.TestCase):
     def _payload(self) -> dict:
         return json.loads(self.assets_path.read_text(encoding="utf-8"))
 
-    def test_create_costume_rolls_back_template_when_asset_write_fails(self) -> None:
-        with patch.object(self.repository, "_write_payload", side_effect=OSError("injected")):
-            with self.assertRaises(OSError):
-                self.costumes.create_costume("Test", "Adult", "Travel Gear", "")
+    def test_create_costume_does_not_create_traditional_assets(self) -> None:
+        with patch.object(self.repository, "_write_payload", side_effect=OSError("traditional store must not be touched")):
+            result = self.costumes.create_costume("Test", "Adult", "Travel Gear", "")
 
-        self.assertFalse((self.character_dir / "Costume_Travel_Gear.md").exists())
+        self.assertTrue(Path(result.costume.path).is_file())
+        self.assertEqual([], result.assets)
         self.assertEqual([], self._payload()["assets"])
 
-    def test_update_costume_renames_traditional_and_local_assets(self) -> None:
+    def test_update_costume_renames_local_provenance_and_preserves_published_image(self) -> None:
         created = self.costumes.create_costume("Test", "Adult", "Armored", "")
-        asset = created.assets[0]
-        old_image = self.paths.character_asset_path("Test", "Adult") / asset.final_image_output
-        old_image.parent.mkdir(parents=True, exist_ok=True)
-        old_image.write_bytes(b"locked image")
-        old_candidate = self.paths.pipeline_path(asset) / asset.final_image_output
-        old_candidate.parent.mkdir(parents=True, exist_ok=True)
-        old_candidate.write_bytes(b"candidate image")
-
-        experiment_root = self.root / "Experiments" / "Character-Pipeline" / "Test" / "Adult"
+        experiment_root = self.paths.pipeline_candidates_path("Character-Pipeline", "Test", "Adult")
         old_workspace = experiment_root / "Costume-Dressing" / "Armored"
         old_workspace.mkdir(parents=True)
         (old_workspace / "spec.json").write_text(json.dumps({"costume": "Armored"}), encoding="utf-8")
         snapshot = old_workspace / "inputs" / "Costume_Armored.md"
         snapshot.parent.mkdir(parents=True)
         snapshot.write_text("Costume Name: `[Armored]`\n", encoding="utf-8")
-        old_locked = experiment_root / "locked" / "Costume-Dressing" / "Armored" / "FRONT" / "locked.png"
-        old_locked.parent.mkdir(parents=True)
-        old_locked.write_bytes(b"local locked image")
+        candidate = old_workspace / "candidate.png"
+        candidate.write_bytes(b"candidate image")
+        published_image = self.root / "images" / "published.png"
+        published_image.parent.mkdir(parents=True)
+        published_image.write_bytes(b"published image")
         local_store = experiment_root / "local_assets.json"
         local_store.write_text(json.dumps({"assets": {
             "costume-dressing:armored:FRONT": {
                 "pipeline": "Costume-Dressing", "qualifier": "Armored",
-                "image_path": str(old_workspace / "candidate.png"),
-                "locked_image_path": str(old_locked), "locked": True,
+                "image_path": str(candidate), "locked_image_path": str(published_image), "locked": True,
+                "dependencies": [{"key": "body-reference:FRONT"}],
             }
         }}), encoding="utf-8")
-        old_turnaround_id = "Costume-Dressing_Armored"
+        old_turnaround_id = "Local-Costume-Dressing_Armored"
         turnaround_dir = self.paths.pipeline_base_path("Test", "Adult") / "Turnaround" / old_turnaround_id
         turnaround_dir.mkdir(parents=True)
         turnaround_candidate = turnaround_dir / "Candidate" / f"{old_turnaround_id}.png"
@@ -99,47 +93,35 @@ class CompoundAssetCommandTests(unittest.TestCase):
         turnarounds_path.write_text(json.dumps({"turnarounds": [{
             "turnaround_id": old_turnaround_id, "character": "Test", "phase": "Adult",
             "source_pipeline": "Costume-Dressing", "costume": "Armored", "label": "Costume-Dressing / Armored",
-            "candidate_image_path": str(turnaround_candidate),
+            "candidate_image_path": str(turnaround_candidate), "source_local_keys": ["costume-dressing:armored:FRONT"],
         }]}), encoding="utf-8")
 
         self.costumes.update_costume("Test", "Adult", "Armored", "Paladin")
 
-        new_image = old_image.with_name(old_image.name.replace("Armored", "Paladin"))
-        self.assertTrue(new_image.is_file())
-        self.assertFalse(old_image.exists())
-        new_candidate = old_candidate.with_name(old_candidate.name.replace("Armored", "Paladin"))
-        self.assertTrue(new_candidate.is_file())
-        self.assertFalse(old_candidate.exists())
         new_workspace = experiment_root / "Costume-Dressing" / "Paladin"
         self.assertEqual("Paladin", json.loads((new_workspace / "spec.json").read_text(encoding="utf-8"))["costume"])
         self.assertTrue((new_workspace / "inputs" / "Costume_Paladin.md").is_file())
         stored = json.loads(local_store.read_text(encoding="utf-8"))["assets"]
         self.assertIn("costume-dressing:paladin:FRONT", stored)
         self.assertEqual("Paladin", stored["costume-dressing:paladin:FRONT"]["qualifier"])
-        self.assertTrue((experiment_root / "locked" / "Costume-Dressing" / "Paladin" / "FRONT" / "locked.png").is_file())
+        self.assertTrue(published_image.is_file())
+        self.assertEqual(str(published_image), stored["costume-dressing:paladin:FRONT"]["locked_image_path"])
+        self.assertEqual("body-reference:FRONT", stored["costume-dressing:paladin:FRONT"]["dependencies"][0]["key"])
         turnaround = json.loads(turnarounds_path.read_text(encoding="utf-8"))["turnarounds"][0]
-        self.assertEqual("Costume-Dressing_Paladin", turnaround["turnaround_id"])
+        self.assertEqual("Local-Costume-Dressing_Paladin", turnaround["turnaround_id"])
         self.assertEqual("Paladin", turnaround["costume"])
-        self.assertIn("Costume-Dressing_Paladin", turnaround["candidate_image_path"])
-        self.assertTrue((turnaround_dir.parent / "Costume-Dressing_Paladin" / "Candidate" / "Costume-Dressing_Paladin.png").is_file())
+        self.assertIn("Local-Costume-Dressing_Paladin", turnaround["candidate_image_path"])
+        self.assertTrue((turnaround_dir.parent / "Local-Costume-Dressing_Paladin" / "Candidate" / "Local-Costume-Dressing_Paladin.png").is_file())
+        self.assertEqual([], self._payload()["assets"])
 
 
 
 
-    def test_update_expression_restores_definition_when_asset_write_fails(self) -> None:
-        created = self.expressions.create_expression(
-            "Test", "Adult", "Happy", "key-1", ""
-        )
-        old_path = Path(created.expression.path)
-        original_assets = self.assets_path.read_bytes()
-
-        with patch.object(self.repository, "_write_payload", side_effect=OSError("injected")):
-            with self.assertRaises(OSError):
-                self.expressions.update_expression("Test", "Adult", created.asset.asset_id, "Joyful", "key-1")
-
-        self.assertTrue(old_path.exists())
-        self.assertFalse((self.character_dir / "Expressions" / "Joyful.md").exists())
-        self.assertEqual(original_assets, self.assets_path.read_bytes())
+    def test_expression_creation_is_retired(self) -> None:
+        with self.assertRaisesRegex(ExpressionServiceError, "Expressions are retired"):
+            self.expressions.create_expression("Test", "Adult", "Happy", "key-1", "")
+        self.assertFalse((self.character_dir / "Expressions" / "Happy.md").exists())
+        self.assertEqual([], self._payload()["assets"])
 
     def test_batch_create_assigns_ids_and_writes_once(self) -> None:
         assets = [

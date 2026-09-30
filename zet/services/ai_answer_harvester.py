@@ -14,6 +14,7 @@ from zet.services.path_service import PathService
 from zet.services.state_machine import StateMachine
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import atomic_copy, file_lock, task_state_path
+from zet.services.pipeline_retirement import is_retired_character_pipeline
 
 
 class AIAnswerHarvesterError(Exception):
@@ -531,6 +532,13 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"Answer folder {answer_path} is missing character or phase in ask_manifest.json")
 
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
+        if is_retired_character_pipeline(asset.pipeline):
+            result = HarvestResult(
+                answer_path=answer_path, ask_id=answer.ask_id, asset_id=answer.asset_id,
+                status="RETIRED", message=f"Traditional {asset.pipeline} answer retained; this workflow is retired.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
         expected_attempt = self._expected_attempt(asset)
         if expected_attempt and answer.ollama_attempt_id != expected_attempt:
             result = HarvestResult(

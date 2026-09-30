@@ -20,53 +20,23 @@ A phase represents a distinct version of a character, such as a different age or
 
 ### Assets
 
-The Assets page is the operational view of character-development work. Select an asset to see its current stage, status, history, candidate image, and locked image.
-
-Use **Advance All** to run eligible work in the selected scope. Asset actions let you regenerate work, promote an approved result, create an identity key, or open the source governing its prompt. Include locked or superseded assets only when you need to inspect older work.
-
-### Manifest
-
-Some pipelines pause at a manifest so you can choose their inputs. For head fitment, select the body reference and headshot that should guide the render, then save the references to continue.
-
-### Prompt Inspection
-
-Review a compiled prompt before rendering. Search within it, copy it, inspect which source contributed each section, or open that source in the editor. When local analysis is configured, **Analyze Prompt** provides an additional AI review.
-
-Prompt Inspection is a review tool; opening or reading a prompt does not advance its pipeline.
-
-### Render Console
-
-The Render Console is the handoff point for manual image generation. Copy the prompt and reference images into your image tool, then return the generated image to Zet with an optional note.
-
-You can also generate a local test image when a backend is configured or fail the task with a reason when it cannot be completed.
-
-### Image Review
-
-Compare a candidate with the currently locked image and record review notes. **Promote to LOCKED** accepts the candidate. **Fail to RENDER** requests another attempt with the existing prompt; **Fail to REGENERATE** restarts the asset so its generated materials can be rebuilt.
-
-### Local Image Review
-
-Generate and compare local test images for queued render tasks. Choose the number of images, try the current model or all configured models, and clear experiments when finished. Local images are review aids and do not become approved assets automatically.
+Open **Assets** for Batch Status or choose Body-Reference, Head-Image, Character-Assembly, or Costume-Dressing. Review local candidates within the selected pipeline and lock the image you want downstream workflows to use. Traditional character-generation pipelines are retired; their files remain available for historical references.
 
 ### Identity Keys
 
-Create reusable crops from approved character art. Choose a source image, label the crop for its intended use, adjust the preview, and save it. Identity keys provide focused visual references when a full turnaround is unnecessary.
+Create reusable crops from verified local locks. Choose a source image, label the crop for its intended use, adjust the preview, and save it. Historical keys remain viewable and usable as scene references; editing a crop requires a current local source.
 
 ### Turnarounds
 
-Turnarounds combine approved views into character reference sheets. Review the candidate against the locked sheet, tune view detection when needed, and save partial sheets for narrower framing such as the head and upper chest. Auxiliary sheets can preserve additional useful crops.
+Turnarounds combine local locked views into character reference sheets. Review the candidate against the locked sheet, tune view detection when needed, and save partial sheets for narrower framing such as the head and upper chest. Historical sheets remain viewable.
 
 ### Costumes
 
-Add and edit named costume definitions for the selected character phase. Each costume can feed its own dressing workflow and display its locked turnaround when completed.
-
-### Expressions
-
-Add expressions that should be rendered consistently for the selected character phase. The page tracks each definition and shows the locked expression once approved.
+Add and edit named costume definitions for the selected character phase. Costume-Dressing readiness and counts come from local locks.
 
 ### Phase Comparison
 
-Compare two phases of a character side by side. Choose the pipeline, view, and costume where applicable, then move through available results to check continuity or intentional visual change.
+Compare local pipeline locks across two phases side by side. Choose the pipeline, view, and costume where applicable, then move through available results to check continuity or intentional visual change.
 
 ## Story Telling
 
@@ -85,6 +55,10 @@ The image view shows the published scene image and any candidate awaiting review
 Use the Scene Builder to turn a scene into structured visual instructions. Add character, auxiliary-resource, or scene-only elements; describe composition and relationships; attach references; and continue from an earlier scene when visual continuity matters.
 
 Review the compiled result before staging a render. Prompt Inspection and the Render Console remain available for the final handoff and review cycle.
+
+### Prompts, Render, and Image Review
+
+These production pages operate on story scenes. Review scene prompts, stage manual or local scene renders, and approve or discard scene candidates here. Character candidate review remains inside each local Assets pipeline.
 
 ### Auxiliary Images
 
@@ -127,12 +101,10 @@ Review project configuration and the stages, actors, workers, and asset counts f
 ## A typical character workflow
 
 1. Create a character and complete onboarding.
-2. Follow the recommended action or use Assets to advance the first pipeline.
-3. Supply references when a Manifest requests them.
-4. Inspect the compiled prompt.
-5. Complete the render in the Render Console or with a configured local backend.
-6. Review the candidate and promote it when satisfied.
-7. Build identity keys, turnarounds, costumes, and expressions from approved work.
+2. Follow the recommended action or open Assets and select a local pipeline.
+3. Review candidates and lock the local views needed by downstream work.
+4. Create Identity Keys, Turnarounds, and Costume definitions from local locks.
+5. Compare local locks across phases when checking continuity.
 
 ## A typical story workflow
 

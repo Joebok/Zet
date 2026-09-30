@@ -32,6 +32,8 @@ from zet.services.image_catalog_service import ImageCatalogService
 from zet.services.entity_library_service import EntityLibraryService
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
+from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.local_asset_source_service import LocalAssetSourceService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
@@ -179,6 +181,9 @@ class ZetApp:
         self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
+        self.local_asset_source_service = LocalAssetSourceService(
+            LocalAssetStoreService(config.base_library_path)
+        )
         self.turnaround_service = turnaround_service
         self.identity_key_service = identity_key_service
         self.costume_service = costume_service
@@ -304,18 +309,21 @@ class ZetApp:
             path_service,
         )
         reference_service = ReferenceService(asset_repository, path_service)
+        local_asset_sources = LocalAssetSourceService(LocalAssetStoreService(config.base_library_path))
         turnaround_service = TurnaroundService(
             asset_repository,
             pipeline_repository,
             turnaround_repository,
             path_service,
+            local_sources=local_asset_sources,
         )
         identity_key_service = IdentityKeyService(
             asset_repository,
             identity_key_repository,
             path_service,
+            local_asset_sources,
         )
-        costume_service = CostumeService(asset_repository, path_service)
+        costume_service = CostumeService(asset_repository, path_service, local_asset_sources)
         scene_appearance_service = SceneAppearanceService(asset_repository, path_service)
         expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
         character_onboarding_service = CharacterOnboardingService(path_service)
@@ -324,6 +332,7 @@ class ZetApp:
             pipeline_repository,
             path_service,
             Path(__file__).resolve().parents[1],
+            local_asset_sources,
         )
         story_service = StoryService(
             path_service,
@@ -1558,6 +1567,10 @@ class ZetApp:
     def list_identity_keys(self, character: str, phase: str):
         """List saved identity keys for a character phase."""
         return self.identity_key_service.list_identity_keys(character, phase)
+
+    def local_asset_sources(self, character: str, phase: str, pipeline: str = ""):
+        """List checksum-verified local locks for derived character workflows."""
+        return self.local_asset_source_service.list_sources(character, phase, pipeline)
 
     def identity_key(self, character: str, phase: str, identity_key_id: str):
         """Return one saved identity key."""

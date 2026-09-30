@@ -32,6 +32,7 @@ from zet.services.pipeline_control_service import AutomationSettings
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.pipeline_retirement import require_active_pipeline
 from zet.services.local_character_overview_service import LocalCharacterOverviewService
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 from zet.services.gate_test_rig_service import GateTestRigService
@@ -2519,6 +2520,14 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/local-asset-sources")
+    def local_asset_sources(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List verified local pipeline locks for derived character workflows."""
+        try:
+            return {"sources": _app(app.state.config_path).local_asset_sources(character, phase)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/identity-keys/{identity_key_id}")
     def identity_key_detail(identity_key_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         """Return one saved identity key."""
@@ -2541,10 +2550,11 @@ def create_app(
             preview = zet_app.preview_identity_key(
                 character,
                 phase,
-                int(payload.get("source_asset_id") or 0),
+                int(payload.get("source_asset_id") or 0) if not payload.get("source_local_key") else None,
                 str(payload.get("label") or ""),
                 float(payload.get("crop_percent") or 0),
                 str(payload.get("identity_key_id") or "") or None,
+                str(payload.get("source_local_key") or "") or None,
             )
             return {"preview": _identity_key_preview_payload(preview)}
         except Exception as exc:
@@ -2558,10 +2568,11 @@ def create_app(
             identity_key = zet_app.save_identity_key(
                 character,
                 phase,
-                int(payload.get("source_asset_id") or 0),
+                int(payload.get("source_asset_id") or 0) if not payload.get("source_local_key") else None,
                 str(payload.get("label") or ""),
                 float(payload.get("crop_percent") or 0),
                 str(payload.get("identity_key_id") or "") or None,
+                str(payload.get("source_local_key") or "") or None,
             )
             return {
                 "identity_key": _identity_key_payload(zet_app, identity_key),
@@ -2606,7 +2617,7 @@ def create_app(
         phase: str = Query(...),
         costume_name: str = Query(...),
     ) -> dict[str, Any]:
-        """Create a costume template and its Costume-Dressing assets."""
+        """Create a costume template for local Costume-Dressing."""
         zet_app = _app(app.state.config_path)
         try:
             contents = (await request.body()).decode("utf-8")
@@ -2614,8 +2625,8 @@ def create_app(
             return {
                 "costume": _costume_payload(zet_app, character, phase, result.costume),
                 "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
-                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
-                "message": f"Created {len(result.assets)} Costume-Dressing assets for {result.costume.name}.",
+                "assets": [],
+                "message": f"Saved {result.costume.name} for local Costume-Dressing.",
             }
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=400, detail="Costume template must be UTF-8 markdown.") from exc
@@ -2629,15 +2640,15 @@ def create_app(
         phase: str = Query(...),
         payload: dict[str, Any] = Body(...),
     ) -> dict[str, Any]:
-        """Update a costume template name and related Costume-Dressing assets."""
+        """Rename a costume template and its local Costume-Dressing provenance."""
         zet_app = _app(app.state.config_path)
         try:
             result = zet_app.update_costume(character, phase, costume_slug, str(payload.get("name") or ""))
             return {
                 "costume": _costume_payload(zet_app, character, phase, result.costume),
                 "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
-                "assets": [_asset_payload(zet_app, asset) for asset in zet_app.list_assets(character, phase)],
-                "message": f"Updated costume {result.costume.name}.",
+                "assets": [],
+                "message": f"Updated costume {result.costume.name} and local Costume-Dressing provenance.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2673,6 +2684,7 @@ def create_app(
         identity_key_id: str = Query(...),
     ) -> dict[str, Any]:
         """Create an expression definition and its Expression asset."""
+        raise HTTPException(status_code=410, detail="Expressions are retired. Use scene workflows for expression instructions.")
         zet_app = _app(app.state.config_path)
         try:
             contents = (await request.body()).decode("utf-8")
@@ -2708,6 +2720,7 @@ def create_app(
         payload: dict[str, Any] = Body(...),
     ) -> dict[str, Any]:
         """Update an expression definition and optional regeneration state."""
+        raise HTTPException(status_code=410, detail="Expressions are retired. Use scene workflows for expression instructions.")
         zet_app = _app(app.state.config_path)
         try:
             result = zet_app.update_expression(
@@ -2772,6 +2785,7 @@ def create_app(
         phase: str = Query(...),
     ) -> dict[str, Any]:
         """Create a Scene Appearance definition and eight view assets."""
+        raise HTTPException(status_code=410, detail="Scene Appearances are retired. Use scene workflows for appearance instructions.")
         zet_app = _app(app.state.config_path)
         try:
             result = zet_app.create_scene_appearance(
@@ -2803,6 +2817,7 @@ def create_app(
         phase: str = Query(...),
     ) -> dict[str, Any]:
         """Update a Scene Appearance definition and invalidate changed render inputs."""
+        raise HTTPException(status_code=410, detail="Scene Appearances are retired. Use scene workflows for appearance instructions.")
         zet_app = _app(app.state.config_path)
         try:
             result = zet_app.update_scene_appearance(
@@ -2955,14 +2970,9 @@ def create_app(
     ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            kind = (
-                "image_review_asset" if character or phase
-                else "image_review_scene" if story_slug or scene_slug
-                else "image_review"
-            )
+            kind = "image_review_scene"
             page = zet_app.indexed_list(
-                kind, character=character or None, phase=phase or None,
-                story_slug=story_slug or None, scene_slug=scene_slug or None,
+                kind, story_slug=story_slug or None, scene_slug=scene_slug or None,
                 cursor=cursor or None, limit=limit,
             )
             tasks = page.items
@@ -3062,6 +3072,7 @@ def create_app(
         try:
             asset_ref = zet_app.asset(character, phase, asset_id)
             asset = asset_ref.get()
+            require_active_pipeline(asset.pipeline)
             locked_image_path = zet_app.path_service.locked_image_path(asset)
             if locked_image_path.exists() and not replace_existing:
                 raise HTTPException(

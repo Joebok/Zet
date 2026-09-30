@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -68,9 +69,7 @@ class TurnaroundServiceTests(unittest.TestCase):
 
             self.assertEqual(200, response.status_code, response.text)
             rows = [row for row in response.json()["rows"] if row["source_pipeline"] == "Scene-Appearance"]
-            self.assertEqual(2, len(rows))
-            self.assertEqual({"hell-adventures", "ice-caves"}, {row["scene_appearance_id"] for row in rows})
-            self.assertEqual({8}, {row["locked_count"] for row in rows})
+            self.assertEqual([], rows)
 
     def _write_png(
         self,
@@ -129,6 +128,21 @@ class TurnaroundServiceTests(unittest.TestCase):
                 }
             )
         (character_dir / "Assets.json").write_text(json.dumps({"assets": records}, indent=2) + "\n", encoding="utf-8")
+        if include_images:
+            local_assets = {}
+            for view in VIEWS:
+                image_path = asset_dir / f"Body-Reference_{view}.png"
+                local_view = view.upper().replace("-", "_")
+                local_assets[f"body-reference:{local_view}"] = {
+                    "pipeline": "Body-Reference", "view": local_view, "qualifier": "",
+                    "candidate_id": f"candidate-{local_view}", "batch_id": "test-batch",
+                    "image_path": str(image_path), "locked_image_path": str(image_path),
+                    "image_sha256": hashlib.sha256(image_path.read_bytes()).hexdigest(),
+                    "selected": True, "locked": True, "stale": False, "dependencies": [],
+                }
+            local_store = root / "_state" / "LocalAssets" / "Test" / "Adult" / "local_assets.json"
+            local_store.parent.mkdir(parents=True)
+            local_store.write_text(json.dumps({"assets": local_assets}, indent=2), encoding="utf-8")
         (character_dir / "Pipelines.json").write_text(
             json.dumps(
                 {
@@ -149,6 +163,7 @@ class TurnaroundServiceTests(unittest.TestCase):
         config_path.write_text(
             f"""
 [BaseFolders]
+BaseLibraryPath = "{root.as_posix()}"
 BaseCharacterPath = "{(root / 'Characters').as_posix()}"
 BaseAssetPath = "{(root / 'Assets').as_posix()}"
 BasePipelinePath = "{(root / 'Pipelines').as_posix()}"
@@ -168,7 +183,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             client = TestClient(create_app(config_path))
 
             generated = client.post(
-                "/api/turnarounds/Body-Reference/generate",
+                "/api/turnarounds/Local-Body-Reference/generate",
                 params={"character": "Test", "phase": "Adult"},
             )
             self.assertEqual(generated.status_code, 200)
@@ -182,7 +197,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                 self.assertEqual((128, 128, 128), image.getpixel((100, 100))[:3])
 
             promoted = client.post(
-                "/api/turnarounds/Body-Reference/promote",
+                "/api/turnarounds/Local-Body-Reference/promote",
                 params={"character": "Test", "phase": "Adult"},
             )
             self.assertEqual(promoted.status_code, 200)
@@ -200,7 +215,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             client = TestClient(create_app(config_path))
 
             created = client.post(
-                "/api/turnarounds/Body-Reference/partials",
+                "/api/turnarounds/Local-Body-Reference/partials",
                 params={"character": "Test", "phase": "Adult"},
                 json={"label": "Head and chest", "crop_percent": 45},
             )
@@ -216,7 +231,7 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                 self.assertEqual((3960, 3060), image.size)
                 self.assertEqual((128, 128, 128), image.getpixel((100, 100))[:3])
             full = client.post(
-                "/api/turnarounds/Body-Reference/generate",
+                "/api/turnarounds/Local-Body-Reference/generate",
                 params={"character": "Test", "phase": "Adult"},
             )
             self.assertEqual(full.status_code, 200)

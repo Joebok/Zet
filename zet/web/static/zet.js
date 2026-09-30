@@ -79,6 +79,8 @@ const state = {
   identityKeyMode: "list",
   selectedIdentityKeyId: null,
   identityKeySourceAssetId: null,
+  identityKeySourceLocalKey: null,
+  localAssetSources: [],
   identityKeyPreview: null,
   costumes: [],
   selectedCostumeSlug: null,
@@ -177,7 +179,7 @@ const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
 const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 
-const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "scene-appearances", "expressions", "phase-comparison"]);
+const CHARACTER_PAGES = new Set(["onboarding", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
 const LOCAL_PAGES = new Set([
   "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-character-assembly",
@@ -187,7 +189,7 @@ const LOCAL_PAGES = new Set([
 const LOCAL_ASSET_PAGES = new Set([
   "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
 ]);
-const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
+const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "render-review"]);
 
 const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
@@ -515,6 +517,7 @@ const identityKeyLabel = document.querySelector("#identity-key-label");
 const identityKeyPercent = document.querySelector("#identity-key-percent");
 const identityKeyCreatePreview = document.querySelector("#identity-key-create-preview");
 const identityKeySave = document.querySelector("#identity-key-save");
+const identityKeySource = document.querySelector("#identity-key-source");
 const identityKeyOriginal = document.querySelector("#identity-key-original");
 const identityKeyPreview = document.querySelector("#identity-key-preview");
 const costumeStatus = document.querySelector("#costume-status");
@@ -1648,7 +1651,7 @@ function renderProductionWorkSummary() {
     badge.hidden = analysisPending === 0;
     badge.title = `${analysisPending} prompt analysis task(s) running`;
   }
-  for (const menu of [characterProductionMenu, storyProductionMenu]) {
+  for (const menu of [characterProductionMenu, storyProductionMenu].filter(Boolean)) {
     const waitingAreas = [project.prompt_available, project.render_waiting, project.image_review_waiting]
       .filter((count) => Number(count || 0) > 0).length;
     menu.options[0].textContent = waitingAreas ? `Production · ${waitingAreas} waiting ▾` : "Production ▾";
@@ -1780,12 +1783,12 @@ function loadStoredWorkspacePreferences() {
     const data = JSON.parse(raw);
     const pages = data?.pages || {};
     return {
-      workspace: ["character", "local", "story"].includes(data?.workspace) ? data.workspace : "character",
+      workspace: data?.workspace === "story" ? "story" : "character",
       pages: {
-        character: CHARACTER_PAGES.has(pages.character) || PRODUCTION_PAGES.has(pages.character)
-          ? pages.character
+        character: CHARACTER_PAGES.has(canonicalDashboardPage(pages.character)) || LOCAL_PAGES.has(pages.character) || PRODUCTION_PAGES.has(pages.character)
+          ? canonicalDashboardPage(pages.character)
           : "onboarding",
-        local: LOCAL_PAGES.has(pages.local) ? pages.local : "local-overview",
+        local: "onboarding",
         story: STORY_PAGES.has(pages.story) || PRODUCTION_PAGES.has(pages.story)
           ? pages.story
           : "scenes",
@@ -1810,9 +1813,20 @@ function saveWorkspacePreferences() {
 function pageWorkspace(page) {
   if (["universes", "universe-create", "universe-settings"].includes(page)) return null;
   if (CHARACTER_PAGES.has(page)) return "character";
-  if (LOCAL_PAGES.has(page)) return "local";
+  if (LOCAL_PAGES.has(page)) return "character";
   if (STORY_PAGES.has(page)) return "story";
   return null;
+}
+
+function canonicalDashboardPage(page) {
+  return ({
+    "local-overview": "onboarding", assets: "local-batch-status", manifest: "local-batch-status",
+    "scene-appearances": "local-batch-status", expressions: "local-batch-status",
+    "local-identity-keys": "identity-keys", "local-turnarounds": "turnarounds",
+    "local-costumes": "costumes", "local-comparison": "phase-comparison",
+    "local-scene-appearances": "local-batch-status", "local-expressions": "local-batch-status",
+    "local-image-review": "local-batch-status",
+  })[page] || page;
 }
 
 function renderHeaderStoryContext() {
@@ -1831,23 +1845,13 @@ function renderHeaderStoryContext() {
 
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["onboarding", "Overview"], ["assets", "Assets"], ["identity-keys", "Identity Keys"],
-    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["scene-appearances", "Scene Appearances"], ["expressions", "Expressions"],
-    ["phase-comparison", "Phase Comparison"], ["manifest", "Manifest"], ["prompt-review", "Prompts"],
-    ["render-console", "Render"], ["local-image-review", "Local Images"], ["render-review", "Image Review"],
+    ["onboarding", "Overview"], ["local-batch-status", "Assets"], ["identity-keys", "Identity Keys"],
+    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
   ],
   story: [
     ["stories", "Overview"], ["scenes", "Scenes"], ["scene-builder", "Scene Builder"],
     ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
-    ["render-console", "Render Console"], ["local-image-review", "Local Variants"], ["render-review", "Image Review"],
-  ],
-  local: [
-    ["local-overview", "Overview"], ["local-batch-status", "Batch Status"], ["local-body-reference", "Body-Reference"],
-    ["local-head-image", "Head-Image"], ["local-character-assembly", "Character-Assembly"],
-    ["local-costume-dressing", "Costume-Dressing"], ["local-identity-keys", "Identity Keys"],
-    ["local-turnarounds", "Turnarounds"], ["local-costumes", "Costumes"],
-    ["local-scene-appearances", "Scene Appearances"], ["local-expressions", "Expressions"],
-    ["local-comparison", "Comparison"],
+    ["render-console", "Render Console"], ["render-review", "Image Review"],
   ],
 };
 
@@ -1880,14 +1884,14 @@ function syncResponsiveChrome() {
 
 function applyWorkspaceChrome() {
   const storyActive = state.workspace === "story";
-  const localActive = state.workspace === "local";
-  workspaceCharacter.setAttribute("aria-pressed", !storyActive && !localActive ? "true" : "false");
-  workspaceLocal.setAttribute("aria-pressed", localActive ? "true" : "false");
+  const localActive = false;
+  workspaceCharacter.setAttribute("aria-pressed", !storyActive ? "true" : "false");
+  workspaceLocal?.setAttribute("aria-pressed", "false");
   workspaceStory.setAttribute("aria-pressed", storyActive ? "true" : "false");
   characterContext.hidden = storyActive;
   storyContext.hidden = !storyActive;
-  characterNavigation.hidden = storyActive || localActive;
-  localNavigation.hidden = !localActive;
+  characterNavigation.hidden = storyActive;
+  localNavigation.hidden = true;
   storyNavigation.hidden = !storyActive;
   headerFitmentPreview.hidden = storyActive || !headerFitmentPreview.getAttribute("src");
   for (const item of newMenu.querySelectorAll("[data-workspace-item]")) {
@@ -2295,7 +2299,6 @@ function renderOnboarding() {
     const page = button.dataset.page || "";
     button.disabled = !ready && page !== "phase-comparison";
   }
-  characterProductionMenu.disabled = !ready;
   onboardingStatus.textContent = isDraft ? "New character — not created yet" : ready ? "Ready for character production" : "Setup incomplete";
   const characterName = isDraft ? onboardingCharacter.value.trim() : status?.character_name || state.character || "";
   const phaseName = isDraft ? onboardingPhase.value.trim() : state.phase || "";
@@ -2540,7 +2543,7 @@ function browserRouteUrl() {
   if (page) params.set("page", page);
   if (LOCAL_ASSET_PAGES.has(page)) {
     const currentParams = new URLSearchParams(window.location.search);
-    for (const key of ["local_batch", "local_costume"]) {
+    for (const key of ["character", "phase", "local_batch", "local_costume"]) {
       const value = currentParams.get(key);
       if (value) params.set(key, value);
     }
@@ -3216,18 +3219,27 @@ async function openTemplateManual(manualId) {
 }
 
 async function activatePage(page, options = {}) {
+  page = canonicalDashboardPage(page);
+  if (PRODUCTION_PAGES.has(page) && state.workspace !== "story") {
+    state.workspace = "story";
+    applyWorkspaceChrome();
+    if (!state.stories.length) await loadStories();
+  }
   state.navigationRequest += 1;
+  const hasRequestedLocalBatch = LOCAL_ASSET_PAGES.has(page)
+    && Boolean(new URLSearchParams(window.location.search).get("local_batch"));
   const phaseReady = LOCAL_ASSET_PAGES.has(page) ? selectedLocalPhaseReady() : selectedPhaseReady();
   if (
     !phaseReady
+    && !hasRequestedLocalBatch
     && ((state.workspace === "character"
       && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page)))
       || LOCAL_ASSET_PAGES.has(page))
   ) {
-    page = state.workspace === "local" ? "local-overview" : "onboarding";
+    page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
-    characterProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
+    if (characterProductionMenu) characterProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     storyProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     return false;
   }
@@ -3236,15 +3248,15 @@ async function activatePage(page, options = {}) {
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
-  characterProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "character");
+  if (characterProductionMenu) characterProductionMenu.classList.toggle("active", false);
   storyProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "story");
-  characterProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "character" ? page : "";
+  if (characterProductionMenu) characterProductionMenu.value = "";
   storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding" || page === "local-overview");
   document.querySelector("#universes-page").classList.toggle("active", page === "universes");
   document.querySelector("#universe-create-page").classList.toggle("active", page === "universe-create");
   document.querySelector("#universe-settings-page").classList.toggle("active", page === "universe-settings");
-  document.querySelector("#assets-page").classList.toggle("active", page === "assets");
+  document.querySelector("#assets-page").classList.toggle("active", false);
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
   document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
   document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
@@ -3401,7 +3413,7 @@ async function activatePage(page, options = {}) {
 }
 
 function setupTabs() {
-  for (const menu of [characterProductionMenu, storyProductionMenu]) {
+  for (const menu of [characterProductionMenu, storyProductionMenu].filter(Boolean)) {
     menu.addEventListener("change", async () => {
       const page = menu.value;
       if (!page) return;
@@ -3514,13 +3526,30 @@ async function loadIdentityKeys() {
     return;
   }
   identityKeyStatus.textContent = "Loading Identity Keys...";
-  const payload = await fetchJson(`/api/identity-keys?${currentQuery().toString()}`);
+  const [payload, sourcePayload] = await Promise.all([
+    fetchJson(`/api/identity-keys?${currentQuery().toString()}`),
+    fetchJson(`/api/local-asset-sources?${currentQuery().toString()}`),
+  ]);
   state.identityKeys = payload.identity_keys || [];
+  state.localAssetSources = sourcePayload.sources || [];
+  renderIdentityKeySources();
   renderIdentityKeyTable();
   identityKeyStatus.textContent = `${state.identityKeys.length} Identity Key(s)`;
   if (state.identityKeyMode === "list") {
     clearIdentityKeyUpdate();
   }
+}
+
+function renderIdentityKeySources(selected = identityKeySource.value) {
+  const options = [option("", "Select a locked local image")];
+  for (const item of state.localAssetSources) {
+    const label = [item.pipeline, item.view, item.costume].filter(Boolean).join(" · ");
+    options.push(option(item.source_key, label));
+  }
+  identityKeySource.replaceChildren(...options);
+  identityKeySource.value = state.localAssetSources.some((item) => item.source_key === selected) ? selected : "";
+  state.identityKeySourceLocalKey = identityKeySource.value || null;
+  state.identityKeySourceAssetId = null;
 }
 
 function renderIdentityKeyTable() {
@@ -3573,6 +3602,7 @@ function renderIdentityKeyTable() {
 function clearIdentityKeyUpdate() {
   state.selectedIdentityKeyId = null;
   state.identityKeySourceAssetId = null;
+  state.identityKeySourceLocalKey = null;
   state.identityKeyPreview = null;
   identityKeyTitle.textContent = "Select or create an Identity Key";
   identityKeyLabel.value = "";
@@ -3585,8 +3615,10 @@ function clearIdentityKeyUpdate() {
 
 function renderIdentityKeyUpdate(item) {
   state.identityKeyMode = "update";
-  state.identityKeySourceAssetId = Number(item.source_asset_id || 0);
-  identityKeyTitle.textContent = item.identity_key_id ? `Identity Key | ${item.label}` : `New Identity Key | Asset ${item.source_asset_id}`;
+  state.identityKeySourceLocalKey = item.source_local_key || null;
+  const source = state.localAssetSources.find((candidate) => candidate.source_key === state.identityKeySourceLocalKey);
+  identityKeySource.value = source?.source_key || "";
+  identityKeyTitle.textContent = item.identity_key_id ? `Identity Key | ${item.label}` : `New Identity Key | ${item.label || "Local source"}`;
   identityKeyLabel.value = item.label || "";
   identityKeyPercent.value = item.crop_percent || 100;
   renderReviewImage(
@@ -3606,8 +3638,8 @@ function renderIdentityKeyUpdate(item) {
     "Identity Key crop",
     item.updated_at || Date.now().toString(),
   );
-  identityKeyCreatePreview.disabled = !state.identityKeySourceAssetId;
-  identityKeySave.disabled = !state.identityKeySourceAssetId;
+  identityKeyCreatePreview.disabled = !source;
+  identityKeySave.disabled = !source;
 }
 
 async function selectIdentityKey(identityKeyId) {
@@ -3617,14 +3649,16 @@ async function selectIdentityKey(identityKeyId) {
   }
   state.selectedIdentityKeyId = identityKeyId;
   state.identityKeySourceAssetId = item.source_asset_id;
+  state.identityKeySourceLocalKey = item.source_local_key || null;
+  identityKeySource.value = state.identityKeySourceLocalKey || "";
   state.identityKeyPreview = null;
   renderIdentityKeyTable();
   renderIdentityKeyUpdate(item);
 }
 
 async function createIdentityKeyPreview() {
-  const sourceAssetId = state.identityKeySourceAssetId;
-  if (!sourceAssetId) {
+  const sourceLocalKey = state.identityKeySourceLocalKey;
+  if (!sourceLocalKey) {
     return;
   }
   showIdentityKeyMessage("Creating Identity Key preview...");
@@ -3634,7 +3668,7 @@ async function createIdentityKeyPreview() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source_asset_id: sourceAssetId,
+        source_local_key: sourceLocalKey,
         identity_key_id: state.selectedIdentityKeyId,
         label: identityKeyLabel.value || "",
         crop_percent: Number(identityKeyPercent.value || 0),
@@ -3644,7 +3678,7 @@ async function createIdentityKeyPreview() {
     const item = state.selectedIdentityKeyId
       ? state.identityKeys.find((key) => key.identity_key_id === state.selectedIdentityKeyId)
       : {
-          source_asset_id: sourceAssetId,
+          source_local_key: sourceLocalKey,
           source_image_path: payload.preview?.source_image_path,
           label: identityKeyLabel.value || "",
           crop_percent: Number(identityKeyPercent.value || 0),
@@ -3654,13 +3688,13 @@ async function createIdentityKeyPreview() {
   } catch (error) {
     showIdentityKeyMessage(error.message, "error");
   } finally {
-    identityKeyCreatePreview.disabled = !state.identityKeySourceAssetId;
+    identityKeyCreatePreview.disabled = !state.identityKeySourceLocalKey;
   }
 }
 
 async function saveIdentityKey() {
-  const sourceAssetId = state.identityKeySourceAssetId;
-  if (!sourceAssetId) {
+  const sourceLocalKey = state.identityKeySourceLocalKey;
+  if (!sourceLocalKey) {
     return;
   }
   showIdentityKeyMessage("Saving Identity Key...");
@@ -3670,7 +3704,7 @@ async function saveIdentityKey() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source_asset_id: sourceAssetId,
+        source_local_key: sourceLocalKey,
         identity_key_id: state.selectedIdentityKeyId,
         label: identityKeyLabel.value || "",
         crop_percent: Number(identityKeyPercent.value || 0),
@@ -3685,7 +3719,7 @@ async function saveIdentityKey() {
   } catch (error) {
     showIdentityKeyMessage(error.message, "error");
   } finally {
-    identityKeySave.disabled = !state.identityKeySourceAssetId;
+    identityKeySave.disabled = !state.identityKeySourceLocalKey;
   }
 }
 
@@ -6417,7 +6451,7 @@ function builderRenderMoreMenu() {
         <button type="button" data-builder-action="continue-from">Continue From…</button>
         <button type="button" data-builder-action="${analysisAction}">Prompt Analysis</button>
         <button type="button" data-builder-action="open-page" data-builder-page="scenes">Scene Management</button>
-        <button type="button" data-builder-action="open-page" data-builder-page="local-image-review">Local Variants</button>
+        <button type="button" data-builder-action="open-page" data-builder-page="local-batch-status">Local Assets</button>
         <button type="button" data-builder-action="open-page" data-builder-page="render-review">Candidate Review</button>
         ${builderRenderTechnicalDetails()}
       </div>
@@ -11939,7 +11973,7 @@ for (const button of actionButtons) {
 }
 
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
-workspaceLocal.addEventListener("click", () => switchWorkspace("local"));
+workspaceLocal?.addEventListener("click", () => switchWorkspace("local"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
 const localRunAllButton = document.querySelector("#local-run-all-remaining");
 const localRunAllStatus = document.querySelector("#local-run-all-status");
@@ -12201,6 +12235,13 @@ identityKeyShowList.addEventListener("click", () => {
 });
 identityKeyCreatePreview.addEventListener("click", createIdentityKeyPreview);
 identityKeySave.addEventListener("click", saveIdentityKey);
+identityKeySource.addEventListener("change", () => {
+  state.identityKeySourceLocalKey = identityKeySource.value || null;
+  state.identityKeySourceAssetId = null;
+  state.identityKeyPreview = null;
+  identityKeyCreatePreview.disabled = !state.identityKeySourceLocalKey;
+  identityKeySave.disabled = !state.identityKeySourceLocalKey;
+});
 costumeAddNew.addEventListener("click", clearCostumeForm);
 costumeCreate.addEventListener("click", saveCostume);
 sceneAppearanceAddNew.addEventListener("click", clearSceneAppearanceForm);
@@ -12920,6 +12961,8 @@ async function main() {
     await loadContext();
     if (!pageLoadIsCurrent(startupLoad)) return;
     const initialRouteParams = new URLSearchParams(window.location.search);
+    const isLocalBatchRoute = Boolean(initialRouteParams.get("local_batch"))
+      && LOCAL_ASSET_PAGES.has(initialRouteParams.get("page"));
     const routeCharacter = initialRouteParams.get("character");
     const routePhase = initialRouteParams.get("phase");
     if (routeCharacter && state.characters.includes(routeCharacter)) {
@@ -12930,7 +12973,7 @@ async function main() {
       updatePhaseSelect();
       saveStoredContext();
     }
-    await loadAssets();
+    if (!isLocalBatchRoute) await loadAssets();
     if (!pageLoadIsCurrent(startupLoad)) return;
     await loadStories(state.selectedStorySlug);
     if (!pageLoadIsCurrent(startupLoad)) return;

@@ -5,11 +5,13 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from Scripts.Run_Scene_Appearance_Jobs import compile_scene_appearance_job
 from zet.models.asset import Asset
 from zet.models.worker import WorkerContext
+from zet.models.scene_appearance import SceneAppearanceDefinition, SceneAppearanceReference
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.config_service import ConfigService
 from zet.services.path_service import PathService
@@ -98,46 +100,43 @@ class SceneAppearancePipelineTests(unittest.TestCase):
         ]
 
     def _create(self):
-        return self.service.create(
-            "Tsaeytte", "Adult", "hell-adventures", "Hell Adventures",
+        """Seed a historical record so retired compilers/readers stay covered."""
+        path = self.paths.scene_appearance_definition_path("Tsaeytte", "Adult", "hell-adventures")
+        references = [SceneAppearanceReference(**item) for item in self._references()]
+        definition = SceneAppearanceDefinition(
+            1, "hell-adventures", "Hell Adventures", "Tsaeytte", "Adult",
             "Canonical Adventure Gear",
             "Morrow is on the anatomical left shoulder; hold the tusk vertically in the anatomical right hand, "
             "with the pointed end resting on the ground and the broken thick base upward.",
-            self._references(),
+            references, str(path), len(TURNAROUND_VIEW_ORDER),
         )
+        self.service._write_definition(path, definition)
+        assets = self.repository.create_assets([
+            Asset(
+                asset_id=0, character="Tsaeytte", phase="Adult", pipeline="Scene-Appearance",
+                body_view=view, costume="Canonical Adventure Gear", asset_state="NEW", pipeline_stage="ADD_REF",
+                actor="PYTHON", final_image_output=f"Scene-Appearance_{view}.png",
+                scene_appearance_id="hell-adventures", scene_appearance="Hell Adventures",
+                scene_appearance_definition_path=str(path),
+            ) for view in TURNAROUND_VIEW_ORDER
+        ])
+        return SimpleNamespace(appearance=definition, assets=assets)
 
     def test_create_is_atomic_and_seeds_exactly_eight_add_ref_assets(self) -> None:
-        result = self._create()
-
-        self.assertEqual(list(TURNAROUND_VIEW_ORDER), [asset.body_view for asset in result.assets])
-        self.assertEqual({"ADD_REF"}, {asset.pipeline_stage for asset in result.assets})
-        self.assertEqual({"hell-adventures"}, {asset.scene_appearance_id for asset in result.assets})
-        self.assertTrue(Path(result.appearance.path).is_file())
-
-        failing_path = self.paths.scene_appearance_definition_path("Tsaeytte", "Adult", "rollback-test")
-        with patch.object(self.repository, "create_assets", side_effect=RuntimeError("write failed")):
-            with self.assertRaises(RuntimeError):
-                self.service.create(
-                    "Tsaeytte", "Adult", "rollback-test", "Rollback Test",
-                    "Canonical Adventure Gear", "Arrangement.", self._references(),
-                )
-        self.assertFalse(failing_path.exists())
+        with self.assertRaisesRegex(SceneAppearanceServiceError, "retired"):
+            self.service.create(
+                "Tsaeytte", "Adult", "hell-adventures", "Hell Adventures",
+                "Canonical Adventure Gear", "Arrangement.", self._references(),
+            )
+        self.assertFalse(self.paths.scene_appearance_definition_path("Tsaeytte", "Adult", "hell-adventures").exists())
 
     def test_validation_and_render_affecting_update_reset_assets(self) -> None:
-        result = self._create()
-        changed = self.repository.get_asset("Tsaeytte", "Adult", result.assets[0].asset_id)
-        changed.pipeline_stage = "LOCKED"
-        changed.asset_state = "LOCKED"
-        changed.reference_files = [{"role": "old"}]
-        self.repository.save_asset(changed)
-
-        updated = self.service.update(
-            "Tsaeytte", "Adult", "hell-adventures", "Hell Adventures",
-            "Canonical Adventure Gear", "Updated arrangement.", self._references(),
-        )
-        self.assertTrue(updated.render_changed)
-        self.assertEqual({"ADD_REF"}, {asset.pipeline_stage for asset in updated.assets})
-        self.assertTrue(all(not asset.reference_files for asset in updated.assets))
+        self._create()
+        with self.assertRaisesRegex(SceneAppearanceServiceError, "retired"):
+            self.service.update(
+                "Tsaeytte", "Adult", "hell-adventures", "Hell Adventures",
+                "Canonical Adventure Gear", "Updated arrangement.", self._references(),
+            )
         with self.assertRaises(SceneAppearanceServiceError):
             self.service.create(
                 "Tsaeytte", "Adult", "Bad ID", "Bad", "Canonical Adventure Gear",

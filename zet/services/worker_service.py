@@ -4,6 +4,7 @@ from zet.models.worker import WorkerContext, WorkerResult
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.services.path_service import PathService
+from zet.services.pipeline_retirement import require_active_pipeline
 
 
 class WorkerServiceError(Exception):
@@ -44,6 +45,7 @@ class WorkerService:
 
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> WorkerResult:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         worker_name = pipeline.worker_by_stage.get(asset.pipeline_stage)
         if not worker_name:
@@ -55,6 +57,8 @@ class WorkerService:
 
     def run_named_worker(self, asset, worker_name: str) -> WorkerResult:
         """Run a configured worker by module name for an already loaded asset."""
+
+        require_active_pipeline(asset.pipeline)
 
         module_name = self._normalize_worker_name(worker_name)
         context = self._build_context(asset)

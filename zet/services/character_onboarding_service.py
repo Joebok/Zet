@@ -90,10 +90,10 @@ class CharacterOnboardingService:
         if exists and template_path.exists():
             metadata = self._template_metadata(template_path)
             errors = self.validate_template(template_path)
-        if exists and template_path.exists() and not errors and not assets_path.exists():
-            messages.append("Template is valid. Foundation assets have not been initialized yet.")
-        complete = exists and template_path.exists() and assets_path.exists() and pipelines_path.exists() and not errors
         template_ready = exists and template_path.exists() and not errors
+        if template_ready and not assets_path.exists():
+            messages.append("Character template is valid. Local assets can now be created.")
+        complete = template_ready
         return CharacterOnboardingStatus(
             character=character,
             phase=phase,
@@ -170,7 +170,7 @@ class CharacterOnboardingService:
         return self.status(character, phase)
 
     def initialize_foundation(self, character: str, phase: str) -> None:
-        """Create foundation Assets.json and support folders for an onboarded phase."""
+        """Prepare local workflow folders without creating traditional pipeline rows."""
         phase_path = self.path_service.character_path(character, phase)
         template_path = self.path_service.character_template_path(character, phase)
         if not template_path.exists():
@@ -179,25 +179,6 @@ class CharacterOnboardingService:
         if errors:
             raise CharacterOnboardingError("; ".join(errors))
         self._ensure_phase_scaffold(character, phase, "")
-        assets_path = phase_path / "Assets.json"
-        if assets_path.exists():
-            payload = json.loads(assets_path.read_text(encoding="utf-8"))
-            if payload.get("assets"):
-                return
-        assets = self._foundation_assets(character, phase)
-        reserved_asset_ids = list(range(17, 25))
-        assets_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 2,
-                    "next_asset_id": max(item["asset_id"] for item in assets) + 1,
-                    "reserved_asset_ids": reserved_asset_ids,
-                    "assets": assets,
-                },
-                indent=2,
-            ) + "\n",
-            encoding="utf-8",
-        )
 
     def validate_template(self, template_path: Path) -> list[str]:
         """Validate Character.md against active compiler requirements."""
@@ -254,22 +235,10 @@ class CharacterOnboardingService:
         phase_path = self.path_service.character_path(character, phase)
         phase_path.mkdir(parents=True, exist_ok=True)
         for folder in [
-            phase_path / "Reference_Images" / "Head_Image_Sources",
-            phase_path / "Body_Reference",
-            phase_path / "SceneAppearances",
             self.path_service.character_asset_path(character, phase),
             self.path_service.pipeline_base_path(character, phase),
         ]:
             folder.mkdir(parents=True, exist_ok=True)
-        pipelines_path = phase_path / "Pipelines.json"
-        if not pipelines_path.exists():
-            source = self.path_service.character_path(character, source_phase) / "Pipelines.json" if source_phase else None
-            if source is None or not source.exists():
-                source = self.path_service.character_path("Tsaeytte", "Adult") / "Pipelines.json"
-            if source.exists():
-                shutil.copy2(source, pipelines_path)
-        if pipelines_path.exists():
-            self._normalize_foundation_pipelines(pipelines_path)
         identity_keys_path = phase_path / "IdentityKeys.json"
         if not identity_keys_path.exists():
             identity_keys_path.write_text('{\n  "schema_version": 1,\n  "identity_keys": []\n}\n', encoding="utf-8")
@@ -396,6 +365,7 @@ class CharacterOnboardingService:
 
     def add_missing_head_image_foundation(self, character: str, phase: str) -> list[Asset]:
         """Append missing Head-Image views without changing existing assets."""
+        raise CharacterOnboardingError("Traditional Head-Image assets are retired. Use the local Assets workflow.")
         self._ensure_phase_scaffold(character, phase, "")
         assets_path = self.path_service.character_path(character, phase) / "Assets.json"
         if not assets_path.exists():

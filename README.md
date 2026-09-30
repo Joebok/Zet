@@ -7,9 +7,9 @@ Zet is designed primarily for a personal creative workflow using ChatGPT for fin
 ## Key features
 
 - Guided character onboarding and life-phase management
-- Character-development pipelines for body references, head fitment, costumes, and expressions
+- Local character asset pipelines with batch review, identity keys, turnarounds, costumes, and phase comparison
 - Reusable identity keys, turnarounds, and auxiliary image references
-- Prompt inspection, source editing, AI analysis, and manual or local rendering
+- Scene prompt review, source editing, AI analysis, and manual or local rendering
 - Side-by-side candidate review, approval, regeneration, and asset history
 - Story and scene authoring with a structured scene builder
 - Scene image-reference selection and render staging

@@ -11,6 +11,7 @@ from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.services.character_grid_service import CharacterGridOptions, CharacterGridService
 from zet.services.path_service import PathService
+from zet.services.local_asset_source_service import LocalAssetSourceService
 
 
 @dataclass(frozen=True)
@@ -35,11 +36,13 @@ class IdentityKeyService:
         asset_repository: AssetRepository,
         identity_key_repository: IdentityKeyRepository,
         path_service: PathService,
+        local_sources: LocalAssetSourceService | None = None,
     ):
         """Create an identity key service."""
         self.asset_repository = asset_repository
         self.identity_key_repository = identity_key_repository
         self.path_service = path_service
+        self.local_sources = local_sources
         self.grid_service = CharacterGridService()
 
     def _slug(self, value: str) -> str:
@@ -93,18 +96,27 @@ class IdentityKeyService:
         self,
         character: str,
         phase: str,
-        source_asset_id: int,
+        source_asset_id: int | None,
         label: str,
         crop_percent: float,
         identity_key_id: str | None = None,
+        source_local_key: str | None = None,
     ) -> IdentityKeyPreview:
         """Generate a temporary identity key preview crop."""
         if not str(label or "").strip():
             raise IdentityKeyServiceError("Identity Key label is required.")
-        asset = self._source_asset(character, phase, source_asset_id)
-        source_path = self._source_image_path(asset)
+        asset = None
+        local_source = None
+        if source_local_key:
+            if self.local_sources is None:
+                raise IdentityKeyServiceError("Local Identity Key sources are unavailable.")
+            local_source = self.local_sources.get_source(character, phase, source_local_key)
+            source_path = Path(local_source["image_path"])
+        else:
+            raise IdentityKeyServiceError("Traditional pipeline assets are retired. Select a locked local image source.")
         slug = self._slug(label)
-        preview_id = identity_key_id or f"preview_{asset.asset_id}_{slug}"
+        source_id = local_source["source_key"].replace(":", "_") if local_source else str(asset.asset_id)
+        preview_id = identity_key_id or f"preview_{source_id}_{slug}"
         output_dir = self.path_service.pipeline_base_path(character, phase) / "IdentityKeys" / preview_id
         result = self._crop(source_path, output_dir, f"{preview_id}.png", crop_percent)
         return IdentityKeyPreview(
@@ -119,18 +131,27 @@ class IdentityKeyService:
         self,
         character: str,
         phase: str,
-        source_asset_id: int,
+        source_asset_id: int | None,
         label: str,
         crop_percent: float,
         identity_key_id: str | None = None,
+        source_local_key: str | None = None,
     ) -> IdentityKey:
         """Create or update a saved identity key."""
         label = str(label or "").strip()
         if not label:
             raise IdentityKeyServiceError("Identity Key label is required.")
-        asset = self._source_asset(character, phase, source_asset_id)
-        source_path = self._source_image_path(asset)
-        key_id = identity_key_id or f"IK_{asset.asset_id}_{self._slug(label)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        asset = None
+        local_source = None
+        if source_local_key:
+            if self.local_sources is None:
+                raise IdentityKeyServiceError("Local Identity Key sources are unavailable.")
+            local_source = self.local_sources.get_source(character, phase, source_local_key)
+            source_path = Path(local_source["image_path"])
+        else:
+            raise IdentityKeyServiceError("Traditional pipeline assets are retired. Select a locked local image source.")
+        source_token = local_source["source_key"].replace(":", "_") if local_source else str(asset.asset_id)
+        key_id = identity_key_id or f"IK_{source_token}_{self._slug(label)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         output_path = self.path_service.identity_key_image_path(character, phase, key_id)
         result = self._crop(source_path, output_path.parent, output_path.name, crop_percent)
         identity_key = IdentityKey(
@@ -139,12 +160,14 @@ class IdentityKeyService:
             phase=phase,
             label=label,
             crop_percent=crop_percent,
-            source_asset_id=asset.asset_id,
-            source_pipeline=asset.pipeline,
-            source_body_view=asset.body_view,
-            source_head_view=asset.head_view,
-            source_costume=asset.costume,
-            source_expression=asset.expression,
+            source_asset_id=asset.asset_id if asset else None,
+            source_pipeline=asset.pipeline if asset else local_source["pipeline"],
+            source_body_view=asset.body_view if asset else local_source["view"],
+            source_head_view=asset.head_view if asset else None,
+            source_costume=asset.costume if asset else (local_source["costume"] or None),
+            source_expression=asset.expression if asset else None,
+            source_local_key=local_source["source_key"] if local_source else None,
+            source_sha256=local_source["image_sha256"] if local_source else None,
             image_path=str(result.image_path),
             source_image_path=str(source_path),
             analysis_path=str(result.analysis_path),

@@ -333,7 +333,7 @@ test("WP03 invalid scene selections fall back to the canonical first scene", asy
 });
 
 test("WP03 To Do and Template Instruction Manuals open and report load failures", async ({ page }) => {
-  await openPage(page, "assets");
+  await openPage(page, "local-batch-status");
   await page.locator("#toolbar-settings-button").click();
   await page.locator("#toolbar-todo-button").click();
   await expect(page.locator("#todo-dialog")).toBeVisible();
@@ -359,7 +359,7 @@ test("WP03 To Do and Template Instruction Manuals open and report load failures"
     contentType: "application/json",
     body: '{"detail":"Seeded manuals failure"}',
   }));
-  await page.evaluate(() => activatePage("assets", { skipAutosave: true }));
+  await page.evaluate(() => activatePage("local-batch-status", { skipAutosave: true }));
   await page.locator("#help-menu-button").click();
   await page.locator("#help-menu button[data-page='help']").click();
   await expect(page.locator("#action-message")).toContainText(
@@ -386,7 +386,7 @@ test("Batch Status is first in local Assets and links directly to the batch", as
   await expect(page.locator("#local-assets-menu #local-run-all-remaining")).toHaveCount(0);
   await expect(page.locator("#local-batch-status-page #local-run-all-remaining")).toBeVisible();
   const link = page.locator("#local-batch-status-groups a");
-  await expect(link).toHaveText("Winter coat");
+  await expect(link).toHaveText("Mira/Adult/Winter coat");
   const href = new URL(await link.getAttribute("href"), page.url());
   expect(href.searchParams.get("page")).toBe("local-costume-dressing");
   expect(href.searchParams.get("character")).toBe("Mira");
@@ -437,46 +437,18 @@ test("Run All Remaining starts from the top of Batch Status", async ({ page }) =
 test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });
-    await openPage(page, "assets");
+    await openPage(page, "local-batch-status");
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
       .toBe(true);
   }
 });
 
-test("Scene Appearances selects a locked preview and reports edits", async ({ page }) => {
-  const appearance = {
-    appearance_id: "hell-adventures",
-    name: "Hell Adventures",
-    costume: "Canonical Adventure Gear",
-    instructions: "Morrow on anatomical left shoulder; tusk in anatomical right hand.",
-    supporting_references: [
-      { role: "companion", label: "Morrow", tag: "{{AUX:person:morrow:morrow-raven-form}}" },
-      { role: "prop", label: "Utility Tusk", tag: "{{AUX:thing:utility-tusk:tusk-reference}}" },
-    ],
-    asset_count: 8,
-    path: "SceneAppearances/hell-adventures.json",
-    locked_preview_path: "Turnarounds/hell-adventures.png",
-    locked_preview_exists: true,
-  };
-  await page.route(/\/api\/scene-appearances\?/, async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ scene_appearances: [appearance] }) });
-  });
-  await page.route(/\/api\/scene-appearances\/hell-adventures\?/, async (route) => {
-    const updated = { ...appearance, name: "Hell Expeditions" };
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ scene_appearance: updated, scene_appearances: [updated], message: "Updated Hell Expeditions." }),
-    });
-  });
-  await openPage(page, "scene-appearances");
-  await expect(page.locator("#scene-appearance-status")).toContainText("1 Scene Appearance set");
-  await page.locator("#scene-appearance-table tbody tr").click();
-  await expect(page.locator("#scene-appearance-preview-section")).toBeVisible();
-  await expect(page.locator("#scene-appearance-preview img")).toHaveAttribute("alt", "Locked Scene Appearance turnaround");
-  await page.locator("#scene-appearance-name").fill("Hell Expeditions");
-  await page.locator("#scene-appearance-save").click();
-  await expect(page.locator("#scene-appearance-message")).toContainText("Updated Hell Expeditions");
+test("retired Scene Appearances links resolve to local Assets", async ({ page }) => {
+  await openPage(page, "local-batch-status");
+  await page.evaluate(() => activatePage("scene-appearances", { skipAutosave: true }));
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-appearances-page")).not.toHaveClass(/active/);
 });
 
 test("Image Inventory filters base outputs and edits logical metadata", async ({ page }) => {
@@ -601,7 +573,7 @@ test("Image Inventory reports queued AI descriptions and harvests drafts without
 });
 
 test("@desktop-smoke workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
-  await openPage(page, "assets");
+  await openPage(page, "local-batch-status");
   await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#character-context")).toBeVisible();
   await expect(page.locator("#story-context")).toBeHidden();
@@ -619,7 +591,7 @@ test("@desktop-smoke workspace shell switches adaptive context and remembers the
   await expect(page.locator("#scenes-page")).toHaveClass(/active/);
 
   await page.locator("#workspace-character").click();
-  await expect(page.locator("#assets-page")).toHaveClass(/active/);
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
 });
 
 
@@ -823,31 +795,12 @@ test("@desktop-smoke Scene Builder interview applies locally without saving", as
 
 
 
-test("@desktop-smoke source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
-  await openPage(page, "assets");
-  await page.locator("#asset-table .row-selection-button").first().click();
-  await page.locator("#open-governing-template").click();
-  await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
-  await page.locator("#source-editor-text").fill("Unsaved source editor change");
-  await page.locator("#workspace-story").click();
-  const dialog = page.locator("#unsaved-changes-dialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
-  await page.locator("#workspace-story").click();
-  await dialog.getByRole("button", { name: "Discard" }).click();
-  await expect(page.locator("#stories-page")).toHaveClass(/active/);
-
-  await openPage(page, "assets");
-  await page.locator("#asset-table .row-selection-button").first().click();
-  await page.locator("#open-governing-template").click();
-  await page.locator("#source-editor-text").fill("Saved source editor change");
-  await page.locator("#workspace-story").click();
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+test("traditional asset routes resolve into the consolidated Assets workflow", async ({ page }) => {
+  await openPage(page, "local-batch-status");
+  await page.evaluate(() => activatePage("assets", { skipAutosave: true }));
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
+  await expect(page.locator("#assets-page")).not.toHaveClass(/active/);
 });
-
-
 
 test("@desktop-smoke selection, zine ordering, live status, and image dialogs are accessible", async ({ page }) => {
   await openPage(page, "zine");
@@ -912,7 +865,7 @@ test("@desktop-smoke scene workflow keeps context and production tools show all 
   await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
   await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
   await expect(page.locator(".production-scope-toggle")).toHaveCount(0);
-  await expect(page.locator("#story-navigation [data-production-count='render_waiting']")).toHaveText(/[1-9]/);
+  await expect(page.locator("#story-navigation [data-production-count='render_waiting']")).toBeHidden();
   await expect(page.locator("#story-navigation [data-production-count='image_review_waiting']")).toHaveText(/[1-9]/);
   expect(await page.locator(".render-console-layout").evaluate((element) => (
     getComputedStyle(element).gridTemplateColumns.split(" ").length
@@ -1245,15 +1198,17 @@ test("running prompt analysis harvests and opens without changing the selected p
   expect(queuedAgain).toBe(0);
 });
 
-test("Local workspace reuses dashboard context and routes each workflow in app", async ({ page }) => {
+test("Character Development consolidates local Assets and derived workflows", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
-  await expect(page.locator("#workspace-local")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-local")).toHaveCount(0);
   await expect(page.locator("#character-context")).toBeVisible();
   await expect(page.locator("#story-context")).toBeHidden();
   await expect(page.locator("#onboarding-page")).toHaveClass(/active/);
-  await expect(page).toHaveURL(/page=local-overview/);
 
   await page.locator("#local-assets-button").click();
   await expect(page.locator("#local-assets-button")).toHaveAttribute("aria-expanded", "true");
@@ -1266,20 +1221,22 @@ test("Local workspace reuses dashboard context and routes each workflow in app",
   await expect(page.locator("#local-pipeline-page #character-select, #local-pipeline-page #phase-select")).toHaveCount(0);
   await expect(page).toHaveURL(/page=local-body-reference/);
 
-  await page.locator('#local-navigation [data-page="local-turnarounds"]').click();
-  await expect(page.locator("#local-stub-page")).toHaveClass(/active/);
-  await expect(page.locator("#local-stub-title")).toHaveText("Turnarounds");
-  await expect(page.locator("#local-stub-page")).toContainText("coming soon");
+  await page.locator('#character-navigation [data-page="turnarounds"]').click();
+  await expect(page.locator("#turnarounds-page")).toHaveClass(/active/);
+  await page.evaluate(async () => window.activatePage("scene-appearances", { skipAutosave: true }));
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-appearances-page")).not.toHaveClass(/active/);
 
   await expect(page.locator("#toolbar-local-body-reference")).toHaveCount(0);
-  await expect(page.locator("#toolbar-local-character-overview")).toHaveCount(1);
   await expect(page.locator("#toolbar-gate-test-rig")).toHaveCount(1);
 });
 
 test("Run all Remaining starts independently of the open page", async ({ page, request }) => {
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-batch-status"]').click();
   const started = page.waitForResponse((response) => response.url().endsWith("/api/local/run-all-remaining")
@@ -1311,9 +1268,11 @@ test("all Local asset routes share batch UI and expose only pipeline-specific in
     await route.fulfill({ json: { candidate_count: 36, views: ["FRONT"] } });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   for (const [pageName, title] of [
     ["local-body-reference", "Body-Reference"], ["local-head-image", "Head-Image"],
     ["local-character-assembly", "Character-Assembly"], ["local-costume-dressing", "Costume-Dressing"],
@@ -1379,9 +1338,11 @@ test("all four local pipelines expose the same ranked candidate review and obser
   });
   await page.route("**/api/local/*/preview", (route) => route.fulfill({ json: { candidate_count: 1, views: ["FRONT"] } }));
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   for (const pageName of ["local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing"]) {
     await page.locator("#local-assets-button").click();
     await page.locator(`#local-assets-menu [data-page="${pageName}"]`).click();
@@ -1427,9 +1388,11 @@ test("costume lock remains available when another batch currently owns the lock"
     await route.fulfill({ json: runFor(costume) });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-costume-dressing"]').click();
 
@@ -1456,9 +1419,11 @@ test("local provisional source batches are chosen by name and sent as API values
     } });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-character-assembly"]').click();
   const bodySource = page.locator('#local-pipeline-source-batches select[data-source-role="body_reference"]');
@@ -1482,9 +1447,11 @@ test("local character asset candidates render every view section", async ({ page
   await page.route("**/api/local/character-assembly/runs?**", (route) => route.fulfill({ json: { runs: [{ run_id: run.run_id, status: run.status }] } }));
   await page.route("**/api/local/character-assembly/runs/assembly-render-test", (route) => route.fulfill({ json: run }));
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-character-assembly"]').click();
 
@@ -1521,9 +1488,11 @@ test("Run remaining is placed after batch review actions and tracks unstarted vi
     await route.fulfill({ json: { ...remainingRun, status: "READY_FOR_VIEWS", target_views: ["RIGHT_PROFILE"] } });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
   const runButton = page.locator("#local-pipeline-proceed");
@@ -1544,25 +1513,24 @@ test("Run remaining is placed after batch review actions and tracks unstarted vi
   await expect(runButton).toBeDisabled();
 });
 
-test("Local workspace skips production work summary requests", async ({ page }) => {
+test("Character Development is the only character workspace and keeps its production summary", async ({ page }) => {
   const summaryRequests = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/api/production-work-summary") summaryRequests.push(request.url());
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
-  await expect(page.locator("#workspace-local")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-local")).toHaveCount(0);
   expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
-
-  const characterSummary = page.waitForRequest((request) => {
-    const url = new URL(request.url());
-    return url.pathname === "/api/production-work-summary" && url.searchParams.get("workspace") === "character";
-  });
-  await page.locator("#workspace-character").click();
-  await characterSummary;
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-batch-status"]').click();
+  expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

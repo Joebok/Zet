@@ -8,6 +8,7 @@ from typing import Any
 from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.path_service import PathService
+from zet.services.pipeline_retirement import require_active_pipeline
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -130,6 +131,7 @@ class ReferenceService:
 
     def save_head_image_source(self, character: str, phase: str, asset_id: int, source_path: str) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         if asset.pipeline != "Head-Image" or asset.pipeline_stage != "MANIFEST" or asset.actor != "PYTHON":
             raise ReferenceServiceError("Head-Image sources can only be edited at MANIFEST / PYTHON.")
         reference_files: list[dict[str, Any]] = []
@@ -153,6 +155,7 @@ class ReferenceService:
         return updated
 
     def upload_head_image_source(self, character: str, phase: str, filename: str, contents: bytes) -> Path:
+        require_active_pipeline("Head-Image")
         return self._upload_image(self.head_image_source_dir(character, phase), filename, contents, "Head-Image source")
 
     def character_assembly_context(self, character: str, phase: str, asset_id: int) -> dict[str, Any]:

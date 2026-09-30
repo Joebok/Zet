@@ -24,6 +24,7 @@ from zet.services.housekeeping_service import HousekeepingService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.scene_render_compiler import validate_scene_render_ir
 from zet.services.pipeline_compiler_support import with_universe_art_style
+from zet.services.pipeline_retirement import require_active_pipeline
 from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
@@ -330,6 +331,7 @@ class AIProxyService:
     def _stage_current_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
         """Write an AI queue ask for the asset's current AI_AGENT stage."""
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         if asset.actor != "AI_AGENT":
             raise AIProxyServiceError("AI ask staging is only available when Actor is AI_AGENT.")
         if not asset.final_image_output:

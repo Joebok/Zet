@@ -479,6 +479,7 @@ class LocalHeadImageService:
             return
         ask = json.loads((answer_dir / "ask_manifest.json").read_text(encoding="utf-8"))
         answer = json.loads((answer_dir / "answer_manifest.json").read_text(encoding="utf-8"))
+        run = self.detail(run_id)
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
                 or ask.get("pipeline") != "Local-Head-Image" or not self._ask_belongs_to_run(ask, run)):
             raise LocalHeadImageError("AI Proxy answer does not belong to this Local Head-Image candidate.")

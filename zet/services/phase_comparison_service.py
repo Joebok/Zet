@@ -10,6 +10,7 @@ from zet.models.asset import Asset
 from zet.repositories.asset_repository import AssetRepository, AssetRepositoryError
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.services.path_service import PathService
+from zet.services.local_asset_source_service import LocalAssetSourceService
 
 
 COMPARABLE_PIPELINES = [
@@ -20,6 +21,7 @@ COMPARABLE_PIPELINES = [
     "Scene-Appearance",
     "Expression",
 ]
+LOCAL_COMPARABLE_PIPELINES = ["Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing"]
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,7 @@ class PhaseComparisonSide:
     expression: Optional[str]
     scene_appearance: Optional[str]
     updated_at: Optional[str]
+    source_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -77,12 +80,14 @@ class PhaseComparisonService:
         pipeline_repository: PipelineRepository,
         path_service: PathService,
         project_root: Path,
+        local_sources: LocalAssetSourceService | None = None,
     ):
         """Create a phase comparison service from repositories and paths."""
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.path_service = path_service
         self.project_root = project_root
+        self.local_sources = local_sources
 
     def compare(
         self,
@@ -142,6 +147,12 @@ class PhaseComparisonService:
 
     def available_pipelines(self, character: str, left_phase: str, right_phase: str) -> list[str]:
         """Return comparable pipelines present in either selected phase."""
+        if self.local_sources is not None:
+            names = {str(item["pipeline"]).lower() for phase in (left_phase, right_phase)
+                     for item in self.local_sources.list_sources(character, phase)}
+            canonical = {"body-reference": "Body-Reference", "head-image": "Head-Image",
+                         "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}
+            return [label for key, label in canonical.items() if key in names]
         names: set[str] = set()
         for phase in (left_phase, right_phase):
             try:
@@ -152,6 +163,20 @@ class PhaseComparisonService:
 
     def _locked_assets(self, character: str, phase: str, pipeline: str) -> list[Asset]:
         """Return locked assets with existing locked images for one phase pipeline."""
+        if self.local_sources is not None:
+            keys = {"Body-Reference": "body-reference", "Head-Image": "head-image",
+                    "Character-Assembly": "character-assembly", "Costume-Dressing": "costume-dressing"}
+            from types import SimpleNamespace
+            rows = []
+            for item in self.local_sources.list_sources(character, phase, pipeline=keys[pipeline]):
+                view = self._local_view_label(item["view"])
+                rows.append(SimpleNamespace(
+                    asset_id=None, pipeline=pipeline, body_view=view, head_view=view,
+                    costume=item.get("costume") or None, expression=None, scene_appearance=None,
+                    scene_appearance_id=None, updated_at=item.get("updated_at"),
+                    local_image_path=item["image_path"], source_local_key=item["source_key"],
+                ))
+            return rows
         try:
             assets = self.asset_repository.list_assets(character, phase)
         except AssetRepositoryError:
@@ -167,6 +192,15 @@ class PhaseComparisonService:
             if self.path_service.locked_image_path(asset).exists():
                 locked.append(asset)
         return locked
+
+    @staticmethod
+    def _local_view_label(value: str) -> str:
+        labels = {
+            "FRONT": "Front", "FRONT_LEFT_3_4": "Front-Left-3-4", "FRONT_RIGHT_3_4": "Front-Right-3-4",
+            "LEFT_PROFILE": "Left-Profile", "RIGHT_PROFILE": "Right-Profile",
+            "BACK_LEFT_3_4": "Back-Left-3-4", "BACK_RIGHT_3_4": "Back-Right-3-4", "BACK": "Back",
+        }
+        return labels.get(str(value).upper(), str(value))
 
     def _comparison_rows(
         self,
@@ -249,7 +283,7 @@ class PhaseComparisonService:
                 scene_appearance=None,
                 updated_at=None,
             )
-        image_path = self.path_service.locked_image_path(asset)
+        image_path = Path(asset.local_image_path) if getattr(asset, "local_image_path", None) else self.path_service.locked_image_path(asset)
         return PhaseComparisonSide(
             phase=phase,
             asset_id=asset.asset_id,
@@ -262,10 +296,16 @@ class PhaseComparisonService:
             expression=asset.expression,
             scene_appearance=asset.scene_appearance,
             updated_at=asset.updated_at,
+            source_key=getattr(asset, "source_local_key", None),
         )
 
     def _asset_label(self, asset: Asset) -> str:
         """Return a compact asset label for display."""
+        if getattr(asset, "source_local_key", None):
+            label_parts = ["Local", asset.pipeline, asset.body_view]
+            if asset.costume:
+                label_parts.append(asset.costume)
+            return " | ".join(label_parts)
         label_parts = [f"Asset {asset.asset_id}", asset.pipeline, asset.body_view]
         if asset.head_view:
             label_parts.append(asset.head_view)
