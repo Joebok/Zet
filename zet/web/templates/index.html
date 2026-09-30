@@ -118,6 +118,7 @@
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
         <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="image-generation">Image Generation</button>
           <button class="tab workflow-tab" data-page="auxiliary-resources">Image Inventory</button>
           <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
@@ -1756,6 +1757,56 @@
             </thead>
             <tbody></tbody>
           </table>
+        </section>
+      </div>
+    </section>
+
+    <section id="image-generation-page" class="page">
+      <div class="page-title-row">
+        <div><h1>Image Generation</h1><p class="status-text">Ad hoc images via AI_Proxy · Qwen Image 2.1</p></div>
+        <div id="image-generation-model" class="status-text">Loading model…</div>
+      </div>
+      <div id="image-generation-message" class="action-message" aria-live="polite" hidden></div>
+      <div class="image-generation-layout">
+        <form id="image-generation-form" class="control-panel image-generation-form">
+          <div class="image-generation-modes" role="group" aria-label="Generation mode">
+            <button id="image-generation-txt2img" type="button" class="primary-action" aria-pressed="true">txt2img</button>
+            <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
+          </div>
+          <label id="image-generation-reference-field" hidden>
+            Reference image
+            <input id="image-generation-reference" type="file" accept="image/png,image/jpeg,image/webp">
+          </label>
+          <div id="image-generation-reference-preview" class="image-generation-reference-preview" tabindex="0" role="button" aria-label="Choose or paste a reference image" hidden>
+            <img id="image-generation-reference-image" alt="Selected img2img reference preview" hidden>
+            <span id="image-generation-reference-hint">Choose an image or paste one here</span>
+          </div>
+          <label>
+            Prompt
+            <textarea id="image-generation-prompt" rows="6" required placeholder="Describe the prop, creature, or image you want to generate."></textarea>
+          </label>
+          <label>
+            Negative prompt <span class="status-text">Optional</span>
+            <textarea id="image-generation-negative" rows="2" placeholder="Elements to avoid"></textarea>
+          </label>
+          <div class="image-generation-dimensions">
+            <label>Width<input id="image-generation-width" type="number" min="256" max="4096" step="32" value="1024" required></label>
+            <label>Height<input id="image-generation-height" type="number" min="256" max="4096" step="32" value="1024" required></label>
+          </div>
+          <label>
+            Images
+            <input id="image-generation-count" type="number" min="1" max="16" step="1" value="4" required>
+          </label>
+          <p class="status-text">Width and height must be from 256 to 4096 in steps of 32. AI_Proxy starts ComfyUI when needed.</p>
+          <div class="button-row compact">
+            <button id="image-generation-submit" class="primary-action" type="submit">Generate</button>
+            <button id="image-generation-clear" type="button" disabled>Clear Results</button>
+            <span id="image-generation-progress" class="status-text" aria-live="polite"></span>
+          </div>
+        </form>
+        <section class="control-panel image-generation-results" aria-label="Generated images">
+          <h2>Results</h2>
+          <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
         </section>
       </div>
     </section>

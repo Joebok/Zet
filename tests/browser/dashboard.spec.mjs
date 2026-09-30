@@ -42,6 +42,66 @@ test("universe pages create and save canonical art style", async ({ page }) => {
   await expect(page.locator("#universe-list")).toContainText("Updated painterly fantasy");
 });
 
+test("ad hoc image generation stages img2img dimensions and displays downloadable results", async ({ page }) => {
+  let submitted;
+  await page.route("**/api/image-generation/options", (route) => route.fulfill({
+    json: {
+      model: "Qwen Image 2.1", checkpoint: "qwen.safetensors", default_count: 4,
+      default_width: 1024, default_height: 1024,
+    },
+  }));
+  await page.route("**/api/image-generation/jobs", async (route) => {
+    if (route.request().method() === "POST") {
+      submitted = route.request().postDataJSON();
+      await route.fulfill({
+        json: {
+          request_id: "browser-image-job", mode: "img2img", status: "QUEUED",
+          requested: submitted.count, completed: 0, failed: 0, images: [], error: "",
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { message: "Image generation results cleared." } });
+  });
+  await page.route("**/api/image-generation/jobs/browser-image-job", (route) => route.fulfill({
+    json: {
+      request_id: "browser-image-job", mode: "img2img", status: "COMPLETE",
+      requested: 1, completed: 1, failed: 0, error: "",
+      images: [{ index: 0, url: "/api/image-generation/jobs/browser-image-job/images/0" }],
+    },
+  }));
+  await page.route("**/api/image-generation/jobs/browser-image-job/images/0", (route) => route.fulfill({
+    status: 200,
+    contentType: "image/png",
+    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
+  }));
+
+  await openPage(page, "image-generation");
+  await expect(page.locator("#image-generation-count")).toHaveValue("4");
+  await expect(page.locator("#image-generation-width")).toHaveValue("1024");
+  await expect(page.locator("#image-generation-height")).toHaveValue("1024");
+  await page.locator("#image-generation-img2img").click();
+  await expect(page.locator("#image-generation-reference-field")).toBeVisible();
+  await page.locator("#image-generation-reference").setInputFiles({
+    name: "reference.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
+  });
+  await page.locator("#image-generation-prompt").fill("Make the object carved from jade");
+  await page.locator("#image-generation-width").fill("1280");
+  await page.locator("#image-generation-height").fill("768");
+  await page.locator("#image-generation-count").fill("1");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(1);
+  expect(submitted).toMatchObject({
+    mode: "img2img", width: 1280, height: 768, count: 1,
+    prompt: "Make the object carved from jade",
+  });
+  expect(submitted.reference_image).toMatch(/^data:image\/png;base64,/);
+  await expect(page.getByRole("link", { name: "Download 1" })).toBeVisible();
+  await expect(page.locator("#image-generation-progress")).toContainText("complete");
+});
+
 test("navigation cancels a delayed review load and ignores its late response", async ({ page }) => {
   await openPage(page, "stories");
   let markStarted;

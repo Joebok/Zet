@@ -190,8 +190,33 @@ const LOCAL_ASSET_PAGES = new Set([
   "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
 ]);
 const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "render-review"]);
+state.imageGenerationRequestId = null;
+state.imageGenerationTerminal = false;
 
 const characterSelect = document.querySelector("#character-select");
+const imageGenerationForm = document.querySelector("#image-generation-form");
+const imageGenerationTxt2img = document.querySelector("#image-generation-txt2img");
+const imageGenerationImg2img = document.querySelector("#image-generation-img2img");
+const imageGenerationReferenceField = document.querySelector("#image-generation-reference-field");
+const imageGenerationReference = document.querySelector("#image-generation-reference");
+const imageGenerationReferencePreview = document.querySelector("#image-generation-reference-preview");
+const imageGenerationReferenceImage = document.querySelector("#image-generation-reference-image");
+const imageGenerationReferenceHint = document.querySelector("#image-generation-reference-hint");
+const imageGenerationPrompt = document.querySelector("#image-generation-prompt");
+const imageGenerationNegative = document.querySelector("#image-generation-negative");
+const imageGenerationWidth = document.querySelector("#image-generation-width");
+const imageGenerationHeight = document.querySelector("#image-generation-height");
+const imageGenerationCount = document.querySelector("#image-generation-count");
+const imageGenerationSubmit = document.querySelector("#image-generation-submit");
+const imageGenerationClear = document.querySelector("#image-generation-clear");
+const imageGenerationProgress = document.querySelector("#image-generation-progress");
+const imageGenerationMessage = document.querySelector("#image-generation-message");
+const imageGenerationModel = document.querySelector("#image-generation-model");
+const imageGenerationResultsGrid = document.querySelector("#image-generation-results-grid");
+let imageGenerationMode = "txt2img";
+let imageGenerationReferenceUrl = "";
+let imageGenerationPastedFile = null;
+let imageGenerationOptionsLoaded = false;
 const phaseSelect = document.querySelector("#phase-select");
 const headerStorySelect = document.querySelector("#header-story-select");
 const headerSceneSelect = document.querySelector("#header-scene-select");
@@ -1040,6 +1065,159 @@ function showMessageElement(container, message, kind = "info") {
   container.setAttribute("aria-atomic", "true");
 }
 
+function setImageGenerationMode(mode) {
+  imageGenerationMode = mode;
+  const editing = mode === "img2img";
+  imageGenerationTxt2img.setAttribute("aria-pressed", String(!editing));
+  imageGenerationImg2img.setAttribute("aria-pressed", String(editing));
+  imageGenerationTxt2img.classList.toggle("primary-action", !editing);
+  imageGenerationImg2img.classList.toggle("primary-action", editing);
+  imageGenerationReferenceField.hidden = !editing;
+  imageGenerationReferencePreview.hidden = !editing;
+  imageGenerationReference.required = editing;
+}
+
+function setImageGenerationReference(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  if (imageGenerationReferenceUrl) URL.revokeObjectURL(imageGenerationReferenceUrl);
+  imageGenerationReferenceUrl = URL.createObjectURL(file);
+  imageGenerationReferenceImage.src = imageGenerationReferenceUrl;
+  imageGenerationReferenceImage.hidden = false;
+  imageGenerationReferenceHint.textContent = file.name || "Reference image selected · paste to replace";
+}
+
+function readImageGenerationReference(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
+    reader.addEventListener("error", () => reject(new Error("Unable to read the reference image.")), { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImageGenerationStatus(payload) {
+  state.imageGenerationTerminal = ["COMPLETE", "PARTIAL", "FAILED", "ERROR"].includes(payload.status);
+  imageGenerationSubmit.disabled = !state.imageGenerationTerminal && Boolean(state.imageGenerationRequestId);
+  imageGenerationClear.disabled = !state.imageGenerationRequestId || !state.imageGenerationTerminal;
+  imageGenerationProgress.textContent = `${payload.status.toLowerCase()} · ${payload.completed}/${payload.requested} images`
+    + (payload.failed ? ` · ${payload.failed} failed` : "");
+  if (payload.error) showMessageElement(imageGenerationMessage, payload.error, payload.completed ? "warning" : "error");
+  else showMessageElement(imageGenerationMessage, "", "info");
+  if (imageGenerationResultsGrid.childElementCount !== (payload.images || []).length) {
+    imageGenerationResultsGrid.replaceChildren();
+  }
+  for (const [position, result] of (payload.images || []).entries()) {
+    if (imageGenerationResultsGrid.children[position]) continue;
+    const figure = document.createElement("figure");
+    figure.className = "image-generation-result";
+    const preview = document.createElement("a");
+    preview.href = result.url;
+    preview.target = "_blank";
+    preview.rel = "noreferrer";
+    preview.setAttribute("aria-label", `Open generated image ${result.index + 1}`);
+    const image = document.createElement("img");
+    image.src = result.url;
+    image.alt = `Generated image ${result.index + 1}`;
+    image.loading = "lazy";
+    preview.append(image);
+    const download = document.createElement("a");
+    download.href = `${result.url}?download=true`;
+    download.download = `zet-image-${result.index + 1}`;
+    download.textContent = `Download ${result.index + 1}`;
+    figure.append(preview, download);
+    imageGenerationResultsGrid.append(figure);
+  }
+}
+
+async function pollImageGeneration(requestId) {
+  if (state.imageGenerationRequestId !== requestId) return;
+  try {
+    const payload = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { bindToPage: false });
+    if (state.imageGenerationRequestId !== requestId) return;
+    renderImageGenerationStatus(payload);
+    if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(requestId), 1400);
+  } catch (error) {
+    if (state.imageGenerationRequestId !== requestId) return;
+    showMessageElement(imageGenerationMessage, `Unable to check AI_Proxy job: ${error.message}`, "error");
+    imageGenerationSubmit.disabled = true;
+    setTimeout(() => pollImageGeneration(requestId), 4000);
+  }
+}
+
+async function submitImageGeneration(event) {
+  event.preventDefault();
+  if (imageGenerationMode === "img2img" && !imageGenerationReference.files.length) {
+    showMessageElement(imageGenerationMessage, "Choose a reference image for img2img.", "error");
+    return;
+  }
+  imageGenerationSubmit.disabled = true;
+  showMessageElement(imageGenerationMessage, "Staging images through AI_Proxy…", "info");
+  imageGenerationResultsGrid.replaceChildren();
+  try {
+    if (state.imageGenerationRequestId && state.imageGenerationTerminal) {
+      await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(state.imageGenerationRequestId)}`, {
+        method: "DELETE", bindToPage: false,
+      });
+    }
+    const file = imageGenerationMode === "img2img"
+      ? (imageGenerationReference.files[0] || imageGenerationPastedFile)
+      : null;
+    const payload = await fetchJson("/api/image-generation/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: imageGenerationMode,
+        prompt: imageGenerationPrompt.value,
+        negative_prompt: imageGenerationNegative.value,
+        width: Number(imageGenerationWidth.value),
+        height: Number(imageGenerationHeight.value),
+        count: Number(imageGenerationCount.value),
+        reference_image: file ? await readImageGenerationReference(file) : "",
+      }),
+      bindToPage: false,
+    });
+    state.imageGenerationRequestId = payload.request_id;
+    state.imageGenerationTerminal = false;
+    imageGenerationProgress.textContent = "Queued with AI_Proxy…";
+    renderImageGenerationStatus(payload);
+    if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(payload.request_id), 900);
+  } catch (error) {
+    imageGenerationSubmit.disabled = false;
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  }
+}
+
+async function clearImageGenerationResults() {
+  const requestId = state.imageGenerationRequestId;
+  if (!requestId || !state.imageGenerationTerminal) return;
+  try {
+    await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { method: "DELETE", bindToPage: false });
+    state.imageGenerationRequestId = null;
+    state.imageGenerationTerminal = false;
+    imageGenerationResultsGrid.replaceChildren();
+    imageGenerationProgress.textContent = "";
+    imageGenerationSubmit.disabled = false;
+    imageGenerationClear.disabled = true;
+    showMessageElement(imageGenerationMessage, "Results cleared.", "success");
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  }
+}
+
+async function loadImageGenerationOptions() {
+  if (imageGenerationOptionsLoaded) return;
+  try {
+    const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
+    imageGenerationModel.textContent = `${payload.model} · ${payload.checkpoint}`;
+    imageGenerationCount.value = payload.default_count || 4;
+    imageGenerationWidth.value = payload.default_width || 1024;
+    imageGenerationHeight.value = payload.default_height || 1024;
+    imageGenerationOptionsLoaded = true;
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
+  }
+}
+
 function showActionMessage(message, kind = "info") {
   showMessageElement(actionMessage, message, kind);
 }
@@ -1856,6 +2034,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 };
 
 const RESPONSIVE_TOOL_PAGES = [
+  ["image-generation", "Image Generation"],
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
   ["pipeline-controls", "Pipeline Controls"],
   ["help", "Template Instruction Manuals"],
@@ -3273,6 +3452,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#zine-page").classList.toggle("active", page === "zine");
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
+  document.querySelector("#image-generation-page").classList.toggle("active", page === "image-generation");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
@@ -3317,6 +3497,10 @@ async function activatePage(page, options = {}) {
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   try {
+  if (page === "image-generation") {
+    setImageGenerationMode(imageGenerationMode);
+    await loadImageGenerationOptions();
+  }
   if (page === "prompt-review") {
     await loadPromptReviewTasks(options.preferredAskId || null);
   }
@@ -12824,6 +13008,32 @@ imageCatalogBulkApply.addEventListener("click", bulkUpdateImageCatalog);
 imageCatalogBulkClear.addEventListener("click", () => {
   state.selectedImageCatalogIds = [];
   renderImageCatalog();
+});
+imageGenerationTxt2img.addEventListener("click", () => setImageGenerationMode("txt2img"));
+imageGenerationImg2img.addEventListener("click", () => setImageGenerationMode("img2img"));
+imageGenerationForm.addEventListener("submit", submitImageGeneration);
+imageGenerationClear.addEventListener("click", clearImageGenerationResults);
+imageGenerationReference.addEventListener("change", () => {
+  imageGenerationPastedFile = null;
+  setImageGenerationReference(imageGenerationReference.files[0]);
+});
+imageGenerationReferencePreview.addEventListener("click", () => imageGenerationReference.click());
+imageGenerationReferencePreview.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    imageGenerationReference.click();
+  }
+});
+imageGenerationReferencePreview.addEventListener("paste", (event) => {
+  if (imageGenerationMode !== "img2img") return;
+  const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
+  const file = imageItem?.getAsFile();
+  if (file) {
+    event.preventDefault();
+    imageGenerationReference.value = "";
+    imageGenerationPastedFile = file;
+    setImageGenerationReference(file);
+  }
 });
 localImageReviewPrev.addEventListener("click", () => {
   selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, -1, selectLocalImageReviewTask);

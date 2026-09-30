@@ -1,0 +1,369 @@
+from __future__ import annotations
+
+import base64
+import binascii
+from datetime import datetime, timezone
+from io import BytesIO
+import json
+from pathlib import Path
+import random
+import shutil
+import tempfile
+import threading
+import time
+from typing import Any
+from uuid import uuid4
+
+from PIL import Image
+
+from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.workflow_storage import validate_image
+
+
+IMAGE_GENERATION_CONSUMER = "zet-image-generation"
+IMAGE_GENERATION_DEFAULT_COUNT = 4
+IMAGE_GENERATION_MAX_COUNT = 16
+IMAGE_GENERATION_MAX_REFERENCE_BYTES = 20 * 1024 * 1024
+IMAGE_GENERATION_RESULT_TTL_SECONDS = 3600
+IMAGE_GENERATION_DEFAULT_WIDTH = 1024
+IMAGE_GENERATION_DEFAULT_HEIGHT = 1024
+IMAGE_GENERATION_MIN_DIMENSION = 256
+IMAGE_GENERATION_MAX_DIMENSION = 4096
+
+
+class AdHocImageGenerationError(ValueError):
+    pass
+
+
+class AdHocImageGenerationService:
+    """Stage ComfyUI candidates through AI_Proxy without harvesting library work."""
+
+    def __init__(self, zet_app, project_root: str | Path):
+        self.zet_app = zet_app
+        self.project_root = Path(project_root)
+        self.presets_path = self.project_root / "Config" / "Local_Render_Presets.json"
+        self.proxy_paths = zet_app.ai_proxy_service.ai_proxy_path_service
+        self.proxy_client = self.proxy_paths.file_proxy_client
+        self.workspace_root = Path(tempfile.gettempdir()) / "zet-ad-hoc-image-generation"
+        self._lock = threading.RLock()
+        self._jobs: dict[str, dict[str, Any]] = {}
+        self._stop_sweeper = threading.Event()
+        self._sweeper: threading.Thread | None = None
+        self.cleanup_abandoned()
+
+    def start(self) -> None:
+        if self._sweeper and self._sweeper.is_alive():
+            return
+        self._stop_sweeper.clear()
+
+        def sweep() -> None:
+            while not self._stop_sweeper.wait(30):
+                self._expire_jobs()
+
+        self._sweeper = threading.Thread(target=sweep, name="zet-image-generation-cleanup", daemon=True)
+        self._sweeper.start()
+
+    def stop(self) -> None:
+        self._stop_sweeper.set()
+        if self._sweeper and self._sweeper.is_alive():
+            self._sweeper.join(timeout=2)
+
+    def options(self) -> dict[str, Any]:
+        presets = json.loads(self.presets_path.read_text(encoding="utf-8"))
+        configured = str(self.zet_app.config.comfyui_checkpoint or "").strip()
+        return {
+            "model": "Qwen Image 2.1",
+            "checkpoint": configured or presets["comfyui-qwen-head-image-text"]["diffusion_model"],
+            "default_count": IMAGE_GENERATION_DEFAULT_COUNT,
+            "max_count": IMAGE_GENERATION_MAX_COUNT,
+            "default_width": IMAGE_GENERATION_DEFAULT_WIDTH,
+            "default_height": IMAGE_GENERATION_DEFAULT_HEIGHT,
+        }
+
+    def submit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        mode = str(payload.get("mode") or "txt2img").strip().lower()
+        if mode not in {"txt2img", "img2img"}:
+            raise AdHocImageGenerationError("Choose txt2img or img2img.")
+        prompt = str(payload.get("prompt") or "").strip()
+        if not prompt:
+            raise AdHocImageGenerationError("Enter a prompt before generating.")
+        count_value = payload.get("count", IMAGE_GENERATION_DEFAULT_COUNT)
+        if isinstance(count_value, bool):
+            raise AdHocImageGenerationError("Image count must be between 1 and 16.")
+        if isinstance(count_value, float) and not count_value.is_integer():
+            raise AdHocImageGenerationError("Image count must be between 1 and 16.")
+        try:
+            count = int(count_value)
+        except (TypeError, ValueError) as exc:
+            raise AdHocImageGenerationError("Image count must be between 1 and 16.") from exc
+        if not 1 <= count <= IMAGE_GENERATION_MAX_COUNT:
+            raise AdHocImageGenerationError("Image count must be between 1 and 16.")
+        width = self._dimension(payload.get("width", IMAGE_GENERATION_DEFAULT_WIDTH), "Width")
+        height = self._dimension(payload.get("height", IMAGE_GENERATION_DEFAULT_HEIGHT), "Height")
+
+        reference_bytes = b""
+        if mode == "img2img":
+            encoded = str(payload.get("reference_image") or "")
+            if not encoded:
+                raise AdHocImageGenerationError("Choose a reference image for img2img.")
+            if "," in encoded and encoded.lstrip().startswith("data:"):
+                encoded = encoded.split(",", 1)[1]
+            if len(encoded) > (IMAGE_GENERATION_MAX_REFERENCE_BYTES * 4 // 3 + 8):
+                raise AdHocImageGenerationError("Reference images must be 20 MiB or smaller.")
+            try:
+                reference_bytes = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise AdHocImageGenerationError("The reference image data is invalid.") from exc
+            if len(reference_bytes) > IMAGE_GENERATION_MAX_REFERENCE_BYTES:
+                raise AdHocImageGenerationError("Reference images must be 20 MiB or smaller.")
+            try:
+                validate_image(reference_bytes)
+            except ValueError as exc:
+                raise AdHocImageGenerationError(str(exc)) from exc
+
+        preset_name = "comfyui-qwen-head-image-edit" if mode == "img2img" else "comfyui-qwen-head-image-text"
+        checkpoint = str(self.zet_app.config.comfyui_checkpoint or "").strip()
+        if not checkpoint:
+            checkpoint = str(self._preset(preset_name).get("diffusion_model") or "")
+
+        request_id = uuid4().hex
+        workspace = self.workspace_root / request_id
+        workspace.mkdir(parents=True, exist_ok=False)
+        prompt_path = workspace / "Final_Image_Prompt.md"
+        try:
+            prompt_path.write_text(
+                f"Prompt: {prompt}\nNegative: {str(payload.get('negative_prompt') or '').strip()}\n",
+                encoding="utf-8",
+            )
+            references = []
+            if reference_bytes:
+                reference_path = workspace / "reference.png"
+                reference_path.write_bytes(reference_bytes)
+                references = [{"version": 1, "type": "reference_file", "role": "img2img reference", "path": str(reference_path)}]
+        except Exception:
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise
+
+        children = []
+        seeds: set[int] = set()
+        try:
+            for index in range(count):
+                seed = random.SystemRandom().randrange(0, 2**63 - 1)
+                while seed in seeds:
+                    seed = random.SystemRandom().randrange(0, 2**63 - 1)
+                seeds.add(seed)
+                staged = self.zet_app.ai_proxy_service.stage_render_task_local_render_ask(
+                    {"ask_id": f"adhoc_{request_id}", "ad_hoc_request_id": request_id},
+                    prompt_path,
+                    workspace,
+                    allow_parallel=True,
+                    seed=seed,
+                    checkpoint=checkpoint,
+                    render_overrides={
+                        "width": width,
+                        "height": height,
+                        "disable_prompt_globals": True,
+                    },
+                    render_preset=preset_name,
+                    image_generation="comfyui",
+                    reference_files=references,
+                    consumer=IMAGE_GENERATION_CONSUMER,
+                )
+                children.append({"ask_id": staged.name, "index": index})
+        except Exception as exc:
+            with self._lock:
+                job = self._new_job(
+                    request_id, mode, count, workspace, children, prompt_path,
+                    "QUEUED" if children else "ERROR", f"Only {len(children)} of {count} images could be queued: {exc}",
+                )
+                job["failures"] = count - len(children)
+                self._jobs[request_id] = job
+            if not children:
+                shutil.rmtree(workspace, ignore_errors=True)
+            return self.status(request_id)
+
+        with self._lock:
+            self._jobs[request_id] = self._new_job(
+                request_id, mode, count, workspace, children, prompt_path, "QUEUED", "",
+            )
+        return self.status(request_id)
+
+    def _new_job(self, request_id, mode, count, workspace, children, prompt_path, status, error):
+        return {
+            "request_id": request_id,
+            "mode": mode,
+            "count": count,
+            "workspace": workspace,
+            "children": children,
+            "prompt_path": prompt_path,
+            "status": status,
+            "error": error,
+            "images": [],
+            "failures": 0,
+            "created_at": time.time(),
+            "finished_at": time.time() if status == "ERROR" else None,
+        }
+
+    def _preset(self, name: str) -> dict[str, Any]:
+        return LocalRenderBackendService(self.presets_path).preset(name)
+
+    @staticmethod
+    def _dimension(value: Any, label: str) -> int:
+        if isinstance(value, bool):
+            raise AdHocImageGenerationError(f"{label} must be between 256 and 4096 and divisible by 32.")
+        if isinstance(value, float) and not value.is_integer():
+            raise AdHocImageGenerationError(f"{label} must be between 256 and 4096 and divisible by 32.")
+        try:
+            result = int(value)
+        except (TypeError, ValueError) as exc:
+            raise AdHocImageGenerationError(f"{label} must be between 256 and 4096 and divisible by 32.") from exc
+        if (result < IMAGE_GENERATION_MIN_DIMENSION or result > IMAGE_GENERATION_MAX_DIMENSION
+                or result % 32 != 0):
+            raise AdHocImageGenerationError(f"{label} must be between 256 and 4096 and divisible by 32.")
+        return result
+
+    def status(self, request_id: str) -> dict[str, Any]:
+        self._expire_jobs()
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None:
+                raise KeyError("Image generation request not found or expired.")
+            self._refresh(job)
+            return {
+                "request_id": request_id,
+                "mode": job["mode"],
+                "status": job["status"],
+                "requested": job["count"],
+                "completed": len(job["images"]),
+                "failed": job["failures"],
+                "error": job["error"],
+                "images": [
+                    {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
+                    for index in range(len(job["images"]))
+                ],
+            }
+
+    def image(self, request_id: str, index: int) -> tuple[bytes, str]:
+        self._expire_jobs()
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None or index < 0 or index >= len(job["images"]):
+                raise KeyError("Image not found or expired.")
+            return job["images"][index]
+
+    def clear(self, request_id: str) -> None:
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None:
+                raise KeyError("Image generation request not found or expired.")
+            if job["status"] in {"QUEUED", "RUNNING"}:
+                raise AdHocImageGenerationError("Wait for queued images to finish before clearing results.")
+            self._release(job)
+            del self._jobs[request_id]
+
+    def _refresh(self, job: dict[str, Any]) -> None:
+        if job["status"] in {"COMPLETE", "PARTIAL", "FAILED", "ERROR"}:
+            return
+        running = 0
+        transfer_message = ""
+        for child in job["children"]:
+            if child.get("done"):
+                continue
+            ask_id = child["ask_id"]
+            answer_path = self.proxy_paths.answer_root() / ask_id
+            running_path = self.proxy_paths.running_root() / ask_id
+            ask_path = self.proxy_paths.ask_root() / ask_id
+            if answer_path.is_dir():
+                blocked = self.proxy_client.answer_blocked_reason(answer_path)
+                if blocked:
+                    running += 1
+                    transfer_message = f"Waiting for AI_Proxy to finish transferring an image: {blocked}"
+                    continue
+                owned_answer = False
+                try:
+                    ask = self.proxy_paths.read_ask_manifest(answer_path).to_dict()
+                    if (ask.get("ask_id") != ask_id
+                            or ask.get("consumer") != IMAGE_GENERATION_CONSUMER
+                            or ask.get("ad_hoc_request_id") != job["request_id"]):
+                        raise AdHocImageGenerationError("Proxy answer ownership could not be verified.")
+                    owned_answer = True
+                    answer = self.proxy_paths.read_answer_manifest(answer_path).to_dict()
+                    if (answer.get("ask_id") != ask_id
+                            or answer.get("expected_output") != ask.get("expected_output")):
+                        raise AdHocImageGenerationError("AI_Proxy returned an answer for another job.")
+                    if answer.get("status") != "SUCCESS":
+                        raise AdHocImageGenerationError(str(answer.get("error_message") or "AI_Proxy render failed."))
+                    filename = str(answer.get("expected_output") or "")
+                    if not filename or Path(filename).name != filename:
+                        raise AdHocImageGenerationError("AI_Proxy returned an invalid image filename.")
+                    image_path = answer_path / filename
+                    image_bytes = image_path.read_bytes()
+                    validate_image(image_bytes)
+                    with Image.open(BytesIO(image_bytes)) as image:
+                        content_type = Image.MIME.get(image.format or "", "application/octet-stream")
+                    job["images"].append((image_bytes, content_type))
+                except Exception as exc:
+                    job["failures"] += 1
+                    if not job["error"]:
+                        job["error"] = str(exc)
+                finally:
+                    if owned_answer:
+                        self.proxy_client.remove_answer(ask_id)
+                        self.proxy_client.remove_route(ask_id)
+                    child["done"] = True
+            elif running_path.is_dir():
+                running += 1
+            elif ask_path.is_dir():
+                pass
+            else:
+                job["failures"] += 1
+                job["error"] = job["error"] or "AI_Proxy no longer has this queued image job."
+                child["done"] = True
+
+        if running or any(not child.get("done") for child in job["children"]):
+            job["status"] = "RUNNING" if running else "QUEUED"
+            if transfer_message:
+                job["error"] = transfer_message
+            return
+        completed = len(job["images"])
+        if job["failures"] and completed:
+            job["status"] = "PARTIAL"
+        elif job["failures"]:
+            job["status"] = "FAILED"
+        else:
+            job["status"] = "COMPLETE"
+        job["finished_at"] = time.time()
+        shutil.rmtree(job["workspace"], ignore_errors=True)
+
+    def _release(self, job: dict[str, Any]) -> None:
+        shutil.rmtree(job["workspace"], ignore_errors=True)
+        job["images"].clear()
+
+    def _expire_jobs(self) -> None:
+        now = time.time()
+        with self._lock:
+            for request_id, job in list(self._jobs.items()):
+                finished_at = job.get("finished_at")
+                if finished_at and now - finished_at >= IMAGE_GENERATION_RESULT_TTL_SECONDS:
+                    self._release(job)
+                    del self._jobs[request_id]
+
+    def cleanup_abandoned(self) -> None:
+        cutoff = datetime.fromtimestamp(time.time() - IMAGE_GENERATION_RESULT_TTL_SECONDS, timezone.utc)
+        for answer_path in self.proxy_paths.task_paths("answer"):
+            try:
+                ask = self.proxy_paths.read_ask_manifest(answer_path).to_dict()
+                created = datetime.fromtimestamp(answer_path.stat().st_mtime, timezone.utc)
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if ask.get("consumer") == IMAGE_GENERATION_CONSUMER and created < cutoff:
+                self.proxy_client.remove_answer(answer_path.name)
+                self.proxy_client.remove_route(answer_path.name)
+        self.workspace_root.mkdir(parents=True, exist_ok=True)
+        for workspace in self.workspace_root.iterdir():
+            try:
+                stale = time.time() - workspace.stat().st_mtime >= 24 * 3600
+            except OSError:
+                continue
+            if workspace.is_dir() and len(workspace.name) == 32 and stale:
+                shutil.rmtree(workspace, ignore_errors=True)

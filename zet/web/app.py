@@ -22,6 +22,7 @@ from zet.services.config_service import ConfigService
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
 from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.ad_hoc_image_generation_service import AdHocImageGenerationService
 from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_metrics_service import ManualRenderMetricsService
@@ -38,6 +39,7 @@ from zet.services.local_run_all_remaining_service import LocalRunAllRemainingSer
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
+from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -912,6 +914,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        application.state.image_generation_service.start()
         for zet_app in application.state.universe_apps.values():
             zet_app.image_catalog_service.repository.load()
             zet_app.library_index_reconciler.start()
@@ -920,6 +923,7 @@ def create_app(
         try:
             yield
         finally:
+            application.state.image_generation_service.stop()
             for zet_app in application.state.universe_apps.values():
                 zet_app.library_index_reconciler.stop()
 
@@ -927,6 +931,7 @@ def create_app(
     app.state.config_path = str(config_path)
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
+    app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.universe_lock = threading.RLock()
     current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
     # Publish the first complete snapshot before any request can observe a validated app.
@@ -1045,6 +1050,7 @@ def create_app(
     )
     app.include_router(create_pipeline_inspection_router(lambda: _app(app.state.config_path)))
     app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
+    app.include_router(create_ad_hoc_image_generation_router(lambda: app.state.image_generation_service))
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
     app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")

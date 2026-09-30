@@ -624,6 +624,7 @@ class AIProxyService:
         render_preset: str | None = None,
         image_generation: str | None = None,
         reference_files: list[dict] | None = None,
+        consumer: str = "zet",
     ) -> dict:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
@@ -644,6 +645,8 @@ class AIProxyService:
             "candidate_output_file": None,
             "task_type": "local_test_render",
             "auxiliary": True,
+            "consumer": str(consumer or "zet").strip() or "zet",
+            "ad_hoc_request_id": manifest.get("ad_hoc_request_id"),
             "source_ask_id": manifest.get("ask_id"),
             "source_prompt_file": prompt_path.name,
             "target_output_dir": str((target_output_dir / "Local_Test_Renders").resolve()),
@@ -700,6 +703,7 @@ class AIProxyService:
         reference_files: list[dict] | None = None,
         prompt_text_override: str | None = None,
         scene_render_ir_override: dict | None = None,
+        consumer: str = "zet",
     ) -> Path:
         self._ensure_queue_dirs()
         submitted_prompt = prompt_text_override if prompt_text_override is not None else prompt_path.read_text(encoding="utf-8")
@@ -728,6 +732,7 @@ class AIProxyService:
             render_preset,
             image_generation,
             reference_files,
+            consumer,
         )
         ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)

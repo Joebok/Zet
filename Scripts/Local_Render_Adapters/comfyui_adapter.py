@@ -66,6 +66,7 @@ def render_preview(
         "control_preprocessor", "controlnet_model", "control_strength",
         "control_start", "control_end", "preprocessor_resolution",
         "text_encoder", "vae",
+        "disable_prompt_globals",
     }
     profile = {
         **profile,
@@ -76,8 +77,9 @@ def render_preview(
     }
     config = _load_config(project_root)
     selected_checkpoint = str(checkpoint if checkpoint is not None else config.get("Checkpoint") or "")
-    positive_globals = str(config.get("PositivePromptGlobals") or "")
-    negative_globals = str(config.get("NegativePromptGlobals") or "")
+    disable_prompt_globals = bool(profile.get("disable_prompt_globals"))
+    positive_globals = "" if disable_prompt_globals else str(config.get("PositivePromptGlobals") or "")
+    negative_globals = "" if disable_prompt_globals else str(config.get("NegativePromptGlobals") or "")
     profile_seed = profile.get("seed")
     selected_seed = seed if seed is not None else profile_seed
     workflow_kind = str(
