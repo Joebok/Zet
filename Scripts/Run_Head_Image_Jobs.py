@@ -204,6 +204,14 @@ def compile_head_image_job(
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = "Build the character from the identifying details below."
     else:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = ""
+    if pipeline_mode == "local" and source_references and view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] += (
+            " Use the reference to match hair color, length, texture, volume, and asymmetry."
+            " The requested rear camera angle controls orientation and visibility: rotate the whole head,"
+            " hair, and attached ears together in three dimensions. Reconstruct the surfaces seen from behind;"
+            " features facing the front in Image 1 become hidden at this angle."
+            " Use the rear-view details below for surfaces and accessories hidden in Image 1."
+        )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",

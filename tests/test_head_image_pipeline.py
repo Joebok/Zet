@@ -207,8 +207,8 @@ class HeadImageCompilerTests(unittest.TestCase):
                 "FRONT_RIGHT_3_4": ("camera is in front of the character, toward screen-right", "Both eyes look image-right"),
                 "LEFT_PROFILE": ("camera is directly beside the character", "visible eye looks image-left"),
                 "RIGHT_PROFILE": ("camera is directly beside the character", "visible eye looks image-right"),
-                "BACK_LEFT_3_4": ("camera is behind the character, toward screen-left", "no eye or expression is visible"),
-                "BACK_RIGHT_3_4": ("camera is behind the character, toward screen-right", "no eye or expression is visible"),
+                "BACK_LEFT_3_4": ("near ear are on screen-left", "no eye or expression is visible"),
+                "BACK_RIGHT_3_4": ("near ear are on screen-right", "no eye or expression is visible"),
                 "BACK": ("camera is directly behind the character", "No eyes or facial features are visible"),
             }
             for view, (view_text, gaze_text) in expected.items():
@@ -227,6 +227,9 @@ class HeadImageCompilerTests(unittest.TestCase):
                     if view in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
                         self.assertNotIn("Eye shape:", prompt)
                         self.assertNotIn("large expressive eyes", prompt)
+                    if view in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}:
+                        self.assertNotIn("face plane point", prompt)
+                        self.assertNotIn("triangular fossa", prompt)
 
     def test_local_rear_view_overrides_survive_source_as_is(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -274,6 +277,47 @@ class HeadImageCompilerTests(unittest.TestCase):
                     self.assertNotIn("anatomical-left", prompt)
                     self.assertNotIn("anatomical-right", prompt)
                     self.assertNotIn("Eye shape:", prompt)
+                    self.assertIn("rotate the whole head, hair, and attached ears together", prompt)
+                    self.assertIn("features facing the front in Image 1 become hidden", prompt)
+                    self.assertNotIn("high-elf", prompt)
+
+    def test_local_rear_candidates_use_selected_front_anchor_for_preview_and_render(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            library = root / "Library"
+            character_dir = library / "Characters" / "Test" / "Adult"
+            character_dir.mkdir(parents=True)
+            shutil.copy2(PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md",
+                         character_dir / "Character.md")
+            ask_dir = root / "mock-ask"
+            ask_dir.mkdir()
+            (ask_dir / "ask_manifest.json").write_text(json.dumps({
+                "ask_id": "mock-render", "workflow_kind": "qwen_body_reference_edit",
+            }), encoding="utf-8")
+            app = SimpleNamespace(config=config_for(library), ai_proxy_service=SimpleNamespace())
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                      "other_count": 1, "seeds": list(range(8))})
+            front = next(c for c in run["candidates"] if c["view"] == "FRONT")
+            anchor = root / "selected-front.png"
+            anchor.write_bytes(b"selected front anchor")
+            service._update(run["run_id"], front["candidate_id"], image_path=str(anchor), status="COMPLETE")
+            service._run_update(run["run_id"], front_anchor=front["candidate_id"])
+            for view in ("BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"):
+                with self.subTest(view=view):
+                    preview = service.image_prompt(run["run_id"], view)
+                    self.assertIn("selected FRONT render", preview)
+                    self.assertIn("features facing the front in Image 1 become hidden", preview)
+                    candidate = next(c for c in run["candidates"] if c["view"] == view)
+                    with patch.object(app.ai_proxy_service, "stage_render_task_local_render_ask",
+                                      create=True, return_value=ask_dir) as stage:
+                        rendered = service.queue_render_candidate(run["run_id"], candidate["candidate_id"])
+                    self.assertEqual("comfyui-qwen-head-image-edit", stage.call_args.kwargs["render_preset"])
+                    self.assertEqual(str(anchor), stage.call_args.kwargs["reference_files"][0]["path"])
+                    queued = next(c for c in rendered["candidates"] if c["candidate_id"] == candidate["candidate_id"])
+                    self.assertEqual(service._hash(anchor), queued["source_image_hash"])
+                    prompt = Path(queued["prompt_path"]).read_text(encoding="utf-8")
+                    self.assertEqual(preview, prompt)
 
     def test_local_phase_changes_are_compact_and_traditional_transform_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

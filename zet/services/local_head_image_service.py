@@ -40,7 +40,6 @@ class LocalHeadImageError(ValueError):
 FRONT = "FRONT"
 GAZE_VIEWS = {"FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"}
 VIEWS = ("FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK")
-BACK_VIEWS = {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}
 VIEW_LABELS = {
     "FRONT": "direct front view", "FRONT_LEFT_3_4": "front-left three-quarter view",
     "FRONT_RIGHT_3_4": "front-right three-quarter view", "LEFT_PROFILE": "left profile",
@@ -435,7 +434,7 @@ class LocalHeadImageService:
             source = str(run.get("front_source") or "")
             if source:
                 references = [{"role": "head_image_source", "label": "Uploaded front reference", "path": source}]
-        elif candidate["view"] not in BACK_VIEWS:
+        else:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
             anchor_path = Path(str((anchor or {}).get("image_path") or ""))
             if not anchor_path.is_file():
@@ -890,7 +889,7 @@ class LocalHeadImageService:
             references = []
             if view == FRONT and run.get("front_source"):
                 references = [{"role": "head_image_source", "path": run["front_source"]}]
-            elif view != FRONT and view not in BACK_VIEWS:
+            elif view != FRONT:
                 anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
                 anchor_path = Path(str((anchor or {}).get("image_path") or ""))
                 if not anchor_path.is_file():

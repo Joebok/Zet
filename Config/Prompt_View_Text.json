@@ -100,7 +100,7 @@
     },
     "BACK_LEFT_3_4": {
       "label": "back-left three-quarter view",
-      "local_head_image_instruction": "The camera is behind the character, offset toward screen-left. Keep the camera-side (near) side of the head on screen-left and closest to the camera; show the back of the skull, hair, and nape as the dominant surfaces. The head and face plane point away from the camera toward screen-right. At most, show a sliver of the screen-left, camera-side cheek or jaw. If visible, the near-side ear shows only its smooth outer back and rim; its opening and recessed inner folds, including the triangular fossa, face away from the camera. Keep the far-side ear mostly hidden. Do not turn the face back toward the camera.",
+      "local_head_image_instruction": "The camera is behind the character, offset toward screen-left. Show a rear-left three-quarter head: the visible side edge of the head and the near ear are on screen-left. The back of the skull, hair, and nape dominate. Only a small sliver of cheek or jaw may appear at the screen-left edge. The far side is occluded by the skull and hair. Reconstruct the ear surfaces visible from this rear camera angle.",
       "local_head_image_gaze": "Keep the face turned away; no eye or expression is visible.",
       "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same back-left three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is behind the character, toward screen-left.",
@@ -120,7 +120,7 @@
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
-      "local_head_image_instruction": "The camera is behind the character, offset toward screen-right. Keep the camera-side (near) side of the head on screen-right and closest to the camera; show the back of the skull, hair, and nape as the dominant surfaces. The head and face plane point away from the camera toward screen-left. At most, show a sliver of the screen-right, camera-side cheek or jaw. If visible, the near-side ear shows only its smooth outer back and rim; its opening and recessed inner folds, including the triangular fossa, face away from the camera. Keep the far-side ear mostly hidden. Do not turn the face back toward the camera.",
+      "local_head_image_instruction": "The camera is behind the character, offset toward screen-right. Show a rear-right three-quarter head: the visible side edge of the head and the near ear are on screen-right. The back of the skull, hair, and nape dominate. Only a small sliver of cheek or jaw may appear at the screen-right edge. The far side is occluded by the skull and hair. Reconstruct the ear surfaces visible from this rear camera angle.",
       "local_head_image_gaze": "Keep the face turned away; no eye or expression is visible.",
       "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same back-right three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is behind the character, toward screen-right.",
