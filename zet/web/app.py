@@ -1300,6 +1300,16 @@ def create_app(
             "default_phase": phases_by_character.get(characters[0], [None])[0] if characters else None,
         }
 
+    @app.delete("/api/character-phase")
+    def character_phase_delete(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Move a character phase and its related files into library deleted storage."""
+        zet_app = _app(app.state.config_path)
+        try:
+            destination = zet_app.delete_character_phase(character, phase)
+            return {"destination": destination, "message": f"Moved {character} / {phase} and its related assets to deleted storage."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/todo")
     def todo() -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
@@ -2655,6 +2665,24 @@ def create_app(
                 "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
                 "assets": [],
                 "message": f"Updated costume {result.costume.name} and local Costume-Dressing provenance.",
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/costumes/{costume_slug}")
+    def costume_delete(
+        costume_slug: str,
+        character: str = Query(...),
+        phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Move a costume and its related files into library deleted storage."""
+        zet_app = _app(app.state.config_path)
+        try:
+            destination = zet_app.delete_costume(character, phase, costume_slug)
+            return {
+                "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
+                "destination": destination,
+                "message": f"Moved costume {costume_slug} and its related assets to deleted storage.",
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

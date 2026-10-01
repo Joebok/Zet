@@ -60,6 +60,7 @@ from zet.services.worker_service import WorkerService
 from zet.services.workspace_summary_service import WorkspaceSummaryService
 from zet.services.zine_service import ZineService
 from zet.services.library_index_service import LibraryIndexReconciler, LibraryIndexService
+from zet.services.library_deletion_service import LibraryDeletionService
 from zet.services.universe_service import UniverseService
 
 
@@ -201,6 +202,7 @@ class ZetApp:
         self.manual_render_publication_service = ManualRenderPublicationService(config)
         self.image_catalog_service = None
         self.entity_library_service = None
+        self.library_deletion_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
         self.workspace_summary_service = WorkspaceSummaryService(
@@ -385,6 +387,9 @@ class ZetApp:
         entity_library_service = EntityLibraryService(path_service, entity_library_repository)
         entity_library_service.pipeline_provider = lambda: image_catalog_service.list_items(include_base=True)
         app.entity_library_service = entity_library_service
+        app.library_deletion_service = LibraryDeletionService(
+            path_service, local_asset_sources, entity_library_repository
+        )
         story_service.story_reference_service.entity_library_service = entity_library_service
         entity_library_service.refresh_usages(config.base_library_path)
         app.library_index_service.list_items_provider = app._indexed_list_rows
@@ -1629,6 +1634,14 @@ class ZetApp:
     def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
         """Update a costume template and its Costume-Dressing assets."""
         return self.costume_service.update_costume(character, phase, costume_slug, costume_name)
+
+    def delete_character_phase(self, character: str, phase: str) -> str:
+        """Move a character phase and its related library data to deleted storage."""
+        return self._indexed_write(lambda: self.library_deletion_service.delete_phase(character, phase))
+
+    def delete_costume(self, character: str, phase: str, costume_slug: str) -> str:
+        """Move a costume and its related library data to deleted storage."""
+        return self._indexed_write(lambda: self.library_deletion_service.delete_costume(character, phase, costume_slug))
 
     def list_scene_appearances(self, character: str, phase: str):
         """List reusable Scene Appearance definitions for a character phase."""

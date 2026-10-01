@@ -218,6 +218,7 @@ let imageGenerationReferenceUrl = "";
 let imageGenerationPastedFile = null;
 let imageGenerationOptionsLoaded = false;
 const phaseSelect = document.querySelector("#phase-select");
+const deletePhaseButton = document.querySelector("#delete-phase");
 const headerStorySelect = document.querySelector("#header-story-select");
 const headerSceneSelect = document.querySelector("#header-scene-select");
 const sceneWorkflowMenu = document.querySelector("#scene-workflow-menu");
@@ -549,6 +550,7 @@ const costumeStatus = document.querySelector("#costume-status");
 const costumeMessage = document.querySelector("#costume-message");
 const costumeTableBody = document.querySelector("#costume-table tbody");
 const costumeAddNew = document.querySelector("#costume-add-new");
+const costumeDelete = document.querySelector("#costume-delete");
 const costumeFormTitle = document.querySelector("#costume-form-title");
 const costumeName = document.querySelector("#costume-name");
 const costumeTemplateFileWrap = document.querySelector("#costume-template-file-wrap");
@@ -3946,7 +3948,7 @@ async function loadCostumes() {
 function renderCostumeTable() {
   costumeTableBody.replaceChildren();
   if (!state.costumes.length) {
-    renderEmptyRow(costumeTableBody, 4, "No costumes exist for this character and phase.");
+    renderEmptyRow(costumeTableBody, 3, "No costumes exist for this character and phase.");
     return;
   }
   for (const costume of state.costumes) {
@@ -3955,8 +3957,6 @@ function renderCostumeTable() {
     row.classList.toggle("selected", costume.slug === state.selectedCostumeSlug);
     const nameCell = document.createElement("td");
     nameCell.textContent = costume.name || "";
-    const countCell = document.createElement("td");
-    countCell.textContent = costume.asset_count ?? 0;
     const pathCell = document.createElement("td");
     pathCell.textContent = basename(costume.path || "");
     pathCell.title = costume.path || "";
@@ -3974,7 +3974,7 @@ function renderCostumeTable() {
       }
     });
     actionCell.append(openButton);
-    row.append(nameCell, countCell, pathCell, actionCell);
+    row.append(nameCell, pathCell, actionCell);
     makeSelectableRow(row, costume.name || costume.slug, costume.slug === state.selectedCostumeSlug, () => selectCostume(costume.slug));
     costumeTableBody.append(row);
   }
@@ -4012,6 +4012,7 @@ function renderCostumeEditor() {
   costumeCreate.textContent = isUpdate ? "Update Costume" : "Save Costume";
   costumeTemplateFileWrap.hidden = isUpdate;
   costumePreviewSection.hidden = !isUpdate;
+  costumeDelete.hidden = !isUpdate;
   if (isUpdate) {
     renderReviewImage(
       costumePreview,
@@ -4021,6 +4022,29 @@ function renderCostumeEditor() {
       "Locked costume turnaround",
       costume.path || costume.name || "",
     );
+  }
+}
+
+async function deleteSelectedCostume() {
+  const costume = selectedCostume();
+  if (!costume || !state.character || !state.phase) return;
+  if (!window.confirm(`Move ${costume.name} and all of its templates and character assets to the library deleted folder?`)) return;
+  costumeDelete.disabled = true;
+  showCostumeMessage("Moving costume to deleted storage...");
+  try {
+    const payload = await fetchJson(`/api/costumes/${encodeURIComponent(costume.slug)}?${currentQuery().toString()}`, { method: "DELETE" });
+    state.costumes = payload.costumes || [];
+    state.selectedCostumeSlug = null;
+    costumeName.value = "";
+    costumeTemplateFile.value = "";
+    renderCostumeTable();
+    renderCostumeEditor();
+    showCostumeMessage(payload.message || "Costume moved to deleted storage.");
+    await loadAssets();
+  } catch (error) {
+    showCostumeMessage(error.message, "error");
+  } finally {
+    costumeDelete.disabled = false;
   }
 }
 
@@ -12152,6 +12176,24 @@ phaseSelect.addEventListener("change", async () => {
   await loadWorkspaceSummary();
 });
 
+deletePhaseButton.addEventListener("click", async () => {
+  if (!state.character || !state.phase) return;
+  if (!window.confirm(`Move ${state.character} / ${state.phase} and all templates and character assets to the library deleted folder?`)) return;
+  deletePhaseButton.disabled = true;
+  showActionMessage("Moving phase to deleted storage...");
+  try {
+    const payload = await fetchJson(`/api/character-phase?${currentQuery().toString()}`, { method: "DELETE" });
+    state.phase = null;
+    await refreshCurrentContext();
+    if (document.querySelector("#costumes-page").classList.contains("active") && state.phase) await loadCostumes();
+    showActionMessage(payload.message || "Character phase moved to deleted storage.");
+  } catch (error) {
+    showActionMessage(error.message, "error");
+  } finally {
+    deletePhaseButton.disabled = false;
+  }
+});
+
 for (const button of actionButtons) {
   button.addEventListener("click", () => runAssetAction(button.dataset.action));
 }
@@ -12427,6 +12469,7 @@ identityKeySource.addEventListener("change", () => {
   identityKeySave.disabled = !state.identityKeySourceLocalKey;
 });
 costumeAddNew.addEventListener("click", clearCostumeForm);
+costumeDelete.addEventListener("click", deleteSelectedCostume);
 costumeCreate.addEventListener("click", saveCostume);
 sceneAppearanceAddNew.addEventListener("click", clearSceneAppearanceForm);
 sceneAppearanceSave.addEventListener("click", saveSceneAppearance);
