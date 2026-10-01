@@ -1452,6 +1452,7 @@ Do not explain your reasoning."""
         output = self._root(run_id) / "analyses" / candidate_id / f"local_{stamp}.json"
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_ANALYSIS",
             "worker_type": "ollama_generate", "ollama_model": model or str(
                 getattr(self.app.config, "local_body_reference_review_model", "image-analysis:latest")
@@ -1649,6 +1650,7 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
             "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": ["head_crop.png"],
@@ -1749,6 +1751,7 @@ Do not explain your reasoning."""
                     or "image-analysis-alt:latest")
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": f"BODY_REFERENCE_{definition.key.upper()}_GATE",
             "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in images],

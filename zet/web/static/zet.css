@@ -442,16 +442,7 @@ main {
 }
 
 .image-generation-reference-preview {
-  align-items: center;
-  background: var(--surface-muted, #171c25);
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  justify-content: center;
-  min-height: 120px;
   overflow: hidden;
-  padding: .65rem;
 }
 
 .image-generation-reference-preview img {
@@ -729,6 +720,17 @@ main {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+}
+
+.local-pipeline-observations {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+
+.local-pipeline-observations > summary {
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .local-pipeline-view-observations label {
@@ -3662,6 +3664,8 @@ tr.auxiliary-row td:last-child {
 
 .image-catalog-card {
   display: grid;
+  min-width: 0;
+  overflow: hidden;
   gap: .35rem;
   text-align: left;
   align-content: start;
@@ -3684,10 +3688,25 @@ tr.auxiliary-row td:last-child {
 }
 
 .image-catalog-card img {
+  display: block;
+  height: 150px;
+  max-width: 100%;
+  min-width: 0;
   width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
+  box-sizing: border-box;
+  object-fit: contain;
   border-radius: .35rem;
+}
+
+.entity-library-pagination {
+  align-items: center;
+  display: flex;
+  gap: .45rem;
+}
+
+.entity-library-pagination .status-text {
+  margin: 0;
+  white-space: nowrap;
 }
 
 .image-catalog-card small,

@@ -40,6 +40,7 @@ class LocalHeadImageError(ValueError):
 FRONT = "FRONT"
 GAZE_VIEWS = {"FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"}
 VIEWS = ("FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK")
+BACK_VIEWS = {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}
 VIEW_LABELS = {
     "FRONT": "direct front view", "FRONT_LEFT_3_4": "front-left three-quarter view",
     "FRONT_RIGHT_3_4": "front-right three-quarter view", "LEFT_PROFILE": "left profile",
@@ -80,6 +81,12 @@ class LocalHeadImageService:
         "identity": "Compare Image 1, the selected FRONT anchor, with Image 2, the candidate. Could both images plausibly depict the same character's head, face, hair, and species traits from different angles? Return TRUE only for a clear identity mismatch; otherwise return FALSE.",
         "source_identity": "Compare the supplied reference image with the generated FRONT candidate. Is there a clear character identity mismatch? Return TRUE only for a clear mismatch; otherwise return FALSE.",
     }
+
+    @staticmethod
+    def _apply_phase_change(spec: dict[str, Any]) -> bool:
+        if "apply_phase_change" not in spec:
+            return bool(spec.get("front_source"))
+        return bool(spec.get("apply_phase_change"))
 
     def __init__(self, app: Any, project_root: str | Path):
         self.app = app
@@ -171,12 +178,14 @@ class LocalHeadImageService:
         target.write_bytes(contents)
         return {"path": str(target), "name": target.name}
 
-    def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict]) -> dict[str, Any]:
+    def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict],
+                 *, apply_phase_change: bool = False) -> dict[str, Any]:
         output_dir = run_root / "prompts" / view
         template_path = Path(self.app.config.base_character_path) / character / phase / "Character.md"
         job = {"Job": f"LocalHeadImage_{run_root.name}_{view}", "Task": "head-image", "Character": character,
                "Phase": phase, "Head View": view, "Template Path": str(template_path),
-               "Output Directory": str(output_dir), "Reference Files": references}
+               "Output Directory": str(output_dir), "Reference Files": references,
+               "Apply Phase Change": apply_phase_change}
         try:
             result = compile_head_image_job(
                 job, self.project_root, pipeline_mode="local",
@@ -224,14 +233,17 @@ class LocalHeadImageService:
                                    "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
                                    "gates": {}, "human_review": {"decision": "undecided"},
                                    "retry_count": 0})
+        apply_phase_change = bool(payload.get("apply_phase_change")) and bool(source_snapshot)
         front_prompt = self._compile(root, plan["character"], plan["phase"], FRONT,
-                                     ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []))
+                                     ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []),
+                                     apply_phase_change=apply_phase_change)
         spec = {"schema_version": 1, "review_version": 2, "kind": "local_head_image", "run_id": run_id,
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "batch_name": "",
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "views": list(VIEWS), "front_count": plan["front_count"], "other_count": plan["other_count"],
                 "candidate_count": total, "front_source": source_snapshot,
+                "apply_phase_change": apply_phase_change,
                 "front_source_sha256": self._hash(Path(source_snapshot)) if source_snapshot else "",
                 "front_prompt_path": front_prompt["final_prompt"], "front_prompt_sha256": self._hash(Path(front_prompt["final_prompt"])),
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}, "created_by": "zet"}
@@ -256,6 +268,7 @@ class LocalHeadImageService:
                 candidates[candidate_id].update(update)
         value = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                  "stop_requested": bool(state.get("stop_requested"))}
+        value["apply_phase_change"] = self._apply_phase_change(spec)
         active = state.get("status") in ACTIVE_RUN_STATUSES
         if active:
             with self._active_lock:
@@ -344,6 +357,7 @@ class LocalHeadImageService:
                 run = self.detail(str(spec["run_id"]))
                 result.append({"run_id": run["run_id"], "batch_name": run.get("batch_name", ""),
                                "character": run["character"], "phase": run["phase"],
+                               "apply_phase_change": self._apply_phase_change(spec),
                                "created_at": run["created_at"], "status": run["status"],
                                "candidate_count": run["candidate_count"],
                                "complete_count": sum(1 for item in run["candidates"] if item.get("image_path")),
@@ -378,6 +392,7 @@ class LocalHeadImageService:
                 result.append({
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
+                    "apply_phase_change": self._apply_phase_change(spec),
                     "created_at": spec.get("created_at", ""), "status": status,
                     "candidate_count": int(spec.get("candidate_count") or len(candidates)),
                     "complete_count": sum(bool(item.get("image_path")) for item in candidates.values()),
@@ -420,13 +435,14 @@ class LocalHeadImageService:
             source = str(run.get("front_source") or "")
             if source:
                 references = [{"role": "head_image_source", "label": "Uploaded front reference", "path": source}]
-        else:
+        elif candidate["view"] not in BACK_VIEWS:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
             anchor_path = Path(str((anchor or {}).get("image_path") or ""))
             if not anchor_path.is_file():
                 raise LocalHeadImageError("Selected FRONT anchor image is missing.")
             references = [{"role": "head_image_source", "label": "Selected local FRONT anchor", "path": str(anchor_path)}]
-        compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references)
+        compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references,
+                                 apply_phase_change=bool(run.get("apply_phase_change", False)))
         prompt_path = Path(compiled["final_prompt"])
         candidate_dir = root / "renders" / candidate_id
         candidate_dir.mkdir(parents=True, exist_ok=True)
@@ -588,6 +604,7 @@ class LocalHeadImageService:
             shutil.copy2(path, staging / name)
         (staging / "OLLAMA_PROMPT.md").write_text(definition.prompt, encoding="utf-8")
         manifest = {"version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+                    "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
                     "pipeline": "Local-Head-Image", "pipeline_stage": f"HEAD_IMAGE_{definition.key.upper()}_GATE",
                     "worker_type": "ollama_generate", "ollama_model": str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis-alt:latest")),
                     "ollama_think": False, "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in input_images],
@@ -873,13 +890,14 @@ class LocalHeadImageService:
             references = []
             if view == FRONT and run.get("front_source"):
                 references = [{"role": "head_image_source", "path": run["front_source"]}]
-            elif view != FRONT:
+            elif view != FRONT and view not in BACK_VIEWS:
                 anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
                 anchor_path = Path(str((anchor or {}).get("image_path") or ""))
                 if not anchor_path.is_file():
                     raise LocalHeadImageError("Select a FRONT anchor before viewing this view's prompt.")
                 references = [{"role": "head_image_source", "label": "Selected local FRONT anchor", "path": str(anchor_path)}]
-            compiled = self._compile(Path(run["root"]), run["character"], run["phase"], view, references)
+            compiled = self._compile(Path(run["root"]), run["character"], run["phase"], view, references,
+                                     apply_phase_change=bool(run.get("apply_phase_change", False)))
             path = Path(compiled["final_prompt"])
         return path.read_text(encoding="utf-8")
 
@@ -1328,12 +1346,15 @@ class LocalHeadImageService:
             shutil.copy2(source, destination)
             references = [{"role": "head_image_source", "path": str(destination)}]
 
-        prompt = self._compile(root, run["character"], run["phase"], FRONT, references)
+        apply_phase_change = bool(run.get("apply_phase_change", False)) and bool(destination)
+        prompt = self._compile(root, run["character"], run["phase"], FRONT, references,
+                               apply_phase_change=apply_phase_change)
         spec_path = root / "spec.json"
         spec = json.loads(spec_path.read_text(encoding="utf-8"))
         old_source = Path(str(spec.get("front_source") or "")).resolve()
         spec.update(front_source=str(destination) if destination else "",
                     front_source_sha256=self._hash(destination) if destination else "",
+                    apply_phase_change=apply_phase_change,
                     front_prompt_path=prompt["final_prompt"],
                     front_prompt_sha256=self._hash(Path(prompt["final_prompt"])))
         self._write(spec_path, spec)

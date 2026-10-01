@@ -92,7 +92,18 @@ class EntityLibraryService:
     def _sync_pipeline_assets(self) -> None:
         if not callable(self.pipeline_provider):
             return
-        for item in self.pipeline_provider():
+        items = self.pipeline_provider()
+        active_origin_keys = set()
+        for item in items:
+            source_type = str(getattr(item, "source_type", ""))
+            source_path = Path(str(getattr(item, "image_path", "")))
+            if source_type == "local-pipeline" and source_path.is_file():
+                checksum = hashlib.sha256(source_path.read_bytes()).hexdigest()
+                active_origin_keys.add(
+                    f"local:{getattr(item, 'pipeline', '')}:{getattr(item, 'character', '')}:"
+                    f"{getattr(item, 'phase', '')}:{checksum}"
+                )
+        for item in items:
             if (
                 getattr(item, "source_type", "") != "pipeline"
                 or not getattr(item, "available", True)
@@ -111,6 +122,7 @@ class EntityLibraryService:
             data = source_path.read_bytes()
             checksum = hashlib.sha256(data).hexdigest()
             versioned_key = f"{origin_key}:{checksum}"
+            active_origin_keys.add(versioned_key)
             current = self.repository.fetchone("SELECT asset_id FROM assets WHERE origin_key = ?", (versioned_key,))
             if current:
                 self._pipeline_signatures[origin_key] = signature
@@ -149,9 +161,24 @@ class EntityLibraryService:
                     (str(uuid4()), asset_id, "locked_pipeline_source", json.dumps({"tag": origin_key, "label": item.label}), stamp),
                 )
             self._pipeline_signatures[origin_key] = signature
+        if active_origin_keys:
+            placeholders = ",".join("?" for _ in active_origin_keys)
+            with self.repository.transaction() as connection:
+                connection.execute(
+                    f"UPDATE assets SET status='archived',updated_at=? "
+                    f"WHERE origin='pipeline' AND status<>'archived' AND origin_key NOT IN ({placeholders})",
+                    (_now(), *sorted(active_origin_keys)),
+                )
+        else:
+            with self.repository.transaction() as connection:
+                connection.execute(
+                    "UPDATE assets SET status='archived',updated_at=? WHERE origin='pipeline' AND status<>'archived'",
+                    (_now(),),
+                )
 
     def list_assets(self, **filters) -> list[dict]:
         self._sync_pipeline_assets()
+        include_archived = bool(filters.pop("include_archived", False))
         rows = self.repository.fetchall("SELECT * FROM assets ORDER BY created_at DESC, asset_id")
         output = []
         for row in rows:
@@ -179,6 +206,8 @@ class EntityLibraryService:
                 (asset_id, asset_id, asset_id, asset_id),
             )
             item["descriptor_ready"] = bool(descriptor_ready)
+            if row["status"] == "archived" and filters.get("status") != "archived" and not include_archived:
+                continue
             if filters.get("status") and row["status"] != filters["status"]:
                 continue
             if filters.get("origin") and row["origin"] != filters["origin"]:
@@ -203,7 +232,7 @@ class EntityLibraryService:
         return output
 
     def get_asset(self, asset_id: str) -> dict:
-        item = next((row for row in self.list_assets() if row["asset_id"] == asset_id), None)
+        item = next((row for row in self.list_assets(include_archived=True) if row["asset_id"] == asset_id), None)
         if item is None:
             raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
         item["descriptors"] = self.repository.fetchall(
@@ -402,6 +431,31 @@ class EntityLibraryService:
             for order, asset_id in enumerate(data.get("asset_ids") or []):
                 connection.execute("INSERT INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)", (set_id, asset_id, "member", order))
         return self.get_set(set_id)
+
+    def update_set(self, set_id: str, data: dict) -> dict:
+        name = self._require(data.get("name"), "Reference set name")
+        current = self.repository.fetchone("SELECT * FROM reference_sets WHERE set_id=?", (set_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Reference set not found: {set_id}")
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE reference_sets SET name=?,set_type=?,description=?,entity_id=?,updated_at=? WHERE set_id=?",
+                (name, str(data.get("set_type", current["set_type"]) or "general").strip() or "general",
+                 str(data.get("description", current["description"]) or "").strip(),
+                 data.get("entity_id", current["entity_id"]) or None, stamp, set_id),
+            )
+            if not cursor.rowcount:
+                raise EntityLibraryServiceError(f"Reference set not found: {set_id}")
+        return self.get_set(set_id)
+
+    def delete_set(self, set_id: str) -> dict:
+        """Remove a set and its descriptors while preserving its member images."""
+        reference_set = self.get_set(set_id)
+        with self.repository.transaction() as connection:
+            connection.execute("DELETE FROM descriptors WHERE owner_type='set' AND owner_id=?", (set_id,))
+            connection.execute("DELETE FROM reference_sets WHERE set_id=?", (set_id,))
+        return {"set_id": set_id, "name": reference_set["name"], "image_count": len(reference_set["assets"])}
 
     def get_set(self, set_id: str) -> dict:
         item = self.repository.fetchone("SELECT * FROM reference_sets WHERE set_id=?", (set_id,))

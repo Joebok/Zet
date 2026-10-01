@@ -60,6 +60,7 @@ class FileProxyClient:
             raise ValueError(f"Unsupported Zet file-proxy worker type: {worker_type}")
         route_required = self._externalize_routes(staging, job_id)
         resource_key = self._resource_key(staging, worker_type)
+        ask_manifest = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
         job_manifest = {
             "protocol_version": 1,
             "job_id": job_id,
@@ -70,6 +71,7 @@ class FileProxyClient:
             "route_required": route_required,
             "producer_id": socket.gethostname(),
             "resource_key": resource_key,
+            "priority": ask_manifest.get("queue_priority", 0),
         }
         temp = staging / ".job.json.tmp"
         temp.write_text(json.dumps(job_manifest, indent=2) + "\n", encoding="utf-8")

@@ -82,11 +82,37 @@ class LocalAssetStoreService:
                 continue
             if not record.get("locked") or record.get("stale"):
                 continue
+            batch_id = str(record.get("batch_id") or "").strip()
+            if batch_id and not self._batch_exists(character, phase, record, batch_id):
+                continue
             path = Path(str(record.get("locked_image_path") or "")).resolve()
             if not path.is_file() or self._image_hash(path) != record.get("image_sha256"):
                 continue
             result.append({"key": key, **record, "image_path": str(path)})
         return sorted(result, key=lambda item: item["key"])
+
+    def _batch_exists(self, character: str, phase: str, record: dict[str, Any], batch_id: str) -> bool:
+        """Require batch-owned locks to point at a live pipeline batch."""
+        if not re.fullmatch(r"(?:[0-9a-f]{32}|[0-9]{8}_[0-9]{6}_[0-9]{6})", batch_id):
+            return False
+        safe_character, safe_phase = self._safe(character), self._safe(phase)
+        pipeline = str(record.get("pipeline") or "").casefold()
+        batch_root = self.root / safe_character / safe_phase
+        if pipeline == "body-reference":
+            batch_root /= batch_id
+        elif pipeline == "head-image":
+            batch_root = batch_root / "Head-Image" / batch_id
+        elif pipeline == "character-assembly":
+            batch_root = batch_root / "Character-Assembly" / batch_id
+        elif pipeline == "costume-dressing":
+            raw_qualifier = str(record.get("qualifier") or "")
+            if not raw_qualifier:
+                return False
+            qualifier = self._safe(raw_qualifier)
+            batch_root = batch_root / "Costume-Dressing" / qualifier / batch_id
+        else:
+            return False
+        return (batch_root / "spec.json").is_file()
 
     @staticmethod
     def _image_hash(path: Path) -> str:

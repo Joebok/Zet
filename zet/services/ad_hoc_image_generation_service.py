@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from datetime import datetime, timezone
 from io import BytesIO
 import json
 from pathlib import Path
@@ -24,7 +23,6 @@ IMAGE_GENERATION_CONSUMER = "zet-image-generation"
 IMAGE_GENERATION_DEFAULT_COUNT = 4
 IMAGE_GENERATION_MAX_COUNT = 16
 IMAGE_GENERATION_MAX_REFERENCE_BYTES = 20 * 1024 * 1024
-IMAGE_GENERATION_RESULT_TTL_SECONDS = 3600
 IMAGE_GENERATION_DEFAULT_WIDTH = 1024
 IMAGE_GENERATION_DEFAULT_HEIGHT = 1024
 IMAGE_GENERATION_MIN_DIMENSION = 256
@@ -45,28 +43,18 @@ class AdHocImageGenerationService:
         self.proxy_paths = zet_app.ai_proxy_service.ai_proxy_path_service
         self.proxy_client = self.proxy_paths.file_proxy_client
         self.workspace_root = Path(tempfile.gettempdir()) / "zet-ad-hoc-image-generation"
+        self.results_root = Path(zet_app.config.base_library_path) / "_state" / "ImageGeneration"
         self._lock = threading.RLock()
         self._jobs: dict[str, dict[str, Any]] = {}
-        self._stop_sweeper = threading.Event()
-        self._sweeper: threading.Thread | None = None
+        self.results_root.mkdir(parents=True, exist_ok=True)
+        self._load_jobs()
         self.cleanup_abandoned()
 
     def start(self) -> None:
-        if self._sweeper and self._sweeper.is_alive():
-            return
-        self._stop_sweeper.clear()
-
-        def sweep() -> None:
-            while not self._stop_sweeper.wait(30):
-                self._expire_jobs()
-
-        self._sweeper = threading.Thread(target=sweep, name="zet-image-generation-cleanup", daemon=True)
-        self._sweeper.start()
+        return None
 
     def stop(self) -> None:
-        self._stop_sweeper.set()
-        if self._sweeper and self._sweeper.is_alive():
-            self._sweeper.join(timeout=2)
+        return None
 
     def options(self) -> dict[str, Any]:
         presets = json.loads(self.presets_path.read_text(encoding="utf-8"))
@@ -177,7 +165,9 @@ class AdHocImageGenerationService:
                     "QUEUED" if children else "ERROR", f"Only {len(children)} of {count} images could be queued: {exc}",
                 )
                 job["failures"] = count - len(children)
+                job.update(self._request_details(payload, width, height, prompt))
                 self._jobs[request_id] = job
+                self._save_job(job)
             if not children:
                 shutil.rmtree(workspace, ignore_errors=True)
             return self.status(request_id)
@@ -186,12 +176,18 @@ class AdHocImageGenerationService:
             self._jobs[request_id] = self._new_job(
                 request_id, mode, count, workspace, children, prompt_path, "QUEUED", "",
             )
+            self._jobs[request_id].update(self._request_details(payload, width, height, prompt))
+            self._save_job(self._jobs[request_id])
         return self.status(request_id)
 
     def _new_job(self, request_id, mode, count, workspace, children, prompt_path, status, error):
         return {
             "request_id": request_id,
             "mode": mode,
+            "prompt": "",
+            "negative_prompt": "",
+            "width": IMAGE_GENERATION_DEFAULT_WIDTH,
+            "height": IMAGE_GENERATION_DEFAULT_HEIGHT,
             "count": count,
             "workspace": workspace,
             "children": children,
@@ -202,6 +198,15 @@ class AdHocImageGenerationService:
             "failures": 0,
             "created_at": time.time(),
             "finished_at": time.time() if status == "ERROR" else None,
+        }
+
+    @staticmethod
+    def _request_details(payload, width, height, prompt):
+        return {
+            "prompt": prompt,
+            "negative_prompt": str(payload.get("negative_prompt") or "").strip(),
+            "width": width,
+            "height": height,
         }
 
     def _preset(self, name: str) -> dict[str, Any]:
@@ -223,12 +228,12 @@ class AdHocImageGenerationService:
         return result
 
     def status(self, request_id: str) -> dict[str, Any]:
-        self._expire_jobs()
         with self._lock:
             job = self._jobs.get(request_id)
             if job is None:
-                raise KeyError("Image generation request not found or expired.")
+                raise KeyError("Image generation request not found.")
             self._refresh(job)
+            self._save_job(job)
             return {
                 "request_id": request_id,
                 "mode": job["mode"],
@@ -244,11 +249,10 @@ class AdHocImageGenerationService:
             }
 
     def image(self, request_id: str, index: int) -> tuple[bytes, str]:
-        self._expire_jobs()
         with self._lock:
             job = self._jobs.get(request_id)
             if job is None or index < 0 or index >= len(job["images"]):
-                raise KeyError("Image not found or expired.")
+                raise KeyError("Image not found.")
             return job["images"][index]
 
     def clear(self, request_id: str) -> None:
@@ -260,6 +264,7 @@ class AdHocImageGenerationService:
                 raise AdHocImageGenerationError("Wait for queued images to finish before clearing results.")
             self._release(job)
             del self._jobs[request_id]
+            shutil.rmtree(self.results_root / request_id, ignore_errors=True)
 
     def _refresh(self, job: dict[str, Any]) -> None:
         if job["status"] in {"COMPLETE", "PARTIAL", "FAILED", "ERROR"}:
@@ -311,6 +316,7 @@ class AdHocImageGenerationService:
                         self.proxy_client.remove_answer(ask_id)
                         self.proxy_client.remove_route(ask_id)
                     child["done"] = True
+                    self._save_job(job)
             elif running_path.is_dir():
                 running += 1
             elif ask_path.is_dir():
@@ -334,29 +340,55 @@ class AdHocImageGenerationService:
             job["status"] = "COMPLETE"
         job["finished_at"] = time.time()
         shutil.rmtree(job["workspace"], ignore_errors=True)
+        self._save_job(job)
 
     def _release(self, job: dict[str, Any]) -> None:
         shutil.rmtree(job["workspace"], ignore_errors=True)
         job["images"].clear()
 
-    def _expire_jobs(self) -> None:
-        now = time.time()
-        with self._lock:
-            for request_id, job in list(self._jobs.items()):
-                finished_at = job.get("finished_at")
-                if finished_at and now - finished_at >= IMAGE_GENERATION_RESULT_TTL_SECONDS:
-                    self._release(job)
-                    del self._jobs[request_id]
+    def _save_job(self, job: dict[str, Any]) -> None:
+        directory = self.results_root / job["request_id"]
+        directory.mkdir(parents=True, exist_ok=True)
+        image_records = []
+        for index, (image_bytes, content_type) in enumerate(job["images"]):
+            filename = f"image-{index}.bin"
+            image_path = directory / filename
+            if not image_path.exists() or image_path.stat().st_size != len(image_bytes):
+                image_path.write_bytes(image_bytes)
+            image_records.append({"filename": filename, "content_type": content_type})
+        record = {key: job[key] for key in (
+            "request_id", "mode", "prompt", "negative_prompt", "width", "height", "count",
+            "children", "status", "error", "failures", "created_at", "finished_at",
+        )}
+        record.update({"workspace": str(job["workspace"]), "prompt_path": str(job["prompt_path"]),
+                       "images": image_records})
+        temporary = directory / "job.json.tmp"
+        temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(directory / "job.json")
+
+    def _load_jobs(self) -> None:
+        for directory in self.results_root.iterdir():
+            record_path = directory / "job.json"
+            if not directory.is_dir() or not record_path.is_file():
+                continue
+            try:
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+                images = [((directory / item["filename"]).read_bytes(), str(item["content_type"]))
+                          for item in record.get("images", [])]
+                job = {**record, "workspace": Path(record["workspace"]),
+                       "prompt_path": Path(record["prompt_path"]), "images": images}
+                self._jobs[str(job["request_id"])] = job
+            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                continue
 
     def cleanup_abandoned(self) -> None:
-        cutoff = datetime.fromtimestamp(time.time() - IMAGE_GENERATION_RESULT_TTL_SECONDS, timezone.utc)
+        known_children = {child["ask_id"] for job in self._jobs.values() for child in job.get("children", [])}
         for answer_path in self.proxy_paths.task_paths("answer"):
             try:
                 ask = self.proxy_paths.read_ask_manifest(answer_path).to_dict()
-                created = datetime.fromtimestamp(answer_path.stat().st_mtime, timezone.utc)
             except (OSError, ValueError, json.JSONDecodeError):
                 continue
-            if ask.get("consumer") == IMAGE_GENERATION_CONSUMER and created < cutoff:
+            if ask.get("consumer") == IMAGE_GENERATION_CONSUMER and answer_path.name not in known_children:
                 self.proxy_client.remove_answer(answer_path.name)
                 self.proxy_client.remove_route(answer_path.name)
         self.workspace_root.mkdir(parents=True, exist_ok=True)

@@ -178,6 +178,7 @@ const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
 const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
 const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
+const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 
 const CHARACTER_PAGES = new Set(["onboarding", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
 const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
@@ -216,6 +217,7 @@ const imageGenerationResultsGrid = document.querySelector("#image-generation-res
 let imageGenerationMode = "txt2img";
 let imageGenerationReferenceUrl = "";
 let imageGenerationPastedFile = null;
+let imageGenerationReferenceData = "";
 let imageGenerationOptionsLoaded = false;
 const phaseSelect = document.querySelector("#phase-select");
 const deletePhaseButton = document.querySelector("#delete-phase");
@@ -800,7 +802,13 @@ const entityLibraryRelationType = document.querySelector("#entity-library-relati
 const entityLibraryRelationCreate = document.querySelector("#entity-library-relation-create");
 const entityLibrarySetName = document.querySelector("#entity-library-set-name");
 const entityLibrarySetType = document.querySelector("#entity-library-set-type");
+const entityLibrarySetSelect = document.querySelector("#entity-library-set-select");
 const entityLibrarySetCreate = document.querySelector("#entity-library-set-create");
+const entityLibrarySetSave = document.querySelector("#entity-library-set-save");
+const entityLibrarySetDelete = document.querySelector("#entity-library-set-delete");
+const entityLibraryPrevious = document.querySelector("#entity-library-previous");
+const entityLibraryNext = document.querySelector("#entity-library-next");
+const entityLibraryPageStatus = document.querySelector("#entity-library-page-status");
 const entityLibraryEditorTitle = document.querySelector("#entity-library-editor-title");
 const entityLibraryPreview = document.querySelector("#entity-library-preview");
 const entityLibraryEditLabel = document.querySelector("#entity-library-edit-label");
@@ -817,6 +825,7 @@ const entityLibrarySave = document.querySelector("#entity-library-save");
 const entityLibraryReplacementFile = document.querySelector("#entity-library-replacement-file");
 const entityLibraryReplacementPaste = document.querySelector("#entity-library-replacement-paste");
 const entityLibraryReplace = document.querySelector("#entity-library-replace");
+const entityLibraryDelete = document.querySelector("#entity-library-delete");
 const entityLibraryBack = document.querySelector("#entity-library-back");
 const entityLibraryUsages = document.querySelector("#entity-library-usages");
 const entityLibraryDescriptorOwnerType = document.querySelector("#entity-library-descriptor-owner-type");
@@ -826,6 +835,9 @@ const entityLibraryDescriptorText = document.querySelector("#entity-library-desc
 const entityLibraryDescriptorSave = document.querySelector("#entity-library-descriptor-save");
 let entityLibrarySelectedAsset = null;
 let entityLibraryMetadata = { entities: [], variants: [], sets: [] };
+let entityLibraryPageOffset = 0;
+let entityLibraryTotal = 0;
+const ENTITY_LIBRARY_PAGE_SIZE = 10;
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
 const imageCatalogCategory = document.querySelector("#image-catalog-category");
@@ -1088,6 +1100,93 @@ function setImageGenerationReference(file) {
   imageGenerationReferenceHint.textContent = file.name || "Reference image selected · paste to replace";
 }
 
+function saveImageGenerationState() {
+  try {
+    window.localStorage.setItem(IMAGE_GENERATION_STORAGE_KEY, JSON.stringify({
+      mode: imageGenerationMode,
+      prompt: imageGenerationPrompt.value,
+      negativePrompt: imageGenerationNegative.value,
+      width: imageGenerationWidth.value,
+      height: imageGenerationHeight.value,
+      count: imageGenerationCount.value,
+      referenceName: imageGenerationPastedFile?.name || imageGenerationReference.files[0]?.name || "",
+      requestId: state.imageGenerationRequestId,
+    }));
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, "Unable to save Image Generation state in this browser.", "warning");
+  }
+}
+
+function openImageGenerationDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open("zet-image-generation", 1);
+    request.addEventListener("upgradeneeded", () => request.result.createObjectStore("state"), { once: true });
+    request.addEventListener("success", () => resolve(request.result), { once: true });
+    request.addEventListener("error", () => reject(request.error), { once: true });
+  });
+}
+
+async function saveImageGenerationReference() {
+  const database = await openImageGenerationDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction("state", "readwrite");
+    if (imageGenerationReferenceData) transaction.objectStore("state").put(imageGenerationReferenceData, "reference");
+    else transaction.objectStore("state").delete("reference");
+    transaction.addEventListener("complete", resolve, { once: true });
+    transaction.addEventListener("error", () => reject(transaction.error), { once: true });
+  });
+  database.close();
+}
+
+async function restoreImageGenerationInputs() {
+  let saved = null;
+  try {
+    saved = JSON.parse(window.localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY) || "null");
+  } catch {
+    window.localStorage.removeItem(IMAGE_GENERATION_STORAGE_KEY);
+    return;
+  }
+  if (saved && typeof saved === "object") {
+    imageGenerationPrompt.value = saved.prompt || "";
+    imageGenerationNegative.value = saved.negativePrompt || "";
+    if (saved.width) imageGenerationWidth.value = saved.width;
+    if (saved.height) imageGenerationHeight.value = saved.height;
+    if (saved.count) imageGenerationCount.value = saved.count;
+    state.imageGenerationRequestId = saved.requestId || null;
+    setImageGenerationMode(saved.mode === "img2img" ? "img2img" : "txt2img");
+  }
+  try {
+    const database = await openImageGenerationDatabase();
+    imageGenerationReferenceData = await new Promise((resolve, reject) => {
+      const request = database.transaction("state", "readonly").objectStore("state").get("reference");
+      request.addEventListener("success", () => resolve(request.result || ""), { once: true });
+      request.addEventListener("error", () => reject(request.error), { once: true });
+    });
+    database.close();
+    if (imageGenerationReferenceData) {
+      imageGenerationReferenceImage.src = imageGenerationReferenceData;
+      imageGenerationReferenceImage.hidden = false;
+      imageGenerationReferenceHint.textContent = saved?.referenceName || "Reference image selected · paste to replace";
+    }
+  } catch {
+    showMessageElement(imageGenerationMessage, "Unable to restore the saved reference image in this browser.", "warning");
+  }
+}
+
+async function restoreImageGenerationJob() {
+  const requestId = state.imageGenerationRequestId;
+  if (!requestId) return;
+  try {
+    renderImageGenerationStatus(await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { bindToPage: false }));
+    if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(requestId), 500);
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, `Saved Image Generation job could not be restored: ${error.message}`, "warning");
+    if (state.imageGenerationRequestId === requestId) {
+      setTimeout(() => restoreImageGenerationJob(), 4000);
+    }
+  }
+}
+
 function readImageGenerationReference(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1148,7 +1247,7 @@ async function pollImageGeneration(requestId) {
 
 async function submitImageGeneration(event) {
   event.preventDefault();
-  if (imageGenerationMode === "img2img" && !imageGenerationReference.files.length) {
+  if (imageGenerationMode === "img2img" && !imageGenerationReference.files.length && !imageGenerationReferenceData) {
     showMessageElement(imageGenerationMessage, "Choose a reference image for img2img.", "error");
     return;
   }
@@ -1164,6 +1263,7 @@ async function submitImageGeneration(event) {
     const file = imageGenerationMode === "img2img"
       ? (imageGenerationReference.files[0] || imageGenerationPastedFile)
       : null;
+    const referenceImage = file ? await readImageGenerationReference(file) : imageGenerationReferenceData;
     const payload = await fetchJson("/api/image-generation/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1174,12 +1274,13 @@ async function submitImageGeneration(event) {
         width: Number(imageGenerationWidth.value),
         height: Number(imageGenerationHeight.value),
         count: Number(imageGenerationCount.value),
-        reference_image: file ? await readImageGenerationReference(file) : "",
+        reference_image: referenceImage,
       }),
       bindToPage: false,
     });
     state.imageGenerationRequestId = payload.request_id;
     state.imageGenerationTerminal = false;
+    saveImageGenerationState();
     imageGenerationProgress.textContent = "Queued with AI_Proxy…";
     renderImageGenerationStatus(payload);
     if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(payload.request_id), 900);
@@ -1196,28 +1297,40 @@ async function clearImageGenerationResults() {
     await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { method: "DELETE", bindToPage: false });
     state.imageGenerationRequestId = null;
     state.imageGenerationTerminal = false;
+    window.localStorage.removeItem(IMAGE_GENERATION_STORAGE_KEY);
     imageGenerationResultsGrid.replaceChildren();
     imageGenerationProgress.textContent = "";
     imageGenerationSubmit.disabled = false;
     imageGenerationClear.disabled = true;
     showMessageElement(imageGenerationMessage, "Results cleared.", "success");
+    imageGenerationForm.reset();
+    imageGenerationReferenceData = "";
+    imageGenerationPastedFile = null;
+    await saveImageGenerationReference();
+    imageGenerationReferenceImage.removeAttribute("src");
+    imageGenerationReferenceImage.hidden = true;
+    imageGenerationReferenceHint.textContent = "Choose an image or paste one here";
+    setImageGenerationMode("txt2img");
   } catch (error) {
     showMessageElement(imageGenerationMessage, error.message, "error");
   }
 }
 
 async function loadImageGenerationOptions() {
-  if (imageGenerationOptionsLoaded) return;
-  try {
-    const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
-    imageGenerationModel.textContent = `${payload.model} · ${payload.checkpoint}`;
-    imageGenerationCount.value = payload.default_count || 4;
-    imageGenerationWidth.value = payload.default_width || 1024;
-    imageGenerationHeight.value = payload.default_height || 1024;
-    imageGenerationOptionsLoaded = true;
-  } catch (error) {
-    showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
+  if (!imageGenerationOptionsLoaded) {
+    try {
+      const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
+      imageGenerationModel.textContent = `${payload.model} · ${payload.checkpoint}`;
+      imageGenerationCount.value = payload.default_count || 4;
+      imageGenerationWidth.value = payload.default_width || 1024;
+      imageGenerationHeight.value = payload.default_height || 1024;
+      imageGenerationOptionsLoaded = true;
+      await restoreImageGenerationInputs();
+    } catch (error) {
+      showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
+    }
   }
+  await restoreImageGenerationJob();
 }
 
 function showActionMessage(message, kind = "info") {
@@ -8372,6 +8485,13 @@ async function loadEntityLibraryInventory() {
   setSelectOptionsWithLabels(entityLibraryFilterSet, [
     { value: "", label: "All sets" }, ...sets.map((item) => ({ value: item.set_id, label: item.name })),
   ]);
+  const selectedSetId = entityLibrarySetSelect.value;
+  setSelectOptionsWithLabels(entityLibrarySetSelect, [
+    { value: "", label: "Create a new set" },
+    ...sets.map((item) => ({ value: item.set_id, label: `${item.name} (${item.assets?.length || 0})` })),
+  ]);
+  entityLibrarySetSelect.value = sets.some((item) => item.set_id === selectedSetId) ? selectedSetId : "";
+  syncEntityLibrarySetEditor();
   const facetChoices = [...new Map(facets.map((item) => [`${item.namespace}\u0000${item.value}`, item])).values()];
   setSelectOptionsWithLabels(entityLibraryFilterFacet, [
     { value: "", label: "All facets" }, ...facetChoices.map((item) => ({ value: `${item.namespace}\u0000${item.value}`, label: `${item.namespace}: ${item.value}` })),
@@ -8401,7 +8521,8 @@ async function loadEntityLibraryInventory() {
   }
 }
 
-async function searchEntityLibrary() {
+async function searchEntityLibrary(preserveOffset = false) {
+  if (!preserveOffset) entityLibraryPageOffset = 0;
   const params = new URLSearchParams();
   const values = {
     q: entityLibrarySearch.value.trim(), entity_id: entityLibraryFilterEntity.value,
@@ -8415,9 +8536,16 @@ async function searchEntityLibrary() {
     values.facet_value = facet_value;
   }
   for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
+  params.set("offset", String(entityLibraryPageOffset));
+  params.set("limit", String(ENTITY_LIBRARY_PAGE_SIZE));
   entityLibraryCount.textContent = "Searching…";
   const payload = await fetchJson(`/api/entity-library/assets?${params.toString()}`);
   const assets = payload.assets || [];
+  entityLibraryTotal = Number(payload.total || 0);
+  if (!assets.length && entityLibraryPageOffset > 0 && entityLibraryPageOffset >= entityLibraryTotal) {
+    entityLibraryPageOffset = Math.max(0, Math.floor((entityLibraryTotal - 1) / ENTITY_LIBRARY_PAGE_SIZE) * ENTITY_LIBRARY_PAGE_SIZE);
+    return searchEntityLibrary(true);
+  }
   entityLibraryResults.replaceChildren();
   for (const asset of assets) {
     const card = document.createElement("button");
@@ -8440,7 +8568,12 @@ async function searchEntityLibrary() {
     card.addEventListener("click", () => selectEntityLibraryAsset(asset.asset_id));
     entityLibraryResults.append(card);
   }
-  entityLibraryCount.textContent = `${assets.length} image${assets.length === 1 ? "" : "s"}`;
+  const first = entityLibraryTotal ? entityLibraryPageOffset + 1 : 0;
+  const last = Math.min(entityLibraryPageOffset + assets.length, entityLibraryTotal);
+  entityLibraryCount.textContent = `${entityLibraryTotal} image${entityLibraryTotal === 1 ? "" : "s"} · showing ${first}–${last}`;
+  entityLibraryPageStatus.textContent = `Page ${entityLibraryTotal ? Math.floor(entityLibraryPageOffset / ENTITY_LIBRARY_PAGE_SIZE) + 1 : 1}`;
+  entityLibraryPrevious.disabled = entityLibraryPageOffset === 0;
+  entityLibraryNext.disabled = entityLibraryPageOffset + assets.length >= entityLibraryTotal;
 }
 
 function updateEntityLibraryDescriptorOwners() {
@@ -8455,6 +8588,51 @@ function updateEntityLibraryDescriptorOwners() {
       label: `${item.name || item.label}${item.variant_type ? ` · ${item.variant_type}` : ""}`,
     })),
   ]);
+}
+
+function syncEntityLibrarySetEditor() {
+  const selected = entityLibraryMetadata.sets.find((item) => item.set_id === entityLibrarySetSelect.value);
+  entityLibrarySetName.value = selected?.name || "";
+  entityLibrarySetType.value = selected?.set_type || "";
+  entityLibrarySetCreate.hidden = Boolean(selected);
+  entityLibrarySetSave.disabled = !selected;
+  entityLibrarySetDelete.disabled = !selected;
+  entityLibrarySetSave.textContent = "Save set";
+}
+
+async function saveEntityLibrarySet() {
+  const setId = entityLibrarySetSelect.value;
+  if (!setId || !entityLibrarySetName.value.trim()) return;
+  try {
+    await fetchJson(`/api/entity-library/sets/${encodeURIComponent(setId)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: entityLibrarySetName.value, set_type: entityLibrarySetType.value || "general" }),
+    });
+    await loadEntityLibraryInventory();
+    entityLibrarySetSelect.value = setId;
+    syncEntityLibrarySetEditor();
+    showAuxResourceMessage("Reference set saved.", "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function deleteEntityLibrarySet() {
+  const selected = entityLibraryMetadata.sets.find((item) => item.set_id === entityLibrarySetSelect.value);
+  if (!selected) return;
+  const count = selected.assets?.length || 0;
+  const confirmation = count
+    ? `Delete ${selected.name}? Its ${count} image link(s) will be removed; the images will stay in the library.`
+    : `Delete the empty reference set ${selected.name}?`;
+  if (!window.confirm(confirmation)) return;
+  try {
+    await fetchJson(`/api/entity-library/sets/${encodeURIComponent(selected.set_id)}`, { method: "DELETE" });
+    entityLibrarySetSelect.value = "";
+    await loadEntityLibraryInventory();
+    showAuxResourceMessage(`Deleted ${selected.name}.`, "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
 }
 
 async function selectEntityLibraryAsset(assetId) {
@@ -8477,6 +8655,7 @@ async function selectEntityLibraryAsset(assetId) {
   entityLibraryEditCostume.disabled = false;
   entityLibraryEditReference.disabled = false;
   entityLibrarySave.disabled = false;
+  entityLibraryDelete.disabled = asset.status === "archived";
   entityLibraryReplacementFile.disabled = false;
   entityLibraryReplace.disabled = false;
   entityLibraryEditLabel.value = asset.label || "";
@@ -8502,7 +8681,27 @@ async function selectEntityLibraryAsset(assetId) {
     row.textContent = "No current consumers.";
     entityLibraryUsages.append(row);
   }
-  await searchEntityLibrary();
+  await searchEntityLibrary(true);
+}
+
+async function deleteEntityLibraryAsset() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset || asset.status === "archived") return;
+  if (!window.confirm(`Delete ${asset.label || asset.file_name} from the image inventory?`)) return;
+  entityLibraryDelete.disabled = true;
+  try {
+    await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" });
+    entityLibrarySelectedAsset = null;
+    entityLibraryEditorTitle.textContent = "Select an image";
+    entityLibraryPreview.hidden = true;
+    entityLibraryBack.hidden = true;
+    document.querySelector(".entity-library-layout").classList.remove("metadata-mode");
+    await loadEntityLibraryInventory();
+    showAuxResourceMessage("Image deleted from the inventory.", "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+    entityLibraryDelete.disabled = false;
+  }
 }
 
 async function saveEntityLibraryAsset() {
@@ -12606,6 +12805,14 @@ for (const control of [builderImagePickerVariant, builderImagePickerSet, builder
 }
 builderImagePickerMode.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 entityLibraryRefresh.addEventListener("click", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
+entityLibraryPrevious.addEventListener("click", () => {
+  entityLibraryPageOffset = Math.max(0, entityLibraryPageOffset - ENTITY_LIBRARY_PAGE_SIZE);
+  searchEntityLibrary(true).catch((error) => { entityLibraryCount.textContent = error.message; });
+});
+entityLibraryNext.addEventListener("click", () => {
+  entityLibraryPageOffset += ENTITY_LIBRARY_PAGE_SIZE;
+  searchEntityLibrary(true).catch((error) => { entityLibraryCount.textContent = error.message; });
+});
 for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin]) {
   control.addEventListener("change", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
 }
@@ -12654,12 +12861,17 @@ entityLibraryEntityCreate.addEventListener("click", async () => {
 });
 entityLibrarySetCreate.addEventListener("click", async () => {
   try {
-    await fetchJson("/api/entity-library/sets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: entityLibrarySetName.value, set_type: entityLibrarySetType.value || "general" }) });
+    const payload = await fetchJson("/api/entity-library/sets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: entityLibrarySetName.value, set_type: entityLibrarySetType.value || "general" }) });
     entityLibrarySetName.value = "";
     entityLibrarySetType.value = "";
     await loadEntityLibraryInventory();
+    entityLibrarySetSelect.value = payload.set?.set_id || "";
+    syncEntityLibrarySetEditor();
   } catch (error) { window.alert(error.message); }
 });
+entityLibrarySetSelect.addEventListener("change", syncEntityLibrarySetEditor);
+entityLibrarySetSave.addEventListener("click", saveEntityLibrarySet);
+entityLibrarySetDelete.addEventListener("click", deleteEntityLibrarySet);
 entityLibraryVariantCreate.addEventListener("click", async () => {
   if (!entityLibraryVariantEntity.value || !entityLibraryVariantName.value.trim()) return;
   try {
@@ -12708,6 +12920,7 @@ entityLibrarySave.addEventListener("click", async () => {
     entityLibrarySave.disabled = !entityLibrarySelectedAsset;
   }
 });
+entityLibraryDelete.addEventListener("click", deleteEntityLibraryAsset);
 entityLibraryReplacementFile.addEventListener("change", () => {
   state.entityLibraryReplacementBlob = null;
   entityLibraryReplacementPaste.textContent = entityLibraryReplacementFile.files?.[0]?.name || "Or click here and paste a replacement image";
@@ -13052,22 +13265,25 @@ imageCatalogBulkClear.addEventListener("click", () => {
   state.selectedImageCatalogIds = [];
   renderImageCatalog();
 });
-imageGenerationTxt2img.addEventListener("click", () => setImageGenerationMode("txt2img"));
-imageGenerationImg2img.addEventListener("click", () => setImageGenerationMode("img2img"));
+imageGenerationTxt2img.addEventListener("click", () => { setImageGenerationMode("txt2img"); saveImageGenerationState(); });
+imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode("img2img"); saveImageGenerationState(); });
 imageGenerationForm.addEventListener("submit", submitImageGeneration);
 imageGenerationClear.addEventListener("click", clearImageGenerationResults);
 imageGenerationReference.addEventListener("change", () => {
   imageGenerationPastedFile = null;
   setImageGenerationReference(imageGenerationReference.files[0]);
+  const file = imageGenerationReference.files[0];
+  if (file) readImageGenerationReference(file).then((data) => {
+    imageGenerationReferenceData = data;
+    saveImageGenerationReference().catch(() => showMessageElement(imageGenerationMessage, "Unable to save the reference image.", "error"));
+    saveImageGenerationState();
+  }).catch(() => showMessageElement(imageGenerationMessage, "Unable to save the reference image.", "error"));
 });
-imageGenerationReferencePreview.addEventListener("click", () => imageGenerationReference.click());
-imageGenerationReferencePreview.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    imageGenerationReference.click();
-  }
-});
-imageGenerationReferencePreview.addEventListener("paste", (event) => {
+for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight, imageGenerationCount]) {
+  input.addEventListener("input", saveImageGenerationState);
+  input.addEventListener("change", saveImageGenerationState);
+}
+imageGenerationReferencePreview.addEventListener("paste", async (event) => {
   if (imageGenerationMode !== "img2img") return;
   const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
   const file = imageItem?.getAsFile();
@@ -13076,6 +13292,9 @@ imageGenerationReferencePreview.addEventListener("paste", (event) => {
     imageGenerationReference.value = "";
     imageGenerationPastedFile = file;
     setImageGenerationReference(file);
+    imageGenerationReferenceData = await readImageGenerationReference(file);
+    await saveImageGenerationReference();
+    saveImageGenerationState();
   }
 });
 localImageReviewPrev.addEventListener("click", () => {

@@ -237,6 +237,7 @@ class GateTestRigService:
             (staging / self.PROMPT_FILE).write_text(prompt, encoding="utf-8")
             manifest = {
                 "version": AI_PROXY_PROTOCOL_VERSION, "ask_id": ask_id, "asset_id": None,
+                "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "pipeline": "Gate-Test-Rig", "pipeline_stage": f"GATE_TEST_{gate.upper()}",
                 "worker_type": "ollama_generate", "ollama_model": config["model"],
                 "ollama_chat": config["api"] == "chat", "ollama_force_generate": config["api"] == "generate",

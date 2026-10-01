@@ -2175,13 +2175,15 @@ def create_app(
         q: str = Query(""), entity_id: str = Query(""), entity_type: str = Query(""),
         variant_id: str = Query(""), set_id: str = Query(""), facet_namespace: str = Query(""),
         facet_value: str = Query(""), origin: str = Query(""), status: str = Query(""),
+        offset: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=10),
     ) -> dict[str, Any]:
         try:
             service = _app(app.state.config_path).entity_library_service
             filters = {"q": q, "entity_id": entity_id, "entity_type": entity_type, "variant_id": variant_id,
                        "set_id": set_id, "facet_namespace": facet_namespace, "facet_value": facet_value,
                        "origin": origin, "status": status}
-            return {"assets": service.list_assets(**{key: value for key, value in filters.items() if value})}
+            assets = service.list_assets(**{key: value for key, value in filters.items() if value})
+            return {"assets": assets[offset:offset + limit], "total": len(assets), "offset": offset, "limit": limit}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2294,6 +2296,22 @@ def create_app(
     def entity_library_set_create(data: dict = Body(...)) -> dict[str, Any]:
         try:
             return {"set": _app(app.state.config_path).entity_library_create_set(data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/entity-library/sets/{set_id}")
+    def entity_library_set_update(set_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return {"set": zet_app._indexed_write(lambda: zet_app.entity_library_service.update_set(set_id, data))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/entity-library/sets/{set_id}")
+    def entity_library_set_delete(set_id: str) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return {"result": zet_app._indexed_write(lambda: zet_app.entity_library_service.delete_set(set_id))}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

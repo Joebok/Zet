@@ -175,21 +175,23 @@ def test_foreign_answer_is_rejected_and_preserved(tmp_path: Path) -> None:
     service.clear(result["request_id"])
 
 
-def test_completed_results_expire_after_an_hour(tmp_path: Path) -> None:
-    service, _config_path = _service(tmp_path)
+def test_completed_results_survive_service_restart_until_cleared(tmp_path: Path) -> None:
+    service, config_path = _service(tmp_path)
     result = service.submit({"mode": "txt2img", "prompt": "A red marble mask", "count": 1})
     job = service._jobs[result["request_id"]]
     child = job["children"][0]
     answer_path = _finish_proxy_child(service, child, success=True)
-    service.status(result["request_id"])
+    status = service.status(result["request_id"])
     assert not answer_path.exists()
 
-    job["finished_at"] -= 3601
-    service._expire_jobs()
-
-    assert result["request_id"] not in service._jobs
-    with pytest.raises(KeyError, match="expired"):
-        service.status(result["request_id"])
+    restarted = AdHocImageGenerationService(
+        ZetApp.from_config(config_path, validate_catalog=False), Path(__file__).resolve().parents[1],
+    )
+    assert restarted.status(result["request_id"]) == status
+    assert restarted.image(result["request_id"], 0) == (png_bytes(), "image/png")
+    restarted.clear(result["request_id"])
+    with pytest.raises(KeyError, match="not found"):
+        restarted.status(result["request_id"])
 
 
 def test_image_generation_api_exposes_defaults_and_validates_dimensions(tmp_path: Path) -> None:

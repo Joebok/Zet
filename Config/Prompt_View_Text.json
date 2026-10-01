@@ -100,7 +100,7 @@
     },
     "BACK_LEFT_3_4": {
       "label": "back-left three-quarter view",
-      "local_head_image_instruction": "The camera is behind the character, toward screen-left. Show the back of the skull, hair, and nape as the dominant surfaces; the near side is closest to the camera. At most, show a sliver of near-side cheek or jaw.",
+      "local_head_image_instruction": "The camera is behind the character, offset toward screen-left. Keep the camera-side (near) side of the head on screen-left and closest to the camera; show the back of the skull, hair, and nape as the dominant surfaces. The head and face plane point away from the camera toward screen-right. At most, show a sliver of the screen-left, camera-side cheek or jaw. If visible, the near-side ear shows only its smooth outer back and rim; its opening and recessed inner folds, including the triangular fossa, face away from the camera. Keep the far-side ear mostly hidden. Do not turn the face back toward the camera.",
       "local_head_image_gaze": "Keep the face turned away; no eye or expression is visible.",
       "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same back-left three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is behind the character, toward screen-left.",
@@ -114,13 +114,13 @@
         "costume-dressing": "Preserve the Assembled Character source as a back-left three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-left three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-image": "Render the source character's head in a true back-left three-quarter view. Preserve the same person's identity while changing only what the current phase requires. The back of the skull and hairstyle must remain dominant; the near side is more exposed. Show only a small target-view hint of the near-side cheek or jaw if naturally visible. Do not turn the face toward the viewer, do not reveal a recognizable side profile, and do not increase visibility of the eyes, nose, mouth, cheek, or expression beyond what a rear three-quarter view allows.",
+        "head-image": "Render the source character's head in a true back-left three-quarter view: the camera is behind and offset toward screen-left, so the screen-left side is the camera-side near side. Preserve the same person's identity while changing only what the current phase requires. Keep the back of the skull and hairstyle dominant, with the head and face plane pointing away from the camera toward screen-right. Show at most a small sliver of the screen-left, camera-side cheek or jaw. If visible, the near-side ear shows its smooth outer back and rim; its opening and recessed inner folds, including the triangular fossa, face away from the camera, while the far-side ear stays mostly hidden. Do not turn the face toward the camera or viewer, do not reveal a recognizable side profile, and do not increase visibility of the eyes, nose, mouth, cheek, or expression beyond what this rear three-quarter angle allows.",
         "character-assembly": "Preserve the Character Head's back-left three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
     "BACK_RIGHT_3_4": {
       "label": "back-right three-quarter view",
-      "local_head_image_instruction": "The camera is behind the character, toward screen-right. Show the back of the skull, hair, and nape as the dominant surfaces; the near side is closest to the camera. At most, show a sliver of near-side cheek or jaw.",
+      "local_head_image_instruction": "The camera is behind the character, offset toward screen-right. Keep the camera-side (near) side of the head on screen-right and closest to the camera; show the back of the skull, hair, and nape as the dominant surfaces. The head and face plane point away from the camera toward screen-left. At most, show a sliver of the screen-right, camera-side cheek or jaw. If visible, the near-side ear shows only its smooth outer back and rim; its opening and recessed inner folds, including the triangular fossa, face away from the camera. Keep the far-side ear mostly hidden. Do not turn the face back toward the camera.",
       "local_head_image_gaze": "Keep the face turned away; no eye or expression is visible.",
       "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same back-right three-quarter orientation. Do not introduce independent head rotation at the neck.",
       "camera_position": "The camera is behind the character, toward screen-right.",
@@ -134,13 +134,13 @@
         "costume-dressing": "Preserve the Assembled Character source as a back-right three-quarter full-body source. Treat the head, neck, shoulders, torso, hips, knees, and feet as one locked back-right three-quarter orientation. Do not rotate, mirror, repaint a viewer-facing head, create a profile body, or reinterpret the body direction while replacing the costume."
       },
       "head_instructions": {
-        "head-image": "Render the source character's head in a true back-right three-quarter view. Preserve the same person's identity while changing only what the current phase requires. The back of the skull and hairstyle must remain dominant; the near side is more exposed. Show only a small target-view hint of the near-side cheek or jaw if naturally visible. Do not turn the face toward the viewer, do not reveal a recognizable side profile, and do not increase visibility of the eyes, nose, mouth, cheek, or expression beyond what a rear three-quarter view allows.",
+        "head-image": "Render the source character's head in a true back-right three-quarter view: the camera is behind and offset toward screen-right, so the screen-right side is the camera-side near side. Preserve the same person's identity while changing only what the current phase requires. Keep the back of the skull and hairstyle dominant, with the head and face plane pointing away from the camera toward screen-left. Show at most a small sliver of the screen-right, camera-side cheek or jaw. If visible, the near-side ear shows its smooth outer back and rim; its opening and recessed inner folds, including the triangular fossa, face away from the camera, while the far-side ear stays mostly hidden. Do not turn the face toward the camera or viewer, do not reveal a recognizable side profile, and do not increase visibility of the eyes, nose, mouth, cheek, or expression beyond what this rear three-quarter angle allows.",
         "character-assembly": "Preserve the Character Head's back-right three-quarter orientation, facial-plane direction, feature visibility, and supplied gaze exactly."
       }
     },
     "BACK": {
       "label": "back view",
-      "local_head_image_instruction": "The camera is directly behind the character. Show the back of the skull, hair, and nape; the face is fully turned away.",
+      "local_head_image_instruction": "The camera is directly behind the character. Show the back of the skull, hair, and nape; the face is fully turned away. Any visible ear turns with the head: show its smooth outer back and rim, while the ear opening and recessed inner folds, including the triangular fossa, face away from the camera.",
       "local_head_image_gaze": "No eyes or facial features are visible.",
       "orientation_sentence": "The head, neck, torso, and feet remain aligned in the same direct back orientation. Do not introduce independent head rotation.",
       "costume_dressing_orientation_lock": "Preserve a true direct back orientation with the body and head facing away. Do not reveal more face than the supplied source or turn the character toward the viewer.",
@@ -153,7 +153,7 @@
         "costume-dressing": "Preserve the Assembled Character source as a direct back-view full-body source, facing away from the viewer squarely."
       },
       "head_instructions": {
-        "head-image": "Render the source character's head in direct back view, facing away from the viewer squarely. Preserve the same person's identity while changing only what the current phase requires. Do not reveal the face or turn the head toward either side. The requested target view overrides any source-image orientation.",
+        "head-image": "Render the source character's head in direct back view, facing away from the viewer squarely. Preserve the same person's identity while changing only what the current phase requires. Any visible ear turns with the head: show its smooth outer back and rim, while the ear opening and recessed inner folds, including the triangular fossa, face away from the camera. Do not reveal the face or turn the head toward either side. The requested target view overrides any source-image orientation.",
         "character-assembly": "Preserve the Character Head's direct back orientation and supplied gaze exactly. Do not reveal the face."
       }
     }

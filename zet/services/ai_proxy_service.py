@@ -646,6 +646,7 @@ class AIProxyService:
             "task_type": "local_test_render",
             "auxiliary": True,
             "consumer": str(consumer or "zet").strip() or "zet",
+            "queue_priority": 100 if consumer == "zet-image-generation" else 0,
             "ad_hoc_request_id": manifest.get("ad_hoc_request_id"),
             "source_ask_id": manifest.get("ask_id"),
             "source_prompt_file": prompt_path.name,

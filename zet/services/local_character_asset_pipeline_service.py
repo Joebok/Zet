@@ -1033,6 +1033,7 @@ class LocalCharacterAssetPipelineService:
             shutil.copy2(path, staging / name)
         (staging / "OLLAMA_PROMPT.md").write_text(gate.prompt, encoding="utf-8")
         manifest = {"version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+                    "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
                     "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}",
                     "pipeline_stage": f"LOCAL_{self.pipeline.upper().replace('-', '_')}_{gate.key.upper()}_GATE",
                     "worker_type": "ollama_generate", "ollama_model": str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis-alt:latest")),

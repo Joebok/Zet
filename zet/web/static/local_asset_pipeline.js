@@ -139,6 +139,7 @@
       other_count: Number($("other-count").value),
       use_front_anchor: hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || state.pipeline === "head-image",
       front_source_path: state.frontSourcePath,
+      apply_phase_change: state.pipeline === "head-image" && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
       source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
     };
   }
@@ -397,6 +398,7 @@
   function renderViews(run) {
     const host = $("views");
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
+    const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
     host.replaceChildren();
     for (const view of run.views || []) {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
@@ -491,10 +493,17 @@
       links.append(document.createTextNode(" · "));
       addLink(links, "Image prompt", route("image-prompt", run.run_id, view));
       details.append(links);
+      const observationDetails = document.createElement("details");
+      observationDetails.className = "local-pipeline-observations";
+      observationDetails.dataset.view = view;
+      observationDetails.open = previousObservationsOpen.get(view) || false;
+      const observationSummary = document.createElement("summary");
+      observationSummary.textContent = "Observations";
+      observationDetails.append(observationSummary);
       const observationSection = document.createElement("section");
       observationSection.className = "local-pipeline-view-observations";
       const observationsLabel = document.createElement("label");
-      observationsLabel.textContent = "Observations";
+      observationsLabel.textContent = "Your observations";
       const observations = document.createElement("textarea");
       observations.dataset.viewObservations = view;
       observations.value = run.view_reviews?.[view]?.observations || "";
@@ -507,7 +516,7 @@
       aiContent.className = "muted local-pipeline-ai-observations";
       aiContent.textContent = `${ai.status || "Pending"}${ai.error ? ` · ${ai.error}` : ""}${ai.stale_reason ? ` · ${ai.stale_reason}` : ""}${ai.text ? `\n\n${ai.text}` : ""}`;
       observationSection.append(aiHeading, aiContent);
-      details.append(observationSection);
+      observationDetails.append(observationSection);
       if (evaluation.evaluation_id || ranking.status) {
         const reviewProgress = document.createElement("p");
         reviewProgress.className = "muted local-pipeline-review-progress";
@@ -525,6 +534,7 @@
       });
       for (const candidate of candidates) gallery.append(renderCandidate(view, candidate, ranking, run));
       details.append(gallery);
+      details.append(observationDetails);
       host.append(details);
     }
     state.renderedSelections = { ...(run.selected_views || {}) };
@@ -556,7 +566,8 @@
     }
     const progress = run.page_summary || {};
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
-    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
+    const phaseChangeSummary = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules applied" : "";
+    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     renderSelectedViews(run);
@@ -628,7 +639,8 @@
     const select = $("runs");
     select.replaceChildren();
     for (const run of state.runs) {
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status} · ${run.run_id}`, run.run_id));
+      const phaseChangeLabel = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules" : "";
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -666,6 +678,8 @@
     state.polledRun = null;
     state.renderedSelections = {};
     state.frontSourcePath = "";
+    $("apply-phase-change").checked = false;
+    $("apply-phase-change").disabled = true;
     $("source-preview").textContent = "No FRONT reference selected.";
     $("source-file").value = "";
     $("source-remove").hidden = true;
@@ -698,6 +712,8 @@
     state.contextKey = contextKey();
     state.run = null;
     state.frontSourcePath = "";
+    $("apply-phase-change").checked = false;
+    $("apply-phase-change").disabled = true;
     document.querySelector("#local-pipeline-title").textContent = {
       "body-reference": "Body-Reference", "head-image": "Head-Image",
       "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing",
@@ -735,6 +751,7 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || "Could not upload the reference image.");
       state.frontSourcePath = data.path || "";
+      $("apply-phase-change").disabled = !state.frontSourcePath;
       $("source-preview").replaceChildren();
       const image = document.createElement("img");
       image.src = URL.createObjectURL(file);
@@ -786,6 +803,25 @@
       const order = state.run?.rankings?.[left.view]?.ordered_candidate_ids || [];
       return order.indexOf(left.candidate_id) - order.indexOf(right.candidate_id);
     });
+  }
+
+  async function saveReviewDecision(candidate) {
+    const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value || "undecided";
+    await perform("review", candidate.view, candidate.candidate_id, { decision });
+    state.reviewCandidates = orderedReviewCandidates();
+    state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
+    return state.reviewCandidates[state.reviewIndex] || candidate;
+  }
+
+  async function navigateReview(direction) {
+    const candidate = state.reviewCandidates[state.reviewIndex];
+    if (!candidate) return;
+    try {
+      await saveReviewDecision(candidate);
+      state.reviewCandidates = orderedReviewCandidates();
+      state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id) + direction;
+      renderReview();
+    } catch (error) { setStatus(error.message, true); }
   }
 
   function renderReview() {
@@ -860,11 +896,8 @@
     save.className = "primary-action";
     save.textContent = "Save review";
     save.addEventListener("click", async () => {
-      const selected = decision.querySelector("input:checked")?.value || "undecided";
       try {
-        await perform("review", candidate.view, candidate.candidate_id, { decision: selected });
-        state.reviewCandidates = orderedReviewCandidates();
-        state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
+        await saveReviewDecision(candidate);
         renderReview();
       } catch (error) { setStatus(error.message, true); }
     });
@@ -873,6 +906,7 @@
     select.disabled = selectedViews[candidate.view] === candidate.candidate_id;
     select.addEventListener("click", async () => {
       try {
+        await saveReviewDecision(candidate);
         await perform("select", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id });
         state.reviewCandidates = orderedReviewCandidates();
         state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
@@ -920,6 +954,7 @@
       up.disabled = adjustedPosition <= 0;
       up.addEventListener("click", async () => {
         try {
+          await saveReviewDecision(candidate);
           await perform("move-rank", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id, direction: "up" });
           state.reviewCandidates = orderedReviewCandidates();
           state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
@@ -932,6 +967,7 @@
       down.disabled = adjustedPosition >= adjustedOrder.length - 1;
       down.addEventListener("click", async () => {
         try {
+          await saveReviewDecision(candidate);
           await perform("move-rank", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id, direction: "down" });
           state.reviewCandidates = orderedReviewCandidates();
           state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
@@ -1042,6 +1078,8 @@
       try {
         const created = await request(route("create"), { method: "POST", body: JSON.stringify(payload()) });
         state.frontSourcePath = "";
+        $("apply-phase-change").checked = false;
+        $("apply-phase-change").disabled = true;
         $("source-file").value = "";
         $("source-preview").textContent = "No FRONT reference selected.";
         $("source-remove").hidden = true;
@@ -1077,6 +1115,8 @@
     });
     $("source-remove").addEventListener("click", async () => {
       state.frontSourcePath = "";
+      $("apply-phase-change").checked = false;
+      $("apply-phase-change").disabled = true;
       $("source-file").value = "";
       $("source-preview").textContent = "No FRONT reference selected.";
       $("source-remove").hidden = true;
@@ -1101,8 +1141,8 @@
       if (event.target === $("gate-prompt-dialog")) $("gate-prompt-dialog").close();
     });
     $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
-    $("review-prev").addEventListener("click", () => { state.reviewIndex -= 1; renderReview(); });
-    $("review-next").addEventListener("click", () => { state.reviewIndex += 1; renderReview(); });
+    $("review-prev").addEventListener("click", () => { void navigateReview(-1); });
+    $("review-next").addEventListener("click", () => { void navigateReview(1); });
   }
 
   async function activate(page) {

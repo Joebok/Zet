@@ -15,6 +15,7 @@ from zet.models.worker import WorkerContext
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.character_onboarding_service import CharacterOnboardingService, FOUNDATION_VIEWS
 from zet.services.config_service import Config
+from zet.services.file_proxy_client import FileProxyClient
 from zet.services.local_head_image_service import LocalHeadImageService, VIEWS
 from zet.services import atomic_file_service
 from zet.services.path_service import PathService
@@ -37,6 +38,46 @@ def config_for(root: Path) -> Config:
 
 
 class HeadImageCompilerTests(unittest.TestCase):
+    def test_local_head_gate_ask_and_route_include_run_universe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = Config(
+                base_library_path=str(root / "Library"),
+                base_character_path=str(root / "Library" / "Characters"),
+                base_asset_path=str(root / "Assets"),
+                base_pipeline_path=str(root / "Pipelines"),
+                base_ai_queue_path=str(root / "Queue"),
+                universe_id="Eberron",
+                universe_is_legacy=False,
+            )
+            character_dir = Path(config.base_character_path) / "Test" / "Adult"
+            character_dir.mkdir(parents=True)
+            template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+            shutil.copy2(template, character_dir / "Character.md")
+            proxy = FileProxyClient(config.base_ai_queue_path)
+            app = SimpleNamespace(
+                config=config,
+                ai_proxy_service=SimpleNamespace(
+                    ai_proxy_path_service=SimpleNamespace(file_proxy_client=proxy),
+                ),
+            )
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({
+                "character": "Test", "phase": "Adult", "front_count": 1,
+                "other_count": 1, "seeds": list(range(8)),
+            })
+            candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+            image = root / "candidate.png"
+            image.write_bytes(b"candidate image")
+            candidate["image_path"] = str(image)
+
+            queued = service._queue_gate(run["run_id"], candidate, service.review_gates("FRONT")[0])
+
+            ask = json.loads((proxy.ready_path(queued["ask_id"]) / "ask_manifest.json").read_text(encoding="utf-8"))
+            route = json.loads((proxy.route_root / f"{queued['ask_id']}.json").read_text(encoding="utf-8"))
+            self.assertEqual("Eberron", ask["universe_id"])
+            self.assertEqual("Eberron", route["universe_id"])
+
     def test_local_head_review_includes_background_gate_for_every_view(self) -> None:
         for view in VIEWS:
             with self.subTest(view=view):
@@ -187,6 +228,53 @@ class HeadImageCompilerTests(unittest.TestCase):
                         self.assertNotIn("Eye shape:", prompt)
                         self.assertNotIn("large expressive eyes", prompt)
 
+    def test_local_rear_view_overrides_survive_source_as_is(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = root / "Character.md"
+            shared = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md").read_text(encoding="utf-8")
+
+            def replace_section(text: str, name: str, content: str) -> str:
+                begin = f"<!-- ZET:BEGIN {name} -->"
+                end = f"<!-- ZET:END {name} -->"
+                start = text.index(begin) + len(begin)
+                finish = text.index(end, start)
+                return text[:start] + "\n" + content + "\n" + text[finish:]
+
+            shared = replace_section(shared, "HEAD_DESCRIPTION_VIEW_OVERRIDES", "\n".join((
+                "<!-- ZET:VIEW_DOMAIN head -->",
+                "* [head:bl] <!-- ZET:SPATIAL asymmetry --> Rear three-quarter head shows the anatomical-left ear outer rim.",
+                "* [head:br] <!-- ZET:SPATIAL asymmetry --> Rear three-quarter head shows the anatomical-right ear outer rim.",
+                "* [head:b] Back view head shows both ear tips and the nape.",
+            )))
+            shared = replace_section(shared, "HAIR_DESCRIPTION_VIEW_OVERRIDES", "\n".join((
+                "<!-- ZET:VIEW_DOMAIN head -->",
+                "* [head:bl] Back-left hair shows the rounded bob.",
+                "* [head:br] Back-right hair shows the rounded bob.",
+                "* [head:b] Back hair shows the rounded bob.",
+            )))
+            template.write_text(shared, encoding="utf-8")
+            source = root / "front.png"
+            source.write_bytes(b"front anchor")
+            expected = {
+                "BACK_LEFT_3_4": ("Rear three-quarter head shows the near-side ear outer rim.", "Back-left hair shows"),
+                "BACK_RIGHT_3_4": ("Rear three-quarter head shows the near-side ear outer rim.", "Back-right hair shows"),
+                "BACK": ("Back view head shows both ear tips and the nape.", "Back hair shows"),
+            }
+            for view, (head_text, hair_text) in expected.items():
+                with self.subTest(view=view):
+                    result = compile_head_image_job({
+                        "Job": f"rear-{view}", "Task": "head-image", "Character": "Test", "Phase": "Adult",
+                        "Head View": view, "Template Path": str(template), "Output Directory": str(root / view),
+                        "Reference Files": [{"role": "head_image_source", "path": str(source)}],
+                    }, PROJECT_ROOT, pipeline_mode="local")
+                    prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+                    self.assertIn(head_text, prompt)
+                    self.assertIn(hair_text, prompt)
+                    self.assertNotIn("anatomical-left", prompt)
+                    self.assertNotIn("anatomical-right", prompt)
+                    self.assertNotIn("Eye shape:", prompt)
+
     def test_local_phase_changes_are_compact_and_traditional_transform_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -195,7 +283,8 @@ class HeadImageCompilerTests(unittest.TestCase):
             source.write_bytes(b"source")
             reference = [{"role": "head_image_source", "path": str(source)}]
             job = {"Job": "elder-phase", "Task": "head-image", "Character": "Tsaeytte", "Phase": "Elder",
-                   "Head View": "Front", "Template Path": str(template), "Reference Files": reference}
+                   "Head View": "Front", "Template Path": str(template), "Reference Files": reference,
+                   "Apply Phase Change": True}
             local = compile_head_image_job({**job, "Output Directory": str(root / "local")}, PROJECT_ROOT,
                                            pipeline_mode="local")
             local_prompt = Path(local["final_prompt"]).read_text(encoding="utf-8")
@@ -214,6 +303,110 @@ class HeadImageCompilerTests(unittest.TestCase):
             traditional_prompt = Path(traditional["final_prompt"]).read_text(encoding="utf-8")
             self.assertIn("primary goal of this task is successful age transformation", traditional_prompt)
             self.assertIn("The final face must read as Elder Tsaeytte", traditional_prompt)
+
+    def test_local_phase_changes_are_conditioned_and_work_in_a_source_guided_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            characters = root / "Library" / "Characters" / "Tsaeytte" / "Elder"
+            characters.mkdir(parents=True)
+            template = characters / "Character.md"
+            shared_template = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md").read_text(encoding="utf-8")
+
+            def replace_section(text: str, name: str, content: str) -> str:
+                begin = f"<!-- ZET:BEGIN {name} -->"
+                end = f"<!-- ZET:END {name} -->"
+                start = text.index(begin) + len(begin)
+                finish = text.index(end, start)
+                return text[:start] + "\n\n" + content + "\n\n" + text[finish:]
+
+            phase_changes = (
+                "<!-- ZET:VIEW_DOMAIN head -->\n"
+                "* [head:all] <!-- ZET:SPATIAL asymmetry --> Show the same Tsaeytte in her Elder phase, "
+                "with visible age lines and luminous silver hair, an anatomical-left side part."
+            )
+            template_text = replace_section(shared_template, "HEAD_IMAGE_LOCAL_PHASE_CHANGES", phase_changes)
+            template_text = replace_section(
+                template_text, "HEAD_IMAGE_TRANSFORM_INSTRUCTIONS", "Traditional Elder transformation contract."
+            )
+            template.write_text(template_text, encoding="utf-8")
+
+            source = root / "adult_front.png"
+            source.write_bytes(b"adult source")
+            app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
+                                                         base_character_path=str(root / "Library" / "Characters")))
+            service = LocalHeadImageService(app, PROJECT_ROOT)
+            run = service.create_run({
+                "character": "Tsaeytte", "phase": "Elder", "front_count": 1, "other_count": 1,
+                "front_source_path": str(source), "apply_phase_change": True, "seeds": list(range(8)),
+            })
+
+            prompt_path = Path(run["front_prompt_path"])
+            prompt = prompt_path.read_text(encoding="utf-8")
+            manifest = json.loads((prompt_path.parent / "dependency_manifest.json").read_text(encoding="utf-8"))
+            source_map = json.loads((prompt_path.parent / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
+            self.assertIn("same Tsaeytte in her Elder phase", prompt)
+            self.assertIn("visible age lines and luminous silver hair", prompt)
+            self.assertIn("screen-right side part", prompt)
+            self.assertNotIn("ZET:", prompt)
+            self.assertEqual("edit", manifest["render_mode"])
+            self.assertTrue(run["apply_phase_change"])
+            run_summary = next(item for item in service.list_runs("Tsaeytte", "Elder")
+                               if item["run_id"] == run["run_id"])
+            self.assertTrue(run_summary["apply_phase_change"])
+            self.assertEqual(str(template), next(
+                fragment["source_path"] for fragment in source_map["fragments"]
+                if fragment.get("placeholder") == "{{LOCAL_PHASE_CHANGES}}"
+            ))
+
+            no_source = compile_head_image_job({
+                "Job": "elder-text", "Task": "head-image", "Character": "Tsaeytte", "Phase": "Elder",
+                "Head View": "FRONT", "Template Path": str(template), "Output Directory": str(root / "no-source"),
+                "Reference Files": [],
+            }, PROJECT_ROOT, pipeline_mode="local")
+            no_source_manifest = json.loads(Path(no_source["dependency_manifest"]).read_text(encoding="utf-8"))
+            self.assertEqual("generate", no_source_manifest["render_mode"])
+            no_source_run = service.create_run({
+                "character": "Tsaeytte", "phase": "Elder", "front_count": 1, "other_count": 1,
+                "apply_phase_change": True, "seeds": list(range(8)),
+            })
+            self.assertFalse(no_source_run["apply_phase_change"])
+
+            as_is = compile_head_image_job({
+                "Job": "elder-as-is", "Task": "head-image", "Character": "Tsaeytte", "Phase": "Elder",
+                "Head View": "FRONT", "Template Path": str(template), "Output Directory": str(root / "as-is"),
+                "Reference Files": [{"role": "head_image_source", "path": str(source)}],
+                "Apply Phase Change": False,
+            }, PROJECT_ROOT, pipeline_mode="local")
+            as_is_prompt = Path(as_is["final_prompt"]).read_text(encoding="utf-8")
+            self.assertNotIn("same Tsaeytte in her Elder phase", as_is_prompt)
+            self.assertIn("Preserve its visible age, facial presentation, and hairstyle", as_is_prompt)
+            self.assertNotIn("target-phase Character.md controls explicitly described phase traits", as_is_prompt)
+
+            as_is_run = service.create_run({
+                "character": "Tsaeytte", "phase": "Elder", "front_count": 1, "other_count": 1,
+                "front_source_path": str(source), "seeds": list(range(8)),
+            })
+            self.assertFalse(as_is_run["apply_phase_change"])
+            self.assertNotIn("same Tsaeytte in her Elder phase",
+                             Path(as_is_run["front_prompt_path"]).read_text(encoding="utf-8"))
+
+            rear = compile_head_image_job({
+                "Job": "elder-rear", "Task": "head-image", "Character": "Tsaeytte", "Phase": "Elder",
+                "Head View": "BACK_RIGHT_3_4", "Template Path": str(template), "Output Directory": str(root / "rear"),
+                "Reference Files": [{"role": "head_image_source", "path": str(source)}],
+            }, PROJECT_ROOT, pipeline_mode="local")
+            rear_prompt = Path(rear["final_prompt"]).read_text(encoding="utf-8")
+            self.assertNotIn("same Tsaeytte in her Elder phase", rear_prompt)
+            self.assertIn("Preserve its visible age, facial presentation, and hairstyle", rear_prompt)
+            self.assertNotIn("ZET:", rear_prompt)
+
+            traditional = compile_head_image_job({
+                "Job": "elder-traditional", "Task": "head-image", "Character": "Tsaeytte", "Phase": "Elder",
+                "Head View": "FRONT", "Template Path": str(template), "Output Directory": str(root / "traditional"),
+                "Reference Files": [{"role": "head_image_source", "path": str(source)}],
+            }, PROJECT_ROOT)
+            traditional_prompt = Path(traditional["final_prompt"]).read_text(encoding="utf-8")
+            self.assertIn("Traditional Elder transformation contract", traditional_prompt)
 
     def test_local_non_front_requires_selected_front_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -243,6 +436,7 @@ class HeadImageCompilerTests(unittest.TestCase):
             self.assertEqual(8, run["candidate_count"])
             self.assertEqual("QUEUED", run["status"])
             self.assertEqual("", run["front_source"])
+            self.assertFalse(run["apply_phase_change"])
             prompt = Path(run["front_prompt_path"]).read_text(encoding="utf-8")
             self.assertNotIn("source image", prompt.lower())
             self.assertEqual(1, len([item for item in run["candidates"] if item["view"] == "FRONT"]))

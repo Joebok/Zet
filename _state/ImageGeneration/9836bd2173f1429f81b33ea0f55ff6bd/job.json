@@ -1,0 +1,29 @@
+{
+  "request_id": "9836bd2173f1429f81b33ea0f55ff6bd",
+  "mode": "txt2img",
+  "prompt": "A red marble mask",
+  "negative_prompt": "",
+  "width": 1024,
+  "height": 1024,
+  "count": 1,
+  "children": [
+    {
+      "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261001_061700_251144_988cca9eeee048b8b598f9dd1f71bc14",
+      "index": 0,
+      "done": true
+    }
+  ],
+  "status": "COMPLETE",
+  "error": "",
+  "failures": 0,
+  "created_at": 1790860620.2821198,
+  "finished_at": 1790860620.3140967,
+  "workspace": "C:\\Users\\Joe\\AppData\\Local\\Temp\\zet-ad-hoc-image-generation\\9836bd2173f1429f81b33ea0f55ff6bd",
+  "prompt_path": "C:\\Users\\Joe\\AppData\\Local\\Temp\\zet-ad-hoc-image-generation\\9836bd2173f1429f81b33ea0f55ff6bd\\Final_Image_Prompt.md",
+  "images": [
+    {
+      "filename": "image-0.bin",
+      "content_type": "image/png"
+    }
+  ]
+}

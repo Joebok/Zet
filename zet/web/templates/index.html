@@ -273,6 +273,7 @@
             <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
             <div id="local-pipeline-source-option" hidden>
               <label>Optional FRONT reference<input id="local-pipeline-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+              <label id="local-pipeline-apply-phase-change-option" class="local-pipeline-recompile-option"><span>Apply Phase Change</span><input id="local-pipeline-apply-phase-change" type="checkbox" disabled></label>
               <div id="local-pipeline-source-paste" class="local-pipeline-source-paste" contenteditable="true" role="textbox" aria-label="Paste optional FRONT reference image">Click here, then paste a reference image</div>
               <div id="local-pipeline-source-preview" class="muted">No FRONT reference selected.</div>
               <button id="local-pipeline-source-remove" type="button" hidden>Remove reference</button>
@@ -534,10 +535,11 @@
             <button id="entity-library-relation-create" type="button">Link entities</button>
           </section>
           <section class="control-panel">
-            <h2>Create reference set</h2>
+            <h2>Reference sets</h2>
+            <label>Set<select id="entity-library-set-select"></select></label>
             <label>Name<input id="entity-library-set-name"></label>
             <label>Purpose<input id="entity-library-set-type" placeholder="identity, costume, prop detail..."></label>
-            <button id="entity-library-set-create" type="button">Create set</button>
+            <div class="button-row compact"><button id="entity-library-set-create" type="button">Create set</button><button id="entity-library-set-save" type="button" disabled>Rename set</button><button id="entity-library-set-delete" class="danger-action" type="button" disabled>Delete set</button></div>
           </section>
           <section class="control-panel">
             <h2>Shared prompt descriptor</h2>
@@ -549,7 +551,7 @@
           </section>
         </aside>
         <section class="control-panel entity-library-results-panel">
-          <div class="image-catalog-results-heading"><h2>Images</h2></div>
+          <div class="image-catalog-results-heading"><h2>Images</h2><div class="entity-library-pagination"><button id="entity-library-previous" type="button" disabled>Previous</button><span id="entity-library-page-status" class="status-text">Page 1</span><button id="entity-library-next" type="button" disabled>Next</button></div></div>
           <div id="entity-library-results" class="image-catalog-grid"></div>
         </section>
         <aside class="review-actions entity-library-editor">
@@ -569,6 +571,7 @@
           <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
           <div id="entity-library-replacement-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste a replacement image"><p>Or click here and paste a replacement image</p></div>
           <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
+          <button id="entity-library-delete" class="danger-action" type="button" disabled>Delete image</button>
           <h3>Where used</h3>
           <ul id="entity-library-usages"></ul>
         </aside>
@@ -1774,14 +1777,14 @@
             <button id="image-generation-txt2img" type="button" class="primary-action" aria-pressed="true">txt2img</button>
             <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
           </div>
+          <div id="image-generation-reference-preview" class="paste-zone image-generation-reference-preview" tabindex="0" role="button" aria-label="Paste a reference image" hidden>
+            <img id="image-generation-reference-image" alt="Selected img2img reference preview" hidden>
+            <p id="image-generation-reference-hint">Click here, then press Ctrl+V to paste an image.</p>
+          </div>
           <label id="image-generation-reference-field" hidden>
             Reference image
             <input id="image-generation-reference" type="file" accept="image/png,image/jpeg,image/webp">
           </label>
-          <div id="image-generation-reference-preview" class="image-generation-reference-preview" tabindex="0" role="button" aria-label="Choose or paste a reference image" hidden>
-            <img id="image-generation-reference-image" alt="Selected img2img reference preview" hidden>
-            <span id="image-generation-reference-hint">Choose an image or paste one here</span>
-          </div>
           <label>
             Prompt
             <textarea id="image-generation-prompt" rows="6" required placeholder="Describe the prop, creature, or image you want to generate."></textarea>
@@ -2182,7 +2185,7 @@ Add prompt language here.
   </main>
 
   <script src="/static/zet.js?v=20260930-local-batch-deeplink"></script>
-  <script src="/static/local_asset_pipeline.js?v=20260926-gate-prompt-dialog"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261001-review-autosave"></script>
   <script src="/static/local_batch_status.js?v=20260926-batch-status"></script>
 </body>
 </html>

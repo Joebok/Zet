@@ -44,6 +44,7 @@ test("universe pages create and save canonical art style", async ({ page }) => {
 
 test("ad hoc image generation stages img2img dimensions and displays downloadable results", async ({ page }) => {
   let submitted;
+  let failNextJobRead = false;
   await page.route("**/api/image-generation/options", (route) => route.fulfill({
     json: {
       model: "Qwen Image 2.1", checkpoint: "qwen.safetensors", default_count: 4,
@@ -63,13 +64,19 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
     }
     await route.fulfill({ json: { message: "Image generation results cleared." } });
   });
-  await page.route("**/api/image-generation/jobs/browser-image-job", (route) => route.fulfill({
+  await page.route("**/api/image-generation/jobs/browser-image-job", (route) => {
+    if (failNextJobRead && route.request().method() === "GET") {
+      failNextJobRead = false;
+      return route.fulfill({ status: 503, json: { detail: "Temporary service restart" } });
+    }
+    return route.fulfill({
     json: {
       request_id: "browser-image-job", mode: "img2img", status: "COMPLETE",
       requested: 1, completed: 1, failed: 0, error: "",
       images: [{ index: 0, url: "/api/image-generation/jobs/browser-image-job/images/0" }],
     },
-  }));
+    });
+  });
   await page.route("**/api/image-generation/jobs/browser-image-job/images/0", (route) => route.fulfill({
     status: 200,
     contentType: "image/png",
@@ -100,6 +107,15 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
   expect(submitted.reference_image).toMatch(/^data:image\/png;base64,/);
   await expect(page.getByRole("link", { name: "Download 1" })).toBeVisible();
   await expect(page.locator("#image-generation-progress")).toContainText("complete");
+  failNextJobRead = true;
+  await page.reload();
+  await expect(page.locator("#image-generation-prompt")).toHaveValue("Make the object carved from jade");
+  await expect(page.locator("#image-generation-width")).toHaveValue("1280");
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Download 1" })).toBeVisible();
+  await page.locator("#image-generation-clear").click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(0);
+  await expect(page.locator("#image-generation-prompt")).toHaveValue("");
 });
 
 test("navigation cancels a delayed review load and ignores its late response", async ({ page }) => {
@@ -1349,11 +1365,23 @@ test("all Local asset routes share batch UI and expose only pipeline-specific in
     else await expect(page.locator("#local-pipeline-costume-label")).toBeHidden();
     if (["local-character-assembly", "local-costume-dressing"].includes(pageName)) await expect(page.locator("#local-pipeline-anchor-option")).toBeVisible();
     else await expect(page.locator("#local-pipeline-anchor-option")).toBeHidden();
-    if (pageName === "local-head-image") await expect(page.locator("#local-pipeline-source-option")).toBeVisible();
-    else await expect(page.locator("#local-pipeline-source-option")).toBeHidden();
+    if (pageName === "local-head-image") {
+      await expect(page.locator("#local-pipeline-source-option")).toBeVisible();
+      await expect(page.locator("#local-pipeline-apply-phase-change")).toBeVisible();
+      await expect(page.locator("#local-pipeline-apply-phase-change")).not.toBeChecked();
+      await expect(page.locator("#local-pipeline-apply-phase-change")).toBeDisabled();
+      await page.locator("#local-pipeline-source-file").setInputFiles({
+        name: "adult-front.png", mimeType: "image/png",
+        buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64"),
+      });
+      await expect(page.locator("#local-pipeline-apply-phase-change")).toBeEnabled();
+      await page.locator("#local-pipeline-apply-phase-change").check();
+      await page.locator("#local-pipeline-preview").click();
+      await expect.poll(() => previews.some((item) => item.body.apply_phase_change === true)).toBeTruthy();
+    } else await expect(page.locator("#local-pipeline-source-option")).toBeHidden();
   }
   expect(runLists).toHaveLength(4);
-  expect(previews).toHaveLength(4);
+  expect(previews).toHaveLength(5);
   for (const call of runLists) {
     expect(call).toMatch(/character=/);
     expect(call).toMatch(/phase=/);
