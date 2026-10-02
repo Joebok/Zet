@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 from zet.models.ai_proxy import AIProxyAnswerManifest, AIProxyAskManifest
 from zet.services.config_service import Config
+from zet.services.ai_queue_lifecycle_service import AIQueueLifecycleService
 from zet.services.file_proxy_client import FileProxyClient
 from zet.services.workflow_storage import task_state_path
 
@@ -16,7 +17,8 @@ class AIProxyPathService:
 
     def __init__(self, config: Config):
         self.config = config
-        self.file_proxy_client = FileProxyClient(config.base_ai_queue_path)
+        self.lifecycle = AIQueueLifecycleService(config)
+        self.file_proxy_client = self.lifecycle.file_proxy_client()
 
     def ask_root(self) -> Path:
         return self.file_proxy_client.ask_root
@@ -115,6 +117,8 @@ class AIProxyPathService:
                 if state == "answer" and root == self.manual_answer_root():
                     paths = [path for path in paths if (path / "answer_manifest.json").is_file()]
                 yield from paths
+            if state == "answer":
+                yield from self.lifecycle.inbox_answers()
 
     @staticmethod
     def read_ask_manifest(task_path: Path) -> AIProxyAskManifest:

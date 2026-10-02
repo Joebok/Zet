@@ -39,6 +39,7 @@ from zet.services.local_run_all_remaining_service import LocalRunAllRemainingSer
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
+from zet.web.local_scene_batch_router import create_local_scene_batch_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
@@ -1050,6 +1051,7 @@ def create_app(
     )
     app.include_router(create_pipeline_inspection_router(lambda: _app(app.state.config_path)))
     app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
+    app.include_router(create_local_scene_batch_router(lambda: _app(app.state.config_path)))
     app.include_router(create_ad_hoc_image_generation_router(lambda: app.state.image_generation_service))
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
@@ -2262,6 +2264,20 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/entity-library/entities/{entity_id}")
+    def entity_library_entity_update(entity_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"entity": _app(app.state.config_path).entity_library_update_entity(entity_id, data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/entity-library/entities/{entity_id}")
+    def entity_library_entity_delete(entity_id: str) -> dict[str, Any]:
+        try:
+            return {"result": _app(app.state.config_path).entity_library_delete_entity(entity_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/entity-library/entities/{entity_id}/variants")
     def entity_library_variant_create(entity_id: str, data: dict = Body(...)) -> dict[str, Any]:
         try:
@@ -2277,11 +2293,41 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/entity-library/variants/{variant_id}")
+    def entity_library_variant_update(variant_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"variant": _app(app.state.config_path).entity_library_update_variant(variant_id, data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/entity-library/variants/{variant_id}")
+    def entity_library_variant_delete(variant_id: str) -> dict[str, Any]:
+        try:
+            return {"result": _app(app.state.config_path).entity_library_delete_variant(variant_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/entity-library/relations")
     def entity_library_relation_create(data: dict = Body(...)) -> dict[str, Any]:
         try:
             zet_app = _app(app.state.config_path)
             return {"relation": zet_app._indexed_write(lambda: zet_app.entity_library_service.create_relation(data))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/relations")
+    def entity_library_relations(entity_id: str = Query(...)) -> dict[str, Any]:
+        try:
+            return {"relations": _app(app.state.config_path).entity_library_service.list_relations(entity_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/entity-library/relations")
+    def entity_library_relation_delete(source_entity_id: str = Query(...), target_entity_id: str = Query(...), relation_type: str = Query(...)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            result = zet_app._indexed_write(lambda: zet_app.entity_library_service.delete_relation(source_entity_id, target_entity_id, relation_type))
+            return {"result": result}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2323,6 +2369,15 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.delete("/api/entity-library/sets/{set_id}/assets/{asset_id}")
+    def entity_library_set_asset_remove(set_id: str, asset_id: str) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            result = zet_app._indexed_write(lambda: zet_app.entity_library_service.remove_set_asset(set_id, asset_id))
+            return {"set": result}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/entity-library/descriptors")
     def entity_library_descriptor_save(data: dict = Body(...)) -> dict[str, Any]:
         try:
@@ -2334,6 +2389,43 @@ def create_app(
     def entity_library_facets() -> dict[str, Any]:
         try:
             return {"facets": _app(app.state.config_path).entity_library_service.list_facets()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/facets")
+    def entity_library_facet_create(data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"facet": _app(app.state.config_path).entity_library_create_facet(data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/entity-library/facets/{facet_id}")
+    def entity_library_facet_update(facet_id: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            return {"facet": _app(app.state.config_path).entity_library_update_facet(facet_id, data)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/api/entity-library/facets/{facet_id}")
+    def entity_library_facet_delete(facet_id: str) -> dict[str, Any]:
+        try:
+            return {"result": _app(app.state.config_path).entity_library_delete_facet(facet_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/merges/{kind}/preview")
+    def entity_library_merge_preview(kind: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            result = _app(app.state.config_path).entity_library_service.preview_merge(kind, data.get("source_id", ""), data.get("target_id", ""))
+            return {"preview": result}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/merges/{kind}")
+    def entity_library_merge(kind: str, data: dict = Body(...)) -> dict[str, Any]:
+        try:
+            result = _app(app.state.config_path).entity_library_merge(kind, data.get("source_id", ""), data.get("target_id", ""), data.get("token", ""), data.get("resolutions") or {})
+            return {"result": result}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -3611,8 +3703,8 @@ def create_app(
 
     @app.get("/api/local-image/checkpoints")
     def local_image_checkpoints(
-        preset: str = Query("body-reference-preview"),
-        backend: str = Query("stable_matrix"),
+        preset: str = Query("comfyui-qwen-image-2-1-scene"),
+        backend: str = Query("comfyui"),
     ) -> dict[str, Any]:
         try:
             zet_app = _app(app.state.config_path)
@@ -4038,11 +4130,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8081)
+    parser.add_argument("--debug", action="store_true", help="Keep completed queue payloads locally for recovery.")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.debug:
+        import os
+        os.environ["ZET_AI_QUEUE_DEBUG"] = "1"
     import uvicorn
 
     uvicorn.run(create_app(args.config), host=args.host, port=args.port, reload=False)

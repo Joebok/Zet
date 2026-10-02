@@ -55,8 +55,6 @@
             <option value="">Scene workflow...</option>
             <option value="scene-builder">Builder</option>
             <option value="prompt-review">Prompt / Analysis</option>
-            <option value="render-console">Render Task</option>
-            <option value="render-review">Candidate Review</option>
             <option value="locked-image">Locked Image</option>
           </select>
         </label>
@@ -101,17 +99,14 @@
       <button class="tab workflow-tab" data-page="scenes">Scenes</button>
       <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
       <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
+      <button class="tab workflow-tab" data-page="scene-batches">Scene Batches</button>
       <button class="tab workflow-tab" data-page="zine">Zines</button>
       <div class="production-navigation" aria-label="Story production">
         <button class="tab production-tab" data-page="prompt-review">Prompt / Analysis <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
-        <button class="tab production-tab" data-page="render-console">Render Console <span class="production-count" data-production-count="render_waiting" hidden></span></button>
-        <button class="tab production-tab" data-page="render-review">Image Review <span class="production-count" data-production-count="image_review_waiting" hidden></span></button>
       </div>
       <select id="story-production-menu" class="tab production-menu" aria-label="Story production tools">
         <option value="" selected>Production ▾</option>
         <option value="prompt-review">Prompt / Analysis</option>
-        <option value="render-console">Render Console</option>
-        <option value="render-review">Image Review</option>
       </select>
     </div>
     <div class="toolbar-actions">
@@ -493,15 +488,25 @@
     <section id="auxiliary-resources-page" class="page">
       <div class="page-title-row">
         <h1>Image Inventory</h1>
+        <button id="entity-library-open-import" type="button" class="secondary-action">Add image</button>
       </div>
-      <div class="entity-library-layout">
-        <div class="entity-library-mode-heading">
-          <button id="entity-library-back" class="text-action" type="button" hidden>← Back to images</button>
-        </div>
+      <nav class="inventory-navigation" aria-label="Image inventory pages">
+        <button type="button" class="inventory-nav active" data-inventory-view="search">Search images</button>
+        <button type="button" class="inventory-nav" data-inventory-view="entities">Entities</button>
+        <button type="button" class="inventory-nav" data-inventory-view="variants">Variants</button>
+        <button type="button" class="inventory-nav" data-inventory-view="sets">Reference sets</button>
+        <button type="button" class="inventory-nav" data-inventory-view="facets">Facets</button>
+      </nav>
+      <section id="entity-library-search-view" class="inventory-view active">
+        <form id="entity-library-search-form" class="inventory-search-bar">
+          <label class="visually-hidden" for="entity-library-search">Search images</label>
+          <input id="entity-library-search" type="search" placeholder="Search by name, subject, set, tag, or facet" autocomplete="off">
+          <button id="entity-library-refresh" class="primary-action" type="submit">Search</button>
+        </form>
+        <div class="entity-library-layout">
         <aside class="entity-library-sidebar">
-          <section class="control-panel">
-            <h2>Find images</h2>
-            <label>Search<input id="entity-library-search" type="search" placeholder="Name, entity, set, or facet"></label>
+          <details class="control-panel inventory-filter-panel">
+            <summary>Filters <span id="entity-library-active-filter-count"></span></summary>
             <label>Entity<select id="entity-library-filter-entity"></select></label>
             <label>Entity type<select id="entity-library-filter-type"><option value="">All types</option></select></label>
             <label>Variant<select id="entity-library-filter-variant"></select></label>
@@ -509,9 +514,10 @@
             <label>Facet<select id="entity-library-filter-facet"></select></label>
             <label>Status<select id="entity-library-filter-status"><option value="">All statuses</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
             <label>Origin<select id="entity-library-filter-origin"><option value="">All origins</option><option value="import">Imported</option><option value="pipeline">Locked pipeline</option></select></label>
-            <button id="entity-library-refresh" class="primary-action" type="button">Search library</button>
+            <button id="entity-library-clear-filters" class="text-action" type="button">Clear filters</button>
+            <div id="entity-library-filter-chips" class="inventory-filter-chips" aria-label="Active filters"></div>
             <div id="entity-library-count" class="status-text" role="status"></div>
-          </section>
+          </details>
           <section class="control-panel">
             <h2>Add image</h2>
             <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
@@ -554,28 +560,50 @@
           <div class="image-catalog-results-heading"><h2>Images</h2><div class="entity-library-pagination"><button id="entity-library-previous" type="button" disabled>Previous</button><span id="entity-library-page-status" class="status-text">Page 1</span><button id="entity-library-next" type="button" disabled>Next</button></div></div>
           <div id="entity-library-results" class="image-catalog-grid"></div>
         </section>
+        </div>
+      </section>
+      <section id="entity-library-detail-view" class="inventory-view" hidden>
+        <button id="entity-library-back" class="text-action" type="button">← Back to search</button>
         <aside class="review-actions entity-library-editor">
-          <h2 id="entity-library-editor-title">Select an image</h2>
-          <img id="entity-library-preview" class="image-preview fullscreen-image-trigger" alt="Selected library image" hidden>
-          <label>Name<input id="entity-library-edit-label" disabled></label>
-          <label>Notes<textarea id="entity-library-edit-notes" disabled></textarea></label>
-          <label>Status<select id="entity-library-edit-status" disabled><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
-          <label>Entity links<select id="entity-library-edit-entities" multiple size="6" disabled></select><small>Use Ctrl or Command to select more than one entity.</small></label>
-          <label>Reference sets<select id="entity-library-edit-sets" multiple size="5" disabled></select><small>Group images of the same subject or purpose; use Ctrl or Command to select multiple sets.</small></label>
-          <label>Facets<textarea id="entity-library-edit-facets" placeholder="view:front, framing:object_detail" aria-describedby="entity-library-facets-help" disabled></textarea><small id="entity-library-facets-help">Comma-separated namespace:value pairs, for example view:front, view:left_profile, framing:object_detail. Views are searchable metadata; select the rendered view with tagged template lines.</small></label>
-          <label>Free tags<textarea id="entity-library-edit-tags" placeholder="necklace, earrings" disabled></textarea><small>Comma-separated search words or phrases; no namespace needed.</small></label>
-          <label>Prompt identity<textarea id="entity-library-edit-identity" disabled></textarea></label>
-          <label>Prompt costume<textarea id="entity-library-edit-costume" disabled></textarea></label>
-          <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
-          <button id="entity-library-save" class="primary-action" type="button" disabled>Save image</button>
-          <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
-          <div id="entity-library-replacement-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste a replacement image"><p>Or click here and paste a replacement image</p></div>
-          <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
-          <button id="entity-library-delete" class="danger-action" type="button" disabled>Delete image</button>
-          <h3>Where used</h3>
-          <ul id="entity-library-usages"></ul>
+          <section class="inventory-detail-group">
+            <h2 id="entity-library-editor-title">Select an image</h2>
+            <img id="entity-library-preview" class="image-preview fullscreen-image-trigger" alt="Selected library image" hidden>
+            <label>Name<input id="entity-library-edit-label" disabled></label>
+            <label>Notes<textarea id="entity-library-edit-notes" disabled></textarea></label>
+            <label>Status<select id="entity-library-edit-status" disabled><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
+            <button id="entity-library-save" class="primary-action" type="button" disabled>Save image</button>
+          </section>
+          <section class="inventory-detail-group"><h3>Organization</h3>
+            <label>Entity links<select id="entity-library-edit-entities" multiple size="6" disabled></select><small>Use Ctrl or Command to select more than one entity.</small></label>
+            <label>Reference sets<select id="entity-library-edit-sets" multiple size="5" disabled></select><small>Group images of the same subject or purpose; use Ctrl or Command to select multiple sets.</small></label>
+            <label>Facets<textarea id="entity-library-edit-facets" placeholder="view:front, framing:object_detail" aria-describedby="entity-library-facets-help" disabled></textarea><small id="entity-library-facets-help">Comma-separated namespace:value pairs, for example view:front, view:left_profile, framing:object_detail. Views are searchable metadata; select the rendered view with tagged template lines.</small></label>
+            <label>Free tags<textarea id="entity-library-edit-tags" placeholder="necklace, earrings" disabled></textarea><small>Comma-separated search words or phrases; no namespace needed.</small></label>
+          </section>
+          <section class="inventory-detail-group"><h3>Prompt descriptions</h3>
+            <label>Prompt identity<textarea id="entity-library-edit-identity" disabled></textarea></label>
+            <label>Prompt costume<textarea id="entity-library-edit-costume" disabled></textarea></label>
+            <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
+          </section>
+          <section class="inventory-detail-group inventory-detail-actions"><h3>Image actions</h3>
+            <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
+            <div id="entity-library-replacement-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste a replacement image"><p>Or click here and paste a replacement image</p></div>
+            <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
+            <button id="entity-library-delete" class="danger-action" type="button" disabled>Archive image</button>
+          </section>
+          <section class="inventory-detail-group"><h3>Where used</h3><ul id="entity-library-usages"></ul></section>
         </aside>
-      </div>
+      </section>
+      <section id="entity-library-organizer-view" class="inventory-view" hidden>
+        <div id="entity-library-organizer"></div>
+      </section>
+      <dialog id="entity-library-import-dialog" class="inventory-dialog">
+        <div id="entity-library-import-dialog-content"></div>
+        <button id="entity-library-close-import" type="button">Close</button>
+      </dialog>
+      <dialog id="entity-library-merge-dialog" class="inventory-dialog">
+        <h2>Review merge</h2><div id="entity-library-merge-content"></div>
+        <div class="button-row"><button id="entity-library-merge-cancel" type="button">Cancel</button><button id="entity-library-merge-confirm" class="primary-action" type="button" disabled>Merge records</button></div>
+      </dialog>
       <div id="aux-resource-message" class="action-message" hidden></div>
       <div class="image-catalog-layout" hidden>
         <aside class="image-catalog-sidebar">
@@ -980,7 +1008,7 @@
                 <span id="scene-save-state" class="save-state" aria-live="polite"></span>
                 <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
                 <button id="scene-builder-open" class="navigation-action" type="button" disabled>Builder</button>
-                <button id="scene-stage-render" class="update-action" type="button" disabled>Render</button>
+                <button id="scene-stage-render" class="update-action" type="button" disabled>Scene Batches</button>
                 <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
                 <button id="scene-delete" class="danger-action" type="button" disabled>Delete Scene</button>
               </div>
@@ -1029,6 +1057,28 @@
           </table>
         </aside>
       </div>
+    </section>
+
+    <section id="scene-batches-page" class="page">
+      <div class="page-heading"><h1>Scene Batches</h1><span id="scene-batch-context"></span></div>
+      <p id="scene-batch-message" role="status"></p>
+      <div class="settings-form">
+        <label>Batch history<select id="scene-batch-history"></select></label>
+        <label>Batch name<input id="scene-batch-name" type="text"></label>
+        <button id="scene-batch-rename" type="button" disabled>Rename batch</button>
+        <details><summary>New batch candidate counts</summary><div id="scene-batch-plan" class="settings-form"></div></details>
+        <button id="scene-batch-new" type="button">Create Scene Batch</button>
+      </div>
+      <p id="scene-batch-status" class="status-text"></p>
+      <div class="button-row compact">
+        <button id="scene-batch-start" type="button" disabled>Continue / Resume</button>
+        <button id="scene-batch-stop" type="button" disabled>Stop</button>
+        <button id="scene-batch-refresh" type="button">Refresh</button>
+        <button id="scene-batch-recompile" type="button" disabled>Recompile from current scene (resets selections)</button>
+        <button id="scene-batch-publish" type="button" disabled>Publish Scene</button>
+        <a id="scene-batch-package" hidden>Prompt Improvement Package</a>
+      </div>
+      <div id="scene-batch-groups"></div>
     </section>
 
     <section id="zine-page" class="page">
@@ -1374,7 +1424,7 @@
             <h2 id="prompt-review-title">Select a prompt</h2>
             <div class="button-row compact">
               <button id="prompt-review-scene-builder" class="navigation-action" hidden>Scene Builder</button>
-              <button id="prompt-review-render-console" class="navigation-action" disabled>Render Console</button>
+              <button id="prompt-review-render-console" class="navigation-action" hidden disabled>Retired</button>
               <button id="copy-prompt">Copy Prompt</button>
               <button id="analyze-prompt" type="button" disabled>Run analysis</button>
               <button id="view-prompt-analysis" class="scene-builder-analysis-view" type="button" disabled>View analysis</button>
@@ -1739,9 +1789,9 @@
             <tbody></tbody>
           </table>
         </section>
-        <section class="control-panel ai-render-console-panel">
+        <section class="control-panel ai-render-console-panel" hidden>
           <h2>Render Console</h2>
-          <button id="open-render-console-tab" class="navigation-action">Open Render Console</button>
+          <button id="open-render-console-tab" class="navigation-action" hidden>Retired</button>
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
         </section>
@@ -1919,12 +1969,11 @@
             <label>
               Image generation
               <select id="setting-local-render-backend" form="automation-form">
-                <option value="stable_matrix">Stable Matrix</option>
                 <option value="comfyui">ComfyUI</option>
               </select>
             </label>
-            <fieldset id="stable-matrix-settings">
-              <legend>Stable Matrix</legend>
+            <fieldset id="stable-matrix-settings" hidden disabled>
+              <legend>Retired settings</legend>
               <label>
                 Render profile
                 <select id="setting-local-render-preset" form="automation-form"></select>
@@ -1934,7 +1983,7 @@
                 Checkpoint
                 <select id="setting-local-render-checkpoint" form="automation-form"></select>
               </label>
-              <button id="refresh-local-render-checkpoints" type="button">Refresh Stable Matrix Checkpoints</button>
+              <button id="refresh-local-render-checkpoints" type="button">Retired</button>
               <label>Positive prompt globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
               <label>Negative prompt globals<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
             </fieldset>
@@ -2184,8 +2233,9 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260930-local-batch-deeplink"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261001-review-autosave"></script>
+  <script src="/static/zet.js?v=20261001-scene-cutover"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
+  <script src="/static/local_scene_batches.js?v=20261001-scene-batches"></script>
   <script src="/static/local_batch_status.js?v=20260926-batch-status"></script>
 </body>
 </html>

@@ -56,6 +56,17 @@ class EntityLibraryRepository:
                     name TEXT NOT NULL, variant_type TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(entity_id, name, variant_type)
                 );
+                CREATE TABLE IF NOT EXISTS entity_name_aliases (
+                    name TEXT NOT NULL, entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+                    PRIMARY KEY(name, entity_type)
+                );
+                CREATE TABLE IF NOT EXISTS variant_name_aliases (
+                    entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
+                    name TEXT NOT NULL, variant_type TEXT NOT NULL,
+                    variant_id TEXT NOT NULL REFERENCES variants(variant_id) ON DELETE CASCADE,
+                    PRIMARY KEY(entity_id, name, variant_type)
+                );
                 CREATE TABLE IF NOT EXISTS entity_relations (
                     source_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,
                     target_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE CASCADE,

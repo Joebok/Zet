@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from Scripts.Compile_Character_Template import TemplateCompileError
-from Scripts.Library_Paths import library_root, load_project_config, resolve_library_path
+from Scripts.Library_Paths import library_root, load_project_config
 from zet.repositories.entity_library_repository import EntityLibraryRepository
 from zet.services.entity_library_service import EntityLibraryService, EntityLibraryServiceError
 from zet.services.path_service import PathService
@@ -16,9 +17,17 @@ IMAGE_TAG_RE = re.compile(r"\{\{IMAGE:(img_[A-Za-z0-9_-]+)\}\}")
 LIB_REFERENCE_TAG_RE = re.compile(r"\{\{LIB:REF:([a-z0-9][a-z0-9._-]*)\}\}")
 
 
-def auxiliary_inventory_path(project_root: Path) -> Path:
+def _reference_paths(project_root: Path, universe_root: str | Path | None = None) -> PathService:
+    """Resolve image references within the job's universe or current selection."""
+    config = load_project_config(project_root)
+    root = Path(universe_root).expanduser().resolve() if universe_root is not None else library_root(project_root)
+    return PathService(replace(config, base_library_path=str(root),
+                               library_container_path=config.base_library_path), project_root)
+
+
+def auxiliary_inventory_path(project_root: Path, *, universe_root: str | Path | None = None) -> Path:
     """Return the global auxiliary resource inventory path."""
-    return library_root(project_root) / "_state" / "AuxiliaryResourceIndex.json"
+    return _reference_paths(project_root, universe_root).auxiliary_resource_inventory_path()
 
 
 def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str, str]]:
@@ -26,11 +35,12 @@ def auxiliary_tags_in_text(text: str) -> list[tuple[str, str, str, str]]:
     return auxiliary_resource_tags_in_text(text)
 
 
-def load_auxiliary_resource_lookup(project_root: Path) -> list[dict]:
+def load_auxiliary_resource_lookup(project_root: Path, *, universe_root: str | Path | None = None) -> list[dict]:
     """Load auxiliary resource records."""
-    path = auxiliary_inventory_path(project_root)
+    paths = _reference_paths(project_root, universe_root)
+    path = paths.auxiliary_resource_inventory_path()
     if not path.is_file():
-        legacy_root = library_root(project_root) / "AuxiliaryResources" / "AuxiliaryResources.json"
+        legacy_root = paths.library_path("AuxiliaryResources", "AuxiliaryResources.json")
         if legacy_root.is_file():
             path = legacy_root
     if not path.exists():
@@ -50,15 +60,15 @@ def load_auxiliary_resource_lookup(project_root: Path) -> list[dict]:
     return records
 
 
-def load_managed_image_lookup(project_root: Path) -> dict[str, dict]:
+def load_managed_image_lookup(project_root: Path, *, universe_root: str | Path | None = None) -> dict[str, dict]:
     """Load catalog-owned imported images keyed by their stable tag."""
-    universe_root = library_root(project_root)
+    service = _reference_paths(project_root, universe_root)
+    universe_root = service.entity_library_root()
     catalog_root = universe_root / "_state" / "ImageCatalog"
     if not catalog_root.is_dir():
         catalog_root = universe_root / "ImageCatalog"
     legacy_references: dict[str, dict] = {}
     try:
-        service = PathService(load_project_config(project_root), project_root)
         catalog = EntityLibraryRepository(service.entity_library_database_path())
         rows = catalog.fetchall("SELECT r.reference_tag,a.asset_id,a.label,a.file_name,a.checksum,a.status FROM legacy_image_references r JOIN assets a ON a.asset_id=r.asset_id") if service.entity_library_database_path().is_file() else []
         for row in rows:
@@ -105,7 +115,10 @@ def load_managed_image_lookup(project_root: Path) -> dict[str, dict]:
     raise TemplateCompileError("MALFORMED_IMAGE_CATALOG", f"Image catalog has no managed_images object: {path}")
 
 
-def auxiliary_references_for_texts(project_root: Path, texts: list[str], existing_references: list[dict]) -> list[dict]:
+def auxiliary_references_for_texts(
+    project_root: Path, texts: list[str], existing_references: list[dict],
+    *, universe_root: str | Path | None = None,
+) -> list[dict]:
     """Append auxiliary image references for all tags found in source/prompt text."""
     combined_text = "\n\n".join(text for text in texts if text)
     tags = auxiliary_tags_in_text(combined_text)
@@ -114,8 +127,9 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
     if not tags and not image_tags and not library_tags:
         return existing_references
 
-    lookup = load_auxiliary_resource_lookup(project_root)
-    managed_lookup = load_managed_image_lookup(project_root)
+    paths = _reference_paths(project_root, universe_root)
+    lookup = load_auxiliary_resource_lookup(project_root, universe_root=paths.entity_library_root())
+    managed_lookup = load_managed_image_lookup(project_root, universe_root=paths.entity_library_root())
     references = list(existing_references)
     existing_keys = {
         (
@@ -135,7 +149,7 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
                 resource, image = auxiliary_resource_image_for_tag(lookup, tag)
             except LookupError:
                 raise TemplateCompileError("MISSING_REFERENCE", f"Auxiliary resource tag not found: {tag}")
-        image_path = resolve_library_path(project_root, str(image.get("image_path") or ""))
+        image_path = paths.resolve_path(str(image.get("image_path") or ""))
         if not image_path.exists() or not image_path.is_file():
             raise TemplateCompileError("MISSING_REFERENCE", f"Auxiliary resource image not found for {tag}: {image_path}")
         key = ("auxiliary_resource", category, resource_id, str(image_path))
@@ -166,7 +180,7 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
         image = managed_lookup.get(tag)
         if image is None:
             raise TemplateCompileError("MISSING_REFERENCE", f"Imported image tag not found: {tag}")
-        image_path = resolve_library_path(project_root, str(image.get("image_path") or ""))
+        image_path = paths.resolve_path(str(image.get("image_path") or ""))
         if not image_path.is_file():
             raise TemplateCompileError("MISSING_REFERENCE", f"Imported image file not found for {tag}: {image_path}")
         key = ("imported_image", "", "", str(image_path))
@@ -181,8 +195,6 @@ def auxiliary_references_for_texts(project_root: Path, texts: list[str], existin
         })
         existing_keys.add(key)
     if library_tags:
-        config = load_project_config(project_root)
-        paths = PathService(config, project_root)
         repository = EntityLibraryRepository(paths.entity_library_database_path())
         if not repository.database_path.is_file():
             raise TemplateCompileError("MISSING_REFERENCE", f"Entity image library not found: {repository.database_path}")

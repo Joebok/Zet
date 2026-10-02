@@ -178,6 +178,7 @@ class ZetApp:
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
+        self.ai_queue_lifecycle_service = asset_service.ai_answer_harvester.ai_proxy_path_service.lifecycle
         self.prompt_review_service = prompt_review_service
         self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
@@ -205,6 +206,8 @@ class ZetApp:
         self.library_deletion_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
+        from zet.services.local_scene_batch_service import LocalSceneBatchService
+        self.local_scene_batch_service = LocalSceneBatchService(self, Path(__file__).resolve().parents[1])
         self.workspace_summary_service = WorkspaceSummaryService(
             character_onboarding_service,
             asset_repository,
@@ -626,6 +629,30 @@ class ZetApp:
     def entity_library_create_entity(self, data: dict):
         return self._indexed_write(lambda: self.entity_library_service.create_entity(data))
 
+    def entity_library_update_entity(self, entity_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_entity(entity_id, data))
+
+    def entity_library_delete_entity(self, entity_id: str):
+        return self._indexed_write(lambda: self.entity_library_service.delete_entity(entity_id))
+
+    def entity_library_update_variant(self, variant_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_variant(variant_id, data))
+
+    def entity_library_delete_variant(self, variant_id: str):
+        return self._indexed_write(lambda: self.entity_library_service.delete_variant(variant_id))
+
+    def entity_library_update_facet(self, facet_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_facet(facet_id, data))
+
+    def entity_library_delete_facet(self, facet_id: str):
+        return self._indexed_write(lambda: self.entity_library_service.delete_facet(facet_id))
+
+    def entity_library_create_facet(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.create_facet(data))
+
+    def entity_library_merge(self, kind: str, source_id: str, target_id: str, token: str, resolutions: dict):
+        return self._indexed_write(lambda: self.entity_library_service.merge_records(kind, source_id, target_id, token, resolutions))
+
     def entity_library_create_set(self, data: dict):
         return self._indexed_write(lambda: self.entity_library_service.create_set(data))
 
@@ -1033,7 +1060,9 @@ class ZetApp:
                 row_values = dict(
                     label=label, character=", ".join(entity_labels), phase="", kind="entity-library",
                     pipeline=asset["origin"], image_path=asset["image_path"], thumbnail_path=asset["thumbnail_path"],
-                    available=True, semantic_category=asset.get("entities", [{}])[0].get("entity_type", ""),
+                    available=True, semantic_category=next(
+                        (item.get("entity_type", "") for item in asset.get("entities") or []), ""
+                    ),
                     asset_id=asset["asset_id"], origin=asset["origin"], descriptor_ready=asset["descriptor_ready"],
                 )
                 rows.append(ImageReferenceRow(tag=f"{{{{LIB:ASSET:{asset['asset_id']}}}}}", **row_values))
@@ -1426,14 +1455,24 @@ class ZetApp:
         """Archive harvested AI answer folders."""
         return self._indexed_write(self.ai_proxy_service.archive_harvested_answers)
 
+    def cleanup_ai_queue(self) -> dict:
+        """Report legacy queue cleanup candidates without deleting files."""
+        return self.ai_proxy_service.cleanup_ai_queue()
+
     def harvested_answer_count(self) -> int:
         return self.ai_proxy_service.harvested_answer_count()
 
     def recent_ai_harvests(self, limit: int = 20):
+        recent = self.ai_proxy_service.recent_harvests(limit)
         rows = self.library_index_service.repository.query_job_history(
             harvested_only=True, limit=limit
         ).items
-        return [json.loads(str(row.get("payload_json") or "{}")) for row in rows]
+        indexed = [json.loads(str(row.get("payload_json") or "{}")) for row in rows]
+        by_id = {str(row.get("ask_id") or ""): row for row in indexed}
+        by_id.update({str(row.get("ask_id") or ""): row for row in recent})
+        combined = list(by_id.values())
+        combined.sort(key=lambda row: str(row.get("harvested_at") or ""), reverse=True)
+        return combined[:max(0, limit)]
 
     def backfill_ai_harvest_history(self, batch_size: int = 200) -> dict:
         return self.library_index_service.backfill_history(batch_size=batch_size)

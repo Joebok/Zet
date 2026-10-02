@@ -157,6 +157,44 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertNotIn("# Render Task", prompt)
         self.assertNotIn("<!-- ZET:", prompt)
 
+    def test_local_library_references_use_job_universe_root(self) -> None:
+        universe = self.library / "Moonsea"
+        universe.mkdir()
+        (universe / "universe.json").write_text(json.dumps({
+            "universe_id": "Moonsea", "name": "Moonsea",
+        }), encoding="utf-8")
+        other = self.library / "Other"
+        other.mkdir()
+        (other / "universe.json").write_text(json.dumps({
+            "universe_id": "Other", "name": "Other",
+        }), encoding="utf-8")
+        (self.root / "Config" / "universe-selection.json").write_text(
+            json.dumps({"universe_id": "Other"}), encoding="utf-8",
+        )
+        character_template = self.character_dir / "Character.md"
+        self.character_dir = universe / "Characters" / "Tsaeytte" / "Youth"
+        self.character_dir.mkdir(parents=True)
+        shutil.copyfile(character_template, self.character_dir / "Character.md")
+        repository = EntityLibraryRepository(universe / "catalog.sqlite3")
+        repository.initialize()
+        image_library = EntityLibraryService(
+            PathService(SimpleNamespace(base_library_path=str(universe)), self.root), repository,
+        )
+        image = image_library.import_asset("Jewelry", "image/png", b"jewelry")
+        image_library.save_logical_reference({
+            "reference_key": "jewelry.front", "asset_id": image["asset_id"],
+        })
+
+        _, _, result = self._compile(
+            "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+            "* Jewelry: matching necklace and earrings. {{LIB:REF:jewelry.front}}\n"
+            "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
+            pipeline_mode="local", universe_root=universe,
+        )
+
+        references = [item for item in result["reference_files"] if item["role"] == "entity_library"]
+        self.assertEqual([image["image_path"]], [item["path"] for item in references])
+
     def test_view_conditioned_logical_references_resolve_to_the_matching_image(self) -> None:
         repository = EntityLibraryRepository(self.library / "catalog.sqlite3")
         repository.initialize()

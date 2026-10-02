@@ -149,7 +149,7 @@ class WorkspaceSummaryService:
             )
         recommended = next((scene for scene in scenes if scene.candidate_pending), None)
         if recommended is not None:
-            destination, action = "render-review", "Review the next candidate"
+            destination, action = "scene-batches", "Open Scene Batches"
         else:
             recommended = next((scene for scene in scenes if scene.image_state == "Not rendered"), None)
             if recommended is not None:

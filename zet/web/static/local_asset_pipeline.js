@@ -298,7 +298,8 @@
     const host = $("selected");
     host.replaceChildren();
     const selected = run.selected_views || {};
-    const assets = Object.values(run.local_assets || {});
+    const qualifier = isCostume() ? String(run.costume || "").trim().toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") : "";
     const lockNotice = document.createElement("p");
     lockNotice.className = "local-pipeline-lock-notice";
     lockNotice.setAttribute("role", "status");
@@ -323,8 +324,8 @@
         image.src = imageUrl(candidate);
         image.alt = `Selected ${view} candidate ${candidate.candidate_id}`;
         article.append(image);
-        const asset = assets.find((item) => item.view === view && String(item.pipeline || "").toLowerCase() === state.pipeline
-          && String(item.qualifier || "") === (isCostume() ? run.costume || "" : ""));
+        const assetKey = `${state.pipeline}${qualifier ? `:${qualifier}` : ""}:${view}`;
+        const asset = run.local_assets?.[assetKey];
         const locked = Boolean(asset?.locked && asset.candidate_id === candidate.candidate_id
           && asset.batch_id === run.run_id);
         const lockedInAnotherBatch = Boolean(asset?.locked && asset.batch_id !== run.run_id);

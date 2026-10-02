@@ -27,6 +27,8 @@ Create one clean head reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 
 {{LOCAL_GAZE_INSTRUCTION}}
 
+{{HEAD_IMAGE_EXPRESSION_GUIDANCE}}
+
 {{LOCAL_PHASE_CHANGES}}
 
 ~{{HEAD_DESCRIPTION_FACTS}}
@@ -74,6 +76,8 @@ Judge the candidate image against the visible requirements below and the supplie
 {{HEAD_IMAGE_SOURCE_RULES}}
 
 {{HEAD_IMAGE_CHARACTER_REQUIREMENTS}}
+
+{{HEAD_IMAGE_EXPRESSION_GUIDANCE}}
 
 # View and Style
 

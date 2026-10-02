@@ -512,6 +512,7 @@ class SceneRenderTargetService:
                 continue
             anchor.setdefault("reference_images", []).append({
                 "tag": self.image_tag(story_slug, scene_slug, str(definition.get("id") or "")),
+                "managed_subscene_reference": True,
                 "roles": ["complete element or group appearance", "internal arrangement"],
                 "ignore": ["source canvas", "source background", "source framing", "outer placement", "source lighting"],
                 "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
@@ -522,7 +523,7 @@ class SceneRenderTargetService:
         graph = self.target_graph(data)
         anchor_id = str(definition.get("anchor_element_id") or "")
         anchor = copy.deepcopy(graph["elements"].get(anchor_id) or {})
-        anchor_sections = self.story._element_source_sections(anchor)
+        anchor_sections = anchor.get("resolved_source_sections") or self.story._element_source_sections(anchor)
         if anchor_sections:
             anchor["resolved_source_sections"] = anchor_sections
         projected = copy.deepcopy(data)

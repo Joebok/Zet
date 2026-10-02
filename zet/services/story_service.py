@@ -176,7 +176,10 @@ class StoryService:
     def _element_source_sections(self, element: dict, catalog_by_tag: dict | None = None) -> dict:
         """Resolve selected-image compiler text, falling back to the canonical element source."""
         references = [item for item in element.get("reference_images") or [] if isinstance(item, dict)]
-        tagged_references = [item for item in references if str(item.get("tag") or "").strip()]
+        # Composed child renders supply appearance, while the author's element sources
+        # continue to supply identity text. They need no separate catalog description.
+        tagged_references = [item for item in references if str(item.get("tag") or "").strip()
+                             and not item.get("managed_subscene_reference")]
         if tagged_references and self.image_catalog_service is not None:
             primary = next((item for item in tagged_references if item.get("primary_prompt_source")), tagged_references[0])
             tag = str(primary.get("tag") or "")

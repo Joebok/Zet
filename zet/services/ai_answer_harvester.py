@@ -489,7 +489,7 @@ class AIAnswerHarvester:
 
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         queue_root = Path(self.path_service.config.base_ai_queue_path)
-        with file_lock(task_state_path(queue_root, "Locks", answer_path.name)):
+        with file_lock(self.ai_proxy_path_service.lifecycle.lock_path(answer_path.name)):
             manifest = self._load_ask_manifest(answer_path)
             character, phase = manifest.get("character"), manifest.get("phase")
             transaction = self.asset_repository.transaction(character, phase) if character and phase else nullcontext()
@@ -632,6 +632,20 @@ class AIAnswerHarvester:
         raise AIAnswerHarvesterError(f"Unsupported answer status {answer.status} in {answer_path}")
 
     def harvest_once(self) -> list[HarvestResult]:
+        lifecycle = getattr(self.ai_proxy_path_service, "lifecycle", None)
+        client = getattr(self.ai_proxy_path_service, "file_proxy_client", None)
+        if lifecycle is not None and client is not None:
+            lifecycle.drain_ready_answers(client)
+            # A previous run may have applied the answer and written its harvest
+            # manifest, then stopped before persisting the compact receipt. Finish
+            # that commit without reapplying the answer.
+            for answer_path in lifecycle.inbox_answers():
+                if (answer_path / "harvest_manifest.json").is_file():
+                    try:
+                        self._finish_lifecycle(answer_path)
+                    except Exception:
+                        # Keep the payload available for a later receipt retry.
+                        continue
         answer_paths = [
             answer_path
             for answer_path in self.ai_proxy_path_service.task_paths("answer")
@@ -660,8 +674,12 @@ class AIAnswerHarvester:
             try:
                 result = self.apply_answer_folder(answer_path)
                 if result.status.startswith("ALREADY_"):
+                    if result.status.startswith("ALREADY_") and (answer_path / "harvest_manifest.json").is_file():
+                        self._finish_lifecycle(answer_path)
                     continue
                 results.append(result)
+                if (answer_path / "harvest_manifest.json").is_file():
+                    self._finish_lifecycle(answer_path)
             except Exception as exc:
                 result = HarvestResult(
                     answer_path=answer_path,
@@ -679,3 +697,31 @@ class AIAnswerHarvester:
                     pass
                 results.append(result)
         return results
+
+    def _finish_lifecycle(self, answer_path: Path) -> None:
+        lifecycle = getattr(self.ai_proxy_path_service, "lifecycle", None)
+        if lifecycle is None:
+            return
+        harvest = self._read_json(answer_path / "harvest_manifest.json")
+        answer = self._read_json(answer_path / "answer_manifest.json")
+        ask = self._read_json(answer_path / "ask_manifest.json")
+        lifecycle.finish_answer(answer_path, {
+            "status": harvest.get("status") or answer.get("status") or "UNKNOWN",
+            "answer_status": answer.get("status", ""),
+            "message": harvest.get("message", ""),
+            "harvested_at": harvest.get("harvested_at", ""),
+            "task_type": ask.get("task_type") or ask.get("worker_type") or "",
+            "worker_type": ask.get("worker_type") or "",
+            "story_slug": ask.get("story_slug") or "",
+            "scene_slug": ask.get("scene_slug") or "",
+            "render_target_id": ask.get("render_target_id") or "main",
+            "character": ask.get("character") or "",
+            "phase": ask.get("phase") or "",
+            "pipeline": ask.get("pipeline") or "",
+            "engine_profile": ask.get("engine_profile") or "",
+            "asset_id": harvest.get("asset_id", answer.get("asset_id")),
+            "completed_at": answer.get("completed_at", ""),
+            "error_type": answer.get("error_type", ""),
+            "error_message": answer.get("error_message", ""),
+            "chatgpt_refinement": answer.get("chatgpt_refinement"),
+        })

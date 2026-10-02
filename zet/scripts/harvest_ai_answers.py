@@ -7,11 +7,15 @@ from zet.app import ZetApp
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Harvest Zet AI proxy answer folders")
     parser.add_argument("--config", default="config.toml")
+    parser.add_argument("--debug", action="store_true", help="Keep completed queue payloads locally for recovery.")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.debug:
+        import os
+        os.environ["ZET_AI_QUEUE_DEBUG"] = "1"
     try:
         app = ZetApp.from_config(args.config)
         results = app.harvest_ai_answers()

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 
-def write_project_fixture(root: Path, *, stage: str = "LOCKED", actor: str = "HUMAN_AGENT") -> Path:
+def write_project_fixture(root: Path, *, stage: str = "LOCKED", actor: str = "HUMAN_AGENT", library_root: bool = False) -> Path:
     character_dir = root / "Characters" / "Test" / "Adult"
     prompt_dir = character_dir / "Body_Reference" / "Front"
     pipeline_dir = root / "Pipelines" / "Test" / "Adult" / "Body-Reference" / "Front" / "_" / "Asset_1"
@@ -76,6 +76,7 @@ def write_project_fixture(root: Path, *, stage: str = "LOCKED", actor: str = "HU
     config_path.write_text(
         f"""
 [BaseFolders]
+{f'BaseLibraryPath = "{root.as_posix()}"' if library_root else ''}
 BaseCharacterPath = "{(root / 'Characters').as_posix()}"
 BaseAssetPath = "{(root / 'Assets').as_posix()}"
 BasePipelinePath = "{(root / 'Pipelines').as_posix()}"

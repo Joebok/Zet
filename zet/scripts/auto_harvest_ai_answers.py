@@ -16,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--interval-seconds", type=int, default=None, help="Override AIHarvest.IntervalSeconds")
     parser.add_argument("--once", action="store_true", help="Harvest once and exit")
+    parser.add_argument("--debug", action="store_true", help="Keep completed queue payloads locally for recovery.")
     return parser
 
 
@@ -45,6 +46,9 @@ def harvest_once(config_path: str) -> int:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.debug:
+        import os
+        os.environ["ZET_AI_QUEUE_DEBUG"] = "1"
 
     if args.once:
         try:

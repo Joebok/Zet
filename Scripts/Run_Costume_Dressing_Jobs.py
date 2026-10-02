@@ -542,7 +542,8 @@ def compile_costume_dressing_job(
         body_view=body_view_token, head_view=head_view_token,
     )
     references = auxiliary_references_for_texts(
-        project_root, ["\n".join(selection.sections.values())], references
+        project_root, ["\n".join(selection.sections.values())], references,
+        universe_root=universe_root,
     )
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
         references, render_mode="edit"

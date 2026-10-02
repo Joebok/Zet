@@ -1,4 +1,5 @@
 import json
+from zet.services.local_render_policy import require_qwen_profile, SCENE_PROFILE
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -383,8 +384,8 @@ class AIProxyService:
         return bool(getattr(self.path_service.config, "local_render_auto_queue_after_condense", False))
 
     def _local_render_preset(self) -> str:
-        if str(getattr(self.path_service.config, "local_render_backend", "stable_matrix")).strip().lower() == "comfyui":
-            return str(getattr(self.path_service.config, "comfyui_profile", "comfyui-core-preview"))
+        if str(getattr(self.path_service.config, "local_render_backend", "comfyui")).strip().lower() == "comfyui":
+            return str(getattr(self.path_service.config, "comfyui_profile", SCENE_PROFILE))
         return str(getattr(self.path_service.config, "local_render_preset", "body-reference-preview"))
 
     def _local_render_workflow_kind(self) -> str:
@@ -626,6 +627,8 @@ class AIProxyService:
         reference_files: list[dict] | None = None,
         consumer: str = "zet",
     ) -> dict:
+        require_qwen_profile(Path(__file__).resolve().parents[2], render_preset or self._local_render_preset(),
+                             image_generation or self.path_service.config.local_render_backend)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
         ask_id = f"Ask_Render_Task_LOCAL_RENDER_{stamp}_{uuid4().hex}"
@@ -670,6 +673,8 @@ class AIProxyService:
                 "",
             )
         )
+        require_qwen_profile(Path(__file__).resolve().parents[2], ask_manifest["render_preset"],
+                             ask_manifest["image_generation"], ask_manifest["checkpoint"])
         workflow_kind = self._workflow_kind_for_preset(str(ask_manifest["render_preset"]))
         if not workflow_kind and ask_manifest["image_generation"] == "comfyui":
             workflow_kind = self._local_render_workflow_kind()
@@ -709,6 +714,8 @@ class AIProxyService:
         self._ensure_queue_dirs()
         submitted_prompt = prompt_text_override if prompt_text_override is not None else prompt_path.read_text(encoding="utf-8")
         selected_preset = render_preset or self._local_render_preset()
+        require_qwen_profile(Path(__file__).resolve().parents[2], selected_preset,
+                             image_generation or self.path_service.config.local_render_backend, checkpoint or "")
         if not allow_parallel:
             for path in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
                 queued = self._read_json_if_exists(path / "ask_manifest.json")
@@ -936,43 +943,23 @@ class AIProxyService:
         }
 
     def harvested_answer_count(self) -> int:
-        self._ensure_queue_dirs()
-        return sum(
-            1
-            for answer_path in self.ai_proxy_path_service.task_paths("answer")
-            if (answer_path / "harvest_manifest.json").exists()
-        )
+        root = self.ai_proxy_path_service.lifecycle.receipt_root
+        return sum(1 for _ in root.glob("*.json")) if root.is_dir() else 0
 
     def recent_harvests(self, limit: int = 20) -> list[dict]:
-        record("archive_traversals")
-        self._ensure_queue_dirs()
         limit = max(0, int(limit))
         if not limit:
             return []
+        receipts = self.ai_proxy_path_service.lifecycle.recent_receipts(limit)
+        return [{
+            "harvested_at": row.get("harvested_at") or row.get("recorded_at", ""),
+            "ask_id": row.get("ask_id", ""), "task_type": row.get("task_type", ""),
+            "asset_id": row.get("asset_id"), "status": row.get("status", ""),
+            "details": row.get("error_message") or row.get("message", ""),
+        } for row in receipts]
 
-        answer_paths = [
-            path
-            for path in self.ai_proxy_path_service.task_paths("answer")
-            if (path / "harvest_manifest.json").is_file()
-        ]
-        archive_root = self.ai_proxy_path_service.harvested_archive_root()
-        archived_count = 0
-        if archive_root.exists():
-            date_paths = sorted((path for path in archive_root.iterdir() if path.is_dir()), reverse=True)
-            for date_path in date_paths:
-                archived_paths = [
-                    path for path in date_path.iterdir()
-                    if path.is_dir() and (path / "harvest_manifest.json").is_file()
-                ]
-                answer_paths.extend(archived_paths)
-                archived_count += len(archived_paths)
-                if archived_count >= limit:
-                    break
-
-        rows = [self._recent_harvest_payload(path) for path in answer_paths]
-        rows = [row for row in rows if row]
-        rows.sort(key=lambda row: str(row.get("harvested_at") or ""), reverse=True)
-        return rows[:limit]
+    def cleanup_ai_queue(self) -> dict:
+        return self.ai_proxy_path_service.lifecycle.cleanup_report()
 
     def _recent_harvest_payload(self, answer_path: Path) -> dict:
         harvest = self._read_recent_manifest(answer_path / "harvest_manifest.json")

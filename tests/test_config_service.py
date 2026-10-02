@@ -50,7 +50,7 @@ Backend = "manual_chatgpt"
             self.assertEqual(config.zine_width, 3300)
             self.assertEqual(config.turnaround_width, 3960)
 
-    def test_backend_specific_render_config_is_independent(self):
+    def test_retired_render_settings_are_ignored_and_qwen_is_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.toml"
             config_path.write_text(
@@ -85,9 +85,10 @@ TimeoutSeconds = 120
             config = ConfigService.load(config_path)
 
             self.assertEqual("comfyui", config.local_render_backend)
-            self.assertEqual("stable.safetensors", config.local_render_checkpoint)
-            self.assertEqual("stable positive", config.local_render_positive_prompt_globals)
-            self.assertEqual("comfy.safetensors", config.comfyui_checkpoint)
+            self.assertEqual("", config.local_render_checkpoint)
+            self.assertEqual("", config.local_render_positive_prompt_globals)
+            self.assertEqual("", config.comfyui_checkpoint)
+            self.assertEqual("comfyui-qwen-image-2-1-scene", config.comfyui_profile)
             self.assertEqual("comfy positive", config.comfyui_positive_prompt_globals)
             self.assertEqual(0.5, config.comfyui_poll_seconds)
             self.assertEqual(120, config.comfyui_timeout_seconds)

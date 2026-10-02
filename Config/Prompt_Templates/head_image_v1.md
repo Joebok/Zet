@@ -18,6 +18,8 @@ Create one head-only image of {{CHARACTER_NAME}} in the {{CHARACTER_PHASE}} phas
 
 {{HEAD_IMAGE_CHARACTER_REQUIREMENTS}}
 
+{{HEAD_IMAGE_EXPRESSION_GUIDANCE}}
+
 ## Requested view
 
 {{VIEW_INSTRUCTION}}

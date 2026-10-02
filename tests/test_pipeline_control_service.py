@@ -130,10 +130,14 @@ Backend = "local_image"
             )
 
             reloaded = ZetApp.from_config(config_path).config
-            self.assertEqual(reloaded.local_render_positive_prompt_globals, "masterpiece")
-            self.assertEqual(reloaded.local_render_negative_prompt_globals, "blurry")
-            self.assertEqual(reloaded.local_render_layout_backend, "forge_couple_basic")
-            self.assertEqual(reloaded.local_render_checkpoint, "new-checkpoint")
+            self.assertEqual(reloaded.local_render_positive_prompt_globals, "")
+            self.assertEqual(reloaded.local_render_negative_prompt_globals, "")
+            self.assertEqual(reloaded.local_render_checkpoint, "")
+            self.assertEqual(reloaded.comfyui_profile, "comfyui-qwen-image-2-1-scene")
+            saved_config = config_path.read_text(encoding="utf-8")
+            self.assertNotIn("old-preset", saved_config)
+            self.assertNotIn("old-checkpoint", saved_config)
+            self.assertNotIn("[StableMatrix]", saved_config)
             self.assertEqual(reloaded.ai_harvest_interval_seconds, 300)
             self.assertEqual(reloaded.render_backend, "manual_chatgpt")
             self.assertEqual(reloaded.ai_asset_workflow_model, "asset-model")

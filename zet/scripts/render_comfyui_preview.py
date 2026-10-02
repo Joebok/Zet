@@ -15,6 +15,7 @@ from zet.services.comfyui_render_service import (
 from zet.services.config_service import ConfigService
 from zet.services.pipeline_compiler_support import with_universe_art_style
 from zet.services.universe_service import UniverseService
+from zet.services.local_render_policy import require_qwen_profile
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -54,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(profile, dict) or profile.get("backend") != "comfyui":
             raise ValueError(f"Unknown ComfyUI render profile: {profile_name}")
         checkpoint = args.checkpoint or config.comfyui_checkpoint
+        if not args.compile_only:
+            require_qwen_profile(config_path.parent, profile_name, checkpoint=checkpoint)
         scene_slug = str(ir.get("scene", {}).get("slug") or "Scene")
         compilation = compile_ir_to_comfyui_workflow(
             ir,

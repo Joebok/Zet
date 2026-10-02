@@ -118,6 +118,11 @@ class EntityLibraryService:
             stat = source_path.stat()
             signature = (stat.st_size, stat.st_mtime_ns)
             if self._pipeline_signatures.get(origin_key) == signature:
+                cached = self.repository.fetchall(
+                    "SELECT origin_key FROM assets WHERE origin='pipeline' AND substr(origin_key,1,length(?)+1)=?||':'",
+                    (origin_key, origin_key),
+                )
+                active_origin_keys.update(row["origin_key"] for row in cached)
                 continue
             data = source_path.read_bytes()
             checksum = hashlib.sha256(data).hexdigest()
@@ -146,12 +151,16 @@ class EntityLibraryService:
                     if not entity_name:
                         continue
                     entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type=?", (entity_name, entity_type)).fetchone()
+                    if not entity:
+                        entity = connection.execute("SELECT entity_id FROM entity_name_aliases WHERE lower(name)=lower(?) AND entity_type=?", (entity_name, entity_type)).fetchone()
                     entity_id = entity[0] if entity else str(uuid4())
                     if not entity:
                         connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (entity_id, entity_name, entity_type, "", "active", stamp, stamp))
                     variant_id = None
                     if entity_type == "character" and phase:
                         variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
+                        if not variant:
+                            variant = connection.execute("SELECT variant_id FROM variant_name_aliases WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
                         variant_id = variant[0] if variant else str(uuid4())
                         if not variant:
                             connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, entity_id, phase, "life_stage", "", stamp, stamp))
@@ -199,7 +208,7 @@ class EntityLibraryService:
                 (asset_id,),
             )
             tags = [item["tag"] for item in self.repository.fetchall("SELECT tag FROM asset_tags WHERE asset_id=? ORDER BY tag", (asset_id,))]
-            logical = self.repository.fetchone("SELECT reference_key,label,set_id FROM logical_references WHERE asset_id=? AND status='active' ORDER BY reference_key LIMIT 1", (asset_id,))
+            logical = self.repository.fetchone("SELECT reference_key,label,set_id FROM logical_references WHERE asset_id=? AND status='active' AND (SELECT status FROM assets WHERE asset_id=logical_references.asset_id)='approved' ORDER BY reference_key LIMIT 1", (asset_id,))
             item = {**row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities, "sets": sets, "facets": facets, "tags": tags, "logical_reference": logical}
             descriptor_ready = self.repository.fetchone(
                 "SELECT 1 FROM descriptors d WHERE d.enabled=1 AND d.descriptor_type IN ('prompt_identity','prompt_object','prompt_background','human_description') AND ((d.owner_type='asset' AND d.owner_id=?) OR (d.owner_type='entity' AND d.owner_id IN (SELECT entity_id FROM asset_entities WHERE asset_id=?)) OR (d.owner_type='variant' AND d.owner_id IN (SELECT variant_id FROM asset_entities WHERE asset_id=?)) OR (d.owner_type='set' AND d.owner_id IN (SELECT set_id FROM reference_set_assets WHERE asset_id=?))) LIMIT 1",
@@ -225,7 +234,7 @@ class EntityLibraryService:
             if filters.get("facet_value") and not any(value["value"] == filters["facet_value"] for value in facets):
                 continue
             query = str(filters.get("q") or "").casefold().split()
-            haystack = " ".join([row["file_name"], row["origin"], row["notes"], *[value["name"] for value in entities], *[value["name"] for value in sets], *tags, *[f'{value["namespace"]}:{value["value"]}' for value in facets]]).casefold()
+            haystack = " ".join([row["label"], row["file_name"], row["origin"], row["notes"], logical["reference_key"] if logical else "", *[value["name"] for value in entities], *[value["variant_name"] or "" for value in entities], *[value["name"] for value in sets], *tags, *[f'{value["namespace"]}:{value["value"]}' for value in facets]]).casefold()
             if query and not all(term in haystack for term in query):
                 continue
             output.append(self._json(item))
@@ -347,16 +356,22 @@ class EntityLibraryService:
                 raise EntityLibraryServiceError("Invalid image status.")
             connection.execute("UPDATE assets SET label=?,notes=?,status=?,rating=?,updated_at=? WHERE asset_id=?", (label, notes, status, data.get("rating", current["rating"]), stamp, asset_id))
             if "entity_links" in data:
+                existing_links = {(item["entity_id"], item["role"]): item for item in current["entities"]}
                 connection.execute("DELETE FROM asset_entities WHERE asset_id=?", (asset_id,))
                 for link in data.get("entity_links") or []:
-                    role = str(link.get("role") or "depicted_subject")
+                    if isinstance(link, str):
+                        link = {"entity_id": link}
+                    previous = next((value for (entity_id, _), value in existing_links.items() if entity_id == link.get("entity_id")), {})
+                    role = str(link.get("role") or previous.get("role") or "depicted_subject")
                     if role not in ASSET_ROLES:
                         raise EntityLibraryServiceError(f"Invalid asset relationship role: {role}")
-                    connection.execute("INSERT INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, link["entity_id"], link.get("variant_id") or None, role))
+                    connection.execute("INSERT INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, link["entity_id"], link.get("variant_id") or previous.get("variant_id") or None, role))
             if "set_ids" in data:
+                existing_sets = {item["set_id"]: item for item in current["sets"]}
                 connection.execute("DELETE FROM reference_set_assets WHERE asset_id=?", (asset_id,))
                 for order, set_id in enumerate(data.get("set_ids") or []):
-                    connection.execute("INSERT INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)", (set_id, asset_id, "member", order))
+                    previous = existing_sets.get(set_id, {})
+                    connection.execute("INSERT INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)", (set_id, asset_id, previous.get("role", "member"), previous.get("sort_order", order)))
             if "facets" in data:
                 connection.execute("DELETE FROM asset_facets WHERE asset_id=?", (asset_id,))
                 for facet in data.get("facets") or []:
@@ -395,8 +410,37 @@ class EntityLibraryService:
     def list_entities(self, entity_type: str = "") -> list[dict]:
         self._sync_pipeline_assets()
         if entity_type:
-            return self.repository.fetchall("SELECT * FROM entities WHERE entity_type=? ORDER BY name COLLATE NOCASE", (entity_type,))
-        return self.repository.fetchall("SELECT * FROM entities ORDER BY name COLLATE NOCASE")
+            rows = self.repository.fetchall("SELECT * FROM entities WHERE entity_type=? ORDER BY name COLLATE NOCASE", (entity_type,))
+        else:
+            rows = self.repository.fetchall("SELECT * FROM entities ORDER BY name COLLATE NOCASE")
+        for row in rows:
+            row["image_count"] = self.repository.fetchone("SELECT count(DISTINCT asset_id) AS n FROM asset_entities WHERE entity_id=?", (row["entity_id"],))["n"]
+            row["variant_count"] = self.repository.fetchone("SELECT count(*) AS n FROM variants WHERE entity_id=?", (row["entity_id"],))["n"]
+            row["descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='entity' AND owner_id=? ORDER BY descriptor_type", (row["entity_id"],))
+        return rows
+
+    def update_entity(self, entity_id: str, data: dict) -> dict:
+        current = self.repository.fetchone("SELECT * FROM entities WHERE entity_id=?", (entity_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Entity not found: {entity_id}")
+        name = self._require(data.get("name", current["name"]), "Entity name")
+        with self.repository.transaction() as connection:
+            connection.execute("INSERT OR IGNORE INTO entity_name_aliases VALUES(?,?,?)", (current["name"], current["entity_type"], entity_id))
+            connection.execute("UPDATE entities SET name=?,description=?,updated_at=? WHERE entity_id=?", (name, str(data.get("description", current["description"]) or "").strip(), _now(), entity_id))
+        return self.repository.fetchone("SELECT * FROM entities WHERE entity_id=?", (entity_id,)) or {}
+
+    def delete_entity(self, entity_id: str) -> dict:
+        current = self.repository.fetchone("SELECT * FROM entities WHERE entity_id=?", (entity_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Entity not found: {entity_id}")
+        dependencies = self.repository.fetchall("SELECT 'image' AS kind,count(DISTINCT asset_id) AS n FROM asset_entities WHERE entity_id=? UNION ALL SELECT 'variant',count(*) FROM variants WHERE entity_id=? UNION ALL SELECT 'relationship',count(*) FROM entity_relations WHERE source_entity_id=? OR target_entity_id=?", (entity_id, entity_id, entity_id, entity_id))
+        used = [f"{row['n']} {row['kind']}(s)" for row in dependencies if row["n"]]
+        if used:
+            raise EntityLibraryServiceError("Entity is still in use: " + ", ".join(used))
+        with self.repository.transaction() as connection:
+            connection.execute("DELETE FROM descriptors WHERE owner_type='entity' AND owner_id=?", (entity_id,))
+            connection.execute("DELETE FROM entities WHERE entity_id=?", (entity_id,))
+        return {"entity_id": entity_id, "name": current["name"]}
 
     def create_variant(self, entity_id: str, data: dict) -> dict:
         name = self._require(data.get("name"), "Variant name")
@@ -411,8 +455,35 @@ class EntityLibraryService:
     def list_variants(self, entity_id: str = "") -> list[dict]:
         self._sync_pipeline_assets()
         if entity_id:
-            return self.repository.fetchall("SELECT * FROM variants WHERE entity_id=? ORDER BY name COLLATE NOCASE", (entity_id,))
-        return self.repository.fetchall("SELECT * FROM variants ORDER BY name COLLATE NOCASE")
+            rows = self.repository.fetchall("SELECT v.*,e.name AS entity_name FROM variants v JOIN entities e USING(entity_id) WHERE entity_id=? ORDER BY name COLLATE NOCASE", (entity_id,))
+        else:
+            rows = self.repository.fetchall("SELECT v.*,e.name AS entity_name FROM variants v JOIN entities e USING(entity_id) ORDER BY e.name COLLATE NOCASE,v.name COLLATE NOCASE")
+        for row in rows:
+            row["image_count"] = self.repository.fetchone("SELECT count(DISTINCT asset_id) AS n FROM asset_entities WHERE variant_id=?", (row["variant_id"],))["n"]
+            row["descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='variant' AND owner_id=? ORDER BY descriptor_type", (row["variant_id"],))
+        return rows
+
+    def update_variant(self, variant_id: str, data: dict) -> dict:
+        current = self.repository.fetchone("SELECT * FROM variants WHERE variant_id=?", (variant_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Variant not found: {variant_id}")
+        name = self._require(data.get("name", current["name"]), "Variant name")
+        with self.repository.transaction() as connection:
+            connection.execute("INSERT OR IGNORE INTO variant_name_aliases VALUES(?,?,?,?)", (current["entity_id"], current["name"], current["variant_type"], variant_id))
+            connection.execute("UPDATE variants SET name=?,description=?,updated_at=? WHERE variant_id=?", (name, str(data.get("description", current["description"]) or "").strip(), _now(), variant_id))
+        return self.repository.fetchone("SELECT * FROM variants WHERE variant_id=?", (variant_id,)) or {}
+
+    def delete_variant(self, variant_id: str) -> dict:
+        current = self.repository.fetchone("SELECT * FROM variants WHERE variant_id=?", (variant_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Variant not found: {variant_id}")
+        count = self.repository.fetchone("SELECT count(DISTINCT asset_id) AS n FROM asset_entities WHERE variant_id=?", (variant_id,))["n"]
+        if count:
+            raise EntityLibraryServiceError(f"Variant is still assigned to {count} image(s).")
+        with self.repository.transaction() as connection:
+            connection.execute("DELETE FROM descriptors WHERE owner_type='variant' AND owner_id=?", (variant_id,))
+            connection.execute("DELETE FROM variants WHERE variant_id=?", (variant_id,))
+        return {"variant_id": variant_id, "name": current["name"]}
 
     def create_relation(self, data: dict) -> dict:
         source, target = self._require(data.get("source_entity_id"), "Source entity"), self._require(data.get("target_entity_id"), "Target entity")
@@ -422,6 +493,19 @@ class EntityLibraryService:
         with self.repository.transaction() as connection:
             connection.execute("INSERT OR REPLACE INTO entity_relations VALUES(?,?,?,?)", (source, target, relation, str(data.get("notes") or "").strip()))
         return {"source_entity_id": source, "target_entity_id": target, "relation_type": relation}
+
+    def list_relations(self, entity_id: str) -> list[dict]:
+        return self.repository.fetchall(
+            "SELECT r.*,s.name AS source_name,t.name AS target_name FROM entity_relations r JOIN entities s ON s.entity_id=r.source_entity_id JOIN entities t ON t.entity_id=r.target_entity_id WHERE source_entity_id=? OR target_entity_id=? ORDER BY relation_type,source_name,target_name",
+            (entity_id, entity_id),
+        )
+
+    def delete_relation(self, source_entity_id: str, target_entity_id: str, relation_type: str) -> dict:
+        with self.repository.transaction() as connection:
+            cursor = connection.execute("DELETE FROM entity_relations WHERE source_entity_id=? AND target_entity_id=? AND relation_type=?", (source_entity_id, target_entity_id, relation_type))
+            if not cursor.rowcount:
+                raise EntityLibraryServiceError("Entity relationship not found.")
+        return {"source_entity_id": source_entity_id, "target_entity_id": target_entity_id, "relation_type": relation_type}
 
     def create_set(self, data: dict) -> dict:
         name = self._require(data.get("name"), "Reference set name")
@@ -452,6 +536,9 @@ class EntityLibraryService:
     def delete_set(self, set_id: str) -> dict:
         """Remove a set and its descriptors while preserving its member images."""
         reference_set = self.get_set(set_id)
+        references = self.repository.fetchall("SELECT reference_key FROM logical_references WHERE set_id=? AND status='active'", (set_id,))
+        if references:
+            raise EntityLibraryServiceError("Reference set is used by active logical references: " + ", ".join(item["reference_key"] for item in references))
         with self.repository.transaction() as connection:
             connection.execute("DELETE FROM descriptors WHERE owner_type='set' AND owner_id=?", (set_id,))
             connection.execute("DELETE FROM reference_sets WHERE set_id=?", (set_id,))
@@ -461,7 +548,8 @@ class EntityLibraryService:
         item = self.repository.fetchone("SELECT * FROM reference_sets WHERE set_id=?", (set_id,))
         if not item:
             raise EntityLibraryServiceError(f"Reference set not found: {set_id}")
-        item["assets"] = self.repository.fetchall("SELECT a.asset_id,a.file_name,a.status,sa.role,sa.sort_order FROM reference_set_assets sa JOIN assets a ON a.asset_id=sa.asset_id WHERE sa.set_id=? ORDER BY sa.sort_order", (set_id,))
+        item["assets"] = self.repository.fetchall("SELECT a.asset_id,a.file_name,a.label,a.status,sa.role,sa.sort_order FROM reference_set_assets sa JOIN assets a ON a.asset_id=sa.asset_id WHERE sa.set_id=? ORDER BY sa.sort_order", (set_id,))
+        item["image_count"] = len(item["assets"])
         item["descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='set' AND owner_id=? ORDER BY priority", (set_id,))
         return item
 
@@ -472,6 +560,11 @@ class EntityLibraryService:
     def add_set_asset(self, set_id: str, asset_id: str, role: str = "member", sort_order: int = 0) -> dict:
         with self.repository.transaction() as connection:
             connection.execute("INSERT OR REPLACE INTO reference_set_assets VALUES(?,?,?,?)", (set_id, asset_id, role, int(sort_order)))
+        return self.get_set(set_id)
+
+    def remove_set_asset(self, set_id: str, asset_id: str) -> dict:
+        with self.repository.transaction() as connection:
+            connection.execute("DELETE FROM reference_set_assets WHERE set_id=? AND asset_id=?", (set_id, asset_id))
         return self.get_set(set_id)
 
     def save_descriptor(self, data: dict) -> dict:
@@ -501,7 +594,210 @@ class EntityLibraryService:
 
     def list_facets(self) -> list[dict]:
         self._sync_pipeline_assets()
-        return self.repository.fetchall("SELECT namespace,value,controlled,count(*) AS usage_count FROM facets f JOIN asset_facets af ON af.facet_id=f.facet_id GROUP BY namespace,value,controlled ORDER BY namespace,value")
+        return self.repository.fetchall("SELECT f.facet_id,f.namespace,f.value,f.controlled,count(DISTINCT af.asset_id) AS usage_count FROM facets f LEFT JOIN asset_facets af ON af.facet_id=f.facet_id GROUP BY f.facet_id,f.namespace,f.value,f.controlled ORDER BY namespace,value")
+
+    def create_facet(self, data: dict) -> dict:
+        namespace = self._require(data.get("namespace"), "Facet namespace")
+        value = self._require(data.get("value"), "Facet value")
+        facet_id = str(uuid4())
+        with self.repository.transaction() as connection:
+            connection.execute("INSERT INTO facets VALUES(?,?,?,?)", (facet_id, namespace, value, int(bool(data.get("controlled", True)))))
+        return self.repository.fetchone("SELECT * FROM facets WHERE facet_id=?", (facet_id,)) or {}
+
+    def update_facet(self, facet_id: str, data: dict) -> dict:
+        current = self.repository.fetchone("SELECT * FROM facets WHERE facet_id=?", (facet_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Facet not found: {facet_id}")
+        value = self._require(data.get("value", current["value"]), "Facet value")
+        with self.repository.transaction() as connection:
+            connection.execute("UPDATE facets SET value=? WHERE facet_id=?", (value, facet_id))
+        return self.repository.fetchone("SELECT * FROM facets WHERE facet_id=?", (facet_id,)) or {}
+
+    def delete_facet(self, facet_id: str) -> dict:
+        current = self.repository.fetchone("SELECT * FROM facets WHERE facet_id=?", (facet_id,))
+        if not current:
+            raise EntityLibraryServiceError(f"Facet not found: {facet_id}")
+        count = self.repository.fetchone("SELECT count(*) AS n FROM asset_facets WHERE facet_id=?", (facet_id,))["n"]
+        if count:
+            raise EntityLibraryServiceError(f"Facet is still assigned to {count} image(s).")
+        with self.repository.transaction() as connection:
+            connection.execute("DELETE FROM facets WHERE facet_id=?", (facet_id,))
+        return {"facet_id": facet_id, "namespace": current["namespace"], "value": current["value"]}
+
+    def _merge_snapshot(self, kind: str, source_id: str, target_id: str) -> tuple[dict, list[dict]]:
+        tables = {"entity": ("entities", "entity_id"), "variant": ("variants", "variant_id"), "set": ("reference_sets", "set_id"), "facet": ("facets", "facet_id")}
+        if kind not in tables:
+            raise EntityLibraryServiceError("Unknown organization type.")
+        table, key = tables[kind]
+        source = self.repository.fetchone(f"SELECT * FROM {table} WHERE {key}=?", (source_id,))
+        target = self.repository.fetchone(f"SELECT * FROM {table} WHERE {key}=?", (target_id,))
+        if not source or not target or source_id == target_id:
+            raise EntityLibraryServiceError("Choose two different existing records to merge.")
+        if kind == "entity" and source["entity_type"] != target["entity_type"]:
+            raise EntityLibraryServiceError("Entities must have the same type to merge.")
+        if kind == "variant" and (source["entity_id"] != target["entity_id"] or source["variant_type"] != target["variant_type"]):
+            raise EntityLibraryServiceError("Variants must have the same owner and type to merge.")
+        if kind == "facet" and source["namespace"] != target["namespace"]:
+            raise EntityLibraryServiceError("Facets must have the same namespace to merge.")
+        state = {"kind": kind, "source": source, "target": target}
+        conflicts = []
+        shared_fields = {"entity": ("description",), "variant": ("description",), "set": ("set_type", "description", "entity_id"), "facet": ()}[kind]
+        for field in shared_fields:
+            if source.get(field) and target.get(field) and source[field] != target[field]:
+                conflicts.append({"key": f"{kind}:{field}", "label": field.replace("_", " "), "source": source[field], "target": target[field]})
+        owner_type = {"entity": "entity", "variant": "variant", "set": "set"}.get(kind)
+        if owner_type:
+            state["source_descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type=? AND owner_id=? ORDER BY descriptor_type", (owner_type, source_id))
+            state["target_descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type=? AND owner_id=? ORDER BY descriptor_type", (owner_type, target_id))
+            target_descriptors = {item["descriptor_type"]: item for item in state["target_descriptors"]}
+            for descriptor in state["source_descriptors"]:
+                other = target_descriptors.get(descriptor["descriptor_type"])
+                if other and descriptor["text"] != other["text"]:
+                    conflicts.append({"key": f"descriptor:{descriptor['descriptor_type']}", "label": f"{descriptor['descriptor_type']} descriptor", "source": descriptor["text"], "target": other["text"]})
+        if kind == "entity":
+            state["source_name_aliases"] = self.repository.fetchall("SELECT name,entity_type,entity_id FROM entity_name_aliases WHERE entity_id=? ORDER BY name", (source_id,))
+            state["target_name_aliases"] = self.repository.fetchall("SELECT name,entity_type,entity_id FROM entity_name_aliases WHERE entity_id=? ORDER BY name", (target_id,))
+            state["source_assets"] = self.repository.fetchall("SELECT * FROM asset_entities WHERE entity_id=? ORDER BY asset_id,role", (source_id,))
+            state["target_assets"] = self.repository.fetchall("SELECT * FROM asset_entities WHERE entity_id=? ORDER BY asset_id,role", (target_id,))
+            state["source_relations"] = self.repository.fetchall("SELECT * FROM entity_relations WHERE source_entity_id=? OR target_entity_id=? ORDER BY source_entity_id,target_entity_id,relation_type", (source_id, source_id))
+            state["target_relations"] = self.repository.fetchall("SELECT * FROM entity_relations WHERE source_entity_id=? OR target_entity_id=? ORDER BY source_entity_id,target_entity_id,relation_type", (target_id, target_id))
+            state["source_variants"] = self.repository.fetchall("SELECT * FROM variants WHERE entity_id=? ORDER BY name", (source_id,))
+            state["target_variants"] = self.repository.fetchall("SELECT * FROM variants WHERE entity_id=? ORDER BY name", (target_id,))
+            target_variants = {(item["name"].casefold(), item["variant_type"]): item for item in state["target_variants"]}
+            for variant in state["source_variants"]:
+                other = target_variants.get((variant["name"].casefold(), variant["variant_type"]))
+                if other and variant["description"] and other["description"] and variant["description"] != other["description"]:
+                    conflicts.append({"key": f"variant:{variant['variant_id']}:description", "label": f"{variant['name']} description", "source": variant["description"], "target": other["description"]})
+                if other:
+                    source_descriptors = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='variant' AND owner_id=? ORDER BY descriptor_type", (variant["variant_id"],))
+                    target_descriptors = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='variant' AND owner_id=? ORDER BY descriptor_type", (other["variant_id"],))
+                    state.setdefault("variant_descriptors", {})[variant["variant_id"]] = {"source": source_descriptors, "target": target_descriptors}
+                    for descriptor in source_descriptors:
+                        target_descriptor = next((item for item in target_descriptors if item["descriptor_type"] == descriptor["descriptor_type"]), None)
+                        if target_descriptor and descriptor["text"] != target_descriptor["text"]:
+                            conflicts.append({"key": f"variant_descriptor:{variant['variant_id']}:{descriptor['descriptor_type']}", "label": f"{variant['name']} · {descriptor['descriptor_type']} descriptor", "source": descriptor["text"], "target": target_descriptor["text"]})
+        if kind == "set":
+            state["source_members"] = self.repository.fetchall("SELECT * FROM reference_set_assets WHERE set_id=? ORDER BY sort_order,asset_id", (source_id,))
+            state["target_members"] = self.repository.fetchall("SELECT * FROM reference_set_assets WHERE set_id=? ORDER BY sort_order,asset_id", (target_id,))
+            target_members = {item["asset_id"]: item for item in state["target_members"]}
+            for member in state["source_members"]:
+                other = target_members.get(member["asset_id"])
+                if other and other["role"] != member["role"]:
+                    asset = self.repository.fetchone("SELECT label,file_name FROM assets WHERE asset_id=?", (member["asset_id"],)) or {}
+                    conflicts.append({"key": f"member:{member['asset_id']}:role", "label": f"{asset.get('label') or asset.get('file_name') or member['asset_id']} membership role", "source": member["role"], "target": other["role"]})
+            state["source_references"] = self.repository.fetchall("SELECT reference_key,set_id,status FROM logical_references WHERE set_id=? ORDER BY reference_key", (source_id,))
+        if kind == "variant":
+            state["source_assets"] = self.repository.fetchall("SELECT * FROM asset_entities WHERE variant_id=? ORDER BY asset_id,role", (source_id,))
+        if kind == "facet":
+            state["source_assets"] = self.repository.fetchall("SELECT asset_id FROM asset_facets WHERE facet_id=? ORDER BY asset_id", (source_id,))
+            state["target_assets"] = self.repository.fetchall("SELECT asset_id FROM asset_facets WHERE facet_id=? ORDER BY asset_id", (target_id,))
+        state["conflicts"] = conflicts
+        return state, conflicts
+
+    def preview_merge(self, kind: str, source_id: str, target_id: str) -> dict:
+        state, conflicts = self._merge_snapshot(kind, source_id, target_id)
+        token = hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        counts = {
+            "entity": len({item["asset_id"] for item in state.get("source_assets", [])}),
+            "variant": len({item["asset_id"] for item in state.get("source_assets", [])}),
+            "set": len(state.get("source_members", [])),
+            "facet": len({item["asset_id"] for item in state.get("source_assets", [])}),
+        }
+        return {"kind": kind, "source": state["source"], "target": state["target"], "image_count": counts[kind], "conflicts": conflicts, "token": token}
+
+    def merge_records(self, kind: str, source_id: str, target_id: str, token: str, resolutions: dict | None = None) -> dict:
+        state, conflicts = self._merge_snapshot(kind, source_id, target_id)
+        current_token = hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        if not token or token != current_token:
+            raise EntityLibraryServiceError("Records changed after preview. Review the merge preview again.")
+        resolutions = resolutions or {}
+        missing = [item["key"] for item in conflicts if resolutions.get(item["key"]) not in {"source", "target"}]
+        if missing:
+            raise EntityLibraryServiceError("Choose source or target for each conflict: " + ", ".join(missing))
+        source, target = state["source"], state["target"]
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            locked_state, _ = self._merge_snapshot(kind, source_id, target_id)
+            locked_token = hashlib.sha256(json.dumps(locked_state, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+            if locked_token != token:
+                raise EntityLibraryServiceError("Records changed after preview. Review the merge preview again.")
+            if kind == "entity" and source.get("description") and target.get("description") and source["description"] != target["description"] and resolutions.get("entity:description") == "source":
+                connection.execute("UPDATE entities SET description=?,updated_at=? WHERE entity_id=?", (source["description"], stamp, target_id))
+            if kind == "variant" and source.get("description") and target.get("description") and source["description"] != target["description"] and resolutions.get("variant:description") == "source":
+                connection.execute("UPDATE variants SET description=?,updated_at=? WHERE variant_id=?", (source["description"], stamp, target_id))
+            for conflict in conflicts:
+                if conflict["key"].startswith("descriptor:") and resolutions[conflict["key"]] == "source":
+                    descriptor_type = conflict["key"].split(":", 1)[1]
+                    connection.execute("UPDATE descriptors SET text=?,enabled=?,priority=?,updated_at=? WHERE owner_type=? AND owner_id=? AND descriptor_type=?", (conflict["source"], next(d["enabled"] for d in state["source_descriptors"] if d["descriptor_type"] == descriptor_type), next(d["priority"] for d in state["source_descriptors"] if d["descriptor_type"] == descriptor_type), stamp, {"entity":"entity","variant":"variant","set":"set"}[kind], target_id, descriptor_type))
+            for descriptor in state.get("source_descriptors", []):
+                other = next((d for d in state.get("target_descriptors", []) if d["descriptor_type"] == descriptor["descriptor_type"]), None)
+                if not other:
+                    connection.execute("UPDATE descriptors SET owner_id=?,updated_at=? WHERE descriptor_id=?", (target_id, stamp, descriptor["descriptor_id"]))
+                else:
+                    connection.execute("DELETE FROM descriptors WHERE descriptor_id=?", (descriptor["descriptor_id"],))
+            if kind == "entity":
+                # Preserve old pipeline names and every image/variant reference while redirecting organization links.
+                connection.execute("INSERT OR IGNORE INTO entity_name_aliases SELECT name,entity_type,? FROM entity_name_aliases WHERE entity_id=?", (target_id, source_id))
+                connection.execute("INSERT OR IGNORE INTO entity_name_aliases VALUES(?,?,?)", (source["name"], source["entity_type"], target_id))
+                connection.execute("INSERT OR IGNORE INTO entity_name_aliases VALUES(?,?,?)", (target["name"], target["entity_type"], target_id))
+                for variant in state["source_variants"]:
+                    other = next((v for v in state["target_variants"] if v["name"].casefold() == variant["name"].casefold() and v["variant_type"] == variant["variant_type"]), None)
+                    variant_aliases = self.repository.fetchall("SELECT name,variant_type FROM variant_name_aliases WHERE variant_id=? ORDER BY name", (variant["variant_id"],))
+                    if other:
+                        variant_target = other["variant_id"]
+                        if variant["description"] and (not other["description"] or resolutions.get(f"variant:{variant['variant_id']}:description") == "source"):
+                            connection.execute("UPDATE variants SET description=? WHERE variant_id=?", (variant["description"], variant_target))
+                        connection.execute("UPDATE asset_entities SET variant_id=? WHERE variant_id=?", (variant_target, variant["variant_id"]))
+                        for descriptor in state.get("variant_descriptors", {}).get(variant["variant_id"], {}).get("source", []):
+                            target_descriptor = next((item for item in state["variant_descriptors"][variant["variant_id"]]["target"] if item["descriptor_type"] == descriptor["descriptor_type"]), None)
+                            if target_descriptor and resolutions.get(f"variant_descriptor:{variant['variant_id']}:{descriptor['descriptor_type']}") == "source":
+                                connection.execute("UPDATE descriptors SET text=?,enabled=?,priority=?,updated_at=? WHERE descriptor_id=?", (descriptor["text"], descriptor["enabled"], descriptor["priority"], stamp, target_descriptor["descriptor_id"]))
+                        connection.execute("INSERT OR IGNORE INTO descriptors(descriptor_id,owner_type,owner_id,descriptor_type,text,priority,enabled,created_at,updated_at) SELECT lower(hex(randomblob(16))),'variant',?,descriptor_type,text,priority,enabled,created_at,updated_at FROM descriptors WHERE owner_type='variant' AND owner_id=? AND descriptor_type NOT IN (SELECT descriptor_type FROM descriptors WHERE owner_type='variant' AND owner_id=?)", (variant_target, variant["variant_id"], variant_target))
+                        for alias in [*variant_aliases, {"name": variant["name"], "variant_type": variant["variant_type"]}]:
+                            connection.execute("INSERT OR REPLACE INTO variant_name_aliases VALUES(?,?,?,?)", (target_id, alias["name"], alias["variant_type"], variant_target))
+                        connection.execute("DELETE FROM variants WHERE variant_id=?", (variant["variant_id"],))
+                    else:
+                        connection.execute("UPDATE variants SET entity_id=?,updated_at=? WHERE variant_id=?", (target_id, stamp, variant["variant_id"]))
+                        for alias in [*variant_aliases, {"name": variant["name"], "variant_type": variant["variant_type"]}]:
+                            connection.execute("INSERT OR REPLACE INTO variant_name_aliases VALUES(?,?,?,?)", (target_id, alias["name"], alias["variant_type"], variant["variant_id"]))
+                        connection.execute("DELETE FROM variant_name_aliases WHERE entity_id=? AND variant_id=?", (source_id, variant["variant_id"]))
+                for link in state["source_assets"]:
+                    current_link = connection.execute("SELECT variant_id FROM asset_entities WHERE asset_id=? AND entity_id=? AND role=?", (link["asset_id"], source_id, link["role"])).fetchone()
+                    if not current_link:
+                        continue
+                    duplicate = connection.execute("SELECT 1 FROM asset_entities WHERE asset_id=? AND entity_id=? AND role=? AND variant_id IS ?", (link["asset_id"], target_id, link["role"], current_link["variant_id"])).fetchone()
+                    if duplicate:
+                        connection.execute("DELETE FROM asset_entities WHERE asset_id=? AND entity_id=? AND role=? AND variant_id IS ?", (link["asset_id"], source_id, link["role"], current_link["variant_id"]))
+                    else:
+                        connection.execute("UPDATE asset_entities SET entity_id=? WHERE asset_id=? AND entity_id=? AND role=? AND variant_id IS ?", (target_id, link["asset_id"], source_id, link["role"], current_link["variant_id"]))
+                connection.execute("INSERT OR IGNORE INTO entity_relations(source_entity_id,target_entity_id,relation_type,notes) SELECT ?,target_entity_id,relation_type,notes FROM entity_relations WHERE source_entity_id=? AND target_entity_id<>?", (target_id, source_id, target_id))
+                connection.execute("INSERT OR IGNORE INTO entity_relations(source_entity_id,target_entity_id,relation_type,notes) SELECT source_entity_id,?,relation_type,notes FROM entity_relations WHERE target_entity_id=? AND source_entity_id<>?", (target_id, source_id, target_id))
+                connection.execute("DELETE FROM entity_relations WHERE source_entity_id=? OR target_entity_id=?", (source_id, source_id))
+                connection.execute("DELETE FROM entities WHERE entity_id=?", (source_id,))
+            elif kind == "variant":
+                connection.execute("INSERT OR IGNORE INTO variant_name_aliases SELECT entity_id,name,variant_type,? FROM variant_name_aliases WHERE variant_id=?", (target_id, source_id))
+                connection.execute("INSERT OR REPLACE INTO variant_name_aliases VALUES(?,?,?,?)", (source["entity_id"], source["name"], source["variant_type"], target_id))
+                connection.execute("UPDATE asset_entities SET variant_id=? WHERE variant_id=?", (target_id, source_id))
+                connection.execute("DELETE FROM variants WHERE variant_id=?", (source_id,))
+            elif kind == "set":
+                for conflict in conflicts:
+                    if conflict["key"].startswith("member:") and resolutions[conflict["key"]] == "source":
+                        asset_id = conflict["key"].split(":")[1]
+                        connection.execute("UPDATE reference_set_assets SET role=? WHERE set_id=? AND asset_id=?", (conflict["source"], target_id, asset_id))
+                max_order = max((item["sort_order"] for item in state["target_members"]), default=-1)
+                for member in state["source_members"]:
+                    existing_member = next((item for item in state["target_members"] if item["asset_id"] == member["asset_id"]), None)
+                    if existing_member:
+                        connection.execute("DELETE FROM reference_set_assets WHERE set_id=? AND asset_id=?", (source_id, member["asset_id"]))
+                    else:
+                        connection.execute("UPDATE reference_set_assets SET set_id=?,sort_order=? WHERE set_id=? AND asset_id=?", (target_id, max_order + member["sort_order"] + 1, source_id, member["asset_id"]))
+                connection.execute("UPDATE logical_references SET set_id=? WHERE set_id=?", (target_id, source_id))
+                connection.execute("UPDATE reference_sets SET set_type=?,description=?,entity_id=?,updated_at=? WHERE set_id=?", tuple(source[field] if resolutions.get(f"set:{field}") == "source" else target[field] for field in ("set_type", "description", "entity_id")) + (stamp, target_id))
+                connection.execute("DELETE FROM reference_sets WHERE set_id=?", (source_id,))
+            else:
+                connection.execute("INSERT OR IGNORE INTO asset_facets SELECT asset_id,? FROM asset_facets WHERE facet_id=?", (target_id, source_id))
+                connection.execute("DELETE FROM facets WHERE facet_id=?", (source_id,))
+        return {"kind": kind, "source_id": source_id, "target_id": target_id}
 
     def save_logical_reference(self, data: dict, reference_key: str = "") -> dict:
         key = self._require(reference_key or data.get("reference_key"), "Logical reference key")

@@ -349,6 +349,15 @@ Rendering priorities:
 
 <!-- ZET:END HEAD_IMAGE_CHARACTER_REQUIREMENTS -->
 
+## Expression Guidance
+
+<!-- ZET:BEGIN HEAD_IMAGE_EXPRESSION_GUIDANCE -->
+
+<!-- ZET:VIEW_DOMAIN head -->
+* [head:frontish,profiles] Use a calm, neutral expression with relaxed brows and mouth; keep the lips gently closed, with no smile, frown, or exaggerated emotion. Keep the eyes and gaze aligned with the requested view.
+
+<!-- ZET:END HEAD_IMAGE_EXPRESSION_GUIDANCE -->
+
 ## Negative Guidance
 
 <!-- ZET:BEGIN NEGATIVE_GUIDANCE_HEAD_IMAGE -->

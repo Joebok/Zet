@@ -14,6 +14,7 @@ from zet.services.comfyui_render_service import (
     run_comfyui_workflow,
 )
 from zet.services.local_render_types import LocalRenderError, LocalRenderResult
+from zet.services.local_render_policy import require_qwen_profile, SCENE_PROFILE, configured_qwen_checkpoint
 
 from .stable_matrix_adapter import split_labeled_prompt
 
@@ -49,7 +50,7 @@ def render_preview(
     final_prompt_path: Path,
     job_output_dir: Path,
     prompt_review_path: Path | None = None,
-    profile_name: str = "comfyui-core-preview",
+    profile_name: str = SCENE_PROFILE,
     scene_render_ir_path: Path | None = None,
     aspect_ratio: str = "",
     reference_files: list[dict[str, Any]] | None = None,
@@ -77,6 +78,10 @@ def render_preview(
     }
     config = _load_config(project_root)
     selected_checkpoint = str(checkpoint if checkpoint is not None else config.get("Checkpoint") or "")
+    if checkpoint is None:
+        selected_checkpoint = configured_qwen_checkpoint(selected_checkpoint)
+    selected_checkpoint = selected_checkpoint or str(profile.get("diffusion_model") or "")
+    require_qwen_profile(project_root, profile_name, checkpoint=selected_checkpoint)
     disable_prompt_globals = bool(profile.get("disable_prompt_globals"))
     positive_globals = "" if disable_prompt_globals else str(config.get("PositivePromptGlobals") or "")
     negative_globals = "" if disable_prompt_globals else str(config.get("NegativePromptGlobals") or "")

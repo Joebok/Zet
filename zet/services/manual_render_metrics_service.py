@@ -96,6 +96,24 @@ class ManualRenderMetricsService:
                 "pipeline": str(ask.get("pipeline") or "Story Scene"),
             }
 
+        for _, receipt in self.path_service.lifecycle.iter_receipts():
+            if receipt.get("worker_type") != "manual_chatgpt_render" or receipt.get("answer_status") != "SUCCESS":
+                continue
+            ask_id = str(receipt.get("ask_id") or "")
+            refinement = self._refinement_record({"chatgpt_refinement": receipt.get("chatgpt_refinement")})
+            if refinement is None:
+                if ask_id not in submissions:
+                    unknown_ids.add(ask_id)
+                continue
+            unknown_ids.discard(ask_id)
+            required, count = refinement
+            submissions[ask_id] = {
+                "required": required,
+                "additional_image_generations": count,
+                "engine_profile": str(receipt.get("engine_profile") or "unspecified"),
+                "pipeline": str(receipt.get("pipeline") or "Story Scene"),
+            }
+
         records = list(submissions.values())
         groups: dict[str, dict[str, list[dict[str, Any]]]] = {
             "engine_profile": defaultdict(list),

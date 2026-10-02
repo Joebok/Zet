@@ -91,6 +91,10 @@ Used in the standard path. State character-specific source precedence and preser
 
 Used in the standard path. Include only character-varying head-output requirements not already captured as head or hair facts. Exclude body, clothing, framing, background, and generic rendering rules.
 
+### `HEAD_IMAGE_EXPRESSION_GUIDANCE` — optional; Head-Image only
+
+Used only by Head-Image jobs. Add view-conditioned facial-expression guidance here, using `<!-- ZET:VIEW_DOMAIN head -->` and tags such as `[head:frontish,profiles]` to limit it to front-facing, three-quarter front, and profile views. This section does not affect expression-image jobs or other pipelines.
+
 ### `NEGATIVE_GUIDANCE_HEAD_IMAGE` — optional
 
 Used by head-image. List likely character-specific head or hair failure modes as direct prohibitions. Do not include body or costume negatives.

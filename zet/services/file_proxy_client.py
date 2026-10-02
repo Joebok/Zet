@@ -10,6 +10,7 @@ import shutil
 import socket
 import time
 from typing import Iterator
+from zet.services.ai_queue_paths import queue_local_state_root
 
 
 class FileProxyClient:
@@ -21,10 +22,13 @@ class FileProxyClient:
         "local_image_render": "local_image",
     }
 
-    def __init__(self, base_queue_path: str | Path):
+    def __init__(self, base_queue_path: str | Path, *, route_root: Path | None = None):
         self.base_queue_path = Path(base_queue_path)
         self.root = self.base_queue_path / "File_Proxy"
-        self.route_root = self.base_queue_path / "Zet_File_Proxy_State" / "Routes"
+        if route_root is None:
+            route_root = queue_local_state_root(self.base_queue_path) / "Routes"
+        self.route_root = route_root
+        self.legacy_route_root = self.base_queue_path / "Zet_File_Proxy_State" / "Routes"
 
     @property
     def ask_root(self) -> Path:
@@ -86,7 +90,7 @@ class FileProxyClient:
         if worker_type == "ollama_generate":
             model = str(manifest.get("ollama_model") or "").strip() or "general:latest"
             return f"ollama:{model}"
-        backend = str(manifest.get("image_generation") or "").strip().lower() or "stable_matrix"
+        backend = str(manifest.get("image_generation") or "").strip().lower() or "comfyui"
         checkpoint = str(manifest.get("checkpoint") or "").strip() or "default"
         return f"image:{backend}:{checkpoint}"
 
@@ -202,7 +206,7 @@ class FileProxyClient:
         producer_id = str(job.get("producer_id") or "")
         if producer_id and producer_id.casefold() != socket.gethostname().casefold():
             return "Answer belongs to another producer computer. Harvest it on that computer."
-        if job.get("route_required") and not (self.route_root / f"{answer.name}.json").is_file():
+        if job.get("route_required") and not self.load_route(answer.name):
             return "Local route is missing. Restore its Zet_File_Proxy_State/Routes record before harvesting."
         if not self._inventory_complete(answer, result.get("output_files")):
             return "Output transfer is incomplete or its checksum does not match. Preserve the answer and retry transfer."
@@ -283,6 +287,8 @@ class FileProxyClient:
 
     def load_route(self, job_id: str) -> dict[str, str]:
         path = self.route_root / f"{job_id}.json"
+        if not path.exists():
+            path = self.legacy_route_root / f"{job_id}.json"
         if not path.exists():
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))

@@ -264,6 +264,10 @@ class GateTestRigService:
 
     def _proxy_answer(self, ask_id: str) -> dict[str, Any]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
+        receipt = paths.lifecycle.read_receipt(ask_id)
+        if receipt:
+            return {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
+                    "error_message": receipt.get("error_message", "")}
         roots = (paths.ask_root(), paths.running_root(), paths.answer_root())
         for base in roots:
             folder = base / ask_id

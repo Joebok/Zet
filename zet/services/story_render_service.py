@@ -63,15 +63,18 @@ class StoryRenderService:
         default_prompt_sections: dict[str, str],
         *,
         allow_incomplete_reference_descriptions: bool = False,
+        resolved_references: list[dict] | None = None,
+        element_sources: dict | None = None,
     ) -> tuple[list[dict], dict, str]:
         story = self.story
-        references = self.reference_service.resolve_scene_references("\n" + json.dumps(projected))
+        references = (resolved_references if resolved_references is not None else
+                      self.reference_service.resolve_scene_references("\n" + json.dumps(projected)))
         ir = compile_scene_render_ir(
             projected,
             story_settings,
             {
                 "references": references,
-                "element_sources": story._resolve_scene_element_sources(
+                "element_sources": element_sources if element_sources is not None else story._resolve_scene_element_sources(
                     projected,
                     allow_incomplete_descriptions=allow_incomplete_reference_descriptions,
                 ),
@@ -92,6 +95,30 @@ class StoryRenderService:
             ordered_references.append(reference)
         references = enrich_reference_files(ordered_references, ir["image_inputs"])
         return references, ir, story.scene_render_target_service.input_hash(ir, story_settings, references)
+
+    def compile_batch_target(self, scene: dict, settings: dict, sections: dict, references: list[dict],
+                             target_id: str, selected_sources: dict[str, dict]) -> dict:
+        """Compile frozen batch inputs without publishing selected prerequisites."""
+        from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
+        targets = self.story.scene_render_target_service
+        targets.assert_valid_graph(scene)
+        required = targets.direct_dependencies(scene, target_id)
+        missing = [item["id"] for item in required if item["id"] not in selected_sources]
+        if missing:
+            raise self.error_type("Select prerequisite images first: " + ", ".join(missing))
+        statuses = {key: {"locked_image_path": value["path"], "locked_current": True}
+                    for key, value in selected_sources.items()}
+        projected = (targets.project_main(scene, statuses) if target_id == MAIN_RENDER_TARGET else
+                     targets.project_subscene(scene, target_id))
+        bindings = {item["tag"]: dict(item) for item in references}
+        for key, value in selected_sources.items():
+            tag = targets.image_tag(scene["scene"]["_story_slug"], scene["scene"]["slug"], key)
+            bindings[tag] = {**value, "tag": tag, "label": targets.target_label(scene, key), "kind": "scene-render"}
+        sources = {str(item.get("id")): item.get("resolved_source_sections") or {}
+                   for item in projected.get("scene_elements") or []}
+        refs, ir, fingerprint = self._compile_projected(
+            projected, settings, sections, resolved_references=list(bindings.values()), element_sources=sources)
+        return {"ir": ir, "references": refs, "prompt": compile_qwen_scene_prompt(ir), "render_input_hash": fingerprint}
 
     def _compile(
         self,

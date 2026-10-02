@@ -21,7 +21,7 @@ from zet.web.app import create_app
 
 
 def _service(tmp_path: Path) -> tuple[AdHocImageGenerationService, Path]:
-    config_path = write_project_fixture(tmp_path)
+    config_path = write_project_fixture(tmp_path, library_root=True)
     app = ZetApp.from_config(config_path, validate_catalog=False)
     service = AdHocImageGenerationService(app, Path(__file__).resolve().parents[1])
     return service, config_path

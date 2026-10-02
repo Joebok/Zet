@@ -15,6 +15,7 @@ from uuid import uuid4
 from PIL import Image
 
 from zet.services.atomic_file_service import replace_with_retry, write_json_atomic
+from zet.services.ai_queue_paths import queue_local_state_root
 
 
 _guard = threading.Lock()
@@ -107,18 +108,21 @@ def subject_key(manifest: dict) -> tuple:
 
 def task_state_path(queue_root: Path, kind: str, ask_id: str) -> Path:
     key = hashlib.sha256(ask_id.encode("utf-8")).hexdigest()
+    if kind == "Locks":
+        lock_number = int(key[:8], 16) % 64
+        return queue_local_state_root(queue_root) / "Locks" / f"workflow-{lock_number:02d}.lock"
+    if kind == "Manual_Render_Publications":
+        return queue_local_state_root(queue_root) / kind / f"{key}.json"
     return queue_root / "Zet_File_Proxy_State" / kind / f"{key}.json"
 
 
 def supersede_task(queue_root: Path, task: Path, reason: str) -> None:
-    """Fence late answers and retain asks/answers for recovery."""
+    """Fence late answers and remove obsolete queued asks."""
     write_json_atomic(task_state_path(queue_root, "Superseded", task.name), {"ask_id": task.name, "reason": reason})
-    # Answers and running work must remain available to their consumers.
-    if task.parent.parent.name == "Ask":
-        destination = queue_root / "Zet_File_Proxy_State" / "Superseded_Asks" / task.name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if task.exists() and not destination.exists():
-            task.rename(destination)
+    # Running work stays available, but an obsolete ask bundle is no longer queued.
+    if task.parent.name == "Ask" and task.is_dir():
+        (queue_local_state_root(queue_root) / "Routes" / f"{task.name}.json").unlink(missing_ok=True)
+        shutil.rmtree(task)
 
 
 def snapshot_manual_ask(staging: Path, ready: Path, manifest: dict, resolve_path) -> dict:

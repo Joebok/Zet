@@ -477,6 +477,10 @@ class LocalHeadImageService:
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
+        receipt = paths.lifecycle.read_receipt(ask_id)
+        if receipt:
+            return "HARVESTED", {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
+                                  "error_message": receipt.get("error_message", "")}
         for status, folder in (("QUEUED", paths.ask_root()), ("RUNNING", paths.running_root()), ("ANSWERED", paths.answer_root())):
             path = folder / ask_id
             if path.is_dir():

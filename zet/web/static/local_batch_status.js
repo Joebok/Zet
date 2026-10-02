@@ -14,6 +14,7 @@
   };
 
   function directBatchUrl(batch) {
+    if (batch.href) return batch.href;
     const params = new URLSearchParams({
       page: pipelinePages[batch.pipeline] || "local-batch-status",
       character: batch.character,
@@ -40,7 +41,7 @@
     const title = document.createElement("h3");
     const link = document.createElement("a");
     link.href = directBatchUrl(batch);
-    link.textContent = [batch.character, batch.phase, batch.batch_name || batch.run_id.slice(0, 8)]
+    link.textContent = [batch.story_slug || batch.character, batch.scene_slug || batch.phase, batch.batch_name || batch.run_id.slice(0, 8)]
       .filter(Boolean)
       .join("/");
     title.append(link);

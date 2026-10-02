@@ -181,7 +181,7 @@ const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 
 const CHARACTER_PAGES = new Set(["onboarding", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
-const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
+const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "scene-batches", "zine"]);
 const LOCAL_PAGES = new Set([
   "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
@@ -190,7 +190,7 @@ const LOCAL_PAGES = new Set([
 const LOCAL_ASSET_PAGES = new Set([
   "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
 ]);
-const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "render-review"]);
+const PRODUCTION_PAGES = new Set(["prompt-review"]);
 state.imageGenerationRequestId = null;
 state.imageGenerationTerminal = false;
 
@@ -837,7 +837,20 @@ let entityLibrarySelectedAsset = null;
 let entityLibraryMetadata = { entities: [], variants: [], sets: [] };
 let entityLibraryPageOffset = 0;
 let entityLibraryTotal = 0;
+let entityLibraryCurrentView = "search";
+let entityLibraryMergePreview = null;
+let entityLibraryOrganizerSelectedId = "";
+let entityLibrarySavedSnapshot = "";
 const ENTITY_LIBRARY_PAGE_SIZE = 10;
+const entityLibraryOrganizer = document.querySelector("#entity-library-organizer");
+const entityLibrarySearchForm = document.querySelector("#entity-library-search-form");
+const entityLibraryClearFilters = document.querySelector("#entity-library-clear-filters");
+const entityLibraryActiveFilterCount = document.querySelector("#entity-library-active-filter-count");
+const entityLibraryImportDialog = document.querySelector("#entity-library-import-dialog");
+const entityLibraryImportDialogContent = document.querySelector("#entity-library-import-dialog-content");
+const entityLibraryMergeDialog = document.querySelector("#entity-library-merge-dialog");
+const entityLibraryMergeContent = document.querySelector("#entity-library-merge-content");
+const entityLibraryMergeConfirm = document.querySelector("#entity-library-merge-confirm");
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
 const imageCatalogCategory = document.querySelector("#image-catalog-category");
@@ -1945,15 +1958,13 @@ function renderProductionWorkSummary() {
     badge.title = `${analysisPending} prompt analysis task(s) running`;
   }
   for (const menu of [characterProductionMenu, storyProductionMenu].filter(Boolean)) {
-    const waitingAreas = [project.prompt_available, project.render_waiting, project.image_review_waiting]
+    const waitingAreas = [project.prompt_available]
       .filter((count) => Number(count || 0) > 0).length;
     menu.options[0].textContent = waitingAreas ? `Production · ${waitingAreas} waiting ▾` : "Production ▾";
     const labels = {
       "prompt-review": menu === storyProductionMenu ? "Prompt / Analysis" : "Prompts",
-      "render-console": menu === storyProductionMenu ? "Render Console" : "Render",
-      "render-review": "Image Review",
     };
-    for (const [value, key] of [["prompt-review", "prompt_available"], ["render-console", "render_waiting"], ["render-review", "image_review_waiting"]]) {
+    for (const [value, key] of [["prompt-review", "prompt_available"]]) {
       const item = Array.from(menu.options).find((option) => option.value === value);
       if (item) item.textContent = `${labels[value]}${Number(project[key] || 0) ? ` · ${project[key]}` : ""}`;
     }
@@ -2119,6 +2130,7 @@ function canonicalDashboardPage(page) {
     "local-costumes": "costumes", "local-comparison": "phase-comparison",
     "local-scene-appearances": "local-batch-status", "local-expressions": "local-batch-status",
     "local-image-review": "local-batch-status",
+    "render-console": "scene-batches", "render-review": "scene-batches",
   })[page] || page;
 }
 
@@ -2143,8 +2155,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
   ],
   story: [
     ["stories", "Overview"], ["scenes", "Scenes"], ["scene-builder", "Scene Builder"],
-    ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
-    ["render-console", "Render Console"], ["render-review", "Image Review"],
+    ["scene-batches", "Scene Batches"], ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
   ],
 };
 
@@ -2835,6 +2846,10 @@ function browserRouteUrl() {
   const params = new URLSearchParams();
   const page = activePageName();
   if (page) params.set("page", page);
+  if (page === "scene-batches") {
+    const batch = new URLSearchParams(window.location.search).get("batch");
+    if (batch) params.set("batch", batch);
+  }
   if (LOCAL_ASSET_PAGES.has(page)) {
     const currentParams = new URLSearchParams(window.location.search);
     for (const key of ["character", "phase", "local_batch", "local_costume"]) {
@@ -3349,6 +3364,14 @@ function editorGuardForPage(page = activePageName()) {
       discard: () => { state.savedBaselines.scene = sceneSnapshot(); },
     };
   }
+  if (page === "auxiliary-resources" && entityLibraryCurrentView === "detail" && entityLibrarySelectedAsset
+    && entityLibraryEditorSnapshot() !== entityLibrarySavedSnapshot) {
+    return {
+      name: "image details",
+      save: async () => { await saveEntityLibraryAsset(); return true; },
+      discard: () => applyEntityLibraryEditorSnapshot(JSON.parse(entityLibrarySavedSnapshot || "{}")),
+    };
+  }
   if (page === "scene-builder" && state.sceneBuilder && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder) {
     return {
       name: "Scene Builder",
@@ -3513,6 +3536,8 @@ async function openTemplateManual(manualId) {
 }
 
 async function activatePage(page, options = {}) {
+  const retiredPage = ["render-console", "render-review"].includes(page);
+  const retiredRoute = new URLSearchParams(window.location.search);
   page = canonicalDashboardPage(page);
   if (PRODUCTION_PAGES.has(page) && state.workspace !== "story") {
     state.workspace = "story";
@@ -3564,6 +3589,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#stories-page").classList.toggle("active", page === "stories");
   document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
   document.querySelector("#scene-candidates-page").classList.toggle("active", page === "scene-candidates");
+  document.querySelector("#scene-batches-page").classList.toggle("active", page === "scene-batches");
   document.querySelector("#zine-page").classList.toggle("active", page === "zine");
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
@@ -3652,6 +3678,11 @@ async function activatePage(page, options = {}) {
   }
   if (page === "scenes") {
     await loadScenesPage();
+  }
+  if (page === "scene-batches") {
+    await window.SceneBatches.open({story: state.selectedStorySlug, scene: state.selectedSceneSlug, retiredPage,
+      retiredAskId: options.preferredAskId || retiredRoute.get("ask_id") || "",
+      retiredTarget: options.renderTargetId || retiredRoute.get("render_target_id") || "main"});
   }
   if (page === "scene-candidates") {
     await loadSceneCandidates();
@@ -5296,6 +5327,8 @@ async function selectStoryScene(storySlug, sceneSlug = null, options = {}) {
       });
     } else if (activePageName() === "scene-builder" && nextScene) {
       await openSceneBuilder(options.renderTargetId || state.activeBuilderRenderTarget || "main");
+    } else if (activePageName() === "scene-batches") {
+      await window.SceneBatches.open({story: nextStory, scene: nextScene});
     } else if (PRODUCTION_PAGES.has(activePageName())) {
       await reloadActiveProductionPage();
     }
@@ -5500,27 +5533,7 @@ async function deleteScene() {
 }
 
 async function stageSceneRender() {
-  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
-    showSceneMessage("Wait for the requested scene to finish loading before staging a render.", "error");
-    return;
-  }
-  sceneStageRender.disabled = true;
-  sceneSave.disabled = true;
-  sceneBuilderOpen.disabled = true;
-  showSceneMessage("Staging scene render...");
-  try {
-    const payload = await fetchJson(
-      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/stage-render`,
-      { method: "POST" },
-    );
-    const askId = payload.task?.ask_id || null;
-    showSceneMessage(payload.message || "Scene render staged.");
-    await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
-  } catch (error) {
-    showSceneMessage(error.message, "error");
-  } finally {
-    updateSceneContextControls();
-  }
+  await activatePage("scene-batches");
 }
 
 function toggleSceneImage() {
@@ -6757,10 +6770,8 @@ function builderRenderMoreMenu() {
     : "analyze-prompt";
   const activeSubscene = builderActiveSubscene();
   const staleWarning = builderTargetStaleWarning();
-  const renderDisabled = Boolean(builderTargetRenderBlocker())
-    || Boolean(staleWarning) && !builderAllowsStaleDependencies()
-    || activeSubscene?.enabled === false;
-  const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
+  const renderDisabled = !sceneDocumentMatches();
+  const renderLabel = "Open/Create Scene Batch";
   const saveLabel = activeSubscene ? "Save Subscene" : "Save Full Scene";
   return `
     <details class="scene-builder-more">
@@ -6770,10 +6781,9 @@ function builderRenderMoreMenu() {
         ${activeSubscene ? '<button type="button" class="builder-responsive-action" data-builder-action="cancel-subscene">Cancel Subscene Edits</button>' : ""}
         <button type="button" class="builder-responsive-action primary-action" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
         <button type="button" data-builder-action="continue-from">Continue From…</button>
-        <button type="button" data-builder-action="${analysisAction}">Prompt Analysis</button>
+        <button type="button" data-builder-action="open-page" data-builder-page="scene-batches">Prompt Analysis / Batches</button>
         <button type="button" data-builder-action="open-page" data-builder-page="scenes">Scene Management</button>
         <button type="button" data-builder-action="open-page" data-builder-page="local-batch-status">Local Assets</button>
-        <button type="button" data-builder-action="open-page" data-builder-page="render-review">Candidate Review</button>
         ${builderRenderTechnicalDetails()}
       </div>
     </details>
@@ -7365,11 +7375,8 @@ function renderSceneBuilder() {
   const renderBlocker = builderTargetRenderBlocker();
   const staleWarning = builderTargetStaleWarning();
   const contextReady = sceneDocumentMatches();
-  const renderDisabled = !contextReady
-    || Boolean(renderBlocker)
-    || Boolean(staleWarning) && !builderAllowsStaleDependencies()
-    || activeSubscene?.enabled === false;
-  const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
+  const renderDisabled = !contextReady;
+  const renderLabel = "Open/Create Scene Batch";
   const activeTargetLabel = activeSubscene ? `Subscene: ${activeSubscene.name || activeSubscene.id}` : "Full Scene";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
@@ -7754,26 +7761,8 @@ async function disableSceneSubscene(targetId) {
 }
 
 async function renderSceneBuilderScene() {
-  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
-    showSceneBuilderMessage("Wait for the requested scene to finish loading before rendering.", "error");
-    return;
-  }
-  if (!requireSavedSceneBuilder("staging a render")) return;
-  const targetId = state.activeBuilderRenderTarget || "main";
-  const params = new URLSearchParams();
-  if (builderAllowsStaleDependencies(targetId)) params.set("allow_stale_dependencies", "true");
-  const query = params.size ? `?${params.toString()}` : "";
-  showSceneBuilderMessage(`Staging ${targetId === "main" ? "full-scene" : targetId} render...`, "info");
-  try {
-    const payload = await fetchJson(
-      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/render-targets/${encodeURIComponent(targetId)}/stage-render${query}`,
-      { method: "POST" },
-    );
-    const askId = payload.task?.ask_id || null;
-    await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
-  } catch (error) {
-    showSceneBuilderMessage(error.message, "error");
-  }
+  if (!requireSavedSceneBuilder("opening Scene Batches")) return;
+  await activatePage("scene-batches");
 }
 
 async function analyzeScenePrompt() {
@@ -8471,7 +8460,7 @@ async function loadEntityLibraryInventory() {
   const variants = variantsPayload.variants || [];
   const sets = setsPayload.sets || [];
   const facets = facetsPayload.facets || [];
-  entityLibraryMetadata = { entities, variants, sets };
+  entityLibraryMetadata = { entities, variants, sets, facets };
   setSelectOptionsWithLabels(entityLibraryFilterEntity, [
     { value: "", label: "All entities" }, ...entities.map((item) => ({ value: item.entity_id, label: item.name })),
   ]);
@@ -8503,7 +8492,7 @@ async function loadEntityLibraryInventory() {
   }
   updateEntityLibraryDescriptorOwners();
   setSelectOptionsWithLabels(entityLibraryEditSets, sets.map((item) => ({ value: item.set_id, label: item.name })));
-  await searchEntityLibrary();
+    await searchEntityLibrary(true);
   const usagePayload = await fetchJson("/api/entity-library/usages");
   const usageReport = usagePayload.report || {};
   if (usageReport.missing?.length || usageReport.stale) {
@@ -8536,10 +8525,37 @@ async function searchEntityLibrary(preserveOffset = false) {
     values.facet_value = facet_value;
   }
   for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
+  const activeFilters = Object.entries(values).filter(([key, value]) => key !== "q" && key !== "facet_value" && value);
+  entityLibraryActiveFilterCount.textContent = activeFilters.length ? ` · ${activeFilters.length} active` : "";
+  const chipContainer = document.querySelector("#entity-library-filter-chips");
+  chipContainer.replaceChildren();
+  const filterControls = { entity_id: entityLibraryFilterEntity, entity_type: entityLibraryFilterType, variant_id: entityLibraryFilterVariant, set_id: entityLibraryFilterSet, facet_namespace: entityLibraryFilterFacet, facet_value: entityLibraryFilterFacet, status: entityLibraryFilterStatus, origin: entityLibraryFilterOrigin };
+  const chipLabels = new Map();
+  if (entityLibraryFilterFacet.value) chipLabels.set("facet_namespace", entityLibraryFilterFacet.selectedOptions[0]?.textContent || entityLibraryFilterFacet.value.replace("\u0000", ":"));
+  for (const [key, value] of activeFilters) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "inventory-filter-chip";
+    const control = filterControls[key];
+    chip.textContent = `${chipLabels.get(key) || control?.selectedOptions?.[0]?.textContent || value} ×`;
+    chip.addEventListener("click", () => { if (control) control.value = ""; searchEntityLibrary(); });
+    chipContainer.append(chip);
+  }
   params.set("offset", String(entityLibraryPageOffset));
   params.set("limit", String(ENTITY_LIBRARY_PAGE_SIZE));
   entityLibraryCount.textContent = "Searching…";
-  const payload = await fetchJson(`/api/entity-library/assets?${params.toString()}`);
+  let payload;
+  try {
+    payload = await fetchJson(`/api/entity-library/assets?${params.toString()}`);
+  } catch (error) {
+    entityLibraryResults.replaceChildren();
+    entityLibraryCount.textContent = error.message || "Search failed. Try again.";
+    entityLibraryCount.classList.add("inventory-error");
+    entityLibraryPrevious.disabled = true;
+    entityLibraryNext.disabled = true;
+    return;
+  }
+  entityLibraryCount.classList.remove("inventory-error");
   const assets = payload.assets || [];
   entityLibraryTotal = Number(payload.total || 0);
   if (!assets.length && entityLibraryPageOffset > 0 && entityLibraryPageOffset >= entityLibraryTotal) {
@@ -8548,29 +8564,63 @@ async function searchEntityLibrary(preserveOffset = false) {
   }
   entityLibraryResults.replaceChildren();
   for (const asset of assets) {
-    const card = document.createElement("button");
-    card.type = "button";
+    const card = document.createElement("article");
     card.className = "image-catalog-card";
-    card.classList.toggle("selected", entityLibrarySelectedAsset?.asset_id === asset.asset_id);
+    const imageButton = document.createElement("button");
+    imageButton.type = "button";
+    imageButton.className = "inventory-card-image";
+    imageButton.setAttribute("aria-label", `Preview ${asset.label || asset.file_name || "library image"}`);
     const img = document.createElement("img");
     img.src = fileUrl(asset.thumbnail_path || asset.image_path);
     img.alt = asset.label || "Library image";
     img.title = "Open full-size image";
-    img.addEventListener("click", (event) => {
-      event.stopPropagation();
+    imageButton.addEventListener("click", () => {
       openFullscreenImage(fileUrl(asset.image_path), asset.label || asset.file_name || "Library image");
     });
+    imageButton.append(img);
     const title = document.createElement("strong");
     title.textContent = asset.label || asset.file_name;
     const detail = document.createElement("span");
-    detail.textContent = `${(asset.entities || []).map((item) => item.name).join(", ") || asset.origin} · ${asset.status}`;
-    card.append(img, title, detail);
-    card.addEventListener("click", () => selectEntityLibraryAsset(asset.asset_id));
+    detail.className = "inventory-card-subject";
+    detail.textContent = [(asset.entities || []).map((item) => [item.name, item.variant_name].filter(Boolean).join(" · ")).join(", "), asset.origin].filter(Boolean).join(" · ") || "No subject linked";
+    const badge = document.createElement("span");
+    badge.className = `inventory-status inventory-status-${asset.status}`;
+    badge.textContent = asset.status;
+    const tag = asset.logical_reference?.reference_key
+      ? `{{LIB:REF:${asset.logical_reference.reference_key}}}`
+      : `{{LIB:ASSET:${asset.asset_id}}}`;
+    const tagText = document.createElement("code");
+    tagText.className = "inventory-card-tag";
+    tagText.textContent = tag;
+    tagText.title = tag;
+    const actions = document.createElement("div");
+    actions.className = "inventory-card-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "primary-action inventory-copy-tag";
+    copy.textContent = "Copy tag";
+    copy.addEventListener("click", async () => {
+      try {
+        await writeClipboardText(tag);
+        copy.textContent = "Copied";
+        copy.classList.add("inventory-copied");
+        window.setTimeout(() => { copy.textContent = "Copy tag"; copy.classList.remove("inventory-copied"); }, 1600);
+      } catch {
+        window.prompt("Copy this image tag:", tag);
+      }
+    });
+    const details = document.createElement("button");
+    details.type = "button";
+    details.className = "secondary-action";
+    details.textContent = "Details";
+    details.addEventListener("click", () => selectEntityLibraryAsset(asset.asset_id));
+    actions.append(copy, details);
+    card.append(imageButton, title, detail, badge, tagText, actions);
     entityLibraryResults.append(card);
   }
   const first = entityLibraryTotal ? entityLibraryPageOffset + 1 : 0;
   const last = Math.min(entityLibraryPageOffset + assets.length, entityLibraryTotal);
-  entityLibraryCount.textContent = `${entityLibraryTotal} image${entityLibraryTotal === 1 ? "" : "s"} · showing ${first}–${last}`;
+  entityLibraryCount.textContent = entityLibraryTotal ? `${entityLibraryTotal} image${entityLibraryTotal === 1 ? "" : "s"} · showing ${first}–${last}` : "No images match these filters. Try another search.";
   entityLibraryPageStatus.textContent = `Page ${entityLibraryTotal ? Math.floor(entityLibraryPageOffset / ENTITY_LIBRARY_PAGE_SIZE) + 1 : 1}`;
   entityLibraryPrevious.disabled = entityLibraryPageOffset === 0;
   entityLibraryNext.disabled = entityLibraryPageOffset + assets.length >= entityLibraryTotal;
@@ -8588,6 +8638,245 @@ function updateEntityLibraryDescriptorOwners() {
       label: `${item.name || item.label}${item.variant_type ? ` · ${item.variant_type}` : ""}`,
     })),
   ]);
+}
+
+function activateInventoryView(view) {
+  entityLibraryCurrentView = view;
+  document.querySelectorAll("[data-inventory-view]").forEach((button) => {
+    const active = button.dataset.inventoryView === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  document.querySelector("#entity-library-search-view").hidden = view !== "search";
+  document.querySelector("#entity-library-detail-view").hidden = view !== "detail";
+  document.querySelector("#entity-library-organizer-view").hidden = !["entities", "variants", "sets", "facets"].includes(view);
+  if (["entities", "variants", "sets", "facets"].includes(view)) renderEntityLibraryOrganizer(view);
+}
+
+function entityLibraryRowsFor(kind) {
+  return kind === "entities" ? entityLibraryMetadata.entities
+    : kind === "variants" ? entityLibraryMetadata.variants
+      : kind === "sets" ? entityLibraryMetadata.sets : entityLibraryMetadata.facets;
+}
+
+const entityLibraryOrganizationLabels = {
+  entities: ["Entities", "Entities are people, places, creatures, and objects represented by your images."],
+  variants: ["Variants", "Variants describe a form, stage, or version of an entity."],
+  sets: ["Reference sets", "Reference sets group images for a shared subject or purpose."],
+  facets: ["Facets", "Facets are reusable, structured labels such as view:front."],
+};
+
+function organizerId(kind, item) {
+  return item.entity_id || item.variant_id || item.set_id || item.facet_id;
+}
+
+function organizerTitle(kind, item) {
+  return kind === "facets" ? `${item.namespace}:${item.value}`
+    : item.name || item.label || item.value;
+}
+
+function renderEntityLibraryOrganizer(kind, selectedId = "") {
+  entityLibraryOrganizerSelectedId = selectedId;
+  const rows = entityLibraryRowsFor(kind) || [];
+  const heading = entityLibraryOrganizationLabels[kind];
+  const singular = ({ entities: "entity", variants: "variant", sets: "set", facets: "facet" })[kind];
+  const query = (entityLibraryOrganizer.querySelector("#inventory-organizer-search")?.value || "").trim().toLowerCase();
+  const filtered = rows.filter((item) => `${organizerTitle(kind, item)} ${item.entity_type || ""} ${item.entity_name || ""}`.toLowerCase().includes(query));
+  const selected = selectedId ? rows.find((item) => organizerId(kind, item) === selectedId) : null;
+  entityLibraryOrganizer.innerHTML = `
+    <header class="inventory-section-heading"><div><h2>${escapeHtml(heading[0])}</h2><p>${escapeHtml(heading[1])}</p></div><button class="primary-action" data-organizer-action="new">Add ${singular}</button></header>
+    <div class="inventory-organizer-layout">
+      <section class="control-panel inventory-organization-list"><label>Find ${escapeHtml(kind)}<input id="inventory-organizer-search" type="search" value="${escapeHtml(query)}" placeholder="Filter this list"></label>
+      <p class="status-text">${rows.length} ${kind}</p>
+      <div role="list">${filtered.map((item) => `<button type="button" role="listitem" class="inventory-organization-row${selected && organizerId(kind, item) === selectedId ? " selected" : ""}" data-organizer-action="select" data-id="${escapeHtml(organizerId(kind, item))}"><strong>${escapeHtml(organizerTitle(kind, item))}</strong><span>${escapeHtml(kind === "entities" ? item.entity_type : kind === "variants" ? `${item.entity_name} · ${item.variant_type}` : kind === "sets" ? item.set_type : item.controlled ? "Controlled" : "Free-form")}</span><small>${Number(item.image_count ?? item.usage_count ?? 0)} images</small></button>`).join("") || '<p class="status-text">No matches. Create the first item with “Add”.</p>'}</div></section>
+      <section class="control-panel inventory-organization-detail" id="inventory-organization-detail">${selected ? renderOrganizationRecord(singular, selected) : '<p class="status-text">Choose an item to review its details and available actions.</p>'}</section>
+    </div>`;
+  entityLibraryOrganizer.querySelector("#inventory-organizer-search")?.addEventListener("input", () => {
+    const value = entityLibraryOrganizer.querySelector("#inventory-organizer-search").value;
+    renderEntityLibraryOrganizer(kind, selectedId);
+    const input = entityLibraryOrganizer.querySelector("#inventory-organizer-search");
+    input.focus(); input.setSelectionRange(value.length, value.length);
+  });
+  entityLibraryOrganizer.querySelector("[name=member_search]")?.addEventListener("input", (event) => renderInventorySetMatches(event.target.value));
+  if (kind === "entities" && selected) {
+    fetchJson(`/api/entity-library/relations?entity_id=${encodeURIComponent(selectedId)}`).then((payload) => {
+      const list = entityLibraryOrganizer.querySelector("#inventory-relationships-list");
+      if (!list) return;
+      list.innerHTML = `<ul>${(payload.relations || []).map((relation) => `<li>${escapeHtml(relation.source_name)} ${escapeHtml(relation.relation_type.replaceAll("_", " "))} ${escapeHtml(relation.target_name)} <button type="button" data-organizer-action="remove-relation" data-source="${escapeHtml(relation.source_entity_id)}" data-target="${escapeHtml(relation.target_entity_id)}" data-type="${escapeHtml(relation.relation_type)}">Remove</button></li>`).join("") || "<li>No relationships yet.</li>"}</ul>`;
+    }).catch(() => {});
+  }
+}
+
+function renderOrganizationRecord(kind, item, creating = false) {
+  const plural = ({ entity: "entities", variant: "variants", set: "sets", facet: "facets" })[kind];
+  const id = organizerId(kind, item) || "";
+  const readOnlyType = !creating && kind === "entity" ? `<label>Type<input value="${escapeHtml(item.entity_type || "character")}" disabled></label>`
+    : !creating && kind === "variant" ? `<label>Type<input value="${escapeHtml(item.variant_type || "form")}" disabled></label><label>Owner<input value="${escapeHtml(item.entity_name || "")}" disabled></label>` : "";
+  const formFields = kind === "facet"
+    ? `<label>Namespace<input name="namespace" value="${escapeHtml(item.namespace || "view")}" ${creating ? "" : "disabled"} required></label><label>Value<input name="value" value="${escapeHtml(item.value || "")}" required></label>`
+    : `<label>Name<input name="name" value="${escapeHtml(item.name || "")}" required></label>${readOnlyType}<label>Description<input name="description" value="${escapeHtml(item.description || "")}"></label>${kind === "set" ? `<label>Purpose<input name="set_type" value="${escapeHtml(item.set_type || "general")}" required></label><label>Related entity<select name="entity_id"><option value="">No owner</option>${entityLibraryMetadata.entities.map((entity) => `<option value="${escapeHtml(entity.entity_id)}"${entity.entity_id === item.entity_id ? " selected" : ""}>${escapeHtml(entity.name)}</option>`).join("")}</select></label>` : ""}${creating && kind === "variant" ? `<label>Owner<select name="entity_id" required>${entityLibraryMetadata.entities.map((entity) => `<option value="${escapeHtml(entity.entity_id)}">${escapeHtml(entity.name)}</option>`).join("")}</select></label><label>Variant type<select name="variant_type"><option value="life_stage">Life stage</option><option value="form">Form</option><option value="state">State</option><option value="version">Version</option></select></label>` : ""}${creating && kind === "entity" ? `<label>Type<select name="entity_type">${["character", "person", "creature", "group", "location", "structure", "prop", "costume", "symbol"].map((type) => `<option value="${type}">${type}</option>`).join("")}</select></label>` : ""}`;
+  const descriptors = ["human_description", "prompt_identity", "prompt_costume", "prompt_object", "prompt_background", "negative_guidance", "selection_notes"];
+  const currentDescriptor = (item.descriptors || [])[0];
+  const descriptorHTML = ["entity", "variant", "set"].includes(kind) && !creating
+    ? `<details class="inventory-subsection"><summary>Shared prompt descriptors</summary><label>Descriptor<select name="descriptor_type">${descriptors.map((type) => `<option value="${type}"${type === currentDescriptor?.descriptor_type ? " selected" : ""}>${type.replaceAll("_", " ")}</option>`).join("")}</select></label><label>Text<textarea name="descriptor_text">${escapeHtml(currentDescriptor?.text || "")}</textarea></label><button type="button" data-organizer-action="save-descriptor">Save descriptor</button><ul>${(item.descriptors || []).map((d) => `<li>${escapeHtml(d.descriptor_type.replaceAll("_", " "))}</li>`).join("")}</ul></details>` : "";
+  const relationshipHTML = kind === "entity" && !creating
+    ? `<details class="inventory-subsection"><summary>Relationships</summary><div id="inventory-relationships-list"></div><label>Link to<select name="relation_target"><option value="">Choose entity</option>${entityLibraryMetadata.entities.filter((entity) => entity.entity_id !== id).map((entity) => `<option value="${escapeHtml(entity.entity_id)}">${escapeHtml(entity.name)} · ${escapeHtml(entity.entity_type)}</option>`).join("")}</select></label><label>Relationship<select name="relation_type"><option value="part_of">Part of</option><option value="variant_of">Variant of</option><option value="associated_with">Associated with</option></select></label><button type="button" data-organizer-action="add-relation">Link entities</button></details>` : "";
+  const setMembers = kind === "set" && !creating ? `<details class="inventory-subsection"><summary>Images in this set (${item.assets?.length || 0})</summary><ul>${(item.assets || []).map((asset) => `<li>${escapeHtml(asset.label || asset.file_name)} <button type="button" data-organizer-action="remove-member" data-asset-id="${escapeHtml(asset.asset_id)}">Remove</button></li>`).join("")}</ul><label>Find an image to add<input name="member_search" type="search" placeholder="Search image labels"></label><div id="inventory-set-image-matches"></div></details>` : "";
+  return `<button type="button" class="text-action" data-organizer-action="list">← Back to ${escapeHtml(plural)}</button><form id="inventory-record-form" data-kind="${kind}" data-id="${escapeHtml(id)}"><h2>${creating ? `New ${kind}` : escapeHtml(organizerTitle(plural, item))}</h2>${formFields}<div class="button-row"><button class="primary-action" type="submit">${creating ? "Create" : "Save changes"}</button>${!creating ? `<button type="button" data-organizer-action="view-images">View images (${Number(item.image_count ?? item.usage_count ?? 0)})</button><button type="button" data-organizer-action="merge">Merge into…</button><button type="button" class="danger-action" data-organizer-action="delete">${kind === "set" ? "Delete set" : "Delete if unused"}</button>` : ""}</div></form>${descriptorHTML}${relationshipHTML}${setMembers}<div id="inventory-record-message" class="status-text" role="status"></div>`;
+}
+
+async function inventoryFilteredSearch(overrides = {}) {
+  for (const [key, value] of Object.entries(overrides)) {
+    const control = document.querySelector(`#entity-library-filter-${key}`);
+    if (control) control.value = value;
+  }
+  activateInventoryView("search");
+  await searchEntityLibrary();
+}
+
+async function previewOrganizationMerge(kind, sourceId) {
+  const rows = entityLibraryRowsFor(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets");
+  const source = rows.find((item) => organizerId(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets", item) === sourceId);
+  const candidates = rows.filter((item) => {
+    if (organizerId(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets", item) === sourceId) return false;
+    if (kind === "entity") return item.entity_type === source?.entity_type;
+    if (kind === "variant") return item.entity_id === source?.entity_id && item.variant_type === source?.variant_type;
+    if (kind === "facet") return item.namespace === source?.namespace;
+    return true;
+  });
+  if (!candidates.length) return;
+  const listKind = kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets";
+  entityLibraryMergeContent.innerHTML = `<p>Choose the record that should keep its ID and image tags.</p><label>Keep<select id="inventory-merge-target">${candidates.map((item) => `<option value="${escapeHtml(organizerId(listKind, item))}">${escapeHtml(organizerTitle(listKind, item))}</option>`).join("")}</select></label><button id="inventory-merge-preview" type="button" class="secondary-action">Preview merge</button>`;
+  entityLibraryMergeConfirm.disabled = true;
+  entityLibraryMergeConfirm.onclick = null;
+  entityLibraryMergeDialog.showModal();
+  entityLibraryMergeContent.querySelector("#inventory-merge-preview").addEventListener("click", async () => {
+    const targetId = entityLibraryMergeContent.querySelector("#inventory-merge-target").value;
+    try {
+      const result = await fetchJson(`/api/entity-library/merges/${kind}/preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_id: sourceId, target_id: targetId }) });
+      entityLibraryMergePreview = result.preview;
+      renderOrganizationMergePreview(kind, sourceId, targetId, result.preview);
+    } catch (error) { window.alert(error.message); }
+  });
+}
+
+function renderOrganizationMergePreview(kind, sourceId, targetId, preview) {
+  entityLibraryMergeContent.innerHTML = `<p>Merge <strong>${escapeHtml(preview.source.name || `${preview.source.namespace}:${preview.source.value}`)}</strong> into <strong>${escapeHtml(preview.target.name || `${preview.target.namespace}:${preview.target.value}`)}</strong>. ${preview.image_count} image or organization record(s) will be retained under the target.</p>${preview.conflicts.length ? preview.conflicts.map((conflict) => `<fieldset class="inventory-merge-conflict"><legend>${escapeHtml(conflict.label)}</legend><label><input type="radio" name="${escapeHtml(conflict.key)}" value="target"> Keep target: <span>${escapeHtml(String(conflict.target))}</span></label><label><input type="radio" name="${escapeHtml(conflict.key)}" value="source"> Use source: <span>${escapeHtml(String(conflict.source))}</span></label></fieldset>`).join("") : "<p>No conflicting values. The merge can be applied safely.</p>"}`;
+  entityLibraryMergeConfirm.disabled = preview.conflicts.length > 0;
+  entityLibraryMergeConfirm.onclick = async () => {
+    const resolutions = {};
+    for (const conflict of preview.conflicts) {
+      const choice = entityLibraryMergeContent.querySelector(`input[name="${CSS.escape(conflict.key)}"]:checked`);
+      if (!choice) return;
+      resolutions[conflict.key] = choice.value;
+    }
+    entityLibraryMergeConfirm.disabled = true;
+    try {
+      await fetchJson(`/api/entity-library/merges/${kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_id: sourceId, target_id: targetId, token: preview.token, resolutions }) });
+      entityLibraryMergeDialog.close();
+      await loadEntityLibraryInventory();
+      const page = kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets";
+      activateInventoryView(page);
+    } catch (error) { window.alert(error.message); entityLibraryMergeConfirm.disabled = false; }
+  };
+  entityLibraryMergeContent.onchange = () => {
+    entityLibraryMergeConfirm.disabled = preview.conflicts.some((conflict) => !entityLibraryMergeContent.querySelector(`input[name="${CSS.escape(conflict.key)}"]:checked`));
+  };
+}
+
+async function handleOrganizationAction(event) {
+  const button = event.target.closest("[data-organizer-action]");
+  if (!button) return;
+  const action = button.dataset.organizerAction;
+  const form = button.closest("#inventory-record-form");
+  const kindPlural = entityLibraryCurrentView;
+  const kind = ({ entities: "entity", variants: "variant", sets: "set", facets: "facet" })[kindPlural];
+  const id = form?.dataset.id || button.dataset.id || entityLibraryOrganizerSelectedId;
+  const detailMessage = entityLibraryOrganizer.querySelector("#inventory-record-message");
+  const report = (message) => { if (detailMessage) detailMessage.textContent = message; else window.alert(message); };
+  try {
+    if (action === "select") return renderEntityLibraryOrganizer(kindPlural, id);
+    if (action === "list") return renderEntityLibraryOrganizer(kindPlural);
+    if (action === "new") {
+      renderEntityLibraryOrganizer(kindPlural);
+      entityLibraryOrganizer.querySelector("#inventory-organization-detail").innerHTML = renderOrganizationRecord(kind, {}, true);
+      return;
+    }
+    if (action === "view-images") {
+      const filters = kind === "entity" ? { entity: id } : kind === "variant" ? { variant: id } : kind === "set" ? { set: id } : { facet: `${entityLibraryMetadata.facets.find((item) => item.facet_id === id)?.namespace}\u0000${entityLibraryMetadata.facets.find((item) => item.facet_id === id)?.value}` };
+      return await inventoryFilteredSearch(filters);
+    }
+    if (action === "delete") {
+      if (!window.confirm("Delete this organization record? Its images will be kept.")) return;
+      const url = `/api/entity-library/${kindPlural}/${encodeURIComponent(id)}`;
+      await fetchJson(url, { method: "DELETE" });
+      await loadEntityLibraryInventory(); return activateInventoryView(kindPlural);
+    }
+    if (action === "merge") return previewOrganizationMerge(kind, id);
+    if (action === "save-descriptor") {
+      await fetchJson("/api/entity-library/descriptors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner_type: kind, owner_id: id, descriptor_type: form.elements.descriptor_type.value, text: form.elements.descriptor_text.value }) });
+      await loadEntityLibraryInventory(); return renderEntityLibraryOrganizer(kindPlural, id);
+    }
+    if (action === "add-relation") {
+      if (!form.elements.relation_target.value) return;
+      await fetchJson("/api/entity-library/relations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_entity_id: id, target_entity_id: form.elements.relation_target.value, relation_type: form.elements.relation_type.value }) });
+      report("Relationship added."); return;
+    }
+    if (action === "remove-relation") {
+      const params = new URLSearchParams({ source_entity_id: button.dataset.source, target_entity_id: button.dataset.target, relation_type: button.dataset.type });
+      await fetchJson(`/api/entity-library/relations?${params}`, { method: "DELETE" });
+      return loadEntityLibraryInventory().then(() => renderEntityLibraryOrganizer(kindPlural, id));
+    }
+    if (action === "remove-member") {
+      await fetchJson(`/api/entity-library/sets/${encodeURIComponent(id)}/assets/${encodeURIComponent(button.dataset.assetId)}`, { method: "DELETE" });
+      return loadEntityLibraryInventory().then(() => renderEntityLibraryOrganizer(kindPlural, id));
+    }
+    if (action === "add-member-image") {
+      await fetchJson(`/api/entity-library/sets/${encodeURIComponent(id)}/assets/${encodeURIComponent(button.dataset.assetId)}`, { method: "POST" });
+      return loadEntityLibraryInventory().then(() => renderEntityLibraryOrganizer(kindPlural, id));
+    }
+  } catch (error) { report(error.message); }
+}
+
+async function saveOrganizationRecord(event) {
+  event.preventDefault();
+  const form = event.target;
+  if (!form.matches("#inventory-record-form")) return;
+  const kind = form.dataset.kind;
+  const id = form.dataset.id;
+  const data = Object.fromEntries(new FormData(form));
+  try {
+    if (!id) {
+      if (kind === "entity") await fetchJson("/api/entity-library/entities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      else if (kind === "variant") await fetchJson(`/api/entity-library/entities/${encodeURIComponent(data.entity_id)}/variants`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      else if (kind === "set") await fetchJson("/api/entity-library/sets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      else await fetchJson("/api/entity-library/facets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    } else {
+      const url = `/api/entity-library/${kind === "set" ? "sets" : `${kind}s`}/${encodeURIComponent(id)}`;
+      await fetchJson(url, { method: kind === "set" ? "PUT" : "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    }
+    await loadEntityLibraryInventory();
+    renderEntityLibraryOrganizer(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets");
+  } catch (error) {
+    const message = entityLibraryOrganizer.querySelector("#inventory-record-message");
+    if (message) message.textContent = error.message; else window.alert(error.message);
+  }
+}
+
+async function renderInventorySetMatches(query) {
+  const target = entityLibraryOrganizer.querySelector("#inventory-set-image-matches");
+  const form = entityLibraryOrganizer.querySelector("#inventory-record-form");
+  if (!target || !form || !query.trim()) { if (target) target.replaceChildren(); return; }
+  try {
+    const params = new URLSearchParams({ q: query.trim(), limit: "10" });
+    const payload = await fetchJson(`/api/entity-library/assets?${params}`);
+    target.replaceChildren();
+    for (const asset of payload.assets || []) {
+      if (form.closest("#inventory-organization-detail") && !asset.sets?.some((set) => set.set_id === form.dataset.id)) {
+        const button = document.createElement("button"); button.type = "button"; button.textContent = `Add ${asset.label || asset.file_name}`; button.dataset.organizerAction = "add-member-image"; button.dataset.assetId = asset.asset_id; target.append(button);
+      }
+    }
+  } catch { target.textContent = "Could not search images."; }
 }
 
 function syncEntityLibrarySetEditor() {
@@ -8635,11 +8924,40 @@ async function deleteEntityLibrarySet() {
   }
 }
 
+function entityLibraryEditorSnapshot() {
+  return JSON.stringify({
+    asset_id: entityLibrarySelectedAsset?.asset_id || "",
+    label: entityLibraryEditLabel.value,
+    notes: entityLibraryEditNotes.value,
+    status: entityLibraryEditStatus.value,
+    entities: Array.from(entityLibraryEditEntities.selectedOptions, (item) => item.value),
+    sets: Array.from(entityLibraryEditSets.selectedOptions, (item) => item.value),
+    facets: entityLibraryEditFacets.value,
+    tags: entityLibraryEditTags.value,
+    identity: entityLibraryEditIdentity.value,
+    costume: entityLibraryEditCostume.value,
+    reference: entityLibraryEditReference.value,
+  });
+}
+
+function applyEntityLibraryEditorSnapshot(snapshot) {
+  if (!snapshot.asset_id || snapshot.asset_id !== entityLibrarySelectedAsset?.asset_id) return;
+  entityLibraryEditLabel.value = snapshot.label;
+  entityLibraryEditNotes.value = snapshot.notes;
+  entityLibraryEditStatus.value = snapshot.status;
+  for (const optionItem of entityLibraryEditEntities.options) optionItem.selected = snapshot.entities.includes(optionItem.value);
+  for (const optionItem of entityLibraryEditSets.options) optionItem.selected = snapshot.sets.includes(optionItem.value);
+  entityLibraryEditFacets.value = snapshot.facets;
+  entityLibraryEditTags.value = snapshot.tags;
+  entityLibraryEditIdentity.value = snapshot.identity;
+  entityLibraryEditCostume.value = snapshot.costume;
+  entityLibraryEditReference.value = snapshot.reference;
+}
+
 async function selectEntityLibraryAsset(assetId) {
   const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(assetId)}`);
   entityLibrarySelectedAsset = payload.asset;
-  document.querySelector(".entity-library-layout").classList.add("metadata-mode");
-  entityLibraryBack.hidden = false;
+  activateInventoryView("detail");
   const asset = entityLibrarySelectedAsset;
   entityLibraryEditorTitle.textContent = asset.label || asset.file_name;
   entityLibraryPreview.src = fileUrl(asset.image_path);
@@ -8681,13 +8999,13 @@ async function selectEntityLibraryAsset(assetId) {
     row.textContent = "No current consumers.";
     entityLibraryUsages.append(row);
   }
-  await searchEntityLibrary(true);
+  entityLibrarySavedSnapshot = entityLibraryEditorSnapshot();
 }
 
 async function deleteEntityLibraryAsset() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.status === "archived") return;
-  if (!window.confirm(`Delete ${asset.label || asset.file_name} from the image inventory?`)) return;
+  if (!window.confirm(`Archive ${asset.label || asset.file_name} from the image inventory? Existing references may need to be resolved first.`)) return;
   entityLibraryDelete.disabled = true;
   try {
     await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" });
@@ -9891,8 +10209,9 @@ async function writeClipboardText(value) {
   document.body.append(textarea);
   textarea.focus();
   textarea.select();
-  document.execCommand("copy");
+  const copied = document.execCommand("copy");
   textarea.remove();
+  if (!copied) throw new Error("Clipboard access is unavailable.");
 }
 
 async function copyText(value, label = "Copied.") {
@@ -10883,17 +11202,10 @@ function renderPipelineControls(payload) {
   state.pipelineControls = payload;
   const automation = payload.automation || {};
   const profiles = payload.render_profiles || {};
-  const stableProfile = automation.stable_matrix_profile || automation.local_render_preset || "body-reference-preview";
-  const comfyProfile = automation.comfyui_profile || "comfyui-core-preview";
-  setSelectOptions(settingLocalRenderPreset, profiles.stable_matrix?.length ? profiles.stable_matrix : [stableProfile]);
+  const comfyProfile = automation.comfyui_profile || "comfyui-qwen-image-2-1-scene";
   setSelectOptions(settingComfyuiProfile, profiles.comfyui?.length ? profiles.comfyui : [comfyProfile]);
-  settingLocalRenderBackend.value = automation.local_render_backend || "stable_matrix";
-  settingLocalRenderPreset.value = stableProfile;
+  settingLocalRenderBackend.value = "comfyui";
   settingComfyuiProfile.value = comfyProfile;
-  settingLocalRenderForgeCouple.checked = (automation.stable_matrix_use_forge_couple ?? automation.local_render_use_forge_couple) !== false;
-  setLocalRenderCheckpointValue(automation.stable_matrix_checkpoint || automation.local_render_checkpoint || "");
-  settingLocalRenderPositiveGlobals.value = automation.stable_matrix_positive_prompt_globals || automation.local_render_positive_prompt_globals || "";
-  settingLocalRenderNegativeGlobals.value = automation.stable_matrix_negative_prompt_globals || automation.local_render_negative_prompt_globals || "";
   setComfyuiCheckpointValue(automation.comfyui_checkpoint || "");
   settingComfyuiServerUrl.value = automation.comfyui_server_url || "http://127.0.0.1:8188";
   settingComfyuiPositiveGlobals.value = automation.comfyui_positive_prompt_globals || "";
@@ -11049,7 +11361,7 @@ function setComfyuiCheckpointValue(value) {
 
 function syncLocalRenderBackendPanels() {
   const useComfyui = settingLocalRenderBackend.value === "comfyui";
-  stableMatrixSettings.hidden = useComfyui;
+  stableMatrixSettings.hidden = true;
   comfyuiSettings.hidden = !useComfyui;
 }
 
@@ -11076,7 +11388,7 @@ async function refreshComfyuiCheckpointOptions() {
   showLocalImageConfigMessage("Refreshing ComfyUI models...");
   try {
     const params = new URLSearchParams({
-      preset: settingComfyuiProfile.value || "comfyui-core-preview",
+      preset: settingComfyuiProfile.value || "comfyui-qwen-image-2-1-scene",
       backend: "comfyui",
     });
     const payload = await fetchJson(`/api/local-image/checkpoints?${params.toString()}`);
@@ -11096,16 +11408,6 @@ async function refreshComfyuiCheckpointOptions() {
 function automationPayloadFromForm() {
   return {
     local_render_backend: settingLocalRenderBackend.value,
-    local_render_preset: settingLocalRenderPreset.value,
-    local_render_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
-    local_render_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
-    local_render_use_forge_couple: settingLocalRenderForgeCouple.checked,
-    local_render_checkpoint: settingLocalRenderCheckpoint.value,
-    stable_matrix_profile: settingLocalRenderPreset.value,
-    stable_matrix_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
-    stable_matrix_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
-    stable_matrix_use_forge_couple: settingLocalRenderForgeCouple.checked,
-    stable_matrix_checkpoint: settingLocalRenderCheckpoint.value,
     comfyui_profile: settingComfyuiProfile.value,
     comfyui_server_url: settingComfyuiServerUrl.value,
     comfyui_checkpoint: settingComfyuiCheckpoint.value,
@@ -12804,7 +13106,7 @@ for (const control of [builderImagePickerVariant, builderImagePickerSet, builder
   control.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 }
 builderImagePickerMode.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
-entityLibraryRefresh.addEventListener("click", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
+entityLibrarySearchForm.addEventListener("submit", (event) => { event.preventDefault(); searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }); });
 entityLibraryPrevious.addEventListener("click", () => {
   entityLibraryPageOffset = Math.max(0, entityLibraryPageOffset - ENTITY_LIBRARY_PAGE_SIZE);
   searchEntityLibrary(true).catch((error) => { entityLibraryCount.textContent = error.message; });
@@ -12819,6 +13121,29 @@ for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entit
 entityLibrarySearch.addEventListener("keydown", (event) => {
   if (event.key === "Enter") searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; });
 });
+entityLibraryClearFilters.addEventListener("click", () => {
+  entityLibrarySearch.value = "";
+  for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin]) control.value = "";
+  entityLibraryFilterFacet.value = "";
+  entityLibraryPageOffset = 0;
+  searchEntityLibrary();
+});
+document.querySelectorAll("[data-inventory-view]").forEach((button) => button.addEventListener("click", async () => {
+  if (entityLibraryCurrentView === "detail" && !(await guardCurrentEditor())) return;
+  activateInventoryView(button.dataset.inventoryView);
+}));
+entityLibraryOrganizer.addEventListener("click", handleOrganizationAction);
+entityLibraryOrganizer.addEventListener("submit", saveOrganizationRecord);
+document.querySelector("#entity-library-open-import").addEventListener("click", () => entityLibraryImportDialog.showModal());
+document.querySelector("#entity-library-close-import").addEventListener("click", () => entityLibraryImportDialog.close());
+document.querySelector("#entity-library-merge-cancel").addEventListener("click", () => entityLibraryMergeDialog.close());
+entityLibraryMergeDialog.addEventListener("click", (event) => { if (event.target === entityLibraryMergeDialog) entityLibraryMergeDialog.close(); });
+const importPanel = document.querySelector(".entity-library-sidebar > section");
+if (importPanel) {
+  importPanel.classList.add("inventory-import-panel");
+  entityLibraryImportDialogContent.prepend(importPanel);
+  const heading = document.createElement("h2"); heading.textContent = "Add an image to the library"; importPanel.prepend(heading);
+}
 entityLibraryFile.addEventListener("change", () => {
   state.entityLibraryImportBlob = null;
   entityLibraryPaste.textContent = entityLibraryFile.files?.[0]?.name || "Or click here and paste an image";
@@ -12987,9 +13312,9 @@ for (const [zone, kind] of [[entityLibraryPaste, "import"], [entityLibraryReplac
     }
   });
 }
-entityLibraryBack.addEventListener("click", () => {
-  document.querySelector(".entity-library-layout").classList.remove("metadata-mode");
-  entityLibraryBack.hidden = true;
+entityLibraryBack.addEventListener("click", async () => {
+  if (!(await guardCurrentEditor())) return;
+  activateInventoryView("search");
 });
 builderImagePickerIncludeBase.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerSource.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));

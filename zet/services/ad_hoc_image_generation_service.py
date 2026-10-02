@@ -16,6 +16,7 @@ from uuid import uuid4
 from PIL import Image
 
 from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.local_render_policy import require_qwen_profile
 from zet.services.workflow_storage import validate_image
 
 
@@ -110,6 +111,11 @@ class AdHocImageGenerationService:
                 raise AdHocImageGenerationError(str(exc)) from exc
 
         preset_name = "comfyui-qwen-head-image-edit" if mode == "img2img" else "comfyui-qwen-head-image-text"
+        if payload.get("model_family") and payload["model_family"] != "qwen-image-2.1":
+            raise AdHocImageGenerationError("Local rendering supports only Qwen Image 2.1.")
+        require_qwen_profile(self.project_root, str(payload.get("render_preset") or payload.get("profile") or preset_name),
+                             str(payload.get("backend") or payload.get("image_generation") or "comfyui"),
+                             str(payload.get("checkpoint") or ""))
         checkpoint = str(self.zet_app.config.comfyui_checkpoint or "").strip()
         if not checkpoint:
             checkpoint = str(self._preset(preset_name).get("diffusion_model") or "")

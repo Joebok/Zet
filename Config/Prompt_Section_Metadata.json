@@ -22,6 +22,7 @@
     "HEAD_IMAGE_SOURCE_INSTRUCTIONS": {"label": "Head-Image Source Instructions", "description": "Character-specific source-image instructions used by the standard head-image path.", "required_content": false, "requires_reference_role": "head_image_source"},
     "HEAD_IMAGE_SOURCE_RULES": {"label": "Head-Image Source Rules", "description": "Identity and transformation precedence used only with a source image.", "required_content": false, "requires_reference_role": "head_image_source"},
     "HEAD_IMAGE_CHARACTER_REQUIREMENTS": {"label": "Head-Image Character Requirements", "description": "Character-varying head-only output requirements.", "required_content": true},
+    "HEAD_IMAGE_EXPRESSION_GUIDANCE": {"label": "Head-Image Expression Guidance", "description": "View-conditioned facial-expression guidance used only by Head-Image jobs.", "required_content": false},
     "NEGATIVE_GUIDANCE_HEAD_IMAGE": {"label": "Head-Image Negative Guidance", "description": "Character- or phase-specific head-image drift prevention.", "required_content": false},
     "CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS": {"label": "Character-Assembly Character Requirements", "description": "Character-varying preservation exceptions for assembly.", "required_content": false},
     "NEGATIVE_GUIDANCE_EXPRESSION": {"label": "Expression Negative Guidance", "description": "Character- and phase-specific expression drift prevention.", "required_content": true},

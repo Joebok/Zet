@@ -11,6 +11,7 @@ from zet.repositories.entity_library_repository import EntityLibraryRepository
 from zet.services.entity_library_service import EntityLibraryService
 from zet.services.path_service import PathService
 from zet.services.config_service import ConfigService
+from zet.services.universe_service import UniverseService
 from zet.services.chatgpt_prompt_contract import build_image_inputs
 from zet.services.view_conditioning_service import ViewContext, condition_section
 from zet.services.auxiliary_resource_tags import (
@@ -22,6 +23,40 @@ from zet.services.auxiliary_resource_tags import (
 
 
 class AuxiliaryResourceTagTests(unittest.TestCase):
+    def test_catalog_references_use_selected_universe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            library = project / "library"
+            universe = library / "Moonsea"
+            universe.mkdir(parents=True)
+            (universe / "universe.json").write_text(json.dumps({
+                "universe_id": "Moonsea", "name": "Moonsea",
+            }), encoding="utf-8")
+            (project / "config.toml").write_text("\n".join([
+                "[BaseFolders]",
+                f'BaseLibraryPath = "{library.as_posix()}"',
+                'BaseCharacterPath = "Characters"',
+                'BaseAssetPath = "Assets"',
+                'BasePipelinePath = "Pipelines"',
+                'BaseAIQueuePath = "AI_Queue"',
+            ]), encoding="utf-8")
+            universes = UniverseService(library, project / "Config" / "universe-selection.json")
+            universes.select("Moonsea")
+            paths = PathService(universes.bind_config(ConfigService.load(project / "config.toml"), "Moonsea"), project)
+            repository = EntityLibraryRepository(paths.entity_library_database_path())
+            repository.initialize()
+            service = EntityLibraryService(paths, repository)
+            asset = service.import_asset("Jewelry", "image/png", b"jewelry")
+            service.save_logical_reference({"reference_key": "jewelry.front", "asset_id": asset["asset_id"]})
+            legacy_tags = ("{{IMAGE:img_jewelry}}", "{{AUX:thing:jewelry:front}}")
+            for tag in legacy_tags:
+                service.register_legacy_reference(tag, asset["asset_id"])
+
+            for tag in ("{{LIB:REF:jewelry.front}}", *legacy_tags):
+                with self.subTest(tag=tag):
+                    references = auxiliary_references_for_texts(project, [tag], [])
+                    self.assertEqual([asset["image_path"]], [item["path"] for item in references])
+
     def test_view_conditioned_library_references_resolve_to_numbered_images(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)

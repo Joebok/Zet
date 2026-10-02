@@ -16,6 +16,7 @@ PIPELINE_LABELS = {
 }
 
 STATUS_GROUPS = (
+    ("READY_TO_PUBLISH", "Ready to publish"),
     ("INTERRUPTED", "Interrupted"),
     ("FAILED", "Failed / Error"),
     ("STOPPED", "Stopped / Cancelled"),
@@ -97,6 +98,21 @@ class LocalBatchStatusService:
                     "current_view": current_view,
                 })
 
+        scenes = getattr(self.app, "local_scene_batch_service", None)
+        if scenes is not None:
+            from urllib.parse import urlencode
+            for batch in scenes.summaries():
+                status = batch["status"]
+                if status not in groups:
+                    continue
+                groups[status].append({"pipeline": "scene", "pipeline_label": "Scene", "run_id": batch["run_id"],
+                    "batch_name": batch["batch_name"], "character": "", "phase": "", "costume": "",
+                    "story_slug": batch["story_slug"], "scene_slug": batch["scene_slug"],
+                    "render_target_id": batch["render_target_id"], "current_view": batch["target_label"],
+                    "created_at": batch["created_at"], "status": status,
+                    "status_label": dict(STATUS_GROUPS)[status], "href": "/?" + urlencode({"page": "scene-batches",
+                        "story_slug": batch["story_slug"], "scene_slug": batch["scene_slug"],
+                        "render_target_id": batch["render_target_id"], "batch": batch["run_id"]})})
         result = []
         for status, label in STATUS_GROUPS:
             batches = groups[status]
