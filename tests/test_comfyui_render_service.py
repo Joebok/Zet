@@ -626,7 +626,8 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                        "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
                        "vae": "qwen_image_2.1_vae_bf16.safetensors", "steps": 40}
             nodes = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
-                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage"}
+                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage",
+                     "QwenImage21Cache"}
             compilation = compile_ir_to_comfyui_workflow(ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors",
                                                          seed=7, available_node_types=nodes)
             workflow = compilation.workflow
@@ -639,6 +640,22 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
             self.assertEqual(5, sum(node["class_type"] == "LoadImage" for node in workflow.values()))
             self.assertEqual("", workflow["4"]["inputs"]["negative_prompt"])
             self.assertEqual(1.0, workflow["6"]["inputs"]["cfg"])
+            self.assertEqual(["16", 0], workflow["6"]["inputs"]["model"])
+            self.assertEqual({"enabled": True, "device": "cpu", "dtype": "int8", "reference_count": 5,
+                              "inserted": True, "node_id": "16", "skip_reason": None},
+                             compilation.debug["qwen_reference_cache"])
+            references_five = list(ir["image_inputs"])
+            ir["image_inputs"] = references_five + [
+                {**reference, "index": index}
+                for index, reference in enumerate(references_five, start=6)
+            ]
+            ten_refs = compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes)
+            self.assertEqual(10, len(ten_refs.debug["references_used"]))
+            self.assertEqual("21", ten_refs.debug["qwen_reference_cache"]["node_id"])
+            self.assertEqual("QwenImage21Cache", ten_refs.workflow["21"]["class_type"])
+            ir["image_inputs"] = references_five
             manual_refs = [{"image_index": index, "path": ir["image_inputs"][index - 1]["path"]}
                            for index in range(5, 0, -1)]
             ordered = compile_ir_to_comfyui_workflow(
@@ -646,6 +663,30 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 available_node_types=nodes, reference_files=manual_refs)
             self.assertEqual([1, 2, 3, 4, 5],
                              [item["image_index"] for item in ordered.debug["references_used"]])
+            uncached_types = nodes - {"QwenImage21Cache"}
+            uncached = compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=uncached_types)
+            self.assertEqual("QwenImage21Cache node unavailable",
+                             uncached.debug["qwen_reference_cache"]["skip_reason"])
+            self.assertEqual(["1", 0], uncached.workflow["6"]["inputs"]["model"])
+            overridden = compile_ir_to_comfyui_workflow(
+                ir, {**profile, "qwen_cache_device": "gpu", "qwen_cache_dtype": "default"},
+                checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes)
+            self.assertEqual({"model": ["1", 0], "device": "gpu", "dtype": "default"},
+                             overridden.workflow["16"]["inputs"])
+            disabled = compile_ir_to_comfyui_workflow(
+                ir, {**profile, "qwen_cache_enabled": False},
+                checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes)
+            self.assertEqual("disabled_by_profile", disabled.debug["qwen_reference_cache"]["skip_reason"])
+            self.assertNotIn("QwenImage21Cache", {node["class_type"] for node in disabled.workflow.values()})
+            with self.assertRaisesRegex(LocalRenderError, "qwen_cache_dtype"):
+                compile_ir_to_comfyui_workflow(
+                    ir, {**profile, "qwen_cache_dtype": "invalid"},
+                    checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                    available_node_types=nodes)
             with self.assertRaisesRegex(LocalRenderError, "do not match the scene IR image slots"):
                 compile_ir_to_comfyui_workflow(
                     ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,

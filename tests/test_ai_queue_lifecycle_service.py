@@ -97,3 +97,35 @@ def test_durable_receipt_cleans_a_leftover_shared_duplicate(tmp_path, monkeypatc
     service.drain_ready_answers(client)
 
     assert not shared.exists()
+
+
+def test_stale_terminal_gate_is_recorded_as_failed_before_purge(tmp_path, monkeypatch):
+    service, client = _service(tmp_path, monkeypatch)
+    job_id = "Ask_LocalHeadImage_20260930_103450_335104_PR-002_framing_20260930_112006_221888"
+    answer = client.answer_root / job_id
+    answer.mkdir(parents=True)
+    target = tmp_path / "deleted-run" / "analyses" / "PR-002"
+    route = {"target_output_dir": str(target), "_producer_id": socket.gethostname(), "universe_id": "Moonsea"}
+    (client.route_root).mkdir(parents=True, exist_ok=True)
+    (client.route_root / f"{job_id}.json").write_text(json.dumps(route), encoding="utf-8")
+    (answer / "job.json").write_text(json.dumps({"producer_id": socket.gethostname()}), encoding="utf-8")
+    (answer / "ask_manifest.json").write_text(json.dumps({
+        "ask_id": job_id, "task_type": "local_head_image_gate", "universe_id": "Moonsea",
+        "local_head_image_run_id": "20260930_103450_335104", "candidate_id": "PR-002", "gate": "framing",
+    }), encoding="utf-8")
+    (answer / "answer_manifest.json").write_text(json.dumps({
+        "status": "SUCCESS", "expected_output": "gate.txt", "completed_at": "2026-09-30T11:20:40",
+    }), encoding="utf-8")
+    (answer / "proxy_result.json").write_text(json.dumps({"status": "SUCCEEDED"}), encoding="utf-8")
+    (answer / "gate.txt").write_text("FALSE\n", encoding="utf-8")
+    (answer / "candidate.png").write_bytes(b"candidate evidence")
+    (answer / "OLLAMA_PROMPT.md").write_text("gate prompt", encoding="utf-8")
+
+    receipt = service.fail_stale_gate_answer(answer, client)
+
+    assert receipt["status"] == "FAILED"
+    assert receipt["gate_verdict"] == "FALSE"
+    assert not answer.exists()
+    assert not (client.route_root / f"{job_id}.json").exists()
+    assert service.read_receipt(job_id)["failure_code"] == "STALE_GATE_DESTINATION"
+    assert (Path(receipt["evidence_path"]) / "candidate.png").read_bytes() == b"candidate evidence"

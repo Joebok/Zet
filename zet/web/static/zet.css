@@ -1096,6 +1096,18 @@ main {
   color: var(--danger, #b42318);
 }
 
+.local-pipeline-render-error {
+  overflow-wrap: anywhere;
+}
+
+.local-pipeline-render-error summary {
+  cursor: pointer;
+}
+
+.local-pipeline-render-error p {
+  white-space: pre-wrap;
+}
+
 @media (max-width: 900px) {
   .local-pipeline-review-layout {
     gap: 6px;

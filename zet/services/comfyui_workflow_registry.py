@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
+import logging
 from pathlib import Path
 from typing import Any, Callable
 
@@ -43,6 +44,54 @@ SceneCompiler = Callable[..., ComfyUICompilation]
 PromptCompiler = Callable[..., ComfyUICompilation]
 _SCENE_COMPILERS: dict[str, SceneCompiler] = {}
 _PROMPT_COMPILERS: dict[str, PromptCompiler] = {}
+_LOGGER = logging.getLogger(__name__)
+
+
+def _apply_qwen_reference_cache(
+    workflow: dict[str, Any],
+    profile: dict[str, Any],
+    reference_count: int,
+    available_node_types: set[str] | None,
+) -> dict[str, Any]:
+    enabled = profile.get("qwen_cache_enabled", True)
+    device = profile.get("qwen_cache_device", "cpu")
+    dtype = profile.get("qwen_cache_dtype", "int8")
+    if not isinstance(enabled, bool):
+        raise LocalRenderError("qwen_cache_enabled must be a boolean.")
+    if not isinstance(device, str) or device not in {"auto", "cpu", "gpu", "off"}:
+        raise LocalRenderError("qwen_cache_device must be one of: auto, cpu, gpu, off.")
+    if not isinstance(dtype, str) or dtype not in {"default", "int8", "int4"}:
+        raise LocalRenderError("qwen_cache_dtype must be one of: default, int8, int4.")
+
+    result: dict[str, Any] = {
+        "enabled": enabled,
+        "device": device,
+        "dtype": dtype,
+        "reference_count": reference_count,
+        "inserted": False,
+        "node_id": None,
+        "skip_reason": None,
+    }
+    if reference_count == 0:
+        result["skip_reason"] = "no_reference_images"
+        return result
+    if not enabled:
+        result["skip_reason"] = "disabled_by_profile"
+        return result
+    if not available_node_types or "QwenImage21Cache" not in available_node_types:
+        result["skip_reason"] = "QwenImage21Cache node unavailable"
+        _LOGGER.warning("Qwen reference caching skipped: %s", result["skip_reason"])
+        return result
+
+    numeric_ids = [int(node_id) for node_id in workflow if str(node_id).isdigit()]
+    node_id = str(max(numeric_ids, default=0) + 1)
+    workflow[node_id] = {
+        "class_type": "QwenImage21Cache",
+        "inputs": {"model": ["1", 0], "device": device, "dtype": dtype},
+    }
+    workflow["6"]["inputs"]["model"] = [node_id, 0]
+    result.update({"inserted": True, "node_id": node_id})
+    return result
 
 
 def register_scene_compiler(workflow_kind: str, compiler: SceneCompiler) -> None:
@@ -754,9 +803,18 @@ def _qwen_image_21_local_edit_compiler(
     available_node_types: set[str] | None = None,
     **_kwargs: Any,
 ) -> ComfyUICompilation:
-    refs = [item for item in (reference_files or []) if isinstance(item, dict) and item.get("path")]
-    if len(refs) not in {1, 2, 3}:
-        raise LocalRenderError("Local character editing requires one to three ordered reference images.")
+    refs = reference_files or []
+    if not refs:
+        raise LocalRenderError("Local character editing requires an edit-base reference image.")
+    # Qwen Image 2.1 documents support for up to ten reference images.
+    if len(refs) > 10:
+        raise LocalRenderError(f"Qwen Image 2.1 supports at most ten reference images; received {len(refs)}.")
+    for index, reference in enumerate(refs, start=1):
+        if not isinstance(reference, dict) or not str(reference.get("path") or "").strip():
+            raise LocalRenderError(f"Local character edit reference {index} is missing its image path.")
+        path = Path(str(reference["path"])).expanduser()
+        if not path.is_file():
+            raise LocalRenderError(f"Local character edit reference {index} is missing: {path}")
     required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21", "LoadImage",
                 "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}
     missing = sorted(required - (available_node_types or set()))
@@ -790,9 +848,10 @@ def _qwen_image_21_local_edit_compiler(
     }}
     workflow["7"] = {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}}
     workflow["8"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": ["7", 0]}}
+    cache = _apply_qwen_reference_cache(workflow, profile, len(bindings), available_node_types)
     return ComfyUICompilation(workflow=workflow, prompts={"global": positive_prompt, "negative": negative_prompt},
                               seed=seed, width=width, height=height, workflow_kind=QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW,
-                              debug={"references_used": bindings})
+                              debug={"references_used": bindings, "qwen_reference_cache": cache})
 
 
 def _qwen_body_reference_prompt_compiler(
@@ -847,9 +906,10 @@ def _qwen_body_reference_prompt_compiler(
     }}
     workflow["7"] = {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}}
     workflow["8"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": ["7", 0]}}
+    cache = _apply_qwen_reference_cache(workflow, profile, len(bindings), available_node_types)
     return ComfyUICompilation(workflow=workflow, prompts={"global": positive_prompt, "negative": negative_prompt},
                               seed=seed, width=width, height=height, workflow_kind=workflow_kind,
-                              debug={"references_used": bindings})
+                              debug={"references_used": bindings, "qwen_reference_cache": cache})
 
 
 def _qwen_body_reference_text_compiler(*args: Any, **kwargs: Any) -> ComfyUICompilation:
@@ -925,9 +985,10 @@ def _qwen_image_21_scene_compiler(
     }}
     workflow["7"] = {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}}
     workflow["8"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": ["7", 0]}}
+    cache = _apply_qwen_reference_cache(workflow, profile, len(bindings), available_node_types)
     return ComfyUICompilation(workflow=workflow, prompts={"global": prompt, "negative": ""}, seed=seed,
                               width=width, height=height, workflow_kind=QWEN_IMAGE_21_SCENE_WORKFLOW,
-                              debug={"references_used": bindings})
+                              debug={"references_used": bindings, "qwen_reference_cache": cache})
 
 
 def compile_scene_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> ComfyUICompilation:

@@ -20,6 +20,32 @@ class StubProxyPathService:
 
 
 class AIAnswerHarvesterExternalConsumerTests(unittest.TestCase):
+    def test_harvest_preserves_qwen_reference_cache_diagnostics(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            answer = root / "answer"
+            output = root / "pipeline"
+            answer.mkdir()
+            cache_policy = {"enabled": True, "device": "cpu", "dtype": "int8", "reference_count": 4,
+                            "inserted": True, "node_id": "15", "skip_reason": None}
+            (answer / "LOCAL_RENDER_METADATA.json").write_text(json.dumps({
+                "qwen_reference_cache": cache_policy,
+                "artifact_files": ["ComfyUI_Render_Metadata.json"],
+            }), encoding="utf-8")
+            backend_metadata = {"qwen_reference_cache": cache_policy}
+            (answer / "ComfyUI_Render_Metadata.json").write_text(json.dumps(backend_metadata), encoding="utf-8")
+            harvester = AIAnswerHarvester(None, None, None, None, None, None, lambda: "now")
+
+            harvester._copy_local_render_artifacts(answer, output)
+            harvester._write_harvest_manifest(
+                answer,
+                SimpleNamespace(ask_id="Ask_Test", asset_id="asset-1", status="SUCCESS", message=""),
+            )
+
+            self.assertEqual(backend_metadata, json.loads((output / "ComfyUI_Render_Metadata.json").read_text()))
+            self.assertEqual(cache_policy,
+                             json.loads((answer / "harvest_manifest.json").read_text())["qwen_reference_cache"])
+
     def test_empty_auxiliary_output_is_not_applied(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

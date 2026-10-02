@@ -266,6 +266,20 @@
 
   function imageUrl(candidate) { return route("image", state.run.run_id, "", candidate.candidate_id); }
 
+  function renderErrorDetails(candidate) {
+    const message = String(candidate.render_error || "").trim();
+    if (!message) return null;
+    const details = document.createElement("details");
+    details.className = "local-pipeline-render-error error-text";
+    const summary = document.createElement("summary");
+    const firstLine = message.split(/\r?\n/)[0];
+    summary.textContent = `Render error: ${firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine}`;
+    const body = document.createElement("p");
+    body.textContent = message;
+    details.append(summary, body);
+    return details;
+  }
+
   function addButton(host, text, action, { disabled = false, primary = false, view = "", candidate = "" } = {}) {
     const button = document.createElement("button");
     button.type = "button";
@@ -377,6 +391,8 @@
     const rank = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
     status.textContent = `${renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}` : ""}`;
     card.append(status);
+    const renderError = renderErrorDetails(candidate);
+    if (renderError) card.append(renderError);
     for (const line of gateSummary(candidate)) card.append(line);
     const human = document.createElement("p");
     human.className = "muted";
@@ -916,6 +932,8 @@
     });
     const content = document.createElement("section");
     content.className = "local-pipeline-review-content";
+    const renderError = renderErrorDetails(candidate);
+    if (renderError) content.append(renderError);
     for (const line of gateSummary(candidate)) content.append(line);
     const ranking = run.rankings?.[candidate.view] || {};
     const rankingOrder = ranking.luna_ordered_candidate_ids || ranking.ordered_candidate_ids || [];

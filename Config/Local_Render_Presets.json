@@ -222,6 +222,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-body-reference-text": {
@@ -266,6 +269,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-head-image-text": {
@@ -310,6 +316,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-local-character-edit": {
@@ -332,6 +341,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   }
 }

@@ -296,6 +296,7 @@ class FileProxyClient:
 
     def remove_route(self, job_id: str) -> None:
         (self.route_root / f"{job_id}.json").unlink(missing_ok=True)
+        (self.legacy_route_root / f"{job_id}.json").unlink(missing_ok=True)
 
     def task_paths(self, *states: str) -> Iterator[Path]:
         roots = {"ask": self.ask_root, "running": self.running_root, "answer": self.answer_root}

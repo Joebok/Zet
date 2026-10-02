@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from zet.services.comfyui_workflow_registry import compile_prompt_workflow, QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_body_reference_service import LocalBodyReferenceService
+from zet.services.local_render_types import LocalRenderError
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService, VIEWS
 from zet.web.app import create_app
 
@@ -789,20 +790,58 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual(["character_assembly", "front_costume"], [item["role"] for item in refs])
         self.assertIn("Image 2 is the selected FRONT costume image", prompt)
 
-    def test_qwen_local_edit_binds_one_to_three_images_in_input_order(self) -> None:
+    def test_qwen_local_edit_binds_variable_references_and_validates_missing_images(self) -> None:
         profile = {"text_encoder": "encoder", "vae": "vae", "steps": 2}
         common = {"positive_prompt": "edit", "negative_prompt": "", "profile": profile,
                   "checkpoint": "model", "seed": 1, "width": 832, "height": 1216, "output_prefix": "test",
                   "available_node_types": {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
                                             "LoadImage", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}}
-        for count in (1, 2, 3):
+        refs = []
+        for index in range(1, 12):
+            image = self.root / f"image_{index}.png"
+            image.write_bytes(b"reference")
+            refs.append({"role": str(index), "path": str(image)})
+        for count in (1, 2, 3, 4, 10):
             with self.subTest(reference_count=count):
-                refs = [{"role": str(index), "path": f"image_{index}.png"} for index in range(1, count + 1)]
-                compiled = compile_prompt_workflow(QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW, **common, reference_files=refs)
+                compiled = compile_prompt_workflow(QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW, **common, reference_files=refs[:count])
                 node = compiled.workflow["4"]["inputs"]
-                self.assertEqual([f"image_{index}.png" for index in range(1, count + 1)],
+                self.assertEqual([item["path"] for item in refs[:count]],
                                  [compiled.debug["references_used"][index - 1]["path"] for index in range(1, count + 1)])
                 self.assertEqual(count, len([key for key in node if key.startswith("images.image_")]))
+                for index in range(1, count + 1):
+                    load_node = compiled.workflow[node[f"images.image_{index}"][0]]
+                    self.assertEqual(f"image_{index}.png", load_node["inputs"]["image"])
+        for references, message in (
+            ([], "edit-base reference"),
+            (refs, "at most ten reference images; received 11"),
+            ([refs[0], {}], "reference 2 is missing its image path"),
+            ([refs[0], {"path": str(self.root / "missing.png")}], "reference 2 is missing:"),
+        ):
+            with self.subTest(error=message), self.assertRaisesRegex(LocalRenderError, message):
+                compile_prompt_workflow(QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW, **common, reference_files=references)
+
+    def test_render_failure_message_is_returned_in_batch_detail(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        message = "ComfyUI validation failed.\nReference image 4 is missing."
+
+        def queue_render(run_id, candidate_id, costume):
+            service._update(run_id, candidate_id, costume, status="QUEUED", ask_id="failed-ask",
+                            image_path=str(Path(run["root"]) / "renders" / "missing.png"))
+
+        with patch.object(service, "queue_render_candidate", side_effect=queue_render), \
+                patch.object(service, "_harvest_render"), \
+                patch.object(service, "_proxy_answer", return_value=("ANSWERED", {
+                    "status": "ERROR", "error_message": message,
+                })):
+            service.execute_run(run["run_id"], views={"FRONT"}, costume="Test Outfit", render_only=True)
+        failed = next(item for item in service.detail(run["run_id"], "Test Outfit")["candidates"]
+                      if item["candidate_id"] == candidate["candidate_id"])
+        self.assertEqual("FAILED", failed["render_status"])
+        self.assertEqual(message, failed["render_error"])
 
     def test_legacy_pipeline_specific_review_routes_are_removed(self) -> None:
         config_path = self.root / "config.toml"

@@ -220,6 +220,7 @@ class AIAnswerHarvester:
             "message": result.message,
             "render_preset": local_render_metadata.get("preset"),
             "workflow_kind": local_render_metadata.get("workflow_kind"),
+            "qwen_reference_cache": local_render_metadata.get("qwen_reference_cache"),
             "seed": local_render_metadata.get("seed"),
             "harvested_at": self.timestamp_provider(),
         }
@@ -634,8 +635,15 @@ class AIAnswerHarvester:
     def harvest_once(self) -> list[HarvestResult]:
         lifecycle = getattr(self.ai_proxy_path_service, "lifecycle", None)
         client = getattr(self.ai_proxy_path_service, "file_proxy_client", None)
+        results: list[HarvestResult] = []
         if lifecycle is not None and client is not None:
             lifecycle.drain_ready_answers(client)
+            for item in lifecycle.reconcile_stale_gate_answers(client):
+                if item.get("status") == "FAILED":
+                    results.append(HarvestResult(
+                        answer_path=Path(item["evidence_path"]), ask_id=item["ask_id"], asset_id=None,
+                        status="FAILED", message=item["message"],
+                    ))
             # A previous run may have applied the answer and written its harvest
             # manifest, then stopped before persisting the compact receipt. Finish
             # that commit without reapplying the answer.
@@ -654,7 +662,6 @@ class AIAnswerHarvester:
         if not answer_paths:
             return []
 
-        results: list[HarvestResult] = []
         for answer_path in answer_paths:
             if self._has_external_consumer(answer_path):
                 continue

@@ -943,8 +943,10 @@ class AIProxyService:
         }
 
     def harvested_answer_count(self) -> int:
-        root = self.ai_proxy_path_service.lifecycle.receipt_root
-        return sum(1 for _ in root.glob("*.json")) if root.is_dir() else 0
+        return sum(
+            1 for answer_path in self.ai_proxy_path_service.task_paths("answer")
+            if (answer_path / "harvest_manifest.json").is_file()
+        )
 
     def recent_harvests(self, limit: int = 20) -> list[dict]:
         limit = max(0, int(limit))
@@ -1066,4 +1068,14 @@ class AIProxyService:
                 if reason:
                     snapshot["answer"].append({"ask_id": path.name, "asset_id": None, "status": "RECOVERY_NEEDED",
                                                "worker_id": "", "recovery": reason})
+        known_answers = {item["ask_id"] for item in snapshot["answer"]}
+        for _, receipt in self.ai_proxy_path_service.lifecycle.iter_receipts() or ():
+            ask_id = str(receipt.get("ask_id") or "")
+            if receipt.get("queue_visible") and ask_id and ask_id not in known_answers:
+                snapshot["answer"].append({
+                    "ask_id": ask_id, "asset_id": receipt.get("asset_id"),
+                    "status": "FAILED", "worker_id": receipt.get("producer_id", ""),
+                    "recovery": receipt.get("message", ""),
+                })
+                known_answers.add(ask_id)
         return snapshot

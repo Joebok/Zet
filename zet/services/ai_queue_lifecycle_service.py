@@ -118,6 +118,101 @@ class AIQueueLifecycleService:
             if not answer_path.exists() or self.read_receipt(job_id):
                 self.file_proxy_client().remove_route(job_id)
 
+    def fail_stale_gate_answer(self, answer_path: Path, client: FileProxyClient) -> dict:
+        """Record and purge a terminal local gate answer whose destination is gone."""
+        if answer_path.parent.resolve() != client.answer_root.resolve() or answer_path.is_symlink():
+            raise ValueError("Only direct, unlinked proxy answers can be resolved as stale gates.")
+        ask_id = answer_path.name
+        if Path(ask_id).name != ask_id or ask_id in {"", ".", ".."}:
+            raise ValueError("Invalid answer identifier.")
+        if any(path.is_symlink() for path in answer_path.rglob("*")):
+            raise ValueError("Linked answer contents cannot be resolved automatically.")
+        job = self._json(answer_path / "job.json")
+        ask = self._json(answer_path / "ask_manifest.json")
+        answer = self._json(answer_path / "answer_manifest.json")
+        result = self._json(answer_path / "proxy_result.json")
+        if str(job.get("producer_id") or "").casefold() != socket.gethostname().casefold():
+            raise ValueError("Answer belongs to another producer.")
+        task_type = str(ask.get("task_type") or "")
+        if ask.get("ask_id") != ask_id or task_type not in {"local_head_image_gate", "local_body_reference_gate"}:
+            raise ValueError("Only identified local gate answers can be failed this way.")
+        if str(ask.get("universe_id") or "") != str(getattr(self.config, "universe_id", "Moonsea")):
+            raise ValueError("Gate answer does not belong to this universe.")
+        if str(answer.get("status") or "").upper() != "SUCCESS" or str(result.get("status") or "").upper() != "SUCCEEDED":
+            raise ValueError("Gate answer is not a terminal successful producer result.")
+        if (client.ask_root / ask_id).exists() or (client.running_root / ask_id).exists():
+            raise ValueError("Ask is still queued or running.")
+        route = client.load_route(ask_id)
+        if str(route.get("_producer_id") or "").casefold() != socket.gethostname().casefold():
+            raise ValueError("Local producer route is missing or belongs to another producer.")
+        target = Path(str(route.get("target_output_dir") or ""))
+        if not target.is_absolute() or target.exists():
+            raise ValueError("The routed output destination still exists or is invalid.")
+        if str(route.get("universe_id") or "") != str(getattr(self.config, "universe_id", "Moonsea")):
+            raise ValueError("The route belongs to another universe.")
+        expected_output = str(answer.get("expected_output") or "")
+        if not expected_output or Path(expected_output).name != expected_output:
+            raise ValueError("Gate output filename is invalid.")
+        output_path = answer_path / expected_output
+        if not output_path.is_file():
+            raise ValueError("Terminal gate output is missing.")
+        verdict = output_path.read_text(encoding="utf-8").strip()
+        if verdict.upper() not in {"TRUE", "FALSE"}:
+            raise ValueError("Gate output is not a recognized terminal verdict.")
+
+        # Save review evidence on this machine before making the Dropbox payload removable.
+        evidence_root = self.root / "GateEvidence"
+        evidence_root.mkdir(parents=True, exist_ok=True)
+        evidence = evidence_root / ask_id
+        if not evidence.exists():
+            temporary = evidence_root / f".{ask_id}.{uuid4().hex}.partial"
+            temporary.mkdir()
+            try:
+                names = {"job.json", "ask_manifest.json", "answer_manifest.json", "proxy_result.json",
+                         "OLLAMA_PROMPT.md", expected_output}
+                names.add("candidate.png")
+                names.update(str(name) for name in (ask.get("image_files") or [])
+                             if isinstance(name, str) and Path(name).name == name and name not in {"", ".", ".."})
+                for name in names:
+                    source = answer_path / name
+                    if source.is_file():
+                        shutil.copy2(source, temporary / name)
+                os.replace(temporary, evidence)
+            finally:
+                if temporary.exists():
+                    shutil.rmtree(temporary)
+        receipt = {
+            "ask_id": ask_id, "status": "FAILED", "answer_status": "SUCCESS",
+            "failure_code": "STALE_GATE_DESTINATION",
+            "message": f"Gate answer completed with verdict {verdict}, but its routed run destination no longer exists. Rerun the job if it is still needed.",
+            "task_type": task_type, "gate": ask.get("gate", ""),
+            "run_id": ask.get("local_head_image_run_id", ""), "candidate_id": ask.get("candidate_id", ""),
+            "producer_id": job.get("producer_id", ""), "completed_at": answer.get("completed_at", ""),
+            "gate_verdict": verdict.upper(), "evidence_path": str(evidence), "queue_visible": True,
+        }
+        self.write_receipt(ask_id, {**receipt, "recorded_at": datetime.now(timezone.utc).isoformat()})
+        shutil.rmtree(answer_path)
+        client.remove_route(ask_id)
+        return receipt
+
+    def reconcile_stale_gate_answers(self, client: FileProxyClient) -> list[dict]:
+        """Record completed local gates whose run destinations have been removed."""
+        results = []
+        if not client.answer_root.is_dir():
+            return results
+        for answer_path in sorted(client.answer_root.iterdir()):
+            if not answer_path.is_dir() or answer_path.name.startswith("."):
+                continue
+            try:
+                ask = self._json(answer_path / "ask_manifest.json")
+                if ask.get("task_type") not in {"local_head_image_gate", "local_body_reference_gate"}:
+                    continue
+                results.append(self.fail_stale_gate_answer(answer_path, client))
+            except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+                # Incomplete, active, foreign, or ambiguous answers remain retryable.
+                results.append({"ask_id": answer_path.name, "status": "RETAINED", "message": str(exc)})
+        return results
+
     def lock_path(self, job_id: str) -> Path:
         """Use a bounded lock pool so completed jobs do not leave one lock each."""
         number = int(hashlib.sha256(job_id.encode("utf-8")).hexdigest()[:8], 16) % 64

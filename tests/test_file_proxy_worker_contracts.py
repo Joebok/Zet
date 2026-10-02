@@ -46,8 +46,12 @@ def test_local_image_worker_outputs_remain_proxy_safe(
     generated.parent.mkdir()
     generated.write_bytes(b"image")
     metadata = generated.parent / "metadata.json"
+    cache_policy = {"enabled": True, "device": "cpu", "dtype": "int8", "reference_count": 1,
+                    "inserted": True, "node_id": "11", "skip_reason": None}
     metadata.write_text(json.dumps({"backend": backend, "final_prompt": str(prompt.resolve()),
-                                    "workflow_kind": workflow_kind}), encoding="utf-8")
+                                    "workflow_kind": workflow_kind,
+                                    **({"qwen_reference_cache": cache_policy}
+                                       if workflow_kind == "qwen_image_21_scene_preview" else {})}), encoding="utf-8")
     artifact = generated.parent / artifact_name
     artifact_payload = dict(artifact_payload)
     artifact_payload["reference_path"] = str(reference.resolve())
@@ -69,6 +73,8 @@ def test_local_image_worker_outputs_remain_proxy_safe(
     local_metadata = json.loads((job / "LOCAL_RENDER_METADATA.json").read_text())
     if workflow_kind == "qwen_image_21_scene_preview":
         assert local_metadata["prompt"] == prompt.read_text(encoding="utf-8")
+        assert local_metadata["qwen_reference_cache"] == cache_policy
+        assert json.loads((job / "answer_manifest.json").read_text())["qwen_reference_cache"] == cache_policy
 
 
 def test_ollama_and_local_image_are_the_only_registered_proxy_workers(tmp_path: Path) -> None:

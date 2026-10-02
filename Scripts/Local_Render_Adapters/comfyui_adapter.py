@@ -189,6 +189,7 @@ def render_preview(
         "prompts": compilation.prompts,
         "layout_plan": compilation.debug.get("layout_plan", {}),
         "references_used": compilation.debug.get("references_used", []),
+        "qwen_reference_cache": compilation.debug.get("qwen_reference_cache"),
         "ipadapter_applications": compilation.debug.get("ipadapter_applications", []),
         "seed": compilation.seed,
         "resolved_seed": compilation.seed,
