@@ -44,6 +44,7 @@ class AutomationSettings:
     prompt_condense_model: str = "general:latest"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
+    ai_image_prompt_generation_model: str = "image-analysis:latest"
     ai_scene_builder_model: str = "general:latest"
     local_body_reference_face_gate_model: str = "image-analysis-alt:latest"
     local_body_reference_review_model: str = "image-analysis:latest"
@@ -194,6 +195,7 @@ class PipelineControlService:
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
             ai_prompt_analysis_auto_queue_on_render=bool(self.config.ai_prompt_analysis_auto_queue_on_render),
             ai_image_description_model=str(self.config.ai_image_description_model),
+            ai_image_prompt_generation_model=str(getattr(self.config, "ai_image_prompt_generation_model", "image-analysis:latest")),
             ai_scene_builder_model=str(self.config.ai_scene_builder_model),
             local_body_reference_face_gate_model=str(self.config.local_body_reference_face_gate_model),
             local_body_reference_review_model=str(self.config.local_body_reference_review_model),
@@ -236,6 +238,7 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIModels.PromptAnalysis", "Value": self.config.ai_prompt_analysis_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.AutoQueueOnRender", "Value": self.config.ai_prompt_analysis_auto_queue_on_render},
             {"Scope": "Project config", "Setting": "AIModels.ImageDescription", "Value": self.config.ai_image_description_model},
+            {"Scope": "Project config", "Setting": "AIModels.ImagePromptGeneration", "Value": getattr(self.config, "ai_image_prompt_generation_model", "image-analysis:latest")},
             {"Scope": "Project config", "Setting": "AIModels.SceneBuilder", "Value": self.config.ai_scene_builder_model},
             {"Scope": "Project config", "Setting": "AIModels.LocalBodyReferenceFaceGate", "Value": self.config.local_body_reference_face_gate_model},
             {"Scope": "Project config", "Setting": "AIModels.LocalBodyReferenceReview", "Value": self.config.local_body_reference_review_model},
@@ -267,6 +270,7 @@ class PipelineControlService:
             ("AIModels", "PromptAnalysis"): settings.ai_prompt_analysis_model,
             ("AIPromptAnalysis", "AutoQueueOnRender"): settings.ai_prompt_analysis_auto_queue_on_render,
             ("AIModels", "ImageDescription"): settings.ai_image_description_model,
+            ("AIModels", "ImagePromptGeneration"): settings.ai_image_prompt_generation_model,
             ("AIModels", "SceneBuilder"): settings.ai_scene_builder_model,
             ("AIModels", "LocalBodyReferenceFaceGate"): settings.local_body_reference_face_gate_model,
             ("AIModels", "LocalBodyReferenceReview"): settings.local_body_reference_review_model,

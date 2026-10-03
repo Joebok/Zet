@@ -528,6 +528,7 @@
             <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
             <div id="entity-library-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste an image to add to the library"><p>Or click here and paste an image</p></div>
             <label>Image name<input id="entity-library-new-label" placeholder="Required"></label>
+            <div id="entity-library-generation-prompts" hidden><p><strong>Prompt</strong><br><span id="entity-library-import-prompt"></span></p><p><strong>Negative prompt</strong><br><span id="entity-library-import-negative-prompt"></span></p></div>
             <label>Generated image entity<select id="entity-library-generated-entity"><option value="">Choose entity</option></select></label>
             <label>Reference role<select id="entity-library-generated-role"><option value="primary_subject">Primary subject</option><option value="depicted_subject">Depicted subject</option><option value="source">Source reference</option><option value="backdrop">Backdrop</option><option value="location">Location</option><option value="worn_costume">Worn costume</option><option value="held_prop">Held prop</option></select></label>
             <label>Generation provenance<input id="entity-library-generated-provenance" placeholder="e.g. Qwen prompt or generation run"></label>
@@ -580,6 +581,8 @@
             <label>Notes<textarea id="entity-library-edit-notes" disabled></textarea></label>
             <label>Status<select id="entity-library-edit-status" disabled><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
             <button id="entity-library-save" class="primary-action" type="button" disabled>Save image</button>
+            <button id="entity-library-generate-prompt" type="button" disabled>Generate Prompt</button>
+            <div id="entity-library-prompt-status" class="status-text" role="status"></div>
           </section>
           <section class="inventory-detail-group"><h3>Organization</h3>
             <label>Entity links<select id="entity-library-edit-entities" multiple size="6" disabled></select><small>Use Ctrl or Command to select more than one entity.</small></label>
@@ -588,11 +591,15 @@
             <label>Free tags<textarea id="entity-library-edit-tags" placeholder="necklace, earrings" disabled></textarea><small>Comma-separated search words or phrases; no namespace needed.</small></label>
           </section>
           <section class="inventory-detail-group"><h3>Prompt descriptions</h3>
+            <label>Generation prompt<textarea id="entity-library-edit-prompt" placeholder="Describe the visible image." disabled></textarea></label>
+            <label>Negative prompt<textarea id="entity-library-edit-negative-prompt" placeholder="Elements to avoid." disabled></textarea></label>
             <label>Prompt identity<textarea id="entity-library-edit-identity" disabled></textarea></label>
             <label>Prompt costume<textarea id="entity-library-edit-costume" disabled></textarea></label>
             <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
           </section>
           <section class="inventory-detail-group inventory-detail-actions"><h3>Image actions</h3>
+            <button id="entity-library-modify-generated" class="primary-action" type="button" hidden>Modify with Image Generator</button>
+            <span id="entity-library-modify-status" class="status-text" role="status"></span>
             <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
             <div id="entity-library-replacement-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste a replacement image"><p>Or click here and paste a replacement image</p></div>
             <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
@@ -1840,6 +1847,7 @@
             <img id="image-generation-reference-image" alt="Selected img2img reference preview" hidden>
             <p id="image-generation-reference-hint">Click here, then press Ctrl+V to paste an image.</p>
           </div>
+          <div id="image-generation-source" class="status-text" hidden></div>
           <label id="image-generation-reference-field" hidden>
             Reference image
             <input id="image-generation-reference" type="file" accept="image/png,image/jpeg,image/webp">
@@ -1869,6 +1877,13 @@
         </form>
         <section class="control-panel image-generation-results" aria-label="Generated images">
           <h2>Results</h2>
+          <section id="image-generation-review" class="image-generation-review" aria-label="Image result review" hidden>
+            <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
+            <img id="image-generation-review-image" alt="Selected generated result">
+            <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
+            <p><strong>Negative prompt</strong><br><span id="image-generation-review-negative"></span></p>
+            <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button">Import into Image Library</button><button id="image-generation-review-update" class="primary-action" type="button" hidden>Update Image Inventory</button></div>
+          </section>
           <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
         </section>
       </div>
@@ -1955,6 +1970,10 @@
               <label>Image Inventory catalog metadata<select id="setting-ai-image-description-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
+            </article>
+            <article class="managed-llm-role">
+              <label>Image prompt generation model<select id="setting-image-prompt-generation-model" form="automation-form"></select></label>
+              <p class="managed-llm-description">Describe images using an Ollama vision model or a Codex model.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="scene_builder">
               <label>Scene Builder narrative interview<select id="setting-ai-scene-builder-model" form="automation-form"></select></label>

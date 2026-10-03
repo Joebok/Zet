@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -54,10 +55,13 @@ def test_generated_image_import_round_trip_and_duplicate_handling(library):
     imported = service.import_generated_image(
         "Generated portrait", "image/png", PNG, entity_id=entity["entity_id"],
         reference_role="primary_subject", provenance="local imagegen run 12",
+        prompt="A generated portrait", negative_prompt="blurry",
     )
     asset = imported["asset"]
     assert imported["duplicate"] is False
     assert asset["origin"] == "imagegen"
+    assert asset["prompt"] == "A generated portrait"
+    assert asset["negative_prompt"] == "blurry"
     assert asset["entities"][0]["entity_id"] == entity["entity_id"]
     assert asset["entities"][0]["role"] == "primary_subject"
     assert asset["provenance"][0]["relation_type"] == "generated_from"
@@ -71,6 +75,75 @@ def test_generated_image_import_round_trip_and_duplicate_handling(library):
     assert duplicate["duplicate"] is True
     assert duplicate["asset"]["asset_id"] == asset["asset_id"]
     assert len(service.list_assets(origin="imagegen")) == 1
+
+
+def test_generation_prompts_persist_on_import_and_metadata_update(library):
+    _, service = library
+    asset = service.import_asset(
+        "Prompted image", "image/png", PNG, prompt="A red fox in snow",
+        negative_prompt="text, artifacts",
+    )
+    assert asset["prompt"] == "A red fox in snow"
+    assert asset["negative_prompt"] == "text, artifacts"
+    saved = service.update_asset(asset["asset_id"], {"prompt": "A fox at dusk", "negative_prompt": ""})
+    assert saved["prompt"] == "A fox at dusk"
+    assert saved["negative_prompt"] == ""
+
+
+def test_generated_update_keeps_asset_id_references_and_previous_file(library):
+    _, service = library
+    original = service.import_asset("Same record", "image/png", PNG, origin="imagegen",
+                                    origin_key="imagegen:original", prompt="old")
+    service.save_logical_reference({"reference_key": "same.record", "asset_id": original["asset_id"]})
+    previous_path = Path(original["image_path"])
+    replacement_bytes = PNG + b"new generated image"
+
+    updated = service.apply_generated_image(
+        original["asset_id"], original["checksum"], "image/png", replacement_bytes,
+        "new prompt", "new negative", "request-1", 0,
+    )
+
+    assert updated["asset_id"] == original["asset_id"]
+    assert updated["checksum"] != original["checksum"]
+    assert updated["prompt"] == "new prompt"
+    assert updated["negative_prompt"] == "new negative"
+    assert updated["origin_key"] is None
+    assert service.resolve_reference("same.record")["asset_id"] == original["asset_id"]
+    assert Path(updated["image_path"]).is_file()
+    assert previous_path.is_file()
+    assert json.loads(updated["provenance"][-1]["details_json"])["previous_file"] == original["file_name"]
+    assert service.apply_generated_image(
+        original["asset_id"], original["checksum"], "image/png", replacement_bytes,
+        "new prompt", "new negative", "request-1", 0,
+    )["checksum"] == updated["checksum"]
+
+
+def test_generated_update_rejects_stale_or_pipeline_images(library):
+    _, service = library
+    asset = service.import_asset("Modified already", "image/png", PNG)
+    updated = service.update_asset(asset["asset_id"], {"prompt": "changed metadata"})
+    with pytest.raises(EntityLibraryServiceError, match="source image changed"):
+        service.apply_generated_image(asset["asset_id"], "stale", "image/png", PNG + b"result",
+                                      "p", "n", "request-2", 0)
+    pipeline = service.import_asset("Locked pipeline", "image/png", PNG, origin="pipeline")
+    with pytest.raises(EntityLibraryServiceError, match="non-pipeline"):
+        service.apply_generated_image(pipeline["asset_id"], pipeline["checksum"], "image/png", PNG + b"x",
+                                      "p", "n", "request-3", 0)
+
+
+def test_entity_library_schema_migration_is_backed_up_and_repeatable(library):
+    root, service = library
+    repository = service.repository
+    with repository._connect() as connection:
+        connection.execute("PRAGMA user_version = 1")
+    repository.initialize()
+    backups = list((repository.database_path.parent / "backups").glob("catalog-v1-*.sqlite3"))
+    assert len(backups) == 1
+    assert repository._connect().execute("PRAGMA user_version").fetchone()[0] == 2
+    repository.initialize()
+    assert len(list((repository.database_path.parent / "backups").glob("catalog-v1-*.sqlite3"))) == 1
+    added = service.import_asset("After migration", "image/png", PNG)
+    assert added["prompt"] == added["negative_prompt"] == ""
 
 
 def test_locked_costume_image_has_searchable_classification_and_stable_reference(library):

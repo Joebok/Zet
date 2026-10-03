@@ -214,7 +214,19 @@ const imageGenerationProgress = document.querySelector("#image-generation-progre
 const imageGenerationMessage = document.querySelector("#image-generation-message");
 const imageGenerationModel = document.querySelector("#image-generation-model");
 const imageGenerationResultsGrid = document.querySelector("#image-generation-results-grid");
+const imageGenerationReview = document.querySelector("#image-generation-review");
+const imageGenerationReviewImage = document.querySelector("#image-generation-review-image");
+const imageGenerationReviewCount = document.querySelector("#image-generation-review-count");
+const imageGenerationReviewPrompt = document.querySelector("#image-generation-review-prompt");
+const imageGenerationReviewNegative = document.querySelector("#image-generation-review-negative");
+const imageGenerationReviewPrevious = document.querySelector("#image-generation-review-previous");
+const imageGenerationReviewNext = document.querySelector("#image-generation-review-next");
+const imageGenerationReviewImport = document.querySelector("#image-generation-review-import");
+const imageGenerationReviewUpdate = document.querySelector("#image-generation-review-update");
+const imageGenerationSource = document.querySelector("#image-generation-source");
 let imageGenerationMode = "txt2img";
+let imageGenerationReviewIndex = 0;
+let entityLibraryImportGeneration = null;
 let imageGenerationReferenceUrl = "";
 let imageGenerationPastedFile = null;
 let imageGenerationReferenceData = "";
@@ -413,6 +425,7 @@ const settingCodexDefaultModel = document.querySelector("#setting-codex-default-
 const settingPromptCondenseModel = document.querySelector("#setting-prompt-condense-model");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
+const settingImagePromptGenerationModel = document.querySelector("#setting-image-prompt-generation-model");
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
 const settingLocalBodyReferenceFaceGateModel = document.querySelector("#setting-local-body-reference-face-gate-model");
 const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
@@ -787,6 +800,9 @@ const entityLibraryCount = document.querySelector("#entity-library-count");
 const entityLibraryResults = document.querySelector("#entity-library-results");
 const entityLibraryFile = document.querySelector("#entity-library-file");
 const entityLibraryNewLabel = document.querySelector("#entity-library-new-label");
+const entityLibraryGenerationPrompts = document.querySelector("#entity-library-generation-prompts");
+const entityLibraryImportPrompt = document.querySelector("#entity-library-import-prompt");
+const entityLibraryImportNegativePrompt = document.querySelector("#entity-library-import-negative-prompt");
 const entityLibraryGeneratedEntity = document.querySelector("#entity-library-generated-entity");
 const entityLibraryGeneratedRole = document.querySelector("#entity-library-generated-role");
 const entityLibraryGeneratedProvenance = document.querySelector("#entity-library-generated-provenance");
@@ -816,6 +832,12 @@ const entityLibraryPageStatus = document.querySelector("#entity-library-page-sta
 const entityLibraryEditorTitle = document.querySelector("#entity-library-editor-title");
 const entityLibraryPreview = document.querySelector("#entity-library-preview");
 const entityLibraryEditLabel = document.querySelector("#entity-library-edit-label");
+const entityLibraryEditPrompt = document.querySelector("#entity-library-edit-prompt");
+const entityLibraryEditNegativePrompt = document.querySelector("#entity-library-edit-negative-prompt");
+const entityLibraryGeneratePrompt = document.querySelector("#entity-library-generate-prompt");
+const entityLibraryPromptStatus = document.querySelector("#entity-library-prompt-status");
+const entityLibraryModifyGenerated = document.querySelector("#entity-library-modify-generated");
+const entityLibraryModifyStatus = document.querySelector("#entity-library-modify-status");
 const entityLibraryEditNotes = document.querySelector("#entity-library-edit-notes");
 const entityLibraryEditStatus = document.querySelector("#entity-library-edit-status");
 const entityLibraryEditEntities = document.querySelector("#entity-library-edit-entities");
@@ -1106,7 +1128,7 @@ function setImageGenerationMode(mode) {
   imageGenerationImg2img.classList.toggle("primary-action", editing);
   imageGenerationReferenceField.hidden = !editing;
   imageGenerationReferencePreview.hidden = !editing;
-  imageGenerationReference.required = editing;
+  imageGenerationReference.required = editing && !imageGenerationReferenceData;
 }
 
 function setImageGenerationReference(file) {
@@ -1214,6 +1236,99 @@ function readImageGenerationReference(file) {
   });
 }
 
+async function modifyEntityLibraryImageWithGenerator() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
+  try {
+    const response = await fetch(fileUrl(asset.image_path));
+    if (!response.ok) throw new Error("Unable to read the selected inventory image.");
+    const blob = await response.blob();
+    const data = await readImageGenerationReference(new File([blob], asset.file_name, { type: asset.mime_type }));
+    await runGuardedTransition(async () => {
+      state.imageGenerationRequestId = null;
+      state.imageGenerationTerminal = false;
+      imageGenerationResultsGrid.replaceChildren();
+      imageGenerationReview.hidden = true;
+      imageGenerationReviewIndex = 0;
+      imageGenerationSource.textContent = "Updating " + (asset.label || asset.file_name);
+      imageGenerationSource.hidden = false;
+      imageGenerationSource.dataset.assetId = asset.asset_id;
+      imageGenerationSource.dataset.checksum = asset.checksum;
+      imageGenerationReferenceData = data;
+      imageGenerationReferenceImage.src = data;
+      imageGenerationReferenceImage.hidden = false;
+      imageGenerationReferenceHint.textContent = asset.file_name;
+      imageGenerationPrompt.value = asset.prompt || "";
+      imageGenerationNegative.value = asset.negative_prompt || "";
+      setImageGenerationMode("img2img");
+      saveImageGenerationState();
+      await activatePage("image-generation", { skipAutosave: true });
+    });
+  } catch (error) {
+    entityLibraryModifyStatus.textContent = error.message;
+  }
+}
+
+function renderImageGenerationReview(payload) {
+  const images = payload.images || [];
+  imageGenerationReview.hidden = !images.length;
+  if (!images.length) return;
+  imageGenerationReviewIndex = Math.min(imageGenerationReviewIndex, images.length - 1);
+  const selected = images[imageGenerationReviewIndex];
+  imageGenerationReviewImage.src = selected.url;
+  imageGenerationReviewImage.alt = "Generated image " + (imageGenerationReviewIndex + 1);
+  imageGenerationReviewCount.textContent = (imageGenerationReviewIndex + 1) + " of " + images.length;
+  imageGenerationReviewPrompt.textContent = payload.prompt || "";
+  imageGenerationReviewNegative.textContent = payload.negative_prompt || "";
+  imageGenerationReviewPrevious.disabled = imageGenerationReviewIndex === 0;
+  imageGenerationReviewNext.disabled = imageGenerationReviewIndex >= images.length - 1;
+  const associated = Boolean(payload.source_asset_id);
+  imageGenerationReviewImport.hidden = associated;
+  imageGenerationReviewUpdate.hidden = !associated;
+}
+
+function openImageGenerationImportDialog() {
+  if (!state.imageGenerationRequestId) return;
+  entityLibraryImportGeneration = { requestId: state.imageGenerationRequestId, index: imageGenerationReviewIndex };
+  state.entityLibraryImportBlob = null;
+  entityLibraryFile.value = "";
+  entityLibraryNewLabel.value = imageGenerationPrompt.value.trim().slice(0, 80) || "Generated image";
+  entityLibraryGeneratedProvenance.value = "Image Generation job " + state.imageGenerationRequestId + ", result " + (imageGenerationReviewIndex + 1);
+  entityLibraryGenerationPrompts.hidden = false;
+  entityLibraryImportPrompt.textContent = imageGenerationReviewPrompt.textContent;
+  entityLibraryImportNegativePrompt.textContent = imageGenerationReviewNegative.textContent;
+  entityLibraryPaste.textContent = "Using selected Image Generation result";
+  entityLibraryImportStatus.textContent = "";
+  entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+  entityLibraryImportDialog.showModal();
+}
+
+async function generateEntityImagePrompt() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset) return;
+  entityLibraryGeneratePrompt.disabled = true;
+  entityLibraryPromptStatus.textContent = "Analyzing image…";
+  try {
+    const started = await fetchJson("/api/entity-library/assets/" + encodeURIComponent(asset.asset_id) + "/generate-prompt", { method: "POST" });
+    let job = started;
+    while (job.status === "RUNNING") {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      job = await fetchJson("/api/entity-library/prompt-generation/" + encodeURIComponent(started.job_id));
+    }
+    if (job.status !== "COMPLETE") throw new Error(job.error || "Image prompt generation failed.");
+    if (entityLibrarySelectedAsset?.asset_id !== asset.asset_id) {
+      throw new Error("The selected image changed during analysis. Reopen Generate Prompt for the current image.");
+    }
+    if (!entityLibraryEditPrompt.value.trim()) entityLibraryEditPrompt.value = job.draft.prompt || "";
+    if (!entityLibraryEditNegativePrompt.value.trim()) entityLibraryEditNegativePrompt.value = job.draft.negative_prompt || "";
+    entityLibraryPromptStatus.textContent = "Draft added to empty prompt fields. Save image to keep it.";
+  } catch (error) {
+    entityLibraryPromptStatus.textContent = error.message;
+  } finally {
+    entityLibraryGeneratePrompt.disabled = Boolean(entityLibraryEditPrompt.value.trim() && entityLibraryEditNegativePrompt.value.trim());
+  }
+}
+
 function renderImageGenerationStatus(payload) {
   state.imageGenerationTerminal = ["COMPLETE", "PARTIAL", "FAILED", "ERROR"].includes(payload.status);
   imageGenerationSubmit.disabled = !state.imageGenerationTerminal && Boolean(state.imageGenerationRequestId);
@@ -1222,6 +1337,10 @@ function renderImageGenerationStatus(payload) {
     + (payload.failed ? ` · ${payload.failed} failed` : "");
   if (payload.error) showMessageElement(imageGenerationMessage, payload.error, payload.completed ? "warning" : "error");
   else showMessageElement(imageGenerationMessage, "", "info");
+  imageGenerationSource.hidden = !payload.source_asset_id;
+  imageGenerationSource.textContent = payload.source_asset_id ? "Updating an image from the Image Inventory" : "";
+  imageGenerationSource.dataset.assetId = payload.source_asset_id || "";
+  imageGenerationSource.dataset.checksum = payload.source_checksum || "";
   if (imageGenerationResultsGrid.childElementCount !== (payload.images || []).length) {
     imageGenerationResultsGrid.replaceChildren();
   }
@@ -1244,8 +1363,18 @@ function renderImageGenerationStatus(payload) {
     download.download = `zet-image-${result.index + 1}`;
     download.textContent = `Download ${result.index + 1}`;
     figure.append(preview, download);
+    const review = document.createElement("button");
+    review.type = "button";
+    review.textContent = "Review";
+    review.addEventListener("click", () => {
+      imageGenerationReviewIndex = position;
+      renderImageGenerationReview(payload);
+      imageGenerationReview.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    figure.append(review);
     imageGenerationResultsGrid.append(figure);
   }
+  renderImageGenerationReview(payload);
 }
 
 async function pollImageGeneration(requestId) {
@@ -1293,6 +1422,8 @@ async function submitImageGeneration(event) {
         height: Number(imageGenerationHeight.value),
         count: Number(imageGenerationCount.value),
         reference_image: referenceImage,
+        source_asset_id: imageGenerationSource.dataset.assetId || "",
+        source_checksum: imageGenerationSource.dataset.checksum || "",
       }),
       bindToPage: false,
     });
@@ -1317,6 +1448,8 @@ async function clearImageGenerationResults() {
     state.imageGenerationTerminal = false;
     window.localStorage.removeItem(IMAGE_GENERATION_STORAGE_KEY);
     imageGenerationResultsGrid.replaceChildren();
+    imageGenerationReview.hidden = true;
+    imageGenerationReviewIndex = 0;
     imageGenerationProgress.textContent = "";
     imageGenerationSubmit.disabled = false;
     imageGenerationClear.disabled = true;
@@ -1328,6 +1461,9 @@ async function clearImageGenerationResults() {
     imageGenerationReferenceImage.removeAttribute("src");
     imageGenerationReferenceImage.hidden = true;
     imageGenerationReferenceHint.textContent = "Choose an image or paste one here";
+    imageGenerationSource.hidden = true;
+    imageGenerationSource.dataset.assetId = "";
+    imageGenerationSource.dataset.checksum = "";
     setImageGenerationMode("txt2img");
   } catch (error) {
     showMessageElement(imageGenerationMessage, error.message, "error");
@@ -8981,6 +9117,8 @@ function entityLibraryEditorSnapshot() {
     tags: entityLibraryEditTags.value,
     identity: entityLibraryEditIdentity.value,
     costume: entityLibraryEditCostume.value,
+    prompt: entityLibraryEditPrompt.value,
+    negative_prompt: entityLibraryEditNegativePrompt.value,
     reference: entityLibraryEditReference.value,
   });
 }
@@ -8996,6 +9134,8 @@ function applyEntityLibraryEditorSnapshot(snapshot) {
   entityLibraryEditTags.value = snapshot.tags;
   entityLibraryEditIdentity.value = snapshot.identity;
   entityLibraryEditCostume.value = snapshot.costume;
+  entityLibraryEditPrompt.value = snapshot.prompt;
+  entityLibraryEditNegativePrompt.value = snapshot.negative_prompt;
   entityLibraryEditReference.value = snapshot.reference;
 }
 
@@ -9008,6 +9148,8 @@ async function selectEntityLibraryAsset(assetId) {
   entityLibraryPreview.src = fileUrl(asset.image_path);
   entityLibraryPreview.hidden = false;
   entityLibraryEditLabel.disabled = false;
+  entityLibraryEditPrompt.disabled = false;
+  entityLibraryEditNegativePrompt.disabled = false;
   entityLibraryEditNotes.disabled = false;
   entityLibraryEditStatus.disabled = false;
   entityLibraryEditEntities.disabled = false;
@@ -9021,7 +9163,13 @@ async function selectEntityLibraryAsset(assetId) {
   entityLibraryDelete.disabled = asset.status === "archived";
   entityLibraryReplacementFile.disabled = false;
   entityLibraryReplace.disabled = false;
+  entityLibraryModifyGenerated.hidden = asset.origin === "pipeline" || asset.status === "archived";
+  entityLibraryGeneratePrompt.disabled = asset.status === "archived" || Boolean(asset.prompt && asset.negative_prompt);
+  entityLibraryPromptStatus.textContent = "";
+  entityLibraryModifyStatus.textContent = "";
   entityLibraryEditLabel.value = asset.label || "";
+  entityLibraryEditPrompt.value = asset.prompt || "";
+  entityLibraryEditNegativePrompt.value = asset.negative_prompt || "";
   entityLibraryEditNotes.value = asset.notes || "";
   entityLibraryEditStatus.value = asset.status;
   const entityIds = (asset.entities || []).map((item) => item.entity_id);
@@ -9098,7 +9246,7 @@ async function saveEntityLibraryAsset() {
   const setIds = [...entityLibraryEditSets.selectedOptions].map((optionItem) => optionItem.value);
   const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, {
     method: "PATCH", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ label: entityLibraryEditLabel.value, notes: entityLibraryEditNotes.value, status: entityLibraryEditStatus.value, entity_links: entityLinks, set_ids: setIds, facets, tags: entityLibraryEditTags.value.split(",").map((tag) => tag.trim()).filter(Boolean) }),
+    body: JSON.stringify({ label: entityLibraryEditLabel.value, notes: entityLibraryEditNotes.value, status: entityLibraryEditStatus.value, prompt: entityLibraryEditPrompt.value, negative_prompt: entityLibraryEditNegativePrompt.value, entity_links: entityLinks, set_ids: setIds, facets, tags: entityLibraryEditTags.value.split(",").map((tag) => tag.trim()).filter(Boolean) }),
   });
   entityLibrarySelectedAsset = payload.asset;
   for (const [descriptor_type, text] of [["prompt_identity", entityLibraryEditIdentity.value], ["prompt_costume", entityLibraryEditCostume.value]]) {
@@ -11286,6 +11434,7 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingPromptCondenseModel, automation.prompt_condense_model || "");
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
+  setOllamaModelValue(settingImagePromptGenerationModel, automation.ai_image_prompt_generation_model || "image-analysis:latest");
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
   setOllamaModelValue(settingLocalBodyReferenceFaceGateModel, automation.local_body_reference_face_gate_model || "");
   setOllamaModelValue(settingLocalBodyReferenceReviewModel, automation.local_body_reference_review_model || "");
@@ -11318,6 +11467,7 @@ const ollamaModelControls = () => [
   settingPromptCondenseModel,
   settingAiPromptAnalysisModel,
   settingAiImageDescriptionModel,
+  settingImagePromptGenerationModel,
   settingAiSceneBuilderModel,
   settingLocalBodyReferenceFaceGateModel,
   settingLocalBodyReferenceReviewModel,
@@ -11380,10 +11530,19 @@ function setOllamaModelValue(control, value) {
 
 async function refreshOllamaModelOptions() {
   const current = new Map(ollamaModelControls().map((control) => [control, control.value]));
+  const addCodexPromptModels = () => {
+    for (const model of ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+      if (!Array.from(settingImagePromptGenerationModel.options).some((option) => option.value === "codex:" + model)) {
+        settingImagePromptGenerationModel.add(new Option("Codex · " + model, "codex:" + model));
+      }
+    }
+  };
   try {
     const payload = await fetchJson("/api/ai-controls/ollama-models");
     for (const control of ollamaModelControls()) {
-      setSelectOptions(control, payload.models || []);
+      setSelectOptions(control, control === settingImagePromptGenerationModel
+        ? (payload.vision_models || []) : (payload.models || []));
+      if (control === settingImagePromptGenerationModel) addCodexPromptModels();
       setOllamaModelValue(control, current.get(control));
     }
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
@@ -11391,6 +11550,8 @@ async function refreshOllamaModelOptions() {
       `Loaded ${(payload.models || []).length} Ollama model(s); ${(payload.vision_models || []).length} report vision capability.`,
     );
   } catch (error) {
+    addCodexPromptModels();
+    setOllamaModelValue(settingImagePromptGenerationModel, current.get(settingImagePromptGenerationModel));
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
     showMessage(error.message, "error");
   }
@@ -11487,6 +11648,7 @@ function automationPayloadFromForm() {
     prompt_condense_model: settingPromptCondenseModel.value,
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_image_description_model: settingAiImageDescriptionModel.value,
+    ai_image_prompt_generation_model: settingImagePromptGenerationModel.value,
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
     local_body_reference_face_gate_model: settingLocalBodyReferenceFaceGateModel.value,
     local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,
@@ -13201,6 +13363,10 @@ entityLibraryOrganizer.addEventListener("click", handleOrganizationAction);
 entityLibraryOrganizer.addEventListener("submit", saveOrganizationRecord);
 document.querySelector("#entity-library-open-import").addEventListener("click", () => entityLibraryImportDialog.showModal());
 document.querySelector("#entity-library-close-import").addEventListener("click", () => entityLibraryImportDialog.close());
+entityLibraryImportDialog.addEventListener("close", () => {
+  entityLibraryImportGeneration = null;
+  entityLibraryGenerationPrompts.hidden = true;
+});
 document.querySelector("#entity-library-merge-cancel").addEventListener("click", () => entityLibraryMergeDialog.close());
 entityLibraryMergeDialog.addEventListener("click", (event) => { if (event.target === entityLibraryMergeDialog) entityLibraryMergeDialog.close(); });
 const importPanel = document.querySelector(".entity-library-sidebar > section");
@@ -13212,19 +13378,41 @@ if (importPanel) {
 entityLibraryFile.addEventListener("change", () => {
   state.entityLibraryImportBlob = null;
   entityLibraryPaste.textContent = entityLibraryFile.files?.[0]?.name || "Or click here and paste an image";
-  entityLibraryImport.disabled = !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+  entityLibraryImport.disabled = !entityLibraryImportGeneration && !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
 });
 entityLibraryNewLabel.addEventListener("input", () => {
-  entityLibraryImport.disabled = !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+  entityLibraryImport.disabled = !entityLibraryImportGeneration && !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
 });
 entityLibraryImport.addEventListener("click", async () => {
   const file = state.entityLibraryImportBlob || entityLibraryFile.files?.[0];
   const label = entityLibraryNewLabel.value.trim();
-  if (!file || !label) return;
+  if ((!file && !entityLibraryImportGeneration) || !label) return;
   entityLibraryImport.disabled = true;
   entityLibraryImportStatus.textContent = "Adding image…";
   try {
+    if (entityLibraryImportGeneration) {
+      const { requestId, index } = entityLibraryImportGeneration;
+      const payload = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(requestId) + "/images/" + index + "/import", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, entity_id: entityLibraryGeneratedEntity.value,
+          reference_role: entityLibraryGeneratedRole.value, provenance: entityLibraryGeneratedProvenance.value.trim() }),
+      });
+      entityLibraryImportGeneration = null;
+      entityLibraryImportDialog.close();
+      entityLibraryFile.value = "";
+      state.entityLibraryImportBlob = null;
+      entityLibraryPaste.textContent = "Or click here and paste an image";
+      entityLibraryNewLabel.value = "";
+      entityLibraryGeneratedProvenance.value = "";
+      entityLibraryGenerationPrompts.hidden = true;
+      entityLibraryImportStatus.textContent = payload.duplicate ? "This generated image is already in the library." : "Image added.";
+      await activatePage("auxiliary-resources", { skipAutosave: true });
+      await loadEntityLibraryInventory();
+      if (payload.asset?.asset_id) await selectEntityLibraryAsset(payload.asset.asset_id);
+      return;
+    }
     const generated = Boolean(entityLibraryGeneratedEntity.value);
+    entityLibraryGenerationPrompts.hidden = true;
     const endpoint = generated ? "/api/entity-library/assets/generated" : "/api/entity-library/assets";
     const query = new URLSearchParams({ label });
     if (generated) {
@@ -13248,7 +13436,7 @@ entityLibraryImport.addEventListener("click", async () => {
   } catch (error) {
     entityLibraryImportStatus.textContent = error.message;
   } finally {
-    entityLibraryImport.disabled = !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+    entityLibraryImport.disabled = (!entityLibraryImportGeneration && !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob)) || !entityLibraryNewLabel.value.trim();
   }
 });
 entityLibraryEntityCreate.addEventListener("click", async () => {
@@ -13663,6 +13851,37 @@ imageCatalogBulkApply.addEventListener("click", bulkUpdateImageCatalog);
 imageCatalogBulkClear.addEventListener("click", () => {
   state.selectedImageCatalogIds = [];
   renderImageCatalog();
+});
+entityLibraryModifyGenerated.addEventListener("click", modifyEntityLibraryImageWithGenerator);
+entityLibraryGeneratePrompt.addEventListener("click", generateEntityImagePrompt);
+imageGenerationReviewPrevious.addEventListener("click", () => {
+  imageGenerationReviewIndex = Math.max(0, imageGenerationReviewIndex - 1);
+  if (state.imageGenerationRequestId) pollImageGeneration(state.imageGenerationRequestId);
+});
+imageGenerationReviewNext.addEventListener("click", () => {
+  imageGenerationReviewIndex += 1;
+  if (state.imageGenerationRequestId) pollImageGeneration(state.imageGenerationRequestId);
+});
+imageGenerationReviewImport.addEventListener("click", openImageGenerationImportDialog);
+imageGenerationReviewUpdate.addEventListener("click", async () => {
+  const requestId = state.imageGenerationRequestId;
+  if (!requestId) return;
+  imageGenerationReviewUpdate.disabled = true;
+  try {
+    const result = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(requestId) + "/images/" + imageGenerationReviewIndex + "/apply", { method: "POST" });
+    await activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(result.asset.asset_id);
+    showAuxResourceMessage("Image updated in the inventory.", "success");
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationReviewUpdate.disabled = false;
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (imageGenerationReview.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "")) return;
+  if (event.key === "ArrowLeft" && !imageGenerationReviewPrevious.disabled) imageGenerationReviewPrevious.click();
+  if (event.key === "ArrowRight" && !imageGenerationReviewNext.disabled) imageGenerationReviewNext.click();
 });
 imageGenerationTxt2img.addEventListener("click", () => { setImageGenerationMode("txt2img"); saveImageGenerationState(); });
 imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode("img2img"); saveImageGenerationState(); });

@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import datetime
 from dataclasses import asdict
+import hashlib
 import json
 from typing import Any
 
@@ -623,11 +624,35 @@ class ZetApp:
     def entity_library_replace_asset(self, asset_id: str, mime_type: str, data: bytes):
         return self._indexed_write(lambda: self.entity_library_service.replace_asset(asset_id, mime_type, data))
 
+    def entity_library_apply_generated_image(self, asset_id: str, expected_checksum: str, mime_type: str,
+                                             data: bytes, prompt: str, negative_prompt: str,
+                                             request_id: str, result_index: int):
+        return self._indexed_write(lambda: self.entity_library_service.apply_generated_image(
+            asset_id, expected_checksum, mime_type, data, prompt, negative_prompt, request_id, result_index))
+
     def entity_library_import(self, label: str, mime_type: str, data: bytes, **metadata):
         return self._indexed_write(lambda: self.entity_library_service.import_asset(label, mime_type, data, **metadata))
 
     def entity_library_import_generated_image(self, label: str, mime_type: str, data: bytes, **metadata):
         return self._indexed_write(lambda: self.entity_library_service.import_generated_image(label, mime_type, data, **metadata))
+
+    def entity_library_import_generation_result(self, generation_service, request_id: str, result_index: int, *,
+                                                 label: str, entity_id: str = "",
+                                                 reference_role: str = "depicted_subject",
+                                                 provenance: str = ""):
+        data, mime_type, generation = generation_service.library_result(request_id, result_index)
+        prompt = str(generation.get("prompt") or "")
+        negative_prompt = str(generation.get("negative_prompt") or "")
+        if entity_id:
+            return self._indexed_write(lambda: self.entity_library_service.import_generated_image(
+                label, mime_type, data, entity_id=entity_id, reference_role=reference_role,
+                provenance=provenance, prompt=prompt, negative_prompt=negative_prompt))
+        return self._indexed_write(lambda: self.entity_library_service.import_asset(
+            label, mime_type, data, origin="imagegen",
+            origin_key=f"imagegen:{hashlib.sha256(data).hexdigest()}",
+            prompt=prompt, negative_prompt=negative_prompt,
+            provenance_details={"source": "local_image_generation", "request_id": request_id,
+                                "result_index": result_index, "details": provenance}))
 
     def entity_library_create_entity(self, data: dict):
         return self._indexed_write(lambda: self.entity_library_service.create_entity(data))

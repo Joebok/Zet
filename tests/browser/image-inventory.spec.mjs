@@ -80,3 +80,30 @@ test("Image Inventory searches, copies a tag, keeps search state in details, and
     await expect.poll(() => page.locator("#auxiliary-resources-page").evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
   }
 });
+
+test("Image Inventory saves generation prompts and launches Image Generation from a library image", async ({ page }) => {
+  await openInventory(page);
+  const imported = await page.request.post("/api/entity-library/assets?label=Prompted+Modify+Test", {
+    data: PNG,
+    headers: { "content-type": "image/png" },
+  });
+  expect(imported.ok()).toBeTruthy();
+  const asset = (await imported.json()).asset;
+  await page.locator("#entity-library-search").fill("Prompted Modify Test");
+  await page.locator("#entity-library-refresh").click();
+  const card = page.locator("#entity-library-results .image-catalog-card").filter({ hasText: "Prompted Modify Test" });
+  await card.getByRole("button", { name: "Details" }).click();
+
+  await page.locator("#entity-library-edit-prompt").fill("A bronze owl at dusk");
+  await page.locator("#entity-library-edit-negative-prompt").fill("words, extra wings");
+  await page.getByRole("button", { name: "Save image" }).click();
+  await expect.poll(async () => (await (await page.request.get("/api/entity-library/assets/" + asset.asset_id)).json()).asset.prompt)
+    .toBe("A bronze owl at dusk");
+  await expect(page.locator("#entity-library-save")).toBeEnabled();
+  await expect(page.locator("#entity-library-modify-generated")).toBeVisible();
+  await page.locator("#entity-library-modify-generated").click();
+  await expect(page.locator("#image-generation-page")).toHaveClass(/active/);
+  await expect(page.locator("#image-generation-prompt")).toHaveValue("A bronze owl at dusk");
+  await expect(page.locator("#image-generation-negative")).toHaveValue("words, extra wings");
+  await expect(page.locator("#image-generation-img2img")).toHaveAttribute("aria-pressed", "true");
+});

@@ -15,7 +15,7 @@ class EntityLibraryRepositoryError(Exception):
 class EntityLibraryRepository:
     """Store the authoritative entity-centered image catalog in SQLite."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, database_path: str | Path):
         self.database_path = Path(database_path).resolve()
@@ -78,7 +78,8 @@ class EntityLibraryRepository:
                     asset_id TEXT PRIMARY KEY, label TEXT NOT NULL DEFAULT '', checksum TEXT NOT NULL, file_name TEXT NOT NULL,
                     mime_type TEXT NOT NULL, width INTEGER, height INTEGER, origin TEXT NOT NULL,
                     origin_key TEXT UNIQUE, status TEXT NOT NULL DEFAULT 'approved', rating INTEGER,
-                    notes TEXT NOT NULL DEFAULT '', derived_from_asset_id TEXT REFERENCES assets(asset_id),
+                    notes TEXT NOT NULL DEFAULT '', prompt TEXT NOT NULL DEFAULT '',
+                    negative_prompt TEXT NOT NULL DEFAULT '', derived_from_asset_id TEXT REFERENCES assets(asset_id),
                     replacement_for_asset_id TEXT REFERENCES assets(asset_id), created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -146,9 +147,14 @@ class EntityLibraryRepository:
                     relation_type TEXT NOT NULL, source_asset_id TEXT REFERENCES assets(asset_id),
                     details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
                 );
-                PRAGMA user_version = 1;
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(assets)")}
+            if "prompt" not in columns:
+                connection.execute("ALTER TABLE assets ADD COLUMN prompt TEXT NOT NULL DEFAULT ''")
+            if "negative_prompt" not in columns:
+                connection.execute("ALTER TABLE assets ADD COLUMN negative_prompt TEXT NOT NULL DEFAULT ''")
+            connection.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
             result = connection.execute("PRAGMA integrity_check").fetchone()[0]
             if result != "ok":
                 raise EntityLibraryRepositoryError(f"Image library integrity check failed: {result}")

@@ -79,7 +79,8 @@ class EntityLibraryService:
         return None, None
 
     def _image_path(self, asset_id: str, file_name: str) -> Path:
-        return self.images_root / f"{asset_id}{Path(file_name).suffix.lower()}"
+        basename = Path(file_name).name
+        return self.images_root / (f"{asset_id}{basename}" if basename.startswith(".") else basename)
 
     @staticmethod
     def _json(row: dict) -> dict:
@@ -262,7 +263,7 @@ class EntityLibraryService:
         item["usages"] = self.usage_for_asset(asset_id)
         return item
 
-    def import_asset(self, label: str, mime_type: str, data: bytes, *, notes: str = "", entity_ids: list[str] | None = None, set_ids: list[str] | None = None, origin: str = "import", origin_key: str | None = None, entity_role: str = "depicted_subject", provenance_details: dict | None = None) -> dict:
+    def import_asset(self, label: str, mime_type: str, data: bytes, *, notes: str = "", prompt: str = "", negative_prompt: str = "", entity_ids: list[str] | None = None, set_ids: list[str] | None = None, origin: str = "import", origin_key: str | None = None, entity_role: str = "depicted_subject", provenance_details: dict | None = None) -> dict:
         label = self._require(label, "Image label")
         mime_type = str(mime_type or "").split(";")[0].strip().lower()
         if mime_type not in IMAGE_TYPES or not data:
@@ -282,8 +283,8 @@ class EntityLibraryService:
         try:
             with self.repository.transaction() as connection:
                 connection.execute(
-                    "INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (asset_id, label, checksum, path.name, mime_type, width, height, origin, origin_key, "approved", notes.strip(), stamp, stamp),
+                    "INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,status,notes,prompt,negative_prompt,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (asset_id, label, checksum, path.name, mime_type, width, height, origin, origin_key, "approved", notes.strip(), str(prompt or "").strip(), str(negative_prompt or "").strip(), stamp, stamp),
                 )
                 self._link_assets(connection, asset_id, entity_ids or [], set_ids or [], entity_role=entity_role)
                 if provenance_details is not None:
@@ -296,7 +297,7 @@ class EntityLibraryService:
             raise
         return self.get_asset(asset_id)
 
-    def import_generated_image(self, label: str, mime_type: str, data: bytes, *, entity_id: str, reference_role: str, provenance: str) -> dict:
+    def import_generated_image(self, label: str, mime_type: str, data: bytes, *, entity_id: str, reference_role: str, provenance: str, prompt: str = "", negative_prompt: str = "") -> dict:
         """Import a generated image with its entity, reference role, and provenance atomically."""
         entity_id = self._require(entity_id, "Entity")
         reference_role = self._require(reference_role, "Reference role")
@@ -309,12 +310,13 @@ class EntityLibraryService:
             raise EntityLibraryServiceError("Choose a non-empty PNG, JPEG, WEBP, or GIF image.")
         checksum = hashlib.sha256(data).hexdigest()
         origin_key = f"imagegen:{checksum}"
-        existing = self.repository.fetchone("SELECT asset_id FROM assets WHERE origin_key=?", (origin_key,))
+        existing = self.repository.fetchone("SELECT asset_id FROM assets WHERE origin='imagegen' AND checksum=?", (checksum,))
         if existing:
             return {"asset": self.get_asset(existing["asset_id"]), "duplicate": True}
         asset = self.import_asset(
             label, mime_type, data, origin="imagegen", origin_key=origin_key,
             entity_ids=[entity_id], entity_role=reference_role,
+            prompt=prompt, negative_prompt=negative_prompt,
             provenance_details={"source": "local_image_generation", "details": str(provenance or "").strip()},
         )
         return {"asset": asset, "duplicate": False}
@@ -527,6 +529,80 @@ class EntityLibraryService:
             connection.execute("INSERT OR IGNORE INTO asset_tags(asset_id,tag) SELECT ?,tag FROM asset_tags WHERE asset_id=?", (created["asset_id"], asset_id))
         return self.get_asset(created["asset_id"])
 
+    def apply_generated_image(self, asset_id: str, expected_checksum: str, mime_type: str, data: bytes,
+                              prompt: str, negative_prompt: str, request_id: str, result_index: int) -> dict:
+        asset = self.get_asset(asset_id)
+        prior = self.repository.fetchone(
+            "SELECT details_json FROM provenance WHERE asset_id=? AND relation_type='image_generation_update' ORDER BY created_at DESC LIMIT 1",
+            (asset_id,),
+        )
+        if prior:
+            try:
+                applied = json.loads(prior["details_json"])
+                if applied.get("request_id") == request_id and applied.get("result_index") == result_index:
+                    return asset
+            except (TypeError, json.JSONDecodeError):
+                pass
+        if asset["origin"] == "pipeline" or asset["status"] == "archived":
+            raise EntityLibraryServiceError("Only available, non-pipeline images can be modified.")
+        if asset["checksum"] != expected_checksum:
+            raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
+        try:
+            if hashlib.sha256(Path(asset["image_path"]).read_bytes()).hexdigest() != expected_checksum:
+                raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
+        except OSError as exc:
+            raise EntityLibraryServiceError("The source image is unavailable. Reopen Image Generation from the current image.") from exc
+        mime_type = str(mime_type or "").split(";", 1)[0].strip().lower()
+        if not data or mime_type not in IMAGE_TYPES:
+            raise EntityLibraryServiceError("Choose a valid generated image.")
+        checksum = hashlib.sha256(data).hexdigest()
+        width, height = self._dimensions(data, mime_type)
+        revision = f"{asset_id}_{checksum}{IMAGE_TYPES[mime_type]}"
+        staged = self.images_root / revision
+        self.images_root.mkdir(parents=True, exist_ok=True)
+        if not staged.is_file() or hashlib.sha256(staged.read_bytes()).hexdigest() != checksum:
+            temporary = staged.with_name(staged.name + "." + uuid4().hex + ".tmp")
+            try:
+                temporary.write_bytes(data)
+                temporary.replace(staged)
+            finally:
+                temporary.unlink(missing_ok=True)
+        stamp = _now()
+        try:
+            with self.repository.transaction() as connection:
+                current = connection.execute(
+                    "SELECT checksum,file_name,origin,origin_key,status FROM assets WHERE asset_id=?", (asset_id,)
+                ).fetchone()
+                if not current or current["status"] == "archived" or current["origin"] == "pipeline":
+                    raise EntityLibraryServiceError("This image can no longer be modified.")
+                if current["checksum"] != expected_checksum:
+                    raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
+                current_path = self._image_path(asset_id, current["file_name"])
+                try:
+                    current_checksum = hashlib.sha256(current_path.read_bytes()).hexdigest()
+                except OSError as exc:
+                    raise EntityLibraryServiceError("The source image is unavailable. Reopen Image Generation from the current image.") from exc
+                if current_checksum != expected_checksum:
+                    raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
+                details = {"request_id": request_id, "result_index": result_index,
+                           "previous_file": current["file_name"], "previous_checksum": current["checksum"]}
+                connection.execute(
+                    "UPDATE assets SET checksum=?,file_name=?,mime_type=?,width=?,height=?,prompt=?,negative_prompt=?,origin_key=CASE WHEN origin_key LIKE 'imagegen:%' THEN NULL ELSE origin_key END,updated_at=? WHERE asset_id=?",
+                    (checksum, revision, mime_type, width, height, prompt.strip(), negative_prompt.strip(), stamp, asset_id),
+                )
+                connection.execute(
+                    "INSERT INTO provenance(provenance_id,asset_id,relation_type,details_json,created_at) VALUES(?,?,?,?,?)",
+                    (str(uuid4()), asset_id, "image_generation_update", json.dumps(details), stamp),
+                )
+        except Exception:
+            referenced = self.repository.fetchone(
+                "SELECT 1 AS found FROM assets WHERE asset_id=? AND file_name=?", (asset_id, revision)
+            )
+            if not referenced:
+                staged.unlink(missing_ok=True)
+            raise
+        return self.get_asset(asset_id)
+
     def set_asset_status(self, asset_id: str, status: str) -> dict:
         if status not in ASSET_STATUSES:
             raise EntityLibraryServiceError("Invalid image status.")
@@ -575,7 +651,11 @@ class EntityLibraryService:
                     "UPDATE logical_references SET status='inactive',updated_at=? WHERE asset_id=? AND status='active'",
                     (stamp, asset_id),
                 )
-            connection.execute("UPDATE assets SET label=?,notes=?,status=?,rating=?,updated_at=? WHERE asset_id=?", (label, notes, status, data.get("rating", current["rating"]), stamp, asset_id))
+            connection.execute("UPDATE assets SET label=?,notes=?,status=?,rating=?,prompt=?,negative_prompt=?,updated_at=? WHERE asset_id=?",
+                               (label, notes, status, data.get("rating", current["rating"]),
+                                str(data.get("prompt", current.get("prompt", "")) or "").strip(),
+                                str(data.get("negative_prompt", current.get("negative_prompt", "")) or "").strip(),
+                                stamp, asset_id))
             if "entity_links" in data:
                 existing_links = {(item["entity_id"], item["role"]): item for item in current["entities"]}
                 connection.execute("DELETE FROM asset_entities WHERE asset_id=?", (asset_id,))

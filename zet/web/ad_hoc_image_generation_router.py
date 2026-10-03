@@ -49,6 +49,26 @@ def create_ad_hoc_image_generation_router(
             headers["Content-Disposition"] = f'attachment; filename="zet-image-{index + 1}.{extension}"'
         return Response(content=contents, media_type=media_type, headers=headers)
 
+    @router.post("/jobs/{request_id}/images/{index}/import")
+    def import_image(request_id: str, index: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            result = service_provider().import_into_library(request_id, index, payload)
+            return {"asset": result.get("asset", result),
+                    "duplicate": bool(result.get("duplicate", False))}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/jobs/{request_id}/images/{index}/apply")
+    def apply_image(request_id: str, index: int) -> dict[str, Any]:
+        try:
+            return {"asset": service_provider().apply_to_source(request_id, index)}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @router.delete("/jobs/{request_id}")
     def clear(request_id: str) -> dict[str, str]:
         try:

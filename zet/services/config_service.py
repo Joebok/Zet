@@ -63,6 +63,7 @@ class Config:
     render_backend: str = "local_image"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
+    ai_image_prompt_generation_model: str = "image-analysis:latest"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
     scene_candidate_sources: tuple[SceneCandidateSourceConfig, ...] = ()
@@ -251,6 +252,7 @@ class ConfigService:
                     )
                 ),
                 ai_image_description_model=str(ai_models.get("ImageDescription", "image-analysis:latest")),
+                ai_image_prompt_generation_model=str(ai_models.get("ImagePromptGeneration", "image-analysis:latest")),
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),

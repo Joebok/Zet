@@ -23,6 +23,7 @@ from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIE
 from zet.services.character_phase_discovery_service import CharacterPhaseDiscoveryService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.ad_hoc_image_generation_service import AdHocImageGenerationService
+from zet.services.image_prompt_generation_service import ImagePromptGenerationService
 from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_metrics_service import ManualRenderMetricsService
@@ -820,6 +821,7 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
             payload.get("ai_prompt_analysis_auto_queue_on_render", defaults.ai_prompt_analysis_auto_queue_on_render)
         ),
         ai_image_description_model=str(payload.get("ai_image_description_model", defaults.ai_image_description_model)),
+        ai_image_prompt_generation_model=str(payload.get("ai_image_prompt_generation_model", defaults.ai_image_prompt_generation_model)),
         ai_scene_builder_model=str(payload.get("ai_scene_builder_model", defaults.ai_scene_builder_model)),
         local_body_reference_face_gate_model=str(
             payload.get("local_body_reference_face_gate_model", defaults.local_body_reference_face_gate_model)
@@ -936,6 +938,7 @@ def create_app(
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
+    app.state.image_prompt_generation_service = ImagePromptGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.universe_lock = threading.RLock()
     current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
     # Start reconciliation in the background so it cannot hold HTTP startup hostage.
@@ -2249,6 +2252,20 @@ def create_app(
             return {"asset": _app(app.state.config_path).entity_library_asset(asset_id)}
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/assets/{asset_id}/generate-prompt")
+    def entity_library_generate_prompt(asset_id: str) -> dict[str, Any]:
+        try:
+            return app.state.image_prompt_generation_service.start(asset_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/entity-library/prompt-generation/{job_id}")
+    def entity_library_prompt_generation_status(job_id: str) -> dict[str, Any]:
+        try:
+            return app.state.image_prompt_generation_service.status(job_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
 
     @app.patch("/api/entity-library/assets/{asset_id}")
     def entity_library_asset_update(asset_id: str, data: dict = Body(...)) -> dict[str, Any]:

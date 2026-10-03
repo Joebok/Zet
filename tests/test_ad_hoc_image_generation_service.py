@@ -94,6 +94,44 @@ def test_img2img_stages_reference_and_explicit_dimensions(tmp_path: Path) -> Non
     service.clear(result["request_id"])
 
 
+def test_inventory_generation_binds_source_and_carries_prompts_into_import_and_update(tmp_path: Path) -> None:
+    service, _config_path = _service(tmp_path)
+    source_bytes = png_bytes()
+    source = service.zet_app.entity_library_import(
+        "Source image", "image/png", source_bytes, prompt="A pale blue house",
+        negative_prompt="extra windows",
+    )
+    result = service.submit({
+        "mode": "img2img", "prompt": "Night version of the house", "negative_prompt": "text",
+        "count": 1, "reference_image": base64.b64encode(source_bytes).decode("ascii"),
+        "source_asset_id": source["asset_id"], "source_checksum": source["checksum"],
+    })
+    job = service._jobs[result["request_id"]]
+    job["images"].append((png_bytes() + b"new render", "image/png"))
+    service._save_job(job)
+
+    imported = service.import_into_library(result["request_id"], 0, {"label": "Night house"})
+    assert imported["asset"]["prompt"] == "Night version of the house"
+    assert imported["asset"]["negative_prompt"] == "text"
+
+    updated = service.apply_to_source(result["request_id"], 0)
+    assert updated["asset_id"] == source["asset_id"]
+    assert updated["prompt"] == "Night version of the house"
+    assert updated["negative_prompt"] == "text"
+    assert service.status(result["request_id"])["source_asset_id"] == source["asset_id"]
+
+
+def test_inventory_generation_rejects_unrelated_reference_bytes(tmp_path: Path) -> None:
+    service, _config_path = _service(tmp_path)
+    source = service.zet_app.entity_library_import("Source", "image/png", png_bytes())
+    with pytest.raises(AdHocImageGenerationError, match="does not match"):
+        service.submit({
+            "mode": "img2img", "prompt": "Modify", "count": 1,
+            "reference_image": base64.b64encode(png_bytes() + b"different").decode("ascii"),
+            "source_asset_id": source["asset_id"], "source_checksum": source["checksum"],
+        })
+
+
 @pytest.mark.parametrize("field,value", [("width", 255), ("width", 1025), ("height", 4097), ("height", True)])
 def test_invalid_dimensions_are_rejected(tmp_path: Path, field: str, value) -> None:
     service, _config_path = _service(tmp_path)

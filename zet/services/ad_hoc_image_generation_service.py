@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
@@ -76,6 +77,19 @@ class AdHocImageGenerationService:
         prompt = str(payload.get("prompt") or "").strip()
         if not prompt:
             raise AdHocImageGenerationError("Enter a prompt before generating.")
+        source_asset_id = str(payload.get("source_asset_id") or "").strip()
+        source_checksum = str(payload.get("source_checksum") or "").strip()
+        if source_asset_id:
+            try:
+                source = self.zet_app.entity_library_asset(source_asset_id)
+            except Exception as exc:
+                raise AdHocImageGenerationError(f"Source image is unavailable: {exc}") from exc
+            if source.get("origin") == "pipeline" or source.get("status") == "archived":
+                raise AdHocImageGenerationError("Only available, non-pipeline images can be modified.")
+            if not source_checksum or source.get("checksum") != source_checksum:
+                raise AdHocImageGenerationError("The source image changed. Reopen Image Generation from the current image.")
+        elif source_checksum:
+            raise AdHocImageGenerationError("A source checksum requires a source image.")
         count_value = payload.get("count", IMAGE_GENERATION_DEFAULT_COUNT)
         if isinstance(count_value, bool):
             raise AdHocImageGenerationError("Image count must be between 1 and 16.")
@@ -109,6 +123,14 @@ class AdHocImageGenerationService:
                 validate_image(reference_bytes)
             except ValueError as exc:
                 raise AdHocImageGenerationError(str(exc)) from exc
+            if source_asset_id:
+                source_path = Path(str(source.get("image_path") or ""))
+                if (not source_path.is_file()
+                        or hashlib.sha256(source_path.read_bytes()).hexdigest() != source_checksum
+                        or hashlib.sha256(reference_bytes).hexdigest() != source_checksum):
+                    raise AdHocImageGenerationError("The reference image does not match the selected inventory image.")
+        elif source_asset_id:
+            raise AdHocImageGenerationError("Inventory images must use img2img mode.")
 
         preset_name = "comfyui-qwen-head-image-edit" if mode == "img2img" else "comfyui-qwen-head-image-text"
         if payload.get("model_family") and payload["model_family"] != "qwen-image-2.1":
@@ -213,6 +235,8 @@ class AdHocImageGenerationService:
             "negative_prompt": str(payload.get("negative_prompt") or "").strip(),
             "width": width,
             "height": height,
+            "source_asset_id": str(payload.get("source_asset_id") or "").strip(),
+            "source_checksum": str(payload.get("source_checksum") or "").strip(),
         }
 
     def _preset(self, name: str) -> dict[str, Any]:
@@ -248,6 +272,10 @@ class AdHocImageGenerationService:
                 "completed": len(job["images"]),
                 "failed": job["failures"],
                 "error": job["error"],
+                "prompt": job.get("prompt", ""),
+                "negative_prompt": job.get("negative_prompt", ""),
+                "source_asset_id": job.get("source_asset_id", ""),
+                "source_checksum": job.get("source_checksum", ""),
                 "images": [
                     {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
                     for index in range(len(job["images"]))
@@ -260,6 +288,42 @@ class AdHocImageGenerationService:
             if job is None or index < 0 or index >= len(job["images"]):
                 raise KeyError("Image not found.")
             return job["images"][index]
+
+    def library_result(self, request_id: str, index: int):
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None or index < 0 or index >= len(job["images"]):
+                raise KeyError("Generated image not found.")
+            image_bytes, mime_type = job["images"][index]
+            return image_bytes, mime_type, {
+                "prompt": job.get("prompt", ""), "negative_prompt": job.get("negative_prompt", ""),
+                "source_asset_id": job.get("source_asset_id", ""),
+                "source_checksum": job.get("source_checksum", ""),
+            }
+
+    def import_into_library(self, request_id: str, index: int, data: dict[str, Any]) -> dict[str, Any]:
+        label = str(data.get("label") or "").strip()
+        if not label:
+            raise AdHocImageGenerationError("Image name is required.")
+        provenance = str(data.get("provenance") or f"Image Generation job {request_id}, result {index + 1}")
+        result = self.zet_app.entity_library_import_generation_result(
+            self, request_id, index, label=label, entity_id=str(data.get("entity_id") or "").strip(),
+            reference_role=str(data.get("reference_role") or "primary_subject"), provenance=provenance,
+        )
+        return result if isinstance(result, dict) and "asset" in result else {"asset": result, "duplicate": False}
+
+    def apply_to_source(self, request_id: str, index: int) -> dict[str, Any]:
+        image_bytes, mime_type, generation = self.library_result(request_id, index)
+        asset_id = str(generation.get("source_asset_id") or "")
+        if not asset_id:
+            raise AdHocImageGenerationError("This generation job was not opened from an inventory image.")
+        try:
+            return self.zet_app.entity_library_apply_generated_image(
+                asset_id, generation["source_checksum"], mime_type, image_bytes,
+                generation["prompt"], generation["negative_prompt"], request_id, index,
+            )
+        except Exception as exc:
+            raise AdHocImageGenerationError(str(exc)) from exc
 
     def clear(self, request_id: str) -> None:
         with self._lock:
@@ -366,6 +430,8 @@ class AdHocImageGenerationService:
             "request_id", "mode", "prompt", "negative_prompt", "width", "height", "count",
             "children", "status", "error", "failures", "created_at", "finished_at",
         )}
+        record["source_asset_id"] = job.get("source_asset_id", "")
+        record["source_checksum"] = job.get("source_checksum", "")
         record.update({"workspace": str(job["workspace"]), "prompt_path": str(job["prompt_path"]),
                        "images": image_records})
         temporary = directory / "job.json.tmp"
