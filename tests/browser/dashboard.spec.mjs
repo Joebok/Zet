@@ -1166,7 +1166,7 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
 
   await page.locator("#scene-builder-open").click();
   await page.locator('[data-builder-field="scene.story_beat"]').fill("Unsaved full-scene beat");
-  await page.getByRole("button", { name: "Background", exact: true }).click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
   const focalPoint = page.locator('[data-builder-subscene-field="focal_point"]');
   await focalPoint.fill("Distant ruined tower");
   const scopedSave = page.waitForRequest((request) => request.url().endsWith("/builder/subscenes/background") && request.method() === "PUT");
@@ -1181,19 +1181,32 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   expect(persistedData.scene.story_beat).toBe("Persisted story beat");
   expect(persistedData.subscenes.find((item) => item.id === "background").prompt_overrides.focal_point).toBe("Distant ruined tower");
 
-  await page.getByRole("button", { name: "Full Scene", exact: true }).click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').click();
   const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT");
   await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
   expect((await fullSceneSaved).ok()).toBe(true);
   const persistedFullScene = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
   expect((await persistedFullScene.json()).document.data.scene.story_beat).toBe("Unsaved full-scene beat");
 
-  await page.getByRole("button", { name: "Background", exact: true }).click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
 
   await focalPoint.fill("Wrong target edit");
   await page.getByRole("button", { name: "Cancel Subscene Edits", exact: true }).click();
   await expect(focalPoint).toHaveValue("Distant ruined tower");
   expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
+
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').click();
+  await page.locator('[data-builder-field="scene.story_beat"]').fill("Save all before Scene Batches");
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
+  await page.locator(".workflow-tab[data-page='scene-batches']").click();
+  const navigationDialog = page.locator("#unsaved-changes-dialog");
+  await expect(navigationDialog).toBeVisible();
+  const navigationSave = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT" && response.ok());
+  await navigationDialog.getByRole("button", { name: "Save" }).click();
+  await navigationSave;
+  await expect(page.locator("#scene-batches-page")).toHaveClass(/active/);
+  const savedBeforeNavigation = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  expect((await savedBeforeNavigation.json()).document.data.scene.story_beat).toBe("Save all before Scene Batches");
 });
 
 test("@desktop-smoke imported candidate context and prompt analysis use side panels", async ({ page }) => {

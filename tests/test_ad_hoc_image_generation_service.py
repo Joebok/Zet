@@ -94,19 +94,35 @@ def test_img2img_stages_reference_and_explicit_dimensions(tmp_path: Path) -> Non
     service.clear(result["request_id"])
 
 
-def test_inventory_generation_binds_source_and_carries_prompts_into_import_and_update(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("mode", "expected_preset"),
+    [
+        ("img2img", "comfyui-qwen-head-image-edit"),
+        ("txt2img", "comfyui-qwen-head-image-text"),
+    ],
+)
+def test_inventory_generation_binds_source_and_carries_prompts_into_import_and_update(
+    tmp_path: Path, mode: str, expected_preset: str,
+) -> None:
     service, _config_path = _service(tmp_path)
     source_bytes = png_bytes()
     source = service.zet_app.entity_library_import(
         "Source image", "image/png", source_bytes, prompt="A pale blue house",
         negative_prompt="extra windows",
     )
-    result = service.submit({
-        "mode": "img2img", "prompt": "Night version of the house", "negative_prompt": "text",
-        "count": 1, "reference_image": base64.b64encode(source_bytes).decode("ascii"),
-        "source_asset_id": source["asset_id"], "source_checksum": source["checksum"],
-    })
+    payload = {
+        "mode": mode, "prompt": "Night version of the house", "negative_prompt": "text",
+        "count": 1, "source_asset_id": source["asset_id"], "source_checksum": source["checksum"],
+    }
+    if mode == "img2img":
+        payload["reference_image"] = base64.b64encode(source_bytes).decode("ascii")
+    result = service.submit(payload)
     job = service._jobs[result["request_id"]]
+    child = job["children"][0]
+    ask = json.loads((service.proxy_paths.ask_root() / child["ask_id"] / "ask_manifest.json").read_text(encoding="utf-8"))
+    assert ask["render_preset"] == expected_preset
+    assert bool(ask["reference_files"]) is (mode == "img2img")
+    assert result["source_asset_id"] == source["asset_id"]
     job["images"].append((png_bytes() + b"new render", "image/png"))
     service._save_job(job)
 
@@ -129,6 +145,16 @@ def test_inventory_generation_rejects_unrelated_reference_bytes(tmp_path: Path) 
             "mode": "img2img", "prompt": "Modify", "count": 1,
             "reference_image": base64.b64encode(png_bytes() + b"different").decode("ascii"),
             "source_asset_id": source["asset_id"], "source_checksum": source["checksum"],
+        })
+
+
+def test_txt2img_inventory_generation_rejects_stale_source_checksum(tmp_path: Path) -> None:
+    service, _config_path = _service(tmp_path)
+    source = service.zet_app.entity_library_import("Source", "image/png", png_bytes())
+    with pytest.raises(AdHocImageGenerationError, match="source image changed"):
+        service.submit({
+            "mode": "txt2img", "prompt": "Regenerate", "count": 1,
+            "source_asset_id": source["asset_id"], "source_checksum": "stale-checksum",
         })
 
 

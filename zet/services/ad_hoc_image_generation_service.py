@@ -129,9 +129,6 @@ class AdHocImageGenerationService:
                         or hashlib.sha256(source_path.read_bytes()).hexdigest() != source_checksum
                         or hashlib.sha256(reference_bytes).hexdigest() != source_checksum):
                     raise AdHocImageGenerationError("The reference image does not match the selected inventory image.")
-        elif source_asset_id:
-            raise AdHocImageGenerationError("Inventory images must use img2img mode.")
-
         preset_name = "comfyui-qwen-head-image-edit" if mode == "img2img" else "comfyui-qwen-head-image-text"
         if payload.get("model_family") and payload["model_family"] != "qwen-image-2.1":
             raise AdHocImageGenerationError("Local rendering supports only Qwen Image 2.1.")

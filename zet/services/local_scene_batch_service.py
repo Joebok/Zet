@@ -253,6 +253,17 @@ class LocalSceneBatchService:
         write_json_atomic(directory / "Prompt_Source_Map.json", {"fragments": [{"source_path": path} for path in snapshot["compiler_sources"]]})
         return group
 
+    def _refresh_snapshot_for_render(self, story: str, scene: str, root: Path, spec: dict) -> None:
+        """Refresh scene and reference inputs before compiling a new render attempt."""
+        plan = self.preview(story, scene, {})
+        current_targets = [(item["target_id"], item["dependencies"]) for item in plan["targets"]]
+        batch_targets = [(item["target_id"], item["dependencies"]) for item in spec["targets"]]
+        if current_targets != batch_targets:
+            raise ValueError("Target structure changed. Create a new batch for this scene.")
+        snapshot_root = root / "snapshots" / uuid4().hex
+        self._snapshot(story, scene, snapshot_root)
+        atomic_copy(snapshot_root / "snapshot.json", root / "snapshot.json")
+
     def _archive(self, state: dict, target: str, reason: str) -> None:
         group = state["groups"][target]
         if group.get("attempt_id"):
@@ -470,6 +481,13 @@ class LocalSceneBatchService:
                     target = spec["views"][0]
                     group = state["groups"][target]
                     write_json_atomic(root / "state.json", state)
+                elif name in {"start", "resume", "render", "rerender", "compile"}:
+                    # Each newly compiled prompt must use the current Scene Builder data,
+                    # story settings, prompt sections, and resolved reference images.
+                    self._refresh_snapshot_for_render(story, scene, root, spec)
+                if name in {"start", "resume", "render"} and group.get("attempt_id"):
+                    self._archive(state, target, "Render started from current scene inputs.")
+                    self._invalidate_dependents(spec, state, target)
                 if name == "rerender":
                     self._withdraw(group)
                     self._archive(state, target, "Target rerendered.")

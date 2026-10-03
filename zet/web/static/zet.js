@@ -3516,7 +3516,7 @@ function editorGuardForPage(page = activePageName()) {
   if (page === "scene-builder" && state.sceneBuilder && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder) {
     return {
       name: "Scene Builder",
-      save: async () => Boolean(await saveSceneBuilder()),
+      save: async () => Boolean(await saveSceneBuilder({ fullScene: true })),
       discard: () => { state.savedBaselines.sceneBuilder = sceneBuilderSnapshot(); },
     };
   }
@@ -7734,14 +7734,14 @@ async function activateSceneBuilderPage() {
   });
 }
 
-async function saveSceneBuilder() {
+async function saveSceneBuilder({ fullScene = false } = {}) {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
     showSceneBuilderMessage("Wait for the requested scene to finish loading before saving.", "error");
     return;
   }
   builderSyncControls();
   const targetId = state.activeBuilderRenderTarget || "main";
-  const activeSubscene = builderActiveSubscene();
+  const activeSubscene = fullScene ? null : builderActiveSubscene();
   try {
     const endpoint = activeSubscene
       ? `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/subscenes/${encodeURIComponent(targetId)}`
