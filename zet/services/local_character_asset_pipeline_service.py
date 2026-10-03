@@ -772,6 +772,21 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("AI Proxy returned an invalid candidate image.")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+        elapsed_seconds = answer.get("elapsed_seconds")
+        if elapsed_seconds is None:
+            try:
+                started = datetime.fromisoformat(str(answer.get("started_at") or ""))
+                completed = datetime.fromisoformat(str(answer.get("completed_at") or ""))
+                elapsed_seconds = max(0.0, (completed - started).total_seconds())
+            except (TypeError, ValueError):
+                elapsed_seconds = None
+        try:
+            elapsed_seconds = max(0.0, float(elapsed_seconds)) if elapsed_seconds is not None else None
+        except (TypeError, ValueError):
+            elapsed_seconds = None
+        if elapsed_seconds is not None:
+            self._update(run["run_id"], candidate["candidate_id"],
+                         costume=str(run.get("costume") or ""), elapsed_seconds=elapsed_seconds)
 
     def _wait_render(self, run_id: str, candidate_id: str, costume: str = "") -> bool:
         candidate = next(item for item in self.detail(run_id, costume)["candidates"] if item["candidate_id"] == candidate_id)
@@ -1123,7 +1138,7 @@ class LocalCharacterAssetPipelineService:
                                 self._update(run_id, item["candidate_id"], costume,
                                              status="QUEUED" if queue_status == "QUEUED" else "RUNNING")
                                 continue
-                            if current.get("ask_id") or current.get("status") in {"QUEUED", "RUNNING"}:
+                            if current.get("ask_id") or current.get("status") == "RUNNING":
                                 self.retry_candidate(run_id, item["candidate_id"], costume)
                             self.queue_render_candidate(run_id, item["candidate_id"], costume)
                             self._update(run_id, item["candidate_id"], costume, status="RUNNING")
@@ -1299,7 +1314,7 @@ class LocalCharacterAssetPipelineService:
         state.setdefault("rankings", {}).pop(view, None)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {view}, "Candidates in this view are being re-run.")
-        state["status"] = "QUEUED"
+        state.update(status="QUEUED", stop_requested=False)
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
@@ -1637,7 +1652,7 @@ class LocalCharacterAssetPipelineService:
         if view == "FRONT":
             state["front_anchor"] = None
             state["views_started"] = False
-        state["status"] = "QUEUED"
+        state.update(status="QUEUED", stop_requested=False)
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
@@ -1709,11 +1724,17 @@ class LocalCharacterAssetPipelineService:
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}
 
+    @serialize_local_run_state
     def proceed(self, run_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
+        with self._active_lock:
+            if self._is_active(run_id):
+                raise LocalCharacterAssetPipelineError("Wait for active batch work to finish before running remaining images.")
         candidate_id = (run.get("selected_views") or {}).get("FRONT")
         requires_front_anchor = self._requires_front_anchor(run)
-        if requires_front_anchor and not candidate_id:
+        missing = [item for item in run["candidates"]
+                   if not Path(str(item.get("image_path") or "")).is_file()]
+        if requires_front_anchor and not candidate_id and not any(item["view"] == "FRONT" for item in missing):
             raise LocalCharacterAssetPipelineError("A FRONT selection is required for other views.")
         if candidate_id:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
@@ -1727,13 +1748,16 @@ class LocalCharacterAssetPipelineService:
             return {**run, "target_views": [], "blocked_views": {}}
         candidates_by_view = {
             view: [item for item in run["candidates"] if item["view"] == view]
-            for view in VIEWS[1:]
+            for view in VIEWS
         }
         target_views = set()
         blocked_views = {}
         for view, candidates in candidates_by_view.items():
             if not candidates or not any(not Path(str(item.get("image_path") or "")).is_file()
                                          for item in candidates):
+                continue
+            if view != "FRONT" and requires_front_anchor and not candidate_id:
+                blocked_views[view] = "Select a FRONT candidate before generating other views."
                 continue
             try:
                 sources = (run.get("sources") or {}).get(view)
@@ -1748,20 +1772,29 @@ class LocalCharacterAssetPipelineService:
                 blocked_views[view] = str(exc)
                 continue
             target_views.add(view)
-        if not target_views:
-            return {**run, "target_views": [], "blocked_views": blocked_views}
         state_root, state = self._state(run_id, costume)
-        state["front_anchor"] = candidate_id
-        state["status"] = "READY_FOR_VIEWS"
-        state["views_started"] = True
-        state["target_views"] = [view for view in VIEWS[1:] if view in target_views]
-        # Claim these views before returning so a second request cannot queue them twice.
+        from zet.services.local_image_evaluation_service import supersede_evaluations
+        from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
+        supersede_evaluations(state, {item["view"] for item in missing}, "Missing images are being retried.")
+        self._withdraw_queued_asks(run_id, costume, candidate_ids={item["candidate_id"] for item in missing})
+        missing_ids = {item["candidate_id"] for item in missing}
         for candidate in run["candidates"]:
-            if (candidate["view"] in target_views
-                    and not Path(str(candidate.get("image_path") or "")).is_file()):
-                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})["status"] = "QUEUED"
+            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
+            update.update(error="", render_error="", review_error="", failed_gate="")
+            if candidate["candidate_id"] in missing_ids:
+                clear_candidate_artifacts(state_root, candidate["candidate_id"], candidate.get("image_path"))
+                update.update(status="QUEUED" if candidate["view"] in target_views else "PENDING",
+                              image_path="", ask_id="", gates={}, rejection_gate="",
+                              retry_count=int(candidate.get("retry_count") or 0) + 1,
+                              human_review={"decision": "undecided"})
+        state["front_anchor"] = candidate_id
+        state.update(status="READY_FOR_VIEWS" if target_views else "AWAITING_HUMAN_SELECTION",
+                     stop_requested=False, error="", target_candidate_ids=[])
+        state["views_started"] = bool(target_views - {"FRONT"}) or bool(state.get("views_started"))
+        state["target_views"] = [view for view in VIEWS if view in target_views]
+        # Claim these views before returning so a second request cannot queue them twice.
         self._write(state_root / "state.json", state)
-        return {**self.detail(run_id, costume), "target_views": [view for view in VIEWS[1:] if view in target_views],
+        return {**self.detail(run_id, costume), "target_views": [view for view in VIEWS if view in target_views],
                 "blocked_views": blocked_views}
 
     def image_path(self, run_id: str, candidate_id: str, costume: str = "") -> Path:
@@ -1826,7 +1859,8 @@ class LocalCharacterAssetPipelineService:
         self._withdraw_queued_asks(run_id, costume)
         return self.detail(run_id, costume)
 
-    def _withdraw_queued_asks(self, run_id: str, costume: str = "") -> None:
+    def _withdraw_queued_asks(self, run_id: str, costume: str = "", *,
+                              candidate_ids: set[str] | None = None) -> None:
         run = self.detail(run_id, costume)
         paths = getattr(self.app, "ai_proxy_service", None)
         paths = getattr(paths, "ai_proxy_path_service", None)
@@ -1834,6 +1868,8 @@ class LocalCharacterAssetPipelineService:
             return
         ask_ids = set()
         for candidate in run.get("candidates", []):
+            if candidate_ids is not None and candidate["candidate_id"] not in candidate_ids:
+                continue
             if candidate.get("ask_id"):
                 ask_ids.add(str(candidate["ask_id"]))
             for gate in (candidate.get("gates") or {}).values():
@@ -1844,7 +1880,7 @@ class LocalCharacterAssetPipelineService:
         queue_root = Path(paths.config.base_ai_queue_path)
         for task in paths.task_paths("ask"):
             if task.name in ask_ids:
-                supersede_task(queue_root, task, "The local character pipeline run was stopped or deleted.")
+                supersede_task(queue_root, task, "The local character pipeline work was stopped, deleted, or retried.")
 
     def resume(self, run_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)

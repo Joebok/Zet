@@ -81,7 +81,7 @@
   function busy(run = state.run) { return Boolean(run && activeStatuses.has(run.status)); }
 
   function unstartedViews(run) {
-    return (run?.views || []).filter((view) => view !== "FRONT" && (() => {
+    return (run?.views || []).filter((view) => (view !== "FRONT" || hasSharedAssetRouter()) && (() => {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
       return candidates.length > 0 && candidates.some((candidate) => candidate.image_filled === false || !candidate.image_path);
     })());
@@ -162,7 +162,9 @@
     $("rename").hidden = !run;
     $("proceed").hidden = !run;
     $("proceed").disabled = isBusy || (run?.status === "READY_FOR_VIEWS" && (run.target_views || []).length > 0)
-      || !run?.front_anchor || !unstartedViews(run).length;
+      || (!run?.front_anchor && !(hasSharedAssetRouter()
+        && (run?.use_front_anchor === false || unstartedViews(run).includes("FRONT"))))
+      || !unstartedViews(run).length;
   }
 
   function gateLabel(record, policy) {
@@ -381,6 +383,12 @@
       image.alt = `${view} candidate ${candidate.candidate_id}`;
       imageButton.append(image);
       card.append(imageButton);
+      if (candidate.elapsed_seconds != null && Number.isFinite(Number(candidate.elapsed_seconds))) {
+        const generationTime = document.createElement("p");
+        generationTime.className = "local-pipeline-generation-time muted";
+        generationTime.textContent = `Generated in ${Math.round(Number(candidate.elapsed_seconds))} seconds`;
+        card.append(generationTime);
+      }
     } else {
       const pending = document.createElement("p");
       pending.textContent = renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Waiting";
@@ -841,6 +849,21 @@
     } catch (error) { setStatus(error.message, true); }
   }
 
+  async function navigateReviewView(direction) {
+    const candidate = state.reviewCandidates[state.reviewIndex];
+    if (!candidate) return;
+    try {
+      await saveReviewDecision(candidate);
+      state.reviewCandidates = orderedReviewCandidates();
+      const availableViews = (state.run?.views || []).filter((view) =>
+        state.reviewCandidates.some((item) => item.view === view));
+      const targetView = availableViews[availableViews.indexOf(candidate.view) + direction];
+      if (!targetView) return;
+      state.reviewIndex = state.reviewCandidates.findIndex((item) => item.view === targetView);
+      renderReview();
+    } catch (error) { setStatus(error.message, true); }
+  }
+
   function renderReview() {
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
@@ -889,6 +912,9 @@
     const info = document.createElement("p");
     info.className = "local-pipeline-review-meta muted";
     const metadata = [candidate.method && `Method: ${candidate.method}`, candidate.seed && `Seed: ${candidate.seed}`].filter(Boolean);
+    if (candidate.elapsed_seconds != null && Number.isFinite(Number(candidate.elapsed_seconds))) {
+      metadata.push(`Generation time: ${Math.round(Number(candidate.elapsed_seconds))} seconds`);
+    }
     if (candidate.rejection_gate) metadata.push(`Rejected by: ${candidate.rejection_gate}`);
     info.textContent = metadata.join(" · ");
     const decision = document.createElement("fieldset");
@@ -942,7 +968,7 @@
     const adjustedPosition = adjustedOrder.indexOf(candidate.candidate_id);
     const rankEntry = (ranking.entries || []).find((item) => item.candidate_id === candidate.candidate_id);
     const rankingInfo = document.createElement("p");
-    rankingInfo.className = "local-pipeline-review-explanation";
+    rankingInfo.className = "local-pipeline-review-explanation local-pipeline-review-rank";
     rankingInfo.textContent = rankingPosition >= 0
       ? `Luna rank #${rankingPosition + 1}${rankEntry?.reason ? ` · ${rankEntry.reason}` : ""}`
       : ranking.status === "STALE" ? `Luna ranking stale · ${ranking.stale_reason || "Review inputs changed"}`
@@ -995,11 +1021,21 @@
       });
       actions.append(up, down);
     }
+    const quality = document.createElement("section");
+    quality.className = "local-pipeline-review-quality";
+    const qualityHeading = document.createElement("h3");
+    qualityHeading.textContent = "Luna rank & image review";
+    quality.append(qualityHeading, rankingInfo);
+    if (analysis.childElementCount) quality.append(analysis);
     panel.append(title, view);
     if (info.textContent) panel.append(info);
-    panel.append(content, rankingInfo, analysis, decision, actions);
+    panel.append(content, quality, decision, actions);
     $("review-prev").disabled = state.reviewIndex <= 0;
     $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
+    const availableViews = (run.views || []).filter((view) => state.reviewCandidates.some((item) => item.view === view));
+    const currentViewIndex = availableViews.indexOf(candidate.view);
+    $("review-prev-view").disabled = currentViewIndex <= 0;
+    $("review-next-view").disabled = currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;
   }
 
   function openReview(candidateId) {
@@ -1162,6 +1198,8 @@
     $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
     $("review-prev").addEventListener("click", () => { void navigateReview(-1); });
     $("review-next").addEventListener("click", () => { void navigateReview(1); });
+    $("review-prev-view").addEventListener("click", () => { void navigateReviewView(-1); });
+    $("review-next-view").addEventListener("click", () => { void navigateReviewView(1); });
   }
 
   async function activate(page) {

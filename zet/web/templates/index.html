@@ -316,6 +316,10 @@
           <button id="local-pipeline-review-prev" class="review-nav" type="button" aria-label="Previous candidate">‹</button>
           <section id="local-pipeline-review-panel"></section>
           <button id="local-pipeline-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
+          <div class="local-pipeline-review-view-navigation">
+            <button id="local-pipeline-review-prev-view" type="button">Prev View</button>
+            <button id="local-pipeline-review-next-view" type="button">Next View</button>
+          </div>
         </div>
       </div>
     </dialog>
@@ -512,8 +516,9 @@
             <label>Variant<select id="entity-library-filter-variant"></select></label>
             <label>Reference set<select id="entity-library-filter-set"></select></label>
             <label>Facet<select id="entity-library-filter-facet"></select></label>
-            <label>Status<select id="entity-library-filter-status"><option value="">All statuses</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
+            <label>Status<select id="entity-library-filter-status"><option value="">All except obsolete and archived</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
             <label>Origin<select id="entity-library-filter-origin"><option value="">All origins</option><option value="import">Imported</option><option value="pipeline">Locked pipeline</option></select></label>
+            <label class="checkbox-field"><input id="entity-library-include-obsolete" type="checkbox"> Include obsolete images</label>
             <button id="entity-library-clear-filters" class="text-action" type="button">Clear filters</button>
             <div id="entity-library-filter-chips" class="inventory-filter-chips" aria-label="Active filters"></div>
             <div id="entity-library-count" class="status-text" role="status"></div>
@@ -590,6 +595,7 @@
             <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
             <button id="entity-library-delete" class="danger-action" type="button" disabled>Archive image</button>
           </section>
+          <section class="inventory-detail-group"><h3>Logical references</h3><ul id="entity-library-logical-references"></ul></section>
           <section class="inventory-detail-group"><h3>Where used</h3><ul id="entity-library-usages"></ul></section>
         </aside>
       </section>
@@ -2236,6 +2242,6 @@ Add prompt language here.
   <script src="/static/zet.js?v=20261001-scene-cutover"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
   <script src="/static/local_scene_batches.js?v=20261001-scene-batches"></script>
-  <script src="/static/local_batch_status.js?v=20260926-batch-status"></script>
+  <script src="/static/local_batch_status.js?v=20261002-pipeline-colors"></script>
 </body>
 </html>

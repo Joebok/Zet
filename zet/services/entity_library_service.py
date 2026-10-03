@@ -188,6 +188,7 @@ class EntityLibraryService:
     def list_assets(self, **filters) -> list[dict]:
         self._sync_pipeline_assets()
         include_archived = bool(filters.pop("include_archived", False))
+        hide_obsolete = bool(filters.pop("hide_obsolete", False))
         rows = self.repository.fetchall("SELECT * FROM assets ORDER BY created_at DESC, asset_id")
         output = []
         for row in rows:
@@ -208,14 +209,22 @@ class EntityLibraryService:
                 (asset_id,),
             )
             tags = [item["tag"] for item in self.repository.fetchall("SELECT tag FROM asset_tags WHERE asset_id=? ORDER BY tag", (asset_id,))]
-            logical = self.repository.fetchone("SELECT reference_key,label,set_id FROM logical_references WHERE asset_id=? AND status='active' AND (SELECT status FROM assets WHERE asset_id=logical_references.asset_id)='approved' ORDER BY reference_key LIMIT 1", (asset_id,))
-            item = {**row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities, "sets": sets, "facets": facets, "tags": tags, "logical_reference": logical}
+            logical_references = self.repository.fetchall(
+                "SELECT reference_key,label,set_id,status FROM logical_references WHERE asset_id=? ORDER BY reference_key",
+                (asset_id,),
+            )
+            logical = next((reference for reference in logical_references if reference["status"] == "active"), None)
+            if row["status"] != "approved":
+                logical = None
+            item = {**row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities, "sets": sets, "facets": facets, "tags": tags, "logical_reference": logical, "logical_references": logical_references}
             descriptor_ready = self.repository.fetchone(
                 "SELECT 1 FROM descriptors d WHERE d.enabled=1 AND d.descriptor_type IN ('prompt_identity','prompt_object','prompt_background','human_description') AND ((d.owner_type='asset' AND d.owner_id=?) OR (d.owner_type='entity' AND d.owner_id IN (SELECT entity_id FROM asset_entities WHERE asset_id=?)) OR (d.owner_type='variant' AND d.owner_id IN (SELECT variant_id FROM asset_entities WHERE asset_id=?)) OR (d.owner_type='set' AND d.owner_id IN (SELECT set_id FROM reference_set_assets WHERE asset_id=?))) LIMIT 1",
                 (asset_id, asset_id, asset_id, asset_id),
             )
             item["descriptor_ready"] = bool(descriptor_ready)
             if row["status"] == "archived" and filters.get("status") != "archived" and not include_archived:
+                continue
+            if row["status"] == "obsolete" and filters.get("status") != "obsolete" and hide_obsolete:
                 continue
             if filters.get("status") and row["status"] != filters["status"]:
                 continue
@@ -331,7 +340,18 @@ class EntityLibraryService:
     def set_asset_status(self, asset_id: str, status: str) -> dict:
         if status not in ASSET_STATUSES:
             raise EntityLibraryServiceError("Invalid image status.")
+        if status == "archived":
+            usages = self.usage_for_asset(asset_id)
+            if usages:
+                raise EntityLibraryServiceError(
+                    f"Image has {len(usages)} current consumer(s); update those consumers before archiving it."
+                )
         with self.repository.transaction() as connection:
+            if status == "archived":
+                connection.execute(
+                    "UPDATE logical_references SET status='inactive',updated_at=? WHERE asset_id=? AND status='active'",
+                    (_now(), asset_id),
+                )
             cursor = connection.execute("UPDATE assets SET status=?,updated_at=? WHERE asset_id=?", (status, _now(), asset_id))
             if not cursor.rowcount:
                 raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
@@ -341,11 +361,17 @@ class EntityLibraryService:
         current = self.get_asset(asset_id)
         stamp = _now()
         requested_status = str(data.get("status", current["status"]) or "").strip()
-        if current["status"] == "approved" and requested_status != "approved":
+        if current["status"] == "approved" and requested_status not in {"approved", "archived"}:
             usages = self.usage_for_asset(asset_id)
             references = self.repository.fetchall("SELECT reference_key FROM logical_references WHERE asset_id=? AND status='active'", (asset_id,))
             if usages or references:
                 raise EntityLibraryServiceError("Resolve current consumers and preferred references before changing this image from approved status.")
+        if requested_status == "archived":
+            usages = self.usage_for_asset(asset_id)
+            if usages:
+                raise EntityLibraryServiceError(
+                    f"Image has {len(usages)} current consumer(s); update those consumers before archiving it."
+                )
         with self.repository.transaction() as connection:
             label = str(data.get("label", current["label"]) or "").strip()
             notes = str(data.get("notes", current["notes"]) or "").strip()
@@ -354,6 +380,11 @@ class EntityLibraryService:
                 raise EntityLibraryServiceError("Image label is required.")
             if status not in ASSET_STATUSES:
                 raise EntityLibraryServiceError("Invalid image status.")
+            if status == "archived":
+                connection.execute(
+                    "UPDATE logical_references SET status='inactive',updated_at=? WHERE asset_id=? AND status='active'",
+                    (stamp, asset_id),
+                )
             connection.execute("UPDATE assets SET label=?,notes=?,status=?,rating=?,updated_at=? WHERE asset_id=?", (label, notes, status, data.get("rating", current["rating"]), stamp, asset_id))
             if "entity_links" in data:
                 existing_links = {(item["entity_id"], item["role"]): item for item in current["entities"]}
@@ -389,12 +420,6 @@ class EntityLibraryService:
         return self.get_asset(asset_id)
 
     def delete_asset(self, asset_id: str) -> dict:
-        usages = self.usage_for_asset(asset_id)
-        references = self.repository.fetchall("SELECT reference_key FROM logical_references WHERE asset_id=? AND status='active'", (asset_id,))
-        if usages or references:
-            raise EntityLibraryServiceError(
-                f"Image has {len(usages)} current consumer(s) and {len(references)} active logical reference(s); update those references first."
-            )
         return self.set_asset_status(asset_id, "archived")
 
     def create_entity(self, data: dict) -> dict:

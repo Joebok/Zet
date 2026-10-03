@@ -25,10 +25,10 @@
     return `${window.location.pathname}?${params.toString()}`;
   }
 
-  function appendField(host, label, value) {
+  function appendField(host, label, value, className = "") {
     if (!value) return;
     const field = document.createElement("span");
-    field.className = "batch-status-field";
+    field.className = `batch-status-field ${className}`.trim();
     field.dataset.label = label;
     field.textContent = value;
     host.append(field);
@@ -48,7 +48,12 @@
 
     const fields = document.createElement("div");
     fields.className = "batch-status-fields";
-    appendField(fields, "Pipeline", batch.pipeline_label);
+    const pipelineClasses = [
+      "batch-status-pipeline",
+      `pipeline-${batch.pipeline}`,
+    ];
+    if (batch.status !== "RUNNING") pipelineClasses.push("is-muted");
+    appendField(fields, "Pipeline", batch.pipeline_label, pipelineClasses.join(" "));
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);

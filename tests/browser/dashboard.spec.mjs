@@ -1601,6 +1601,56 @@ test("Run remaining is placed after batch review actions and tracks unstarted vi
   await expect(runButton).toBeDisabled();
 });
 
+test("Run remaining retries stopped costume images including FRONT without a selection", async ({ page }) => {
+  const runs = [
+    { run_id: "stopped-front", character: "Test", phase: "Adult", costume: "Travel",
+      status: "CANCELLED", stop_requested: true, error: "Render failed", use_front_anchor: true,
+      views: ["FRONT"], candidate_count: 1, selected_views: {}, rankings: {}, local_assets: {},
+      candidates: [{ candidate_id: "F-001", view: "FRONT", status: "FAILED", image_filled: false,
+        image_path: "/missing-front.png", render_error: "Render failed" }] },
+    { run_id: "stopped-other", character: "Test", phase: "Adult", costume: "Travel",
+      status: "CANCELLED", stop_requested: true, error: "Render failed", use_front_anchor: true,
+      views: ["FRONT", "FRONT_RIGHT_3_4"], candidate_count: 2, front_anchor: "F-001",
+      selected_views: { FRONT: "F-001" }, rankings: {}, local_assets: {},
+      candidates: [
+        { candidate_id: "F-001", view: "FRONT", status: "COMPLETE", image_path: "/front.png", image_filled: true },
+        { candidate_id: "FR-005", view: "FRONT_RIGHT_3_4", status: "FAILED", image_filled: false,
+          image_path: "/missing-other.png", render_error: "Render failed" },
+      ] },
+  ];
+  const proceeded = [];
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/costumes?**", (route) => route.fulfill({ json: { costumes: [{ name: "Travel" }] } }));
+  await page.route("**/api/local/costume-dressing/runs?**", (route) => route.fulfill({
+    json: { runs: runs.map(({ run_id, status }) => ({ run_id, status })) },
+  }));
+  await page.route(/\/api\/local\/costume-dressing\/runs\/stopped-(front|other)\?/, (route) => {
+    const run = runs.find((item) => route.request().url().includes(item.run_id));
+    return route.fulfill({ json: run });
+  });
+  await page.route("**/api/local/costume-dressing/runs/*/views/FRONT/proceed?costume=Travel", (route) => {
+    const run = runs.find((item) => route.request().url().includes(item.run_id));
+    proceeded.push(run.run_id);
+    return route.fulfill({ json: { ...run, status: "READY_FOR_VIEWS", stop_requested: false, error: "",
+      target_views: [run.run_id === "stopped-front" ? "FRONT" : "FRONT_RIGHT_3_4"] } });
+  });
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-costume-dressing"]').click();
+  const button = page.locator("#local-pipeline-proceed");
+  for (const run of runs) {
+    await page.locator("#local-pipeline-runs").selectOption(run.run_id);
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect.poll(() => proceeded.includes(run.run_id)).toBe(true);
+    await expect(button).toBeDisabled();
+  }
+});
+
 test("Character Development is the only character workspace and keeps its production summary", async ({ page }) => {
   const summaryRequests = [];
   page.on("request", (request) => {

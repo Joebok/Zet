@@ -2177,13 +2177,14 @@ def create_app(
         q: str = Query(""), entity_id: str = Query(""), entity_type: str = Query(""),
         variant_id: str = Query(""), set_id: str = Query(""), facet_namespace: str = Query(""),
         facet_value: str = Query(""), origin: str = Query(""), status: str = Query(""),
+        include_obsolete: bool = Query(False),
         offset: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=10),
     ) -> dict[str, Any]:
         try:
             service = _app(app.state.config_path).entity_library_service
             filters = {"q": q, "entity_id": entity_id, "entity_type": entity_type, "variant_id": variant_id,
                        "set_id": set_id, "facet_namespace": facet_namespace, "facet_value": facet_value,
-                       "origin": origin, "status": status}
+                       "origin": origin, "status": status, "hide_obsolete": not include_obsolete}
             assets = service.list_assets(**{key: value for key, value in filters.items() if value})
             return {"assets": assets[offset:offset + limit], "total": len(assets), "offset": offset, "limit": limit}
         except Exception as exc:

@@ -1440,6 +1440,7 @@ class LocalHeadImageService:
                 failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(item.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
+        state.update(status="QUEUED", stop_requested=False, error="")
         self._write(root / "state.json", state)
         return self.detail(run_id)
 

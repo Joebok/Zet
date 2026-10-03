@@ -502,6 +502,10 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
         required = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                        "other_count": 1, "seeds": list(range(8))})
+        front = next(item for item in required["candidates"] if item["view"] == "FRONT")
+        image = Path(required["root"]) / "front.png"
+        image.write_bytes(b"unselected front")
+        service._update(required["run_id"], front["candidate_id"], image_path=str(image), status="COMPLETE")
         with self.assertRaisesRegex(ValueError, "FRONT selection is required for other views"):
             service.proceed(required["run_id"])
 
@@ -509,7 +513,7 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
                                        "other_count": 1, "use_front_anchor": False,
                                        "seeds": list(range(8))})
         result = service.proceed(optional["run_id"])
-        self.assertEqual(list(VIEWS[1:]), result["target_views"])
+        self.assertEqual(list(VIEWS), result["target_views"])
         self.assertIsNone(result["front_anchor"])
 
     def test_optional_anchor_batch_compiles_non_front_prompt_without_anchor(self) -> None:
@@ -572,6 +576,103 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         result = service.proceed(run["run_id"], costume)
 
         self.assertEqual(["LEFT_PROFILE"], result["target_views"])
+
+    def test_proceed_restarts_stopped_batch_and_requeues_every_missing_image(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 2, "other_count": 1, "seeds": list(range(9))})
+        front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "selected-front.png"
+        image.write_bytes(b"keep this front")
+        service._update(run["run_id"], front["candidate_id"], costume, status="COMPLETE",
+                        image_path=str(image), ask_id="completed-job", render_error="stale image error", review_error="stale review error",
+                        human_review={"decision": "keep"})
+        root, state = service._state(run["run_id"], costume)
+        state.update(status="CANCELLED", stop_requested=True, error="batch failed",
+                     front_anchor=front["candidate_id"], selected_views={"FRONT": front["candidate_id"]},
+                     target_views=["FRONT_RIGHT_3_4"])
+        failed = next(item for item in run["candidates"] if item["view"] == "FRONT_RIGHT_3_4")
+        state["candidates"][failed["candidate_id"]] = {
+            "status": "QUEUED", "ask_id": "failed-old-job", "render_error": "render failed",
+            "image_path": str(root / "absent.png"), "retry_count": 3,
+            "gates": {"identity": {"status": "FAILED", "error": "old gate error"}},
+        }
+        service._write(root / "state.json", state)
+        queue_root = self.root / "AI_Queue"
+        old_ask = queue_root / "Ask" / "failed-old-job"
+        completed_ask = queue_root / "Ask" / "completed-job"
+        old_ask.mkdir(parents=True)
+        completed_ask.mkdir()
+        self.app.ai_proxy_service = SimpleNamespace(ai_proxy_path_service=SimpleNamespace(
+            config=SimpleNamespace(base_ai_queue_path=str(queue_root)),
+            task_paths=lambda kind: [old_ask, completed_ask],
+        ))
+        partial = root / "renders" / failed["candidate_id"] / "Local_Test_Renders" / "partial.tmp"
+        partial.parent.mkdir(parents=True)
+        partial.write_bytes(b"unfinished render")
+        queued_ids = []
+
+        def stage_replacement(run_id, candidate_id, costume=""):
+            candidate = next(item for item in service.detail(run_id, costume)["candidates"]
+                             if item["candidate_id"] == candidate_id)
+            self.assertFalse(service.detail(run_id, costume)["stop_requested"])
+            self.assertFalse(candidate.get("ask_id"))
+            self.assertEqual("", candidate["render_error"])
+            queued_ids.append(candidate_id)
+            service._update(run_id, candidate_id, costume, status="QUEUED", ask_id=f"new-{candidate_id}")
+
+        result = service.proceed(run["run_id"], costume)
+        missing_ids = {item["candidate_id"] for item in run["candidates"] if item["candidate_id"] != front["candidate_id"]}
+        self.assertFalse(old_ask.exists())
+        self.assertTrue(completed_ask.is_dir())
+        self.assertFalse(partial.exists())
+        self.assertEqual(list(VIEWS), result["target_views"])
+        self.assertEqual("READY_FOR_VIEWS", result["status"])
+        self.assertFalse(result["stop_requested"])
+        self.assertEqual("", result["error"])
+        self.assertEqual([], service.proceed(run["run_id"], costume)["target_views"])
+        preserved = next(item for item in result["candidates"] if item["candidate_id"] == front["candidate_id"])
+        self.assertEqual(str(image), preserved["image_path"])
+        self.assertEqual({"decision": "keep"}, preserved["human_review"])
+        self.assertEqual("", preserved["render_error"])
+        self.assertEqual("", preserved["review_error"])
+        with patch.object(service, "queue_render_candidate", side_effect=stage_replacement), \
+                patch.object(service, "_wait_render", return_value=True), \
+                patch.object(service, "stage_view_evaluation"):
+            service.execute_run(run["run_id"], costume=costume, views=set(result["target_views"]))
+        self.assertEqual(missing_ids, set(queued_ids))
+        self.assertEqual(len(missing_ids), len(queued_ids))
+        refreshed = service.detail(run["run_id"], costume)
+        self.assertNotEqual("CANCELLED", refreshed["status"])
+        retried = next(item for item in refreshed["candidates"] if item["candidate_id"] == failed["candidate_id"])
+        self.assertEqual(4, retried["retry_count"])
+        self.assertEqual({}, retried["gates"])
+
+    def test_proceed_retries_front_before_selection_and_waits_for_anchor(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        service.request_stop(run["run_id"], costume)
+        result = service.proceed(run["run_id"], costume)
+        self.assertEqual(["FRONT"], result["target_views"])
+        self.assertEqual(set(VIEWS[1:]), set(result["blocked_views"]))
+        self.assertFalse(result["stop_requested"])
+
+    def test_proceed_waits_for_stopped_runner_to_exit(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        service.request_stop(run["run_id"], costume)
+        with patch.object(service, "_is_active", return_value=True):
+            with self.assertRaisesRegex(ValueError, "Wait for active batch work"):
+                service.proceed(run["run_id"], costume)
+        self.assertTrue(service.detail(run["run_id"], costume)["stop_requested"])
 
     def test_execute_run_requeues_stale_running_candidate(self) -> None:
         self._sources("character-assembly")

@@ -762,6 +762,12 @@ main {
   overflow-wrap: anywhere;
 }
 
+.local-pipeline-candidate .local-pipeline-generation-time {
+  font-size: .72rem;
+  margin: 3px 0 0;
+  text-align: center;
+}
+
 .local-pipeline-candidate-controls {
   gap: 4px;
   margin: 5px 0 0;
@@ -996,6 +1002,7 @@ main {
   gap: 4px;
   grid-column: 3;
   grid-template-columns: 28px minmax(0, 1fr) 28px;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   min-width: 0;
 }
@@ -1014,6 +1021,12 @@ main {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+
+.local-pipeline-review-view-navigation {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: space-between;
 }
 
 .local-pipeline-review-info h2 {
@@ -1054,6 +1067,31 @@ main {
 .local-pipeline-review-explanation,
 .local-pipeline-review-analyses p {
   overflow-wrap: anywhere;
+}
+
+.local-pipeline-review-quality {
+  background: color-mix(in srgb, var(--accent, #526f9d) 10%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent, #526f9d) 45%, var(--line));
+  border-radius: 7px;
+  margin: 5px 0;
+  overflow: auto;
+  padding: 7px 9px;
+}
+
+.local-pipeline-review-quality h3 {
+  font-size: .78rem;
+  margin: 0 0 4px;
+}
+
+.local-pipeline-review-rank {
+  font-size: .9rem;
+  font-weight: 700;
+  margin: 2px 0 5px;
+}
+
+.local-pipeline-review-analyses p {
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
 }
 
 .local-pipeline-decision-options {
@@ -1281,6 +1319,41 @@ main {
   color: var(--text-muted);
   font-size: 12px;
   padding: 4px 8px;
+}
+
+.batch-status-pipeline {
+  --pipeline-color: var(--neutral);
+  --pipeline-soft: var(--surface-subtle);
+  background: var(--pipeline-soft);
+  border: 1px solid color-mix(in srgb, var(--pipeline-color) 28%, var(--border));
+  color: var(--pipeline-color);
+  font-weight: 600;
+}
+
+.batch-status-pipeline.pipeline-body-reference {
+  --pipeline-color: var(--info);
+  --pipeline-soft: var(--info-soft);
+}
+
+.batch-status-pipeline.pipeline-head-image {
+  --pipeline-color: var(--primary);
+  --pipeline-soft: var(--primary-soft);
+}
+
+.batch-status-pipeline.pipeline-character-assembly {
+  --pipeline-color: var(--focus);
+  --pipeline-soft: #f3e8ff;
+}
+
+.batch-status-pipeline.pipeline-costume-dressing {
+  --pipeline-color: var(--success);
+  --pipeline-soft: var(--success-soft);
+}
+
+.batch-status-pipeline.is-muted {
+  background: color-mix(in srgb, var(--pipeline-soft) 45%, var(--surface-subtle));
+  border-color: color-mix(in srgb, var(--pipeline-color) 16%, var(--border));
+  color: color-mix(in srgb, var(--pipeline-color) 48%, var(--text-muted));
 }
 
 .batch-status-field::before {

@@ -781,6 +781,7 @@ const entityLibraryFilterSet = document.querySelector("#entity-library-filter-se
 const entityLibraryFilterFacet = document.querySelector("#entity-library-filter-facet");
 const entityLibraryFilterStatus = document.querySelector("#entity-library-filter-status");
 const entityLibraryFilterOrigin = document.querySelector("#entity-library-filter-origin");
+const entityLibraryIncludeObsolete = document.querySelector("#entity-library-include-obsolete");
 const entityLibraryRefresh = document.querySelector("#entity-library-refresh");
 const entityLibraryCount = document.querySelector("#entity-library-count");
 const entityLibraryResults = document.querySelector("#entity-library-results");
@@ -828,6 +829,7 @@ const entityLibraryReplace = document.querySelector("#entity-library-replace");
 const entityLibraryDelete = document.querySelector("#entity-library-delete");
 const entityLibraryBack = document.querySelector("#entity-library-back");
 const entityLibraryUsages = document.querySelector("#entity-library-usages");
+const entityLibraryLogicalReferences = document.querySelector("#entity-library-logical-references");
 const entityLibraryDescriptorOwnerType = document.querySelector("#entity-library-descriptor-owner-type");
 const entityLibraryDescriptorOwner = document.querySelector("#entity-library-descriptor-owner");
 const entityLibraryDescriptorType = document.querySelector("#entity-library-descriptor-type");
@@ -8517,7 +8519,7 @@ async function searchEntityLibrary(preserveOffset = false) {
     q: entityLibrarySearch.value.trim(), entity_id: entityLibraryFilterEntity.value,
     entity_type: entityLibraryFilterType.value, variant_id: entityLibraryFilterVariant.value,
     set_id: entityLibraryFilterSet.value, status: entityLibraryFilterStatus.value,
-    origin: entityLibraryFilterOrigin.value,
+    origin: entityLibraryFilterOrigin.value, include_obsolete: entityLibraryIncludeObsolete.checked ? "true" : "",
   };
   if (entityLibraryFilterFacet.value) {
     const [facet_namespace, facet_value] = entityLibraryFilterFacet.value.split("\u0000");
@@ -8529,7 +8531,7 @@ async function searchEntityLibrary(preserveOffset = false) {
   entityLibraryActiveFilterCount.textContent = activeFilters.length ? ` · ${activeFilters.length} active` : "";
   const chipContainer = document.querySelector("#entity-library-filter-chips");
   chipContainer.replaceChildren();
-  const filterControls = { entity_id: entityLibraryFilterEntity, entity_type: entityLibraryFilterType, variant_id: entityLibraryFilterVariant, set_id: entityLibraryFilterSet, facet_namespace: entityLibraryFilterFacet, facet_value: entityLibraryFilterFacet, status: entityLibraryFilterStatus, origin: entityLibraryFilterOrigin };
+  const filterControls = { entity_id: entityLibraryFilterEntity, entity_type: entityLibraryFilterType, variant_id: entityLibraryFilterVariant, set_id: entityLibraryFilterSet, facet_namespace: entityLibraryFilterFacet, facet_value: entityLibraryFilterFacet, status: entityLibraryFilterStatus, origin: entityLibraryFilterOrigin, include_obsolete: entityLibraryIncludeObsolete };
   const chipLabels = new Map();
   if (entityLibraryFilterFacet.value) chipLabels.set("facet_namespace", entityLibraryFilterFacet.selectedOptions[0]?.textContent || entityLibraryFilterFacet.value.replace("\u0000", ":"));
   for (const [key, value] of activeFilters) {
@@ -8537,8 +8539,12 @@ async function searchEntityLibrary(preserveOffset = false) {
     chip.type = "button";
     chip.className = "inventory-filter-chip";
     const control = filterControls[key];
-    chip.textContent = `${chipLabels.get(key) || control?.selectedOptions?.[0]?.textContent || value} ×`;
-    chip.addEventListener("click", () => { if (control) control.value = ""; searchEntityLibrary(); });
+    chip.textContent = `${chipLabels.get(key) || control?.selectedOptions?.[0]?.textContent || (key === "include_obsolete" ? "Include obsolete images" : value)} ×`;
+    chip.addEventListener("click", () => {
+      if (key === "include_obsolete") control.checked = false;
+      else if (control) control.value = "";
+      searchEntityLibrary();
+    });
     chipContainer.append(chip);
   }
   params.set("offset", String(entityLibraryPageOffset));
@@ -8988,6 +8994,21 @@ async function selectEntityLibraryAsset(assetId) {
   entityLibraryEditIdentity.value = (asset.descriptors || []).find((item) => item.descriptor_type === "prompt_identity")?.text || "";
   entityLibraryEditCostume.value = (asset.descriptors || []).find((item) => item.descriptor_type === "prompt_costume")?.text || "";
   entityLibraryEditReference.value = asset.logical_reference?.reference_key || "";
+  entityLibraryLogicalReferences.replaceChildren();
+  for (const reference of asset.logical_references || []) {
+    const row = document.createElement("li");
+    const tag = document.createElement("code");
+    tag.textContent = `{{LIB:REF:${reference.reference_key}}}`;
+    const status = document.createElement("span");
+    status.textContent = ` · ${reference.status}`;
+    row.append(tag, status);
+    entityLibraryLogicalReferences.append(row);
+  }
+  if (!asset.logical_references?.length) {
+    const row = document.createElement("li");
+    row.textContent = "No logical references.";
+    entityLibraryLogicalReferences.append(row);
+  }
   entityLibraryUsages.replaceChildren();
   for (const usage of asset.usages || []) {
     const row = document.createElement("li");
@@ -9005,7 +9026,7 @@ async function selectEntityLibraryAsset(assetId) {
 async function deleteEntityLibraryAsset() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.status === "archived") return;
-  if (!window.confirm(`Archive ${asset.label || asset.file_name} from the image inventory? Existing references may need to be resolved first.`)) return;
+  if (!window.confirm(`Archive ${asset.label || asset.file_name} from the image inventory? Its logical references will be deactivated. Current consumers must be updated first.`)) return;
   entityLibraryDelete.disabled = true;
   try {
     await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" });
@@ -13115,7 +13136,7 @@ entityLibraryNext.addEventListener("click", () => {
   entityLibraryPageOffset += ENTITY_LIBRARY_PAGE_SIZE;
   searchEntityLibrary(true).catch((error) => { entityLibraryCount.textContent = error.message; });
 });
-for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin]) {
+for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin, entityLibraryIncludeObsolete]) {
   control.addEventListener("change", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
 }
 entityLibrarySearch.addEventListener("keydown", (event) => {
@@ -13124,6 +13145,7 @@ entityLibrarySearch.addEventListener("keydown", (event) => {
 entityLibraryClearFilters.addEventListener("click", () => {
   entityLibrarySearch.value = "";
   for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin]) control.value = "";
+  entityLibraryIncludeObsolete.checked = false;
   entityLibraryFilterFacet.value = "";
   entityLibraryPageOffset = 0;
   searchEntityLibrary();

@@ -58,12 +58,41 @@ def test_usage_blocks_archival_and_image_replacement_updates_logical_reference(l
     report = service.refresh_usages(root)
     assert report["current"] == 2
     assert len(service.usage_for_asset(asset["asset_id"])) == 2
-    with pytest.raises(EntityLibraryServiceError, match="active logical reference"):
+    with pytest.raises(EntityLibraryServiceError, match="current consumer"):
         service.delete_asset(asset["asset_id"])
     replacement = service.replace_asset(asset["asset_id"], "image/png", PNG + b"replacement")
     assert replacement["asset_id"] != asset["asset_id"]
     assert service.get_asset(asset["asset_id"])["status"] == "approved"
     assert service.resolve_reference("reference.current")["asset_id"] == replacement["asset_id"]
+
+
+def test_archive_deactivates_logical_references_and_keeps_them_on_asset_details(library):
+    _, service = library
+    asset = service.import_asset("Reference to archive", "image/png", PNG)
+    service.save_logical_reference({"reference_key": "reference.to_archive", "asset_id": asset["asset_id"]})
+
+    archived = service.delete_asset(asset["asset_id"])
+
+    assert archived["status"] == "archived"
+    assert archived["logical_references"] == [{
+        "reference_key": "reference.to_archive",
+        "label": "reference.to_archive",
+        "set_id": None,
+        "status": "inactive",
+    }]
+    with pytest.raises(EntityLibraryServiceError, match="missing or inactive"):
+        service.resolve_reference("reference.to_archive")
+
+
+def test_obsolete_assets_are_hidden_from_inventory_search_by_default(library):
+    _, service = library
+    obsolete = service.import_asset("Obsolete image", "image/png", PNG)
+    service.set_asset_status(obsolete["asset_id"], "obsolete")
+    approved = service.import_asset("Approved image", "image/png", PNG)
+
+    assert {item["asset_id"] for item in service.list_assets(hide_obsolete=True)} == {approved["asset_id"]}
+    assert {item["asset_id"] for item in service.list_assets()} == {approved["asset_id"], obsolete["asset_id"]}
+    assert [item["asset_id"] for item in service.list_assets(status="obsolete")] == [obsolete["asset_id"]]
 
 
 def test_locked_pipeline_sync_registers_only_pipeline_rows(library, tmp_path):
