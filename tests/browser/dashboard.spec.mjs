@@ -44,6 +44,7 @@ test("universe pages create and save canonical art style", async ({ page }) => {
 
 test("ad hoc image generation stages img2img dimensions and displays downloadable results", async ({ page }) => {
   let submitted;
+  let imported;
   let failNextJobRead = false;
   await page.route("**/api/image-generation/options", (route) => route.fulfill({
     json: {
@@ -73,6 +74,7 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
     json: {
       request_id: "browser-image-job", mode: "img2img", status: "COMPLETE",
       requested: 1, completed: 1, failed: 0, error: "",
+      prompt: "Make the object carved from jade", negative_prompt: "plastic, scratches",
       images: [{ index: 0, url: "/api/image-generation/jobs/browser-image-job/images/0" }],
     },
     });
@@ -113,6 +115,29 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
   await expect(page.locator("#image-generation-width")).toHaveValue("1280");
   await expect(page.locator("#image-generation-results-grid img")).toHaveCount(1);
   await expect(page.getByRole("link", { name: "Download 1" })).toBeVisible();
+  const libraryImport = await page.request.post("/api/entity-library/assets?label=Generated+Import+Fixture", {
+    data: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
+    headers: { "content-type": "image/png" },
+  });
+  expect(libraryImport.ok()).toBeTruthy();
+  const libraryAsset = (await libraryImport.json()).asset;
+  await page.route("**/api/image-generation/jobs/browser-image-job/images/0/import", async (route) => {
+    imported = route.request().postDataJSON();
+    await route.fulfill({ json: { asset: libraryAsset, duplicate: false } });
+  });
+  await page.locator("#image-generation-review-import").click();
+  await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
+  await expect(page.locator("#entity-library-import-dialog")).toBeVisible();
+  await expect(page.locator("#entity-library-import-preview")).toBeVisible();
+  await expect(page.locator("#entity-library-import-prompt")).toHaveText("Make the object carved from jade");
+  await expect(page.locator("#entity-library-import-negative-prompt")).toHaveText("plastic, scratches");
+  const importResponse = page.waitForResponse((response) => response.url().includes("/api/image-generation/jobs/browser-image-job/images/0/import") && response.ok());
+  await page.locator("#entity-library-import").click();
+  await importResponse;
+  expect(imported).toMatchObject({ label: "Make the object carved from jade", provenance: "Image Generation job browser-image-job, result 1" });
+  await expect(page.locator("#entity-library-import-dialog")).toBeHidden();
+  await expect(page.locator("#entity-library-save")).toBeEnabled();
+  await page.evaluate(() => window.activatePage("image-generation", { skipAutosave: true }));
   await page.locator("#image-generation-clear").click();
   await expect(page.locator("#image-generation-results-grid img")).toHaveCount(0);
   await expect(page.locator("#image-generation-prompt")).toHaveValue("");

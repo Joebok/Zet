@@ -876,6 +876,7 @@ const entityLibraryClearFilters = document.querySelector("#entity-library-clear-
 const entityLibraryActiveFilterCount = document.querySelector("#entity-library-active-filter-count");
 const entityLibraryImportDialog = document.querySelector("#entity-library-import-dialog");
 const entityLibraryImportDialogContent = document.querySelector("#entity-library-import-dialog-content");
+const entityLibraryImportPreview = document.querySelector("#entity-library-import-preview");
 const entityLibraryMergeDialog = document.querySelector("#entity-library-merge-dialog");
 const entityLibraryMergeContent = document.querySelector("#entity-library-merge-content");
 const entityLibraryMergeConfirm = document.querySelector("#entity-library-merge-confirm");
@@ -1288,7 +1289,7 @@ function renderImageGenerationReview(payload) {
   imageGenerationReviewUpdate.hidden = !associated;
 }
 
-function openImageGenerationImportDialog() {
+async function openImageGenerationImportDialog() {
   if (!state.imageGenerationRequestId) return;
   entityLibraryImportGeneration = { requestId: state.imageGenerationRequestId, index: imageGenerationReviewIndex };
   state.entityLibraryImportBlob = null;
@@ -1301,6 +1302,9 @@ function openImageGenerationImportDialog() {
   entityLibraryPaste.textContent = "Using selected Image Generation result";
   entityLibraryImportStatus.textContent = "";
   entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+  entityLibraryImportPreview.src = imageGenerationReviewImage.src;
+  entityLibraryImportPreview.hidden = false;
+  await activatePage("auxiliary-resources", { skipAutosave: true });
   entityLibraryImportDialog.showModal();
 }
 
@@ -13378,6 +13382,8 @@ document.querySelector("#entity-library-close-import").addEventListener("click",
 entityLibraryImportDialog.addEventListener("close", () => {
   entityLibraryImportGeneration = null;
   entityLibraryGenerationPrompts.hidden = true;
+  entityLibraryImportPreview.hidden = true;
+  entityLibraryImportPreview.removeAttribute("src");
 });
 document.querySelector("#entity-library-merge-cancel").addEventListener("click", () => entityLibraryMergeDialog.close());
 entityLibraryMergeDialog.addEventListener("click", (event) => { if (event.target === entityLibraryMergeDialog) entityLibraryMergeDialog.close(); });

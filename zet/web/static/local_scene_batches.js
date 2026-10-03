@@ -15,10 +15,13 @@ window.SceneBatches = (() => {
   };
   const base = () => `/api/stories/${encodeURIComponent(context.story)}/scenes/${encodeURIComponent(context.scene)}/local-batches`;
   const route = (target, suffix, attempt = run.groups[target].attempt_id) => `${base()}/${run.run_id}/targets/${encodeURIComponent(target)}/${suffix}?attempt_id=${encodeURIComponent(attempt || "")}`;
-  async function request(url, payload) {
-    const response = await fetch(url, payload === undefined ? {} : { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });
+  async function request(url, payload, method = payload === undefined ? "GET" : "POST") {
+    const options = payload === undefined ? (method === "GET" ? {} : {method})
+      : {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)};
+    const response = await fetch(url, options);
     const value = await response.json();
-    if (!response.ok) throw new Error(value.detail || "Scene batch request failed.");
+    if (!response.ok) throw new Error(typeof value.detail === "string" ? value.detail
+      : value.detail ? JSON.stringify(value.detail) : "Scene batch request failed.");
     return value;
   }
   function link(hostElement, label, href) {
@@ -49,6 +52,10 @@ window.SceneBatches = (() => {
     document.querySelector("#scene-batch-new").disabled = pending || !context;
     document.querySelector("#scene-batch-refresh").disabled = pending || !run;
     history.disabled = pending;
+    document.querySelector("#scene-batch-delete").disabled = pending || !run
+      || Object.values(run.groups).some(group => group.candidates.some(item => ["SUBMITTING", "QUEUED", "RUNNING"].includes(item.status)))
+      || Object.values(run.groups).some(group => ["QUEUED", "RUNNING"].includes(group.analysis?.status))
+      || Object.values(run.rankings || {}).some(ranking => ranking.status === "RUNNING");
     document.querySelector("#scene-batch-publish").disabled = pending || run?.status !== "READY_TO_PUBLISH";
     for (const selector of ["#scene-batch-start", "#scene-batch-stop", "#scene-batch-rename"]) document.querySelector(selector).disabled = pending || !run;
     document.querySelector("#scene-batch-recompile").disabled = pending || !run || Object.values(run.groups).some(group => group.candidates.some(item => ["QUEUED", "RUNNING"].includes(item.status)));
@@ -255,6 +262,19 @@ window.SceneBatches = (() => {
   document.querySelector("#scene-batch-publish").addEventListener("click", () => void perform("publish"));
   document.querySelector("#scene-batch-recompile").addEventListener("click", () => void perform("recompile"));
   document.querySelector("#scene-batch-rename").addEventListener("click", () => void perform("rename", {batch_name: document.querySelector("#scene-batch-name").value}));
+  document.querySelector("#scene-batch-delete").addEventListener("click", async () => {
+    if (!run || pending || !window.confirm(`Delete batch “${run.batch_name || run.run_id.slice(0, 8)}” and its saved candidates, prompts, and history?`)) return;
+    const expectedVersion = version, expectedId = run.run_id;
+    pending = true; message.textContent = "Deleting scene batch…"; render();
+    try {
+      await request(`${base()}/${expectedId}`, undefined, "DELETE");
+      if (version !== expectedVersion || run?.run_id !== expectedId) return;
+      run = null; observations.clear(); document.querySelector("#scene-batch-name").value = "";
+      const url = new URL(location.href); url.searchParams.delete("batch"); window.history.replaceState({}, "", url);
+      await list(); message.textContent = "Scene batch deleted."; render();
+    } catch (error) { if (version === expectedVersion) message.textContent = error.message; }
+    finally { if (version === expectedVersion) { pending = false; render(); } }
+  });
   document.querySelector("#scene-batch-refresh").addEventListener("click", () => void refresh());
   return {open};
 })();

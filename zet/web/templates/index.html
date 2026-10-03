@@ -613,6 +613,7 @@
         <div id="entity-library-organizer"></div>
       </section>
       <dialog id="entity-library-import-dialog" class="inventory-dialog">
+        <img id="entity-library-import-preview" class="entity-library-import-preview" alt="Image selected for import" hidden>
         <div id="entity-library-import-dialog-content"></div>
         <button id="entity-library-close-import" type="button">Close</button>
       </dialog>
@@ -1080,10 +1081,11 @@
       <p id="scene-batch-message" role="status"></p>
       <div class="settings-form">
         <label>Batch history<select id="scene-batch-history"></select></label>
+        <button id="scene-batch-delete" class="danger-action" type="button" disabled>Delete batch</button>
         <label>Batch name<input id="scene-batch-name" type="text"></label>
         <button id="scene-batch-rename" type="button" disabled>Rename batch</button>
         <details><summary>New batch candidate counts</summary><div id="scene-batch-plan" class="settings-form"></div></details>
-        <button id="scene-batch-new" type="button">Create Scene Batch</button>
+        <button id="scene-batch-new" type="button">New Batch</button>
       </div>
       <p id="scene-batch-status" class="status-text"></p>
       <div class="button-row compact">
@@ -2264,7 +2266,7 @@ Add prompt language here.
 
   <script src="/static/zet.js?v=20261003-scene-pipeline"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
-  <script src="/static/local_scene_batches.js?v=20261003-scene-pipeline"></script>
+  <script src="/static/local_scene_batches.js?v=20261003-scene-batch-context"></script>
   <script src="/static/local_batch_status.js?v=20261002-pipeline-colors"></script>
 </body>
 </html>

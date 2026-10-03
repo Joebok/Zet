@@ -164,6 +164,26 @@ class LocalSceneBatchService:
             rows.append({**spec, "status": state["status"]})
         return sorted(rows, key=lambda item: item["created_at"], reverse=True)
 
+    def delete(self, story: str, scene: str, run_id: str) -> None:
+        """Remove an inactive batch and its run-owned files."""
+        root = self.root(story, scene, run_id)
+        self.detail(story, scene, run_id)
+        with file_lock(root / "state.lock"):
+            state = _read(root / "state.json")
+            if any(candidate["status"] in {"SUBMITTING", "QUEUED", "RUNNING"}
+                   for group in state["groups"].values() for candidate in group["candidates"]):
+                raise ValueError("Stop active render work and wait before deleting this batch.")
+            if any(group.get("analysis", {}).get("status") in {"QUEUED", "RUNNING"}
+                   for group in state["groups"].values()):
+                raise ValueError("Wait for prompt analysis to finish before deleting this batch.")
+            if any(ranking.get("status") == "RUNNING" for ranking in state["rankings"].values()):
+                raise ValueError("Wait for candidate rating to finish before deleting this batch.")
+            # Move it out of the discoverable workspace while holding the run lock,
+            # so a render action cannot race with deletion.
+            deleted = root.with_name(f".{run_id}.deleting-{uuid4().hex}")
+            root.rename(deleted)
+        shutil.rmtree(deleted)
+
     def linked_batch(self, story: str, scene: str, target: str = "main", ask_id: str = "") -> str:
         if not self.targets._safe_target_id(target):
             raise ValueError("Invalid scene target.")

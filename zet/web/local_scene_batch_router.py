@@ -33,6 +33,10 @@ def create_local_scene_batch_router(app_factory):
     def detail(story_slug: str, scene_slug: str, run_id: str):
         return call(lambda: service().improvement(story_slug, scene_slug).detail(run_id))
 
+    @router.delete("/{run_id}")
+    def delete(story_slug: str, scene_slug: str, run_id: str):
+        return call(lambda: service().delete(story_slug, scene_slug, run_id) or {"deleted": True})
+
     @router.post("/{run_id}/actions/{action}")
     def action(story_slug: str, scene_slug: str, run_id: str, action: str, payload: dict = Body(default={})):
         def perform():
